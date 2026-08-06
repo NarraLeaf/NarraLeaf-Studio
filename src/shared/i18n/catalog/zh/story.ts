@@ -312,7 +312,10 @@ export const story = {
     paramHint: {
         variableName: "变量名",
         variable: "变量",
-        defaultValue: "默认值",
+        // 「初始值」而非「默认值」：这个词现在既是提示，也是声明行上写出来的键（`初始值=false`）。
+        // 说的是同一件事，但「初始」点明了它只在变量诞生的那一刻起作用——之后是谁把它改成别的，是剧本
+        // 自己的事，而「默认」听上去像是随时会回落到的那个值。
+        defaultValue: "初始值",
         valueType: "类型",
         description: "说明",
         expressionValue: "值或表达式",

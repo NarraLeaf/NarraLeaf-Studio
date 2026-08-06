@@ -19,20 +19,13 @@ import type {
     StoryLiteralValue,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
+import { declarationDefaultForType, savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedPersistentView } from "@shared/variables/mergedPersistentView";
 import type { StoryVariablesPanelPayload } from "./storyVariablesPanelId";
 
 const INPUT_CLASS =
     "h-7 min-w-0 flex-1 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none focus:border-primary/50";
-
-function defaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
-    if (valueType === "boolean") return false;
-    if (valueType === "number") return 0;
-    if (valueType === "json") return {};
-    return "";
-}
 
 function formatDefault(value: StoryLiteralValue | undefined, valueType: StoryVariableValueType): string {
     if (value === undefined || value === null) return "";
@@ -244,7 +237,7 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
                                 onRename={name => storyService?.renameSceneVariable(storyId, sceneId, row.id, name)}
                                 onRetype={valueType => {
                                     storyService?.retypeSceneVariable(storyId, sceneId, row.id, valueType);
-                                    storyService?.setSceneVariableDefault(storyId, sceneId, row.id, defaultForType(valueType));
+                                    storyService?.setSceneVariableDefault(storyId, sceneId, row.id, declarationDefaultForType(valueType));
                                 }}
                                 onDefault={value => storyService?.setSceneVariableDefault(storyId, sceneId, row.id, value)}
                                 onDelete={() => storyService?.deleteSceneVariable(storyId, sceneId, row.id)}
@@ -265,7 +258,7 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
                                 onRename={name => storyService?.renameSavedVariable(storyId, row.id, name)}
                                 onRetype={valueType => {
                                     storyService?.retypeSavedVariable(storyId, row.id, valueType);
-                                    storyService?.setSavedVariableDefault(storyId, row.id, defaultForType(valueType));
+                                    storyService?.setSavedVariableDefault(storyId, row.id, declarationDefaultForType(valueType));
                                 }}
                                 onDefault={value => storyService?.setSavedVariableDefault(storyId, row.id, value)}
                                 onDelete={() => storyService?.deleteSavedVariable(storyId, row.id)}

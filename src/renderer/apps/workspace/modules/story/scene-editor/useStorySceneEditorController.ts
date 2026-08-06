@@ -10,7 +10,7 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { describeDeclaration, listSceneIdsInDocumentOrder } from "@shared/types/story";
+import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
@@ -71,7 +71,9 @@ import type { PastePlan, PasteSeparatorChoice, SpeakerMappingTarget } from "@/li
 import { forgetStoryPasteSeparator, getStoryPasteMemory, rememberStoryPasteSpeakers, saveStoryPasteSeparator } from "./storyPasteMemory";
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
-import { isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
+import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
+import { projectStoryCommandLine } from "./storyCommandLine";
+import { noStoryRowCharacters } from "@/lib/story/storyRowProjection";
 import { dialogueActionCharacter } from "./storyCharacterActions";
 
 const STORY_EDITOR_HISTORY_LIMIT = 100;
@@ -1684,15 +1686,22 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             }
         }
         // A declaration's row IS its result, but the caret has already moved on to the fresh slot below,
-        // so the receipt travels with that slot: `✓ Var gold: number = 0`, scope word off the same badge
-        // label the row shows, fading on the next keystroke (bible §3.5). No toast — the ghost zone is the
-        // quietest place to say "it worked" without stealing the line the author is about to type.
+        // so the receipt travels with that slot: `✓ @local gold 0 type=number`, fading on the next
+        // keystroke (bible §3.5). No toast — the ghost zone is the quietest place to say "it worked"
+        // without stealing the line the author is about to type.
+        //
+        // The receipt IS the row's own line, off the same projection, so the two cannot drift — and
+        // what it confirms is the reading rather than the typing: `/local gold 0` comes back carrying
+        // the `type=number` the editor inferred. No lookups: a declaration names nothing outside
+        // itself, which is also why this can run here rather than through the row's hook.
         const confirmation = block.kind === "declaration"
-            ? `✓ ${translate(`story.badge.declare.${block.payload.scope}` as Parameters<typeof translate>[0])} ${describeDeclaration(block)}`
-            : undefined;
-        startInsertAfter(block.id, true, confirmation);
+            ? projectStoryCommandLine(block, { character: noStoryRowCharacters })
+            : null;
+        startInsertAfter(block.id, true, confirmation
+            ? `✓ ${toDisplayedCommandLine(confirmation.source, slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER)}`
+            : undefined);
         return true;
-    }, [commandContext, createBlock, editorMode, insertBlock, scaffoldContainer, scene, sceneId, startInsertAfter, storyId, storyService, uuidService]);
+    }, [commandContext, createBlock, editorMode, insertBlock, scaffoldContainer, scene, sceneId, slashAtAlias, startInsertAfter, storyId, storyService, uuidService]);
 
     /**
      * A pick from the slash menu. A spec command routes through the same commit path a typed line

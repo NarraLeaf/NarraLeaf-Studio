@@ -2,9 +2,11 @@ import type {
     StoryBlock,
     StoryDeclarationBlock,
     StoryDocument,
+    StoryLiteralValue,
     StoryScene,
     StorySceneVariableDefinition,
     StorySavedVariableDefinition,
+    StoryVariableValueType,
 } from "./document";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "./order";
 
@@ -36,15 +38,38 @@ export function isStoryDeclarationBlock(block: StoryBlock): block is StoryDeclar
 }
 
 /**
- * The row text a declaration reads as — `gold: number = 100`, or `gold: number` when it declares no
- * default. The scope (Local / Var / Global) is deliberately absent: it rides the row's badge, and the
- * one caller that wants it inline (the commit confirmation, bible §3.5) prepends the localized scope
- * word itself. Kept here, next to the projection, so the row label and the confirmation never drift.
+ * A declaration as prose — `gold: number = 100`, or `gold: number` when it declares no default.
+ *
+ * NOT what the story editor's row shows: a declaration row reads back as the `/local gold 100
+ * type=number` line that wrote it, like every other row (`storyCommandLine.ts`). This is the reading
+ * for the surfaces that have no command vocabulary to spell a line with — the Dev Mode timeline and
+ * the scene flow map, which describe blocks rather than echo them. The scope is deliberately absent:
+ * those surfaces carry it on the row's badge.
  */
 export function describeDeclaration(block: StoryDeclarationBlock): string {
     return block.payload.defaultValue !== undefined
         ? `${block.payload.name}: ${block.payload.valueType} = ${JSON.stringify(block.payload.defaultValue)}`
         : `${block.payload.name}: ${block.payload.valueType}`;
+}
+
+/**
+ * The zero value a RETYPE resets a declaration's default to — what `type=string` on a variable that
+ * held `7` leaves behind.
+ *
+ * One copy for every surface that offers the type as a choice: the inspector's dropdown, the Story
+ * Variables panel, and the `type=` token on the row's own command line. They were three, and three
+ * answers to "what does a retype leave in the default" is a disagreement the author sees as a value
+ * that changes depending on where they changed the type from.
+ *
+ * Distinct from `/reset`'s zero (`defaultForType` in the command spec, which answers `null` for json):
+ * that one assigns a RUNTIME value, where "no value" is the honest answer, while a declaration's
+ * default is a literal an author will edit — and an empty object is something to edit, `null` is not.
+ */
+export function declarationDefaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
+    if (valueType === "boolean") return false;
+    if (valueType === "number") return 0;
+    if (valueType === "json") return {};
+    return "";
 }
 
 function defOf(block: StoryDeclarationBlock): StorySceneVariableDefinition {
