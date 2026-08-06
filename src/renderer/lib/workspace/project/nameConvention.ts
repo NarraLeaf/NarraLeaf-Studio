@@ -49,6 +49,22 @@ export const ProjectNameConvention = {
      * (plan 2026-07-28-002 §4.1).
      */
     StudioServices: [".nlstudio", "services/"],
+    /**
+     * Where an import writes a converted file before the importer copies it into the library.
+     *
+     * Inside the project because that is the only tree the workspace window is allowed to write to
+     * (`windowPermissionDeclarations`), and under `.nlstudio/` because the file is scaffolding: it
+     * exists for the few seconds between ffmpeg finishing and the asset being copied, and must not
+     * be versioned, packaged or backed up.
+     *
+     * One directory per file rather than one shared folder. The converted file has to keep the
+     * author's own name so the asset is called `intro` and not a hex string, and two folders on
+     * disk can each hold an `intro.avi`; a shared scratch folder would make the second one collide
+     * with the first, which the transcoder refuses (it never overwrites) rather than silently
+     * resolving.
+     */
+    MediaConvertScratch: [".nlstudio", "convert/"],
+    MediaConvertScratchDir: (id: string) => [".nlstudio", "convert", id],
 
     Assets: ["assets/"],
     ProjectResources: ["resources/"],

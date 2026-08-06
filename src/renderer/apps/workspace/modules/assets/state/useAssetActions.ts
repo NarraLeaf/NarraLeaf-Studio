@@ -11,7 +11,7 @@ import {
 } from '@/lib/workspace/services/assets/assetTypes';
 import { assetTypeMatchesExtension } from '@/lib/workspace/services/assets/importPathExpansion';
 import { runReplaceAssetContentFlow } from '@/lib/workspace/assets/replaceAssetContentFlow';
-import type { ImportQueueController } from './useImportQueue';
+import type { ImportQueueController, ImportQueueFailure } from './useImportQueue';
 import { WorkspaceContext } from '@/lib/workspace/services/services';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { UIService } from '@/lib/workspace/services/core/UIService';
@@ -36,6 +36,12 @@ import {
 } from './newTextFileName';
 import { openAssetPreviewTabsInEditor } from '../dnd/openDraggedAssetsInEditor';
 import type { ModelImportSelection } from '../components/ModelImportWizard';
+import type { MediaImportResolution } from '../components/MediaImportDialog';
+import {
+    categoryNeedsMediaTriage,
+    planMediaImport,
+    type MediaImportPlan,
+} from './mediaImportTriage';
 import { platformDefaultLineEnding } from '../editors/text/textEditableFiles';
 import { toPersistedEol } from '../editors/text/textDocumentPreferences';
 
@@ -144,6 +150,19 @@ function summarizeImportFailures(errors: Array<string | undefined>, t: Translato
         : visibleMessages.join("\n");
 }
 
+/**
+ * Delete the directories a conversion wrote into, once the importer has copied out of them.
+ *
+ * Best effort by design: the files have already been copied into the library by the time this runs,
+ * so a leftover directory under `.nlstudio/` is untidy rather than harmful, and raising about it
+ * would report a failure for an import that succeeded.
+ */
+async function removeConvertScratch(directories: readonly string[]): Promise<void> {
+    for (const directory of directories) {
+        await getInterface().fs.deleteDir(directory).catch(() => undefined);
+    }
+}
+
 export function useAssetActions({
     context,
     inputDialog,
@@ -191,6 +210,18 @@ export function useAssetActions({
      * the wizard closes there is nothing left pointing at it.
      */
     const [modelImportRequest, setModelImportRequest] = useState<{ groupId?: string } | null>(null);
+
+    /**
+     * The import waiting on an answer about files that will not play, and where it was going.
+     *
+     * Held here for the same reason the model wizard's is: the section and the group are decided at
+     * the moment the author drops or picks, and nothing points at them once the dialog is up.
+     */
+    const [mediaImportRequest, setMediaImportRequest] = useState<{
+        category: AssetCategory;
+        groupId?: string;
+        plan: MediaImportPlan;
+    } | null>(null);
 
     /**
      * The rows the next action applies to. Every action shares this so the row the user pointed at
@@ -269,15 +300,39 @@ export function useAssetActions({
      * file in each folder is the entry, so it says so rather than leaving the importer's own
      * detection to reach the same conclusion a second time — which it cannot, for the one case that
      * matters, a folder holding two models where detection deliberately refuses to guess.
+     *
+     * `preFailures` and `scratchDirs` are the media conversion's arm. A file that failed to convert
+     * never reaches an importer, so it has no per-file result to be turned away by, and it would
+     * otherwise vanish between the dialog closing and the panel redrawing.
      */
     const runImport = useCallback(async (
         category: AssetCategory,
         paths: string[],
         groupId?: string,
-        entryByPath?: Record<string, string>,
+        options?: {
+            entryByPath?: Record<string, string>;
+            /** Named in the panel's failure list without ever having been handed to an importer. */
+            preFailures?: readonly ImportQueueFailure[];
+            /** Removed once the importer has copied out of them. */
+            scratchDirs?: readonly string[];
+        },
     ) => {
         const ctx = contextRef.current;
-        if (!ctx || paths.length === 0) return;
+        if (!ctx) return;
+        const entryByPath = options?.entryByPath;
+        const preFailures = options?.preFailures ?? [];
+        const scratchDirs = options?.scratchDirs ?? [];
+
+        // Nothing to hand an importer. Reachable now that a conversion can fail for every file in a
+        // run: the failures still have to be named, and the scratch directory still has to go.
+        if (paths.length === 0) {
+            if (preFailures.length > 0) {
+                importQueue?.start({ category, groupId, total: 0 });
+                importQueue?.finish([...preFailures]);
+            }
+            await removeConvertScratch(scratchDirs);
+            return;
+        }
         const uiService = ctx.services.get<UIService>(Services.UI);
 
         notifyLoading(true);
@@ -289,7 +344,7 @@ export function useAssetActions({
             // `LocalAssetsManager.bucketPathsByAssetType`.
             const buckets = await assetsService.bucketPathsByAssetType(category, paths);
             await assetsService.transaction(async (svc) => {
-                const failures: { path: string; error?: string }[] = [];
+                const failures: { path: string; error?: string }[] = [...preFailures];
                 const importedAssets: Asset[] = [];
                 let completed = 0;
 
@@ -371,6 +426,7 @@ export function useAssetActions({
             });
         });
 
+        await removeConvertScratch(scratchDirs);
         onActionComplete();
         notifyLoading(false);
     }, [importQueue, notifyLoading, onActionComplete, t, withAssetsService]);
@@ -449,8 +505,25 @@ export function useAssetActions({
             paths = selection.data.data;
         }
 
+        // Asked before a single byte is copied, so a file that will not play is a question rather
+        // than a refusal reported afterwards about work already done. Files with nothing wrong with
+        // them never appear in the dialog, and a run with no problems never opens one.
+        if (categoryNeedsMediaTriage(category)) {
+            notifyLoading(true);
+            const plan = await planMediaImport(paths, async (path) => {
+                const result = await getInterface().probeMedia(path);
+                return result.success ? result.data.outcome : null;
+            });
+            notifyLoading(false);
+
+            if (plan.problems.length > 0) {
+                setMediaImportRequest({ category, groupId, plan });
+                return;
+            }
+        }
+
         await runImport(category, paths, groupId);
-    }, [context, runImport, t, withAssetsService]);
+    }, [context, freeze.frozen, notifyLoading, runImport, t, withAssetsService]);
 
     /** Re-run the files the last import could not read, into the same group. */
     const handleRetryImport = useCallback(async (category: AssetCategory, paths: string[], groupId?: string) => {
@@ -475,11 +548,37 @@ export function useAssetActions({
             AssetCategory.Model,
             selection.map(entry => entry.rootPath),
             request.groupId,
-            Object.fromEntries(selection.map(entry => [entry.rootPath, entry.entry])),
+            { entryByPath: Object.fromEntries(selection.map(entry => [entry.rootPath, entry.entry])) },
         );
     }, [freeze.frozen, modelImportRequest, runImport]);
 
     const cancelModelImport = useCallback(() => setModelImportRequest(null), []);
+
+    /**
+     * Carry out whatever the media dialog's author decided.
+     *
+     * The freeze is re-checked here as well as on the dialog's own buttons, for the reason the model
+     * wizard states: the dialog is a conversation, and a working-tree re-read can begin while it is
+     * on screen. Anything already converted is still cleaned up, so a refusal does not leave the
+     * scratch directory behind.
+     */
+    const completeMediaImport = useCallback(async (resolution: MediaImportResolution) => {
+        const request = mediaImportRequest;
+        setMediaImportRequest(null);
+        if (!request) {
+            return;
+        }
+        if (freeze.frozen) {
+            await removeConvertScratch(resolution.scratchDirs);
+            return;
+        }
+        await runImport(request.category, resolution.paths, request.groupId, {
+            preFailures: resolution.failures,
+            scratchDirs: resolution.scratchDirs,
+        });
+    }, [freeze.frozen, mediaImportRequest, runImport]);
+
+    const cancelMediaImport = useCallback(() => setMediaImportRequest(null), []);
 
     /**
      * Import a URL as a pinned asset: Studio fetches it now and keeps the bytes with the project.
@@ -989,5 +1088,9 @@ export function useAssetActions({
         modelImportRequest,
         completeModelImport,
         cancelModelImport,
+        /** Non-null while the import is waiting on an answer about files that will not play. */
+        mediaImportRequest,
+        completeMediaImport,
+        cancelMediaImport,
     };
 }

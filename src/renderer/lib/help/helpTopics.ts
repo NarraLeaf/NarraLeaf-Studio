@@ -47,6 +47,7 @@ export const HELP_TOPIC_IDS = [
     "sceneSnapshot",
     "storyMotion",
     "assets",
+    "mediaConversion",
     "characters",
     "appearances",
     "puppetRuntimes",
@@ -187,6 +188,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "content",
         shortcuts: ["assets.rename", "assets.copy", "assets.paste"],
         related: ["characters", "audio", "lint"],
+    },
+    {
+        id: "mediaConversion",
+        section: "content",
+        related: ["assets", "webOptimization"],
     },
     {
         id: "characters",
