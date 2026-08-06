@@ -21,6 +21,7 @@ import type {
 } from "@shared/types/story";
 import {
     characterStageName,
+    declarationDefaultForType,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
     listScenesInDocumentOrder,
@@ -698,14 +699,6 @@ const declarationTypeOptions = (t: TFunc): SelectOption[] => [
     { value: "string", label: t("storyVars.valueType.string") },
     { value: "json", label: t("storyVars.valueType.json") },
 ];
-
-/** The zero value a retype resets the default to (mirrors the Story Variables panel). */
-function declarationDefaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
-    if (valueType === "boolean") return false;
-    if (valueType === "number") return 0;
-    if (valueType === "json") return {};
-    return "";
-}
 
 /** Editor for a `declaration` row - the row IS the variable, so this edits the declaration itself. */
 function DeclarationPayloadFields(props: {

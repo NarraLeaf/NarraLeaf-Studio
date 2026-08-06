@@ -8,7 +8,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
-import { ACTION_TRIGGER, ALT_ACTION_TRIGGER } from "./commandTrigger";
+import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, toDisplayedCommandLine } from "./commandTrigger";
 import { getCommandSegments, type StoryCommandRole } from "./storyCommandHighlight";
 import type { StoryCommandContext } from "./storyCommandValues";
 import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
@@ -127,16 +127,15 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
 const ASSET_NAME_TYPES = [AssetType.Image, AssetType.Audio, AssetType.Video] as const;
 
 /**
- * Swap the canonical leading "/" for the trigger the author actually types.
+ * Swap the canonical leading "/" for the trigger the author actually types — {@link
+ * toDisplayedCommandLine}, applied to the one piece that can hold it.
  *
  * Only the first character can change (the same rule the insert slot lives by), so every span the
  * projection recorded stays valid against the displayed text — and, crucially, the PARSE still has to
  * run on the canonical form: `@隐藏 …` is not a command line to the parser, and colouring the
  * displayed string directly leaves every token scaffold-grey.
  */
-function displayed(source: string, trigger: "/" | "@"): string {
-    return source.startsWith(ACTION_TRIGGER) ? trigger + source.slice(1) : source;
-}
+const displayed = toDisplayedCommandLine;
 
 /** One coloured stretch of the line, with the offsets it occupies so a caller can find a span in it. */
 export type StoryCommandLinePiece = {

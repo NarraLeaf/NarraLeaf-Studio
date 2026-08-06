@@ -90,6 +90,19 @@ function build(source: string): StoryBlock {
     return spec.build(args, { generateId, context: CONTEXT });
 }
 
+/**
+ * The payload as the round trip may compare it: everything except a declaration's `storageKey`, which
+ * is the block's own freshly minted id and therefore differs by construction on the second build.
+ */
+function comparable(block: StoryBlock): StoryBlock["payload"] {
+    if (block.kind !== "declaration") {
+        return block.payload;
+    }
+    const { storageKey, ...rest } = block.payload;
+    expect(storageKey, "a declaration keys its storage by its own id").toBe(block.id);
+    return rest as StoryBlock["payload"];
+}
+
 function project(source: string): string {
     const line = projectStoryCommandLine(build(source), LOOKUPS);
     if (!line) {
@@ -249,13 +262,56 @@ describe("projectStoryCommandLine", () => {
     });
 
     it("says nothing for a row no command owns", () => {
-        // Prose is prose, and a declaration reads as `gold: number = 100` — a shape no line has.
+        // Prose is prose. A declaration is NOT in this set — `/local` owns its row as squarely as
+        // `/hide` owns a hide row, and the projections below are what it reads as.
         const narration: StoryBlock = {
             id: "n1", parentId: null, childrenIds: [], kind: "nodeAction",
             payload: { action: "narration", text: { value: "hello", textId: "t1", role: "narration" } },
         };
         expect(projectStoryCommandLine(narration, LOOKUPS)).toBeNull();
-        expect(projectStoryCommandLine(build("/local hp 100"), LOOKUPS)).toBeNull();
+    });
+
+    it("declares in the line that declares it, type and description and all", () => {
+        // The type is written even where the author left it out: it was INFERRED from the default, and
+        // the row printing it is the row saying what the editor decided.
+        expect(project("/local hp 100")).toBe("/local hp default=100 type=number");
+        expect(project("/local met")).toBe("/local met type=boolean");
+        expect(project("/save chapter 1 type=number")).toBe("/save chapter default=1 type=number");
+        expect(project("/global seenIntro false")).toBe("/global seenIntro default=false type=boolean");
+        // A description with a space in it comes back quoted — `desc=` is not greedy.
+        expect(project("/local hp 100 desc='Player health'")).toBe("/local hp default=100 type=number desc='Player health'");
+        // The whole vocabulary, in the author's own language: the verb carries the scope, the keys and
+        // the type word are spellings their parser accepts back.
+        i18nStore.setLocale("zh");
+        expect(project("/local 早到分钟 7 desc=测试")).toBe("/场景变量 早到分钟 初始值=7 类型=数字 说明=测试");
+        expect(project("/global seenIntro false")).toBe("/全局变量 seenIntro 初始值=false 类型=布尔");
+        // `初始值=` is a key the parser takes back, because it comes out of the same table the parse pass
+        // reads — the default is the one arg written with its key despite filling a positional slot,
+        // so this is the join that would break silently if the word were ever authored by hand.
+        expect(comparable(build("/场景变量 早到分钟 初始值=7"))).toEqual(comparable(build("/local 早到分钟 7")));
+    });
+
+    it("says an empty default rather than dropping it", () => {
+        // An absent default and an empty one are different variables — the first is never seeded — and
+        // `""` is what a retype to `string` leaves behind, so it has to be sayable.
+        const empty: StoryBlock = {
+            id: "d1", parentId: null, childrenIds: [], kind: "declaration",
+            payload: { scope: "scene", name: "title", valueType: "string", defaultValue: "", description: undefined, storageKey: "d1" },
+        };
+        const line = projectStoryCommandLine(empty, LOOKUPS)!;
+        expect(line.source).toBe("/local title default='' type=string");
+        expect(comparable(build(line.source))).toEqual(comparable(empty));
+    });
+
+    it("retypes from the row the way the inspector retypes", () => {
+        // One rule for the zero value a retype leaves behind, or `hp: boolean = 100` — a variable whose
+        // own line contradicts itself.
+        const block = build("/local hp 100");
+        const line = projectStoryCommandLine(block, LOOKUPS)!;
+        const edit = line.edits.find(entry => entry.value === "number")!;
+        expect(edit.control.kind).toBe("enum");
+        expect(projectStoryCommandLine({ ...block, payload: edit.apply("boolean") } as StoryBlock, LOOKUPS)!.source)
+            .toBe("/local hp default=false type=boolean");
     });
 
     /**
@@ -376,20 +432,39 @@ describe("projectStoryCommandLine", () => {
             "/transform hero d=0.5",
             "/hide petals d=0.5",
             "/show title t=fade d=0.2",
+            // The declarations: every type, with and without a default, and the shapes that have to
+            // survive the tokenizer — a spaced description, a bracketed json default, a string default
+            // that reads as something else.
+            "/local hp 100",
+            "/local met",
+            "/local hp 100 type=number desc='Player health'",
+            "/local code 100 type=string",
+            "/local inv \"[1, 2]\" type=json",
+            "/local blank '' type=string",
+            "/local shape {} type=json",
+            "/save chapter 1 type=number",
+            "/global seenIntro false type=boolean",
         ]) {
             const first = build(source);
             const line = projectStoryCommandLine(first, LOOKUPS);
             expect(line, source).not.toBeNull();
-            expect(build(line!.source).payload, `${source} → ${line!.source}`).toEqual(first.payload);
+            expect(comparable(build(line!.source)), `${source} → ${line!.source}`).toEqual(comparable(first));
         }
     });
 
     it("round-trips in Chinese too — the localized line is a line the parser takes", () => {
         i18nStore.setLocale("zh");
-        for (const source of ["/hide Alice t=fade d=1", "/bg forest_day t=fade d=0.5", "/camera pan left", "/bgm theme vol=0.6 loop"]) {
+        for (const source of [
+            "/hide Alice t=fade d=1",
+            "/bg forest_day t=fade d=0.5",
+            "/camera pan left",
+            "/bgm theme vol=0.6 loop",
+            "/local hp 100 desc='生命值 上限'",
+            "/local inv \"[1, 2]\" type=json",
+        ]) {
             const first = build(source);
             const line = projectStoryCommandLine(first, LOOKUPS);
-            expect(build(line!.source).payload, `${source} → ${line!.source}`).toEqual(first.payload);
+            expect(comparable(build(line!.source)), `${source} → ${line!.source}`).toEqual(comparable(first));
         }
     });
 });
