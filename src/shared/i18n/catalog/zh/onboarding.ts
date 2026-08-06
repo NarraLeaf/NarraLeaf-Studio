@@ -7,6 +7,7 @@ import type { LocaleNamespace } from "../types";
  * 偏好，「跟随系统」有两种写法，就是设置流程和设置窗口对同一个选择各说各话的开始。
  */
 export const onboarding = {
+    windowTitle: "欢迎使用 {name}",
     language: {
         title: "语言",
         expectation: "Studio 界面使用的语言。之后可以在设置里改。",

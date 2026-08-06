@@ -11,6 +11,14 @@
  * no help topics of its own: this is the surface that has to explain itself.
  */
 export const onboarding = {
+    /**
+     * The title bar, for the whole flow rather than per screen.
+     *
+     * The one place setup says what it is a setup OF. Each screen's heading is the question it
+     * asks, which leaves nothing naming the product - and this is the first window anyone sees.
+     * `{name}` is `APP_DISPLAY_NAME`, so the two cannot drift apart.
+     */
+    windowTitle: "Welcome to {name}",
     language: {
         title: "Language",
         expectation: "The language Studio's interface is written in. You can change it in Settings later.",
