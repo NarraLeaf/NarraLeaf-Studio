@@ -21,6 +21,7 @@ import type {
     RuntimePluginDescriptor,
     WorkspacePluginDescriptor,
 } from "./plugins";
+import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
@@ -101,6 +102,12 @@ export enum IPCEventType {
     appCheckRecentProjects = "app.checkRecentProjects",
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
+    appProbeDownloadSource = "app.probeDownloadSource",
+    appCacheInventory = "app.cacheInventory",
+    appCacheClear = "app.cacheClear",
+    appGlobalStateDelete = "app.globalState.delete",
+    appExportSettings = "app.exportSettings",
+    appImportSettings = "app.importSettings",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -568,6 +575,82 @@ export type IPCEvents = {
             filePath?: string;
             byteLength?: number;
         };
+    };
+    /**
+     * Ask the host whether a mirror answers, for the Network settings panel.
+     *
+     * In main because the renderer never touches the network - not even to check a URL the user
+     * typed. A HEAD that gets any HTTP response proves the host is there, which is the whole
+     * question; the same reasoning `probePluginBuildDependency` gives for not treating a 405 as
+     * an outage applies, so the status is reported rather than judged.
+     */
+    [IPCEventType.appProbeDownloadSource]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** The address to probe. Refused unless it parses as https. */
+            url: string;
+        };
+        response: {
+            /** True when the host answered at all, whatever it said. */
+            reachable: boolean;
+            /** HTTP status when there was a response. */
+            status?: number;
+            /** Transport-level failure, or why the URL was refused. */
+            error?: string;
+        };
+    };
+    /** Sizes of the caches Studio can throw away. Measured on demand; see `cacheInventory`. */
+    [IPCEventType.appCacheInventory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: CacheInventoryReport;
+    };
+    /** Empty the named cache buckets. Ids the host does not know come back under `failed`. */
+    [IPCEventType.appCacheClear]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { ids: string[] };
+        response: CacheClearResult;
+    };
+    /**
+     * Remove stored values, so the next read resolves the default.
+     *
+     * A separate channel from `set` because writing the default over a key is NOT the same
+     * thing: the keys with no entry in GLOBAL_STATE_DEFAULTS resolve a fallback their reader
+     * computes (a device locale, a clamped range), and only absence gets them there. Main
+     * refuses anything on the protected list, so a renderer bug cannot take the project
+     * history or the per-project statistics with it.
+     */
+    [IPCEventType.appGlobalStateDelete]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { keys: string[] };
+        response: {
+            /** Keys that had a stored value and no longer do. */
+            deleted: string[];
+            /** Keys refused because they are not preferences. */
+            refused: string[];
+        };
+    };
+    /** Write a settings document to a file the user picks. See `@shared/utils/settingsDocument`. */
+    [IPCEventType.appExportSettings]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            defaultFileName: string;
+            /** The document, already composed and serialized by the renderer. */
+            content: string;
+        };
+        response: { canceled: boolean; filePath?: string };
+    };
+    /** Read a settings document the user picks. Parsing and validation happen in the renderer. */
+    [IPCEventType.appImportSettings]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { canceled: boolean; filePath?: string; content?: string };
     };
 } & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
