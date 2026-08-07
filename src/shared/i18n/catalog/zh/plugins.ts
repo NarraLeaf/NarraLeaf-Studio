@@ -84,6 +84,8 @@ export const plugins = {
         suppressedNotice: "本项目未载入这些插件：{names}。已安装的版本与项目当初依赖的版本不兼容，详见「插件」面板。",
         pendingReopen: "下次打开本项目时生效",
         restartHint: "部分插件修改可能需要重启工作区才能生效",
+        restart: "重启",
+        restarting: "正在保存改动并重启…",
         recoveryNotice: "恢复模式不载入任何插件。此处的更改会在下次正常打开项目时生效。",
         openPanel: "打开插件面板",
         error: {
