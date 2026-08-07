@@ -123,7 +123,7 @@
               "preset": "center",
               "durationMs": 400,
               "props": {
-                "zoom": 0.38
+                "zoom": 0.52
               }
             },
             "transition": {
@@ -299,7 +299,7 @@
               "preset": "center",
               "durationMs": 400,
               "props": {
-                "zoom": 0.38
+                "zoom": 0.52
               }
             },
             "transition": {
@@ -644,7 +644,7 @@
               "preset": "center",
               "durationMs": 400,
               "props": {
-                "zoom": 0.38
+                "zoom": 0.52
               }
             },
             "transition": {
@@ -809,6 +809,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T04:03:28.336Z",
-    "updatedAt": "2026-08-07T04:38:14.398Z"
+    "updatedAt": "2026-08-07T07:16:28.264Z"
   }
 }

@@ -3,6 +3,11 @@
     {
       "profile": {
         "appearance": {
+          "avatars": {
+            "p1oh": {
+              "baked": "fe5f2877"
+            }
+          },
           "defaultPoseId": "p1oh",
           "kind": "preset",
           "poses": [
@@ -11,10 +16,10 @@
               "id": "p1oh",
               "name": "Default",
               "portrait": {
-                "h": 0.4,
-                "w": 0.43,
-                "x": 0.385,
-                "y": 0.03
+                "h": 0.35,
+                "w": 0.38,
+                "x": 0.455,
+                "y": 0.01
               }
             }
           ]
