@@ -422,12 +422,7 @@ export class RemoteAssetsManager {
             await fs.deleteDir(scratchDir).catch(() => undefined);
         }
 
-        if (!outcome || outcome.status !== "probed" || outcome.verdict.tier === "accept") {
-            return null;
-        }
-        return `NarraLeaf cannot play what this URL serves: ${describeVerdict(outcome.verdict)}. `
-            + "Convert the file and import that instead - bytes pinned to a URL cannot be converted "
-            + "in place.";
+        return remoteMediaRefusal(outcome);
     }
 
     private buildMeta(url: string, fetched: RemoteAssetBytes): AssetResolveMeta<AssetSource.Remote> {
@@ -530,6 +525,26 @@ const MIME_PREFIXES: Partial<Record<AssetType, string[]>> = {
     [AssetType.Font]: ["font/", "application/font", "application/x-font"],
     [AssetType.JSON]: ["application/json", "text/json"],
 };
+
+/**
+ * The refusal a probe outcome earns, or `null` to let the bytes through.
+ *
+ * Pure and exported so the rule can be asserted without a project, a filesystem or a subprocess.
+ * The rule is one line of code and two paragraphs of reasoning - see {@link
+ * RemoteAssetsManager.refuseUnplayable} - and the paragraph that matters most is the one about an
+ * unanswered probe, which is the arm a test can actually pin down.
+ */
+export function remoteMediaRefusal(outcome: MediaProbeOutcome | null): string | null {
+    // Not knowing is never a verdict: no ffprobe here, a timeout, unparseable output. None of those
+    // is evidence about the file, and refusing on one would make importing a URL impossible on a
+    // machine that merely lacks a tool.
+    if (!outcome || outcome.status !== "probed" || outcome.verdict.tier === "accept") {
+        return null;
+    }
+    return `NarraLeaf cannot play what this URL serves: ${describeVerdict(outcome.verdict)}. `
+        + "Convert the file and import that instead - bytes pinned to a URL cannot be converted "
+        + "in place.";
+}
 
 /**
  * Why these bytes will not play, in a clause that fits inside a sentence.
