@@ -22,8 +22,6 @@ export const WorkspaceMenuAction = {
     CloseWorkspace: "narraleaf-studio:file-close-workspace",
     OpenWelcome: "narraleaf-studio:open-welcome",
     About: "narraleaf-studio:about",
-    DevMode: "narraleaf-studio:dev-mode",
-    Preview: "narraleaf-studio:preview",
     Build: "narraleaf-studio:build",
     ToggleLeftSidebar: "narraleaf-studio:toggle-left-sidebar",
     ToggleBottomPanel: "narraleaf-studio:toggle-bottom-panel",
@@ -31,6 +29,30 @@ export const WorkspaceMenuAction = {
 } as const;
 
 export type WorkspaceMenuAction = typeof WorkspaceMenuAction[keyof typeof WorkspaceMenuAction];
+
+/**
+ * The Develop menu's run entries, which are palette COMMANDS rather than registry actions.
+ *
+ * Dev Mode, Preview and Test stopped being standalone toolbar actions when the Run split-button
+ * took over launching them, and their launch sequences (flush dirty UI docs, then launch the main
+ * surface; open the test picker) live in that control. What survived the move is a set of
+ * `run:*` commands registered on the CommandService - so that is what the menu bar names, and
+ * `useMenuActionHandler` resolves an id the action registry does not know against those.
+ *
+ * Run and stop are separate ids, not one toggle: that is how the palette lists them, and the menu
+ * already knows which one applies from the runtime status it renders its checkmarks from. Sending
+ * a run id at something already running would only be refused by the command's own `when`.
+ */
+export const WorkspaceRunCommand = {
+    RunDevMode: "run:dev-mode",
+    StopDevMode: "run:stop-dev-mode",
+    RunPreview: "run:preview",
+    StopPreview: "run:stop-preview",
+    RunTest: "run:test",
+    StopTest: "run:stop-test",
+} as const;
+
+export type WorkspaceRunCommand = typeof WorkspaceRunCommand[keyof typeof WorkspaceRunCommand];
 
 /**
  * Any registered renderer action id. Menu items synced up from the renderer carry ids the main
@@ -96,13 +118,25 @@ export type NativeMenuGroup = {
 };
 
 /**
- * Runtime state the Develop menu's checkmarks need. The main process builds that menu itself -
- * its actions are well-known - but whether Dev Mode or Preview is live is only known to the
- * renderer's services, so the status rides along with the menu sync.
+ * Runtime state the Develop menu needs. The main process builds that menu itself - its actions are
+ * well-known - but what is currently running is only known to the renderer's services, so the
+ * status rides along with the menu sync.
+ *
+ * Dev Mode and Preview use it for their checkmarks; all three use it to decide whether the item
+ * means run or stop, which is what keeps the menu from ever holding an entry that does nothing.
  */
 export type NativeMenuRuntimeStatus = {
     devModeActive: boolean;
     previewActive: boolean;
+    /** A test run holds the run slot exactly as a mode does, so the Test entry becomes Stop too. */
+    testActive: boolean;
+    /**
+     * Whether the project is frozen, which is what turns Preview and Production Build off.
+     *
+     * Sent up so the menu can grey them the way the toolbar does. The commands behind them refuse
+     * a frozen workspace on their own, but a refusal the user cannot see reads as a broken menu.
+     */
+    frozen: boolean;
 };
 
 /** Everything one workspace window pushes up for its native menu. */

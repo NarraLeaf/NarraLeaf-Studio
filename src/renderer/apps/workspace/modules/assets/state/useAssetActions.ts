@@ -8,6 +8,7 @@ import {
     AssetCategory,
     AssetType,
     isBundleAssetCategory,
+    isBundleAssetType,
 } from '@/lib/workspace/services/assets/assetTypes';
 import { assetTypeMatchesExtension } from '@/lib/workspace/services/assets/importPathExpansion';
 import { runReplaceAssetContentFlow } from '@/lib/workspace/assets/replaceAssetContentFlow';
@@ -29,6 +30,7 @@ import {
     type AssetActionTarget,
     type ContextMenuTargetState,
 } from './assetActionTargets';
+import { buildAssetExportPlan } from './assetExportPlan';
 import {
     NEW_TEXT_FILE_DEFAULT_EXTENSION,
     resolveNewTextFileName,
@@ -1041,6 +1043,73 @@ export function useAssetActions({
         }
     }, [resolveTargets, assets, groups, onActionComplete, withAssetsService, notifyLoading, context, t, tn]);
 
+    /**
+     * Copy the marked rows out to a folder the author picks.
+     *
+     * A read, so it is offered on a frozen library and asks for no confirmation. The picker and the
+     * copying both live in main: a folder chosen from the renderer is granted read access only, and
+     * the shard paths handed over are checked against the window's grants there before anything is
+     * read. Nothing here touches the project, so `onActionComplete` is deliberately not called.
+     */
+    const handleExport = useCallback(async () => {
+        const ctx = contextRef.current;
+        if (!ctx) return;
+
+        const uiService = ctx.services.get<UIService>(Services.UI);
+        const plan = buildAssetExportPlan({ targets: resolveTargets(), assets, groups });
+        if (plan.length === 0) {
+            // Reachable from a folder with nothing in it, which looks like a working command until
+            // the chosen folder turns out empty afterwards.
+            uiService.showNotification(t("assets.export.empty"), "info");
+            return;
+        }
+
+        notifyLoading(true);
+        try {
+            const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+            const localAssets = assetsService.getLocalAssetsManager();
+            const result = await getInterface().assets.exportToFolder(plan.map(entry => ({
+                sourcePath: localAssets.getLocalAssetPath(entry.asset.id),
+                relativePath: entry.relativePath,
+                isDirectory: isBundleAssetType(entry.asset.type),
+            })));
+
+            if (!result.success) {
+                uiService.showNotification(t("assets.export.failed", { error: result.error ?? t("assets.unknownError") }), "error");
+                return;
+            }
+            if (result.data.canceled) {
+                return;
+            }
+
+            const exported = result.data.exportedCount ?? 0;
+            const failures = result.data.failures ?? [];
+            if (failures.length === 0) {
+                uiService.showNotification(tn("assets.export.success", exported), "success");
+                return;
+            }
+
+            // The count leads and the reasons follow in an alert: a run that half worked has to say
+            // which files are not in that folder, and a toast is not a place to list them.
+            uiService.showNotification(
+                t("assets.export.partial", { exported, failed: failures.length }),
+                "warning",
+            );
+            uiService.showAlert(
+                t("assets.export.partialTitle"),
+                failures.map(failure => `- ${failure.relativePath}: ${failure.reason}`).join("\n"),
+            );
+        } catch (error) {
+            console.error("Failed to export assets", error);
+            uiService.showNotification(
+                t("assets.export.failed", { error: error instanceof Error ? error.message : t("assets.unknownError") }),
+                "error",
+            );
+        } finally {
+            notifyLoading(false);
+        }
+    }, [resolveTargets, assets, groups, notifyLoading, t, tn]);
+
 
     const handleCreateMagicTags = useCallback(async () => {
         const selectedAssets = getSelectedAssets();
@@ -1124,6 +1193,7 @@ export function useAssetActions({
         handleRename,
         handleReplaceContent,
         handleDelete,
+        handleExport,
         handleCreateMagicTags,
         handleApplyMagicTags,
         /** Non-null while the model import wizard is on screen. */

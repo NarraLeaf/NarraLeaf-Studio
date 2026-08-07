@@ -12,6 +12,7 @@ import {
 } from "./uiEditorClipboard";
 import {
     filterSelectionToTopLevelMovers,
+    getContainersToUngroup,
     getMoversToGroupIntoLeaderContainer,
     getSelectionLeaderId,
     getSelectionPrimaryId,
@@ -348,6 +349,52 @@ export function uiEditorGroupIntoLeaderContainer(
         surfaceId,
         elementIds: selection.elementIds,
         primaryId: getSelectionPrimaryId(selection) ?? leader,
+    });
+    return true;
+}
+
+/**
+ * Dissolve every group in the selection, and select what came out of them.
+ *
+ * The way back out of `uiEditorGroupIntoLeaderContainer`. What stays selected is the selection with
+ * each dissolved group replaced by its former children, filtered against the document afterwards so
+ * that a nested group dissolved in the same pass does not leave a dead id behind. Ungrouping an
+ * empty group leaves nothing to select, so the surface takes the properties panel as after a delete.
+ */
+export function uiEditorUngroupSelection(
+    documentService: UIDocumentService,
+    stateService: UIEditorStateService,
+    surfaceId: string,
+    selection: UIElementSelection | null,
+    uiService?: UIService | null,
+): boolean {
+    if (!selection || selection.surfaceId !== surfaceId) {
+        return false;
+    }
+    const containers = getContainersToUngroup(documentService.getDocument(), surfaceId, selection);
+    if (containers.length === 0) {
+        return false;
+    }
+    const dissolved = new Set(containers);
+    const lifted = documentService.ungroupContainers(surfaceId, containers);
+
+    const after = documentService.getDocument();
+    const nextIds = [...new Set([...selection.elementIds.filter(id => !dissolved.has(id)), ...lifted])].filter(
+        id => after.elements[id] != null,
+    );
+    if (nextIds.length === 0) {
+        selectSurfaceForProperties(stateService, surfaceId, uiService);
+        return true;
+    }
+    const previousPrimary = getSelectionPrimaryId(selection);
+    stateService.setUIElementSelection({
+        editor: "ui",
+        surfaceId,
+        elementIds: nextIds,
+        primaryId:
+            previousPrimary && nextIds.includes(previousPrimary)
+                ? previousPrimary
+                : nextIds[nextIds.length - 1],
     });
     return true;
 }

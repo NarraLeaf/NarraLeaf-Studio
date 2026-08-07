@@ -7,7 +7,7 @@ import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFree
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
-import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "@shared/types/devMode";
+import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
@@ -24,6 +24,7 @@ import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStu
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
+import type { AssetExportEntry } from "@shared/types/assetExport";
 import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
@@ -319,6 +320,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.devModeForwardStoryRow, payload),
         onStoryRowHighlight: (handler: (payload: DevModeStoryRowHighlight) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceStoryRowHighlight, handler),
+        openStoryRowInWorkspace: (payload: DevModeStoryRowOpenPayload) =>
+            ipcClient.invoke(IPCEventType.devModeOpenStoryRowInWorkspace, payload) as Promise<RequestStatus<void>>,
+        onStoryRowOpen: (handler: (payload: DevModeStoryRowOpenRequest) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceStoryRowOpen, handler),
         resolveAssetUrl: (assetId: string, assetType?: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>
@@ -591,6 +596,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     assets: {
         fetchRemote: (url: string, validators?: RemoteAssetValidators) =>
             ipcClient.invoke(IPCEventType.assetFetchRemote, { url, validators }),
+        exportToFolder: (entries: AssetExportEntry[]) =>
+            ipcClient.invoke(IPCEventType.assetExportToFolder, { entries }),
     },
 
     puppetRuntimes: {

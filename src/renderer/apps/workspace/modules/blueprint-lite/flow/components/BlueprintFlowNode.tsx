@@ -10,6 +10,7 @@ import {
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
 import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, X } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import { useBlueprintBreakpointForNode } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
     BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
@@ -2340,13 +2341,43 @@ function BlueprintImageAssetLiteralNodeCard({
 export function BlueprintFlowNode(props: NodeProps) {
     const freeze = useFreezeGuard();
     const card = <BlueprintFlowNodeCard {...props} />;
-    if (!freeze.frozen) {
-        return card;
-    }
-    return (
+    const body = freeze.frozen ? (
         <fieldset disabled aria-readonly style={{ display: "contents" }}>
             {card}
         </fieldset>
+    ) : (
+        card
+    );
+    // The breakpoint marker rides on the OUTSIDE of whichever card this node turned out to be -
+    // there are six of them (comment, element literal, asset literal, …) and each has its own
+    // header. One marker here means every node type gets it and none of them had to know.
+    return <BlueprintFlowNodeBreakpointMarker nodeId={readNodeId(props)}>{body}</BlueprintFlowNodeBreakpointMarker>;
+}
+
+function readNodeId(props: NodeProps): string {
+    return (props.data as BlueprintFlowNodeData).nodeId ?? props.id;
+}
+
+function BlueprintFlowNodeBreakpointMarker(props: { nodeId: string; children: ReactNode }): ReactNode {
+    const breakpoint = useBlueprintBreakpointForNode(props.nodeId);
+    if (!breakpoint) {
+        return props.children;
+    }
+    // Hollow when it cannot fire, amber when it fires conditionally, solid when it always does -
+    // the three states DevTools distinguishes in its own gutter.
+    const dotClass = !breakpoint.enabled
+        ? "border border-fg-subtle bg-transparent"
+        : breakpoint.condition || breakpoint.hitCountTarget
+          ? "bg-warning"
+          : "bg-danger";
+    return (
+        <div className="relative">
+            <span
+                aria-hidden
+                className={`pointer-events-none absolute -left-1 -top-1 z-10 h-2.5 w-2.5 rounded-full ring-1 ring-surface ${dotClass}`}
+            />
+            {props.children}
+        </div>
     );
 }
 

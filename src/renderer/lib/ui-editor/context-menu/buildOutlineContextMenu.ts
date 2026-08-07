@@ -16,6 +16,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         documentService,
         actions,
         canAddToGroup,
+        canUngroup,
         insertParentIdForRow,
     } = input;
 
@@ -221,15 +222,26 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         },
     });
 
-    items.push({
-        id: "add-to-group",
-        label: translate("uiEditor.contextMenu.addToGroup"),
-        disabled: !canAddToGroup,
-        onClick: () => {
-            actions.hideMenu();
-            actions.addSelectionToLeaderGroup();
+    items.push(
+        {
+            id: "add-to-group",
+            label: translate("uiEditor.contextMenu.addToGroup"),
+            disabled: !canAddToGroup,
+            onClick: () => {
+                actions.hideMenu();
+                actions.addSelectionToLeaderGroup();
+            },
         },
-    });
+        {
+            id: "ungroup",
+            label: translate("uiEditor.contextMenu.ungroup"),
+            disabled: !canUngroup,
+            onClick: () => {
+                actions.hideMenu();
+                actions.ungroupSelection();
+            },
+        },
+    );
 
     if (menuSelection?.elementIds.length === 1) {
         const el = input.document.elements[menuSelection.elementIds[0]];

@@ -6,6 +6,7 @@ import type {
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
 import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
+import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { translate } from "@/lib/i18n";
@@ -542,7 +543,7 @@ export function validateBlueprintGraphIr(
         const fnEntryCount = Object.values(nodes).filter(n => n.type === BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY).length;
         if (fnEntryCount === 1) {
             try {
-                const graph = adaptBlueprintGraphIr(ir, `validate:${ctx.blueprintId}:${ctx.graphId}`);
+                const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("validate", ctx.blueprintId, ctx.graphId));
                 const entry = pickBehaviorGraphEntry(graph);
                 if (!nodeIds.has(entry.start.nodeId)) {
                     out.push({

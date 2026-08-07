@@ -11,8 +11,19 @@ import {
 import { PANELS_UNLOCKED_BY_PROBE, recoveryPanelModule } from "../modules/recovery";
 import type { PanelModule } from "../modules/types";
 
-/** Panels that read nothing from the project, so a recovery window can always offer them. */
-const RECOVERY_ALWAYS_ON = new Set(["narraleaf-studio:console", "narraleaf-studio:notifications"]);
+/**
+ * Panels that read nothing from the project, so a recovery window can always offer them.
+ *
+ * The plugins panel is here for a stronger reason than "it happens to be safe": a misbehaving
+ * plugin is the leading suspect a recovery window exists to test, and switching one off used to
+ * mean leaving for the Launcher. It loads nothing here - a recovery window runs no plugins - so it
+ * only edits the records the next normal open will read.
+ */
+const RECOVERY_ALWAYS_ON = new Set([
+    "narraleaf-studio:console",
+    "narraleaf-studio:notifications",
+    "narraleaf-studio:plugins",
+]);
 
 /**
  * Which panels this window may register.

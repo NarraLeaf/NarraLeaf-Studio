@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check } from "lucide-react";
+import { Check, RefreshCw } from "lucide-react";
 import { Button, Input, Select, Switch } from "@/lib/components/elements";
 import { HelpTrigger, type HelpTopicId } from "@/lib/help";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { cn } from "@/lib/utils/cn";
 import { join } from "@shared/utils/path";
 import { translate, useTranslation } from "@/lib/i18n";
@@ -33,6 +34,17 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/ui";
 import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
+import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
+import {
+    DEPENDENCY_STATUS_LABEL_KEYS,
+    DEPENDENCY_STATUS_TEXT_STYLES,
+    dependencyNeedsAttention,
+} from "@/lib/workspace/project/dependencyStatusDisplay";
+import type {
+    DependencyStatus,
+    ProjectDependencyResolution,
+    ProjectDependencyTable,
+} from "@shared/types/pluginDependencies";
 import { getInterface } from "@/lib/app/bridge";
 import { openProjectPanel } from "../project";
 import {
@@ -83,16 +95,69 @@ export type BuildDialogInfo = {
     artifactBaseName: string;
     productName: string;
     appId: string;
-    encryptAssets: boolean;
-    allowHttp: boolean;
-    /** Plugin display names that ship with the game. */
-    plugins: string[];
-    /** Bundled locales; the source locale is flagged. */
+    /**
+     * Bundled locales; the source locale is flagged.
+     *
+     * The one thing in the Content section that stays a plain reading. Asset protection and the
+     * network policy are two switches this dialog now owns, and the plugin table has one action
+     * (rescan) - but which languages ship is decided by the localization panel a translation at a
+     * time, and there is nothing here to toggle that would not be a worse version of it.
+     */
     locales: { name: string; source: boolean }[];
     /** Absolute default output dir (`<project>/dist`), shown when none is chosen. */
     defaultOutputDir: string;
     electronMirror: string;
 };
+
+/**
+ * The two project settings the Content section decides, held together because they are written to
+ * the same file and so must be written one at a time (see {@link BuildDialogContent}).
+ */
+export type BuildContentSettings = {
+    encryptAssets: boolean;
+    allowHttp: boolean;
+};
+
+/** One plugin that ships with the game, as the Content section shows it. */
+export type BuildPluginEntry = {
+    id: string;
+    /** Display name captured at authoring time, falling back to the id when the plugin is absent. */
+    label: string;
+    /** The version the project was authored against - what the game expects to find. */
+    version: string;
+    /** Absent before the first resolve: the table still says what ships, only not whether it works. */
+    status?: DependencyStatus;
+    /** True when an unmet hard dependency disables this plugin for the project. */
+    suppressed?: boolean;
+};
+
+/**
+ * Turn a dependency resolution into the section's rows, falling back to the persisted table.
+ *
+ * The resolution is preferred because it is the only thing that knows whether the plugin the project
+ * names is actually installed here, and a plugin that is suppressed ships in a game that cannot use
+ * it - which is the one fact about this list worth crossing a dialog for. The table alone is still
+ * worth showing when no resolution exists yet: it names what ships.
+ */
+export function buildPluginEntries(
+    resolution: ProjectDependencyResolution | null,
+    table?: ProjectDependencyTable | null,
+): BuildPluginEntry[] {
+    if (resolution) {
+        return resolution.entries.map(entry => ({
+            id: entry.dependency.id,
+            label: entry.dependency.name?.trim() || entry.dependency.id,
+            version: entry.dependency.authoredVersion,
+            status: entry.status,
+            suppressed: entry.suppressed,
+        }));
+    }
+    return (table?.plugins ?? []).map(plugin => ({
+        id: plugin.id,
+        label: plugin.name?.trim() || plugin.id,
+        version: plugin.authoredVersion,
+    }));
+}
 
 export function BuildDialogContent({
     info,
@@ -101,9 +166,13 @@ export function BuildDialogContent({
     initialVersion,
     initialCopyright,
     initialSigning,
+    initialContent,
+    initialPlugins,
     onChange,
     onPersistIdentity,
     onPersistSigning,
+    onPersistContent,
+    onRescanPlugins,
     onRemoveCredential,
     onEditIcons,
     onCommit,
@@ -116,9 +185,15 @@ export function BuildDialogContent({
     initialVersion: string;
     initialCopyright: string;
     initialSigning: SigningConfiguration;
+    initialContent: BuildContentSettings;
+    initialPlugins: BuildPluginEntry[];
     onChange: (request: GameBuildRequest, section: BuildPreflightSection) => void;
     onPersistIdentity: (identity: { version: string; copyright: string }) => Promise<void>;
     onPersistSigning: (signing: SigningConfiguration) => Promise<void>;
+    /** Writes one Content setting through. Rejects when it did not land, so the switch can go back. */
+    onPersistContent: (patch: Partial<BuildContentSettings>) => Promise<void>;
+    /** Re-derives the dependency table from current usage and persists it. */
+    onRescanPlugins: () => Promise<BuildPluginEntry[]>;
     onRemoveCredential: (credential: SigningCredential) => Promise<boolean>;
     onEditIcons: () => void;
     onCommit: (request: GameBuildRequest) => void;
@@ -134,6 +209,14 @@ export function BuildDialogContent({
     const [version, setVersion] = useState(initialVersion);
     const [copyright, setCopyright] = useState(initialCopyright);
     const [signing, setSigning] = useState<SigningConfiguration>(initialSigning);
+    const [content, setContent] = useState<BuildContentSettings>(initialContent);
+    const [plugins, setPlugins] = useState<BuildPluginEntry[]>(initialPlugins);
+    // Which Content write is in flight, so its own switch spins and the other one waits.
+    const [savingContent, setSavingContent] = useState<keyof BuildContentSettings | null>(null);
+    const [rescanning, setRescanning] = useState(false);
+    // Bumped only once a Content write has landed on disk. Preflight reads the project from the
+    // file, so re-checking on the optimistic state would judge the previous one.
+    const [contentRevision, setContentRevision] = useState(0);
     const persisted = useRef({ version: initialVersion, copyright: initialCopyright });
     const persistedSigning = useRef(initialSigning);
 
@@ -142,6 +225,51 @@ export function BuildDialogContent({
     const update = useCallback((next: BuildDialogState) => {
         setState(next);
     }, []);
+
+    /**
+     * Write one Content setting, optimistically.
+     *
+     * Not folded into the debounced identity/signing write below, and not best-effort like it: a
+     * switch reports its own state, so a write that fails has to put it back rather than leave the
+     * author looking at a promise the project never made. These two decide what ships.
+     *
+     * One at a time, guarded across both settings rather than per setting: they live in the same
+     * manifest and every write is a read-modify-write of the whole file, so two in flight together
+     * would have the second clobber the first with a copy read before it landed.
+     */
+    const commitContent = useCallback(async (field: keyof BuildContentSettings, value: boolean) => {
+        if (savingContent) {
+            return;
+        }
+        const previous = content;
+        setSavingContent(field);
+        setContent(current => ({ ...current, [field]: value }));
+        try {
+            await onPersistContent({ [field]: value });
+            setContentRevision(revision => revision + 1);
+        } catch {
+            // The caller has already said so; all that is left here is to stop showing the lie.
+            setContent(previous);
+        } finally {
+            setSavingContent(null);
+        }
+    }, [content, onPersistContent, savingContent]);
+
+    const rescanPlugins = useCallback(async () => {
+        if (rescanning) {
+            return;
+        }
+        setRescanning(true);
+        try {
+            setPlugins(await onRescanPlugins());
+            // A rescan writes the table the build reads, so preflight's verdict on it is now stale.
+            setContentRevision(revision => revision + 1);
+        } catch {
+            // Keep the list that was there: it is still what is on disk.
+        } finally {
+            setRescanning(false);
+        }
+    }, [onRescanPlugins, rescanning]);
 
     // Park every change on the service, so closing the dialog (to fix an icon,
     // say) never loses the selection.
@@ -154,6 +282,11 @@ export function BuildDialogContent({
     // it would judge the previous version - and, for signing, would report the
     // credential the author just cleared. `cancelled` keeps a slow reply from
     // overwriting a newer one.
+    //
+    // The Content section writes on its own (a switch cannot wait 250ms to admit it moved) and
+    // joins here through `contentRevision`, which it bumps only after its write has landed - so the
+    // same "disk first, then judge" order holds for `encryption-key-unavailable` and
+    // `web-unprotected` as for the rest.
     useEffect(() => {
         let cancelled = false;
         const timer = setTimeout(() => {
@@ -179,7 +312,7 @@ export function BuildDialogContent({
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [request, runPreflight, onPersistIdentity, onPersistSigning, version, copyright, signing]);
+    }, [request, runPreflight, onPersistIdentity, onPersistSigning, version, copyright, signing, contentRevision]);
 
     // Only the platforms this build actually produces: a credential row for a
     // target nobody selected is a question the author has no reason to answer.
@@ -260,7 +393,19 @@ export function BuildDialogContent({
                             onEditIcons={onEditIcons}
                         />
                     )}
-                    {section === "content" && <ContentSection info={info} findings={findings} />}
+                    {section === "content" && (
+                        <ContentSection
+                            info={info}
+                            state={state}
+                            content={content}
+                            plugins={plugins}
+                            saving={savingContent}
+                            rescanning={rescanning}
+                            findings={findings}
+                            onContentChange={(field, value) => { void commitContent(field, value); }}
+                            onRescanPlugins={() => { void rescanPlugins(); }}
+                        />
+                    )}
                     {section === "signing" && (
                         <SigningSection
                             platforms={signablePlatforms}
@@ -581,18 +726,78 @@ function Field({
     );
 }
 
-function ContentSection({ info, findings }: { info: BuildDialogInfo; findings: BuildPreflightFinding[] }) {
+/**
+ * What goes inside the package, and - for the parts that are a decision rather than a consequence -
+ * the decision itself.
+ *
+ * This section used to be five sentences and no controls. Everything it described was settable in
+ * Project ▸ Settings and Project ▸ App, so an author who disagreed with what it said had to close
+ * the dialog, cross the workspace, change one switch, come back, and walk the rail again - for a
+ * question ("does this ship encrypted?") that only ever gets asked here, on the way to a build. The
+ * switches are now in the sentence that raised the question.
+ *
+ * They write the same project settings the panel writes, through the same service, so the two
+ * surfaces cannot disagree - and this dialog re-reads the manifest on open, so a change made in the
+ * panel is what the author finds here.
+ */
+export function ContentSection({
+    info,
+    state,
+    content,
+    plugins,
+    saving,
+    rescanning,
+    findings,
+    onContentChange,
+    onRescanPlugins,
+}: {
+    info: BuildDialogInfo;
+    state: BuildDialogState;
+    content: BuildContentSettings;
+    plugins: BuildPluginEntry[];
+    saving: keyof BuildContentSettings | null;
+    rescanning: boolean;
+    findings: BuildPreflightFinding[];
+    onContentChange: (field: keyof BuildContentSettings, value: boolean) => void;
+    onRescanPlugins: () => void;
+}) {
     const { t } = useTranslation();
+    // Every one of these writes `project.json`, so the section goes read-only with the workspace.
+    const freeze = useFreezeGuard();
+    // The caveat is shown only to the author it applies to. Both switches are about the packaged
+    // desktop game; the web export is a static site and honours neither, which is worth a line when
+    // web is in the selection and is noise on every other build.
+    const buildsWeb = state.formats.web.size > 0;
+
     return (
         <div className="grid gap-3">
-            <Stated
+            <Toggled
                 label={t("build.content.protection")}
-                value={info.encryptAssets ? t("build.content.protectionOn") : t("build.content.protectionOff")}
+                value={content.encryptAssets ? t("build.content.protectionOn") : t("build.content.protectionOff")}
+                checked={content.encryptAssets}
+                loading={saving === "encryptAssets"}
+                frozen={freeze.writes(saving !== null)}
+                onChange={next => onContentChange("encryptAssets", next)}
             />
-            <Stated
-                label={t("build.content.plugins")}
-                value={info.plugins.length > 0 ? info.plugins.join("\n") : t("build.content.pluginsNone")}
+            <Toggled
+                label={t("build.content.network")}
+                value={content.allowHttp ? t("build.content.networkAllowHttp") : t("build.content.networkStrict")}
+                checked={content.allowHttp}
+                loading={saving === "allowHttp"}
+                frozen={freeze.writes(saving !== null)}
+                onChange={next => onContentChange("allowHttp", next)}
             />
+            {buildsWeb && (
+                <p className="text-2xs leading-relaxed text-fg-subtle">{t("build.webStaticNotice")}</p>
+            )}
+
+            <PluginList
+                plugins={plugins}
+                rescanning={rescanning}
+                frozen={freeze.writes(rescanning)}
+                onRescan={onRescanPlugins}
+            />
+
             <Stated
                 label={t("build.content.locales")}
                 value={info.locales.length > 0
@@ -600,10 +805,6 @@ function ContentSection({ info, findings }: { info: BuildDialogInfo; findings: B
                         .map(locale => locale.source ? t("build.content.localeSource", { name: locale.name }) : locale.name)
                         .join(" · ")
                     : t("build.content.localesNone")}
-            />
-            <Stated
-                label={t("build.content.network")}
-                value={info.allowHttp ? t("build.content.networkAllowHttp") : t("build.content.networkStrict")}
             />
             <Findings findings={findings} section="content" />
         </div>
@@ -617,6 +818,124 @@ function Stated({ label, value }: { label: string; value: string }) {
             <span className="text-xs text-fg">{label}</span>
             <span className="whitespace-pre-wrap text-2xs leading-relaxed text-fg-muted">{value}</span>
         </div>
+    );
+}
+
+/**
+ * {@link Stated}, but the fact is a decision and the sentence is its consequence.
+ *
+ * The line under the label keeps saying what the current position *means* for the package rather
+ * than settling into a fixed description of the setting. The switch already reports on/off; what an
+ * author standing in a build dialog wants from the second line is what that costs them, and those
+ * two sentences were already written for the read-only version.
+ */
+function Toggled({
+    label,
+    value,
+    checked,
+    loading,
+    frozen,
+    onChange,
+}: {
+    label: string;
+    value: string;
+    checked: boolean;
+    loading: boolean;
+    /** From `FreezeGuard.writes` - the reason goes on the row, because a disabled switch has no hover. */
+    frozen: { disabled: boolean; title: string | undefined };
+    onChange: (value: boolean) => void;
+}) {
+    return (
+        <div className="flex items-start justify-between gap-3" title={frozen.title}>
+            <div className="grid min-w-0 gap-0.5">
+                <span className="text-xs text-fg">{label}</span>
+                <span className="whitespace-pre-wrap text-2xs leading-relaxed text-fg-muted">{value}</span>
+            </div>
+            <Switch
+                size="sm"
+                className="mt-0.5 shrink-0"
+                checked={checked}
+                loading={loading}
+                disabled={frozen.disabled}
+                onCheckedChange={onChange}
+                aria-label={label}
+            />
+        </div>
+    );
+}
+
+/**
+ * The plugins that ship, and the one thing an author can do about the list.
+ *
+ * There is no "bundle this / do not bundle this" here and there is not one in the project panel
+ * either: the table is derived from what the project actually references, never chosen. So what
+ * crossing the workspace used to buy was Rescan - re-deriving the table from current usage and
+ * writing it - and that is what is offered here.
+ *
+ * Each row now carries the status the panel shows, which the read-only version dropped. A plugin
+ * the project names but this machine cannot honour still ships, in a game that cannot use it; that
+ * is worth knowing before the build and not after it.
+ */
+function PluginList({
+    plugins,
+    rescanning,
+    frozen,
+    onRescan,
+}: {
+    plugins: BuildPluginEntry[];
+    rescanning: boolean;
+    frozen: { disabled: boolean; title: string | undefined };
+    onRescan: () => void;
+}) {
+    const { t } = useTranslation();
+    return (
+        <div className="grid gap-1">
+            <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-fg">{t("build.content.plugins")}</span>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 px-1.5"
+                    disabled={frozen.disabled}
+                    title={frozen.title}
+                    onClick={onRescan}
+                >
+                    <RefreshCw className={cn("h-3.5 w-3.5", rescanning && "animate-spin")} />
+                    {t("project.dependencies.rescan")}
+                </Button>
+            </div>
+            {plugins.length === 0 ? (
+                <span className="text-2xs leading-relaxed text-fg-muted">
+                    {rescanning ? t("project.dependencies.scanning") : t("build.content.pluginsNone")}
+                </span>
+            ) : (
+                <div className="grid gap-0.5">
+                    {plugins.map(plugin => (
+                        <div key={plugin.id} className="flex items-baseline justify-between gap-3">
+                            <span className="min-w-0 truncate text-2xs text-fg-muted">
+                                {`${plugin.label} ${plugin.version}`}
+                            </span>
+                            <PluginStatus plugin={plugin} />
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** The status word, and only when there is something to say - see `dependencyNeedsAttention`. */
+function PluginStatus({ plugin }: { plugin: BuildPluginEntry }) {
+    const { t } = useTranslation();
+    if (!plugin.status || !dependencyNeedsAttention(plugin.status, plugin.suppressed ?? false)) {
+        return null;
+    }
+    return (
+        <span className={cn("shrink-0 text-2xs font-medium", DEPENDENCY_STATUS_TEXT_STYLES[plugin.status])}>
+            {plugin.suppressed
+                ? t("project.dependencies.status.disabled")
+                : t(DEPENDENCY_STATUS_LABEL_KEYS[plugin.status])}
+        </span>
     );
 }
 
@@ -753,11 +1072,6 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
         artifactBaseName: sanitizeProjectFileName(productName),
         productName,
         appId: deriveGameAppId(projectConfig.identifier, productName),
-        encryptAssets: projectService.getSecurityConfiguration().encryptAssets,
-        allowHttp: projectService.getNetworkConfiguration().allowHttp,
-        plugins: (projectService.getDependencyTable()?.plugins ?? []).map(
-            plugin => `${plugin.name ?? plugin.id} ${plugin.authoredVersion}`,
-        ),
         locales: localization.sourceLocale
             ? localization.locales.map(locale => ({
                 name: locale.displayName || locale.code,
@@ -767,6 +1081,22 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
         defaultOutputDir: join(projectPath, "dist"),
         electronMirror: "",
     };
+
+    // Seeded from the resolution computed at project open, which resolves the *persisted* table -
+    // the same table the build packages. Deliberately not `previewResolve()`, which rescans current
+    // usage: that answers "what would ship if you rescanned", which is Rescan's job to offer, not
+    // the opening screen's job to claim. A workspace without the service still gets the rest of the
+    // dialog, with the table read straight from the manifest and no status beside it.
+    let dependencyService: ProjectDependencyService | null = null;
+    try {
+        dependencyService = services.get<ProjectDependencyService>(Services.ProjectDependency);
+    } catch (error) {
+        console.warn("[build] plugin dependency service unavailable", error);
+    }
+    const initialPlugins = buildPluginEntries(
+        dependencyService?.getResolution() ?? null,
+        projectService.getDependencyTable(),
+    );
 
     // A parked draft wins over the persisted selection: it is what the user was
     // in the middle of, and the only reason they left was to fix something.
@@ -793,6 +1123,11 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                 initialVersion={typeof projectConfig.metadata?.version === "string" ? projectConfig.metadata.version : ""}
                 initialCopyright={typeof projectConfig.metadata?.copyright === "string" ? projectConfig.metadata.copyright : ""}
                 initialSigning={projectService.getSigningConfiguration()}
+                initialContent={{
+                    encryptAssets: projectService.getSecurityConfiguration().encryptAssets,
+                    allowHttp: projectService.getNetworkConfiguration().allowHttp,
+                }}
+                initialPlugins={initialPlugins}
                 onChange={(nextRequest, nextSection) => {
                     request = nextRequest;
                     section = nextSection;
@@ -818,6 +1153,39 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                     // that belongs here already happens there, keyed by a table
                     // a new platform has to be added to.
                     await projectService.updateSigningConfiguration(nextSigning).catch(() => undefined);
+                }}
+                onPersistContent={async patch => {
+                    // Not best-effort, unlike the two above. A silently dropped copyright is a
+                    // wrong string in an About box; a silently dropped `encryptAssets` is a switch
+                    // that says the assets are protected and a package where they are not. So this
+                    // says what went wrong and rethrows, and the switch goes back.
+                    //
+                    // One field per call - both patches are never sent together (see
+                    // `commitContent`), so the two writes never race for the manifest.
+                    try {
+                        if (patch.encryptAssets !== undefined) {
+                            await projectService.updateSecurityConfiguration({ encryptAssets: patch.encryptAssets });
+                        }
+                        if (patch.allowHttp !== undefined) {
+                            await projectService.updateNetworkConfiguration({ allowHttp: patch.allowHttp });
+                        }
+                    } catch (error) {
+                        uiService.showNotification(error instanceof Error ? error.message : String(error), "error");
+                        throw error;
+                    }
+                }}
+                onRescanPlugins={async () => {
+                    if (!dependencyService) {
+                        const message = translate("build.content.pluginsRescanUnavailable");
+                        uiService.showNotification(message, "error");
+                        throw new Error(message);
+                    }
+                    try {
+                        return buildPluginEntries(await dependencyService.rescanAndPersist());
+                    } catch (error) {
+                        uiService.showNotification(error instanceof Error ? error.message : String(error), "error");
+                        throw error;
+                    }
                 }}
                 onRemoveCredential={async credential => {
                     const confirmed = await uiService.dialogs.confirmDestructive(

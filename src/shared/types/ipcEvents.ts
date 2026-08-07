@@ -6,7 +6,7 @@ import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
-import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
+import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
@@ -29,6 +29,7 @@ import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
+import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -171,6 +172,7 @@ export enum IPCEventType {
     workspaceBlueprintDebugEvent = "workspace.blueprint.debugEvent",
     workspaceDevModeConsoleLog = "workspace.devMode.consoleLog",
     workspaceStoryRowHighlight = "workspace.storyRow.highlight",
+    workspaceStoryRowOpen = "workspace.storyRow.open",
     
     devModeLaunch = "devMode.launch",
     devModeStop = "devMode.stop",
@@ -184,6 +186,7 @@ export enum IPCEventType {
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
     devModeForwardBlueprintDebugEvent = "devMode.blueprintDebug.forward",
     devModeForwardStoryRow = "devMode.storyRow.forward",
+    devModeOpenStoryRowInWorkspace = "devMode.storyRow.openInWorkspace",
     devModeSaveWrite = "devMode.save.write",
     devModeSaveRead = "devMode.save.read",
     devModeSaveListIds = "devMode.save.listIds",
@@ -246,6 +249,7 @@ export enum IPCEventType {
     projectTemplateScaffold = "projectTemplate.scaffold",
 
     assetFetchRemote = "asset.fetchRemote",
+    assetExportToFolder = "asset.exportToFolder",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -1537,6 +1541,12 @@ export type IPCWorkspaceEvents = {
         data: DevModeStoryRowHighlight;
         response: never;
     };
+    [IPCEventType.workspaceStoryRowOpen]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: DevModeStoryRowOpenRequest;
+        response: never;
+    };
 };
 
 export type IPCDevModeEvents = {
@@ -1686,6 +1696,12 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Host,
         data: DevModeStoryRowPayload;
         response: never;
+    };
+    [IPCEventType.devModeOpenStoryRowInWorkspace]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: DevModeStoryRowOpenPayload;
+        response: void;
     };
     [IPCEventType.devModeSaveWrite]: {
         type: IPCMessageType.request,
@@ -2247,6 +2263,23 @@ export type IPCAssetEvents = {
             validators?: RemoteAssetValidators;
         },
         response: RemoteAssetFetchResult;
+    };
+    /**
+     * Copy library files out to a folder the author picks.
+     *
+     * The dialog and the copying both happen here rather than in the renderer, because a folder
+     * chosen through `fsSelectDirectory` is granted *read* access only - a renderer-side copy into
+     * it would be refused by the very policy that makes the picker safe. The renderer says which
+     * files and what to call them; main decides whether it is allowed to read each source (the
+     * window's existing grants, i.e. the project) and where under the chosen folder it may land.
+     */
+    [IPCEventType.assetExportToFolder]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            entries: AssetExportEntry[];
+        },
+        response: AssetExportResult;
     };
 };
 

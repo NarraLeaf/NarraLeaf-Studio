@@ -60,9 +60,14 @@ export function NotificationsPanel() {
                 )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
-                {/* Nothing has been notified: the panel is blank. There is no action to offer here —
-                    entries arrive on their own — and a line reporting the blank is the blank again. */}
-                {history.length === 0 ? null : (
+                {/* Nothing has been notified. There is no action to offer — entries arrive on their
+                    own — so the empty state is one quiet line saying the history is genuinely empty,
+                    which beats a blank panel that reads as a failed render. */}
+                {history.length === 0 ? (
+                    <div className="flex h-full items-center justify-center px-3 text-center text-xs text-fg-subtle">
+                        {t("workspace.shell.notifications.empty")}
+                    </div>
+                ) : (
                     history.map(entry => {
                         const meta = TYPE_META[entry.type] ?? TYPE_META[NotificationType.Info];
                         return (
