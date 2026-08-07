@@ -11,7 +11,7 @@ import { collapseHomePath, normalizeProjectPath } from "@shared/utils/recentProj
 import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
 import { useMissingRecentProjects, useRecentProjects, useRemoveRecentProject } from "@/lib/app/hooks/useRecentProjects";
 import { createProjectFromWizard, openProjectFromFolder, relocateRecentProject } from "../projectActions";
-import { projectAvatarColor, projectInitials } from "../projectAvatar";
+import { nameMonogramColor, nameInitials } from "@/lib/components/monogram";
 
 export function ProjectsTab() {
     const { t } = useTranslation();
@@ -289,9 +289,9 @@ export function ProjectsTab() {
                                             // tile stops advertising itself as one.
                                             missingEntry && "opacity-40 saturate-50",
                                         )}
-                                        style={{ backgroundColor: projectAvatarColor(project.name) }}
+                                        style={{ backgroundColor: nameMonogramColor(project.name) }}
                                     >
-                                        {projectInitials(project.name)}
+                                        {nameInitials(project.name)}
                                     </span>
                                 )}
                                 <span className="flex-1 min-w-0">
