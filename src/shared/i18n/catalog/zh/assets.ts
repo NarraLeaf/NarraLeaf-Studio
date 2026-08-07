@@ -176,6 +176,7 @@ export const assets = {
     support: {
         needsConverting: "需要转换",
         needsConvertingHint: "这个文件在游戏里放不出来，转换之后就可以了。",
+        needsConvertingRemoteHint: "这个文件在游戏里放不出来，而以链接方式保存的文件没法转换。请在电脑上转换好，再作为文件添加进来。",
         notPlayable: "放不出来",
         notPlayableHint: "这个文件里没有声音，也没有画面，没有东西可以转换。",
         menuConvert: "转换文件…",

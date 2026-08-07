@@ -77,10 +77,21 @@ case "$(uname -s)" in
         # Run the copy that ships, not the one in resources/. A binary that will not start here is
         # one that would not start for an author, and `-L` is also the licence claim: this build is
         # LGPL v2.1, and the text staged beside it is COPYING.LGPLv2.1.
+        #
+        # Two separate checks, exactly as build-ffmpeg-macos.sh does them, and NOT one glob asking
+        # for both in order. `-L` prints the licence preamble hard-wrapped at ~70 columns, so
+        # "Lesser General Public" and "License" fall on either side of a newline in the sentence
+        # that carries the version, and the only unbroken "Lesser General Public License" is further
+        # down - after the "version 2.1" it would have to precede. A combined pattern therefore
+        # fails on a binary that is perfectly correct, which is what it did on the first run.
         license="$("${dir}/ffmpeg" -hide_banner -L 2>&1 || true)"
         case "$license" in
-            *"Lesser General Public License"*"2.1"*) : ;;
-            *) fail "the shipped ffmpeg does not report LGPL 2.1: ${license}" ;;
+            *"Lesser General Public License"*) : ;;
+            *) fail "the shipped ffmpeg does not report an LGPL licence: ${license}" ;;
+        esac
+        case "$license" in
+            *"version 2.1 of the License"*) : ;;
+            *) fail "the shipped ffmpeg does not report LGPL version 2.1, but COPYING.LGPLv2.1 is what ships beside it: ${license}" ;;
         esac
 
         ok "$(basename "$dmg") carries a working arm64 LGPL-2.1 ffmpeg"
