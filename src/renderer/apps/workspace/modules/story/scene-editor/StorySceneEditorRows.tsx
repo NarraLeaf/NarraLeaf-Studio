@@ -801,6 +801,11 @@ function TextEditBox(props: {
             // measured, and it is the one motion an editing surface may never make: the words move away
             // from the click that was aiming at them.
             className="relative flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center self-stretch overflow-visible"
+            // The same bleed the read-only body has (see ROW_TEXT_HIT_BLEED), so the band above and
+            // below an OPEN line belongs to the line as well. Without it, clicking a hair above the
+            // words you are editing lands on the row, blurs the field and commits — the caret leaves
+            // the sentence because the pointer missed by two pixels.
+            style={ROW_TEXT_HIT_BLEED}
         >
             <RichTextToolbar ref={toolbarRef} editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} onReturnToText={() => props.editorRef.current?.focus()} />
             <RichTextInput
@@ -3107,13 +3112,36 @@ function TextClickTarget(props: { style?: CSSProperties; className?: string; chi
     return (
         <div
             className={["flex min-w-0 flex-1 cursor-text items-center self-stretch nl-selectable-text", props.className].filter(Boolean).join(" ")}
-            style={props.style}
+            style={{ ...props.style, ...ROW_TEXT_HIT_BLEED }}
             data-story-row-text=""
         >
             {props.children}
         </div>
     );
 }
+
+/**
+ * Reach the click surface into the row's own vertical padding, without moving one glyph.
+ *
+ * The row's content column carries {@link ROW_CONTENT_PAD_PX} above and below the line box, and that
+ * band belonged to the ROW — so on a 36px compact row, 8px of it (22%) answered a click by selecting
+ * the line instead of putting a caret in it. Aiming at the top of a line and getting a selection is
+ * the wrong answer everywhere else an author types, and there is no gesture it was reserved for: the
+ * gutter, a modified click and Escape all still select a row without editing it.
+ *
+ * Padding and margin cancel, so the CONTENT box is untouched and the text stays exactly where it was
+ * — this widens the hit area and nothing else. That is not a nicety here: the read-only body and the
+ * editor have to agree on the text's y to a fraction of a pixel or the words visibly jump the moment
+ * the caret arrives, which is a defect this editor has already shipped twice.
+ *
+ * A margin box that stretches (`self-stretch`) is what makes the two ends line up on wrapped rows
+ * too: the flex line grows to the paragraph, the border box grows with it, and the bleed stays a
+ * constant band at the row's real edges.
+ */
+const ROW_TEXT_HIT_BLEED: CSSProperties = {
+    paddingBlock: ROW_CONTENT_PAD_PX,
+    marginBlock: -ROW_CONTENT_PAD_PX,
+};
 
 /** A draft row's line: the source, and why it has not committed yet. */
 function DraftRowPreview(props: { source: string; commandContext: StoryCommandContext }) {
