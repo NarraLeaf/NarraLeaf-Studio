@@ -31,8 +31,28 @@
  *   node project/build/prepare-ffmpeg.js --platform=linux   # cross-stage
  *
  * Env:
- *   NLS_SKIP_FFMPEG=1  skip entirely (offline development builds). The resulting Studio reports
- *                      media conversion as unavailable rather than failing to build.
+ *   NLS_SKIP_FFMPEG=1     skip entirely (offline development builds). The resulting Studio reports
+ *                         media conversion as unavailable rather than failing to build.
+ *   NLS_REQUIRE_FFMPEG=1  turn every skip below into a failure. Set on the packaging workflows,
+ *                         and see "SKIPPING IS RIGHT LOCALLY AND WRONG WHEN PACKAGING" below.
+ *
+ * ============================================================================================
+ * SKIPPING IS RIGHT LOCALLY AND WRONG WHEN PACKAGING
+ * ============================================================================================
+ *
+ * Every way this script can fail to produce a binary is a *skip*: a developer on a machine with no
+ * toolchain, no network or no vendored build for their host still gets a Studio, one that reports
+ * media conversion as unavailable. That is deliberate and stays.
+ *
+ * It is the wrong posture for a run that produces an installer. There, "unavailable" is not a
+ * degraded development build, it is what every author who downloads it gets - and the only trace
+ * is a warning line in the middle of a packaging log nobody reads when the job is green. That is
+ * the same failure mode REQUIRE_ANDROID_SDK_ORACLE and REQUIRE_ZSIGN_ORACLE exist for in
+ * .github/workflows/ci.yml: a silent skip is indistinguishable from a pass.
+ *
+ * So `NLS_REQUIRE_FFMPEG=1` makes each of them exit non-zero instead, and the packaging jobs set
+ * it. Setting it together with NLS_SKIP_FFMPEG is a contradiction rather than a precedence
+ * question, and is refused outright.
  *
  * ============================================================================================
  * WHERE THE BYTES COME FROM - TWO ROUTES, TWO LICENCES
@@ -488,6 +508,30 @@ async function stageFromDownload(spec, stagingDir) {
     fs.rmSync(path.join(stagingDir, spec.dir), { recursive: true, force: true });
 }
 
+/**
+ * Report a reason no binary was staged, and decide whether that ends the run.
+ *
+ * Every caller `return`s straight after this, so the only difference between the two modes is
+ * whether there is anything left to return to. See "SKIPPING IS RIGHT LOCALLY AND WRONG WHEN
+ * PACKAGING" at the top.
+ *
+ * The workaround sentence is appended in both modes on purpose: someone reading this line in a
+ * failed CI log needs it at least as much as a developer reading it locally.
+ */
+function skipOrFail(reason) {
+    const message = `${reason} (point NLS_FFMPEG_DIR at a directory holding ffmpeg and ffprobe to `
+        + 'work around it).';
+    if (process.env.NLS_REQUIRE_FFMPEG === '1') {
+        console.error(
+            `[ffmpeg] ${message}\n[ffmpeg] NLS_REQUIRE_FFMPEG=1, so this is a failure rather than a `
+            + 'skip: the Studio this run would produce reports media conversion as unavailable, and '
+            + 'shipping that silently is what the variable is set to prevent.',
+        );
+        process.exit(1);
+    }
+    console.warn(`[ffmpeg] ${message}`);
+}
+
 /** Exit code build-ffmpeg-macos.sh uses for "this machine cannot build at all". */
 const NO_TOOLCHAIN_EXIT = 3;
 
@@ -545,6 +589,16 @@ function stageFromSource(stagingDir) {
 
 (async () => {
     if (process.env.NLS_SKIP_FFMPEG === '1') {
+        if (process.env.NLS_REQUIRE_FFMPEG === '1') {
+            // Not a precedence question. One says "do not stage", the other says "a run that does
+            // not stage is a failed run", and guessing which the operator meant would silently do
+            // the opposite of one of them.
+            console.error(
+                '[ffmpeg] NLS_SKIP_FFMPEG=1 and NLS_REQUIRE_FFMPEG=1 are both set, which asks for '
+                + 'a build that both omits FFmpeg and refuses to omit it. Unset one.',
+            );
+            process.exit(1);
+        }
         console.log('[ffmpeg] NLS_SKIP_FFMPEG=1, skipping; media conversion will report as unavailable');
         return;
     }
@@ -573,12 +627,12 @@ function stageFromSource(stagingDir) {
 
     const spec = ASSETS[platform]?.[arch] ?? null;
     if (spec === null) {
-        // Not an error. A host with no LGPL build still produces a working Studio - one that
-        // reports conversion as unavailable instead of shipping a binary it may not redistribute.
-        console.warn(
-            `[ffmpeg] no LGPL FFmpeg build is vendored for ${platform}-${arch}; skipping. `
-            + 'The resulting Studio cannot convert media on this platform '
-            + '(point NLS_FFMPEG_DIR at a directory holding ffmpeg and ffprobe to work around it).',
+        // Not an error, unless this run is producing an installer. A host with no LGPL build still
+        // produces a working Studio - one that reports conversion as unavailable instead of
+        // shipping a binary it may not redistribute.
+        skipOrFail(
+            `no LGPL FFmpeg build is vendored for ${platform}-${arch}; skipping. The resulting `
+            + 'Studio cannot convert media on this platform',
         );
         return;
     }
@@ -589,11 +643,10 @@ function stageFromSource(stagingDir) {
     // directory is made so that cross-staging macOS from CI reads as a skip with a reason, not as a
     // build that starts and then dies inside a shell script.
     if (spec.build === 'source' && (process.platform !== platform || process.arch !== arch)) {
-        console.warn(
-            `[ffmpeg] ${platform}-${arch} is compiled from source and cannot be cross-staged from `
+        skipOrFail(
+            `${platform}-${arch} is compiled from source and cannot be cross-staged from `
             + `${process.platform}-${process.arch}; skipping. The resulting Studio cannot convert `
-            + `media on ${platform} (build it on a ${platform}-${arch} machine, or point `
-            + 'NLS_FFMPEG_DIR at a directory holding ffmpeg and ffprobe).',
+            + `media on ${platform} - build it on a ${platform}-${arch} machine`,
         );
         return;
     }
@@ -613,11 +666,10 @@ function stageFromSource(stagingDir) {
             const skipReason = stageFromSource(stagingDir);
             if (skipReason !== null) {
                 fs.rmSync(stagingDir, { recursive: true, force: true });
-                console.warn(
-                    `[ffmpeg] could not build FFmpeg for ${platform}-${arch}: ${skipReason}. `
-                    + 'Skipping - the resulting Studio reports media conversion as unavailable '
-                    + 'rather than failing to build (point NLS_FFMPEG_DIR at a directory holding '
-                    + 'ffmpeg and ffprobe to work around it).',
+                skipOrFail(
+                    `could not build FFmpeg for ${platform}-${arch}: ${skipReason}. Skipping - the `
+                    + 'resulting Studio reports media conversion as unavailable rather than failing '
+                    + 'to build',
                 );
                 return;
             }

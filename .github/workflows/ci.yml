@@ -142,10 +142,29 @@ jobs:
       # --publish never: packaging is the test here, releasing is not.
       # CSC_IDENTITY_AUTO_DISCOVERY=false keeps electron-builder from hunting
       # for a signing identity the runner does not have.
+      #
+      # NLS_REQUIRE_FFMPEG turns prepare-ffmpeg.js's skips into failures, for the
+      # same reason REQUIRE_ANDROID_SDK_ORACLE and REQUIRE_ZSIGN_ORACLE do it in
+      # the verify job: skipping is the right answer on a developer's machine and
+      # the wrong one here, where "media conversion is unavailable" would be what
+      # every author who downloads this build gets, announced only by a warning
+      # in the middle of a green log. It matters most on macOS, where the binary
+      # is compiled from source on the runner rather than downloaded.
       - name: Package
         run: yarn pack-electron ${{ matrix.args }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          NLS_REQUIRE_FFMPEG: "1"
+
+      # The other half of the gate above. Staging into resources/ and getting
+      # into the installer are two different steps with two different owners, and
+      # the second one — electron-builder's extraResources — is the one that
+      # copies nothing and carries on. The script reads the artefact that is
+      # about to be uploaded; see its header for why each platform is checked the
+      # way it is.
+      - name: Verify FFmpeg shipped inside the package
+        shell: bash
+        run: bash project/build/verify-packaged-ffmpeg.sh
 
       # Only the installers — the unpacked app directories in build/ are
       # hundreds of megabytes of intermediate output.

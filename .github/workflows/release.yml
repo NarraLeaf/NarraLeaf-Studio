@@ -88,10 +88,28 @@ jobs:
       # electron-builder must not try to reach a release itself.
       # CSC_IDENTITY_AUTO_DISCOVERY=false stops it hunting for a signing identity
       # the runner does not have.
+      #
+      # NLS_REQUIRE_FFMPEG turns prepare-ffmpeg.js's skips into failures. Every
+      # one of them is the right answer on a developer's machine and the wrong
+      # one here: an installer staged without FFmpeg reports media conversion as
+      # unavailable to everyone who downloads it, and says so only in a warning
+      # line in a green log. It matters most on macOS, where the binary is
+      # compiled from source on the runner rather than downloaded.
       - name: Package
         run: yarn pack-electron ${{ matrix.args }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          NLS_REQUIRE_FFMPEG: "1"
+
+      # The other half of the gate above. Staging into resources/ and getting
+      # into the installer are two different steps, and the second one —
+      # electron-builder's extraResources — is the one that copies nothing and
+      # carries on. The script reads the installer that is about to be attached
+      # to the release; see its header for why each platform is checked the way
+      # it is.
+      - name: Verify FFmpeg shipped inside the package
+        shell: bash
+        run: bash project/build/verify-packaged-ffmpeg.sh
 
       # Only the installers — the unpacked app directories in build/ are hundreds
       # of megabytes of intermediate output. if-no-files-found: error because a
