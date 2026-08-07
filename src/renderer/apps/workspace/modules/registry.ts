@@ -27,6 +27,7 @@ import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
 import { searchPanelModule } from "./search";
 import { notificationsPanelModule } from "./notifications";
+import { pluginsPanelModule } from "./plugins";
 import { testReportModule } from "./testing";
 
 /**
@@ -47,6 +48,7 @@ export const builtInPanels: PanelModule[] = [
     assetsBottomModule,
     propertiesModule,
     notificationsPanelModule,
+    pluginsPanelModule,
     consoleModule,
 ];
 
@@ -96,5 +98,6 @@ export { storyMotionPanelModule } from "./story-motion";
 export { localizationPanelModule } from "./localization";
 export { voicePanelModule } from "./voice";
 export { dashboardPanelModule } from "./dashboard";
+export { pluginsPanelModule, openPluginsPanel, PLUGINS_PANEL_ID } from "./plugins";
 export { testReportModule, openTestDialog, openTestReportTab } from "./testing";
 export { builtInStatusBarEntries } from "./status-bar";

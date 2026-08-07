@@ -1,6 +1,6 @@
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useEffect, useId, useMemo, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import {
     Background,
     MarkerType,
@@ -11,14 +11,18 @@ import {
     useNodesState,
     useReactFlow,
     useStore,
+    type Connection,
     type Edge,
     type Node,
     type NodeTypes,
     type Viewport,
 } from "@xyflow/react";
+import { ExternalLink, Unlink } from "lucide-react";
 import type { StoryBlockId, StorySceneId } from "@shared/types/story";
 import type { Translator } from "@shared/i18n";
 import { useTranslation } from "@/lib/i18n";
+import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements";
+import { cn } from "@/lib/utils/cn";
 import { SceneFlowNode, type SceneFlowNodeData } from "./SceneFlowNode";
 import {
     formatSceneFlowArmLabel,
@@ -30,11 +34,11 @@ import {
     SCENE_FLOW_BRANCH_ROW_HEIGHT,
     SCENE_FLOW_NODE_HEIGHT,
     SCENE_FLOW_NODE_WIDTH,
-    type SceneFlowBranchLabel,
     type SceneFlowBranchNodeModel,
     type SceneFlowEdgeModel,
     type SceneFlowGraph,
 } from "./sceneFlowModel";
+import { buildSceneFlowLines, type SceneFlowDrawnLine } from "./sceneFlowLines";
 import { SceneFlowZoomControls } from "./SceneFlowZoomControls";
 import type { SceneFlowViewport } from "./sceneFlowTabId";
 
@@ -70,7 +74,10 @@ function clampLabel(text: string): string {
  * expanded scene draws the arm and the line that leaves it side by side, and two derivations of the
  * same `else` would word them differently.
  */
-function edgeLabel(edge: SceneFlowEdgeModel, t: Translator["t"]): string | undefined {
+function edgeLabel(
+    edge: Pick<SceneFlowEdgeModel, "branches" | "jumps">,
+    t: Translator["t"],
+): string | undefined {
     const named = edge.branches.map(branch => formatSceneFlowArmLabel(branch, t));
     if (named.length === 0) {
         return edge.jumps.length > 1 ? `×${edge.jumps.length}` : undefined;
@@ -79,38 +86,6 @@ function edgeLabel(edge: SceneFlowEdgeModel, t: Translator["t"]): string | undef
         return clampLabel(named[0]);
     }
     return `${clampLabel(named[0])} +${named.length - 1}`;
-}
-
-/**
- * The scene edge minus the jumps an expanded scene's branch rows have taken over, or null when
- * nothing is left of it.
- *
- * Suppressing every scene edge of an expanded scene is nearly right and quietly wrong: a jump
- * written outside all of its forks belongs to no arm, has no branch row to leave from, and would
- * simply vanish from the map. So the edge is rebuilt from what the rows did *not* claim, label
- * included — the alternative is a line labelled with an option that is no longer on it.
- */
-function residualSceneEdge(edge: SceneFlowEdgeModel, claimed: ReadonlySet<StoryBlockId>): SceneFlowEdgeModel | null {
-    const jumps = edge.jumps.filter(jump => !claimed.has(jump.blockId));
-    if (jumps.length === 0) {
-        return null;
-    }
-    if (jumps.length === edge.jumps.length) {
-        return edge;
-    }
-    const seen = new Set<string>();
-    const branches: SceneFlowBranchLabel[] = [];
-    for (const jump of jumps) {
-        if (!jump.branch) {
-            continue;
-        }
-        const key = `${jump.branch.kind}:${jump.branch.label}`;
-        if (!seen.has(key)) {
-            seen.add(key);
-            branches.push(jump.branch);
-        }
-    }
-    return { ...edge, jumps, conditional: jumps.every(jump => jump.conditional), branches };
 }
 
 /** The node title's own CSS size at scale 1 — `text-xs`, in px. The scale multiplies it. */
@@ -133,6 +108,44 @@ export type SceneFlowHighlight = {
     sceneIds: ReadonlySet<StorySceneId>;
     /** Scene edges and branch edges alike; a branch node's own id counts too. */
     edgeIds: ReadonlySet<string>;
+};
+
+/**
+ * A line the author has just drawn between two boxes — a request, not a change.
+ *
+ * The map never writes it. It says which scene the jump would leave from, which one it would go to,
+ * and (when the line was pulled off an option's row rather than the scene's rim) which arm it belongs
+ * inside; the surface holding the map turns that into a `/jump` waiting in the scene editor for the
+ * author's Enter. See `SceneFlowEditing`.
+ */
+export type SceneFlowConnectProposal = {
+    sourceSceneId: StorySceneId;
+    targetSceneId: StorySceneId;
+    /** The choice option / condition arm the line left from, when it left from one. */
+    branchBlockId?: StoryBlockId;
+};
+
+/**
+ * What an *interactive* reading of the map may ask for. Absent — the Dev Mode embed, a frozen
+ * workspace — leaves the map exactly as read-only as it has always been: no handles on the rims, no
+ * delete key, no menu on a line.
+ *
+ * Every entry is a request aimed at the story editor, never a write of its own. The map stays a
+ * derivation of the document: it shows the jumps that exist, and if the author backs out of the line
+ * it proposed, nothing about it changes. That is the whole design — a diagram that edits itself and
+ * then writes the story to match is a second, quieter copy of the story, and the two drift.
+ */
+export type SceneFlowEditing = {
+    /** A line was drawn. Open the source scene with the `/jump` typed but uncommitted. */
+    connect: (proposal: SceneFlowConnectProposal) => void;
+    /**
+     * A line was deleted. Confirm, then remove exactly the jump blocks it named — the map hands the
+     * blocks over rather than the pair of scenes, because with a scene expanded a line is only some
+     * of the jumps between them (see {@link SceneFlowDrawnLine}).
+     */
+    disconnect: (line: SceneFlowDrawnLine) => void | Promise<void>;
+    /** Show me the jumps behind this line, in the editor. */
+    reveal?: (line: SceneFlowDrawnLine) => void;
 };
 
 export interface SceneFlowCanvasProps {
@@ -181,6 +194,8 @@ export interface SceneFlowCanvasProps {
      * off the edge is worse than a small one.
      */
     minTitleRenderedPx?: number;
+    /** Turns the map into an interactive reading of the story. See {@link SceneFlowEditing}. */
+    editing?: SceneFlowEditing;
 }
 
 function resolvePosition(
@@ -206,6 +221,7 @@ function SceneFlowCanvasInner({
     highlight,
     fitPadding = 0.2,
     minTitleRenderedPx,
+    editing,
 }: SceneFlowCanvasProps) {
     // React Flow derives document-wide ids from this (the dot-grid `<pattern>`, edge markers, handle
     // element ids) and falls back to a literal "1" when unset, so two canvases on one page collide.
@@ -339,80 +355,51 @@ function SceneFlowCanvasInner({
         onToggleSceneExpanded,
     ]);
 
-    const projectedEdges = useMemo<Edge[]>(() => {
-        // Jumps an expanded scene's arms have taken over, so the scene edge does not draw them twice.
-        const claimedJumps = new Set<StoryBlockId>();
-        for (const edge of graph.branchEdges) {
-            if (!expandedScenes.has(edge.sourceSceneId)) {
-                continue;
-            }
-            for (const jump of edge.jumps) {
-                claimedJumps.add(jump.blockId);
-            }
-        }
+    /**
+     * Every line on screen, with the jump blocks it actually stands for.
+     *
+     * One walk, feeding both the rendering below and the delete gesture, because the two must not
+     * disagree about which jumps a line is: with a scene expanded, some of its jumps have moved onto
+     * arm rows and the scene line is only the RESIDUAL. A delete that re-derived "the jumps of the
+     * A→B edge" from the graph would take the arm-owned ones with it — lines the author can still see
+     * drawn beside the one they deleted.
+     */
+    const drawnLines = useMemo(() => buildSceneFlowLines(graph, expandedScenes), [graph, expandedScenes]);
 
+    const projectedEdges = useMemo<Edge[]>(() => {
         const dim = (edgeId: string): number | undefined =>
             highlight && !highlight.edgeIds.has(edgeId) ? DIMMED_OPACITY : undefined;
 
-        const result: Edge[] = [];
-        for (const edge of graph.edges) {
-            const residual = expandedScenes.has(edge.source)
-                ? residualSceneEdge(edge, claimedJumps)
-                : edge;
-            if (!residual) {
-                continue;
-            }
-            const opacity = dim(edge.id);
-            result.push({
-                id: edge.id,
-                source: edge.source,
-                target: edge.target,
+        return drawnLines.map(line => {
+            const opacity = dim(line.id);
+            const fromArm = line.sourceBranchId !== undefined;
+            return {
+                id: line.id,
+                source: fromArm ? line.sourceBranchId! : line.sourceSceneId,
+                ...(fromArm ? { sourceHandle: line.sourceBranchId } : {}),
+                target: line.targetSceneId,
                 type: "smoothstep",
-                // Two jumps A->B collapse into one line; the label is what tells the paths apart.
-                label: edgeLabel(residual, t),
+                deletable: Boolean(editing),
+                // A scene line collapses two jumps A->B into one, and its label is what tells the
+                // paths apart. An arm's line takes only the chip: the arm's words are already on the
+                // row it starts at, and repeating them along the line is noise at exactly the zoom
+                // the map is read at.
+                label: fromArm ? branchChips?.[line.sourceBranchId!] : edgeLabel(line, t),
                 labelShowBg: false,
                 labelStyle: { fill: "rgb(var(--nl-fg-subtle))", fontSize: 10, opacity },
                 markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "rgb(var(--nl-fg-muted))" },
                 style: {
                     stroke: "rgb(var(--nl-fg-muted))",
                     strokeWidth: 1.5,
-                    // Dashed = the jump only fires on some runs (it sits under a condition or a loop).
-                    strokeDasharray: residual.conditional ? "5 4" : undefined,
+                    // Dashed = the jump only fires on some runs (it sits under a condition or a
+                    // loop). A line leaving an arm is conditional by construction.
+                    strokeDasharray: line.conditional ? "5 4" : undefined,
                     opacity,
                 },
                 interactionWidth: 20,
-            });
-        }
-
-        for (const edge of graph.branchEdges) {
-            if (!expandedScenes.has(edge.sourceSceneId)) {
-                continue;
-            }
-            const opacity = dim(edge.id);
-            result.push({
-                id: edge.id,
-                source: edge.sourceBranchId,
-                sourceHandle: edge.sourceBranchId,
-                target: edge.target,
-                type: "smoothstep",
-                // Only the chip: the arm's words are already on the row this line starts at, and
-                // repeating them along the line is noise at exactly the zoom the map is read at.
-                label: branchChips?.[edge.sourceBranchId],
-                labelShowBg: false,
-                labelStyle: { fill: "rgb(var(--nl-fg-subtle))", fontSize: 10, opacity },
-                markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "rgb(var(--nl-fg-muted))" },
-                style: {
-                    stroke: "rgb(var(--nl-fg-muted))",
-                    strokeWidth: 1.5,
-                    // A branch edge leaves an arm, so it is conditional by construction.
-                    strokeDasharray: "5 4",
-                    opacity,
-                },
-                interactionWidth: 20,
-            });
-        }
-        return result;
-    }, [graph, expandedScenes, branchChips, highlight, t]);
+            } satisfies Edge;
+        });
+    }, [drawnLines, branchChips, highlight, t, editing]);
 
     useEffect(() => {
         // Replacing the array mid-drag drops React Flow's drag state (dev warning #015), so live
@@ -428,7 +415,13 @@ function SceneFlowCanvasInner({
     }, [projectedNodes, setNodes]);
 
     useEffect(() => {
-        setEdges(projectedEdges);
+        // Selection carried across the rebuild for the same reason the nodes carry theirs: an edit
+        // anywhere in the story re-projects every line, and a selected line that silently deselects
+        // takes the Delete key's target with it.
+        setEdges(current => {
+            const selection = new Set(current.filter(edge => edge.selected).map(edge => edge.id));
+            return projectedEdges.map(edge => (selection.has(edge.id) ? { ...edge, selected: true } : edge));
+        });
     }, [projectedEdges, setEdges]);
 
     // Frame the graph on first paint, unless the tab already carries a viewport to restore.
@@ -481,7 +474,130 @@ function SceneFlowCanvasInner({
         onViewportChange?.({ x: viewport.x, y: viewport.y, zoom: viewport.zoom });
     }, [onViewportChange]);
 
+    // ---------------------------------------------------------------------------
+    // Interactive reading (see SceneFlowEditing). Every branch below is inert without `editing`.
+    // ---------------------------------------------------------------------------
+
+    /** Lit rims for the length of a drag — see `SCENE_FLOW_CONNECTABLE_HANDLE_CLASS`. */
+    const [connecting, setConnecting] = useState(false);
+    const { menuState, showMenu, hideMenu } = useContextMenu();
+    const [menuEdgeId, setMenuEdgeId] = useState<string | null>(null);
+
+    const lineById = useMemo(() => new Map(drawnLines.map(line => [line.id, line])), [drawnLines]);
+
+    /** The arm behind a source handle: its own block, and the scene the row belongs to. */
+    const armByNodeId = useMemo(() => {
+        const byNodeId = new Map<string, { blockId: StoryBlockId; sceneId: StorySceneId }>();
+        for (const branch of graph.branches) {
+            byNodeId.set(branch.id, { blockId: branch.blockId, sceneId: branch.sceneId });
+        }
+        return byNodeId;
+    }, [graph]);
+
+    /**
+     * A line the author finished drawing.
+     *
+     * Resolved here rather than in `isValidConnection`, which runs on every pointer move over a
+     * handle and can only say yes or no — it cannot say *why*, and a drag that silently refuses to
+     * land reads as the map being broken. What it resolves is which SCENE the line left: a line off
+     * an arm's row starts on the branch node, whose id is not a scene id, and handing that straight
+     * on would open the editor for a scene that does not exist.
+     *
+     * A scene connected to itself is passed through rather than rejected: a `/jump` back into the
+     * current scene is a legal thing to write (the node badges count them), and refusing the gesture
+     * would be the map overruling the story.
+     */
+    const handleConnect = useCallback((connection: Connection) => {
+        if (!editing) {
+            return;
+        }
+        const arm = connection.sourceHandle ? armByNodeId.get(connection.sourceHandle) : undefined;
+        const sourceSceneId = arm ? arm.sceneId : connection.source;
+        if (!sourceSceneId || !connection.target) {
+            return;
+        }
+        editing.connect({
+            sourceSceneId,
+            targetSceneId: connection.target,
+            ...(arm ? { branchBlockId: arm.blockId } : {}),
+        });
+    }, [armByNodeId, editing]);
+
+    /**
+     * Delete, from the key or the menu — and always a veto.
+     *
+     * React Flow is asking permission to drop the line from its own array. The answer is always no:
+     * the line is not React Flow's to drop, it is a reading of jump blocks in the document, and it
+     * disappears when — and only when — those blocks do. Removing it optimistically would show the
+     * author a map that disagrees with their story for as long as the confirm dialog is open, and
+     * would leave it disagreeing forever if they cancelled.
+     */
+    const handleBeforeDelete = useCallback(async ({ edges: deleted }: { edges: Edge[] }) => {
+        if (editing) {
+            for (const edge of deleted) {
+                const line = lineById.get(edge.id);
+                if (line) {
+                    // Awaited, and so one line at a time: the confirm is a dialog, and firing the
+                    // whole selection at once stacks several of them on top of each other with no
+                    // way to tell which line each is asking about.
+                    await editing.disconnect(line);
+                }
+            }
+        }
+        return false;
+    }, [editing, lineById]);
+
+    const handleEdgeContextMenu = useCallback((event: ReactMouseEvent, edge: Edge) => {
+        if (!editing) {
+            return;
+        }
+        setMenuEdgeId(edge.id);
+        showMenu(event);
+    }, [editing, showMenu]);
+
+    const closeMenu = useCallback(() => {
+        hideMenu();
+        // Forgotten as well as hidden: the hook keeps its last position, and a stale edge id would
+        // let the next open flash the previous line's menu before the new one is set.
+        setMenuEdgeId(null);
+    }, [hideMenu]);
+
+    const menuItems = useMemo<ContextMenuDef>(() => {
+        const line = menuEdgeId ? lineById.get(menuEdgeId) : null;
+        if (!editing || !line) {
+            return [];
+        }
+        const items: ContextMenuDef = [];
+        if (editing.reveal) {
+            const reveal = editing.reveal;
+            items.push({
+                id: "reveal",
+                label: t("story.flow.edge.reveal"),
+                icon: <ExternalLink className="h-3.5 w-3.5" />,
+                onClick: () => reveal(line),
+            });
+            items.push({ id: "separator", separator: true });
+        }
+        items.push({
+            id: "disconnect",
+            label: t("story.flow.edge.disconnect"),
+            icon: <Unlink className="h-3.5 w-3.5" />,
+            onClick: () => editing.disconnect(line),
+        });
+        return items;
+    }, [editing, lineById, menuEdgeId, t]);
+
     return (
+        <>
+        {menuState.visible && menuItems.length > 0 && (
+            <ContextMenu
+                items={menuItems}
+                position={menuState.position}
+                visible
+                iconsEnabled
+                onClose={closeMenu}
+            />
+        )}
         <ReactFlow
             id={flowId}
             nodes={nodes}
@@ -493,20 +609,30 @@ function SceneFlowCanvasInner({
             onNodeDragStop={handleNodeDragStop}
             onNodeDoubleClick={handleNodeDoubleClick}
             onMoveEnd={handleMoveEnd}
+            onConnect={handleConnect}
+            onConnectStart={() => setConnecting(true)}
+            onConnectEnd={() => setConnecting(false)}
+            onBeforeDelete={editing ? handleBeforeDelete : undefined}
+            onEdgeContextMenu={handleEdgeContextMenu}
             defaultViewport={initialViewport ?? undefined}
-            // The map reports the story; it does not edit it. Jumps are authored in the scene
-            // editor, where the block they belong to and its surrounding control flow are visible -
-            // a line drawn between two boxes hides which scene owns the jump and what guards it.
-            // Dragging a node is still allowed: that moves the picture, not the story.
-            nodesConnectable={false}
+            // The map never edits the story itself, with or without `editing` — it reports it. What
+            // an interactive reading adds is a way to ASK: a line dragged between two boxes opens
+            // the scene editor with the `/jump` typed and waiting, because that is the only surface
+            // that can show which fork the jump lands under and what guards it. Deleting a line is
+            // the mirror image — a confirm, then the jump blocks it stood for.
+            //
+            // Dragging a node is allowed either way: that moves the picture, not the story.
+            nodesConnectable={Boolean(editing)}
+            // Retargeting a line would rewrite an existing jump straight from the map, with none of
+            // the context the connect gesture is careful to send the author to. Deliberately absent.
             edgesReconnectable={false}
-            edgesFocusable={false}
-            deleteKeyCode={null}
+            edgesFocusable={Boolean(editing)}
+            deleteKeyCode={editing ? ["Backspace", "Delete"] : null}
             nodesDraggable
             panOnScroll
             zoomOnScroll={false}
             zoomOnPinch
-            className="narraleaf-scene-flow bg-surface"
+            className={cn("narraleaf-scene-flow bg-surface", connecting && "narraleaf-scene-flow-connecting")}
             // Read by SceneFlowNode's type. Unset in the workspace tab (scale 1), where the CSS
             // fallbacks in the node leave every computed size exactly where it was.
             style={typeScale === 1 ? undefined : ({ "--nl-scene-flow-type-scale": String(typeScale) } as CSSProperties)}
@@ -525,6 +651,7 @@ function SceneFlowCanvasInner({
                 />
             )}
         </ReactFlow>
+        </>
     );
 }
 

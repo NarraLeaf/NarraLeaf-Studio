@@ -1026,13 +1026,12 @@ export function deleteBlockFromScene(scene: StoryScene, blockId: StoryBlockId): 
     }
 }
 
-export function moveBlockInScene(
+function assertBlockMoveAllowed(
     scene: StoryScene,
     blockId: StoryBlockId,
     target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
 ): void {
-    const block = scene.blocks[blockId];
-    if (!block) {
+    if (!scene.blocks[blockId]) {
         throw new Error(`Block not found: ${blockId}`);
     }
     if (target.parentId && !canAcceptChildren(scene.blocks[target.parentId])) {
@@ -1041,6 +1040,15 @@ export function moveBlockInScene(
     if (target.parentId && collectBlockSubtree(scene, blockId).includes(target.parentId)) {
         throw new Error("Cannot move a block into its own subtree");
     }
+}
+
+export function moveBlockInScene(
+    scene: StoryScene,
+    blockId: StoryBlockId,
+    target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
+): void {
+    assertBlockMoveAllowed(scene, blockId, target);
+    const block = scene.blocks[blockId];
     const oldSiblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
     if (oldSiblings) {
         removeId(oldSiblings, blockId);
@@ -1048,6 +1056,35 @@ export function moveBlockInScene(
     block.parentId = target.parentId;
     const nextSiblings = target.parentId ? scene.blocks[target.parentId].childrenIds : scene.rootBlockIds;
     insertId(nextSiblings, blockId, target.beforeBlockId ?? null);
+}
+
+/**
+ * Move groups of blocks, each group to one target, in the order given — how a multi-row selection
+ * travels. A drag is one group (everything lands in one place); a keyboard nudge is one group per run
+ * of adjacent rows, since each run steps over its own neighbour and stays where it is in the scene.
+ *
+ * Within a group every block is inserted before the same anchor, so `[a, b, c]` land as `a b c` in
+ * front of it (and appended in that order when the anchor is `null`). The caller owes us anchors that
+ * are not themselves moving: {@link insertId} silently appends when it cannot find its anchor, which
+ * would scatter a group to the end of the parent instead of failing.
+ *
+ * Validated whole before anything moves. A half-applied move would leave the document mutated with the
+ * change event never emitted — the editor would be showing a scene that no longer exists.
+ */
+export function moveBlocksInScene(
+    scene: StoryScene,
+    moves: { blockIds: StoryBlockId[]; target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null } }[],
+): void {
+    for (const move of moves) {
+        for (const blockId of move.blockIds) {
+            assertBlockMoveAllowed(scene, blockId, move.target);
+        }
+    }
+    for (const move of moves) {
+        for (const blockId of move.blockIds) {
+            moveBlockInScene(scene, blockId, move.target);
+        }
+    }
 }
 
 export function createTextId(generateId: StoryIdFactory): StoryTextId {

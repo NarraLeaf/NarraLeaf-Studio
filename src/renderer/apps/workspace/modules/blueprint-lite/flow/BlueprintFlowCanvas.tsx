@@ -27,6 +27,11 @@ import {
     type Viewport,
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
+import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
+import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { useTranslation } from "@/lib/i18n";
+import { buildBreakpointContextMenu } from "@/lib/ui-editor/blueprint-debug/breakpointContextMenu";
+import { useBlueprintBreakpointScope } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
     BLUEPRINT_NODE_PARAM_FN_REF,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
@@ -330,6 +335,7 @@ function BlueprintFlowCanvasInner({
     // were. There is nothing to grey out on a drag, so the only honest affordance is that it never
     // starts; see `components/ui/freezeGuard`.
     const freeze = useFreezeGuard();
+    const { t } = useTranslation();
     const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -1120,6 +1126,58 @@ function BlueprintFlowCanvasInner({
         commitPendingPlacementRef.current();
     }, []);
 
+    // Breakpoints are debugger state, not document state: they are readable and settable on a
+    // frozen project, and this menu is deliberately outside the freeze guard that withholds the
+    // pane's creation menu.
+    const breakpointScope = useBlueprintBreakpointScope();
+    const [nodeMenu, setNodeMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+    const onNodeContextMenu = useCallback(
+        (event: ReactMouseEvent, node: Node) => {
+            if (!breakpointScope) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            setNodeMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
+        },
+        [breakpointScope],
+    );
+    const nodeMenuItems = useMemo<ContextMenuDef>(() => {
+        if (!breakpointScope || !nodeMenu) {
+            return [];
+        }
+        const { nodeId } = nodeMenu;
+        const existing = breakpointScope.byKey.get(
+            blueprintBreakpointKey({
+                blueprintId: breakpointScope.blueprintId,
+                graphId: breakpointScope.graphId,
+                nodeId,
+            }),
+        );
+        return buildBreakpointContextMenu({
+            existing,
+            onToggle: () => {
+                breakpointScope.toggle(nodeId);
+                setNodeMenu(null);
+            },
+            onSetEnabled: enabled => {
+                breakpointScope.setEnabled(nodeId, enabled);
+                setNodeMenu(null);
+            },
+            onEdit: () => {
+                breakpointScope.edit(nodeId);
+                setNodeMenu(null);
+            },
+            labels: {
+                add: t("blueprint.breakpoint.add"),
+                remove: t("blueprint.breakpoint.remove"),
+                enable: t("blueprint.breakpoint.enable"),
+                disable: t("blueprint.breakpoint.disable"),
+                edit: t("blueprint.breakpoint.edit"),
+            },
+        });
+    }, [breakpointScope, nodeMenu, t]);
+
     const onPaneContextMenu = useCallback(
         (e: MouseEvent | ReactMouseEvent<Element>) => {
             if (!onAddNodeAtFlowPosition) {
@@ -1172,6 +1230,7 @@ function BlueprintFlowCanvasInner({
                 // cursor, click places the node. Withheld whole rather than refused at the placement
                 // click, so a frozen project never gets as far as showing a ghost it will discard.
                 onPaneContextMenu={freeze.gesture(onPaneContextMenu)}
+                onNodeContextMenu={onNodeContextMenu}
                 onPaneClick={onPaneClick}
                 // Selection stays on - reading a frozen graph is the point - so only the two gestures
                 // that change it are switched off. React Flow keeps the handles drawn either way, so
@@ -1256,6 +1315,14 @@ function BlueprintFlowCanvasInner({
                         }
                         setPendingPlacementEntry(entry);
                     }}
+                />
+            ) : null}
+            {nodeMenu ? (
+                <ContextMenu
+                    items={nodeMenuItems}
+                    position={{ x: nodeMenu.x, y: nodeMenu.y }}
+                    visible
+                    onClose={() => setNodeMenu(null)}
                 />
             ) : null}
         </div>

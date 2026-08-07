@@ -3,6 +3,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { isMacPlatform } from "@/lib/app/platform";
 import { useWorkspace } from "../context";
 import { useRegistry } from "../registry";
+import { useWorkspaceFrozen } from "./useWorkspaceFrozen";
 import { getActionGroupItems, getVisibleActionMenuItems, isActionMenuAction, isActionMenuSeparator } from "../components/ui/actionMenuModel";
 import type { ActionMenuItem } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
@@ -11,6 +12,9 @@ import type { FocusContext } from "@/lib/workspace/services/ui";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../modules/actions/runtimeActionStatus";
+// Straight from the service, not through the testing barrel: the barrel re-exports the picker
+// dialog and the report tab, and this hook needs neither.
+import { getTestRunService } from "../modules/testing/testRunService";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { useTranslation } from "@/lib/i18n";
@@ -32,9 +36,11 @@ export function useNativeMenuSync(): void {
     const { t } = useTranslation();
     const { actionGroups } = useRegistry();
     const { context } = useWorkspace();
+    const frozen = useWorkspaceFrozen();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
     const [devModeStatus, setDevModeStatus] = useState<DevModeStatus>("idle");
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
+    const [testActive, setTestActive] = useState(false);
     const lastSentRef = useRef<string | null>(null);
 
     useEffect(() => {
@@ -72,6 +78,18 @@ export function useNativeMenuSync(): void {
         };
     }, [context]);
 
+    // A test run holds the run slot the way a mode does, so the Develop menu's Test entry becomes
+    // Stop while one is going. Only whether something is running is sent up - which test it is, and
+    // how it is doing, is the report tab's and the status bar's business.
+    useEffect(() => {
+        if (!context) return;
+
+        const testRun = getTestRunService(context);
+        const sync = () => setTestActive(testRun.getActiveRun() !== null);
+        sync();
+        return testRun.onChanged(sync);
+    }, [context]);
+
     const model = useMemo<NativeMenuModel>(() => {
         const groups: NativeMenuGroup[] = actionGroups
             // `none` is for groups the main process builds natively itself (File, Help);
@@ -90,9 +108,11 @@ export function useNativeMenuSync(): void {
             runtime: {
                 devModeActive: isDevModeRuntimeActive(devModeStatus),
                 previewActive: isPreviewRuntimeActive(previewStatus),
+                testActive,
+                frozen,
             },
         };
-    }, [actionGroups, focusContext, devModeStatus, previewStatus, t]);
+    }, [actionGroups, focusContext, devModeStatus, previewStatus, testActive, frozen, t]);
 
     useEffect(() => {
         if (!isMacPlatform()) return;

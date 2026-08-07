@@ -42,6 +42,7 @@ import {
     DevModeResolveImageAssetUrlHandler,
     DevModeForwardBlueprintDebugEventHandler,
     DevModeForwardStoryRowHandler,
+    DevModeOpenStoryRowInWorkspaceHandler,
 } from "./handlers/devModeAction";
 import {
     DevModeSaveDeleteHandler,
@@ -100,7 +101,7 @@ import {
     ProjectTemplateListHandler,
     ProjectTemplateScaffoldHandler,
 } from "./handlers/projectTemplateAction";
-import { AssetFetchRemoteHandler } from "./handlers/assetAction";
+import { AssetExportToFolderHandler, AssetFetchRemoteHandler } from "./handlers/assetAction";
 import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
     BlueprintPersistenceGetAllHandler,
@@ -192,6 +193,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeOpenBlueprintInWorkspaceHandler(),
         new DevModeForwardBlueprintDebugEventHandler(),
         new DevModeForwardStoryRowHandler(),
+        new DevModeOpenStoryRowInWorkspaceHandler(),
         new DevModeResolveAssetUrlHandler(),
         new DevModeResolveImageAssetUrlHandler(),
         new DevModeSaveWriteHandler(),
@@ -253,6 +255,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectTemplateListHandler(),
         new ProjectTemplateScaffoldHandler(),
         new AssetFetchRemoteHandler(),
+        new AssetExportToFolderHandler(),
         new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers

@@ -3,9 +3,9 @@
  * Comments in English per project convention.
  */
 
-const BLUEPRINT_NODE_OUTPUT_VALUES_KEY = "__nlBlueprintNodeOutputValues";
+export const BLUEPRINT_NODE_OUTPUT_VALUES_KEY = "__nlBlueprintNodeOutputValues";
 
-type NodeOutputStore = Record<string, Record<string, unknown>>;
+export type NodeOutputStore = Record<string, Record<string, unknown>>;
 
 function readStore(blueprintLocals: Record<string, unknown> | undefined): NodeOutputStore | undefined {
     const raw = blueprintLocals?.[BLUEPRINT_NODE_OUTPUT_VALUES_KEY];
@@ -31,6 +31,13 @@ export function writeBlueprintNodeOutputValues(
     outputValues: Record<string, unknown>,
 ): void {
     getOrCreateStore(blueprintLocals)[nodeId] = { ...outputValues };
+}
+
+/** Everything one execution's nodes have produced so far; the debugger's node-output scope view. */
+export function readBlueprintNodeOutputValueStore(
+    blueprintLocals: Record<string, unknown> | undefined,
+): NodeOutputStore | undefined {
+    return readStore(blueprintLocals);
 }
 
 export function readBlueprintNodeOutputValue(

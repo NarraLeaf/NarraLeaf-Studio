@@ -42,11 +42,14 @@ import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
 import {
     applyPlannedMove,
+    applyUngroupContainer,
+    canUngroupContainer,
     collectSubtreeElementIds,
     filterToTopLevelMovers,
     layoutPatchForReparent,
     normalizeFlowChildLayout,
     normalizeFlowChildLayouts,
+    normalizeListSlotsForMovedChildren,
     planMoveElementsInSurface,
     type MoveUiElementsResult,
 } from "./uiDocumentTreeMove";
@@ -955,28 +958,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         this.mutateDocument(doc => {
             applyPlannedMove(doc, planned.plan);
-            const targetParent = doc.elements[targetParentId];
-            if (isListLikeWidgetType(targetParent?.type)) {
-                for (const elementId of elementIds) {
-                    const moved = doc.elements[elementId];
-                    const slot = moved?.extra?.listSlot;
-                    if (
-                        moved &&
-                        slot !== "itemTemplate" &&
-                        slot !== "scrollbarTrack" &&
-                        slot !== "scrollbarThumb"
-                    ) {
-                        moved.extra = {
-                            ...(moved.extra ?? {}),
-                            listSlot: "itemTemplate",
-                        };
-                    }
-                }
-            }
+            normalizeListSlotsForMovedChildren(doc, targetParentId, elementIds);
         }, {
             history: { surfaceId },
         });
         return { ok: true };
+    }
+
+    /**
+     * Dissolve each group: its children take its place among its siblings, then it is removed.
+     * Returns the ids that were lifted out, for the caller to select.
+     *
+     * One mutation, so several groups going at once are one undo step, and so is the pair of edits
+     * each dissolve is made of - lifting the children and removing the shell. Every id is
+     * re-checked against the live document as the loop runs, because dissolving an outer group
+     * reparents an inner one that may be in the same batch.
+     */
+    public ungroupContainers(surfaceId: string, containerIds: string[]): string[] {
+        const document = this.getDocument();
+        if (!containerIds.some(id => canUngroupContainer(document, surfaceId, id))) {
+            return [];
+        }
+        const lifted: string[] = [];
+        this.mutateDocument(doc => {
+            for (const containerId of containerIds) {
+                lifted.push(...(applyUngroupContainer(doc, surfaceId, containerId) ?? []));
+            }
+        }, {
+            history: { surfaceId },
+        });
+        return lifted;
     }
 
     public renameElement(elementId: string, name: string): void {

@@ -265,6 +265,21 @@ export const assets = {
             one: "删除 {count} 项",
             other: "删除 {count} 项",
         },
+        export: "导出…",
+        exportCount: {
+            one: "导出 {count} 项…",
+            other: "导出 {count} 项…",
+        },
+    },
+    export: {
+        empty: "没有可导出的文件。",
+        success: {
+            one: "已导出 {count} 个文件。",
+            other: "已导出 {count} 个文件。",
+        },
+        partial: "已导出 {exported} 个文件，{failed} 个未能导出。",
+        partialTitle: "部分文件未能导出",
+        failed: "导出失败：{error}",
     },
     selector: {
         selectType: "选择{type}",

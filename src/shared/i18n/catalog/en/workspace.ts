@@ -378,6 +378,7 @@ export const workspace = {
         notifications: {
             title: "Notifications",
             clearAll: "Clear",
+            empty: "No messages yet",
         },
         // The custom background dialog (opened from Settings or the command palette).
         background: {
@@ -806,6 +807,7 @@ export const workspace = {
                     paste: "Paste",
                     duplicate: "Duplicate",
                     group: "Group",
+                    ungroup: "Ungroup",
                     selectAll: "Select All",
                     delete: "Delete Selection",
                     rename: "Rename",

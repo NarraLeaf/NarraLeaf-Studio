@@ -21,6 +21,7 @@ import {
     uiEditorGroupIntoLeaderContainer,
     uiEditorPasteAfterSelection,
     uiEditorSelectAllInSurface,
+    uiEditorUngroupSelection,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
@@ -135,6 +136,13 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             const s = getUiSelection(stateService, surfaceId);
             uiEditorGroupIntoLeaderContainer(documentService, stateService, surfaceId, s);
         };
+        const ungroup = () => {
+            if (!documentService || !stateService || isTypingInField()) {
+                return;
+            }
+            const s = getUiSelection(stateService, surfaceId);
+            uiEditorUngroupSelection(documentService, stateService, surfaceId, s, uiService);
+        };
         const selectAll = () => {
             if (!documentService || !stateService || isTypingInField()) {
                 return;
@@ -179,6 +187,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
                 { suffix: "paste", key: "v", handler: whenWritable(paste) },
                 { suffix: "dup", key: "d", handler: whenWritable(duplicate) },
                 { suffix: "group", key: "g", handler: whenWritable(group) },
+                { suffix: "ungroup", key: "shift+g", handler: whenWritable(ungroup) },
                 { suffix: "selall", key: "a", handler: selectAll },
             ]),
         );

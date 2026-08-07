@@ -99,6 +99,7 @@ export const uiEditor = {
         hideSelected: "Hide selected",
         addToComponentLibrary: "Add to Component Library",
         addToGroup: "Add to group",
+        ungroup: "Ungroup",
         arrange: {
             label: "Arrange",
             bringToFront: "Bring to front",

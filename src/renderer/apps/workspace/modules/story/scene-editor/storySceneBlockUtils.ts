@@ -312,43 +312,154 @@ export function getInsertionTargetAfter(scene: StoryScene, afterBlockId: StoryBl
     return { parentId: block.parentId, beforeBlockId: siblings[index + 1] ?? null };
 }
 
-export function getMoveTargetAfter(scene: StoryScene, movingBlockId: StoryBlockId, afterBlockId: StoryBlockId | null): StoryBlockTarget {
-    if (!afterBlockId) {
-        return { parentId: null };
-    }
-    const block = scene.blocks[afterBlockId];
-    if (!block) {
-        return { parentId: null };
-    }
-    const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
-    if (!siblings) {
-        return { parentId: block.parentId };
-    }
-    const siblingsAfterMove = siblings.filter(id => id !== movingBlockId);
-    const index = siblingsAfterMove.indexOf(afterBlockId);
-    if (index === -1) {
-        return { parentId: block.parentId };
-    }
-    return { parentId: block.parentId, beforeBlockId: siblingsAfterMove[index + 1] ?? null };
+/** Where a moving group lands, and the order its rows are inserted in. See {@link planBlockGroupMove}. */
+export interface StoryBlockGroupMove {
+    /** The roots to move, in document order. Every one is inserted at {@link target}, in this order. */
+    blockIds: StoryBlockId[];
+    target: StoryBlockTarget;
 }
 
-export function getMoveTargetBefore(scene: StoryScene, movingBlockId: StoryBlockId, beforeBlockId: StoryBlockId | null): StoryBlockTarget {
-    if (!beforeBlockId) {
-        return { parentId: null };
-    }
-    const block = scene.blocks[beforeBlockId];
-    if (!block) {
-        return { parentId: null };
-    }
-    const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
-    if (!siblings) {
-        return { parentId: block.parentId };
-    }
-    const siblingsAfterMove = siblings.filter(id => id !== movingBlockId);
-    return {
-        parentId: block.parentId,
-        beforeBlockId: siblingsAfterMove.includes(beforeBlockId) ? beforeBlockId : null,
+/** The ids in `ids`, in the order a reader meets them walking the scene. */
+function inDocumentOrder(scene: StoryScene, ids: Set<StoryBlockId>): StoryBlockId[] {
+    const ordered: StoryBlockId[] = [];
+    const visit = (blockId: StoryBlockId) => {
+        if (ids.has(blockId)) {
+            ordered.push(blockId);
+        }
+        for (const childId of scene.blocks[blockId]?.childrenIds ?? []) {
+            visit(childId);
+        }
     };
+    scene.rootBlockIds.forEach(visit);
+    return ordered;
+}
+
+/** The member of `ancestors` that contains `blockId` (or is it), else null. */
+function enclosingId(scene: StoryScene, blockId: StoryBlockId, ancestors: Set<StoryBlockId>): StoryBlockId | null {
+    let id: StoryBlockId | null = blockId;
+    while (id) {
+        if (ancestors.has(id)) {
+            return id;
+        }
+        id = scene.blocks[id]?.parentId ?? null;
+    }
+    return null;
+}
+
+/**
+ * Where a dropped selection lands: one target for the whole group, plus the order to apply it in.
+ *
+ * A single row had an easy time of it: take the row out of its siblings and read off the next one. A
+ * group cannot, because the row after the drop point may be *another member of the group*, and an
+ * anchor that is about to move is an anchor `insertId` will not find: it appends instead, and the
+ * group silently scatters to the end of the parent. So the anchor here is the first sibling at or
+ * after the drop point that is NOT moving, which is stable for the whole run of inserts.
+ *
+ * Which side of `targetBlockId` the group lands on follows the row the author actually grabbed, the
+ * way a sortable list behaves: dragging downwards drops *after* the row under the pointer, upwards
+ * drops *before* it.
+ *
+ * Returns null when the drop cannot mean anything: an empty selection, a target that is one of the
+ * moving rows, or a target inside a moving row's own subtree (a container cannot be moved into itself).
+ */
+export function planBlockGroupMove(
+    scene: StoryScene,
+    movingIds: StoryBlockId[],
+    grabbedBlockId: StoryBlockId,
+    targetBlockId: StoryBlockId,
+): StoryBlockGroupMove | null {
+    const roots = filterOutSelectedDescendants(scene, [...new Set(movingIds)]);
+    const target = scene.blocks[targetBlockId];
+    if (roots.length === 0 || !target) {
+        return null;
+    }
+    const rootSet = new Set(roots);
+    if (enclosingId(scene, targetBlockId, rootSet)) {
+        return null;
+    }
+    const siblings = target.parentId ? scene.blocks[target.parentId]?.childrenIds : scene.rootBlockIds;
+    const targetIndex = siblings?.indexOf(targetBlockId) ?? -1;
+    if (!siblings || targetIndex === -1) {
+        return null;
+    }
+    const blockIds = inDocumentOrder(scene, rootSet);
+    // The grabbed row tells us the direction, but a row grabbed *inside* a moving container is not
+    // itself a root — the container's own position is the one being dragged, so ask for that instead.
+    const grabbedRoot = enclosingId(scene, grabbedBlockId, rootSet) ?? blockIds[0];
+    const order = inDocumentOrder(scene, new Set([grabbedRoot, targetBlockId]));
+    const draggingDown = order.indexOf(grabbedRoot) < order.indexOf(targetBlockId);
+    const anchorIndex = draggingDown ? targetIndex + 1 : targetIndex;
+    const beforeBlockId = siblings.slice(anchorIndex).find(id => !rootSet.has(id)) ?? null;
+    return { blockIds, target: { parentId: target.parentId, beforeBlockId } };
+}
+
+/**
+ * One step of Alt+Up / Alt+Down over a selection: every selected row steps over the neighbour on that
+ * side, staying in its own parent — the keyboard nudge, as opposed to the drag, which drops the whole
+ * selection in one place.
+ *
+ * The unit that steps is a RUN of adjacent selected siblings, not a row: three rows selected in a row
+ * hop the one line above them together. Moving them individually would walk each over the line above
+ * it, which for the middle rows is another selected row — the selection would shuffle inside itself and
+ * come out reordered. Split selections keep their gaps, so Alt+Down then Alt+Up is exactly where you
+ * started; a scene surgery that cannot be taken back by the opposite key is not a nudge.
+ *
+ * Each run's anchor is a row that is NOT moving, and only runs move, so the groups can be applied in
+ * any order and every anchor is still there when its turn comes.
+ *
+ * Returns null when the selection cannot move as a whole: something is already against the end of its
+ * parent. All or nothing, again so the opposite key undoes it — letting the rows that can move move
+ * would silently close a gap the author would have to rebuild by hand.
+ */
+export function planSelectionNudge(
+    scene: StoryScene,
+    movingIds: StoryBlockId[],
+    direction: "up" | "down",
+): StoryBlockGroupMove[] | null {
+    const roots = filterOutSelectedDescendants(scene, [...new Set(movingIds)]);
+    if (roots.length === 0) {
+        return null;
+    }
+    const rootSet = new Set(roots);
+    const moves: StoryBlockGroupMove[] = [];
+    // Runs are per parent: a selection that spans a container's body and the rows after it is two runs,
+    // and each stays where it is in the tree.
+    const parents = new Set(roots.map(id => scene.blocks[id]?.parentId ?? null));
+    for (const parentId of parents) {
+        const siblings = parentId ? scene.blocks[parentId]?.childrenIds : scene.rootBlockIds;
+        if (!siblings) {
+            return null;
+        }
+        for (let index = 0; index < siblings.length;) {
+            if (!rootSet.has(siblings[index])) {
+                index += 1;
+                continue;
+            }
+            let end = index;
+            while (end + 1 < siblings.length && rootSet.has(siblings[end + 1])) {
+                end += 1;
+            }
+            const blockIds = siblings.slice(index, end + 1);
+            if (direction === "up") {
+                const previousId = siblings[index - 1];
+                if (!previousId) {
+                    return null;
+                }
+                moves.push({ blockIds, target: { parentId, beforeBlockId: previousId } });
+            } else {
+                const nextId = siblings[end + 1];
+                if (!nextId) {
+                    return null;
+                }
+                // Past the neighbour, and past any further selected rows — the next run's rows are
+                // moving too, and an anchor that moves is one `insertId` will not find.
+                const beforeBlockId = siblings.slice(end + 2).find(id => !rootSet.has(id)) ?? null;
+                moves.push({ blockIds, target: { parentId, beforeBlockId } });
+            }
+            index = end + 1;
+        }
+    }
+    return moves.length > 0 ? moves : null;
 }
 
 export function canAcceptChildren(block: StoryBlock | undefined): boolean {
