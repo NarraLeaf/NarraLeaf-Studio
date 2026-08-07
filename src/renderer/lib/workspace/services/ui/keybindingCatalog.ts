@@ -96,6 +96,7 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("ui-editor.paste", "mod+v", "workspace.shell.keybindings.catalog.uiEditor.paste", CATEGORY.uiEditor),
     entry("ui-editor.dup", "mod+d", "workspace.shell.keybindings.catalog.uiEditor.duplicate", CATEGORY.uiEditor),
     entry("ui-editor.group", "mod+g", "workspace.shell.keybindings.catalog.uiEditor.group", CATEGORY.uiEditor),
+    entry("ui-editor.ungroup", "mod+shift+g", "workspace.shell.keybindings.catalog.uiEditor.ungroup", CATEGORY.uiEditor),
     entry("ui-editor.selall", "mod+a", "workspace.shell.keybindings.catalog.uiEditor.selectAll", CATEGORY.uiEditor),
     entry("ui-editor.delete", "delete", "workspace.shell.keybindings.catalog.uiEditor.delete", CATEGORY.uiEditor),
     entry("ui-editor.backspace", "backspace", "workspace.shell.keybindings.catalog.uiEditor.delete", CATEGORY.uiEditor),

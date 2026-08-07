@@ -12,6 +12,7 @@ import {
     uiEditorPaste,
     uiEditorPasteIntoParent,
     uiEditorSelectAllInSurface,
+    uiEditorUngroupSelection,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
 import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -122,6 +123,9 @@ export function createOutlinePanelMenuActions(params: {
         },
         addSelectionToLeaderGroup: () => {
             uiEditorGroupIntoLeaderContainer(documentService, stateService, surfaceId, menuSel);
+        },
+        ungroupSelection: () => {
+            uiEditorUngroupSelection(documentService, stateService, surfaceId, menuSel, uiService);
         },
         addSelectionToComponentLibrary: () => {
             if (!menuSel || menuSel.elementIds.length === 0) {

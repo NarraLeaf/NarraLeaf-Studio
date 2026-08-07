@@ -11,6 +11,7 @@ import {
 import { hasUiEditorClipboard } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import {
     canAddRestToLeaderContainer,
+    getContainersToUngroup,
     getMoversToGroupIntoLeaderContainer,
 } from "@/lib/ui-editor/commands/uiEditorSelection";
 import {
@@ -100,6 +101,7 @@ export function useLayerOutlineContextMenus(params: {
                 Boolean(menuSel) &&
                 canAddRestToLeaderContainer(menuSel!, doc) &&
                 getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+            const canUngroup = getContainersToUngroup(doc, surfaceId, menuSel).length > 0;
 
             const insertChildInOutline = (type: string) => {
                 if (!insertParentId) {
@@ -145,6 +147,7 @@ export function useLayerOutlineContextMenus(params: {
                 documentService,
                 insertParentIdForRow: insertParentId,
                 canAddToGroup: canGroup,
+                canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions,
             });
@@ -189,6 +192,7 @@ export function useLayerOutlineContextMenus(params: {
                 Boolean(menuSel) &&
                 canAddRestToLeaderContainer(menuSel!, doc) &&
                 getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+            const canUngroup = getContainersToUngroup(doc, surfaceId, menuSel).length > 0;
 
             const insertOutline = (type: string) => {
                 const fresh = documentService.getDocument();
@@ -232,6 +236,7 @@ export function useLayerOutlineContextMenus(params: {
                 documentService,
                 insertParentIdForRow: null,
                 canAddToGroup: canGroup,
+                canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions,
             });

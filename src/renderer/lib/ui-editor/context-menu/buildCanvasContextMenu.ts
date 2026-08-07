@@ -8,7 +8,7 @@ import { translate } from "@/lib/i18n";
 const ROOT = "nl.root";
 
 export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): ContextMenuDef {
-    const { menuSelection, hasClipboard, widgetModules, documentService, actions, canAddToGroup } = input;
+    const { menuSelection, hasClipboard, widgetModules, documentService, actions, canAddToGroup, canUngroup } = input;
     const items: ContextMenuDef = [];
 
     if (hasClipboard) {
@@ -156,15 +156,26 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         },
     );
 
-    items.push({
-        id: "add-to-group",
-        label: translate("uiEditor.contextMenu.addToGroup"),
-        disabled: !canAddToGroup,
-        onClick: () => {
-            actions.hideMenu();
-            actions.addSelectionToLeaderGroup();
+    items.push(
+        {
+            id: "add-to-group",
+            label: translate("uiEditor.contextMenu.addToGroup"),
+            disabled: !canAddToGroup,
+            onClick: () => {
+                actions.hideMenu();
+                actions.addSelectionToLeaderGroup();
+            },
         },
-    });
+        {
+            id: "ungroup",
+            label: translate("uiEditor.contextMenu.ungroup"),
+            disabled: !canUngroup,
+            onClick: () => {
+                actions.hideMenu();
+                actions.ungroupSelection();
+            },
+        },
+    );
 
     if (menuSelection.elementIds.length === 1) {
         const el = input.document.elements[menuSelection.elementIds[0]];
