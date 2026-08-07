@@ -1,9 +1,10 @@
 /**
- * The monogram tile a project gets in the recent list.
+ * The monogram tile something named gets when it ships no icon of its own - a project in the recent
+ * list, a plugin in the plugin lists.
  *
- * A project's identity in that list is its name, and names repeat ("Demo", "test") - the tile is
- * what lets the eye land on the right row before reading anything. Both halves derive from the
- * name alone, so a project looks the same everywhere it appears, with nothing to store.
+ * Identity in those lists is the name, and names repeat ("Demo", "test") - the tile is what lets the
+ * eye land on the right row before reading anything. Both halves derive from the name alone, so the
+ * same thing looks the same everywhere it appears, with nothing to store.
  */
 
 /**
@@ -19,7 +20,7 @@
  * launch. `recentProjectDisplayName` is the fix for *why* a name would be missing; this is the
  * guarantee that a monogram can never be the thing that ends the process.
  */
-export function projectInitials(name?: string | null): string {
+export function nameInitials(name?: string | null): string {
     const words = (name ?? "")
         // Separators of every kind become spaces: "Aumiao-py", "DrinkGame.sWeb", "my_game".
         .replace(/[^\p{L}\p{N}]+/gu, " ")
@@ -55,7 +56,7 @@ const AVATAR_HUES = [210, 260, 300, 340, 10, 30, 150, 175, 195];
  * glance without becoming the loudest thing on a screen full of muted surfaces. Lightness is
  * pinned in the middle so the same white monogram stays legible in either theme.
  */
-export function projectAvatarColor(name?: string | null): string {
+export function nameMonogramColor(name?: string | null): string {
     const source = name ?? "";
     let hash = 0;
     for (let index = 0; index < source.length; index++) {

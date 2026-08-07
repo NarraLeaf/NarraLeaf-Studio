@@ -26,6 +26,9 @@ import type {
 } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import type { RuntimePluginHost } from "@/lib/ui-editor/runtime/plugins/runtimePluginHost";
 import { i18nStore } from "@/lib/i18n/store";
+import { translate } from "@/lib/i18n";
+import { workspacePluginSession } from "./workspacePluginSession";
+import { openPluginsPanel } from "@/apps/workspace/modules/plugins/openPluginsPanel";
 import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/components/ui/actionMenuModel";
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -107,40 +110,98 @@ export type WorkspacePluginLoadResult =
         error: string;
     };
 
-const workspacePluginLoadQueues = new WeakMap<WorkspaceContext, Promise<void>>();
-
 export async function loadWorkspacePlugins(ctx: WorkspaceContext): Promise<WorkspacePluginLoadResult[]> {
     exposePluginModule();
-    const previous = workspacePluginLoadQueues.get(ctx) ?? Promise.resolve();
-    const loadTask = previous.then(() => loadWorkspacePluginsNow(ctx));
-    workspacePluginLoadQueues.set(ctx, loadTask.then(
-        () => undefined,
-        () => undefined,
-    ));
-    return loadTask;
+    return workspacePluginSession(ctx).enqueue(() => loadWorkspacePluginsNow(ctx));
 }
 
-async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<WorkspacePluginLoadResult[]> {
+/**
+ * Start one plugin in a workspace that is already open.
+ *
+ * The plugins panel calls this after the main process has enabled or authorized a plugin, so the
+ * author gets the thing they just switched on instead of a note asking them to reopen the project.
+ * Returns null when there is nothing to start here: a plugin that ships only a `runtime` entry
+ * extends the game, not the editor, and never appears in the workspace descriptor list.
+ */
+export async function activateWorkspacePlugin(
+    ctx: WorkspaceContext,
+    pluginId: string,
+): Promise<WorkspacePluginLoadResult | null> {
+    exposePluginModule();
+    return workspacePluginSession(ctx).enqueue(async () => {
+        const session = workspacePluginSession(ctx);
+        if (session.isRunning(pluginId)) {
+            return { pluginId, ok: true } as WorkspacePluginLoadResult;
+        }
+        if (suppressedPluginIds(ctx).has(pluginId)) {
+            return null;
+        }
+        const descriptor = (await fetchWorkspacePluginDescriptors())
+            .find(candidate => candidate.plugin.id === pluginId);
+        if (!descriptor) {
+            return null;
+        }
+        return loadWorkspacePlugin(ctx, descriptor);
+    });
+}
+
+/**
+ * Stop one plugin in a workspace that is already open, reclaiming everything it registered.
+ *
+ * Answers false when it was not running here, which is not a failure - a disabled plugin, a
+ * runtime-only one, and one this project suppresses all reach this the same way.
+ */
+export async function deactivateWorkspacePlugin(ctx: WorkspaceContext, pluginId: string): Promise<boolean> {
+    return workspacePluginSession(ctx).enqueue(async () => {
+        const session = workspacePluginSession(ctx);
+        if (!session.isRunning(pluginId)) {
+            session.forget(pluginId);
+            return false;
+        }
+        await session.unload(pluginId);
+        return true;
+    });
+}
+
+/** Unload everything this workspace loaded. The workspace's own teardown; also what recovery needs. */
+export async function unloadWorkspacePlugins(ctx: WorkspaceContext): Promise<void> {
+    return workspacePluginSession(ctx).enqueue(() => workspacePluginSession(ctx).unloadAll());
+}
+
+async function fetchWorkspacePluginDescriptors(): Promise<WorkspacePluginDescriptor[]> {
     const result = await getInterface().plugins.getWorkspacePlugins();
     if (!result.success) {
         throw new Error(result.error ?? "Failed to load workspace plugins");
     }
+    return result.data.plugins;
+}
 
-    // Skip plugins this project's dependency resolution flagged as incompatible
-    // (e.g. a built-in plugin whose major version changed across a Studio update).
-    // Suppressing them here - before import()/setup() - keeps their nodes, widgets,
-    // and actions from registering and corrupting the open project.
-    const suppressed = new Set(
+/**
+ * Plugins this project's dependency resolution flagged as incompatible (e.g. a built-in plugin whose
+ * major version changed across a Studio update). Checked before import()/setup(), which is what
+ * keeps their nodes, widgets, and actions from registering and corrupting the open project.
+ */
+function suppressedPluginIds(ctx: WorkspaceContext): Set<string> {
+    return new Set(
         ctx.services.get<ProjectDependencyService>(Services.ProjectDependency).getSuppressedPluginIds(),
     );
-    const descriptors = result.data.plugins;
+}
+
+async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<WorkspacePluginLoadResult[]> {
+    const descriptors = await fetchWorkspacePluginDescriptors();
+    const suppressed = suppressedPluginIds(ctx);
     const eligible = descriptors.filter(descriptor => !suppressed.has(descriptor.plugin.id));
 
     const skipped = descriptors.filter(descriptor => suppressed.has(descriptor.plugin.id));
     if (skipped.length > 0) {
         const names = skipped.map(descriptor => descriptor.manifest.name).join(", ");
         ctx.services.get<UIService>(Services.UI).notifications.warning(
-            `Disabled plugin(s) incompatible with this project: ${names}. Update or re-enable them from the plugins manager.`,
+            translate("plugins.workspace.suppressedNotice", { names }),
+            undefined,
+            [{
+                label: translate("plugins.workspace.openPanel"),
+                onClick: () => openPluginsPanel(ctx, { pluginId: skipped[0].plugin.id }),
+            }],
         );
     }
 
@@ -175,6 +236,7 @@ async function loadWorkspacePlugin(
         };
 
         await getInterface().plugins.reportLoadError(descriptor.plugin.id, null);
+        workspacePluginSession(ctx).markLoaded(descriptor.plugin.id, cleanup);
         return {
             pluginId: descriptor.plugin.id,
             ok: true,
@@ -186,6 +248,7 @@ async function loadWorkspacePlugin(
         runtime.revoke();
         const message = error instanceof Error ? error.message : String(error);
         await getInterface().plugins.reportLoadError(descriptor.plugin.id, message);
+        workspacePluginSession(ctx).markFailed(descriptor.plugin.id, message);
         return {
             pluginId: descriptor.plugin.id,
             ok: false,
