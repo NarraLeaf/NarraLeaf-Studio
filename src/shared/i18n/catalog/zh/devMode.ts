@@ -6,6 +6,17 @@ export const devMode = {
     surfaceUnavailable: "界面不可用",
     waitingPayload: "正在等待开发模式数据…",
     surfaceNotFound: "未找到界面：{surfaceId}",
+    issues: {
+        atLine: "第 {line} 行 · {scene}",
+        inScene: "位于 {scene}",
+        noLocation: "无法定位到具体行",
+        viaPlayHead: "播放到此处",
+        openInStudio: "在 Studio 中打开",
+        openFailed: "该项目没有打开的工作区窗口。",
+        stack: "调用栈",
+        dismissAll: "全部关闭（{count}）",
+        summary: "{errors} 个错误 · {warnings} 个警告",
+    },
     devtools: {
         title: "蓝图开发者工具",
         menuAria: "预览调试工具",

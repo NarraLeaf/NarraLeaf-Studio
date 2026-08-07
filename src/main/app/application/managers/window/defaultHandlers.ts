@@ -42,6 +42,7 @@ import {
     DevModeResolveImageAssetUrlHandler,
     DevModeForwardBlueprintDebugEventHandler,
     DevModeForwardStoryRowHandler,
+    DevModeOpenStoryRowInWorkspaceHandler,
 } from "./handlers/devModeAction";
 import {
     DevModeSaveDeleteHandler,
@@ -192,6 +193,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeOpenBlueprintInWorkspaceHandler(),
         new DevModeForwardBlueprintDebugEventHandler(),
         new DevModeForwardStoryRowHandler(),
+        new DevModeOpenStoryRowInWorkspaceHandler(),
         new DevModeResolveAssetUrlHandler(),
         new DevModeResolveImageAssetUrlHandler(),
         new DevModeSaveWriteHandler(),

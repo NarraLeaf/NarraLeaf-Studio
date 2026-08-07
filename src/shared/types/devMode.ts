@@ -74,6 +74,27 @@ export type DevModeStoryRowHighlight = {
     blockId: string;
 };
 
+/**
+ * "Take me to this row" — a Dev Mode request to open the row in the workspace's story editor.
+ *
+ * Deliberately a different channel from {@link DevModeStoryRowPayload}, which follows the play head:
+ * that one must never open a tab or steal focus (it fires on every action), while this one exists to
+ * do exactly that, because the author asked. Same shape, opposite manners.
+ */
+export type DevModeStoryRowOpenPayload = {
+    projectPath: string;
+    storyId: string;
+    sceneId: string;
+    blockId: string;
+};
+
+/** The workspace-side "open this row" request, forwarded from Dev Mode (no projectPath on delivery). */
+export type DevModeStoryRowOpenRequest = {
+    storyId: string;
+    sceneId: string;
+    blockId: string;
+};
+
 export type DevModeCharacterSummary = {
     id: string;
     /** Author-facing display name. Empty when the character is unnamed - never falls back to `id`, which is a UUID. */

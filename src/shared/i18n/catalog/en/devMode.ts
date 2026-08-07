@@ -5,6 +5,17 @@ export const devMode = {
     surfaceUnavailable: "Surface not available",
     waitingPayload: "Waiting for Dev Mode payload…",
     surfaceNotFound: "Surface not found: {surfaceId}",
+    issues: {
+        atLine: "Line {line} · {scene}",
+        inScene: "In {scene}",
+        noLocation: "Could not be traced to a line",
+        viaPlayHead: "where playback was",
+        openInStudio: "Open in Studio",
+        openFailed: "No workspace window is open for this project.",
+        stack: "Stack",
+        dismissAll: "Dismiss all ({count})",
+        summary: "{errors} errors · {warnings} warnings",
+    },
     devtools: {
         title: "Blueprint DevTools",
         menuAria: "Preview debug tools",
