@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent, ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import { ChevronDown, Component, Copy, Edit3, MoreVertical, Plus, Search, Trash2 } from "lucide-react";
-import type { UIComponentDefinition } from "@shared/types/ui-editor/document";
+import { getUIComponentLink, type UIComponentDefinition } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -9,6 +9,7 @@ import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/componen
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
+import { LivePreviewFrame } from "./LivePreviewFrame";
 
 type ComponentLibraryPanelProps = {
     documentService: UIDocumentService | null;
@@ -17,55 +18,37 @@ type ComponentLibraryPanelProps = {
     onOpenComponent: (component: UIComponentDefinition) => void;
 };
 
-function ComponentPreviewFrame({
-    component,
-    children,
-}: {
-    component: UIComponentDefinition;
-    children: ReactNode;
-}) {
-    const frameRef = useRef<HTMLDivElement | null>(null);
-    const [frameWidth, setFrameWidth] = useState(0);
+const COMPONENT_PREVIEW_HEIGHT = 80;
+const COMPONENT_PREVIEW_FRAME_CLASS =
+    "mt-2 h-20 w-full overflow-hidden rounded-md border border-edge bg-surface-canvas";
 
-    useLayoutEffect(() => {
-        const node = frameRef.current;
-        if (!node) {
-            return undefined;
-        }
-        const update = () => setFrameWidth(Math.max(0, node.clientWidth));
-        update();
-        const observer = new ResizeObserver(update);
-        observer.observe(node);
-        return () => observer.disconnect();
-    }, []);
-
+function getComponentPreviewSize(component: UIComponentDefinition): { width: number; height: number } {
     const root = component.elements[component.rootElementId];
-    const designWidth = Math.max(1, component.previewMeta?.width ?? root?.layout.width ?? 160);
-    const designHeight = Math.max(1, component.previewMeta?.height ?? root?.layout.height ?? 88);
-    const frameHeight = 80;
-    const scale = frameWidth > 0 ? Math.min(frameWidth / designWidth, frameHeight / designHeight) : 0;
+    return {
+        width: Math.max(1, component.previewMeta?.width ?? root?.layout.width ?? 160),
+        height: Math.max(1, component.previewMeta?.height ?? root?.layout.height ?? 88),
+    };
+}
 
-    return (
-        <div ref={frameRef} className="mt-2 h-20 w-full overflow-hidden rounded-md border border-edge bg-surface-canvas">
-            <div className="relative h-full w-full">
-                {scale > 0 ? (
-                    <div
-                        className="pointer-events-none absolute"
-                        style={{
-                            left: Math.max(0, (frameWidth - designWidth * scale) / 2),
-                            top: Math.max(0, (frameHeight - designHeight * scale) / 2),
-                            width: designWidth,
-                            height: designHeight,
-                            transform: `scale(${scale})`,
-                            transformOrigin: "top left",
-                        }}
-                    >
-                        {children}
-                    </div>
-                ) : null}
-            </div>
-        </div>
-    );
+/**
+ * How many elements in the document link to each component, in one pass over the document.
+ *
+ * The per-component query is a full scan, and the card row asked it once per component on every
+ * render - quadratic in a project whose page count and component count both grow with the template
+ * store.
+ */
+function countComponentUsage(documentService: UIDocumentService | null): Record<string, number> {
+    if (!documentService) {
+        return {};
+    }
+    const counts: Record<string, number> = {};
+    for (const element of Object.values(documentService.getDocument().elements)) {
+        const link = getUIComponentLink(element);
+        if (link) {
+            counts[link.componentId] = (counts[link.componentId] ?? 0) + 1;
+        }
+    }
+    return counts;
 }
 
 export function ComponentLibraryPanel({
@@ -117,6 +100,10 @@ export function ComponentLibraryPanel({
         () => components.filter(component => selectedIds.has(component.id)),
         [components, selectedIds],
     );
+
+    // `components` is a fresh array on every document change, so this recounts exactly as often as
+    // the numbers can move and no more.
+    const usageCounts = useMemo(() => countComponentUsage(documentService), [components, documentService]);
 
     useEffect(() => {
         if (!menuState.visible) {
@@ -360,11 +347,13 @@ export function ComponentLibraryPanel({
                             filteredComponents.map(component => {
                                 const selected = selectedIds.has(component.id);
                                 const root = component.elements[component.rootElementId];
-                                const preview = runtimeBridge?.renderComponent({
-                                    componentId: component.id,
-                                    hostAdapter: { host: "app" },
-                                    editorChrome: false,
-                                });
+                                const previewSize = getComponentPreviewSize(component);
+                                const renderPreview = () =>
+                                    runtimeBridge?.renderComponent({
+                                        componentId: component.id,
+                                        hostAdapter: { host: "app" },
+                                        editorChrome: false,
+                                    }) ?? null;
                                 return (
                                     <div
                                         key={component.id}
@@ -430,13 +419,23 @@ export function ComponentLibraryPanel({
                                                 <MoreVertical className="h-3.5 w-3.5" />
                                             </button>
                                         </div>
-                                        <ComponentPreviewFrame component={component}>{preview}</ComponentPreviewFrame>
+                                        <LivePreviewFrame
+                                            previewId={component.id}
+                                            contentRevision={
+                                                documentService?.getComponentContentRevision(component.id) ?? 0
+                                            }
+                                            render={renderPreview}
+                                            designWidth={previewSize.width}
+                                            designHeight={previewSize.height}
+                                            frameHeight={COMPONENT_PREVIEW_HEIGHT}
+                                            className={COMPONENT_PREVIEW_FRAME_CLASS}
+                                        />
                                         <div className="mt-1 text-2xs text-fg-subtle">
                                             {Math.round(component.previewMeta?.width ?? root?.layout.width ?? 0)}×
                                             {Math.round(component.previewMeta?.height ?? root?.layout.height ?? 0)}
                                             {documentService ? (
                                                 <span className="ml-2">
-                                                    {t("uiEditor.componentLibrary.refs", { count: documentService.getComponentUsageCount(component.id) })}
+                                                    {t("uiEditor.componentLibrary.refs", { count: usageCounts[component.id] ?? 0 })}
                                                 </span>
                                             ) : null}
                                         </div>
