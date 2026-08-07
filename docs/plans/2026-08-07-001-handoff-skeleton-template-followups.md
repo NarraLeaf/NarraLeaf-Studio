@@ -192,31 +192,125 @@ Do not assume these work; nobody has looked.
 > If a defect makes the template embarrassing to ship, say so — that changes the
 > order of work, not just its content.
 
-### 3.1
+**All of the below were reported by the owner on 2026-08-07 and are fixed on
+`ui/skeleton-polish`.** Each entry records what turned out to be behind it, because in four
+of the nine cases the cause was not what the symptom suggested.
 
-*(what you did — what you expected — what happened)*
+### 3.1 The character sits too high — the art runs out before the frame does
 
-### 3.2
+Narra's sprite is bottom-anchored full-body, but the PNG stops above the knee, so the cut edge
+was visible. All three `character enter` rows now carry `yoffset: -50`. **The sign is not a
+typo**: NLR's y origin is the bottom edge (`PositionUtils.D2PositionToCSS` maps y to `bottom`),
+so down is negative. The cut now sits behind the dialogue band.
 
-### 3.3
+### 3.2 Scene changes should fade
 
-### 3.4
+They were `dissolve` 600ms and read as a cut, because a scene mounts with its own
+`defaultBackgroundAssetId` and a dissolve from an image to *itself* is invisible. Now
+`throughColor` 800ms through `#000`. **Residual, deliberate:** the outgoing scene still does not
+fade out — the new scene appears (in near-darkness) and then lifts. Fixing that properly means
+dropping `defaultBackgroundAssetId` from the non-entry scenes, which would cost the editor its
+scene thumbnails. Measured at 220ms into the jump the frame is genuinely dark, so it reads as a
+fade.
 
-### 3.5
+### 3.3 Page switches lag, and the config controls lie
+
+Two unrelated things.
+
+**The lag was never asset loading.** Frame-cadence sampling during a switch: fonts ready at
+0.7ms, the one image already decoded, and then frames at 121ms / 280ms / 384ms — the browser
+simply cannot produce a frame while it lays out and paints a freshly mounted surface. The
+prepaint gate waited *two* frames, so it paid that cost twice. It now waits the second frame only
+when the asset waits actually deferred (`PREPAINT_ASSET_WAIT_SIGNIFICANT_MS`), and images get
+their own short budget instead of the 900ms font budget. Click → page visible went **302ms → 143ms**
+on the worst page (Load, with a save screenshot) and 68–85ms → 82–112ms elsewhere. What is left is
+surface mount cost; making it smaller means making surfaces cheaper to mount, not tuning gates.
+
+**The controls were static props, not state.** The theme baked "selected" into `All text` and
+`On` as flat props, so the pair read as a label. All six selectable buttons (`Text`/`Sound`,
+`All text`/`Read only`, `On`/`Off`) now carry `default` + `selected` appearance variants, every
+click repaints its whole group through `Set Element Variant`, and three `Surface Init` heads seed
+the initial state from the live values (`Get Skip Read Text`, `Get Fullscreen`). **Note the
+redesign:** `nl.button` cannot drive its text colour from a variant (`color` is not a
+`ButtonAppearancePropertyKey`), so the old solid-gold-slab-with-dark-text look could not survive
+being toggled. Selection is carried by fill + border with one ink colour per group.
+
+### 3.4 The title screen has no background
+
+It had one all along — `Key art` was assigned `room-warm` and shipped with `fillVisible: false`,
+which `RectangleChromeRenderer` renders at `opacity: 0`. Flipped on at `fillOpacity: 0.3` so the
+title and the menu still read over it.
+
+### 3.5 In-game overlays cover the stage completely
+
+Surfaces opened over a running game now composite their background at 50%
+(`GAME_OVERLAY_BACKGROUND_ALPHA`, applied only when the nav entry's presentation is
+`gameOverlay`). Needed three changes, not one: the animation layer's colour, the design-size layer
+underneath it (which repainted the authored colour opaque), and the pages' own full-bleed
+containers — whose `appearance` model overrode the flat `fillVisible: false` and put the sheet
+back. **Trade-off worth a decision:** at 50% the config labels sit on a busy scene and contrast
+drops. The constant is one edit away if you want 0.65.
+
+### 3.6 Subtle motion on key buttons
+
+The five title buttons take a gold `effectTextShadow` halo and 8px of travel on hover, tweened
+over 160ms. Glyph glow rather than box glow, because those buttons have no chrome to light up.
+
+### 3.7 The dialogue does not always advance where you click
+
+Not the click host, and not `Sentence` or the nametag — those already bubble. The **notification
+slot** was eating it: its toast list is a 440×400 box pinned to the top right of the stage,
+present whether or not a notification exists. NarraLeaf's own wrapper is `pointer-events: none`,
+but every widget wrapper sets it back to `auto`, so an ancestor could not switch it off. Hit-test
+mapping showed a dead rectangle at roughly (1010–1290, 240–480) CSS px. The slot is now rendered
+`passive` (`SurfacePassiveContext`), and the same map comes back with no dead zone at all.
+
+### 3.8 Surfaces should dissolve
+
+Every app surface was `pageAnimation: none/none`. Now `fade`/`fade` at 0.22s with
+`exitBlocking: false`, which is what puts both layers on screen at once — a true cross-dissolve
+rather than out-then-in. This is also what makes the residual mount cost tolerable: the outgoing
+page starts fading immediately, so a click is never silent.
+
+### 3.9 Loading a save renders nothing (`app://fs/…` 404)
+
+The headline defect, and a Studio bug rather than a template one. `app://fs/{token}` is a
+**capability grant, not a content address**: `StorageManager.allocateHash` mints
+`crypto.randomBytes(32)` per read and holds it in an in-memory `Map` that Dev Mode scopes to its
+window. The compiler bakes that URL into `Image` state, the engine serializes `state.currentSrc`
+verbatim, and `deserialize` puts the dead token back over the fresh compile — so every stage image
+in any save older than the current window 404s. The packaged runtime never had this, because it
+mints `nlr://asset/{assetId}`.
+
+Fixed in `StorageManager.stabilizeSessionRead`: the Dev Mode resolver re-keys each grant to a
+token derived from `(resolved path, size, mtime)`, so the same file yields the same URL in every
+run. Including the bytes' identity is what keeps the handler's `max-age=3600` honest — a replaced
+asset mints a different token instead of serving a stale cache. Verified by writing a save,
+**restarting Studio completely**, and loading it: background, sprite, nametag and line all come
+back, and the log has no `Hash not found`.
+
+⚠ **Saves written before this fix cannot be recovered.** The stale tokens carry no information
+about what they pointed at — no asset id, no path — so there is nothing to remap. The owner's
+repro slot (`D:\tmp\skeleton`, dev slot 1) stays broken; delete it.
 
 ---
 
 ## 4. Suggested order
 
-Once §3 is filled in, that decides the order. Absent anything there, mine would be:
+§3 is done. What remains, in the order I would take it:
 
-1. **§2.3 (localize the screens)** — it is the gap most visible to the audience the
+1. **§2.3 (localize the screens)** — still the gap most visible to the audience the
    template exists for, and it is content work with no unknowns.
 2. **§2.4 (build a project from the template for real)** — the largest unknown, and
-   the one that could invalidate the claim that the template works.
-3. **§2.2 (avatar re-bake)** — small, self-contained, and it silently wastes an
+   the one that could invalidate the claim that the template works. Note that §3's round
+   was again Dev-Mode-only.
+3. **Save screenshots are 1.2 MB each.** `liveGame.capturePng()` returns the frame at full
+   resolution and Studio stores the data URI whole, so six filled slots is ~7 MB of save data and a
+   Load screen that decodes 7 MB of PNG. Downscaling before storing is the obvious fix and would
+   also take the remaining edge off §3.3.
+4. **§2.2 (avatar re-bake)** — small, self-contained, and it silently wastes an
    author's time today.
-4. **§2.1 (list row addressability)** — the deepest change, and nothing needs it yet.
+5. **§2.1 (list row addressability)** — the deepest change, and nothing needs it yet.
 
 ## 5. Definition of done
 

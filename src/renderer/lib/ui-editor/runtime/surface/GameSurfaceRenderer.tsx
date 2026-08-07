@@ -9,6 +9,7 @@ import type {
     SurfaceLifecycleSignals,
 } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { SurfaceElementTree } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import { SurfacePassiveContext } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -36,6 +37,20 @@ export type GameSurfaceRendererProps = {
      * inline style can override.
      */
     surfacePointerEvents?: CSSProperties["pointerEvents"];
+    /**
+     * The surface is display-only: no widget inside it takes pointer events. Distinct from
+     * `surfacePointerEvents`, which only makes the shell click-through and is defeated by the first
+     * full-size container. See {@link SurfacePassiveContext}.
+     */
+    passive?: boolean;
+    /**
+     * Background the design-size layer paints, overriding the surface's authored colour.
+     *
+     * The app surface stack resolves the colour itself (an in-game overlay thins it, see
+     * `getSurfaceLayerBackgroundColor`) and paints it on the animation layer. Repainting the authored
+     * colour here would put an opaque sheet back over it one level down.
+     */
+    backgroundColor?: string;
 };
 
 export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
@@ -55,6 +70,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         keyboardInteractive = interactive,
         onRuntimeSubscriptionsReady,
         surfacePointerEvents,
+        passive = false,
+        backgroundColor,
     } = props;
     const [, setBindingRenderTick] = useState(0);
     const [, setRuntimePatchRenderTick] = useState(0);
@@ -143,13 +160,14 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         width: surface.designSize.width,
         height: surface.designSize.height,
         overflow: "hidden",
-        backgroundColor: getSurfaceBackgroundColor(surface),
+        backgroundColor: backgroundColor ?? getSurfaceBackgroundColor(surface),
         transform: `scale(${safeScale})`,
         transformOrigin: "top left",
         ...(surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
     };
 
     return (
+        <SurfacePassiveContext.Provider value={passive}>
         <div
             className="ui-editor-surface"
             data-ui-surface-id={surface.id}
@@ -175,5 +193,6 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
                 />
             </div>
         </div>
+        </SurfacePassiveContext.Provider>
     );
 }
