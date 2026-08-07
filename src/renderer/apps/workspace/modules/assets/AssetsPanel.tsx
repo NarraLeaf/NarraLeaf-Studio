@@ -145,6 +145,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         const uiService = context.services.get<UIService>(Services.UI);
         return createInputDialog(uiService);
     }, [context]);
+    // How the context menu's developer section says an identifier reached the clipboard.
+    const notifyFromMenu = useMemo(() => {
+        if (!context) return undefined;
+        const uiService = context.services.get<UIService>(Services.UI);
+        return (message: string, type: "success" | "error") => uiService.showNotification(message, type);
+    }, [context]);
 
     const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTargetState | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
@@ -450,7 +456,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleReplaceContent: () => handleReplaceContent(),
         handleConvertMedia: () => handleConvertMedia(),
         canConvertMedia,
-        handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
+        handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick,
+        notify: notifyFromMenu,
     });
 
     const handleRootDrop = useCallback(
