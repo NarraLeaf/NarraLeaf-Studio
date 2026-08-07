@@ -95,7 +95,6 @@ export const uiEditor = {
         selectAll: "全选",
         expandAll: "全部展开",
         collapseAll: "全部折叠",
-        copyElementId: "复制元素 ID",
         rename: "重命名…",
         showSelected: "显示所选",
         hideSelected: "隐藏所选",

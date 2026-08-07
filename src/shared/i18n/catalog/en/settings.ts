@@ -62,6 +62,10 @@ export const settings = {
             label: "Language",
             description: "Display language for the Studio interface.",
         },
+        developerMode: {
+            label: "Developer options",
+            description: "Right-click menus gain a section for copying the ID of what you clicked.",
+        },
         themeMode: {
             label: "Theme",
             description: "Color theme for the Studio interface.",

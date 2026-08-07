@@ -20,8 +20,9 @@ import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/el
 import { PanelsTopLeft } from "lucide-react";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
-import type { UseTranslation } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { appendDeveloperIdSection } from "@/lib/developer";
+import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
 import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
@@ -102,14 +103,6 @@ function getSurfaceIdentityLabel(surface: UISurface): string {
         return DEFAULT_APP_SURFACE_NAME;
     }
     return surface.kind === "appSurface" ? "Page" : "Game UI";
-}
-
-// Localized surface-type label used in confirms, notifications, and context-menu items.
-function getSurfaceDisplayLabel(surface: UISurface, t: UseTranslation["t"]): string {
-    if (surface.id === MAIN_APP_SURFACE_ID) {
-        return DEFAULT_APP_SURFACE_NAME;
-    }
-    return surface.kind === "appSurface" ? t("uiEditor.surfaceKind.page") : t("uiEditor.surfaceKind.gameUi");
 }
 
 // Exported for the quick-open picker, so surfaces open through the exact same tab definition.
@@ -395,10 +388,14 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     },
                 );
             }
-            setMenuItems(items);
+            setMenuItems(appendDeveloperIdSection(
+                items,
+                [{ kind: "surface", value: surface.id, label }],
+                { hideMenu, notify: uiService?.showNotification.bind(uiService) },
+            ));
             showMenu(event);
         },
-        [freeze, showMenu, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface, t],
+        [freeze, showMenu, hideMenu, uiService, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface, t],
     );
 
     const promptCreateSurface = useCallback(
