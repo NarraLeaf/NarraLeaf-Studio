@@ -108,6 +108,26 @@ export const uiEditor = {
             sendBackward: "Send backward",
         },
     },
+    // One home for the eight command names: the canvas toolbar, the canvas context menu and the
+    // outline context menu all render the same words, so they are not repeated per surface.
+    align: {
+        label: "Align",
+        distribute: "Distribute",
+        left: "Align left",
+        horizontalCenter: "Center horizontally",
+        right: "Align right",
+        top: "Align top",
+        verticalCenter: "Center vertically",
+        bottom: "Align bottom",
+        distributeHorizontal: "Distribute horizontally",
+        distributeVertical: "Distribute vertically",
+    },
+    preview: {
+        label: "Screen preview",
+        aspect: "Aspect ratio",
+        safeArea: "Safe area",
+        off: "Off",
+    },
     templateStore: {
         open: "Start from a template",
         title: "UI templates",
