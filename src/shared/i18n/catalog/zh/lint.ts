@@ -24,9 +24,9 @@ export const lint = {
         },
         assetsUnreadable: {
             title: "资源无法读取",
-            description: "文件读不出来，或者解码失败",
+            description: "文件无法读取，或者解码失败",
             message: "{asset} 无法解码",
-            messageMissingBytes: "{asset} 读不出文件内容",
+            messageMissingBytes: "{asset} 的文件内容无法读取",
         },
         portabilityAssetName: {
             title: "文件名不安全",
@@ -40,7 +40,7 @@ export const lint = {
         },
         portabilityMediaFormat: {
             title: "格式不受支持",
-            description: "部分已选构建目标放不了的编码",
+            description: "部分已选构建目标不支持的编码",
             message: "{asset} 在 {platform} 上无法播放",
         },
         storyInvalidCommand: {
@@ -56,7 +56,7 @@ export const lint = {
         storyLabelDuplicate: {
             title: "标签重复",
             description: "同一标签声明了两次，只有第一次生效",
-            message: "{label} 在上面已经声明过，这一处永远轮不到",
+            message: "{label} 在前面已经声明，此处不会被执行到",
         },
         storyLabelUnused: {
             title: "未使用的标签",
@@ -107,9 +107,9 @@ export const lint = {
         variablesRandomOutsideAssignment: {
             title: "赋值之外的随机数",
             description: "随机值出现在会被反复重算的位置",
-            message: "{fn}() 每次判断这个条件都会重掷一次，分支会自己变。先用 /set 掷进一个变量，再判断那个变量",
-            messageChoiceOption: "{fn}() 每次绘制菜单都会重掷一次，这个选项会闪。先用 /set 掷进一个变量，再判断那个变量",
-            messageInterpolation: "{fn}() 每次绘制这一行都会重掷一次，显示的值会一直变。先用 /set 掷进一个变量，再显示那个变量",
+            message: "{fn}() 在每次判断该条件时都会重新取值，分支结果会在两次判断之间变化。请先用 /set 取值到变量，再判断该变量",
+            messageChoiceOption: "{fn}() 在每次绘制菜单时都会重新取值，该选项会闪烁。请先用 /set 取值到变量，再判断该变量",
+            messageInterpolation: "{fn}() 在每次绘制该行时都会重新取值，显示的值会不断变化。请先用 /set 取值到变量，再显示该变量",
         },
         textOverlong: {
             title: "行太长",
@@ -204,7 +204,7 @@ export const lint = {
         blocked: "{count} 个问题拦下了构建",
         // 逐级写全「面板 → 分页 → 那一行」：这道闸默认开着，没进过这个面板的作者根本不知道
         // 有这么个设置，只说「在检查设置里」等于让人自己去翻。
-        blockedHint: "可以在 项目 → 检查 → 构建前检查 里改掉这个行为",
+        blockedHint: "可在「项目 → 检查 → 构建前检查」中修改该行为",
         skipped: "已跳过工程检查",
     },
     settings: {

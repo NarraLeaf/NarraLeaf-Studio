@@ -9,7 +9,7 @@ export const devMode = {
     issues: {
         atLine: "第 {line} 行 · {scene}",
         inScene: "位于 {scene}",
-        noLocation: "无法定位到具体行",
+        noLocation: "无法定位到具体的行",
         viaPlayHead: "播放到此处",
         openInStudio: "在 Studio 中打开",
         openFailed: "该项目没有打开的工作区窗口。",

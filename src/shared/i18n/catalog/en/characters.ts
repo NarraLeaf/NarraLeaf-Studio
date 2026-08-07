@@ -26,7 +26,7 @@ export const characters = {
         // Was "This action cannot be undone." until deletion became undoable. What is worth
         // weighing now is the consequence, not the finality: lines naming this character keep the
         // reference and stop resolving.
-        deleteCharacterDetail: "Lines that name this character will stop resolving until it is back.",
+        deleteCharacterDetail: "Lines that name this character stop resolving until it is restored.",
         deleteGroupConfirm: "Delete group \"{name}\"?",
         deleteGroupDetail: "Characters in this group will be unassigned.",
     },
@@ -46,12 +46,12 @@ export const characters = {
             layered: "Layers composited and switched by tag.",
         },
         runtimeGroup: "Drawn by a runtime",
-        runtimeHint: "Needs that runtime installed in this project. The character's editor installs one.",
+        runtimeHint: "Requires that runtime to be installed in this project. Install it from the character editor.",
         colorLabel: "Colour",
         // Not a "default colour": nothing is written, and the name keeps deciding for as long as it
         // stays that way — including if the character is renamed. Said once, in the hint: the label
         // that used to sit beside the swatch was the same sentence with the reasons taken out.
-        colorAutoHint: "Left alone, a character's name decides their colour — the same name is the same colour in every project.",
+        colorAutoHint: "With no colour chosen, a character's name decides their colour. The same name gives the same colour in every project.",
         colorReset: "Compute from the name",
     },
     editor: {
@@ -113,12 +113,12 @@ export const characters = {
             vendorLink: "Open the {product} download page",
             docsLink: "Read the {product} guide",
             customDocsLink: "Read how to write a runtime",
-            neverDownloads: "Studio never downloads it for you. You get it from the vendor, which is also where you accept their licence.",
+            neverDownloads: "Studio does not download it. Obtain it from the vendor, which is also where its licence is accepted.",
             live2dTerms: "Live2D Cubism is licensed by Live2D Inc., not by NarraLeaf. You accept the Cubism SDK licence when you download it, and you are the one distributing it in the game you build. Commercial releases above Live2D's annual revenue threshold need a separate publication licence from Live2D.",
             spineTerms: "Spine Runtimes are licensed by Esoteric Software. Every person who works with Spine needs their own Spine Editor licence, and the Spine Runtimes License must travel with the game you ship. NarraLeaf holds no Spine licence, so Studio ships no Spine code and cannot build the adapter for you.",
-            sdkStep: "Choose the {product} SDK archive you downloaded. Do not extract it.",
+            sdkStep: "Choose the downloaded {product} SDK archive. Do not extract it.",
             sdkPick: "Choose SDK archive...",
-            prebuiltStep: "Choose the adapter you built. A folder is copied whole; a single file becomes the runtime's index.js.",
+            prebuiltStep: "Choose the built adapter. A folder is copied whole; a single file becomes the runtime's index.js.",
             prebuiltPickFolder: "Choose folder...",
             prebuiltPickFile: "Choose file...",
             prebuiltName: "Install as",
@@ -128,7 +128,7 @@ export const characters = {
             renamed: "Installed as \"{backend}\". Use that name on your characters.",
             remove: "Remove",
             removeConfirm: "Remove the \"{backend}\" runtime?",
-            removeDetail: "Characters using it keep the name and will draw an empty box until it is installed again.",
+            removeDetail: "Characters using it keep the name and draw an empty box until it is installed again.",
             customName: "Runtime name",
             customNameHint: "Also the folder it lives in, under runtimes/puppet/.",
         },
@@ -215,7 +215,7 @@ export const characters = {
             duplicateAxis: "Two axes are named {name}",
             axisDefaultMissing: "{axis} has no default tag; {name} is used instead",
             occluded: "{name} is completely covered by the layers above it",
-            avatarCombinations: "{count} dialog avatars will be baked; narrow the axes to reduce it",
+            avatarCombinations: "{count} dialogue avatars will be baked. Narrow the axes to reduce the count",
             combinationNoArt: "{name} draws nothing at all",
             snapshotStale: "{name} was saved with tags that no longer exist",
             poseNoImage: "{name} has no image",
@@ -253,7 +253,7 @@ export const characters = {
         voiceTrackMissing: "Missing bus",
         // Shown only while there is nothing under Voice to pick, i.e. exactly when the select cannot
         // help and the author has to go and make a bus first.
-        voiceTrackEmpty: "Add a bus under Voice in Project → Audio to give this character its own volume.",
+        voiceTrackEmpty: "Add a bus under Voice in Project → Audio to give this character its own volume control.",
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",
