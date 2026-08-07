@@ -11,6 +11,8 @@ import type {
     UITemplateBundle,
     UITemplateFetchedAsset,
     UITemplatePreview,
+    UIThemeDescriptor,
+    UIThemePreview,
     UITemplateRegistryEntry,
     UITemplateRegistryIndex,
     UITemplateSurfacePlacement,
@@ -130,8 +132,10 @@ function normalizeUITemplateEntry(raw: unknown): UITemplateRegistryEntry | null 
     if (preview && !isSafeRelativeEntry(preview)) {
         return null;
     }
+    const theme = asString(record.theme);
     return {
         id,
+        theme: theme || undefined,
         name: asString(record.name) || id,
         version: asString(record.version),
         description: asString(record.description),
@@ -143,6 +147,37 @@ function normalizeUITemplateEntry(raw: unknown): UITemplateRegistryEntry | null 
         preview: preview || undefined,
         surface: normalizeSurfacePlacement(record.surface),
         assets: normalizeAssets(record.assets),
+    };
+}
+
+/**
+ * Coerce one raw theme record, or `null` if it lacks what the store needs to draw
+ * a card. `templateCount` is trusted only as a number — the renderer counts the
+ * entries it actually has rather than relying on it.
+ */
+function normalizeThemeDescriptor(raw: unknown): UIThemeDescriptor | null {
+    if (!raw || typeof raw !== "object") {
+        return null;
+    }
+    const record = raw as Record<string, unknown>;
+    const id = asString(record.id);
+    const path = asString(record.path);
+    const preview = asString(record.preview);
+    if (!id || !path) {
+        return null;
+    }
+    if (preview && !isSafeRelativeEntry(preview)) {
+        return null;
+    }
+    return {
+        id,
+        name: asString(record.name) || id,
+        version: asString(record.version),
+        description: asString(record.description),
+        publisher: asString(record.publisher),
+        path,
+        preview: preview || undefined,
+        templateCount: typeof record.templateCount === "number" ? record.templateCount : 0,
     };
 }
 
@@ -171,9 +206,17 @@ export async function fetchTemplateIndex(url: string): Promise<UITemplateRegistr
             .map(normalizeUITemplateEntry)
             .filter((entry): entry is UITemplateRegistryEntry => entry !== null)
         : [];
+    // Additive: a registry that predates themes simply has none, and the store
+    // falls back to one flat shelf rather than showing an empty browse level.
+    const themes = Array.isArray(record.themes)
+        ? record.themes
+            .map(normalizeThemeDescriptor)
+            .filter((theme): theme is UIThemeDescriptor => theme !== null)
+        : [];
     return {
         formatVersion: UI_TEMPLATE_REGISTRY_FORMAT_VERSION,
         repository: asString(record.repository),
+        themes,
         templates,
     };
 }
@@ -250,6 +293,33 @@ async function fetchAssetFile(url: string, ref: UITemplateAssetRef): Promise<UIT
         mime: inferMime(fileName),
         dataBase64: buffer.toString("base64"),
     };
+}
+
+/**
+ * Fetch each requested theme's poster image.
+ *
+ * The renderer never reaches the network itself, so the bytes come back base64 and
+ * it turns them into a data URL. One theme failing costs its own card.
+ */
+export async function fetchThemePreviews(
+    themes: UIThemeDescriptor[],
+    indexUrl: string,
+): Promise<UIThemePreview[]> {
+    const baseDir = registryBaseDir(indexUrl);
+    const previews: UIThemePreview[] = [];
+    for (const theme of themes) {
+        if (!theme.preview) {
+            continue;
+        }
+        try {
+            const url = resolveTemplateFileUrl(baseDir, theme.path, theme.preview);
+            const fetched = await fetchAssetFile(url, { id: theme.id, path: theme.preview });
+            previews.push({ id: theme.id, mime: fetched.mime, dataBase64: fetched.dataBase64 });
+        } catch (error) {
+            console.warn(`[uiTemplates] theme poster unavailable for ${theme.id}`, error);
+        }
+    }
+    return previews;
 }
 
 /**

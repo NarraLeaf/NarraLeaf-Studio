@@ -24,9 +24,36 @@ function run(cmd, args = [], opts = {}) {
     });
 }
 
+/**
+ * The architecture electron-builder was asked to package for, or null when it was not told.
+ *
+ * Load-bearing for anything that stages a native binary, because the runner's architecture and the
+ * installer's are not the same thing: a staging step that keys on `process.arch` will happily put a
+ * binary inside an installer where it cannot execute. Same class of mistake npm_config_arch exists
+ * to prevent for the Electron runtime itself - see the note in .github/workflows/release.yml.
+ *
+ * No shipped target cross-builds today (Studio packages one arch per platform, and macOS is Apple
+ * Silicon only since Intel Macs are no longer a supported host), so in practice this now agrees
+ * with the host. It is kept because "the runner is the target" is a property of the current matrix,
+ * not of this script, and the failure when it stops holding is a silent one.
+ *
+ * `--universal` deliberately yields null rather than an arch: a universal target needs a fat binary,
+ * which none of the staging steps can produce, and passing either half would be a lie. They fall
+ * back to the host and their own per-arch tables decide.
+ */
+function targetArch(args) {
+    if (args.includes('--x64')) return 'x64';
+    if (args.includes('--arm64')) return 'arm64';
+    return null;
+}
+
 (async () => {
     const rootDir = path.resolve(__dirname, '../..');
     process.chdir(rootDir);
+
+    const extraArgs = process.argv.slice(2);
+    const arch = targetArch(extraArgs);
+    const archArgs = arch === null ? [] : [`--arch=${arch}`];
 
     try {
         console.log('[pack] Building preview runtime (production)...');
@@ -47,14 +74,18 @@ function run(cmd, args = [], opts = {}) {
         console.log('[pack] Staging mobile shell templates...');
         await run('node', ['project/build/prepare-mobile-shell.js']);
 
+        // --arch goes to both staging steps below and to none of the ones above: these two write
+        // native binaries that electron-builder then copies into the installer wholesale, and the
+        // runner's architecture is not the installer's. See targetArch above. Getting it wrong
+        // costs a Mach-O that cannot execute where it lands on the zsign side, and a wasted 3-5
+        // minute compile producing the same on the FFmpeg side.
         console.log('[pack] Staging code-signing tools...');
-        await run('node', ['project/build/prepare-codesign-tools.js']);
+        await run('node', ['project/build/prepare-codesign-tools.js', ...archArgs]);
 
         console.log('[pack] Staging FFmpeg tools...');
-        await run('node', ['project/build/prepare-ffmpeg.js']);
+        await run('node', ['project/build/prepare-ffmpeg.js', ...archArgs]);
 
         console.log('[pack] Packaging with electron-builder...');
-        const extraArgs = process.argv.slice(2);
         // Force output dir to build/ unless user overrides via CLI
         const hasOutputArg = extraArgs.some((arg) => arg.includes('directories.output'));
         const builderArgs = [

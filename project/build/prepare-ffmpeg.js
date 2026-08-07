@@ -5,7 +5,7 @@
  * extraResources copies them into the packaged Studio. Two binaries: ffprobe, which reads what is
  * inside a media file, and ffmpeg, which converts it.
  *
- * Same discipline as prepare-codesign-tools.js, and the same reasoning: the payload is fetched
+ * Same discipline as prepare-codesign-tools.js, and the same reasoning: the payload is obtained
  * while *Studio* is being built, never on the author's machine. An author importing a video must
  * not be waiting on a download and must not need a toolchain installed. So this script carries the
  * trust anchor itself - the sha256 of every asset is written down here and verified before
@@ -17,9 +17,13 @@
  *
  *   resources/ffmpeg/<platform>/ffmpeg[.exe]     the converter
  *   resources/ffmpeg/<platform>/ffprobe[.exe]    the inspector
- *   resources/ffmpeg/<platform>/LICENSE          upstream LGPLv3 notice, taken from inside the
- *                                                archive; we redistribute the binaries, so the
- *                                                notice ships next to them
+ *   resources/ffmpeg/<platform>/LICENSE          the notice for *this* build: the LGPLv3 text from
+ *                                                inside the archive on Windows and Linux, the
+ *                                                LGPLv2.1 text from the FFmpeg source tree on
+ *                                                macOS. We redistribute the binaries, so the
+ *                                                notice ships next to them - and the two builds
+ *                                                are not under the same version of the licence,
+ *                                                see WHERE THE BYTES COME FROM below
  *   resources/ffmpeg/<platform>/manifest.json    what was staged, so a second run is a no-op
  *
  * Usage:
@@ -29,6 +33,27 @@
  * Env:
  *   NLS_SKIP_FFMPEG=1  skip entirely (offline development builds). The resulting Studio reports
  *                      media conversion as unavailable rather than failing to build.
+ *
+ * ============================================================================================
+ * WHERE THE BYTES COME FROM - TWO ROUTES, TWO LICENCES
+ * ============================================================================================
+ *
+ * Windows and Linux take a prebuilt binary from BtbN/FFmpeg-Builds. macOS has no equivalent (see
+ * the ASSETS table), so it is **compiled from pinned source** by build-ffmpeg-macos.sh, on the
+ * machine doing the packaging, and only when that machine is a Mac.
+ *
+ * The two routes do not produce the same licence, and that difference is recorded rather than
+ * smoothed over:
+ *
+ *   win32 / linux   BtbN configures with `--enable-version3`  ->  **LGPL-3.0-or-later**
+ *   darwin          our configure line does not               ->  **LGPL-2.1-or-later**
+ *
+ * `manifest.json` carries `licenseId` and `provenance` for exactly this reason: whatever renders
+ * Studio's third-party notices has to name the right licence version and the right source for each
+ * platform's build, and it cannot infer either from the file names. The claim is not taken on
+ * trust either - `assertLgplBuild` reads the configure string out of the staged binary and refuses
+ * a macOS build that carries `--enable-version3`, because that binary would be v3 while the
+ * LGPLv2.1 text shipped beside it said otherwise.
  *
  * ============================================================================================
  * THE LICENCE IS THE HARD CONSTRAINT
@@ -47,11 +72,13 @@
  * LGPL build loses nothing. Their presence is asserted too, because a build without them would
  * stage cleanly and then fail at the first conversion.
  *
- * `--enable-version3` is set upstream, so the effective licence is **LGPL v3**, and the archive's
- * LICENSE.txt is the LGPLv3 text. Two obligations follow and are not discharged by this script:
- * the notice must reach the user (it ships beside the binaries, which covers it) and a written
- * offer for the corresponding FFmpeg source must be made. The second belongs in Studio's about /
- * third-party notices, not here.
+ * `--enable-version3` is set upstream, so the effective licence of the *prebuilt* binaries is
+ * **LGPL v3**, and the archive's LICENSE.txt is the LGPLv3 text. The macOS build we compile
+ * ourselves does not set it and is **LGPL v2.1**; it ships the LGPLv2.1 text instead. Two
+ * obligations follow either way and are not discharged by this script: the notice must reach the
+ * user (it ships beside the binaries, which covers it) and a written offer for the corresponding
+ * FFmpeg source must be made. The second belongs in Studio's about / third-party notices, not
+ * here - and it must offer the source that matches, which is why `provenance` is in the manifest.
  *
  * ============================================================================================
  * WHY THIS TAG
@@ -75,6 +102,11 @@
  *   static  (`-lgpl`)         ffmpeg.exe 113.5 MB + ffprobe.exe 113.3 MB  = ~217 MiB staged
  *   shared  (`-lgpl-shared`)  two small exes + 36 DLLs                    = ~138 MiB staged
  *
+ * The macOS binaries we build ourselves are an order of magnitude smaller - ffmpeg 23.1 MB +
+ * ffprobe 22.9 MB, ~46 MiB staged - because they carry only what the configure line below asks
+ * for, where BtbN's build carries every LGPL-compatible library it can find. Same shape, far less
+ * of it, and the difference is the honest cost of a build made for one application.
+ *
  * The shared variant is self-contained too - those are FFmpeg's own libraries, not the host's - so
  * the objection that ruled out shared builds for zsign does not apply here, and it is the lever to
  * pull if installer size becomes the problem. It costs a per-platform layout (`bin/` beside `lib/`
@@ -88,7 +120,11 @@ const path = require('path');
 const { path7za } = require('7zip-bin');
 const { rootDir } = require('./utils');
 
-/** Upstream build we vendor. Mirrored by FFMPEG_VERSION in src/main/app/application/managers/media/ffmpegTool.ts. */
+/**
+ * Prebuilt upstream build we vendor on Windows and Linux. Mirrored by FFMPEG_VERSION in
+ * src/main/app/application/managers/media/ffmpegTool.ts. macOS has its own version constant below;
+ * it is compiled, not downloaded.
+ */
 const FFMPEG_VERSION = 'n8.1.2-34-g9b6c8969e0';
 const BUILD_TAG = 'autobuild-2026-07-31-14-10';
 const RELEASE_BASE = `https://github.com/BtbN/FFmpeg-Builds/releases/download/${BUILD_TAG}/`;
@@ -97,23 +133,60 @@ const RELEASE_BASE = `https://github.com/BtbN/FFmpeg-Builds/releases/download/${
 const LICENSE_SHA256 = 'da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768';
 
 /**
+ * The macOS build is compiled here rather than downloaded, so its "version" is the FFmpeg release
+ * it is built from - a different, earlier commit than the BtbN pin above. Kept apart on purpose:
+ * writing the BtbN string into a manifest for bytes that never came from BtbN would make the
+ * `alreadyStaged` check and the third-party notice both lie.
+ *
+ * The tarball name and sha256 are duplicated from build-ffmpeg-macos.sh, which verifies them
+ * itself before unpacking anything. They are repeated here so `alreadyStaged` can key on them the
+ * same way it keys on a downloaded asset - bump one and the next run rebuilds instead of
+ * short-circuiting. The two must agree; the script is the one that enforces it against real bytes.
+ */
+const FFMPEG_SOURCE_VERSION = '8.1.2';
+const FFMPEG_SOURCE_ASSET = `ffmpeg-${FFMPEG_SOURCE_VERSION}.tar.xz`;
+const FFMPEG_SOURCE_SHA256 = '464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c';
+const FFMPEG_SOURCE_URL = `https://ffmpeg.org/releases/${FFMPEG_SOURCE_ASSET}`;
+/** Repo-relative, forward-slashed: it is written into the manifest and printed, never joined raw. */
+const MACOS_BUILD_SCRIPT = 'project/build/build-ffmpeg-macos.sh';
+
+/**
  * Which asset serves which host, keyed by process.platform.
  *
  * `dir` is the directory name inside the archive - it embeds the version, so it moves with the pin
  * and is written here rather than derived, since a wrong guess would fail deep inside 7za with an
  * unhelpful message.
  *
- * **macOS is `null`, and that is a decision rather than an omission.** BtbN publishes no macOS
- * asset at all (win64/winarm64/linux64/linuxarm64 only), and every mainstream macOS FFmpeg
- * distribution is GPL: evermeet.cx, osxexperts.net, Homebrew's formula and the popular npm/PyPI
- * wrappers all configure with `--enable-gpl --enable-libx264 --enable-libx265`. Two genuinely
- * LGPL macOS options do exist - conda-forge's `lgpl_*` ffmpeg build, which is current but
- * dynamically linked against a ~40-package dependency closure, and the `ae-ffmpeg` 1.1.2 wheel,
- * which is static but frozen on a 2023 FFmpeg snapshot because 1.2.0 dropped ffprobe. Neither is
- * a drop-in, and choosing between "ship a 40-package closure" and "ship three-year-old FFmpeg" is
- * a distribution call for the project to make, not a gap for this script to paper over. Until it
- * is made, macOS reports conversion as unavailable - the same posture iOS signing already takes on
- * hosts zsign does not serve.
+ * **macOS is built, not downloaded** (`build: 'source'`), because there is nothing fit to
+ * download. BtbN publishes no macOS asset at all (win64/winarm64/linux64/linuxarm64 only), and
+ * every mainstream macOS FFmpeg distribution is GPL: evermeet.cx, osxexperts.net, Homebrew's
+ * formula and the popular npm/PyPI wrappers all configure with `--enable-gpl --enable-libx264
+ * --enable-libx265`. The two genuinely LGPL macOS options are both unfit for a different reason -
+ * conda-forge's `lgpl_*` build is current but dynamically linked against a ~40-package dependency
+ * closure, and the `ae-ffmpeg` 1.1.2 wheel is static but frozen on a 2023 FFmpeg snapshot because
+ * 1.2.0 dropped ffprobe. Compiling from pinned source avoids choosing between "ship a 40-package
+ * closure" and "ship three-year-old FFmpeg": build-ffmpeg-macos.sh produces one self-contained
+ * static binary per tool from tarballs verified against sha256s written down in the script, and
+ * refuses to hand anything back that does not pass a licence and functional gate.
+ *
+ * The cost is that only a Mac can stage macOS, and only for its own architecture.
+ *
+ * `darwin.x64` is `null`, and the reason is no longer "we have not compiled it yet": **Studio is
+ * not shipped for Intel Macs**, so there is no host to stage it for. Version control
+ * (@lore-vcs ships only sdk-arm64-apple-darwin) and iOS signing (zsign publishes no macOS x64
+ * asset) are missing there too, two of the three not ours to fix, and letting an author meet those
+ * gaps one at a time after their work is inside the tool is worse than one honest "not this
+ * platform". Rosetta runs x64 on Apple Silicon and never the reverse, so an arm64 build is not a
+ * fallback either. Kept as an explicit `null` rather than omitted so the skip below can say why.
+ *
+ * None of that touches the *game* build targets: a game packaged on Apple Silicon still ships for
+ * Intel Macs (GAME_BUILD_ARCHS_BY_PLATFORM in src/shared/types/gameBuild.ts). Those bytes are
+ * @narraleaf/encryption's prebuilt darwin-x64 nlcrypto.node plus Electron's own x64 runtime,
+ * neither of which is staged here.
+ *
+ * On any non-macOS host, and on a Mac with no Command Line Tools, staging is skipped and conversion
+ * reports as unavailable; the packaging run does not fail, exactly as it does not fail today when a
+ * platform has nothing to stage.
  */
 const ASSETS = {
     win32: {
@@ -132,15 +205,53 @@ const ASSETS = {
             suffix: '',
         },
     },
-    // See the note above. Recorded rather than omitted so the skip below can say why.
     darwin: {
-        arm64: null,
+        arm64: {
+            build: 'source',
+            // Not an archive we unpack - the build script fetches and verifies it. Recorded here
+            // so `alreadyStaged` has something version-shaped to key on, the way it keys on a
+            // downloaded asset.
+            asset: FFMPEG_SOURCE_ASSET,
+            sha256: FFMPEG_SOURCE_SHA256,
+            suffix: '',
+        },
+        // Studio does not ship for Intel Macs - see the note above. Recorded rather than omitted
+        // so the skip below can say why.
         x64: null,
     },
 };
 
 /** The binaries we stage. ffplay is in the archive too and is deliberately left behind. */
 const BINARIES = ['ffmpeg', 'ffprobe'];
+
+/**
+ * What goes in the manifest about *where this build came from and under what terms*.
+ *
+ * Derived from the spec rather than written into each row, because the two routes differ in every
+ * one of these fields at once and pairing them up by hand is how a manifest ends up claiming LGPL
+ * v3 for a v2.1 binary. See "WHERE THE BYTES COME FROM" at the top.
+ *
+ * `provenance` is what a third-party-notices renderer keys on: `prebuilt` needs a written offer
+ * pointing at BtbN's corresponding sources, `from-source` at the exact FFmpeg release tarball
+ * named in `source`.
+ */
+function manifestFacts(spec) {
+    if (spec.build === 'source') {
+        return {
+            version: FFMPEG_SOURCE_VERSION,
+            licenseId: 'LGPL-2.1-or-later',
+            provenance: 'from-source',
+            source: FFMPEG_SOURCE_URL,
+            builtBy: MACOS_BUILD_SCRIPT,
+        };
+    }
+    return {
+        version: FFMPEG_VERSION,
+        licenseId: 'LGPL-3.0-or-later',
+        provenance: 'prebuilt',
+        source: `https://github.com/BtbN/FFmpeg-Builds/releases/tag/${BUILD_TAG}`,
+    };
+}
 
 function argValue(name) {
     const prefix = `--${name}=`;
@@ -262,15 +373,25 @@ function extractEntries(archive, assetName, entries, outDir) {
  *
  * Verified against this pin on 2026-08-06: neither GPL flag appears, both codec flags do, and the
  * configure line additionally carries `--disable-libx264 --disable-libx265 --disable-libxvid`.
+ *
+ * `extraForbidden` carries the one flag whose meaning is per-route rather than absolute:
+ * `--enable-version3`. It is *expected* in the BtbN builds, which are LGPL v3 and ship the LGPLv3
+ * text, and *forbidden* in the macOS build, which is LGPL v2.1 and ships the LGPLv2.1 text. Same
+ * byte scan, opposite verdict, so it cannot be baked into the list above. This is what keeps the
+ * manifest's `licenseId` an observation rather than an assumption.
  */
-function assertLgplBuild(binaryPath) {
+function assertLgplBuild(binaryPath, extraForbidden = []) {
     const bytes = fs.readFileSync(binaryPath);
     const has = (needle) => bytes.includes(Buffer.from(needle, 'latin1'));
-    for (const forbidden of ['--enable-gpl', '--enable-nonfree']) {
+    for (const forbidden of ['--enable-gpl', '--enable-nonfree', ...extraForbidden]) {
         if (has(forbidden)) {
             throw new Error(
-                `${path.basename(binaryPath)} was built with ${forbidden}; only LGPL builds may be `
-                + 'staged, because bundling a GPL binary relicenses the installer',
+                forbidden === '--enable-version3'
+                    ? `${path.basename(binaryPath)} was built with --enable-version3, so it is LGPL `
+                        + 'v3 - but the LGPLv2.1 text is what ships beside it and the manifest says '
+                        + 'LGPL-2.1-or-later. Fix the configure line or fix both of those, not one'
+                    : `${path.basename(binaryPath)} was built with ${forbidden}; only LGPL builds `
+                        + 'may be staged, because bundling a GPL binary relicenses the installer',
             );
         }
     }
@@ -284,25 +405,39 @@ function assertLgplBuild(binaryPath) {
     }
 }
 
-/** True when the staged tree is already exactly what this script would produce. */
-function alreadyStaged(targetDir, spec, platform, arch) {
+/** The manifest of an already-staged tree, or null if there is not a readable one. */
+function stagedManifest(targetDir) {
     const manifestPath = path.join(targetDir, 'manifest.json');
     if (!fs.existsSync(manifestPath)) {
-        return false;
+        return null;
     }
-    let manifest;
     try {
-        manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     } catch {
+        // Unreadable is treated as absent everywhere: staging replaces the tree wholesale, so there
+        // is nothing to be gained by distinguishing "corrupt" from "missing".
+        return null;
+    }
+}
+
+/** True when the staged tree is already exactly what this script would produce. */
+function alreadyStaged(targetDir, spec, platform, arch) {
+    const manifest = stagedManifest(targetDir);
+    if (manifest === null) {
         return false;
     }
+    const facts = manifestFacts(spec);
     if (
         manifest.tool !== 'ffmpeg'
-        || manifest.version !== FFMPEG_VERSION
+        || manifest.version !== facts.version
         || manifest.platform !== platform
         || manifest.arch !== arch
         || manifest.asset !== spec.asset
         || manifest.assetSha256 !== spec.sha256
+        // A tree staged before the licence split carries no provenance and must be restaged, or a
+        // notices page reading the manifest would find nothing where the licence version lives.
+        || manifest.provenance !== facts.provenance
+        || manifest.licenseId !== facts.licenseId
     ) {
         return false;
     }
@@ -323,6 +458,91 @@ function alreadyStaged(targetDir, spec, platform, arch) {
     return true;
 }
 
+/**
+ * Download route: leave `<stagingDir>/ffmpeg[.exe]`, `<stagingDir>/ffprobe[.exe]` and
+ * `<stagingDir>/LICENSE` behind, and nothing else.
+ */
+async function stageFromDownload(spec, stagingDir) {
+    console.log(`[ffmpeg] fetching ${spec.asset} (${BUILD_TAG})`);
+    const archive = await download(`${RELEASE_BASE}${spec.asset}`, spec.sha256);
+
+    const licenseEntry = `${spec.dir}/LICENSE.txt`;
+    const binaryEntries = BINARIES.map((binary) => `${spec.dir}/bin/${binary}${spec.suffix}`);
+    extractEntries(archive, spec.asset, [...binaryEntries, licenseEntry], stagingDir);
+
+    const license = fs.readFileSync(path.join(stagingDir, spec.dir, 'LICENSE.txt'));
+    if (sha256(license) !== LICENSE_SHA256) {
+        throw new Error(
+            'the archive\'s LICENSE.txt is not the LGPLv3 text this pin was reviewed against; '
+            + 'upstream may have changed the build\'s licensing',
+        );
+    }
+    fs.writeFileSync(path.join(stagingDir, 'LICENSE'), license);
+
+    for (const binary of BINARIES) {
+        fs.renameSync(
+            path.join(stagingDir, spec.dir, 'bin', `${binary}${spec.suffix}`),
+            path.join(stagingDir, `${binary}${spec.suffix}`),
+        );
+    }
+    fs.rmSync(path.join(stagingDir, spec.dir), { recursive: true, force: true });
+}
+
+/** Exit code build-ffmpeg-macos.sh uses for "this machine cannot build at all". */
+const NO_TOOLCHAIN_EXIT = 3;
+
+/**
+ * Source route: hand the staging directory to build-ffmpeg-macos.sh and leave the same three files
+ * behind. Returns `null` on success, or a one-line reason the caller should skip on.
+ *
+ * A build failure is a *skip*, not an error, which is the same posture the whole script already
+ * takes towards a platform it cannot serve: a Mac without Command Line Tools must still be able to
+ * package Studio, it just gets one that reports conversion as unavailable. That is why this returns
+ * a reason instead of throwing.
+ *
+ * Invoked through `bash` explicitly rather than relying on the executable bit, which does not
+ * survive a checkout made on Windows.
+ *
+ * `stdio: 'inherit'` on purpose. The build takes minutes and the script's own log lines - and, when
+ * something goes wrong, the tail of the failing step's log - are the only thing standing between
+ * the operator and a silent multi-minute pause.
+ */
+function stageFromSource(stagingDir) {
+    const script = path.join(rootDir, ...MACOS_BUILD_SCRIPT.split('/'));
+    if (!fs.existsSync(script)) {
+        throw new Error(`${MACOS_BUILD_SCRIPT} is missing; it is what produces the macOS binaries`);
+    }
+
+    console.log(
+        `[ffmpeg] no prebuilt LGPL FFmpeg exists for macOS, so ${FFMPEG_SOURCE_VERSION} is compiled `
+        + 'here from pinned source. This takes roughly 3-5 minutes on an M1 - it has not hung. '
+        + 'The build\'s own output follows.',
+    );
+    try {
+        execFileSync('bash', [script, `--out=${stagingDir}`], { stdio: 'inherit' });
+    } catch (error) {
+        const status = typeof error?.status === 'number' ? error.status : null;
+        if (status === NO_TOOLCHAIN_EXIT) {
+            return 'this machine has no Xcode Command Line Tools (run: xcode-select --install)';
+        }
+        return `${MACOS_BUILD_SCRIPT} failed${status === null ? '' : ` with exit code ${status}`}`;
+    }
+
+    // The script exited 0, so it also passed its own licence and functional gates. The one thing
+    // left to check is the notice, and this one does throw rather than skip: binaries with no
+    // licence text beside them is the single outcome that must never be papered over, and it can
+    // only happen if the script itself was edited wrongly.
+    const copying = path.join(stagingDir, 'COPYING.LGPLv2.1');
+    if (!fs.existsSync(copying)) {
+        throw new Error(
+            `${MACOS_BUILD_SCRIPT} produced no COPYING.LGPLv2.1; the binaries may not be staged `
+            + 'without the licence text that has to ship beside them',
+        );
+    }
+    fs.renameSync(copying, path.join(stagingDir, 'LICENSE'));
+    return null;
+}
+
 (async () => {
     if (process.env.NLS_SKIP_FFMPEG === '1') {
         console.log('[ffmpeg] NLS_SKIP_FFMPEG=1, skipping; media conversion will report as unavailable');
@@ -331,6 +551,26 @@ function alreadyStaged(targetDir, spec, platform, arch) {
 
     const platform = argValue('platform') ?? process.platform;
     const arch = argValue('arch') ?? process.arch;
+
+    // electron-builder copies whatever is sitting in resources/ffmpeg/<platform> into the installer
+    // it is building and has no idea what architecture those bytes are for, so a tree staged for a
+    // different arch is discarded here rather than shipped. Nothing downstream notices otherwise.
+    //
+    // No shipped target cross-builds any more - Studio packages one arch per platform, macOS being
+    // Apple Silicon only - so today this fires on a checkout still holding a tree from an older
+    // pin or an older Studio. It stays because the failure it prevents (a Mach-O that cannot
+    // execute where the installer lands) is silent, and it costs one manifest read.
+    const staleDir = path.join(rootDir, 'resources', 'ffmpeg', platform);
+    const stagedArch = stagedManifest(staleDir)?.arch ?? null;
+    if (stagedArch !== null && stagedArch !== arch) {
+        console.warn(
+            `[ffmpeg] discarding the staged ${platform}-${stagedArch} build: this run targets `
+            + `${platform}-${arch}, and shipping the other one would put a binary in the installer `
+            + 'that cannot execute there',
+        );
+        fs.rmSync(staleDir, { recursive: true, force: true });
+    }
+
     const spec = ASSETS[platform]?.[arch] ?? null;
     if (spec === null) {
         // Not an error. A host with no LGPL build still produces a working Studio - one that
@@ -343,9 +583,24 @@ function alreadyStaged(targetDir, spec, platform, arch) {
         return;
     }
 
+    const facts = manifestFacts(spec);
+
+    // Compiling can only happen on the machine the compiler is for. Checked before any staging
+    // directory is made so that cross-staging macOS from CI reads as a skip with a reason, not as a
+    // build that starts and then dies inside a shell script.
+    if (spec.build === 'source' && (process.platform !== platform || process.arch !== arch)) {
+        console.warn(
+            `[ffmpeg] ${platform}-${arch} is compiled from source and cannot be cross-staged from `
+            + `${process.platform}-${process.arch}; skipping. The resulting Studio cannot convert `
+            + `media on ${platform} (build it on a ${platform}-${arch} machine, or point `
+            + 'NLS_FFMPEG_DIR at a directory holding ffmpeg and ffprobe).',
+        );
+        return;
+    }
+
     const targetDir = path.join(rootDir, 'resources', 'ffmpeg', platform);
     if (alreadyStaged(targetDir, spec, platform, arch)) {
-        console.log(`[ffmpeg] ${FFMPEG_VERSION} already staged for ${platform}-${arch}, nothing to do`);
+        console.log(`[ffmpeg] ${facts.version} already staged for ${platform}-${arch}, nothing to do`);
         return;
     }
 
@@ -354,28 +609,29 @@ function alreadyStaged(targetDir, spec, platform, arch) {
         fs.rmSync(stagingDir, { recursive: true, force: true });
         fs.mkdirSync(stagingDir, { recursive: true });
 
-        console.log(`[ffmpeg] fetching ${spec.asset} (${BUILD_TAG})`);
-        const archive = await download(`${RELEASE_BASE}${spec.asset}`, spec.sha256);
-
-        const licenseEntry = `${spec.dir}/LICENSE.txt`;
-        const binaryEntries = BINARIES.map((binary) => `${spec.dir}/bin/${binary}${spec.suffix}`);
-        extractEntries(archive, spec.asset, [...binaryEntries, licenseEntry], stagingDir);
-
-        const license = fs.readFileSync(path.join(stagingDir, spec.dir, 'LICENSE.txt'));
-        if (sha256(license) !== LICENSE_SHA256) {
-            throw new Error(
-                'the archive\'s LICENSE.txt is not the LGPLv3 text this pin was reviewed against; '
-                + 'upstream may have changed the build\'s licensing',
-            );
+        if (spec.build === 'source') {
+            const skipReason = stageFromSource(stagingDir);
+            if (skipReason !== null) {
+                fs.rmSync(stagingDir, { recursive: true, force: true });
+                console.warn(
+                    `[ffmpeg] could not build FFmpeg for ${platform}-${arch}: ${skipReason}. `
+                    + 'Skipping - the resulting Studio reports media conversion as unavailable '
+                    + 'rather than failing to build (point NLS_FFMPEG_DIR at a directory holding '
+                    + 'ffmpeg and ffprobe to work around it).',
+                );
+                return;
+            }
+        } else {
+            await stageFromDownload(spec, stagingDir);
         }
-        fs.writeFileSync(path.join(stagingDir, 'LICENSE'), license);
 
+        // Both routes converge here: two binaries and a LICENSE, sitting in the staging directory.
         const binarySha256 = {};
         for (const binary of BINARIES) {
-            const extracted = path.join(stagingDir, spec.dir, 'bin', `${binary}${spec.suffix}`);
-            assertLgplBuild(extracted);
             const staged = path.join(stagingDir, `${binary}${spec.suffix}`);
-            fs.renameSync(extracted, staged);
+            // See the note on assertLgplBuild for why version3 is forbidden on one route and
+            // expected on the other.
+            assertLgplBuild(staged, spec.build === 'source' ? ['--enable-version3'] : []);
             // The archive's mode bits do not reliably survive extraction, and a non-executable
             // ffprobe fails much later with a confusing EACCES.
             if (spec.suffix === '') {
@@ -383,22 +639,23 @@ function alreadyStaged(targetDir, spec, platform, arch) {
             }
             binarySha256[binary] = sha256(fs.readFileSync(staged));
         }
-        fs.rmSync(path.join(stagingDir, spec.dir), { recursive: true, force: true });
 
         fs.writeFileSync(
             path.join(stagingDir, 'manifest.json'),
             `${JSON.stringify(
                 {
                     tool: 'ffmpeg',
-                    version: FFMPEG_VERSION,
+                    version: facts.version,
                     platform,
                     arch,
                     asset: spec.asset,
                     assetSha256: spec.sha256,
                     binaries: binarySha256,
                     license: 'LICENSE',
-                    licenseId: 'LGPL-3.0-or-later',
-                    source: `https://github.com/BtbN/FFmpeg-Builds/releases/tag/${BUILD_TAG}`,
+                    licenseId: facts.licenseId,
+                    provenance: facts.provenance,
+                    source: facts.source,
+                    ...(facts.builtBy === undefined ? {} : { builtBy: facts.builtBy }),
                 },
                 null,
                 4,
@@ -412,8 +669,8 @@ function alreadyStaged(targetDir, spec, platform, arch) {
         fs.renameSync(stagingDir, targetDir);
 
         console.log(
-            `[ffmpeg] Staged ffmpeg + ffprobe ${FFMPEG_VERSION} (${platform}-${arch}) to `
-            + `${path.relative(rootDir, targetDir)}`,
+            `[ffmpeg] Staged ffmpeg + ffprobe ${facts.version} (${platform}-${arch}, `
+            + `${facts.licenseId}) to ${path.relative(rootDir, targetDir)}`,
         );
     } catch (error) {
         fs.rmSync(stagingDir, { recursive: true, force: true });
