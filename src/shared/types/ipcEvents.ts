@@ -29,6 +29,7 @@ import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
+import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -246,6 +247,7 @@ export enum IPCEventType {
     projectTemplateScaffold = "projectTemplate.scaffold",
 
     assetFetchRemote = "asset.fetchRemote",
+    assetExportToFolder = "asset.exportToFolder",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -2247,6 +2249,23 @@ export type IPCAssetEvents = {
             validators?: RemoteAssetValidators;
         },
         response: RemoteAssetFetchResult;
+    };
+    /**
+     * Copy library files out to a folder the author picks.
+     *
+     * The dialog and the copying both happen here rather than in the renderer, because a folder
+     * chosen through `fsSelectDirectory` is granted *read* access only - a renderer-side copy into
+     * it would be refused by the very policy that makes the picker safe. The renderer says which
+     * files and what to call them; main decides whether it is allowed to read each source (the
+     * window's existing grants, i.e. the project) and where under the chosen folder it may land.
+     */
+    [IPCEventType.assetExportToFolder]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            entries: AssetExportEntry[];
+        },
+        response: AssetExportResult;
     };
 };
 
