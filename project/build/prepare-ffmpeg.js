@@ -169,12 +169,24 @@ const MACOS_BUILD_SCRIPT = 'project/build/build-ffmpeg-macos.sh';
  * static binary per tool from tarballs verified against sha256s written down in the script, and
  * refuses to hand anything back that does not pass a licence and functional gate.
  *
- * The cost is that only a Mac can stage macOS, and only for its own architecture: cross-compiling
- * x86_64 would need nasm for libvpx's SIMD, which is not in the Command Line Tools. So `x64` stays
- * `null` - the same Apple-Silicon-only shape resources/codesign already has, for a different
- * reason (zsign publishes no macOS x64 asset). On any other host, and on a Mac with no Command
- * Line Tools, staging is skipped and conversion reports as unavailable; the packaging run does not
- * fail, exactly as it does not fail today when a platform has nothing to stage.
+ * The cost is that only a Mac can stage macOS, and only for its own architecture.
+ *
+ * `darwin.x64` is `null`, and the reason is no longer "we have not compiled it yet": **Studio is
+ * not shipped for Intel Macs**, so there is no host to stage it for. Version control
+ * (@lore-vcs ships only sdk-arm64-apple-darwin) and iOS signing (zsign publishes no macOS x64
+ * asset) are missing there too, two of the three not ours to fix, and letting an author meet those
+ * gaps one at a time after their work is inside the tool is worse than one honest "not this
+ * platform". Rosetta runs x64 on Apple Silicon and never the reverse, so an arm64 build is not a
+ * fallback either. Kept as an explicit `null` rather than omitted so the skip below can say why.
+ *
+ * None of that touches the *game* build targets: a game packaged on Apple Silicon still ships for
+ * Intel Macs (GAME_BUILD_ARCHS_BY_PLATFORM in src/shared/types/gameBuild.ts). Those bytes are
+ * @narraleaf/encryption's prebuilt darwin-x64 nlcrypto.node plus Electron's own x64 runtime,
+ * neither of which is staged here.
+ *
+ * On any non-macOS host, and on a Mac with no Command Line Tools, staging is skipped and conversion
+ * reports as unavailable; the packaging run does not fail, exactly as it does not fail today when a
+ * platform has nothing to stage.
  */
 const ASSETS = {
     win32: {
@@ -203,8 +215,8 @@ const ASSETS = {
             sha256: FFMPEG_SOURCE_SHA256,
             suffix: '',
         },
-        // See the note above: nasm-free means host-arch-only. Recorded rather than omitted so the
-        // skip below can say why.
+        // Studio does not ship for Intel Macs - see the note above. Recorded rather than omitted
+        // so the skip below can say why.
         x64: null,
     },
 };
@@ -541,10 +553,13 @@ function stageFromSource(stagingDir) {
     const arch = argValue('arch') ?? process.arch;
 
     // electron-builder copies whatever is sitting in resources/ffmpeg/<platform> into the installer
-    // it is building and has no idea what architecture those bytes are for. Packaging both mac
-    // targets from one checkout - `--mac --arm64` and then `--mac --x64` - would otherwise put the
-    // arm64 binary left behind by the first run inside the Intel installer. Nothing downstream
-    // notices, so a tree staged for a different arch is discarded here rather than shipped.
+    // it is building and has no idea what architecture those bytes are for, so a tree staged for a
+    // different arch is discarded here rather than shipped. Nothing downstream notices otherwise.
+    //
+    // No shipped target cross-builds any more - Studio packages one arch per platform, macOS being
+    // Apple Silicon only - so today this fires on a checkout still holding a tree from an older
+    // pin or an older Studio. It stays because the failure it prevents (a Mach-O that cannot
+    // execute where the installer lands) is silent, and it costs one manifest read.
     const staleDir = path.join(rootDir, 'resources', 'ffmpeg', platform);
     const stagedArch = stagedManifest(staleDir)?.arch ?? null;
     if (stagedArch !== null && stagedArch !== arch) {

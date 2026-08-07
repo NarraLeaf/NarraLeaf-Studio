@@ -52,15 +52,21 @@
 # script copies COPYING.LGPLv2.1 out of the FFmpeg source tree, not the LGPLv3 text.
 #
 # ==================================================================================================
-# HOST ARCHITECTURE ONLY
+# HOST ARCHITECTURE ONLY - AND ARM64 IS THE ONLY ARCHITECTURE THAT MATTERS
 # ==================================================================================================
 #
-# Whatever `uname -m` says, and nothing else. Building x86_64 (or a universal binary) would need
-# nasm to assemble libvpx's x86 SIMD, and nasm is not in the Command Line Tools - it would have to
-# be built here too, or installed from a package manager this script refuses to depend on. So an
-# Intel Mac builds an Intel binary and an Apple Silicon Mac builds an arm64 one; neither produces
-# the other's. resources/codesign is already Apple-Silicon-only for a comparable reason (zsign
-# publishes no macOS x64 asset), so the packaging side already copes with a per-arch gap.
+# Whatever `uname -m` says, and nothing else. In practice that is always arm64: **Studio is not
+# shipped for Intel Macs**, so there is no x86_64 Studio installer for an x86_64 FFmpeg to go into.
+# The gap that used to be recorded here - building x86_64 or a universal binary would need nasm to
+# assemble libvpx's x86 SIMD, and nasm is not in the Command Line Tools - is therefore not work
+# that is outstanding. It is work that is not wanted. Do not add nasm to make it possible.
+#
+# The decision itself is in .github/workflows/release.yml: this build was one of three subsystems
+# with no Intel-Mac implementation, the other two (version control via @lore-vcs, iOS signing via
+# zsign) being upstream gaps we cannot close.
+#
+# Note this is the *host*: a game packaged by Studio still targets Intel Macs, and none of those
+# bytes come from here.
 #
 # ==================================================================================================
 # DEPLOYMENT TARGET
@@ -385,8 +391,8 @@ require_file "${PREFIX}/lib/pkgconfig/vorbis.pc" "vorbis.pc"
 # 4. libvpx - the VP9 encoder.
 #
 # No --target is given: libvpx detects the host, and on arm64 it assembles its SIMD with clang and
-# needs no external assembler. That is precisely why this script is host-arch-only; an x86_64 target
-# would want nasm. See "HOST ARCHITECTURE ONLY" above.
+# needs no external assembler. An x86_64 target would want nasm - and is not wanted at all, since
+# Studio does not ship for Intel Macs. See "HOST ARCHITECTURE ONLY" above.
 # --------------------------------------------------------------------------------------------------
 step "libvpx ${LIBVPX_VERSION}"
 fetch "$LIBVPX_URL" "$LIBVPX_SHA256" "libvpx-${LIBVPX_VERSION}.tar.gz"

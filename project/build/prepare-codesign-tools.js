@@ -64,10 +64,16 @@ const LICENSE_SHA256 = '57a50ade7eafe84091e7f97169e2c555980513e5d425ba8b21c76ce7
  *   - Linux takes the *musl static* build on purpose. zsign-linux-x86_64.tar.gz
  *     is a quarter of the size because it dynamically links the build host's
  *     libssl — which is precisely the dependency a vendored tool must not have.
- *   - macOS has an arm64 asset and no x64 one. There is nothing to stage for an
- *     Intel *target* — which is not the same as an Intel host, and is why the
- *     arch this keys on comes from the caller rather than from process.arch;
- *     see the `null` entry below and the note in zsignTool.ts.
+ *   - macOS has an arm64 asset and no x64 one, and that is now moot as well as
+ *     true: Studio is not shipped for Intel Macs, so darwin-x64 is not a host
+ *     anything is staged for. The missing zsign asset was one of the three
+ *     reasons for that decision — see the `null` entry below and the note in
+ *     zsignTool.ts.
+ *
+ * The arch keyed on here comes from the caller rather than from process.arch.
+ * That is about the *target installer's* architecture, which is not necessarily
+ * the runner's; no shipped target cross-builds today, but the parameter is what
+ * keeps that a fact about the matrix rather than an assumption in this file.
  *
  * `entry` is the name inside the archive, `binary` the name we stage it under —
  * the Linux asset unpacks as `zsign-musl`, and callers should not have to care.
@@ -96,8 +102,9 @@ const ASSETS = {
             entry: 'zsign',
             binary: 'zsign',
         },
-        // No macOS x64 asset exists upstream at v1.1.1. Recorded rather than
-        // omitted so the skip below can say why.
+        // No macOS x64 asset exists upstream at v1.1.1, and Studio no longer
+        // ships an Intel-Mac host to want one. Recorded rather than omitted so
+        // the skip below can say why.
         x64: null,
     },
 };
@@ -239,21 +246,25 @@ function alreadyStaged(targetDir, spec, platform, arch) {
     }
 
     const platform = argValue('platform') ?? process.platform;
-    // --arch, not process.arch: CI packages the Intel mac DMG on an arm64 runner
-    // (`--mac --x64` on macos-latest), so the host's architecture is not the
+    // --arch, not process.arch: the runner's architecture is not necessarily the
     // installer's. pack-electron.js reads the target off electron-builder's own
-    // --x64/--arm64 and forwards it here.
+    // --x64/--arm64 and forwards it here, so what gets staged follows what is
+    // being packaged instead of what happens to be packaging it.
     const arch = argValue('arch') ?? process.arch;
 
     const targetDir = path.join(rootDir, 'resources', 'codesign', platform);
 
     // electron-builder copies whatever is sitting in resources/codesign/<platform>
     // into the installer it is building and has no idea what architecture those
-    // bytes are for. Packaging both mac targets from one checkout — `--mac --arm64`
-    // and then `--mac --x64` — would otherwise put the arm64 binary left behind by
-    // the first run inside the Intel installer. `alreadyStaged` cannot catch that
-    // case: darwin-x64 has no asset, so the skip below returns before any staging
-    // decision is made. Discard here instead.
+    // bytes are for, so a tree staged for a different arch is discarded here.
+    // `alreadyStaged` cannot cover the case: an arch with no asset returns at the
+    // skip below, before any staging decision is made.
+    //
+    // No shipped target cross-builds any more — Studio packages one arch per
+    // platform, macOS being Apple Silicon only — so today this fires on a checkout
+    // still holding a tree from an older pin or an older Studio. It stays because
+    // the failure it prevents (a Mach-O that cannot execute where the installer
+    // lands) is silent, and it costs one manifest read.
     const stagedArch = stagedManifest(targetDir)?.arch ?? null;
     if (stagedArch !== null && stagedArch !== arch) {
         console.warn(

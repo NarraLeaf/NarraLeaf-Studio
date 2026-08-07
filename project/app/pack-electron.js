@@ -28,10 +28,14 @@ function run(cmd, args = [], opts = {}) {
  * The architecture electron-builder was asked to package for, or null when it was not told.
  *
  * Load-bearing for anything that stages a native binary, because the runner's architecture and the
- * installer's are not the same thing: CI builds the Intel mac DMG on an arm64 runner
- * (`--mac --x64` on macos-latest), so a staging step that keys on `process.arch` puts an arm64
- * binary inside an Intel installer, where it cannot execute. Same class of mistake npm_config_arch
- * exists to prevent for the Electron runtime itself - see the note in .github/workflows/release.yml.
+ * installer's are not the same thing: a staging step that keys on `process.arch` will happily put a
+ * binary inside an installer where it cannot execute. Same class of mistake npm_config_arch exists
+ * to prevent for the Electron runtime itself - see the note in .github/workflows/release.yml.
+ *
+ * No shipped target cross-builds today (Studio packages one arch per platform, and macOS is Apple
+ * Silicon only since Intel Macs are no longer a supported host), so in practice this now agrees
+ * with the host. It is kept because "the runner is the target" is a property of the current matrix,
+ * not of this script, and the failure when it stops holding is a silent one.
  *
  * `--universal` deliberately yields null rather than an arch: a universal target needs a fat binary,
  * which none of the staging steps can produce, and passing either half would be a lie. They fall
