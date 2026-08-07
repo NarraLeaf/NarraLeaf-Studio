@@ -78,9 +78,11 @@ describe("probeMediaFile / binary missing", () => {
     });
 
     it("reports unavailable on a host with no LGPL build, without looking anywhere", async () => {
+        // Intel macOS, which Studio no longer ships for and never staged a build for. Exercised as
+        // a host the table does not serve, not as a gap waiting to be filled.
         const outcome = await probeMediaFile(missingToolApp, "/assets/clip.mp4", {
             platform: "darwin",
-            arch: "arm64",
+            arch: "x64",
             env: {},
             run: forbiddenRunner,
         });
@@ -232,7 +234,10 @@ describe("resolveFfmpegBinary", () => {
     it("serves the hosts an LGPL build exists for, and no others", () => {
         expect(ffmpegHostTarget("win32", "x64")).toEqual({ platformKey: "win32", executableSuffix: ".exe" });
         expect(ffmpegHostTarget("linux", "x64")).toEqual({ platformKey: "linux", executableSuffix: "" });
-        expect(ffmpegHostTarget("darwin", "arm64")).toBeNull();
+        // Apple Silicon is served by a from-source build; Intel macOS is not, because Studio is
+        // not shipped for Intel Macs at all.
+        expect(ffmpegHostTarget("darwin", "arm64")).toEqual({ platformKey: "darwin", executableSuffix: "" });
+        expect(ffmpegHostTarget("darwin", "x64")).toBeNull();
         expect(ffmpegHostTarget("win32", "arm64")).toBeNull();
     });
 

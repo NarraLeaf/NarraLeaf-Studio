@@ -29,6 +29,40 @@ export type UITemplateAssetRef = {
     path: string;
 };
 
+/**
+ * A theme: one look, and the set of screens drawn in it.
+ *
+ * The store browses themes first and templates second, because an author picks a
+ * look once and then takes several screens from it — a flat list made them read
+ * past four other looks to find the second screen of the one they chose.
+ *
+ * Its `preview` is a poster rendered from the theme's own templates and committed
+ * beside it. That is deliberately unlike a template card, which renders live: at
+ * the browse level the cost is one small image per theme instead of every
+ * template's full document, and a theme's look changes far more rarely than a
+ * single screen's contents.
+ */
+export type UIThemeDescriptor = {
+    id: string;
+    name: string;
+    version: string;
+    description: string;
+    publisher: string;
+    /** Source directory in the repository, e.g. `themes/narraleaf.coffee`. */
+    path: string;
+    /** Theme-relative path to the poster image. */
+    preview?: string;
+    /** How many templates in the index declare this theme. */
+    templateCount: number;
+};
+
+/** One fetched theme poster, handed to the renderer as bytes. */
+export type UIThemePreview = {
+    id: string;
+    mime: string;
+    dataBase64: string;
+};
+
 export type UITemplateRegistryEntry = {
     id: string;
     name: string;
@@ -48,11 +82,15 @@ export type UITemplateRegistryEntry = {
     surface: UITemplateSurfacePlacement;
     /** Declared resources; empty for asset-free templates. */
     assets: UITemplateAssetRef[];
+    /** The theme this template belongs to; absent on an unthemed template. */
+    theme?: string;
 };
 
 export type UITemplateRegistryIndex = {
     formatVersion: number;
     repository: string;
+    /** Themes the registry publishes; empty on a registry that predates them. */
+    themes: UIThemeDescriptor[];
     templates: UITemplateRegistryEntry[];
 };
 

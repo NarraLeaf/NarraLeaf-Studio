@@ -788,9 +788,10 @@ export const workspace = {
             // 一行结果代表多条一模一样的结果时，行尾显示的角标。
             occurrences: "×{count}",
         },
-        // 标题栏里类 PyCharm 的项目切换器：显示当前项目名，下拉列出最近工作区以便跳转。
+        // 标题栏里类 PyCharm 的项目选择器：显示当前项目名，下拉列出最近工作区。
+        // 从这里打开的项目各自开一个新窗口，当前窗口留在原地，所以这行文案说的是"打开"不是"切换"。
         projectSwitcher: {
-            switchProject: "切换项目",
+            openAnother: "打开其他项目",
             recentProjects: "最近项目",
             current: "当前",
             openProject: "打开项目…",
