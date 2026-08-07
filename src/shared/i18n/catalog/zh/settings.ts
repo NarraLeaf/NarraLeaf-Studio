@@ -267,6 +267,10 @@ export const settings = {
                     label: "插件商店缩略图",
                     description: "下次打开商店会重新下载",
                 },
+                uiTemplatePosters: {
+                    label: "模板商店封面",
+                    description: "下次打开商店时会重新下载",
+                },
                 psdImports: {
                     label: "PSD 导入残留",
                     description: "导入 PSD 时写下的分层图片",

@@ -113,7 +113,7 @@ export function UITemplateStoreModal({
                     .fetchThemePreviews(loadedThemes.map(theme => theme.id));
                 if (posterResult.success) {
                     setPosters(Object.fromEntries(
-                        posterResult.data.map(p => [p.id, `data:${p.mime};base64,${p.dataBase64}`]),
+                        posterResult.data.map(p => [p.id, p.dataUrl]),
                     ));
                 }
             } else {

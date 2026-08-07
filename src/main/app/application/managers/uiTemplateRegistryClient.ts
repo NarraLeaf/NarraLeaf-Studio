@@ -12,7 +12,6 @@ import type {
     UITemplateFetchedAsset,
     UITemplatePreview,
     UIThemeDescriptor,
-    UIThemePreview,
     UITemplateRegistryEntry,
     UITemplateRegistryIndex,
     UITemplateSurfacePlacement,
@@ -181,7 +180,34 @@ function normalizeThemeDescriptor(raw: unknown): UIThemeDescriptor | null {
     };
 }
 
-export async function fetchTemplateIndex(url: string): Promise<UITemplateRegistryIndex> {
+/**
+ * Last index read per URL.
+ *
+ * Opt-in through `maxAgeMs`, exactly as the plugin registry's memo is: a Refresh
+ * passes nothing and therefore really goes to the network, while the calls that
+ * only need the index to resolve a path — "which file belongs to this template
+ * id" — reuse it. Without this, opening the store, entering a theme and adding
+ * one screen fetched index.json four times over.
+ */
+const indexMemo = new Map<string, { at: number; index: UITemplateRegistryIndex }>();
+
+export async function fetchTemplateIndex(
+    url: string,
+    options: { maxAgeMs?: number } = {},
+): Promise<UITemplateRegistryIndex> {
+    const maxAgeMs = options.maxAgeMs ?? 0;
+    if (maxAgeMs > 0) {
+        const cached = indexMemo.get(url);
+        if (cached && Date.now() - cached.at <= maxAgeMs) {
+            return cached.index;
+        }
+    }
+    const index = await readTemplateIndex(url);
+    indexMemo.set(url, { at: Date.now(), index });
+    return index;
+}
+
+async function readTemplateIndex(url: string): Promise<UITemplateRegistryIndex> {
     const response = await fetchWithTimeout(url);
     if (!response.ok) {
         throw new Error(`Template registry request failed (${response.status} ${response.statusText})`);
@@ -301,12 +327,15 @@ async function fetchAssetFile(url: string, ref: UITemplateAssetRef): Promise<UIT
  * The renderer never reaches the network itself, so the bytes come back base64 and
  * it turns them into a data URL. One theme failing costs its own card.
  */
+/** Raw poster bytes, before the cache turns them into a `data:` URL. */
+export type FetchedThemePoster = { id: string; mime: string; dataBase64: string };
+
 export async function fetchThemePreviews(
     themes: UIThemeDescriptor[],
     indexUrl: string,
-): Promise<UIThemePreview[]> {
+): Promise<FetchedThemePoster[]> {
     const baseDir = registryBaseDir(indexUrl);
-    const previews: UIThemePreview[] = [];
+    const previews: FetchedThemePoster[] = [];
     for (const theme of themes) {
         if (!theme.preview) {
             continue;
