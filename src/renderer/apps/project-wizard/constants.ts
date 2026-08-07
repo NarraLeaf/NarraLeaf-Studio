@@ -1,4 +1,4 @@
-import { CheckCircle, CloudDownload, FileText, Package, Upload, Zap } from "lucide-react";
+import { GitBranch, Package, PencilLine } from "lucide-react";
 import { ProjectFlow, ProjectTemplate, LicenseOption, ResolutionOption, VersionControlOption, BackupOption, WizardStep } from "./types";
 
 /**
@@ -24,6 +24,12 @@ export const WIZARD_FLOW_STEPS: Record<ProjectFlow, WizardStep[]> = {
 
 /**
  * Project templates configuration
+ *
+ * **The icons are chosen to survive being a watermark.** Each card draws its icon as an oversized
+ * faint mark bleeding off the bottom-right corner (see `TemplateStep`), and at that opacity a glyph
+ * made of thin detail dissolves into unreadable strokes. What reads is a single closed silhouette
+ * or plain geometry, which is why these are a pencil, a package and a branch rather than the page
+ * of ruled lines, upload arrow and download cloud they replaced.
  */
 export const projectTemplates: ProjectTemplate[] = [
     // {
@@ -47,7 +53,7 @@ export const projectTemplates: ProjectTemplate[] = [
         nameKey: "wizard.template.options.empty.name",
         description: "Start with a blank project and build from scratch",
         descriptionKey: "wizard.template.options.empty.description",
-        icon: FileText,
+        icon: PencilLine,
         category: "Custom",
         categoryKey: "wizard.template.options.empty.category"
     },
@@ -65,7 +71,7 @@ export const projectTemplates: ProjectTemplate[] = [
         nameKey: "wizard.template.options.import.name",
         description: "Unpack a project someone exported as a .nlspkg file",
         descriptionKey: "wizard.template.options.import.description",
-        icon: Upload,
+        icon: Package,
         category: "Existing project",
         categoryKey: "wizard.template.options.import.category"
     },
@@ -84,7 +90,7 @@ export const projectTemplates: ProjectTemplate[] = [
         nameKey: "wizard.template.options.clone.name",
         description: "Copy a project that already exists on a version-control server",
         descriptionKey: "wizard.template.options.clone.description",
-        icon: CloudDownload,
+        icon: GitBranch,
         category: "Existing project",
         categoryKey: "wizard.template.options.clone.category"
     }
