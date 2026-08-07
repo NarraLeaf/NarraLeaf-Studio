@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { screen } from "electron";
 import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
@@ -14,6 +16,7 @@ import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
+import { resolveStartupProject } from "./application/startupProject";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -34,6 +37,23 @@ const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
  * a second window rather than the same frame with different contents.
  */
 const WINDOW_CASCADE_STEP = 32;
+
+/**
+ * `candidate` as an absolute path if it names a directory, otherwise null.
+ *
+ * Relative paths resolve against the working directory, which is what a `--project .` typed in a
+ * project folder means. A path that cannot be looked at (a disconnected drive, a permission error)
+ * is "not a directory" here: the point is only to tell a path apart from a project *name*, and a
+ * string that looks like a path is not a name either way.
+ */
+function resolveExistingDirectory(candidate: string): string | null {
+    try {
+        const absolute = path.resolve(candidate);
+        return fs.statSync(absolute).isDirectory() ? absolute : null;
+    } catch {
+        return null;
+    }
+}
 
 export class App extends BaseApp {
     public static create(config: AppConfig): App {
@@ -116,6 +136,11 @@ export class App extends BaseApp {
         if (this.wantsOnboardingRerun()) {
             return true;
         }
+        // Skipping records nothing, so this is only ever "not on this launch" - the profile still
+        // owes the setup flow, and the next launch without the flag will ask for it.
+        if (this.wantsOnboardingSkipped()) {
+            return false;
+        }
         return needsOnboarding(this.globalState.get(ONBOARDING_STATE_KEY));
     }
 
@@ -162,11 +187,16 @@ export class App extends BaseApp {
         return window;
     }
 
+    /** The open launcher window, if the user still has a home to fall back to. */
+    private findLauncher(): AppWindow<WindowAppType.Launcher> | undefined {
+        return this.windowManager.getWindows().find(window =>
+            !window.isClosed() && window.getWindowType() === WindowAppType.Launcher
+        ) as AppWindow<WindowAppType.Launcher> | undefined;
+    }
+
     /** True while a launcher window is open, i.e. the user still has a home to fall back to. */
     hasAliveLauncher(): boolean {
-        return this.windowManager.getWindows().some(window =>
-            !window.isClosed() && window.getWindowType() === WindowAppType.Launcher
-        );
+        return this.findLauncher() !== undefined;
     }
 
     /** In-flight launcher startup, shared by concurrent callers. See {@link ensureLauncher}. */
@@ -197,6 +227,57 @@ export class App extends BaseApp {
         });
 
         return this.launcherStartup;
+    }
+
+    /**
+     * The window this session starts on: the project `--project` named, or the launcher.
+     *
+     * The launcher is opened either way, and the project is then opened *from* it - the same call
+     * a click on the recent list makes, so a scripted launch inherits the whole of it: the
+     * one-project-one-window lookup, the macOS bookmark re-authorization, the recents entry the
+     * workspace writes once it has actually loaded, and the launcher retiring itself only after
+     * the workspace reports a working project. Every way this can fail therefore lands on the home
+     * screen with a line in the log, rather than on a windowless app or a dead end.
+     *
+     * Dev-only, and deliberately not a general "open this file" entry point (see
+     * {@link MainCommandLineOptions.project}).
+     */
+    public async openStartupWindow(): Promise<void> {
+        const selectorError = this.getStartupProjectError();
+        if (selectorError) {
+            this.logger.warn(`[Startup] ${selectorError}`);
+        }
+
+        await this.ensureLauncher();
+
+        const selector = this.getStartupProjectSelector();
+        if (!selector) {
+            return;
+        }
+
+        const resolution = resolveStartupProject(selector, {
+            resolveDirectory: candidate => resolveExistingDirectory(candidate),
+            recentProjects: () => this.globalState.recentlyOpened.list(),
+        });
+        if (!resolution.ok) {
+            this.logger.warn(`[Startup] ${resolution.reason}. Opening the launcher instead.`);
+            return;
+        }
+
+        const launcher = this.findLauncher();
+        if (!launcher) {
+            this.logger.warn("[Startup] The launcher is gone; not opening the requested project.");
+            return;
+        }
+
+        this.logger.info(
+            `[Startup] Opening project "${resolution.projectPath}" (matched by ${resolution.source})`,
+        );
+        try {
+            await this.openProject(launcher, resolution.projectPath);
+        } catch (error) {
+            this.logger.error(`[Startup] Could not open "${resolution.projectPath}":`, error);
+        }
     }
 
     /**

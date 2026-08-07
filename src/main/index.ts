@@ -82,8 +82,9 @@ app.whenReady().then(async () => {
     });
 
     try {
-        // Same call the workspace's close guard uses, so the home screen is built one way only.
-        await app.ensureLauncher();
+        // Goes through ensureLauncher - the same call the workspace's close guard uses, so the
+        // home screen is built one way only - and then opens whatever --project asked for.
+        await app.openStartupWindow();
     } catch (error) {
         app.logger.error('Failed to launch application:', error);
         app.quit();
