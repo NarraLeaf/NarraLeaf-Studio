@@ -24,7 +24,7 @@ import type {
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
-import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview } from "./uiTemplateRegistry";
+import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { LocaleContribution } from "@shared/i18n";
@@ -235,6 +235,7 @@ export enum IPCEventType {
     uiTemplateRegistryFetch = "uiTemplate.registryFetch",
     uiTemplateFetchBundle = "uiTemplate.fetchBundle",
     uiTemplateFetchPreviews = "uiTemplate.fetchPreviews",
+    uiTemplateFetchThemePreviews = "uiTemplate.fetchThemePreviews",
     projectTemplateList = "projectTemplate.list",
     projectTemplateScaffold = "projectTemplate.scaffold",
 
@@ -2137,6 +2138,15 @@ export type IPCUITemplateEvents = {
             templateIds: string[];
         },
         response: UITemplatePreview[];
+    };
+    // Store: fetch the poster image of each named theme, for the browse level.
+    [IPCEventType.uiTemplateFetchThemePreviews]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            themeIds: string[];
+        },
+        response: UIThemePreview[];
     };
 
     // Bundled project templates: what this build ships, read from resources/.
