@@ -48,8 +48,6 @@ export const blueprint = {
             smallHitHint: "Prefer at least ~24×24 px for touch targets.",
         },
         layout: {
-            tiny: "Element “{name}” has a very small size ({width}×{height})",
-            tinyHint: "Increase width and height for reliable layout and hit testing.",
             outOfBounds: "Element “{name}” is outside the Surface design bounds",
             outOfBoundsHint: "Design size is {width}×{height}. Move or resize the element.",
         },
