@@ -429,10 +429,12 @@ export class MenuManager {
      * entry means run or stop is decided HERE, from the status the menu already has, so the renderer
      * never receives an id its `when` will refuse.
      *
-     * Build and Test borrow the Run dropdown's own labels (`actions.run.productionBuild`,
-     * `test.action.*`) instead of keeping copies under `menu.dev.*`. The menu bar and the dropdown
-     * open the same two dialogs, and they used to call them different things - the menu said
-     * "Build Release" where the dropdown said "Production Build…".
+     * Every label here is the Run dropdown's own (`actions.run.*`, `test.action.*`) rather than a
+     * copy under `menu.dev.*`. The menu bar and the dropdown open the same four things, and they
+     * used to call them different names - the menu said "Build Release" where the dropdown said
+     * "Production Build…", and "Preview Mode" where it said "Preview". `menu.dev.title` is all
+     * that is left under that namespace, because the menu itself is the one thing the dropdown
+     * has no name for.
      */
     private buildDevMenu(t: Translator["t"], runtime: NativeMenuRuntimeStatus | undefined): MenuItemConstructorOptions {
         const devModeActive = runtime?.devModeActive ?? false;
@@ -450,7 +452,7 @@ export class MenuManager {
             label: t("menu.dev.title"),
             submenu: [
                 {
-                    label: t("menu.dev.devMode"),
+                    label: t("actions.run.devMode"),
                     type: "checkbox",
                     checked: devModeActive,
                     enabled: !slotHeldByOther(devModeActive),
@@ -462,7 +464,7 @@ export class MenuManager {
                     },
                 },
                 {
-                    label: t("menu.dev.preview"),
+                    label: t("actions.run.preview"),
                     type: "checkbox",
                     checked: previewActive,
                     enabled: !slotHeldByOther(previewActive) && (previewActive || !frozen),
