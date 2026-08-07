@@ -22,7 +22,7 @@ export interface PluginDetailsPageProps {
     task: PluginCatalogTask;
     /** Whether the session's restart banner is up; shown here for the same reason as `task`. */
     restartHint: boolean;
-    onDismissRestartHint: () => void;
+    onRestartWorkspace: () => void;
     /** False in a recovery window, where nothing is loaded and nothing can be. */
     canReload: boolean;
     onBack: () => void;
@@ -45,7 +45,7 @@ export function PluginDetailsPage({
     busy,
     task,
     restartHint,
-    onDismissRestartHint,
+    onRestartWorkspace,
     canReload,
     onBack,
     onAuthorize,
@@ -83,7 +83,7 @@ export function PluginDetailsPage({
 
             <PluginTaskLine task={task} />
 
-            {restartHint ? <PluginRestartHint onDismiss={onDismissRestartHint} /> : null}
+            {restartHint ? <PluginRestartHint onRestart={onRestartWorkspace} busy={busy} /> : null}
 
             <div className="min-h-0 flex-1 overflow-auto p-3">
                 <PluginDetailsBody installed={installed} registryEntry={registryEntry}>

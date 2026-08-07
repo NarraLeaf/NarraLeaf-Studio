@@ -16,14 +16,14 @@ export function PluginTaskLine({ task }: { task: PluginCatalogTask }) {
     }
     return (
         <div className={cn(
-            "flex shrink-0 items-start gap-1.5 border-b border-edge-subtle px-3 py-1.5 text-2xs",
+            "flex shrink-0 items-center gap-2 border-b border-edge-subtle px-3 py-1.5 text-2xs leading-snug",
             task.status === "error" ? "text-danger" : task.status === "working" ? "text-fg-muted" : "text-success",
         )}>
             {task.status === "error"
-                ? <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+                ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 : task.status === "working"
-                    ? <RefreshCw className="mt-px h-3 w-3 shrink-0 animate-spin" />
-                    : <CheckCircle2 className="mt-px h-3 w-3 shrink-0" />}
+                    ? <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                    : <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
             <span className="min-w-0 flex-1">{task.message}</span>
         </div>
     );
