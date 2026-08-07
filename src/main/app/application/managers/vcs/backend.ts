@@ -4,10 +4,17 @@ import { isVcsPlatformSupported } from "@shared/types/vcs";
 /**
  * The plug in "pluggable version control".
  *
- * Everything Lore-shaped lives behind this module. Studio ships on every platform;
- * version control is simply absent on the ones Epic has no native build for (macOS
- * Intel, Windows ARM64 - see docs/version-control.md §7), and a host without it
- * loses one feature rather than failing to start.
+ * Everything Lore-shaped lives behind this module. Version control is simply absent
+ * on hosts Epic has no native build for, and such a host loses one feature rather
+ * than failing to start.
+ *
+ * The list of those hosts has shrunk to one that Studio actually ships on: **Windows
+ * ARM64**. macOS Intel was the other, and Studio is no longer shipped for it at all -
+ * this missing backend was the deciding reason, version control being a core feature
+ * rather than an optional convenience (see .github/workflows/release.yml, and
+ * docs/version-control.md §7 for the platform table). So the darwin-x64 branch below
+ * is now unreachable in a shipped build; it stays because the gate is keyed on
+ * platform/arch and LORE_LIB_PATH lets anyone run anywhere.
  *
  * Two things changed when Studio replaced the generated SDK with its own binding
  * (`lore/`), and both relax constraints that used to be absolute:
@@ -16,7 +23,7 @@ import { isVcsPlatformSupported } from "@shared/types/vcs";
  *    being evaluated, so a single static import anywhere in the reachable graph
  *    crashed main-process startup on an unsupported host. Studio's binding loads
  *    inside a function, so the dynamic import below is now defence in depth rather
- *    than the only thing standing between an Intel Mac and a dead app.
+ *    than the only thing standing between an unserved host and a dead app.
  *  - **Failure is no longer permanent.** A module that throws during ESM evaluation
  *    is cached as failed by Node for the life of the process; a failed
  *    `koffi.load()` inside a function is just an exception. A user who repairs a
