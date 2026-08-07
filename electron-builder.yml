@@ -67,15 +67,21 @@ extraResources:
 mac:
   target: dmg
   icon: resources/app-icon.icns
-  # Apple Silicon only: zsign publishes no macOS x64 asset, so nothing is staged
-  # on an Intel mac and this mapping copies nothing there (electron-builder logs
-  # "file source doesn't exist" and carries on).
+  # Apple Silicon only, and both mappings are — for two unrelated reasons.
+  # zsign publishes no macOS x64 asset. FFmpeg has no prebuilt LGPL macOS build
+  # at all, so project/build/build-ffmpeg-macos.sh compiles one from pinned
+  # source during packaging, and only for the building Mac's own architecture:
+  # an x86_64 target would need nasm to assemble libvpx's SIMD, which is not in
+  # the Command Line Tools.
   #
-  # resources/ffmpeg/darwin is absent for a different reason: there is no LGPL
-  # FFmpeg build for macOS that this project is willing to redistribute, so
-  # nothing is ever staged there and media conversion reports as unavailable.
-  # The mapping is listed anyway so the day one is chosen, only the staging
-  # script has to change.
+  # On an Intel mac, and on a mac with no Command Line Tools, nothing is staged
+  # and these mappings copy nothing (electron-builder logs "file source doesn't
+  # exist" and carries on); the resulting Studio reports iOS signing and media
+  # conversion as unavailable rather than failing to build.
+  #
+  # Note the macOS FFmpeg is LGPL v2.1 where the Windows and Linux ones are v3 —
+  # the licence text staged next to each binary and the licenseId in its
+  # manifest.json differ accordingly.
   extraResources:
     - from: ./resources/codesign/darwin
       to: resources/codesign/darwin
