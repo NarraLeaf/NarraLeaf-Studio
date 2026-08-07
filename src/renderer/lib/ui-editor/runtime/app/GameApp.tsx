@@ -1287,7 +1287,14 @@ export function GameApp(props: GameAppProps): ReactNode {
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),
-                      set: (key, value) => core.scopeBridge.persistenceSet(key, value),
+                      // Both halves of the write: the in-memory map so the very next story read
+                      // sees it, and the host store so it survives the session. Without the second
+                      // half a story-written persistent variable was invisible to every blueprint,
+                      // because `Get Persistent` reads through the adapter rather than the map.
+                      set: (key, value) => {
+                          core.scopeBridge.persistenceSet(key, value);
+                          return core.scopeBridge.persistenceSetAsync(key, value);
+                      },
                   }
                 : undefined,
             localization: bundle.localization && core

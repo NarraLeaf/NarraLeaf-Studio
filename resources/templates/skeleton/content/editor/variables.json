@@ -1,0 +1,16 @@
+{
+  "entries": {
+    "a1bbd280-c1a5-4828-8734-cd6c3a4761d5": {
+      "defaultValue": "",
+      "id": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5",
+      "name": "Location",
+      "storageKey": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5",
+      "valueType": "string"
+    }
+  },
+  "meta": {
+    "createdAt": "2026-08-07T03:54:29.282Z",
+    "updatedAt": "2026-08-07T04:27:03.969Z"
+  },
+  "schemaVersion": 1
+}

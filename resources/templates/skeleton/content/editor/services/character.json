@@ -1,0 +1,50 @@
+{
+  "characters": [
+    {
+      "profile": {
+        "appearance": {
+          "defaultPoseId": "p1oh",
+          "kind": "preset",
+          "poses": [
+            {
+              "assetId": "926860bf-6a08-4837-856f-4bf8f157f2ba",
+              "id": "p1oh",
+              "name": "Default",
+              "portrait": {
+                "h": 0.4,
+                "w": 0.43,
+                "x": 0.385,
+                "y": 0.03
+              }
+            }
+          ]
+        },
+        "attributes": {},
+        "description": "",
+        "id": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+        "name": "Narra",
+        "nicknames": [],
+        "tags": [],
+        "thumbnail": null
+      }
+    },
+    {
+      "profile": {
+        "appearance": {
+          "defaultPoseId": null,
+          "kind": "preset",
+          "poses": []
+        },
+        "attributes": {},
+        "description": "",
+        "id": "683b73ba-729c-4bc5-8c41-d641a257a1f4",
+        "name": "Aoi",
+        "nicknames": [],
+        "tags": [],
+        "thumbnail": null
+      }
+    }
+  ],
+  "groups": {},
+  "version": 2
+}

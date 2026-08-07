@@ -1,0 +1,141 @@
+{
+  "locale": "zh-CN",
+  "schemaVersion": 1,
+  "units": {
+    "0ef2885e-0186-4327-b43f-ee9676c2a33a": {
+      "sourceHash": "fnv1a:ac8d6919",
+      "status": "translated",
+      "target": "所以这次轮到我。"
+    },
+    "0fa2eb35-3aad-424a-9e40-50a420d4bb3d": {
+      "sourceHash": "fnv1a:4bd5021d",
+      "status": "translated",
+      "target": "做点真心的东西。哪怕很小也没关系。"
+    },
+    "16565a92-8975-4521-8342-985e1bf3909c": {
+      "sourceHash": "fnv1a:0cac0044",
+      "status": "translated",
+      "target": "明天老时间。别再迟到了。"
+    },
+    "22c5aa1d-856c-46f5-be7f-3c6341de0e8a": {
+      "sourceHash": "fnv1a:2eca0b8e",
+      "status": "translated",
+      "target": "够冷静。不过也没错。"
+    },
+    "244efc55-d457-4c7e-9c9b-591658c37d5d": {
+      "sourceHash": "fnv1a:027041dc",
+      "status": "translated",
+      "target": "最后一节课的铃，二十分钟前就响过了。"
+    },
+    "2ad31ac5-94dc-4b98-a8e3-1c78549f6edf": {
+      "sourceHash": "fnv1a:d6827c0c",
+      "status": "translated",
+      "target": "示例到这里结束，你的游戏从这里开始。"
+    },
+    "2b3a87e6-5d6f-47c2-a1be-cd3a84aaa999": {
+      "sourceHash": "fnv1a:48cea9ba",
+      "status": "translated",
+      "target": "文化祭还有三周，我们什么都还没有。"
+    },
+    "3bb15660-8cd1-4d06-b8f9-6d3bb2d3b086": {
+      "sourceHash": "fnv1a:26088a8a",
+      "status": "translated",
+      "target": "有两个。只不过其中一个走得慢。"
+    },
+    "504bea55-21b8-4b55-b6b7-ec75ff4f1fe6": {
+      "sourceHash": "fnv1a:3efbc90a",
+      "status": "translated",
+      "target": "你迟到了。"
+    },
+    "6cc6b2f7-b60e-4279-a94c-cc8860ba5287": {
+      "sourceHash": "fnv1a:c1e343f1",
+      "status": "translated",
+      "target": "所以，得有个人决定我们要做什么。"
+    },
+    "7838034c-5481-4b4e-beb6-d5815b817b56": {
+      "sourceHash": "fnv1a:8fa15a40",
+      "status": "translated",
+      "target": "做点真心的东西。"
+    },
+    "79796785-4322-45dc-b84d-37efa0e8549e": {
+      "sourceHash": "fnv1a:7d2f0de7",
+      "status": "translated",
+      "target": "热闹挺好。热闹才有人愿意进门。"
+    },
+    "7b9e8fe3-9570-4df1-9adb-f11fee070023": {
+      "sourceHash": "fnv1a:136ffe95",
+      "status": "translated",
+      "target": "那就做点热闹的。"
+    },
+    "8ee513a4-713c-4277-8e8b-2c25be0a29f9": {
+      "sourceHash": "fnv1a:8e7a2c74",
+      "status": "translated",
+      "target": "做点真的会有人来的东西。"
+    },
+    "9bbce5a5-e5de-40d3-a6b4-c7c2b75d6193": {
+      "sourceHash": "fnv1a:e72a668b",
+      "status": "translated",
+      "target": "我们做什么？"
+    },
+    "9e22391e-e548-4ccd-89fb-f7c424e3ce24": {
+      "sourceHash": "fnv1a:41c8cc59",
+      "status": "translated",
+      "target": "说句实话——换我也会选那个。"
+    },
+    "a0ed03b2-7717-4aed-aff2-f27a14259b8d": {
+      "sourceHash": "fnv1a:5a2baae0",
+      "status": "translated",
+      "target": "这是你这个月说的第一句不是玩笑的话。"
+    },
+    "ab801b46-85ba-416f-9df8-48c3a040488a": {
+      "sourceHash": "fnv1a:6a1cc3fe",
+      "status": "translated",
+      "target": "她把笔转了一圈，又用一根手指按平停住。"
+    },
+    "b86c0033-9139-453a-bba4-664f3d2c812c": {
+      "sourceHash": "fnv1a:43339a4b",
+      "status": "translated",
+      "target": "一个半。天还没黑你就走了。"
+    },
+    "be532c25-3947-4340-bea6-a8dbc2462abe": {
+      "sourceHash": "fnv1a:ac3ffd90",
+      "status": "translated",
+      "target": "……哦。"
+    },
+    "c727b458-0715-4cc0-a44d-237f176d67c3": {
+      "sourceHash": "fnv1a:ef36b822",
+      "status": "translated",
+      "target": "我们一直待到窗户变成橙色，走廊的灯自己亮了起来。"
+    },
+    "d24f89b5-dd27-4fd3-a9e0-9eb42d9eaa4d": {
+      "sourceHash": "fnv1a:9b0e6c0d",
+      "status": "translated",
+      "target": "去年是我决定的。"
+    },
+    "d594ab16-35fa-4777-8237-bd2e7bbab4f7": {
+      "sourceHash": "fnv1a:2fc40b38",
+      "status": "translated",
+      "target": "随便打开哪一部分看看。这些都是在 Studio 里做出来的，和你会用的做法一样。"
+    },
+    "d8394864-327a-4c4f-bcec-8521d44a9b09": {
+      "sourceHash": "fnv1a:abe8b20c",
+      "status": "translated",
+      "target": "社团活动室是一间没人认领的教室。四张桌子拼在一起，还有一扇关不严的窗。"
+    },
+    "e783a4da-946b-4c53-af82-5ba464ea88db": {
+      "sourceHash": "fnv1a:8e7a2c74",
+      "status": "translated",
+      "target": "做点真的会有人来的东西。"
+    },
+    "f01d556e-e725-4702-b254-cc41352e816b": {
+      "sourceHash": "fnv1a:37d8e30c",
+      "status": "translated",
+      "target": "这周第三次。我都快以为社团只剩我一个人了。"
+    },
+    "fe23a3b0-4e38-40fb-a58b-ee1385975d85": {
+      "sourceHash": "fnv1a:04f3324d",
+      "status": "translated",
+      "target": "走廊里还留着粉笔和地板蜡的味道。身后有个储物柜正在降温，咔、咔地响。"
+    }
+  }
+}
