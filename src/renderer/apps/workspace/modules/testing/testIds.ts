@@ -1,3 +1,5 @@
+import { WorkspaceRunCommand } from "@shared/types/menu";
+
 /**
  * The names the test surfaces address each other by, kept apart from all of them.
  *
@@ -16,5 +18,9 @@
  */
 export const TEST_REPORT_TAB_ID = "narraleaf-studio:test-report";
 
-/** The palette command that opens the picker. Named like the other `run:*` commands. */
-export const TEST_RUN_COMMAND_ID = "run:test";
+/**
+ * The palette command that opens the picker. Named like the other `run:*` commands - and taken from
+ * the same table they are, because the macOS Develop menu names it too and a copy of the literal
+ * here would be one the menu could drift away from without anything failing to compile.
+ */
+export const TEST_RUN_COMMAND_ID = WorkspaceRunCommand.RunTest;

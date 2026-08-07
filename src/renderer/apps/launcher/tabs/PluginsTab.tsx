@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
     AlertTriangle,
@@ -14,208 +14,37 @@ import {
     Trash2,
     X,
 } from "lucide-react";
-import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { Badge, Button, EmptyState, IconButton, Input } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
+import { PluginAvatar, PluginStatusBadge, hasUpdate, isCompatible } from "@/lib/plugins/ui/pluginPresentation";
+import { filterInstalled, filterStore, usePluginCatalog } from "@/lib/plugins/ui/usePluginCatalog";
+import { useStoreIcon } from "@/lib/plugins/ui/useStoreIcon";
+import type { PluginCatalogTask } from "@/lib/plugins/ui/usePluginCatalog";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
-import { PluginAvatar, PluginDetailsModal, PluginStatusBadge, hasUpdate, isCompatible } from "./PluginDetailsModal";
-import { forgetStoreIcon, useStoreIcon } from "./useStoreIcon";
+import { PluginDetailsModal } from "./PluginDetailsModal";
 
 type LauncherTab = "installed" | "store";
 
-type TaskState =
-    | { status: "idle"; message?: string }
-    | { status: "working"; message: string }
-    | { status: "success"; message: string }
-    | { status: "error"; message: string };
-
 export function PluginsTab() {
     const { t } = useTranslation();
-    const [plugins, setPlugins] = useState<PluginListItem[]>([]);
     const [activeTab, setActiveTab] = useState<LauncherTab>("installed");
     const [query, setQuery] = useState("");
-    const [task, setTask] = useState<TaskState>({ status: "idle" });
-    const [registry, setRegistry] = useState<PluginRegistryEntry[] | null>(null);
-    const [registryError, setRegistryError] = useState<string | null>(null);
-    const [registryLoading, setRegistryLoading] = useState(false);
     const [detailId, setDetailId] = useState<string | null>(null);
+    const catalog = usePluginCatalog({ onLocalInstalled: () => setActiveTab("installed") });
 
-    const busy = task.status === "working";
+    const { plugins, registry, registryError, registryLoading, task, busy, installedById, registryById } = catalog;
 
-    const refresh = async () => {
-        const result = await getInterface().plugins.list();
-        if (!result.success) {
-            setTask({ status: "error", message: result.error ?? t("launcher.plugins.error.load") });
-            return;
-        }
-        setPlugins(result.data.plugins);
-    };
+    const visibleInstalled = useMemo(() => filterInstalled(plugins, query), [plugins, query]);
+    const visibleStore = useMemo(() => filterStore(registry ?? [], query), [registry, query]);
+    const q = query.trim();
 
-    const refreshRegistry = async () => {
-        setRegistryLoading(true);
-        setRegistryError(null);
-        try {
-            const result = await getInterface().plugins.registryFetch();
-            if (!result.success) {
-                setRegistry(null);
-                setRegistryError(result.error ?? t("launcher.plugins.error.registry"));
-                return;
-            }
-            setRegistry(result.data.index.plugins);
-        } finally {
-            setRegistryLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        void refresh();
-    }, []);
-
-    // Fetch the store index as soon as this tab is open, not when the Store
-    // segment is first selected: the installed list needs the same index to mark
-    // updates, and gating the fetch on the Store tab made every update invisible
-    // to anyone who never went looking for one. A manual refresh or retry clears
-    // `registry`/`registryError` to trigger this again.
-    useEffect(() => {
-        if (registry === null && !registryError && !registryLoading) {
-            void refreshRegistry();
-        }
-    }, [registry, registryError, registryLoading]);
-
-    const runTask = async (message: string, action: () => Promise<void>) => {
-        if (busy) return;
-        setTask({ status: "working", message });
-        try {
-            await action();
-        } catch (error) {
-            setTask({ status: "error", message: getErrorMessage(error) });
-        }
-    };
-
-    // Refresh means both halves, whichever segment is showing - the installed
-    // list's update markers are only as fresh as the index behind them.
-    const handleRefresh = () => {
-        void refresh();
-        setRegistry(null);
-        setRegistryError(null);
-        // Main gives previously-unreachable thumbnails another chance on a
-        // registry fetch; drop our own memo so we actually ask it again.
-        plugins.forEach(plugin => forgetStoreIcon(plugin.pluginId));
-        (registry ?? []).forEach(entry => forgetStoreIcon(entry.id));
-    };
-
-    const installLocal = () => runTask(t("launcher.plugins.task.installing"), async () => {
-        const result = await getInterface().plugins.installLocal();
-        if (!result.success) {
-            throw new Error(result.error ?? t("launcher.plugins.error.install"));
-        }
-        if (result.data.canceled) {
-            setTask({ status: "idle" });
-            return;
-        }
-        await refresh();
-        setActiveTab("installed");
-        setTask({ status: "success", message: t("launcher.plugins.task.installed") });
-    });
-
-    const approve = (pluginId: string) => runTask(t("launcher.plugins.task.authorizing"), async () => {
-        const result = await getInterface().plugins.approve(pluginId);
-        if (!result.success) {
-            throw new Error(result.error ?? t("launcher.plugins.error.approve"));
-        }
-        await refresh();
-        setTask({
-            status: result.data.approved ? "success" : "idle",
-            message: result.data.approved ? t("launcher.plugins.task.authorized") : "",
-        });
-    });
-
-    const setEnabled = (pluginId: string, enabled: boolean) => runTask(
-        enabled ? t("launcher.plugins.task.enabling") : t("launcher.plugins.task.disabling"),
-        async () => {
-            const result = await getInterface().plugins.setEnabled(pluginId, enabled);
-            if (!result.success) {
-                throw new Error(result.error ?? t("launcher.plugins.error.update"));
-            }
-            await refresh();
-            setTask({
-                status: "success",
-                message: enabled ? t("launcher.plugins.task.enabled") : t("launcher.plugins.task.disabled"),
-            });
-        },
-    );
-
-    const uninstall = (pluginId: string) => runTask(t("launcher.plugins.task.uninstalling"), async () => {
-        const result = await getInterface().plugins.uninstall(pluginId);
-        if (!result.success) {
-            throw new Error(result.error ?? t("launcher.plugins.error.uninstall"));
-        }
-        await refresh();
+    const uninstall = (pluginId: string) => {
+        catalog.uninstall(pluginId);
         // Close the detail modal unless the plugin lives on as a store entry.
         setDetailId(current => (current && registry?.some(entry => entry.id === current) ? current : null));
-        setTask({ status: "success", message: t("launcher.plugins.task.uninstalled") });
-    });
-
-    // Install (or update) from the store, then chain straight into the permission
-    // prompt so browse → install → authorize is one gesture. An update that
-    // widens no permission inherits the grant it already has and skips the
-    // prompt entirely — asking again for an unchanged permission set is friction
-    // with nothing behind it.
-    const installFromStore = (pluginId: string) => runTask(t("launcher.plugins.task.downloading"), async () => {
-        const result = await getInterface().plugins.installFromRegistry(pluginId);
-        if (!result.success) {
-            throw new Error(result.error ?? t("launcher.plugins.error.download"));
-        }
-        if (result.data.canceled) {
-            setTask({ status: "idle" });
-            return;
-        }
-        // The installed package now carries its own icon, and main dropped the
-        // one it had cached for the version that just moved.
-        forgetStoreIcon(pluginId);
-        await refresh();
-        if (result.data.plugin.status !== "needsAuthorization") {
-            setTask({ status: "success", message: t("launcher.plugins.task.installed") });
-            return;
-        }
-        const approval = await getInterface().plugins.approve(pluginId);
-        if (!approval.success) {
-            throw new Error(approval.error ?? t("launcher.plugins.error.approve"));
-        }
-        await refresh();
-        setTask({
-            status: approval.data.approved ? "success" : "idle",
-            message: approval.data.approved ? t("launcher.plugins.task.installed") : "",
-        });
-    });
-
-    const registryById = useMemo(() => {
-        const map = new Map<string, PluginRegistryEntry>();
-        (registry ?? []).forEach(entry => map.set(entry.id, entry));
-        return map;
-    }, [registry]);
-    const installedById = useMemo(() => {
-        const map = new Map<string, PluginListItem>();
-        plugins.forEach(plugin => map.set(plugin.pluginId, plugin));
-        return map;
-    }, [plugins]);
-
-    const q = query.trim().toLowerCase();
-    const visibleInstalled = useMemo(() => plugins.filter(plugin =>
-        !q
-        || plugin.manifest.name.toLowerCase().includes(q)
-        || plugin.pluginId.toLowerCase().includes(q)
-        || (plugin.manifest.publisher ?? "").toLowerCase().includes(q),
-    ), [plugins, q]);
-    const visibleStore = useMemo(() => (registry ?? []).filter(entry =>
-        !q
-        || entry.name.toLowerCase().includes(q)
-        || entry.id.toLowerCase().includes(q)
-        || entry.publisher.toLowerCase().includes(q)
-        || entry.description.toLowerCase().includes(q),
-    ), [registry, q]);
+    };
 
     const detailInstalled = detailId ? installedById.get(detailId) ?? null : null;
     const detailEntry = detailId ? registryById.get(detailId) ?? null : null;
@@ -227,8 +56,8 @@ export function PluginsTab() {
                     value={activeTab}
                     onChange={setActiveTab}
                     options={[
-                        { value: "installed", label: t("launcher.plugins.tab.installed") },
-                        { value: "store", label: t("launcher.plugins.tab.store") },
+                        { value: "installed", label: t("plugins.tab.installed") },
+                        { value: "store", label: t("plugins.tab.store") },
                     ]}
                 />
                 <div className="min-w-0 flex-1">
@@ -242,11 +71,11 @@ export function PluginsTab() {
                                 setQuery("");
                             }
                         }}
-                        placeholder={t("launcher.plugins.search.placeholder")}
-                        aria-label={t("launcher.plugins.search.placeholder")}
+                        placeholder={t("plugins.search.placeholder")}
+                        aria-label={t("plugins.search.placeholder")}
                         leftIcon={<Search className="h-4 w-4" />}
                         rightIcon={query ? <X className="h-4 w-4" /> : undefined}
-                        rightIconLabel={t("launcher.plugins.search.clear")}
+                        rightIconLabel={t("plugins.search.clear")}
                         onRightIconClick={query ? () => setQuery("") : undefined}
                         className="border-transparent bg-transparent focus:border-edge-strong"
                     />
@@ -254,17 +83,17 @@ export function PluginsTab() {
                 <IconButton
                     variant="ghost"
                     size="sm"
-                    onClick={installLocal}
+                    onClick={catalog.installLocal}
                     disabled={busy}
-                    title={t("launcher.plugins.installLocal")}
-                    aria-label={t("launcher.plugins.installLocal")}
+                    title={t("plugins.installLocal")}
+                    aria-label={t("plugins.installLocal")}
                 >
                     <FolderPlus className="h-4 w-4" />
                 </IconButton>
                 <IconButton
                     variant="ghost"
                     size="sm"
-                    onClick={handleRefresh}
+                    onClick={catalog.refreshAll}
                     disabled={busy}
                     title={t("common.refresh")}
                     aria-label={t("common.refresh")}
@@ -289,10 +118,10 @@ export function PluginsTab() {
                     plugins.length === 0 ? (
                         <EmptyState
                             icon={<Puzzle className="h-6 w-6" />}
-                            title={t("launcher.plugins.emptyList")}
+                            title={t("plugins.emptyList")}
                         />
                     ) : visibleInstalled.length === 0 ? (
-                        <EmptyState title={t("launcher.plugins.emptyFiltered", { query: query.trim() })} />
+                        <EmptyState title={t("plugins.emptyFiltered", { query: q })} />
                     ) : (
                         <div className="flex flex-col gap-0.5">
                             {visibleInstalled.map(plugin => (
@@ -302,10 +131,10 @@ export function PluginsTab() {
                                     entry={registryById.get(plugin.pluginId) ?? null}
                                     busy={busy}
                                     onOpen={() => setDetailId(plugin.pluginId)}
-                                    onAuthorize={() => approve(plugin.pluginId)}
-                                    onToggle={() => setEnabled(plugin.pluginId, !plugin.enabled)}
+                                    onAuthorize={() => catalog.approve(plugin.pluginId)}
+                                    onToggle={() => catalog.setEnabled(plugin.pluginId, !plugin.enabled)}
                                     onUninstall={() => uninstall(plugin.pluginId)}
-                                    onUpdate={() => installFromStore(plugin.pluginId)}
+                                    onUpdate={() => catalog.installFromStore(plugin.pluginId)}
                                 />
                             ))}
                         </div>
@@ -313,11 +142,11 @@ export function PluginsTab() {
                 ) : registryError ? (
                     <EmptyState
                         icon={<AlertTriangle className="h-6 w-6" />}
-                        title={t("launcher.plugins.store.offline")}
+                        title={t("plugins.store.offline")}
                         description={registryError}
                         action={(
-                            <Button size="sm" variant="secondary" onClick={handleRefresh}>
-                                {t("launcher.plugins.store.retry")}
+                            <Button size="sm" variant="secondary" onClick={catalog.refreshAll}>
+                                {t("plugins.store.retry")}
                             </Button>
                         )}
                     />
@@ -326,7 +155,7 @@ export function PluginsTab() {
                 ) : visibleStore.length === 0 ? (
                     <EmptyState
                         icon={<Puzzle className="h-6 w-6" />}
-                        title={q ? t("launcher.plugins.emptyFiltered", { query: query.trim() }) : t("launcher.plugins.store.emptyList")}
+                        title={q ? t("plugins.emptyFiltered", { query: q }) : t("plugins.store.emptyList")}
                     />
                 ) : (
                     <div className="flex flex-col gap-0.5">
@@ -337,7 +166,7 @@ export function PluginsTab() {
                                 installed={installedById.get(entry.id) ?? null}
                                 busy={busy}
                                 onOpen={() => setDetailId(entry.id)}
-                                onInstall={() => installFromStore(entry.id)}
+                                onInstall={() => catalog.installFromStore(entry.id)}
                             />
                         ))}
                     </div>
@@ -350,10 +179,10 @@ export function PluginsTab() {
                     registryEntry={detailEntry}
                     busy={busy}
                     onClose={() => setDetailId(null)}
-                    onAuthorize={approve}
-                    onSetEnabled={setEnabled}
+                    onAuthorize={catalog.approve}
+                    onSetEnabled={catalog.setEnabled}
                     onUninstall={uninstall}
-                    onInstall={installFromStore}
+                    onInstall={catalog.installFromStore}
                 />
             ) : null}
         </div>
@@ -397,9 +226,9 @@ function InstalledRow({
                 <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate text-sm text-fg">{plugin.manifest.name}</span>
-                        {plugin.builtIn ? <Badge tone="primary">{t("launcher.plugins.builtIn")}</Badge> : null}
+                        {plugin.builtIn ? <Badge tone="primary">{t("plugins.builtIn")}</Badge> : null}
                         <PluginStatusBadge status={plugin.status} />
-                        {updateAvailable ? <Badge tone="warning">{t("launcher.plugins.updateAvailable")}</Badge> : null}
+                        {updateAvailable ? <Badge tone="warning">{t("plugins.updateAvailable")}</Badge> : null}
                     </span>
                     <span className="block truncate text-xs text-fg-subtle">
                         {plugin.manifest.publisher || plugin.pluginId}
@@ -410,13 +239,13 @@ function InstalledRow({
                 {needsAuth ? (
                     <Button size="sm" variant="primary" onClick={onAuthorize} disabled={busy} className="gap-1">
                         <ShieldCheck className="h-3.5 w-3.5" />
-                        {t("launcher.plugins.authorize")}
+                        {t("plugins.authorize")}
                     </Button>
                 ) : (
                     <>
                         {updatable ? (
                             <Button size="sm" variant="primary" onClick={onUpdate} disabled={busy}>
-                                {t("launcher.plugins.store.update")}
+                                {t("plugins.store.update")}
                             </Button>
                         ) : null}
                         {plugin.status !== "error" ? (
@@ -431,7 +260,7 @@ function InstalledRow({
                     </>
                 )}
                 {!plugin.builtIn ? (
-                    <RowIconButton title={t("launcher.plugins.uninstall")} disabled={busy} onClick={onUninstall}>
+                    <RowIconButton title={t("plugins.uninstall")} disabled={busy} onClick={onUninstall}>
                         <Trash2 className="h-4 w-4" />
                     </RowIconButton>
                 ) : null}
@@ -483,18 +312,18 @@ function StoreRow({
             <div className="absolute right-2 top-1/2 -translate-y-1/2">
                 {!compatible ? (
                     <Badge tone="warning">
-                        {t("launcher.plugins.store.needsStudio", { range: entry.studioVersion ?? "" })}
+                        {t("plugins.store.needsStudio", { range: entry.studioVersion ?? "" })}
                     </Badge>
                 ) : updateAvailable ? (
                     <Button size="sm" variant="primary" onClick={onInstall} disabled={busy}>
-                        {t("launcher.plugins.store.update")}
+                        {t("plugins.store.update")}
                     </Button>
                 ) : installed ? (
-                    <Badge tone="neutral">{t("launcher.plugins.store.installed")}</Badge>
+                    <Badge tone="neutral">{t("plugins.store.installed")}</Badge>
                 ) : (
                     <Button size="sm" variant="primary" onClick={onInstall} disabled={busy} className="gap-1">
                         <Download className="h-3.5 w-3.5" />
-                        {t("launcher.plugins.store.install")}
+                        {t("plugins.store.install")}
                     </Button>
                 )}
             </div>
@@ -558,7 +387,7 @@ function Segmented<T extends string>({
     );
 }
 
-function taskClass(status: TaskState["status"]): string {
+function taskClass(status: PluginCatalogTask["status"]): string {
     switch (status) {
         case "success":
             return "border-success/25 bg-success/10 text-success";
@@ -569,8 +398,4 @@ function taskClass(status: TaskState["status"]): string {
         default:
             return "border-edge bg-fill-subtle text-fg-muted";
     }
-}
-
-function getErrorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
 }

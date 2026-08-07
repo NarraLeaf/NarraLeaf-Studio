@@ -211,6 +211,20 @@ export const story = {
         },
         hint: {
             openScene: "双击场景可打开",
+            connect: "在场景之间拖拽以写入跳转",
+        },
+        edge: {
+            reveal: "查看这些跳转",
+            disconnect: "删除连接",
+            // 中文没有单复数形式，所以措辞要在 1 条和多条时都读得通：「全部 1 条」很别扭，
+            // 而「这条连接对应的」既涵盖两种情况，也说清了删除的范围是整条线。
+            confirmRemove: {
+                other: "删除《{source}》→《{target}》的 {count} 条跳转？",
+            },
+            confirmRemoveDetail: {
+                other: "这条连接对应的 {count} 条跳转会从《{source}》中删除，可在剧情编辑器里撤销。",
+            },
+            confirmRemoveAction: "删除跳转",
         },
         action: {
             resetLayout: "重置布局",
@@ -549,6 +563,10 @@ export const story = {
         placeholderNote: "备注…",
         placeholderText: "文本…",
         dragRow: "拖动行",
+        dragRows: {
+            one: "拖动 {count} 行",
+            other: "拖动 {count} 行",
+        },
         insert: "在此行后插入空行",
         delete: "删除此行",
         insertTitle: "在此行后插入空行（{keys}）",

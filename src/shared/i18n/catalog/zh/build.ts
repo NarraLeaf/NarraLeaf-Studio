@@ -72,6 +72,7 @@ export const build = {
         protectionOff: "资源与存档以明文随包发布",
         plugins: "随包插件",
         pluginsNone: "没有插件会随游戏发布",
+        pluginsRescanUnavailable: "当前窗口无法重新扫描插件列表",
         locales: "随包语言",
         localesNone: "尚未配置本地化，游戏只发布一种语言",
         localeSource: "{name}（源语言）",

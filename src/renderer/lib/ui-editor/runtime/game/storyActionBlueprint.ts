@@ -15,6 +15,7 @@ import { Script } from "narraleaf-react";
 import type { Scene, ScriptCtx } from "narraleaf-react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { collectStoryActionEventHeadNodeIdsForDispatch } from "@shared/types/blueprint/graph";
+import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
 import type {
     StoryDocument,
     StorySavedVariableDefinition,
@@ -138,7 +139,7 @@ export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionS
         const ir = eventGraph.graph;
         const headIds = collectStoryActionEventHeadNodeIdsForDispatch(ir?.nodes);
         if (headIds.length === 0 || !ir) continue;
-        const graph = adaptBlueprintGraphIr(ir, `storyActionValue:${bp.id}:${eventGraph.id}`);
+        const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("storyActionValue", bp.id, eventGraph.id));
         for (const headId of headIds) {
             const result = executeGraphSync({
                 graph,
@@ -239,7 +240,7 @@ async function runStoryActionOnCall(env: StoryActionExecutionEnv): Promise<unkno
         const ir = eventGraph.graph;
         const headIds = collectStoryActionEventHeadNodeIdsForDispatch(ir?.nodes);
         if (headIds.length === 0 || !ir) continue;
-        const graph = adaptBlueprintGraphIr(ir, `storyAction:${bp.id}:${eventGraph.id}`);
+        const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("storyAction", bp.id, eventGraph.id));
         for (const headId of headIds) {
             const result = await executeGraph({
                 graph,
@@ -285,7 +286,7 @@ async function invokeStoryActionFn(options: {
         seededArgs[param.pinId] = args[param.pinId];
     }
     writeBlueprintNodeOutputValues(blueprintLocals, decl.headNodeId, seededArgs);
-    const graph = adaptBlueprintGraphIr(decl.ir, `storyActionFn:${decl.blueprintId}:${decl.graphId}`);
+    const graph = adaptBlueprintGraphIr(decl.ir, buildBlueprintRunGraphId("storyActionFn", decl.blueprintId, decl.graphId));
     const result = await executeGraph({
         graph,
         entry: { start: { nodeId: decl.headNodeId, port: "then" as const } },

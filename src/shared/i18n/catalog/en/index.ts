@@ -39,6 +39,7 @@ import { wizard } from "./wizard";
 import { devMode } from "./devMode";
 import { developer } from "./developer";
 import { pluginPermission } from "./pluginPermission";
+import { plugins } from "./plugins";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
 import { build } from "./build";
@@ -79,6 +80,7 @@ export const en = {
     devMode,
     developer,
     pluginPermission,
+    plugins,
     dialogs,
     defaultDoc,
     build,

@@ -4,16 +4,19 @@ import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/componen
 import { appendDeveloperIdSection, DEVELOPER_MENU_ROW_IDS } from "@/lib/developer";
 
 /**
- * The asset-menu rows a frozen library keeps: the two that only fill the clipboard.
+ * The asset-menu rows a frozen library keeps: the ones that only read.
  *
- * Copy and Cut record what is marked; the move happens on Paste, which is off. Everything else
- * creates, imports, renames, retags, replaces bytes or deletes.
+ * Copy and Cut record what is marked; the move happens on Paste, which is off. Export copies bytes
+ * out of the project and writes nothing back into it. Everything else creates, imports, renames,
+ * retags, replaces bytes or deletes.
  */
 const FREEZE_READ_ONLY_ASSET_MENU_IDS: ReadonlySet<string> = new Set([
     "copy",
     "cut",
     "copy-selected",
     "cut-selected",
+    "export",
+    "export-selected",
     // Developer options' identifier rows: they read an id off the row that was clicked.
     ...DEVELOPER_MENU_ROW_IDS,
 ]);
@@ -50,6 +53,8 @@ export interface UseAssetsContextMenuParams {
      */
     canConvertMedia: boolean;
     handleDelete: () => Promise<void>;
+    /** Copies the targeted rows out to a folder the author picks. */
+    handleExport: () => Promise<void>;
     handleCreateGroup: (category: AssetCategory, parentGroupId?: string) => Promise<void>;
     /** Other only. `groupId` is the group the menu was opened on, absent from the category header. */
     handleCreateTextFile: (groupId?: string) => Promise<void>;
@@ -75,6 +80,7 @@ export function useAssetsContextMenu({
     handleConvertMedia,
     canConvertMedia,
     handleDelete,
+    handleExport,
     handleCreateGroup,
     handleCreateTextFile,
     handleImportToGroup,
@@ -136,6 +142,16 @@ export function useAssetsContextMenu({
                             closeContextMenu();
                         },
                     },
+                    {
+                        id: "export-selected",
+                        label: tn("assets.menu.exportCount", totalItems),
+                        onClick: async () => {
+                            // Run first, close after, like every other async row here: closing clears
+                            // `contextMenuTarget`, which is half of what decides the rows to act on.
+                            await handleExport();
+                            closeContextMenu();
+                        },
+                    },
                 );
             }
 
@@ -179,6 +195,14 @@ export function useAssetsContextMenu({
                     label: t("common.cut"),
                     onClick: () => {
                         handleCut();
+                        closeContextMenu();
+                    },
+                },
+                {
+                    id: "export",
+                    label: t("assets.menu.export"),
+                    onClick: async () => {
+                        await handleExport();
                         closeContextMenu();
                     },
                 },
@@ -308,7 +332,7 @@ export function useAssetsContextMenu({
         );
 
         return freezeContextMenuRows(withDeveloperRows, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS, freeze.reason);
-    }, [canConvertMedia, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
+    }, [canConvertMedia, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
 
     return {
         menuState,

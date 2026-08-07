@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import {
     applyPlannedMove,
+    applyUngroupContainer,
+    canUngroupContainer,
     filterToTopLevelMovers,
     normalizeFlowChildLayouts,
 } from "./uiDocumentTreeMove";
+import { COMPONENT_EDITOR_ROOT_EXTRA_KEY } from "@/lib/ui-editor/componentEditorRoot";
 
 function element(
     id: string,
@@ -125,5 +128,115 @@ describe("uiDocumentTreeMove flow layout normalization", () => {
 
         expect(document.elements.stack.childrenIds).toEqual(["b", "a"]);
         expect(document.elements.b.layout).toMatchObject({ x: 0, y: 0 });
+    });
+});
+
+describe("uiDocumentTreeMove ungroup", () => {
+    it("lifts children into the group's slot among its siblings, keeping their place on screen", () => {
+        const document = makeDocument({
+            root: element("root", "nl.root", null, ["before", "group", "after"]),
+            before: element("before", "nl.text", "root"),
+            group: element("group", "nl.container", "root", ["a", "b"], {
+                layout: { x: 100, y: 50, width: 200, height: 200 },
+            }),
+            a: element("a", "nl.text", "group", [], { layout: { x: 10, y: 20, width: 80, height: 20 } }),
+            b: element("b", "nl.image", "group", [], { layout: { x: 30, y: 40, width: 80, height: 20 } }),
+            after: element("after", "nl.text", "root"),
+        });
+
+        expect(applyUngroupContainer(document, "surface", "group")).toEqual(["a", "b"]);
+        expect(document.elements.root.childrenIds).toEqual(["before", "a", "b", "after"]);
+        expect(document.elements.group).toBeUndefined();
+        expect(document.elements.a.parentId).toBe("root");
+        // The group sat at (100, 50), so its children land at their own offsets plus that.
+        expect(document.elements.a.layout).toMatchObject({ x: 110, y: 70 });
+        expect(document.elements.b.layout).toMatchObject({ x: 130, y: 90 });
+    });
+
+    it("removes an empty group outright", () => {
+        const document = makeDocument({
+            root: element("root", "nl.root", null, ["group"]),
+            group: element("group", "nl.container", "root"),
+        });
+
+        expect(applyUngroupContainer(document, "surface", "group")).toEqual([]);
+        expect(document.elements.root.childrenIds).toEqual([]);
+        expect(document.elements.group).toBeUndefined();
+    });
+
+    it("dissolves nested groups whichever order they are handed over in", () => {
+        const build = () =>
+            makeDocument({
+                root: element("root", "nl.root", null, ["outer"]),
+                outer: element("outer", "nl.container", "root", ["inner", "loose"]),
+                inner: element("inner", "nl.container", "outer", ["deep"]),
+                deep: element("deep", "nl.text", "inner"),
+                loose: element("loose", "nl.text", "outer"),
+            });
+
+        for (const order of [["outer", "inner"], ["inner", "outer"]]) {
+            const document = build();
+            for (const id of order) {
+                applyUngroupContainer(document, "surface", id);
+            }
+            expect(document.elements.root.childrenIds).toEqual(["deep", "loose"]);
+            expect(document.elements.outer).toBeUndefined();
+            expect(document.elements.inner).toBeUndefined();
+        }
+    });
+
+    it("refuses anything that is not a user's group", () => {
+        const document = makeDocument({
+            root: element("root", "nl.root", null, ["button", "linked", "componentRoot", "plain"]),
+            button: element("button", "nl.button", "root", ["label"]),
+            label: element("label", "nl.text", "button"),
+            linked: element("linked", "nl.container", "root", [], {
+                extra: { componentLink: { componentId: "c1", linked: true } },
+            }),
+            componentRoot: element("componentRoot", "nl.container", "root", [], {
+                extra: { [COMPONENT_EDITOR_ROOT_EXTRA_KEY]: true },
+            }),
+            plain: element("plain", "nl.container", "root", []),
+        });
+
+        expect(canUngroupContainer(document, "surface", "root")).toBe(false);
+        expect(canUngroupContainer(document, "surface", "button")).toBe(false);
+        expect(canUngroupContainer(document, "surface", "linked")).toBe(false);
+        expect(canUngroupContainer(document, "surface", "componentRoot")).toBe(false);
+        expect(canUngroupContainer(document, "surface", "missing")).toBe(false);
+        expect(canUngroupContainer(document, "surface", "plain")).toBe(true);
+        expect(applyUngroupContainer(document, "surface", "button")).toBeNull();
+        expect(document.elements.button.childrenIds).toEqual(["label"]);
+    });
+
+    it("keeps a non-empty group whose parent takes no user children", () => {
+        // A slider owns its parts; lifting a group's children in would leave the slider holding
+        // elements it was never built to place.
+        const document = makeDocument({
+            root: element("root", "nl.root", null, ["slider"]),
+            slider: element("slider", "nl.slider", "root", ["group"]),
+            group: element("group", "nl.container", "slider", ["knob"]),
+            knob: element("knob", "nl.image", "group"),
+        });
+
+        expect(canUngroupContainer(document, "surface", "group")).toBe(false);
+        expect(applyUngroupContainer(document, "surface", "group")).toBeNull();
+
+        document.elements.group.childrenIds = [];
+        expect(canUngroupContainer(document, "surface", "group")).toBe(true);
+    });
+
+    it("makes children lifted into a list its item templates", () => {
+        const document = makeDocument({
+            root: element("root", "nl.root", null, ["list"]),
+            list: element("list", "nl.list", "root", ["group"]),
+            group: element("group", "nl.container", "list", ["row"], {
+                extra: { listSlot: "itemTemplate" },
+            }),
+            row: element("row", "nl.text", "group"),
+        });
+
+        expect(applyUngroupContainer(document, "surface", "group")).toEqual(["row"]);
+        expect(document.elements.row.extra?.listSlot).toBe("itemTemplate");
     });
 });

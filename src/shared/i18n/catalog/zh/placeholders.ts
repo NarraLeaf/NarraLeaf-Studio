@@ -30,5 +30,6 @@ export const placeholders = {
         keybindings: "快捷键",
         history: "历史",
         notifications: "通知",
+        plugins: "插件",
     },
 } satisfies LocaleNamespace<"placeholders">;

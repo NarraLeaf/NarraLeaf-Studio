@@ -1,6 +1,6 @@
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
-import { filterToTopLevelMovers } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
+import { canUngroupContainer, filterToTopLevelMovers } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
@@ -74,6 +74,24 @@ export function getMoversToGroupIntoLeaderContainer(document: UIDocument, select
     }
     const tops = filterToTopLevelMovers(document, selection.elementIds);
     return tops.filter(id => id !== leader);
+}
+
+/**
+ * Groups in the selection that can be dissolved.
+ *
+ * Unlike the movers above this does *not* drop descendants of other selected elements: selecting a
+ * group and a group nested inside it and asking to ungroup means both go, and the order they are
+ * dissolved in does not matter - lifting the outer one's children only moves the inner one up.
+ */
+export function getContainersToUngroup(
+    document: UIDocument,
+    surfaceId: string,
+    selection: UIElementSelection | null,
+): string[] {
+    if (!selection || selection.surfaceId !== surfaceId) {
+        return [];
+    }
+    return selection.elementIds.filter(id => canUngroupContainer(document, surfaceId, id));
 }
 
 export function isRootElement(elementType: string): boolean {

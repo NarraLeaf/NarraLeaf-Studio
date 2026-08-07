@@ -25,7 +25,8 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
-import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
+import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
+import { writeStoryJumpLine } from "./storyJumpLine";
 import { createBlockForCommand, type ActionCommandId } from "./storyActionCommands";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { buildStoryCommandContext } from "./storyCommandContext";
@@ -49,10 +50,10 @@ import {
     filterOutSelectedDescendants,
     findPreviousSibling,
     nextSelectionAfterDelete,
+    planBlockGroupMove,
     planRowBackspaceReplacement,
+    planSelectionNudge,
     getInsertionTargetAfter,
-    getMoveTargetBefore,
-    getMoveTargetAfter,
     getTextSegment,
     hasInspector,
     isTextEditableBlock,
@@ -72,7 +73,7 @@ import {
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
-import type { EditorMode, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
+import type { EditorMode, InsertSlot, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers, type StoryPasteWizardRequest } from "./useStorySceneClipboardHandlers";
 import { materializePastedRows } from "@/lib/story/paste/storyPasteModel";
 import type { PastePlan, PasteSeparatorChoice, SpeakerMappingTarget } from "@/lib/story/paste/storyPasteTypes";
@@ -138,7 +139,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const textSelectRef = useRef<{ blockId: StoryBlockId; textEl: HTMLElement } | null>(null);
     const dragSelectPointerRef = useRef<{ x: number; y: number } | null>(null);
     const dragSelectAutoScrollRef = useRef<number | null>(null);
-    const draggingBlockIdRef = useRef<StoryBlockId | null>(null);
+    /**
+     * The rows a drag in progress is carrying, settled at pick-up rather than at drop: a drag can be
+     * cancelled by anything the selection would have moved on with (Escape, a scroll, the pointer
+     * leaving), so the drop has to move what the author picked up, not what is selected by then.
+     */
+    const dragGroupRef = useRef<StoryBlockId[]>([]);
     /**
      * The x the caret is trying to hold while walking rows vertically. Seeded from the caret as it
      * leaves the first row and kept until something states a new column - a horizontal arrow, a
@@ -234,7 +240,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * while it holds focus), so Enter there opens a fresh insert slot — the same as clicking it.
      */
     const [addRowFocused, setAddRowFocused] = useState(false);
-    const [draggingBlockId, setDraggingBlockId] = useState<StoryBlockId | null>(null);
     const [dragSelectActive, setDragSelectActive] = useState(false);
     const [characterRevision, setCharacterRevision] = useState(0);
     /**
@@ -1213,6 +1218,80 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         window.requestAnimationFrame(() => insertInputRef.current?.focus());
     }, [ensureExpanded, scene]);
 
+    /**
+     * Open a slot with a `/jump` already typed into it — the scene flow map's connect gesture landing
+     * here (see `StorySceneEditorDraftJump`).
+     *
+     * Nothing is written. The line is seeded, the caret sits at its end, and the author's Enter is what
+     * makes it a row — which is the whole point: the map draws a line between two boxes, but only the
+     * editor can show which fork the jump lands under and what guards it, so that is where the author
+     * confirms it. Escape leaves the document untouched.
+     *
+     * `chooserDismissed` because the line arrives complete: an open candidate menu over a finished
+     * command would take the Enter meant to commit it. It is one-shot — the first keystroke the author
+     * types brings completion straight back (see `handleInsertValueChange`), so editing the target or
+     * adding `t=fade` is offered exactly as it is on a hand-typed line.
+     *
+     * Returns whether the slot opened, so a caller can tell a refused draft (frozen workspace, a
+     * container that has since been deleted) from one the author simply escaped.
+     */
+    const startJumpDraft = useCallback((draft: StorySceneEditorDraftJump): boolean => {
+        if (frozen || !scene || !document) {
+            return false;
+        }
+        const line = writeStoryJumpLine(draft.targetSceneId, document.scenes, slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER);
+        if (!line) {
+            return false;
+        }
+        // Inside the arm the gesture started on, when it started on one. The container has to be on
+        // screen or the slot renders nowhere and the author gets no caret at all — the same two
+        // obstacles `startInsertInside` and `revealBlock` each handle one of.
+        const container = draft.insideBlockId ? scene.blocks[draft.insideBlockId] : null;
+        if (draft.insideBlockId && !container) {
+            return false;
+        }
+        let slot: InsertSlot;
+        if (container) {
+            ensureExpanded(container.id);
+            const lastChildId = container.childrenIds[container.childrenIds.length - 1] ?? null;
+            const anchor = lastChildId ? scene.blocks[lastChildId] : null;
+            // The ANCHOR, not just the container: the slot renders after the arm's last child, and a
+            // slot whose anchor row the filter is hiding is closed again the moment it opens (see the
+            // stranded-slot effect). Both are revealed because both have to be on the page — the arm
+            // to be read, its last line to hang the caret off.
+            revealRowInFilter(container);
+            if (anchor) {
+                revealRowInFilter(anchor);
+            }
+            slot = {
+                afterBlockId: lastChildId ?? container.id,
+                focusToken: Date.now(),
+                target: { parentId: container.id, beforeBlockId: null },
+            };
+        } else {
+            // The end of the scene. `afterBlockId: null` with no before-target is the trailing slot the
+            // "add a row" line opens, which is the one anchor no filter and no fold can take away.
+            slot = { afterBlockId: null, focusToken: Date.now() };
+        }
+        slotDiscardedRef.current = false;
+        insertDraftRef.current = line;
+        setEditorMode({ kind: "insert", slot, initialValue: line, chooserDismissed: true });
+        if (container) {
+            setActiveBlockId(container.id);
+        }
+        window.requestAnimationFrame(() => {
+            const input = insertInputRef.current;
+            if (!input) {
+                return;
+            }
+            input.focus();
+            // Past the line, not in front of it: Chromium drops the caret at offset 0 of a field it
+            // focuses for the first time, and a caret before the "/" makes the next keystroke prose.
+            input.setSelectionRange(line.length, line.length);
+        });
+        return true;
+    }, [document, ensureExpanded, frozen, revealRowInFilter, scene, slashAtAlias]);
+
     // Append a menu option to a choice container and open it for text entry.
     const addMenuOption = useCallback((choiceId: StoryBlockId) => {
         if (!scene) {
@@ -2067,18 +2146,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [dragSelectActive, visibleRows]);
 
-    const startDraggingBlock = useCallback((blockId: StoryBlockId) => {
-        draggingBlockIdRef.current = blockId;
-        setDraggingBlockId(blockId);
-        setActiveBlockId(blockId);
-        setSelectedBlockIds(new Set([blockId]));
-    }, []);
-
-    const endDraggingBlock = useCallback(() => {
-        draggingBlockIdRef.current = null;
-        setDraggingBlockId(null);
-    }, []);
-
     const toggleCollapsed = useCallback((blockId: StoryBlockId) => {
         setCollapsedBlockIds(previous => {
             const next = new Set(previous);
@@ -2466,43 +2533,34 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [activeBlockId, rowIndexById, selectSingleRow, visibleRows]);
 
-    // Alt+Arrow - reorder the selected row among its siblings (keyboard equivalent of drag-to-reorder).
-    // Deliberately single-row for predictability; multi-row keyboard moves are surprising in outliners.
+    // Alt+Arrow - step the selected rows over their neighbour, each staying among its own siblings (the
+    // keyboard equivalent of drag-to-reorder). A selection moves whole, and only if all of it can: see
+    // {@link planSelectionNudge} for why the run, not the row, is the unit that steps.
     const moveSelectedRows = useCallback((direction: "up" | "down") => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
         }
         const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
         const roots = filterOutSelectedDescendants(scene, ids);
-        if (roots.length !== 1) {
+        const plan = planSelectionNudge(scene, roots, direction);
+        if (!plan) {
             return;
         }
-        const id = roots[0];
-        const block = scene.blocks[id];
-        if (!block) {
-            return;
-        }
-        const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
-        if (!siblings) {
-            return;
-        }
-        const siblingIndex = siblings.indexOf(id);
-        if (direction === "up") {
-            const previousId = siblings[siblingIndex - 1];
-            if (!previousId) {
-                return;
-            }
+        try {
             recordHistory();
-            storyService.moveBlock(storyId, sceneId, id, getMoveTargetBefore(scene, id, previousId));
+            storyService.moveBlocks(storyId, sceneId, plan);
+        } catch {
+            /* move failed; nothing to surface */
+            return;
+        }
+        // One row still becomes the whole selection, as it always did. A group stays selected, so
+        // holding the shortcut walks it up the scene rather than dropping every row but one after the
+        // first press.
+        if (roots.length === 1) {
+            selectSingleRow(roots[0]);
         } else {
-            const nextId = siblings[siblingIndex + 1];
-            if (!nextId) {
-                return;
-            }
-            recordHistory();
-            storyService.moveBlock(storyId, sceneId, id, getMoveTargetAfter(scene, id, nextId));
+            setSelectedBlockIds(new Set(roots));
         }
-        selectSingleRow(id);
     }, [activeBlockId, recordHistory, scene, sceneId, selectSingleRow, selectedBlockIds, storyId, storyService]);
 
     // Cmd/Ctrl+D - duplicate the selected rows (with their subtrees, new ids) directly below the block.
@@ -2581,46 +2639,46 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [isStoryEditorFocusActive]);
 
-    const moveDraggedBlockAfter = useCallback((draggedBlockId: StoryBlockId | null, targetBlockId: StoryBlockId) => {
-        const movingBlockId = draggedBlockId ?? draggingBlockIdRef.current ?? draggingBlockId;
-        if (!movingBlockId || movingBlockId === targetBlockId || !storyService || !storyId || !sceneId || !scene) {
-            draggingBlockIdRef.current = null;
-            setDraggingBlockId(null);
-            return;
-        }
-        try {
-            recordHistory();
-            storyService.moveBlock(storyId, sceneId, movingBlockId, getMoveTargetAfter(scene, movingBlockId, targetBlockId));
-            setActiveBlockId(movingBlockId);
-            setSelectedBlockIds(new Set([movingBlockId]));
-        } catch {
-            /* move failed; nothing to surface */
-        }
-        draggingBlockIdRef.current = null;
-        setDraggingBlockId(null);
-    }, [draggingBlockId, recordHistory, scene, sceneId, storyId, storyService]);
+    /**
+     * A drag has picked `blockId` up: report which rows are coming with it, and remember them.
+     *
+     * Grabbing a row that is part of the selection drags the whole selection — the same rows delete,
+     * duplicate and disable act on. Grabbing anything else drags that row alone and leaves the
+     * selection where it is; the drop will select what it moved.
+     */
+    const beginBlockDrag = useCallback((blockId: StoryBlockId): StoryBlockId[] => {
+        const group = selectedBlockIds.has(blockId) ? selectionRootIds() : [blockId];
+        dragGroupRef.current = group.length > 0 ? group : [blockId];
+        return dragGroupRef.current;
+    }, [selectedBlockIds, selectionRootIds]);
 
-    const moveDraggedBlockToSortablePosition = useCallback((draggedBlockId: StoryBlockId, targetBlockId: StoryBlockId) => {
+    const endBlockDrag = useCallback(() => {
+        dragGroupRef.current = [];
+    }, []);
+
+    /**
+     * Drop: move everything the drag picked up to where the pointer let go, as one undoable step, and
+     * leave it selected so the author can carry on moving it.
+     */
+    const moveDraggedBlocksToSortablePosition = useCallback((draggedBlockId: StoryBlockId, targetBlockId: StoryBlockId) => {
+        const movingIds = dragGroupRef.current.length > 0 ? dragGroupRef.current : [draggedBlockId];
+        dragGroupRef.current = [];
         if (draggedBlockId === targetBlockId || !storyService || !storyId || !sceneId || !scene) {
             return;
         }
-        const fromIndex = rowIndexById.get(draggedBlockId);
-        const toIndex = rowIndexById.get(targetBlockId);
-        if (fromIndex === undefined || toIndex === undefined || fromIndex === toIndex) {
+        const plan = planBlockGroupMove(scene, movingIds, draggedBlockId, targetBlockId);
+        if (!plan) {
             return;
         }
-        const target = fromIndex < toIndex
-            ? getMoveTargetAfter(scene, draggedBlockId, targetBlockId)
-            : getMoveTargetBefore(scene, draggedBlockId, targetBlockId);
         try {
             recordHistory();
-            storyService.moveBlock(storyId, sceneId, draggedBlockId, target);
+            storyService.moveBlocks(storyId, sceneId, [plan]);
             setActiveBlockId(draggedBlockId);
-            setSelectedBlockIds(new Set([draggedBlockId]));
+            setSelectedBlockIds(new Set(plan.blockIds));
         } catch {
             /* move failed; nothing to surface */
         }
-    }, [recordHistory, rowIndexById, scene, sceneId, storyId, storyService]);
+    }, [recordHistory, scene, sceneId, storyId, storyService]);
 
     return {
         context, isInitialized, document, scene, loading,
@@ -2634,7 +2692,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         handleRowTextPaste,
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
-        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
+        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
@@ -2648,7 +2706,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, startCharacterActionSlot, enterEditOrInspectorForActive,
         activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
-        moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
+        beginBlockDrag, endBlockDrag, moveDraggedBlocksToSortablePosition,
         createLayerBeforeBlock, slashAtAlias,
     };
 }
