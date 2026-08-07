@@ -563,6 +563,10 @@ export const story = {
         placeholderNote: "备注…",
         placeholderText: "文本…",
         dragRow: "拖动行",
+        dragRows: {
+            one: "拖动 {count} 行",
+            other: "拖动 {count} 行",
+        },
         insert: "在此行后插入空行",
         delete: "删除此行",
         insertTitle: "在此行后插入空行（{keys}）",

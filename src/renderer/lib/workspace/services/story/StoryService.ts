@@ -58,6 +58,7 @@ import {
     deleteBlockFromScene,
     insertBlockInScene,
     moveBlockInScene,
+    moveBlocksInScene,
     normalizeStoryAnimationAsset,
     normalizeStoryAnimationIndex,
     normalizeStoryDocument,
@@ -1252,6 +1253,18 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             moveBlockInScene(scene, blockId, target);
+        });
+    }
+
+    /**
+     * Move a group of blocks to one target, in the order given — one mutation, one revision, one save.
+     * Looping over {@link moveBlock} instead would publish the scene once per row and let the editor
+     * repaint on a document where half the group has landed.
+     */
+    public moveBlocks(storyId: StoryId, sceneId: StorySceneId, blockIds: StoryBlockId[], target: BlockTarget): void {
+        this.mutateDocument(storyId, document => {
+            const scene = this.getSceneOrThrow(document, sceneId);
+            moveBlocksInScene(scene, blockIds, target);
         });
     }
 

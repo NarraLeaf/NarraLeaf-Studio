@@ -50,6 +50,7 @@ import {
     filterOutSelectedDescendants,
     findPreviousSibling,
     nextSelectionAfterDelete,
+    planBlockGroupMove,
     planRowBackspaceReplacement,
     getInsertionTargetAfter,
     getMoveTargetBefore,
@@ -139,7 +140,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const textSelectRef = useRef<{ blockId: StoryBlockId; textEl: HTMLElement } | null>(null);
     const dragSelectPointerRef = useRef<{ x: number; y: number } | null>(null);
     const dragSelectAutoScrollRef = useRef<number | null>(null);
-    const draggingBlockIdRef = useRef<StoryBlockId | null>(null);
+    /**
+     * The rows a drag in progress is carrying, settled at pick-up rather than at drop: a drag can be
+     * cancelled by anything the selection would have moved on with (Escape, a scroll, the pointer
+     * leaving), so the drop has to move what the author picked up, not what is selected by then.
+     */
+    const dragGroupRef = useRef<StoryBlockId[]>([]);
     /**
      * The x the caret is trying to hold while walking rows vertically. Seeded from the caret as it
      * leaves the first row and kept until something states a new column - a horizontal arrow, a
@@ -235,7 +241,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * while it holds focus), so Enter there opens a fresh insert slot — the same as clicking it.
      */
     const [addRowFocused, setAddRowFocused] = useState(false);
-    const [draggingBlockId, setDraggingBlockId] = useState<StoryBlockId | null>(null);
     const [dragSelectActive, setDragSelectActive] = useState(false);
     const [characterRevision, setCharacterRevision] = useState(0);
     /**
@@ -2142,18 +2147,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [dragSelectActive, visibleRows]);
 
-    const startDraggingBlock = useCallback((blockId: StoryBlockId) => {
-        draggingBlockIdRef.current = blockId;
-        setDraggingBlockId(blockId);
-        setActiveBlockId(blockId);
-        setSelectedBlockIds(new Set([blockId]));
-    }, []);
-
-    const endDraggingBlock = useCallback(() => {
-        draggingBlockIdRef.current = null;
-        setDraggingBlockId(null);
-    }, []);
-
     const toggleCollapsed = useCallback((blockId: StoryBlockId) => {
         setCollapsedBlockIds(previous => {
             const next = new Set(previous);
@@ -2656,46 +2649,46 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [isStoryEditorFocusActive]);
 
-    const moveDraggedBlockAfter = useCallback((draggedBlockId: StoryBlockId | null, targetBlockId: StoryBlockId) => {
-        const movingBlockId = draggedBlockId ?? draggingBlockIdRef.current ?? draggingBlockId;
-        if (!movingBlockId || movingBlockId === targetBlockId || !storyService || !storyId || !sceneId || !scene) {
-            draggingBlockIdRef.current = null;
-            setDraggingBlockId(null);
-            return;
-        }
-        try {
-            recordHistory();
-            storyService.moveBlock(storyId, sceneId, movingBlockId, getMoveTargetAfter(scene, movingBlockId, targetBlockId));
-            setActiveBlockId(movingBlockId);
-            setSelectedBlockIds(new Set([movingBlockId]));
-        } catch {
-            /* move failed; nothing to surface */
-        }
-        draggingBlockIdRef.current = null;
-        setDraggingBlockId(null);
-    }, [draggingBlockId, recordHistory, scene, sceneId, storyId, storyService]);
+    /**
+     * A drag has picked `blockId` up: report which rows are coming with it, and remember them.
+     *
+     * Grabbing a row that is part of the selection drags the whole selection — the same rows delete,
+     * duplicate and disable act on. Grabbing anything else drags that row alone and leaves the
+     * selection where it is; the drop will select what it moved.
+     */
+    const beginBlockDrag = useCallback((blockId: StoryBlockId): StoryBlockId[] => {
+        const group = selectedBlockIds.has(blockId) ? selectionRootIds() : [blockId];
+        dragGroupRef.current = group.length > 0 ? group : [blockId];
+        return dragGroupRef.current;
+    }, [selectedBlockIds, selectionRootIds]);
 
-    const moveDraggedBlockToSortablePosition = useCallback((draggedBlockId: StoryBlockId, targetBlockId: StoryBlockId) => {
+    const endBlockDrag = useCallback(() => {
+        dragGroupRef.current = [];
+    }, []);
+
+    /**
+     * Drop: move everything the drag picked up to where the pointer let go, as one undoable step, and
+     * leave it selected so the author can carry on moving it.
+     */
+    const moveDraggedBlocksToSortablePosition = useCallback((draggedBlockId: StoryBlockId, targetBlockId: StoryBlockId) => {
+        const movingIds = dragGroupRef.current.length > 0 ? dragGroupRef.current : [draggedBlockId];
+        dragGroupRef.current = [];
         if (draggedBlockId === targetBlockId || !storyService || !storyId || !sceneId || !scene) {
             return;
         }
-        const fromIndex = rowIndexById.get(draggedBlockId);
-        const toIndex = rowIndexById.get(targetBlockId);
-        if (fromIndex === undefined || toIndex === undefined || fromIndex === toIndex) {
+        const plan = planBlockGroupMove(scene, movingIds, draggedBlockId, targetBlockId);
+        if (!plan) {
             return;
         }
-        const target = fromIndex < toIndex
-            ? getMoveTargetAfter(scene, draggedBlockId, targetBlockId)
-            : getMoveTargetBefore(scene, draggedBlockId, targetBlockId);
         try {
             recordHistory();
-            storyService.moveBlock(storyId, sceneId, draggedBlockId, target);
+            storyService.moveBlocks(storyId, sceneId, plan.blockIds, plan.target);
             setActiveBlockId(draggedBlockId);
-            setSelectedBlockIds(new Set([draggedBlockId]));
+            setSelectedBlockIds(new Set(plan.blockIds));
         } catch {
             /* move failed; nothing to surface */
         }
-    }, [recordHistory, rowIndexById, scene, sceneId, storyId, storyService]);
+    }, [recordHistory, scene, sceneId, storyId, storyService]);
 
     return {
         context, isInitialized, document, scene, loading,
@@ -2723,7 +2716,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, startCharacterActionSlot, enterEditOrInspectorForActive,
         activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
-        moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
+        beginBlockDrag, endBlockDrag, moveDraggedBlocksToSortablePosition,
         createLayerBeforeBlock, slashAtAlias,
     };
 }

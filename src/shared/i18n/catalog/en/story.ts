@@ -620,6 +620,12 @@ export const story = {
         placeholderNote: "Note…",
         placeholderText: "Text…",
         dragRow: "Drag row",
+        // A grip on a selected row carries the whole selection, and says so before it is pulled — the
+        // count is the only warning that a drag is about to move more than the line under the pointer.
+        dragRows: {
+            one: "Drag {count} row",
+            other: "Drag {count} rows",
+        },
         // Two strings per row button, and the difference is load-bearing: `insert`/`delete` are the
         // ACCESSIBLE NAMES and `insertTitle`/`deleteTitle` the tooltips, which add the keybinding. They
         // read the same because a screen reader and a pointer deserve the same sentence — these used to
