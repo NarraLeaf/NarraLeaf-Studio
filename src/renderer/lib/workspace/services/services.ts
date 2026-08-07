@@ -879,8 +879,7 @@ interface IStoryService extends IService {
     moveBlocks(
         storyId: StoryId,
         sceneId: StorySceneId,
-        blockIds: StoryBlockId[],
-        target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
+        moves: { blockIds: StoryBlockId[]; target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null } }[],
     ): void;
     canImportStoryPackage(): false;
     canExportStoryPackage(): false;

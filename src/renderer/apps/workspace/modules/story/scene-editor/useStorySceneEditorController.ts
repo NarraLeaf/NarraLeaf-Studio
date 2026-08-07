@@ -52,9 +52,8 @@ import {
     nextSelectionAfterDelete,
     planBlockGroupMove,
     planRowBackspaceReplacement,
+    planSelectionNudge,
     getInsertionTargetAfter,
-    getMoveTargetBefore,
-    getMoveTargetAfter,
     getTextSegment,
     hasInspector,
     isTextEditableBlock,
@@ -2534,43 +2533,34 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [activeBlockId, rowIndexById, selectSingleRow, visibleRows]);
 
-    // Alt+Arrow - reorder the selected row among its siblings (keyboard equivalent of drag-to-reorder).
-    // Deliberately single-row for predictability; multi-row keyboard moves are surprising in outliners.
+    // Alt+Arrow - step the selected rows over their neighbour, each staying among its own siblings (the
+    // keyboard equivalent of drag-to-reorder). A selection moves whole, and only if all of it can: see
+    // {@link planSelectionNudge} for why the run, not the row, is the unit that steps.
     const moveSelectedRows = useCallback((direction: "up" | "down") => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
         }
         const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
         const roots = filterOutSelectedDescendants(scene, ids);
-        if (roots.length !== 1) {
+        const plan = planSelectionNudge(scene, roots, direction);
+        if (!plan) {
             return;
         }
-        const id = roots[0];
-        const block = scene.blocks[id];
-        if (!block) {
-            return;
-        }
-        const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
-        if (!siblings) {
-            return;
-        }
-        const siblingIndex = siblings.indexOf(id);
-        if (direction === "up") {
-            const previousId = siblings[siblingIndex - 1];
-            if (!previousId) {
-                return;
-            }
+        try {
             recordHistory();
-            storyService.moveBlock(storyId, sceneId, id, getMoveTargetBefore(scene, id, previousId));
+            storyService.moveBlocks(storyId, sceneId, plan);
+        } catch {
+            /* move failed; nothing to surface */
+            return;
+        }
+        // One row still becomes the whole selection, as it always did. A group stays selected, so
+        // holding the shortcut walks it up the scene rather than dropping every row but one after the
+        // first press.
+        if (roots.length === 1) {
+            selectSingleRow(roots[0]);
         } else {
-            const nextId = siblings[siblingIndex + 1];
-            if (!nextId) {
-                return;
-            }
-            recordHistory();
-            storyService.moveBlock(storyId, sceneId, id, getMoveTargetAfter(scene, id, nextId));
+            setSelectedBlockIds(new Set(roots));
         }
-        selectSingleRow(id);
     }, [activeBlockId, recordHistory, scene, sceneId, selectSingleRow, selectedBlockIds, storyId, storyService]);
 
     // Cmd/Ctrl+D - duplicate the selected rows (with their subtrees, new ids) directly below the block.
@@ -2682,7 +2672,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         try {
             recordHistory();
-            storyService.moveBlocks(storyId, sceneId, plan.blockIds, plan.target);
+            storyService.moveBlocks(storyId, sceneId, [plan]);
             setActiveBlockId(draggedBlockId);
             setSelectedBlockIds(new Set(plan.blockIds));
         } catch {

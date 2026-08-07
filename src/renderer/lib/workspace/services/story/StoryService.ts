@@ -1257,14 +1257,14 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     /**
-     * Move a group of blocks to one target, in the order given — one mutation, one revision, one save.
+     * Move groups of blocks, each group to its own target — one mutation, one revision, one save.
      * Looping over {@link moveBlock} instead would publish the scene once per row and let the editor
-     * repaint on a document where half the group has landed.
+     * repaint on a document where half the selection has landed.
      */
-    public moveBlocks(storyId: StoryId, sceneId: StorySceneId, blockIds: StoryBlockId[], target: BlockTarget): void {
+    public moveBlocks(storyId: StoryId, sceneId: StorySceneId, moves: { blockIds: StoryBlockId[]; target: BlockTarget }[]): void {
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
-            moveBlocksInScene(scene, blockIds, target);
+            moveBlocksInScene(scene, moves);
         });
     }
 
