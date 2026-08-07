@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { session } from "electron";
-import { UserDataNamespace } from "@shared/types/constants";
+import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
 import {
     CACHE_BUCKET_IDS,
     type CacheBucketId,
@@ -38,7 +38,10 @@ const BROWSER_CACHE_DIRS = [
 export const PSD_TEMP_DIR_NAME = "narraleaf-psd";
 
 /** The build-dependency cache root; must agree with `buildDependencyCacheRoot`. */
-const BUILD_DEPS_RELATIVE = path.join("cache", "build-deps");
+const BUILD_DEPS_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.BuildDependencies);
+
+/** Theme posters from the UI template store. */
+const UI_TEMPLATE_POSTERS_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.UITemplatePosters);
 
 export function psdTempRoot(tempDir: string = os.tmpdir()): string {
     return path.join(tempDir, PSD_TEMP_DIR_NAME);
@@ -90,6 +93,11 @@ function bucketDefinitions(userDataDir: string): BucketDefinition[] {
             id: "pluginIcons",
             dirs: [path.join(userDataDir, UserDataNamespace.PluginIcons)],
             displayPath: path.join(userDataDir, UserDataNamespace.PluginIcons),
+        },
+        {
+            id: "uiTemplatePosters",
+            dirs: [path.join(userDataDir, UI_TEMPLATE_POSTERS_RELATIVE)],
+            displayPath: path.join(userDataDir, UI_TEMPLATE_POSTERS_RELATIVE),
         },
         {
             id: "buildDependencies",

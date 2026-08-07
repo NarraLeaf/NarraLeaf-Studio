@@ -9,6 +9,7 @@ import { CriticalErrorBoundary } from "./app/errorHandling/CriticalErrorBoundary
 import { RenderingStatusAnnouncer } from "./components/announcers/RenderingStatusAnnouncer";
 import { initI18n } from "./i18n";
 import { initAppearance, isReduceMotionEnabled, subscribeReduceMotion } from "./appearance";
+import { initDeveloperMode } from "./developer";
 import { initZoom } from "./zoom";
 
 import "@/styles/styles.css";
@@ -90,6 +91,10 @@ async function renderApp(children: React.ReactNode) {
     // Accent color and reduced motion, applied to the root element before the
     // first paint so no window renders a frame in the wrong accent.
     await initAppearance();
+
+    // Developer options. Loaded here rather than where it is read, because it is
+    // read from inside context-menu handlers, which have nowhere to await.
+    await initDeveloperMode();
 
     console.log("[renderer] platformInfo", platformInfo);
     console.log("[renderer] appInfo", appInfo);

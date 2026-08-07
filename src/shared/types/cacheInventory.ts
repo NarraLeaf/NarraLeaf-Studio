@@ -14,6 +14,7 @@
 
 export const CACHE_BUCKET_IDS = [
     "pluginIcons",
+    "uiTemplatePosters",
     "buildDependencies",
     "electronBuilder",
     "browser",

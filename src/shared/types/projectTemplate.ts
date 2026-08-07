@@ -1,3 +1,5 @@
+import { resolveLocalizedText } from "./localizedText";
+
 /**
  * A project template that ships inside Studio (`resources/templates/<id>/`).
  *
@@ -24,16 +26,16 @@ export type ProjectTemplateDescriptor = {
     designSize?: { width: number; height: number };
 };
 
-/** Pick the best name/description for a locale, falling back to the manifest's own. */
+/**
+ * Pick the best name/description for a locale.
+ *
+ * Delegates to the shared resolver so a bundled project template, a UI template
+ * and a theme all answer the same way — two copies of this drift, and the drift
+ * is invisible until an author sees one of the three in the wrong language.
+ */
 export function resolveProjectTemplateText(
     template: ProjectTemplateDescriptor,
     locale: string,
 ): { name: string; description: string } {
-    const exact = template.locales[locale];
-    // "zh-CN" should still find a "zh" pack.
-    const base = locale.includes("-") ? template.locales[locale.split("-")[0]] : undefined;
-    return {
-        name: exact?.name ?? base?.name ?? template.name,
-        description: exact?.description ?? base?.description ?? template.description,
-    };
+    return resolveLocalizedText(template, locale);
 }

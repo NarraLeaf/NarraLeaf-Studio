@@ -24,6 +24,16 @@ export interface GlobalStateType extends Record<string, any> {
      * those absences buy.
      */
     "app.onboardingVersion": number;
+    /**
+     * Developer options: context menus grow a section that copies the identifier of whatever was
+     * right-clicked (a page, an element, an asset, a character, a scene, a row).
+     *
+     * Not a mode the app runs in, despite the name an author would reach for - nothing about how a
+     * project loads, saves, builds or plays changes. It only decides whether identifiers, which are
+     * the app's own bookkeeping rather than anything an author writes, are offered for copying. Kept
+     * distinct in the interface from Dev Mode (`ui.runMode`), which runs the game.
+     */
+    "app.developerMode": boolean;
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /**
      * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the
@@ -251,6 +261,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // is what made Studio open in English on a machine that had already said it speaks something
     // else - while `editor.slashAtAlias`, two keys further down, was reading that same machine's
     // languages to decide its own default.
+    "app.developerMode": false,
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
