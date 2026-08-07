@@ -1,5 +1,6 @@
 import type { Blueprint, BlueprintDocument, BlueprintEventGraph, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
+import { buildBlueprintRunGraphId, type BlueprintRunGraphKind } from "@shared/blueprint/blueprintRunGraphId";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
@@ -496,7 +497,7 @@ export async function dispatchBlueprintUiEvent(options: {
 
     try {
         for (const { eventGraph, ir, headIds } of matchingGraphs) {
-            const graph = adaptBlueprintGraphIr(ir, `blueprintEvent:${blueprintId}:${eventGraph.id}`);
+            const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("blueprintEvent", blueprintId, eventGraph.id));
             for (const headId of headIds) {
                 const entry = { start: { nodeId: headId, port: "then" as const } };
                 const startNode = graph.nodes[headId];
@@ -693,7 +694,7 @@ type ElementEventDispatchOptions = {
     maxSteps?: number;
     nodeType: string;
     eventId: string;
-    graphIdPrefix: string;
+    graphIdPrefix: BlueprintRunGraphKind;
 };
 
 async function dispatchBlueprintElementEvent(options: ElementEventDispatchOptions & CancellableDispatchOptions): Promise<void> {
@@ -735,7 +736,7 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
             for (const headId of listener.headIds) {
                 const graph = adaptBlueprintGraphIr(
                     listener.ir,
-                    `${graphIdPrefix}:${listener.blueprintId}:${listener.eventGraph.id}`,
+                    buildBlueprintRunGraphId(graphIdPrefix, listener.blueprintId, listener.eventGraph.id),
                 );
                 const startNode = graph.nodes[headId];
                 if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
@@ -1007,7 +1008,7 @@ export async function dispatchWidgetsBlueprintEvent(options: {
             });
             try {
                 for (const headId of headIds) {
-                    const graph = adaptBlueprintGraphIr(ir, `widgetEvent:${blueprintId}:${eventGraph.id}`);
+                    const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("widgetEvent", blueprintId, eventGraph.id));
                     const startNode = graph.nodes[headId];
                     if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
                         continue;
@@ -1118,7 +1119,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
             for (const headId of target.headIds) {
                 const graph = adaptBlueprintGraphIr(
                     target.ir,
-                    `broadcastEvent:${target.blueprintId}:${target.eventGraph.id}`,
+                    buildBlueprintRunGraphId("broadcastEvent", target.blueprintId, target.eventGraph.id),
                 );
                 const startNode = graph.nodes[headId];
                 if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
@@ -1242,7 +1243,7 @@ export async function invokeBlueprintFnCall(options: {
     }
     writeBlueprintNodeOutputValues(blueprintLocals, decl.headNodeId, seededArgs);
 
-    const graph = adaptBlueprintGraphIr(decl.ir, `fnCall:${decl.blueprintId}:${decl.graphId}`);
+    const graph = adaptBlueprintGraphIr(decl.ir, buildBlueprintRunGraphId("fnCall", decl.blueprintId, decl.graphId));
     const executionOwner =
         decl.owner.kind === "globalMain"
             ? { blueprintId: decl.blueprintId }
@@ -1418,7 +1419,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
 
     try {
         for (const { eventGraph, ir, headIds } of matchingGraphs) {
-            const graph = adaptBlueprintGraphIr(ir, `surfaceEvent:${blueprintId}:${eventGraph.id}`);
+            const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("surfaceEvent", blueprintId, eventGraph.id));
             for (const headId of headIds) {
                 const entry = { start: { nodeId: headId, port: "then" as const } };
                 const startNode = graph.nodes[headId];
@@ -1618,7 +1619,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
 
     try {
         for (const { eventGraph, ir, headIds } of matchingGraphs) {
-            const graph = adaptBlueprintGraphIr(ir, `globalEvent:${blueprintId}:${eventGraph.id}`);
+            const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("globalEvent", blueprintId, eventGraph.id));
             for (const headId of headIds) {
                 const entry = { start: { nodeId: headId, port: "then" as const } };
                 const startNode = graph.nodes[headId];

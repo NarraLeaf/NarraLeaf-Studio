@@ -46,6 +46,36 @@ export const devMode = {
     // The debug drawer's dock/float toggle. Each label names what the click will DO, not the state
     // it is in - same shape as `devtools.openMenu` / `devtools.closeMenu` above, and the only thing
     // that tells a reader (or an acceptance run) which mode the panel is currently in.
+    /**
+     * The blueprint debugger: breakpoints, the stop, and stepping. Every label here is the DevTools
+     * word for the same idea - an author who has debugged JavaScript already knows what "Step over"
+     * does, and inventing a different word would only cost them that.
+     */
+    debugger: {
+        title: "Blueprint Debugger",
+        openGraph: "Show graph",
+        graphPicker: "Graph",
+        pickGraph: "Pick a graph to view.",
+        statusRunning: "Running",
+        statusPausePending: "Pausing at the next node…",
+        statusBreakpoint: "Paused on a breakpoint",
+        statusStepped: "Paused",
+        resume: "Resume",
+        pause: "Pause",
+        stepOver: "Step over",
+        stepInto: "Step into",
+        stepOut: "Step out",
+        callStack: "Call stack",
+        scope: "Scope",
+        scopeEmpty: "No variables in scope",
+        eventPayload: "Event",
+        nodeOutputs: "Node outputs",
+        breakpoints: "Breakpoints",
+        breakpointsEmpty: "No breakpoints. Right-click a node in the graph to add one.",
+        removeAllBreakpoints: "Remove all breakpoints",
+        missingNode: "Missing node",
+        syncGraphNotice: "This graph is evaluated synchronously, so breakpoints in it never stop.",
+    },
     panel: {
         float: "Float panel",
         dock: "Dock panel",

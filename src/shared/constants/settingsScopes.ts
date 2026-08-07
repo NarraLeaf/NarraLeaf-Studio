@@ -44,6 +44,10 @@ export function isProtectedStateKey(key: string): boolean {
  * Its own reset scope rather than part of the preferences one, because "my panels went weird" and
  * "put my preferences back" are different requests and answering one with the other is how a
  * reset button becomes something people are afraid of.
+ *
+ * `debug.breakpoints.*` sits here for the same reason `ui.editor.session` does: it is per-project
+ * editor session state, not a preference and not something the author would miss the way they
+ * would miss their project history.
  */
 export const WORKSPACE_LAYOUT_KEY_PREFIXES: readonly string[] = [
     "ui.leftSidebar.",
@@ -52,6 +56,7 @@ export const WORKSPACE_LAYOUT_KEY_PREFIXES: readonly string[] = [
     "ui.editor.session",
     "ui.versionRail.",
     "uiEditor.",
+    "debug.breakpoints.",
 ];
 
 export const WORKSPACE_LAYOUT_KEYS: readonly string[] = [
