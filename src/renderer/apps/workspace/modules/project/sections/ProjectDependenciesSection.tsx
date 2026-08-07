@@ -6,37 +6,19 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
-import type { PluralKey, TranslationKey, Translator } from "@shared/i18n";
+import type { PluralKey, Translator } from "@shared/i18n";
 import type {
     DependencyKind,
     DependencyResolutionEntry,
-    DependencyStatus,
     ProjectDependencyResolution,
 } from "@shared/types/pluginDependencies";
+import {
+    DEPENDENCY_STATUS_LABEL_KEYS,
+    DEPENDENCY_STATUS_TEXT_STYLES,
+    dependencyNeedsAttention,
+} from "@/lib/workspace/project/dependencyStatusDisplay";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
-
-/**
- * Colour for the word, and only for the word.
- *
- * There used to be a coloured dot in front of every plugin's name as well. A green one on a plugin
- * that is simply fine says nothing the row does not already say, and a column of them reads as a
- * service dashboard rather than a list of plugins. The rows that need attention now say so in one
- * place instead of two.
- */
-const STATUS_TEXT_STYLES: Record<DependencyStatus, string> = {
-    satisfied: "text-success",
-    outdated: "text-warning",
-    missing: "text-danger",
-    incompatible: "text-danger",
-};
-
-const STATUS_LABEL_KEYS: Record<DependencyStatus, TranslationKey> = {
-    satisfied: "project.dependencies.status.ready",
-    outdated: "project.dependencies.status.outdated",
-    missing: "project.dependencies.status.missing",
-    incompatible: "project.dependencies.status.incompatible",
-};
 
 const USAGE_KEYS: Record<DependencyKind, PluralKey> = {
     blueprintNode: "project.dependencies.usage.blueprintNode",
@@ -160,7 +142,7 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
     const { t, tn } = useTranslation();
     const { dependency, installedVersion, status, suppressed } = entry;
     const usage = summarizeUsage(dependency.usedBy, tn);
-    const needsAttention = suppressed || status !== "satisfied";
+    const needsAttention = dependencyNeedsAttention(status, suppressed);
 
     const meta = [
         t("project.dependencies.meta.requires", { version: dependency.authoredVersion }),
@@ -177,8 +159,8 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
                     {dependency.name?.trim() || dependency.id}
                 </span>
                 {needsAttention ? (
-                    <span className={`shrink-0 text-2xs font-medium ${STATUS_TEXT_STYLES[status]}`}>
-                        {suppressed ? t("project.dependencies.status.disabled") : t(STATUS_LABEL_KEYS[status])}
+                    <span className={`shrink-0 text-2xs font-medium ${DEPENDENCY_STATUS_TEXT_STYLES[status]}`}>
+                        {suppressed ? t("project.dependencies.status.disabled") : t(DEPENDENCY_STATUS_LABEL_KEYS[status])}
                     </span>
                 ) : null}
             </div>

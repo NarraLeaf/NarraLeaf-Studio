@@ -1,8 +1,16 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BuildPreflightSection } from "@shared/types/gameBuild";
 import type { SigningCredential } from "@shared/types/signing";
-import { SECTIONS } from "./BuildDialog";
+import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
+import {
+    buildPluginEntries,
+    ContentSection,
+    SECTIONS,
+    type BuildDialogInfo,
+    type BuildPluginEntry,
+} from "./BuildDialog";
+import { initialDialogState, togglePlatform } from "./buildDialogState";
 import { SigningSection } from "./BuildSigningSection";
 
 /**
@@ -81,6 +89,132 @@ describe("SigningSection", () => {
     });
 });
 
+describe("buildPluginEntries", () => {
+    const table: ProjectDependencyTable = {
+        schemaVersion: 1,
+        plugins: [
+            { id: "narraleaf.gallery", name: "Gallery", builtIn: true, authoredVersion: "1.2.0", hard: true, usedBy: {} },
+            { id: "someone.unnamed", builtIn: false, authoredVersion: "0.4.1", hard: false, usedBy: {} },
+        ],
+    };
+
+    it("prefers the resolution, which is the only thing that knows the plugin is unusable here", () => {
+        const resolution: ProjectDependencyResolution = {
+            entries: [{
+                dependency: table.plugins[0],
+                installedVersion: "2.0.0",
+                status: "incompatible",
+                suppressed: true,
+            }],
+            suppressedPluginIds: ["narraleaf.gallery"],
+            overall: "blocked",
+        };
+
+        expect(buildPluginEntries(resolution, table)).toEqual([{
+            id: "narraleaf.gallery",
+            label: "Gallery",
+            version: "1.2.0",
+            status: "incompatible",
+            suppressed: true,
+        }]);
+    });
+
+    it("still names what ships before the first resolve, without claiming a status", () => {
+        expect(buildPluginEntries(null, table)).toEqual([
+            { id: "narraleaf.gallery", label: "Gallery", version: "1.2.0" },
+            // No recorded name - the id is what is left to call it, and it beats an empty row.
+            { id: "someone.unnamed", label: "someone.unnamed", version: "0.4.1" },
+        ]);
+    });
+
+    it("is empty rather than undefined when the project has no plugin table at all", () => {
+        expect(buildPluginEntries(null, null)).toEqual([]);
+        expect(buildPluginEntries(null)).toEqual([]);
+    });
+});
+
+/**
+ * The Content section's whole point is that these are controls now, not sentences: an author who
+ * disagrees with what it says changes it here rather than closing the dialog and crossing the
+ * workspace. So what is asserted is that the switches exist, carry the current setting, and go
+ * read-only with the workspace - the three things a regression would silently take away.
+ */
+describe("ContentSection", () => {
+    const info: BuildDialogInfo = {
+        hostPlatform: "macos",
+        hostArch: "arm64",
+        artifactBaseName: "game",
+        productName: "Game",
+        appId: "com.example.game",
+        locales: [],
+        defaultOutputDir: "/tmp/dist",
+        electronMirror: "",
+    };
+    const desktopOnly = initialDialogState(null, "macos", "arm64");
+    const noop = () => undefined;
+
+    const render = (
+        overrides: Partial<Parameters<typeof ContentSection>[0]> = {},
+    ) => renderToStaticMarkup(
+        <ContentSection
+            info={info}
+            state={desktopOnly}
+            content={{ encryptAssets: false, allowHttp: false }}
+            plugins={[]}
+            saving={null}
+            rescanning={false}
+            findings={[]}
+            onContentChange={noop}
+            onRescanPlugins={noop}
+            {...overrides}
+        />,
+    );
+
+    beforeEach(() => {
+        frozen = false;
+    });
+
+    it("offers a switch per setting, reporting what the project currently says", () => {
+        const markup = render({ content: { encryptAssets: true, allowHttp: false } });
+
+        expect(markup).toContain('aria-label="Asset protection"');
+        expect(markup).toContain('aria-label="Network policy"');
+        // The consequence line follows the switch, so the two never disagree.
+        expect(markup).toContain("Assets and saves are encrypted in the packaged game.");
+        expect(markup).toContain("Plain HTTP is blocked.");
+    });
+
+    it("switches off with the workspace rather than offering a write that cannot happen", () => {
+        frozen = true;
+        const markup = render();
+
+        // Every control in the section, switches and Rescan alike.
+        expect([...markup.matchAll(/disabled=""/g)]).toHaveLength(3);
+    });
+
+    it("says a plugin is unusable here, which the read-only version left out", () => {
+        const plugins: BuildPluginEntry[] = [
+            { id: "a.fine", label: "Fine", version: "1.0.0", status: "satisfied", suppressed: false },
+            { id: "b.broken", label: "Broken", version: "1.0.0", status: "incompatible", suppressed: true },
+        ];
+        const markup = render({ plugins });
+
+        expect(markup).toContain("Fine 1.0.0");
+        expect(markup).toContain("Broken 1.0.0");
+        // Suppression outranks the status word: "incompatible" is why, "Disabled" is what it costs.
+        expect(markup).toContain(">Disabled<");
+        // A word beside every row would hide the one row that needs it.
+        expect(markup).not.toContain("Ready");
+    });
+
+    it("raises the web caveat only for a selection that includes the web export", () => {
+        const notice = "Asset encryption and the HTTP restriction do not apply to it.";
+
+        expect(render()).not.toContain(notice);
+        expect(render({ state: togglePlatform(desktopOnly, "web", true) })).toContain(notice);
+    });
+});
+
 // The section reaches the vault through the app bridge, which does not exist
 // outside Electron. Effects do not run under static rendering, so this only has
 // to be importable.
@@ -88,4 +222,15 @@ vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => {
         throw new Error("the build dialog must not reach the vault while rendering");
     },
+}));
+
+/**
+ * The freeze is read through the workspace context, which no static render has. Mocked at the
+ * context-reading hook rather than at `useFreezeGuard`, so the guard under test is the real one -
+ * what is being checked is which controls it switches off, and a stubbed guard would only check
+ * that the stub was called.
+ */
+let frozen = false;
+vi.mock("../../hooks/useWorkspaceFrozen", () => ({
+    useWorkspaceFrozen: () => frozen,
 }));
