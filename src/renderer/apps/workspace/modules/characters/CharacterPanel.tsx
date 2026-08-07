@@ -19,6 +19,7 @@ import { PanelStateService } from "@/lib/workspace/services/core/PanelStateServi
 import { Services } from "@/lib/workspace/services/services";
 import { FolderPlus, MoreVertical, RefreshCw, Tag, User, UserPlus, Users } from "lucide-react";
 import { isReadableAccentColor } from "../story/scene-editor/storySceneBlockUtils";
+import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
 import { syncCharacterEditorTabTitle, useCharacterFocus } from "./state/useCharacterFocus";
 
 /** The one character-panel menu row that only reads: re-reading the character list off disk. */
@@ -28,6 +29,17 @@ type MenuTarget =
     | { type: "panel" }
     | { type: "character"; character: Character }
     | { type: "group"; group: CharacterGroup };
+
+/** What Developer options can copy from each of the three menus. The panel's own menu names nothing. */
+function developerIdEntriesFor(target: MenuTarget): DeveloperIdEntry[] {
+    if (target.type === "character") {
+        return [{ kind: "character", value: target.character.profile.getProfile().id }];
+    }
+    if (target.type === "group") {
+        return [{ kind: "characterGroup", value: target.group.id }];
+    }
+    return [];
+}
 
 type CharacterItem = {
     id: string;
@@ -555,9 +567,14 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         // Every row here creates, renames, moves or deletes a character or a group - all writes - except
         // the one that re-reads the list. Menus still open and still list what exists, so a frozen
         // project can be browsed; the rows are simply inert.
-        setMenuItems(freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CHARACTER_MENU_IDS, freeze.reason));
+        const frozen = freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CHARACTER_MENU_IDS, freeze.reason);
+        const uiService = context?.services.get<UIService>(Services.UI);
+        setMenuItems(appendDeveloperIdSection(frozen, developerIdEntriesFor(target), {
+            hideMenu: closeMenu,
+            notify: uiService ? (message, type) => uiService.showNotification(message, type) : undefined,
+        }));
         setMenuState({ visible: true, position: { x: rect.right, y: rect.bottom } });
-    }, [buildContextMenu, freeze]);
+    }, [buildContextMenu, closeMenu, context, freeze]);
 
     const renderCharacterRow = useCallback((item: CharacterItem) => {
         const thumbnailUrl = thumbnails[item.id];
