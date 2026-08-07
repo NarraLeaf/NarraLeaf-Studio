@@ -18,6 +18,7 @@ import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorT
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
 import { useStoryScriptIo } from "../script/useStoryScriptIo";
+import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
 
 interface StoryPanelState {
     selectedStoryId?: string;
@@ -350,11 +351,22 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         ];
     }, [beginScriptExport, beginScriptImport, defaultStoryId, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
 
+    /**
+     * The developer section, wired the same way for all three of this panel's menus: what the row
+     * stands for, and where to say the identifier landed on the clipboard.
+     */
+    const withDeveloperRows = useCallback((items: ContextMenuDef, entries: DeveloperIdEntry[]) => (
+        appendDeveloperIdSection(items, entries, {
+            hideMenu,
+            notify: uiService ? (message, type) => uiService.showNotification(message, type) : undefined,
+        })
+    ), [hideMenu, uiService]);
+
     const handleOpenStoryMenu = useCallback((event: React.MouseEvent, entry: StoryLibraryEntry) => {
         event.stopPropagation();
-        setMenuItems(buildStoryContextMenu(entry));
+        setMenuItems(withDeveloperRows(buildStoryContextMenu(entry), [{ kind: "story", value: entry.id }]));
         showMenu(event);
-    }, [buildStoryContextMenu, showMenu]);
+    }, [buildStoryContextMenu, showMenu, withDeveloperRows]);
 
     const handleCreateChapter = useCallback(async () => {
         if (!storyService || !inputDialog || !selectedStoryId) {
@@ -556,16 +568,16 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         // Without this the accordion header treats the click as a toggle, so the menu opens and the
         // chapter collapses under it.
         event.stopPropagation();
-        setMenuItems(buildChapterContextMenu(chapter));
+        setMenuItems(withDeveloperRows(buildChapterContextMenu(chapter), [{ kind: "chapter", value: chapter.id }]));
         showMenu(event);
-    }, [buildChapterContextMenu, showMenu]);
+    }, [buildChapterContextMenu, showMenu, withDeveloperRows]);
 
     const handleOpenSceneMenu = useCallback((event: React.MouseEvent, scene: StoryScene) => {
         event.preventDefault();
         event.stopPropagation();
-        setMenuItems(buildSceneContextMenu(scene));
+        setMenuItems(withDeveloperRows(buildSceneContextMenu(scene), [{ kind: "scene", value: scene.id }]));
         showMenu(event);
-    }, [buildSceneContextMenu, showMenu]);
+    }, [buildSceneContextMenu, showMenu, withDeveloperRows]);
 
     const chapterOpenItems = selectedStoryId ? chapterOpenItemsByStoryId[selectedStoryId] ?? [] : [];
 

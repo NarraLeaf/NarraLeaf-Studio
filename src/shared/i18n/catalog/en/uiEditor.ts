@@ -94,7 +94,6 @@ export const uiEditor = {
         selectAll: "Select all",
         expandAll: "Expand all",
         collapseAll: "Collapse all",
-        copyElementId: "Copy Element ID",
         rename: "Rename…",
         showSelected: "Show selected",
         hideSelected: "Hide selected",
