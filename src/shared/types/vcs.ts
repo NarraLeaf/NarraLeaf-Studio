@@ -20,9 +20,14 @@ export type RevisionId = string;
  * Version control is an OPTIONAL capability.
  *
  * The backend is a Rust shared library that Epic only ships for a subset of
- * platforms - notably there is no macOS x64 (Intel) build and no Windows ARM64
- * build. Studio still ships everywhere; on an unsupported host the VCS surface
- * reports itself unavailable and callers hide the feature.
+ * platforms - notably there is no Windows ARM64 build and no macOS x64 (Intel)
+ * one. On an unsupported host the VCS surface reports itself unavailable and
+ * callers hide the feature.
+ *
+ * Of those two, only Windows ARM64 is a host Studio ships on: the absent
+ * darwin-x64 backend is why Studio dropped Intel Macs entirely, version control
+ * being core rather than optional. The row below stays because the gate is keyed
+ * on platform/arch and a self-built library via LORE_LIB_PATH bypasses it.
  *
  * Never assume availability. Call `getAvailability` once per project view and
  * branch on it; every other VCS call fails on an unsupported host.

@@ -48,7 +48,8 @@ describe("zsignHostTarget", () => {
     });
 
     it("has no answer for hosts with no upstream asset", () => {
-        // The one that will actually be hit: upstream ships no macOS x64 build.
+        // No macOS x64 build upstream - and no Intel-Mac Studio host to run one, since that
+        // missing asset was one of the reasons the platform was dropped.
         expect(zsignHostTarget("darwin", "x64")).toBeNull();
         expect(zsignHostTarget("win32", "arm64")).toBeNull();
         expect(zsignHostTarget("linux", "arm64")).toBeNull();
