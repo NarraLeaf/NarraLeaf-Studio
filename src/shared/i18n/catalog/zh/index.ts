@@ -33,6 +33,7 @@ import { actions } from "./actions";
 import { placeholders } from "./placeholders";
 import { wizard } from "./wizard";
 import { devMode } from "./devMode";
+import { developer } from "./developer";
 import { pluginPermission } from "./pluginPermission";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
@@ -73,6 +74,7 @@ export const zh = {
     placeholders,
     wizard,
     devMode,
+    developer,
     pluginPermission,
     dialogs,
     defaultDoc,

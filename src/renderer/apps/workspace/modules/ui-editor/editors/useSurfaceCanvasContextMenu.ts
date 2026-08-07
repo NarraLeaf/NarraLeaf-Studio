@@ -30,16 +30,23 @@ import type {
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { appendDeveloperIdSection, DEVELOPER_MENU_ROW_IDS } from "@/lib/developer";
+import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
+import { translate } from "@/lib/i18n";
 
 /**
- * The canvas menu rows a frozen project keeps: the two that only read the document.
+ * The canvas menu rows a frozen project keeps: the ones that only read the document.
  *
  * Named as an exemption rather than as a list of writes because widget modules push their own rows in
  * at runtime (`buildCanvasContextMenu`, the `sep-widget` group) - an opt-out list would leave every
- * plugin-contributed row live. Copy fills the clipboard, Select All changes the selection; neither
- * touches the interface document.
+ * plugin-contributed row live. Copy fills the clipboard, Select All changes the selection, and the
+ * developer section only reads identifiers; none of them touches the interface document.
  */
-const FREEZE_READ_ONLY_CANVAS_MENU_IDS: ReadonlySet<string> = new Set(["copy", "select-all"]);
+const FREEZE_READ_ONLY_CANVAS_MENU_IDS: ReadonlySet<string> = new Set([
+    "copy",
+    "select-all",
+    ...DEVELOPER_MENU_ROW_IDS,
+]);
 
 export function useSurfaceCanvasContextMenu(params: {
     surface: UISurface | null | undefined;
@@ -206,7 +213,24 @@ export function useSurfaceCanvasContextMenu(params: {
                     },
                 },
             });
-            setMenuItems(freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CANVAS_MENU_IDS, freeze.reason));
+            // The identifiers this menu can offer: the one element it is pointed at, and the surface
+            // it is drawn on. A multi-selection has no single element to name, so only the surface
+            // row survives - the section drops entries whose value is absent.
+            const developerElementId =
+                menuSel && menuSel.elementIds.length === 1
+                    ? (menuSel.primaryId ?? menuSel.elementIds[0])
+                    : null;
+            const withDeveloperRows = appendDeveloperIdSection(
+                items,
+                [
+                    { kind: "element", value: developerElementId },
+                    { kind: "surface", value: surface.id, label: getSurfaceDisplayLabel(surface, translate) },
+                ],
+                { hideMenu, notify: uiService?.showNotification.bind(uiService) },
+            );
+            setMenuItems(
+                freezeContextMenuRows(withDeveloperRows, freeze.frozen, FREEZE_READ_ONLY_CANVAS_MENU_IDS, freeze.reason),
+            );
             showMenu(event);
         },
         [
