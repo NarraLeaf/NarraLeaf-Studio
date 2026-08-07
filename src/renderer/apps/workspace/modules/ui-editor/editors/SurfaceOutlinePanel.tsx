@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { UILayersPanel } from "@/lib/ui-editor/interaction";
@@ -21,7 +21,15 @@ export type SurfaceOutlinePanelProps = {
     readOnly?: UIEditorReadOnly;
 };
 
-export function SurfaceOutlinePanel({
+/**
+ * Memoised because the editor tab re-renders on every document revision, and this subtree is the
+ * most expensive thing under it - one dnd-kit draggable per layer. Every prop here is either a
+ * string, a boolean, a service instance or a memoised object, so the comparison holds for edits and
+ * releases only when the outline is genuinely being handed something different. What the outline
+ * itself has to redraw is decided inside `UILayersPanel`, which watches its own slice of the
+ * document.
+ */
+export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
     surfaceId,
     stateService,
     documentService,
@@ -114,4 +122,4 @@ export function SurfaceOutlinePanel({
             )}
         </>
     );
-}
+});
