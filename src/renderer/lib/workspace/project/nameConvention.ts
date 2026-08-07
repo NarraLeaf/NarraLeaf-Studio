@@ -49,6 +49,22 @@ export const ProjectNameConvention = {
      * (plan 2026-07-28-002 §4.1).
      */
     StudioServices: [".nlstudio", "services/"],
+    /**
+     * Where an import writes a converted file before the importer copies it into the library.
+     *
+     * Inside the project because that is the only tree the workspace window is allowed to write to
+     * (`windowPermissionDeclarations`), and under `.nlstudio/` because the file is scaffolding: it
+     * exists for the few seconds between ffmpeg finishing and the asset being copied, and must not
+     * be versioned, packaged or backed up.
+     *
+     * One directory per file rather than one shared folder. The converted file has to keep the
+     * author's own name so the asset is called `intro` and not a hex string, and two folders on
+     * disk can each hold an `intro.avi`; a shared scratch folder would make the second one collide
+     * with the first, which the transcoder refuses (it never overwrites) rather than silently
+     * resolving.
+     */
+    MediaConvertScratch: [".nlstudio", "convert/"],
+    MediaConvertScratchDir: (id: string) => [".nlstudio", "convert", id],
 
     Assets: ["assets/"],
     ProjectResources: ["resources/"],
@@ -103,6 +119,21 @@ export const ProjectNameConvention = {
     EditorPuppetDescriptionCache: ["editor", "cache", "puppet/"],
     EditorPuppetDescriptionCacheShard: (key: string) =>
         ["editor", "cache", "puppet", `${encodePathSegmentId(key)}.json` as const],
+    /**
+     * What a probe said about each media asset's bytes: whether the engine can play them, and what
+     * to convert them into if not.
+     *
+     * Derived, like its neighbours here, and belongs under `editor/cache/` for the reason that
+     * directory exists: `@shared/vcs/workingSet` excludes it from version control, so this file is
+     * never committed, never in a change list, and never a merge conflict about a fact nobody
+     * decided. Every entry is reproducible by running ffprobe over the file again.
+     *
+     * One document rather than a shard per asset. The only reader is a sweep of the whole library,
+     * so N reads would buy nothing, and the entries are keyed by content hash - a few hundred short
+     * records at most.
+     */
+    EditorMediaSupportCache: ["editor", "cache", "media/"],
+    EditorMediaSupportCacheFile: ["editor", "cache", "media", "support.json"],
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
     EditorUIGraphs: ["editor", "ui", "uigraphs.json"],

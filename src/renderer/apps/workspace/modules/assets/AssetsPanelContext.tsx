@@ -1,5 +1,6 @@
 import { AssetCategory } from '@/lib/workspace/services/assets/assetTypes';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
+import type { MediaAssetSupportRecord } from '@/lib/workspace/services/media/mediaAssetSupport';
 import { createContext, useContext } from 'react';
 import { ClipboardState } from './state/useClipboard';
 import { DraggedItemState } from './state/useDragAndDrop';
@@ -58,6 +59,18 @@ interface AssetsPanelContextType {
     /** True when the panel uses the compact toolbar (e.g. bottom dock). Icon view can merge group navigation there. */
     compactToolbar: boolean;
     setAssetsIconToolbarCenter: (state: AssetsIconViewToolbarCenter | null) => void;
+
+    /**
+     * Assets that will not play as they are, keyed by asset id.
+     *
+     * Only assets with something wrong appear, so a lookup that misses means "nothing to say" -
+     * which is also the honest answer before the first scan has finished and on a host that cannot
+     * check at all. Keyed by id rather than by `Asset`, because the library edits its records in
+     * place and a reference to one never changes.
+     */
+    mediaSupport: ReadonlyMap<string, MediaAssetSupportRecord>;
+    /** Opens the conversion for one asset. Refused for anything the scan did not mark. */
+    handleConvertMedia: (asset: Asset) => void;
 }
 
 export const AssetsPanelContext = createContext<AssetsPanelContextType | null>(null);

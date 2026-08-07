@@ -58,24 +58,48 @@ extraResources:
       # substituted for them (app-builder-lib/out/fileMatcher.js:getFileMatchers),
       # so the two blocks compose.
       - '!codesign{,/**/*}'
+      # The vendored FFmpeg tools are excluded for exactly the reason the
+      # code-signing ones are, and more urgently: project/build/prepare-ffmpeg.js
+      # stages ~217 MB of native binaries per host under resources/ffmpeg/<platform>/,
+      # so copying the whole tree would both put a Mach-O binary inside the Windows
+      # installer and multiply that size by the number of platforms staged.
+      - '!ffmpeg{,/**/*}'
 mac:
   target: dmg
   icon: resources/app-icon.icns
-  # Apple Silicon only: zsign publishes no macOS x64 asset, so nothing is staged
-  # on an Intel mac and this mapping copies nothing there (electron-builder logs
-  # "file source doesn't exist" and carries on).
+  # Apple Silicon only, and both mappings are — for two unrelated reasons.
+  # zsign publishes no macOS x64 asset. FFmpeg has no prebuilt LGPL macOS build
+  # at all, so project/build/build-ffmpeg-macos.sh compiles one from pinned
+  # source during packaging, and only for the building Mac's own architecture:
+  # an x86_64 target would need nasm to assemble libvpx's SIMD, which is not in
+  # the Command Line Tools.
+  #
+  # On an Intel mac, and on a mac with no Command Line Tools, nothing is staged
+  # and these mappings copy nothing (electron-builder logs "file source doesn't
+  # exist" and carries on); the resulting Studio reports iOS signing and media
+  # conversion as unavailable rather than failing to build.
+  #
+  # Note the macOS FFmpeg is LGPL v2.1 where the Windows and Linux ones are v3 —
+  # the licence text staged next to each binary and the licenseId in its
+  # manifest.json differ accordingly.
   extraResources:
     - from: ./resources/codesign/darwin
       to: resources/codesign/darwin
+    - from: ./resources/ffmpeg/darwin
+      to: resources/ffmpeg/darwin
 win:
   target: nsis
   icon: resources/app-icon.ico
   extraResources:
     - from: ./resources/codesign/win32
       to: resources/codesign/win32
+    - from: ./resources/ffmpeg/win32
+      to: resources/ffmpeg/win32
 linux:
   target: AppImage
   icon: resources/app-icon.png
   extraResources:
     - from: ./resources/codesign/linux
       to: resources/codesign/linux
+    - from: ./resources/ffmpeg/linux
+      to: resources/ffmpeg/linux

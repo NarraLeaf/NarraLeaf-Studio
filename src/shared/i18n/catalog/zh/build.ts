@@ -215,4 +215,14 @@ export const build = {
     },
     invalidCommand: "{story} / {scene} 中有无效指令：{source}",
     invalidCommandSummary: "构建已中止：有 {count} 条无效指令，详见控制台",
+    mediaNeedsConverting: "{asset} 放不出来，请在素材面板里转换它",
+    mediaNotPlayable: "{asset} 里没有声音，也没有画面，请替换或删除这个文件",
+    mediaSummary: {
+        one: "构建已中止：有 {count} 个素材放不出来，详见控制台",
+        other: "构建已中止：有 {count} 个素材放不出来，详见控制台",
+    },
+    mediaUnchecked: {
+        one: "有 {count} 个媒体文件没有检查，这台电脑上没有可用的转换工具",
+        other: "有 {count} 个媒体文件没有检查，这台电脑上没有可用的转换工具",
+    },
 } satisfies LocaleNamespace<"build">;

@@ -2,6 +2,8 @@ import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/u
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
+import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
+import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -171,6 +173,26 @@ export interface RendererPreloadedInterface {
     openPsd(): Promise<RequestStatus<{ filePath: string | null; document: PsdDocument | null }>>;
     /** Bake the chosen layers to full-canvas PNGs. */
     bakePsd(request: PsdBakeRequest): Promise<RequestStatus<{ layers: PsdBakedLayer[] }>>;
+    /**
+     * What is inside a media file, and whether the engine can play it as it stands.
+     *
+     * Read-only: it runs ffprobe and returns a verdict. Converting anything is a separate,
+     * explicit step.
+     */
+    probeMedia(path: string): Promise<RequestStatus<{ outcome: MediaProbeOutcome }>>;
+    /**
+     * Converting a media file, polled the way a production build is.
+     *
+     * `start` answers with a job id as soon as the process is up; `getStatus` carries progress while
+     * it runs and the outcome once it stops; `cancel` stops it and removes the partial file. A job
+     * id that means nothing here answers `idle`, which is also what a job answers once it has aged
+     * out of the main process's memory.
+     */
+    mediaConvert: {
+        start(request: MediaConvertRequest): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;
+        cancel(jobId: string): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;
+        getStatus(jobId: string): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;
+    };
     workspace: {
         launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
         /**

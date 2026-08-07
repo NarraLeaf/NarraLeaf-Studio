@@ -226,4 +226,23 @@ export const build = {
     },
     invalidCommand: "Invalid command in {story} / {scene}: {source}",
     invalidCommandSummary: "Build stopped: {count} invalid command(s). See the console.",
+    /**
+     * The media gate. One line per asset, then one summary.
+     *
+     * Each line has to be actionable on its own, because the console is what an author comes back
+     * to. The two cases differ in what can be done, so they are two sentences rather than one with
+     * a hedge in it: one file has a conversion waiting for it and the other has nothing inside it
+     * to convert.
+     */
+    mediaNeedsConverting: "{asset} does not play. Convert it in the asset browser.",
+    mediaNotPlayable: "{asset} holds no sound and no picture. Replace the file or remove it.",
+    mediaSummary: {
+        one: "Build stopped: {count} asset will not play. See the console.",
+        other: "Build stopped: {count} assets will not play. See the console.",
+    },
+    /** Printed when this computer has no converter, so the check could not be made at all. */
+    mediaUnchecked: {
+        one: "{count} media file was not checked. This computer has no converter.",
+        other: "{count} media files were not checked. This computer has no converter.",
+    },
 } as const;

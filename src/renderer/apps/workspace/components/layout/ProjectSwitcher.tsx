@@ -16,17 +16,15 @@ import { openVersionRail } from "./versionRailController";
  * PyCharm-style project switcher for the title bar: the current project's name with a dropdown of
  * recent workspaces to jump between.
  *
- * **It switches; it does not accumulate.** Picking another project retires this window once that
- * project is on screen, so the author ends up in the project they chose rather than with a second
- * window and the one they just left still sitting behind it. This control is read as "which project
- * am I in", and a control that answers that question by opening another window answers a different
- * one. One project, one window still holds - the target's existing window is focused rather than
- * duplicated (see the main-process `App.openProject`) - and the window this leaves is flushed and
- * check-pointed on the way out, so nothing goes with it.
+ * **Every project it opens gets its own window; this one stays.** Picking another project leaves
+ * the window it was picked from exactly where it was, so an author who wanted a look at a second
+ * project has both rather than having traded one for the other - and nothing has to be saved,
+ * check-pointed or reloaded to get the first one back. One project, one window still holds: a
+ * project that is already open is focused rather than opened twice (see the main-process
+ * `App.openProject`), so the list can never produce two windows over one project's files.
  *
- * Nothing is lost by not asking first: the retirement waits for the new project to report that it
- * actually loaded, so a folder that turns out not to be a project leaves this window exactly where
- * it was.
+ * The new window steps down and to the right of this one rather than landing on top of it, because
+ * a second window that covers the first is indistinguishable from having replaced it.
  *
  * Lives at the left of the title bar (before the action bar), so it reads as the window's identity
  * the way an IDE's project name does — and version control lives INSIDE its menu (see
@@ -75,11 +73,12 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
 
     const close = useCallback(() => setOpen(false), []);
 
-    const handleSwitch = useCallback((projectPath: string) => {
+    const handleOpen = useCallback((projectPath: string) => {
         setOpen(false);
-        // A switch: this window steps aside once the chosen project is up, whether that meant
-        // launching it or focusing the window that already had it.
-        void openRecentProject(projectPath, { replaceCurrentWindow: true });
+        // Opens alongside: the chosen project comes up in a window of its own and this one stays.
+        // A project that is already open is focused instead, so this never makes a second window
+        // over the same files.
+        void openRecentProject(projectPath);
     }, [openRecentProject]);
 
     const handleOpenFolder = useCallback(() => {
@@ -88,8 +87,8 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
             const result = await getInterface().selectFolder();
             if (result.success && result.data?.path) {
                 // Same gesture as the rows above it - a project the author already has, reached by
-                // path instead of by history - so it leaves this window the same way.
-                await getInterface().workspace.launch({ projectPath: result.data.path }, true);
+                // path instead of by history - so it opens the same way.
+                await getInterface().workspace.launch({ projectPath: result.data.path });
             }
         })();
     }, []);
@@ -99,9 +98,6 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
         void (async () => {
             const result = await getInterface().app.launchProjectWizard({});
             if (result.success && result.data?.created) {
-                // Opens alongside, unlike everything above: creating a project is not leaving this
-                // one, and the author usually wants the project they just built *and* the one they
-                // were working in (File ▸ New behaves the same way).
                 await getInterface().workspace.launch({ projectPath: result.data.projectPath });
             }
         })();
@@ -120,8 +116,8 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                     "h-8 max-w-56 px-2 rounded-md flex items-center gap-1.5 text-sm cursor-default transition-colors",
                     open ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
                 )}
-                title={t("workspace.shell.projectSwitcher.switchProject")}
-                aria-label={t("workspace.shell.projectSwitcher.switchProject")}
+                title={t("workspace.shell.projectSwitcher.openAnother")}
+                aria-label={t("workspace.shell.projectSwitcher.openAnother")}
                 aria-haspopup="menu"
                 aria-expanded={open}
             >
@@ -134,7 +130,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                 <div
                     className="absolute top-full left-0 mt-1 z-20 w-80 max-w-[80vw] bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1"
                     role="menu"
-                    aria-label={t("workspace.shell.projectSwitcher.switchProject")}
+                    aria-label={t("workspace.shell.projectSwitcher.openAnother")}
                 >
                     <div className="px-3 pt-1.5 pb-1 text-2xs tracking-wide text-fg-subtle">
                         {t("workspace.shell.projectSwitcher.recentProjects")}
@@ -150,7 +146,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                                 <RecentProjectRow
                                     key={project.path}
                                     project={project}
-                                    onSelect={() => handleSwitch(project.path)}
+                                    onSelect={() => handleOpen(project.path)}
                                 />
                             ))}
                         </div>
