@@ -104,7 +104,9 @@ export const help = {
                 + "- A new project needs a name, an app identifier and a stage size. The identifier is fixed once the "
                 + "project exists.\n"
                 + "- The folder has to be empty. Name one that does not exist yet and it is created for you.\n"
-                + "- A project copied from a server stays connected to it, and your copy is yours to edit.",
+                + "- A project copied from a server stays connected to it, and your copy is yours to edit.\n"
+                + "- The template Studio ships with is a short story that already runs: three scenes, one choice, "
+                + "and the title, save, load, config and backlog screens already wired.",
         },
         undo: {
             title: "Undoing",
