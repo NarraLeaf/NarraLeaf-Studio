@@ -3,7 +3,9 @@ import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { getProjectWriteFreeze, isProjectWriteReloadHeld } from "@/lib/app/writeFreeze";
 import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
 import { RequestStatus } from "@shared/types/ipcEvents";
+import type { MediaProbeOutcome } from "@shared/types/mediaProbe";
 import type { RemoteAssetBytes, RemoteAssetValidators } from "@shared/types/remoteAsset";
+import type { MediaSupportVerdict } from "@shared/utils/mediaSupport";
 import { basename, dirname, extname } from "@shared/utils/path";
 import { AssetsService } from "../../core/AssetsService";
 import { FileSystemService } from "../../core/FileSystem";
@@ -194,6 +196,12 @@ export class RemoteAssetsManager {
      * Bytes and digest only, as in {@link LocalAssetsManager.writeAssetContentFromPath}: dropping the
      * thumbnail, writing the record and announcing `updated` happen in a fixed order that belongs to
      * {@link AssetsService.refreshRemoteAsset}.
+     *
+     * Gated exactly as an import is, by {@link writeSnapshot}. That is not symmetry for its own
+     * sake: this is the same act, taking bytes off a URL into the project, and a refresh is the one
+     * way an asset that was accepted could become one that cannot play. Refusing here leaves the
+     * previous snapshot in place and the asset working, which is why the gate probes a scratch copy
+     * rather than the shard.
      */
     public async refresh<T extends AssetType>(
         asset: Asset<T, AssetSource.Remote>,
@@ -289,6 +297,10 @@ export class RemoteAssetsManager {
      * Format-gated with the same validator imports pass. It matters more here than for a local
      * import: a URL that has quietly become a login page answers 200 with HTML, and without this the
      * project would gain an "image" that no consumer can decode.
+     *
+     * Playability-gated too, which the local import path is *not* - see {@link refuseUnplayable}.
+     * Both callers go through here, so an import and a refresh answer the question the same way; the
+     * comment on {@link refresh} says why they must.
      */
     private async writeSnapshot<T extends AssetType>(
         type: T,
@@ -307,6 +319,11 @@ export class RemoteAssetsManager {
         const validation = await this.assetsService.getFileFormatValidator().validateFileFormat(type, name, bytes);
         if (!validation.success) {
             return { success: false, error: validation.error || "File format validation failed" };
+        }
+
+        const unplayable = await this.refuseUnplayable(type, name, bytes);
+        if (unplayable) {
+            return { success: false, error: unplayable };
         }
 
         const fs = this.getFileSystem();
@@ -334,6 +351,83 @@ export class RemoteAssetsManager {
         const hash = hashResult.success && hashResult.data.ok ? hashResult.data.data : "";
 
         return { success: true, data: { hash, ext: extractExtension(name) } };
+    }
+
+    /**
+     * Refuse sound or video that will not play, before any of it becomes an asset.
+     *
+     * The reason this is here and **not** on the local import path is that the two have different
+     * ways out. A local file that needs converting is offered a conversion (`MediaImportDialog`), and
+     * an asset already in the library can be converted in place, keeping its id so every story row
+     * and blueprint pin that points at it keeps working. A remote asset can do neither:
+     * `AssetsService.replaceAssetContent` refuses a remote source, because converted bytes are not
+     * what the URL serves and the record would go on claiming they were. So the "needs converting"
+     * mark on a remote asset is a dead end with no button behind it — and the answer is not to build
+     * the button, it is not to let the asset in. A pinned URL is a reference to bytes somewhere else;
+     * bytes we would have to rewrite before they were usable were never a reference to begin with.
+     *
+     * The extension-level refusals (`.avi`, `.tif`) are already `validateFileFormat`'s. What is left
+     * for this is the judgement no file name can make: an `.mp4` holding HEVC passes every name and
+     * magic-byte check ever written and is still a black rectangle. That answer lives in the bytes,
+     * so it costs a probe.
+     *
+     * The bytes are probed from a scratch copy under `.nlstudio/`, not from the shard. Writing them
+     * to the shard first would mean a refused **refresh** had already destroyed the working snapshot
+     * it was refusing to replace.
+     *
+     * **A probe that did not answer is not a refusal.** No ffprobe on this host, a timeout, output
+     * that would not parse — none of those is evidence about the file, and spending them as one
+     * would make importing a URL impossible on a machine that merely lacks a tool. This is the same
+     * rule `MediaSupportService` states at length; the import goes through, and the library scan
+     * marks it later if it turns out badly.
+     *
+     * @returns the sentence to refuse with, or `null` to let the bytes through.
+     */
+    private async refuseUnplayable<T extends AssetType>(
+        type: T,
+        name: string,
+        bytes: Uint8Array,
+    ): Promise<string | null> {
+        if (type !== AssetType.Audio && type !== AssetType.Video) {
+            return null;
+        }
+
+        const scratchId = this.getUuidService().generate();
+        const scratchDir = this.context.project.resolve(ProjectNameConvention.MediaConvertScratchDir(scratchId));
+        // The probe reads the container out of the bytes and never looks at the name, but keeping
+        // the author's own one makes the file recognisable if a crash ever leaves one behind.
+        const scratchPath = this.context.project.resolve(
+            ProjectNameConvention.MediaConvertScratchDir(scratchId),
+            name,
+        );
+        const fs = this.getFileSystem();
+
+        let outcome: MediaProbeOutcome | null = null;
+        try {
+            const created = await fs.createDir(scratchDir);
+            if (!created.ok) {
+                return null;
+            }
+            const written = await fs.writeRaw(scratchPath, bytes);
+            if (!written.ok) {
+                return null;
+            }
+            const probed = await getInterface().probeMedia(scratchPath);
+            outcome = probed.success ? probed.data.outcome : null;
+        } catch {
+            // Every failure above is a question that went unanswered, which is the one thing this
+            // may not turn into a verdict.
+            outcome = null;
+        } finally {
+            await fs.deleteDir(scratchDir).catch(() => undefined);
+        }
+
+        if (!outcome || outcome.status !== "probed" || outcome.verdict.tier === "accept") {
+            return null;
+        }
+        return `NarraLeaf cannot play what this URL serves: ${describeVerdict(outcome.verdict)}. `
+            + "Convert the file and import that instead - bytes pinned to a URL cannot be converted "
+            + "in place.";
     }
 
     private buildMeta(url: string, fetched: RemoteAssetBytes): AssetResolveMeta<AssetSource.Remote> {
@@ -436,6 +530,29 @@ const MIME_PREFIXES: Partial<Record<AssetType, string[]>> = {
     [AssetType.Font]: ["font/", "application/font", "application/x-font"],
     [AssetType.JSON]: ["application/json", "text/json"],
 };
+
+/**
+ * Why these bytes will not play, in a clause that fits inside a sentence.
+ *
+ * Names the codec or the container rather than the tier, because "reencode" is this pipeline's
+ * vocabulary and the author never asked for a conversion. The one thing they can act on is knowing
+ * *which* part of the file the player cannot read.
+ */
+function describeVerdict(verdict: MediaSupportVerdict): string {
+    if (verdict.unsupportedCodecs.length > 0) {
+        const codecs = verdict.unsupportedCodecs.join(", ");
+        return `nothing here decodes ${codecs}`;
+    }
+    if (!verdict.container.demuxable) {
+        const container = verdict.container.names[0];
+        return container
+            ? `nothing here opens a ${container} container`
+            : "its container cannot be opened";
+    }
+    // `no-streams`, and whatever a future tier turns out to be. Vague on purpose: a wrong specific
+    // reason is worse than an honest general one.
+    return "it holds no sound or picture that can be played";
+}
 
 function validatorsOf(meta: AssetResolveMeta<AssetSource.Remote>): RemoteAssetValidators {
     return {

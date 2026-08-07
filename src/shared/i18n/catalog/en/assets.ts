@@ -229,6 +229,18 @@ export const assets = {
     support: {
         needsConverting: "Needs converting",
         needsConvertingHint: "This file does not play in the game. Convert it and it will.",
+        /**
+         * The same mark, on an asset pinned to a URL, where there is no button behind it.
+         *
+         * Converting one is not offered, and the reason is not a missing feature: the bytes of a
+         * remote asset are a copy of what the URL serves, and rewriting them would leave the record
+         * saying they came from somewhere they did not. So the instruction is the only one that
+         * works — bring the file in as a file. New imports are refused before they get this far;
+         * this sentence is for the ones already in a project.
+         */
+        needsConvertingRemoteHint:
+            "This file does not play in the game, and a file kept as a link cannot be converted. "
+            + "Convert it on your computer and add it as a file.",
         notPlayable: "Will not play",
         notPlayableHint: "This file holds no sound and no picture, so there is nothing to convert.",
         menuConvert: "Convert File…",

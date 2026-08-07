@@ -55,8 +55,16 @@ export function AssetSupportBadge({
 
     const label = t("assets.support.needsConverting");
     if (!onConvert) {
+        // The mark without its button, which today means one thing: an asset kept as a link to a
+        // URL, whose bytes Studio may not rewrite. That is worth its own sentence rather than the
+        // instruction above — "convert it and it will play" is advice this author cannot follow,
+        // and a mark that names a fix leading nowhere is worse than no mark.
         return (
-            <Badge tone="warning" className={className} title={t("assets.support.needsConvertingHint")}>
+            <Badge
+                tone="warning"
+                className={className}
+                title={t("assets.support.needsConvertingRemoteHint")}
+            >
                 {label}
             </Badge>
         );
