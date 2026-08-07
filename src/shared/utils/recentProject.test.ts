@@ -2,9 +2,64 @@ import { describe, expect, it } from "vitest";
 import {
     collapseHomePath,
     formatRecentProjectLabel,
+    projectPathIdentity,
     recentProjectDisplayName,
     withRecentProjectNames,
 } from "./recentProject";
+
+/**
+ * The spellings one project reaches Studio under, and why they are not the app's to choose:
+ * a native folder picker answers with `\`, a scripted or typed path usually carries `/`, and the
+ * history remembers whichever one opened the project last. Treating them as different projects is
+ * what put a second window over one project's files and a second row in the recent list.
+ */
+describe("projectPathIdentity (Windows)", () => {
+    const key = (path: string) => projectPathIdentity(path, true);
+
+    it("reads both separators as the same character", () => {
+        expect(key("D:/Dev/game")).toBe(key("D:\\Dev\\game"));
+        expect(key("D:/Dev\\game")).toBe(key("D:\\Dev\\game"));
+    });
+
+    it("ignores case, the way the filesystem does", () => {
+        expect(key("D:\\Dev\\Game")).toBe(key("d:\\dev\\game"));
+    });
+
+    it("collapses repeated separators and trailing ones", () => {
+        expect(key("D:\\\\Dev\\\\game")).toBe(key("D:\\Dev\\game"));
+        expect(key("D:\\Dev\\game\\")).toBe(key("D:\\Dev\\game"));
+        expect(key("D:/Dev/game/")).toBe(key("D:\\Dev\\game"));
+    });
+
+    it("keeps a UNC root's leading pair", () => {
+        expect(key("\\\\server\\share\\game")).toBe("\\\\server\\share\\game");
+        expect(key("//server/share/game")).toBe("\\\\server\\share\\game");
+    });
+
+    it("still tells two different projects apart", () => {
+        expect(key("D:\\Dev\\game")).not.toBe(key("D:\\Dev\\game2"));
+        expect(key("D:\\Dev\\game")).not.toBe(key("E:\\Dev\\game"));
+    });
+
+    it("answers rather than throws for anything a hand-edited store could hold", () => {
+        expect(key("")).toBe("");
+        expect(projectPathIdentity(undefined as never, true)).toBe("");
+        expect(projectPathIdentity(null as never, true)).toBe("");
+    });
+});
+
+describe("projectPathIdentity (POSIX)", () => {
+    const key = (path: string) => projectPathIdentity(path, false);
+
+    it("strips trailing slashes", () => {
+        expect(key("/Users/aria/game/")).toBe("/Users/aria/game");
+    });
+
+    it("keeps case and backslashes, both of which are significant there", () => {
+        expect(key("/Users/aria/Game")).not.toBe(key("/users/aria/game"));
+        expect(key("/Users/aria/game\\")).not.toBe(key("/Users/aria/game"));
+    });
+});
 
 describe("collapseHomePath", () => {
     it("collapses an exact home prefix to ~", () => {
@@ -92,5 +147,19 @@ describe("withRecentProjectNames", () => {
 
     it("handles an empty history", () => {
         expect(withRecentProjectNames([])).toEqual([]);
+    });
+
+    /**
+     * A store that already holds one project twice heals on read rather than waiting to be opened
+     * again - the same argument that repairs a missing name here.
+     */
+    it("keeps one record per project, newest spelling first", () => {
+        const read = withRecentProjectNames([
+            { name: "Game", path: "/a/game/", openedAt: 3 },
+            { name: "Other", path: "/a/other", openedAt: 2 },
+            { name: "Game", path: "/a/game", openedAt: 1 },
+        ]);
+
+        expect(read.map(project => project.path)).toEqual(["/a/game/", "/a/other"]);
     });
 });

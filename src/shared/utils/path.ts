@@ -484,7 +484,15 @@ function detectIsWindows(): boolean {
     return false;
 }
 
-const defaultPath = detectIsWindows() ? win32 : posix;
+/**
+ * Whether this process is looking at a Windows filesystem, by the same detection the default
+ * instance below uses. Exported because the answer decides more than which separator to write:
+ * on Windows two spellings of one path are the same path, which is what project identity turns
+ * on (see `normalizeProjectPath`).
+ */
+export const isWindowsPlatform = detectIsWindows();
+
+const defaultPath = isWindowsPlatform ? win32 : posix;
 
 // Export commonly used functions
 export const resolve = (...paths: string[]) => defaultPath.resolve(...paths);
