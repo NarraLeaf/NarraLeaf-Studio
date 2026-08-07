@@ -68,6 +68,12 @@ export type GameAppHost = {
     bootAction: GameAppBootAction;
     persistenceAdapter: BlueprintPersistentStoreAdapter | null;
     onDebugEvent?: (event: BlueprintDebugEvent) => void;
+    /**
+     * Install the blueprint breakpoint debugger for this session. Only Dev Mode sets it; a
+     * packaged game and the workspace story preview leave it off, so nothing in those builds can
+     * stop a graph at a node. See `useBlueprintRuntimeCore`.
+     */
+    debuggerEnabled?: boolean;
     disposeMessage: string;
     log: (level: GameAppLogLevel, message: string) => void;
     resolveStoryAssetUrl: (

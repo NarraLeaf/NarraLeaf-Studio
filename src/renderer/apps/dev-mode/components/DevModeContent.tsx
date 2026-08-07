@@ -25,6 +25,9 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
 import { StoryRuntimeDebugPanel } from "./StoryRuntimeDebugPanel";
+import { BlueprintDebuggerProvider } from "./debugger/BlueprintDebuggerContext";
+import { BlueprintDebuggerOverlay } from "./debugger/BlueprintDebuggerOverlay";
+import { BlueprintDebuggerPanel } from "./debugger/BlueprintDebuggerPanel";
 import type { DevModePanelChrome } from "./DevModePanelChrome";
 import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
 import type {
@@ -82,7 +85,7 @@ function SessionErrorBanner(props: {
     );
 }
 
-type DevModeDebugPanelId = "none" | "blueprint" | "story";
+type DevModeDebugPanelId = "none" | "blueprint" | "story" | "debugger";
 
 /** Width the debug drawer takes off the stage while it is open. */
 const DEBUG_PANEL_WIDTH = 380;
@@ -392,7 +395,11 @@ function DevModeDebugOverlay(props: {
     }), [panelFloating, setPanelFloating, handleTitleBarPointerDown]);
 
     return (
-        <>
+        <BlueprintDebuggerProvider
+            session={core.debugSession}
+            blueprintDocument={bundle.ui.localBlueprints}
+            projectPath={projectPath}
+        >
             <AnimatePresence>
                 {activePanel !== "none" ? (
                     // Docked, this is a flex SIBLING of the stage, not an overlay: the stage yields
@@ -408,7 +415,13 @@ function DevModeDebugOverlay(props: {
                         key={activePanel}
                         ref={panelRef}
                         role="complementary"
-                        aria-label={activePanel === "story" ? t("devMode.runtime.title") : t("devMode.devtools.title")}
+                        aria-label={
+                            activePanel === "story"
+                                ? t("devMode.runtime.title")
+                                : activePanel === "debugger"
+                                  ? t("devMode.debugger.title")
+                                  : t("devMode.devtools.title")
+                        }
                         className={
                             panelFloating
                                 // A plain border rather than a `ring`: the game window has
@@ -440,7 +453,9 @@ function DevModeDebugOverlay(props: {
                         transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                     >
                         <div className="absolute inset-y-0 right-0" style={{ width: DEBUG_PANEL_WIDTH }}>
-                            {activePanel === "story" ? (
+                            {activePanel === "debugger" ? (
+                                <BlueprintDebuggerPanel className="h-full min-h-0 w-full" chrome={panelChrome} />
+                            ) : activePanel === "story" ? (
                                 <StoryRuntimeDebugPanel
                                     storyRuntime={storyRuntime}
                                     scopeBridge={core.scopeBridge}
@@ -503,6 +518,7 @@ function DevModeDebugOverlay(props: {
                                     [
                                         ["story", t("devMode.runtime.title")],
                                         ["blueprint", t("devMode.devtools.title")],
+                                        ["debugger", t("devMode.debugger.title")],
                                     ] as const
                                 ).map(([id, label]) => {
                                     const open = activePanel === id;
@@ -548,7 +564,10 @@ function DevModeDebugOverlay(props: {
                     </div>
                 </div>
             </div>
-        </>
+
+            {/* Over the stage, and over the drawer: while stopped, the graph is the window. */}
+            <BlueprintDebuggerOverlay />
+        </BlueprintDebuggerProvider>
     );
 }
 
@@ -927,6 +946,7 @@ export function DevModeContent(props: DevModeContentProps) {
             bootAction,
             persistenceAdapter,
             onDebugEvent,
+            debuggerEnabled: true,
             disposeMessage: "Dev Mode runtime disposed",
             log,
             resolveStoryAssetUrl,
