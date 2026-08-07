@@ -62,6 +62,10 @@ export const settings = {
             label: "Language",
             description: "Display language for the Studio interface.",
         },
+        developerMode: {
+            label: "Developer options",
+            description: "Right-click menus gain a section for copying the ID of what you clicked.",
+        },
         themeMode: {
             label: "Theme",
             description: "Color theme for the Studio interface.",
@@ -279,6 +283,10 @@ export const settings = {
                 },
                 pluginIcons: {
                     label: "Plugin store thumbnails",
+                    description: "Downloaded again the next time you open the store.",
+                },
+                uiTemplatePosters: {
+                    label: "Template store posters",
                     description: "Downloaded again the next time you open the store.",
                 },
                 psdImports: {
