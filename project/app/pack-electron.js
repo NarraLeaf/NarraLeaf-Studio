@@ -70,13 +70,14 @@ function targetArch(args) {
         console.log('[pack] Staging mobile shell templates...');
         await run('node', ['project/build/prepare-mobile-shell.js']);
 
+        // --arch goes to both staging steps below and to none of the ones above: these two write
+        // native binaries that electron-builder then copies into the installer wholesale, and the
+        // runner's architecture is not the installer's. See targetArch above. Getting it wrong
+        // costs a Mach-O that cannot execute where it lands on the zsign side, and a wasted 3-5
+        // minute compile producing the same on the FFmpeg side.
         console.log('[pack] Staging code-signing tools...');
-        await run('node', ['project/build/prepare-codesign-tools.js']);
+        await run('node', ['project/build/prepare-codesign-tools.js', ...archArgs]);
 
-        // --arch is forwarded here and not to the other staging steps on purpose: this is the one
-        // that *compiles* on macOS, so getting the target wrong costs a 3-5 minute build of a
-        // binary that cannot run in the installer it lands in. See targetArch above; the same
-        // hazard applies to prepare-codesign-tools.js and is not addressed here.
         console.log('[pack] Staging FFmpeg tools...');
         await run('node', ['project/build/prepare-ffmpeg.js', ...archArgs]);
 
