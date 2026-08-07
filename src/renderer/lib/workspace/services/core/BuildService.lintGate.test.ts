@@ -140,6 +140,11 @@ function mount(options: {
         setProgress: () => undefined,
         getProgress: () => null,
     };
+    /** A project whose media is all fine, so this file keeps testing the two gates it is about. */
+    const media = {
+        scan: async () => ({ records: new Map(), probeAvailable: true, unanswered: [], finishedAt: 0 }),
+        listUnplayable: () => [],
+    };
 
     const ctx = {
         project: { getConfig: () => ({ projectPath: PROJECT_PATH }) },
@@ -154,6 +159,8 @@ function mount(options: {
                         return consoleService;
                     case Services.Story:
                         return story;
+                    case Services.MediaSupport:
+                        return media;
                     case Services.Character:
                     case Services.UIDocument:
                     case Services.UIGraph:

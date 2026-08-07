@@ -54,6 +54,8 @@ import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
 import type { PuppetDescription } from "narraleaf-react";
 import type { PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
+import type { MediaAssetSupportRecord } from "./media/mediaAssetSupport";
+import type { MediaSupportScan } from "./media/MediaSupportService";
 import type {
     UIDocument,
     UISurface,
@@ -188,6 +190,8 @@ enum Services {
     Assets = "assets",
     /** What a puppet's model says it contains — motions, expressions, skins, parameters */
     PuppetDescription = "puppetDescription",
+    /** Which media assets already in the project will not play, and what to convert them into */
+    MediaSupport = "mediaSupport",
     /** Per-project plugin dependency table: scan, persist, and resolve compatibility */
     ProjectDependency = "projectDependency",
     /** Accumulated authoring activity (writing curve, active time, build history) */
@@ -952,6 +956,28 @@ interface IPuppetDescriptionService extends IService {
     onDescriptionChanged(handler: () => void): () => void;
 }
 
+/**
+ * Whether the media already in the project will play, and what to convert it into if not.
+ *
+ * The counterpart to the import gate: that one asks about a file the author is holding, this one
+ * asks about the library, where assets imported before the gate existed (or imported deliberately
+ * unconverted) are still sitting. Answers are cached under the content hash in `editor/cache/`, so
+ * a build asks without paying for a probe per file.
+ *
+ * An unanswered probe is never a verdict: a host with no ffprobe leaves every sound and video asset
+ * without a record and reports `probeAvailable: false`, and callers must treat that as "not known",
+ * not as "fine" and not as "broken".
+ */
+interface IMediaSupportService extends IService {
+    scan(options?: { force?: boolean }): Promise<MediaSupportScan>;
+    getLastScan(): MediaSupportScan;
+    /** The last scan's answer for one asset, for render paths that cannot await. */
+    peek(assetId: string): MediaAssetSupportRecord | null;
+    listUnplayable(): { asset: Asset; record: MediaAssetSupportRecord }[];
+    refresh(assetId: string): Promise<void>;
+    onChanged(handler: () => void): () => void;
+}
+
 // Asset Services
 interface IAssetService extends IService {
     getAssets(): AssetsMap;
@@ -1205,6 +1231,7 @@ export {
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IPuppetDescriptionService,
+    IMediaSupportService,
     ITestRunService, IRecoveryService,
     Services, WorkspaceContext
 };
