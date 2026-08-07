@@ -32,9 +32,9 @@ import path from "path";
 export const FFMPEG_VERSION = "n8.1.2-34-g9b6c8969e0";
 
 /**
- * Escape hatch for hosts the vendoring cannot serve — an Intel Mac above all, which cannot build
- * the macOS binaries without nasm. Set it to a **directory** holding both binaries (not to a single
- * file, as the zsign override does) and they are used verbatim, on any platform.
+ * Escape hatch for hosts the vendoring cannot serve — Linux and Windows arm64 above all, which have
+ * no prebuilt LGPL asset. Set it to a **directory** holding both binaries (not to a single file, as
+ * the zsign override does) and they are used verbatim, on any platform.
  *
  * Anyone using it on a machine that ships a product build is responsible for the licence of what
  * they point it at.
@@ -70,9 +70,14 @@ export type FfmpegHostTarget = {
  * (evermeet.cx, osxexperts.net, Homebrew's formula, and the popular npm and PyPI wrappers all
  * configure with `--enable-gpl --enable-libx264 --enable-libx265`). So macOS is *compiled* from
  * pinned source by `project/build/build-ffmpeg-macos.sh` while Studio is packaged, and only for the
- * building machine's own architecture: an x86_64 target would need nasm to assemble libvpx's SIMD,
- * which is not in the Command Line Tools. Hence a row for `arm64` and none for `x64` — the same
- * Apple-Silicon-only shape zsign already has, for its own reason.
+ * building machine's own architecture.
+ *
+ * There is no `x64` row, and that is not an unfinished toolchain story: **Studio is not shipped for
+ * Intel Macs** (see `.github/workflows/release.yml`), so no host will ever ask. This missing build
+ * was one of the three subsystems behind that decision, alongside version control and iOS signing.
+ *
+ * `arch` is the *host's* — where ffmpeg runs, converting the author's assets while they work. It
+ * says nothing about which architectures a built game can target.
  *
  * That build is **LGPL v2.1**, where the Windows and Linux ones are v3; the difference is recorded
  * per platform in the staged `manifest.json` rather than assumed here.
