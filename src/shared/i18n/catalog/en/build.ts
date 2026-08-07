@@ -4,7 +4,7 @@ export const build = {
         title: "Build for distribution",
         start: "Build",
         runningTitle: "Build in progress",
-        runningBody: "A build is already running for this project. Watch its progress in the console.",
+        runningBody: "A build is already running for this project. Its progress is in the console.",
         viewConsole: "View console",
         cancelBuild: "Cancel build",
     },
@@ -69,12 +69,12 @@ export const build = {
     content: {
         protection: "Asset protection",
         protectionOn: "Assets and saves are encrypted in the packaged game.",
-        protectionOff: "Assets and saves ship readable.",
+        protectionOff: "Assets and saves ship unencrypted.",
         plugins: "Bundled plugins",
-        pluginsNone: "No plugins ship with this game.",
+        pluginsNone: "No plugins are bundled with this game.",
         pluginsRescanUnavailable: "The plugin list cannot be rescanned in this window.",
         locales: "Bundled languages",
-        localesNone: "Localization is not set up; the game ships in one language.",
+        localesNone: "No localization is set up. The game ships in one language.",
         localeSource: "{name} (source)",
         network: "Network policy",
         networkAllowHttp: "Plain HTTP is allowed.",
@@ -90,13 +90,13 @@ export const build = {
         import: "Import…",
         remove: "Remove from this machine",
         removeConfirm: "Remove {label} from this machine?",
-        removeConfirmDetail: "Its key material is deleted here. Projects that use it build unsigned until it is imported again.",
+        removeConfirmDetail: "Its key material is deleted from this machine. Projects that use it build unsigned until it is imported again.",
         removeAction: "Remove",
         chooseFile: "Choose…",
         noFile: "None",
         expires: "Expires {date}",
         expired: "Expired {date}",
-        certUnsupported: "This container is not one Studio can open.",
+        certUnsupported: "Studio cannot open this container format.",
         certUnreadable: "The certificate could not be read.",
         alias: "Key {alias}",
         keyId: "Key {keyId}",
@@ -148,7 +148,7 @@ export const build = {
     },
     output: {
         artifacts: "Artifacts",
-        artifactsEmpty: "Select a target to see what gets produced.",
+        artifactsEmpty: "Select a target to list the files it produces.",
         openWhenDone: "Open the output folder when done",
         compression: "Compression",
         compressionMaximum: "Maximum (smallest)",
@@ -184,7 +184,7 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin}'s {sidecar} program would ship into the {platform} artifact unable to run: Windows cannot mark "
             + "a file executable. Build the {targetPlatform} target on a {targetPlatform} machine.",
-        "encryption-key-unavailable": "Asset protection is on, but its key could not be resolved.",
+        "encryption-key-unavailable": "Asset protection is on, but its key could not be read.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
         "web-lossy-images": "Lossy image recompression is on, so the exported images are re-encoded at quality {quality} and lose detail permanently.",
         "mobile-template-missing": "The mobile shell templates are unavailable: {reason}",
@@ -196,16 +196,16 @@ export const build = {
         // vocabulary, not the author's, and what to expect is the same either way. The `build`
         // help topic carries the longer version.
         unsigned: "Not code-signed. Players may see a security prompt the first time they open it.",
-        "unsigned-android": "Signed with a local debug identity, which is only good for sideloading. Choose your release keystore to sign it as yourself.",
+        "unsigned-android": "Signed with a local debug identity, which is only good for sideloading. Choose a release keystore to sign it under your own identity.",
         // The chain caveat belongs here rather than on a later error: this is
         // what an author reads while they are exporting the .p12, and a leaf-only
         // export fails the signing step outright.
         "unsigned-ios": "This .ipa is unsigned, and iOS installs nothing unsigned. Choose an Apple signing credential. Export the .p12 from Keychain Access with its issuing certificate chain, or signing fails.",
         "signing-credential-missing": "The {platform} signing credential is not on this machine; key material never travels with a project. Import it here, or clear the selection to build {platform} unsigned.",
         "signing-credential-expired": "The {platform} signing certificate is not valid today ({notBefore} to {notAfter}), so signing will fail. Renew it with the issuer and import the replacement.",
-        "signing-credential-expiring": "The {platform} signing certificate expires on {notAfter}, in {days} day(s). Builds signed before then stay valid; later ones need a renewed certificate.",
+        "signing-credential-expiring": "The {platform} signing certificate expires on {notAfter}. Builds signed before then stay valid; later ones need a renewed certificate.",
         "signing-secret-unavailable": "The password for the {platform} signing credential cannot be read on this machine. Import the credential again to store it afresh.",
-        "signing-tool-missing": "Signing the {platform} build needs {tool}, which this machine does not have. Install it, put it on your PATH, then reopen this dialog.",
+        "signing-tool-missing": "Signing the {platform} build needs {tool}, which is not installed on this machine. Install it, add it to PATH, then reopen this dialog.",
         "signing-host-unsupported": "This machine runs {host} and cannot sign for {platform} with the selected credential: its private key lives in a system service that only exists on that platform. Build this target on a {platform} machine.",
         "signing-needs-network": "Signing the {platform} build needs a network connection. Everything else about this build works offline.",
         "signing-macos-identity-missing": "No certificate named {identity} is in this Mac's keychain. Install it in Keychain Access, or choose another certificate here.",
@@ -215,18 +215,21 @@ export const build = {
         "signing-ios-profile-mismatch": "The app id {bundleId} is not covered by the provisioning profile, which is issued for {profileAppId}. Change the project identifier, or import the profile that covers it.",
         "cross-build-download": "Cross-building for {platforms} downloads Electron on first use (cached afterwards).",
         "output-not-writable": "Cannot write to {outputDir}.",
-        "output-not-empty": "The output folder already has files in it; this build overwrites matching names.",
+        "output-not-empty": "The output folder is not empty. This build overwrites files with matching names.",
     },
     webStaticNotice: "The Web build is a static site for any web server. Asset encryption and the HTTP restriction do not apply to it.",
     unsignedNotice: "Not code-signed. Players may see a security prompt the first time they open it.",
     selectAtLeastOne: "Select at least one platform and format.",
     toast: {
-        submitted: "Build task submitted. See the console for progress.",
+        submitted: "Build started. Progress is in the console.",
         done: "Build finished.",
         failed: "Build failed.",
     },
     invalidCommand: "Invalid command in {story} / {scene}: {source}",
-    invalidCommandSummary: "Build stopped: {count} invalid command(s). See the console.",
+    invalidCommandSummary: {
+        one: "Build stopped: {count} invalid command. See the console.",
+        other: "Build stopped: {count} invalid commands. See the console.",
+    },
     /**
      * The media gate. One line per asset, then one summary.
      *
@@ -236,7 +239,7 @@ export const build = {
      * to convert.
      */
     mediaNeedsConverting: "{asset} does not play. Convert it in the asset browser.",
-    mediaNotPlayable: "{asset} holds no sound and no picture. Replace the file or remove it.",
+    mediaNotPlayable: "{asset} contains no audio and no video. Replace the file or remove it.",
     mediaSummary: {
         one: "Build stopped: {count} asset will not play. See the console.",
         other: "Build stopped: {count} assets will not play. See the console.",
