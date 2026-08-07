@@ -30,6 +30,7 @@ import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { BlueprintBreakpoint } from "@shared/types/blueprint/breakpoints";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
 import { getBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import { blueprintEdgeStyle } from "@/lib/ui-editor/blueprint-graph-edge-style";
 import { readNodeEditorLayout } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -182,7 +183,7 @@ function BlueprintReadonlyGraphViewInner(props: BlueprintReadonlyGraphViewProps)
             targetHandle: edge.to.port,
             selectable: false,
             focusable: false,
-            style: { stroke: "#22d3ee", strokeWidth: 1.5 },
+            style: blueprintEdgeStyle(false),
         }));
     }, [ir]);
 
