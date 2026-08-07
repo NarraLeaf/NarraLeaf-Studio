@@ -124,6 +124,7 @@ type MockRegistryEntry = { id: string; name: string; valueType: string; defaultV
 
 function createHarness() {
     const graphDocument = { blueprintDocument: blueprintDocument() };
+    const graphMutations = { count: 0 };
     let nextId = 0;
     // In-memory stand-in for VariableRegistryService: persistent-variable CRUD now lives there, and
     // its state is captured into blueprint history so persistent edits undo with the blueprint edit.
@@ -207,6 +208,7 @@ function createHarness() {
                             return graphDocument;
                         },
                         applyGraphMutation(mutator: (document: typeof graphDocument) => void) {
+                            graphMutations.count += 1;
                             mutator(graphDocument);
                         },
                     };
@@ -226,7 +228,7 @@ function createHarness() {
     };
     historyService.setContext(context);
     service.setContext(context);
-    return { service, historyService, graphDocument, uidoc, registryService };
+    return { service, historyService, graphDocument, uidoc, registryService, graphMutations };
 }
 
 describe("LocalBlueprintService persistent variables (M-VAR registry)", () => {
@@ -628,5 +630,46 @@ describe("LocalBlueprintService event layer order", () => {
         expect(Object.keys(graphs.events)).toEqual(["aaa", "mouseClick", "zzz"]);
 
         expect(service.listEventGraphIds("bp-main")).toEqual(authored);
+    });
+});
+
+describe("LocalBlueprintService ensure* helpers", () => {
+    // These run once per surface and once per eligible widget after *every* uidoc mutation. Going
+    // through applyBlueprintMutation when there is nothing to write bumps the graph revision, marks
+    // uigraphs.json dirty, schedules a save and notifies every subscriber - dozens of times per drag.
+    it("writes nothing when the owner record is already what was asked for", () => {
+        const { service, graphMutations } = createHarness();
+
+        service.ensureSurfaceMain("surface-a", "Main");
+        const afterFirst = graphMutations.count;
+
+        expect(service.ensureSurfaceMain("surface-a", "Main")).toBe("bp-main");
+        expect(service.ensureSurfaceMain("surface-a")).toBe("bp-main");
+        expect(graphMutations.count).toBe(afterFirst);
+    });
+
+    it("still writes when the display name actually changes", () => {
+        const { service, graphDocument, graphMutations } = createHarness();
+
+        service.ensureSurfaceMain("surface-a", "Main");
+        const afterFirst = graphMutations.count;
+
+        service.ensureSurfaceMain("surface-a", "Renamed");
+        expect(graphMutations.count).toBeGreaterThan(afterFirst);
+        expect(graphDocument.blueprintDocument.blueprints["bp-main"].name).toBe("Renamed");
+    });
+
+    it("still writes the first time an owner is seen", () => {
+        const { service, graphDocument, graphMutations } = createHarness();
+
+        const before = graphMutations.count;
+        const id = service.ensureWidgetMain("surface-a", "button-a", "Button", "nl.button");
+
+        expect(graphMutations.count).toBeGreaterThan(before);
+        expect(graphDocument.blueprintDocument.ownerRecords["widgetMain:surface-a:button-a"].activeBlueprintId).toBe(id);
+
+        const afterCreate = graphMutations.count;
+        expect(service.ensureWidgetMain("surface-a", "button-a", "Button", "nl.button")).toBe(id);
+        expect(graphMutations.count).toBe(afterCreate);
     });
 });
