@@ -49,8 +49,6 @@ export const blueprint = {
             smallHitHint: "触控目标建议至少约为 24×24 像素",
         },
         layout: {
-            tiny: "元素“{name}”的尺寸非常小（{width}×{height}）",
-            tinyHint: "增大宽度和高度以获得可靠的布局和点击检测",
             outOfBounds: "元素“{name}”超出了画面设计边界",
             outOfBoundsHint: "设计尺寸为 {width}×{height}。请移动或调整该元素的大小",
         },
