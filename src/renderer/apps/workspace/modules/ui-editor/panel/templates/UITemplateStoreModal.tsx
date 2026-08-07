@@ -10,6 +10,7 @@ import type { UITemplateRegistryEntry, UIThemeDescriptor } from "@shared/types/u
 import { applyUITemplate } from "./applyUITemplate";
 import { UITemplateCard, UITemplateCardSkeleton, type UITemplatePreviewState } from "./UITemplateCard";
 import { UIThemeCard } from "./UIThemeCard";
+import { UITemplateDetail } from "./UITemplateDetail";
 
 type UITemplateStoreModalProps = {
     isOpen: boolean;
@@ -64,6 +65,8 @@ export function UITemplateStoreModal({
     const [query, setQuery] = useState("");
     const [kind, setKind] = useState<UISurfaceKind>(initialKind);
     const [applyingId, setApplyingId] = useState<string | null>(null);
+    /** The template whose detail view is open, if any. */
+    const [detailId, setDetailId] = useState<string | null>(null);
 
     const loadPreviews = useCallback(async (loaded: UITemplateRegistryEntry[]) => {
         if (loaded.length === 0) {
@@ -113,7 +116,7 @@ export function UITemplateStoreModal({
                     .fetchThemePreviews(loadedThemes.map(theme => theme.id));
                 if (posterResult.success) {
                     setPosters(Object.fromEntries(
-                        posterResult.data.map(p => [p.id, `data:${p.mime};base64,${p.dataBase64}`]),
+                        posterResult.data.map(p => [p.id, p.dataUrl]),
                     ));
                 }
             } else {
@@ -144,6 +147,7 @@ export function UITemplateStoreModal({
     /** Enter a theme, fetching its screens' documents on the way in. */
     const openTheme = useCallback(async (themeId: string) => {
         setOpenThemeId(themeId);
+        setDetailId(null);
         setQuery("");
         const inTheme = (entries ?? []).filter(entry => entry.theme === themeId);
         await loadPreviews(inTheme);
@@ -221,6 +225,7 @@ export function UITemplateStoreModal({
             if (result.components.length > 0) {
                 onNotify(tn("uiEditor.templateStore.componentsAdded", result.components.length), "info");
             }
+            setDetailId(null);
             onApplied(result.surfaces[0]);
             // The author asked for this template and got it; leaving the store open
             // over the surface they just added hides the thing they came here to make.
@@ -249,7 +254,23 @@ export function UITemplateStoreModal({
     const browsingThemes = themes.length > 0 && openThemeId === null;
     const openTheme_name = themes.find(theme => theme.id === openThemeId)?.name ?? "";
 
+    const detailEntry = detailId ? (entries ?? []).find(entry => entry.id === detailId) ?? null : null;
+
     const body = () => {
+        if (detailEntry) {
+            return (
+                <UITemplateDetail
+                    entry={detailEntry}
+                    preview={previews[detailEntry.id] ?? { status: "loading" }}
+                    runtimeBridge={runtimeBridge}
+                    placementLabel={placementLabel(detailEntry)}
+                    blockedReason={blockedReason(detailEntry)}
+                    busy={applyingId === detailEntry.id}
+                    onAdd={() => void handleApply(detailEntry)}
+                    onBack={() => setDetailId(null)}
+                />
+            );
+        }
         if (error) {
             return (
                 <EmptyState
@@ -325,6 +346,7 @@ export function UITemplateStoreModal({
                         blockedReason={blockedReason(entry)}
                         busy={applyingId === entry.id}
                         onAdd={() => void handleApply(entry)}
+                        onOpenDetail={() => setDetailId(entry.id)}
                     />
                 ))}
             </div>
@@ -339,6 +361,7 @@ export function UITemplateStoreModal({
             size="xl"
         >
             <div className="flex h-[30rem] flex-col">
+                {detailEntry ? null : (
                 <div className="flex items-center gap-2">
                     {browsingThemes ? (
                         // No shelves to switch between at the browse level, and the
@@ -352,7 +375,7 @@ export function UITemplateStoreModal({
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setOpenThemeId(null)}
+                                onClick={() => { setOpenThemeId(null); setDetailId(null); }}
                                 title={t("uiEditor.templateStore.themesBack")}
                                 aria-label={t("uiEditor.templateStore.themesBack")}
                             >
@@ -379,7 +402,9 @@ export function UITemplateStoreModal({
                         <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
                     </Button>
                 </div>
+                )}
 
+                {detailEntry ? null : (
                 <div className="pt-3">
                     <SearchInput
                         value={query}
@@ -391,10 +416,15 @@ export function UITemplateStoreModal({
                         fullWidth
                     />
                 </div>
+                )}
 
-                <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
-                    {body()}
-                </div>
+                {/* The detail view scrolls its own body, so it is not put inside
+                    a second scroller that would strand its footer button. */}
+                {detailEntry ? (
+                    <div className="mt-3 flex min-h-0 flex-1 flex-col">{body()}</div>
+                ) : (
+                    <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">{body()}</div>
+                )}
             </div>
         </Modal>
     );

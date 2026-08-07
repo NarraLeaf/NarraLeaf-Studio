@@ -6,6 +6,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type { UITemplateRegistryEntry } from "@shared/types/uiTemplateRegistry";
+import { resolveLocalizedText } from "@shared/types/localizedText";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 
 /** What the card knows about its own picture. */
@@ -24,6 +25,8 @@ type UITemplateCardProps = {
     blockedReason?: string;
     busy: boolean;
     onAdd: () => void;
+    /** Open the detail view. The card body is the control; Add is not. */
+    onOpenDetail: () => void;
 };
 
 /**
@@ -34,7 +37,7 @@ type UITemplateCardProps = {
  * 1280×720 stage and a Page authored for 1920×1080 then read at the same
  * proportions they will have in the editor.
  */
-function TemplatePreviewFrame({
+export function TemplatePreviewFrame({
     document,
     runtimeBridge,
 }: {
@@ -110,13 +113,21 @@ export function UITemplateCard({
     blockedReason,
     busy,
     onAdd,
+    onOpenDetail,
 }: UITemplateCardProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
+    const text = resolveLocalizedText(entry, locale);
 
     return (
         <div className="flex flex-col overflow-hidden rounded-md border border-edge bg-surface-raised">
             {/* Stage-shaped, and the darkest surface: a Game UI is authored over a
                 transparent stage, so it needs a ground dark enough to read against. */}
+            <button
+                type="button"
+                onClick={onOpenDetail}
+                className="flex min-w-0 flex-1 flex-col text-left"
+                title={t("uiEditor.templateStore.openDetail")}
+            >
             <div className="relative aspect-video w-full shrink-0 bg-surface-canvas">
                 {preview.status === "ready" ? (
                     <TemplatePreviewFrame document={preview.document} runtimeBridge={runtimeBridge} />
@@ -132,8 +143,8 @@ export function UITemplateCard({
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
-                <div className="truncate text-sm font-medium text-fg" title={entry.name}>
-                    {entry.name}
+                <div className="truncate text-sm font-medium text-fg" title={text.name}>
+                    {text.name}
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5 text-2xs text-fg-subtle">
                     <span className="truncate">{placementLabel}</span>
@@ -144,15 +155,17 @@ export function UITemplateCard({
                         </>
                     ) : null}
                 </div>
-                {entry.description ? (
-                    <p className="line-clamp-2 text-xs leading-relaxed text-fg-muted">{entry.description}</p>
+                {text.description ? (
+                    <p className="line-clamp-2 text-xs leading-relaxed text-fg-muted">{text.description}</p>
                 ) : null}
+            </div>
+            </button>
 
-                <div className="mt-auto pt-3">
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        fullWidth
+            <div className="p-3 pt-0">
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    fullWidth
                         disabled={busy || Boolean(blockedReason)}
                         // The reason a card refuses lives on the control that refuses,
                         // so it is readable without adding a second line to every card
@@ -162,8 +175,7 @@ export function UITemplateCard({
                     >
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                         {blockedReason ? t("uiEditor.templateStore.slotOccupied") : t("uiEditor.templateStore.add")}
-                    </Button>
-                </div>
+                </Button>
             </div>
         </div>
     );

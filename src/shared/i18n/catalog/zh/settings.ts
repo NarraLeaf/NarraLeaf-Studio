@@ -58,6 +58,10 @@ export const settings = {
             label: "语言",
             description: "Studio 界面的显示语言",
         },
+        developerMode: {
+            label: "开发者选项",
+            description: "右键菜单里多出一段，用来复制所点对象的 ID",
+        },
         themeMode: {
             label: "主题",
             description: "Studio 界面的配色主题",
@@ -266,6 +270,10 @@ export const settings = {
                 pluginIcons: {
                     label: "插件商店缩略图",
                     description: "下次打开商店会重新下载",
+                },
+                uiTemplatePosters: {
+                    label: "模板商店封面",
+                    description: "下次打开商店时会重新下载",
                 },
                 psdImports: {
                     label: "PSD 导入残留",
