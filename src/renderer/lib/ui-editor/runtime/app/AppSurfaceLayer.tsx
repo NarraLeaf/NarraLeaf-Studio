@@ -18,7 +18,7 @@ import {
     resolvePageAnimationMotion,
     type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
-import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import { getSurfaceLayerBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -148,6 +148,8 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         [core.scopeBridge],
     );
 
+    const layerBackgroundColor = getSurfaceLayerBackgroundColor(surface, entry.presentation);
+
     const pageMotion = useMemo(
         () => resolvePageAnimationMotion({
             settings: surface.settings?.pageAnimation,
@@ -236,7 +238,7 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             // Nested in-tree layers (SurfaceElementTree) keep the default scale of 1.
             scale={scale}
             className="absolute inset-0 flex items-center justify-center"
-            style={{ backgroundColor: getSurfaceBackgroundColor(surface) }}
+            style={{ backgroundColor: layerBackgroundColor }}
             presentZIndex={10 + layerIndex}
             exitZIndex={entry.exitBehind ? 0 : 30 + layerIndex}
             surfaceId={surface.id}
@@ -263,6 +265,10 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
                         surface={surface}
                         rendererRegistry={rendererRegistry}
                         scale={scale}
+                        // Already painted on the animation layer above, with the presentation
+                        // applied. Painting the authored colour again here would lay an opaque
+                        // sheet back over a thinned overlay.
+                        backgroundColor="transparent"
                         hostAdapter={hostAdapterBundle.hostAdapter}
                         blueprintBindingContext={hostAdapterBundle.bindingContext}
                         widgetRuntimePatches={

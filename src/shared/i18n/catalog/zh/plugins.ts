@@ -76,7 +76,7 @@ export const plugins = {
             running: "正在此处运行",
             stopped: "未在此处运行",
             runtimeOnly: "仅游戏运行时",
-            runtimeOnlyHint: "此插件只扩展运行中的游戏，在编辑器里没有可执行的部分。",
+            runtimeOnlyHint: "该插件只扩展运行中的游戏，在编辑器中没有可执行的部分。",
             suppressed: "已为本项目停用",
             suppressedHint: "已安装的版本与本项目当初依赖的版本不兼容。请更新插件，或在「项目 → 依赖」中重新扫描依赖表。",
             failed: "载入失败",
