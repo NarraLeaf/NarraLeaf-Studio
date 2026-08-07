@@ -653,6 +653,12 @@ export function unitOffsetOfElement(root: HTMLElement, el: HTMLElement): number 
  */
 export function markSelectedChips(root: HTMLElement, range: { start: number; end: number } | null): void {
     const active = Boolean(range) && (range as { start: number; end: number }).end > (range as { start: number; end: number }).start;
+    // Nothing to paint and nothing painted: the overwhelmingly common case, since this runs on every
+    // caret move and a collapsed caret can never select a chip. Bail before the walk below, which
+    // measures a range per chip.
+    if (!active && !root.querySelector("[data-selected]")) {
+        return;
+    }
     root.querySelectorAll<HTMLElement>("[data-interp],[data-pause],[data-event]").forEach(chip => {
         const start = unitOffsetOfElement(root, chip);
         if (active && start >= (range as { start: number; end: number }).start && start + 1 <= (range as { start: number; end: number }).end) {

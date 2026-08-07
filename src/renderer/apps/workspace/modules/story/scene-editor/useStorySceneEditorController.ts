@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type {
     StoryBlock,
     StoryBlockId,
     StoryDocument,
     StoryExpression,
     StoryLiteralValue,
+    StoryRichRun,
     StoryScene,
     StorySceneUpdate,
     StoryVariableScope,
@@ -208,6 +209,26 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      */
     const insertDraftRef = useRef("");
     /**
+     * The words being typed into the open ROW, for exactly the same reason as {@link insertDraftRef}
+     * above — and it arrived late enough that the two typing surfaces disagreed about the cost of a
+     * keystroke.
+     *
+     * The slot learned this in `handleInsertValueChange`, which goes out of its way to return the SAME
+     * mode object so React bails out. The row did the opposite: every character published
+     * `{ ...mode, value, rich }`, a new object, so every keystroke re-rendered the controller, the tab
+     * and the whole visible window of rows — measured at 16.5ms of scripting per character on a
+     * 400-row scene, of which ~7ms was building row elements that were then thrown away by `memo`.
+     *
+     * Nothing renders this. The field is a `contentEditable` that owns its own DOM, and every commit
+     * path already prefers `textInputRef.current.getRuns()` — the live editor — over the draft. So the
+     * draft's whole job is to be the fallback for the paths that run when the editor is already gone,
+     * plus the "was this line empty before this keystroke" question `startCharacterActionSlot` asks.
+     * That is a ref's job, not state's.
+     *
+     * Kept in step with `editorMode` below, so it can never describe a row that is no longer open.
+     */
+    const textDraftRef = useRef<{ blockId: StoryBlockId; value: string; rich?: StoryRichRun[] } | null>(null);
+    /**
      * The keyboard cursor is on the "add a row" line that sits just past the last row, reached by
      * arrowing Down off the bottom. It is a position with no row behind it (activeBlockId is null
      * while it holds focus), so Enter there opens a fresh insert slot — the same as clicking it.
@@ -230,6 +251,47 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [puppetRevision, setPuppetRevision] = useState(0);
     /** The project's audio tracks, so `/bgm theme track=Ambience` completes and resolves by name. */
     const audioTracks = useProjectAudioTracks();
+
+    /**
+     * Re-seed the row draft whenever the open row changes, so it always describes the row that is
+     * actually open — including the eight or so places that open one by writing `editorMode` directly.
+     *
+     * `useLayoutEffect`, not `useEffect`: a mode change and the keystroke that follows it can land in
+     * the same task (Enter opens the continuation row and the author is already typing into it), and a
+     * passive effect would run after the first character had already written the draft, wiping it back
+     * to the row's stored text.
+     */
+    useLayoutEffect(() => {
+        textDraftRef.current = editorMode.kind === "text"
+            ? { blockId: editorMode.blockId, value: editorMode.value, rich: editorMode.rich }
+            : null;
+        // `caret` moves without the words changing, and re-seeding on it would undo a draft mid-edit.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editorMode.kind, editorMode.kind === "text" ? editorMode.blockId : null]);
+
+    /**
+     * The words currently in the open row, or null when this is not that row.
+     *
+     * Every caller that has the live editor to hand should prefer `textInputRef.current.getRuns()` —
+     * a popover edit can be in the DOM before it reaches the draft. This is the answer for the paths
+     * that run when the field has already gone away.
+     */
+    const readTextDraft = useCallback((blockId: StoryBlockId) => {
+        const draft = textDraftRef.current;
+        return draft && draft.blockId === blockId ? draft : null;
+    }, []);
+
+    /**
+     * A character landed in the open row. Deliberately not a state write — see {@link textDraftRef}.
+     */
+    const updateTextDraft = useCallback((blockId: StoryBlockId, value: string, rich: StoryRichRun[]) => {
+        const draft = textDraftRef.current;
+        if (!draft || draft.blockId !== blockId) {
+            return;
+        }
+        draft.value = value;
+        draft.rich = rich;
+    }, []);
 
     /**
      * A freeze that lands while a row is open for editing closes the editor, discarding the draft.
@@ -874,8 +936,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Prefer the live editor DOM so a popover edit (e.g. binding an inline blueprint) that hasn't
         // flushed into the draft is still committed - otherwise it is lost when we navigate away.
         const liveRuns = textInputRef.current?.getRuns();
-        const value = liveRuns ? richRunsToPlain(liveRuns) : editorMode.value;
-        const rich = liveRuns ?? editorMode.rich;
+        const draft = readTextDraft(editorMode.blockId);
+        const value = liveRuns ? richRunsToPlain(liveRuns) : draft?.value ?? editorMode.value;
+        const rich = liveRuns ?? draft?.rich ?? editorMode.rich;
         const payload = block ? updateTextPayload(block, value, rich) : null;
         if (payload) {
             const changed = JSON.stringify(block.payload) !== JSON.stringify(payload);
@@ -887,7 +950,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             storyService.updateBlock(storyId, sceneId, editorMode.blockId, payload);
         }
         setEditorMode({ kind: "idle" });
-    }, [editorMode, recordHistory, scene, sceneId, storyId, storyService]);
+    }, [editorMode, readTextDraft, recordHistory, scene, sceneId, storyId, storyService]);
 
     const createBlock = useCallback((kind: ActionCommandId, initialText = "", characterId?: string): StoryBlock | null => {
         if (!uuidService) {
@@ -1033,7 +1096,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const startCharacterActionSlot = useCallback((blockId: StoryBlockId, value: string): boolean => {
         // The row has to have been EMPTY: `@` is only a trigger where there is nothing else on the
         // line, so "@everyone, run!" stays the line of dialogue the author is typing.
-        if (editorMode.kind !== "text" || editorMode.blockId !== blockId || editorMode.value !== "" || !scene) {
+        //
+        // "Was" is the draft as of the PREVIOUS keystroke — `editRichChange` asks this before it
+        // records the current one, which is what lets an author clear a line and then reach for the
+        // trigger. Reading `editorMode.value` instead would answer with the row's text at the moment
+        // it opened, and a cleared line would never offer the actions again.
+        const draft = readTextDraft(blockId);
+        if (editorMode.kind !== "text" || editorMode.blockId !== blockId || !draft || draft.value !== "" || !scene) {
             return false;
         }
         if (value.length !== 1 || !isActionCommandLine(value, slashAtAlias)) {
@@ -1079,7 +1148,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             input.setSelectionRange(value.length, value.length);
         });
         return true;
-    }, [characters, editorMode, scene, slashAtAlias]);
+    }, [characters, editorMode, readTextDraft, scene, slashAtAlias]);
 
     /**
      * Give the line back to the dialogue row a character-scoped slot is standing in for.
@@ -1297,8 +1366,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         // Read the live editor DOM (captures marks/chips not yet flushed to draft) before anything commits.
         const liveRuns = textInputRef.current?.getRuns();
-        const value = liveRuns ? richRunsToPlain(liveRuns) : editorMode.value;
-        const rich = liveRuns ?? editorMode.rich;
+        const draft = readTextDraft(editorMode.blockId);
+        const value = liveRuns ? richRunsToPlain(liveRuns) : draft?.value ?? editorMode.value;
+        const rich = liveRuns ?? draft?.rich ?? editorMode.rich;
         // Enter on a still-empty continuation row means "stop continuing", the way Enter on an empty list
         // item ends the list in a prose editor. Stacking another blank row of the same kind is never what
         // the author meant, so take the Backspace rung instead: the empty dialogue becomes the blank slot
@@ -1321,7 +1391,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         insertBlock(block, currentBlock.id, false, { recordHistory: false });
         setEditorMode({ kind: "text", blockId: block.id, value: "", caret: "end" });
-    }, [commitTextEdit, createBlock, editorMode, handleBackspaceAtEmptyStart, insertBlock, recordHistory, scene, sceneId, startInsertAfter, storyId, storyService]);
+    }, [commitTextEdit, createBlock, editorMode, handleBackspaceAtEmptyStart, insertBlock, readTextDraft, recordHistory, scene, sceneId, startInsertAfter, storyId, storyService]);
 
     // Arrow navigation across the row boundary while editing text. The current line is committed first;
     // landing on a text row re-opens it for editing (caret at the near edge), landing on an action row
@@ -2567,7 +2637,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
-        setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
+        setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
         // Exposed for the writes that arrive from OUTSIDE this tab (a script import, driven from the
         // story panel or the palette) and must still land as one undo step here.
         recordHistory, undoEdit, redoEdit,

@@ -7,6 +7,50 @@ files:
   - package.json
   - '!**/*.map'
   - '!**/{CHANGELOG,README,README.md,docs,CHANGELOG.md}/**'
+  # Everything below trims the runtime dependency closure that `asarUnpack` below
+  # copies out wholesale. They must live *here* rather than in the per-platform
+  # blocks: a `files` key under `win:`/`mac:`/`linux:` makes these global patterns
+  # disappear from the app matcher entirely (verified twice against 26.9.0 — the
+  # matcher ends up holding only the platform patterns, all of which start with
+  # `!`, so electron-builder decides it "contains only ignores" and prepends
+  # `**/*`; the packaged asar then gains the whole repo, docs/ and src/ included,
+  # while nothing fails). The node_modules copier unions the two correctly, which
+  # is what makes the breakage silent: the trimming works and the asar is wrong.
+  # `${os}` (win|mac|linux) and `${arch}` are expanded per target, so one global
+  # list still says something different on each platform.
+  #
+  # Monaco is bundled, never require()d from disk: the text editor imports
+  # `monaco-editor/esm/**` and esbuild inlines it (with its CSS and codicon font)
+  # into dist/windows, and @monaco-editor/react is handed that instance via
+  # `loader.config({ monaco })` so its own AMD/CDN loader never runs. The 68 MB on
+  # disk — dev/ + esm/ + min/ side by side — is a second copy nobody reads.
+  # @monaco-editor/react itself stays.
+  - '!node_modules/monaco-editor{,/**/*}'
+  # app-builder-bin (207 MB) and 7zip-bin (12 MB) each ship one build per platform
+  # and arch they could ever run on, and each picks exactly one from
+  # process.platform + process.arch (see their index.js). They are in the closure
+  # because electron-builder is a runtime dependency for the in-app game build; an
+  # installer is only ever one host, so the rest never executes. The `/*` is
+  # load-bearing: both keep loose files (index.js, LICENSE, package.json) beside
+  # their platform dirs, and a bare `!(${os})` matches those too. It leaves the
+  # foreign platform dirs behind as empty shells, which is the cheaper mistake.
+  - '!node_modules/app-builder-bin/!(${os})/*{,/**/*}'
+  - '!node_modules/7zip-bin/!(${os})/*{,/**/*}'
+  # Arch-level pruning, Windows only. `win/<arch>/` matches `${arch}` exactly
+  # (x64|arm64|ia32), so this follows whatever is being packaged instead of
+  # pinning x64; on mac and linux the whole win/ tree is already gone, so it is a
+  # no-op there. Deliberately not generalised: mac names its two binaries
+  # app-builder_amd64/_arm64 (and `--mac --universal` expands ${arch} to
+  # "universal"), linux says `arm` where electron-builder says `armv7l` — both
+  # would empty the keep-set silently, and only the in-app game build would
+  # notice, long after packaging succeeded.
+  - '!node_modules/app-builder-bin/win/!(${arch}){,/**/*}'
+  # koffi (the FFI @lore-vcs/sdk loads through) ships 18 prebuilds and loads one
+  # by `${process.platform}_${arch}`. The keep-list is the set of hosts Studio is
+  # actually built for (see .github/workflows/release.yml) plus musl for glibc-less
+  # Linux; an explicit list rather than a macro because koffi's triplets agree with
+  # neither ${os} (win32, not win) nor ${arch} (armhf, riscv64d).
+  - '!node_modules/koffi/build/koffi/!(win32_x64|darwin_arm64|linux_x64|musl_x64){,/**/*}'
   - from: src/renderer/public
     to: public
     filter:
