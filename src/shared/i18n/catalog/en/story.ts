@@ -533,6 +533,11 @@ export const story = {
         placeholder: "Find in scene",
         replacePlaceholder: "Replace with",
         caseSensitive: "Match case",
+        wholeWord: "Match whole word",
+        regex: "Use a regular expression",
+        // The pattern would not compile. Sits where the hit count sits, because that is the question
+        // it answers: there is no count, and this is why.
+        invalidPattern: "Invalid pattern",
         noMatches: "No results",
         previous: "Previous match",
         next: "Next match",
