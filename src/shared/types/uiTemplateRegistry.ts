@@ -56,11 +56,16 @@ export type UIThemeDescriptor = {
     templateCount: number;
 };
 
-/** One fetched theme poster, handed to the renderer as bytes. */
+/**
+ * One theme poster, ready for an `<img src>`.
+ *
+ * A `data:` URL rather than the registry's own URL, because Studio's renderers
+ * do not reach the network: main fetches and caches the bytes, and a hostile
+ * index therefore cannot aim an `<img>` anywhere or use one as a per-user beacon.
+ */
 export type UIThemePreview = {
     id: string;
-    mime: string;
-    dataBase64: string;
+    dataUrl: string;
 };
 
 export type UITemplateRegistryEntry = {

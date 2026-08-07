@@ -281,6 +281,10 @@ export const settings = {
                     label: "Plugin store thumbnails",
                     description: "Downloaded again the next time you open the store.",
                 },
+                uiTemplatePosters: {
+                    label: "Template store posters",
+                    description: "Downloaded again the next time you open the store.",
+                },
                 psdImports: {
                     label: "PSD import leftovers",
                     description: "Layer images written while importing a PSD.",
