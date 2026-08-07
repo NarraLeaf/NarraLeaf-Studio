@@ -3,6 +3,7 @@ import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { InputDialog } from "@/lib/components/dialogs";
 import type { BuildOutlineContextMenuInput } from "@/lib/ui-editor/context-menu/types";
 import { uiEditorArrange } from "@/lib/ui-editor/commands/uiEditorArrange";
+import { uiEditorAlign } from "@/lib/ui-editor/commands/uiEditorAlign";
 import {
     uiEditorCopySelection,
     uiEditorCutSelection,
@@ -69,6 +70,12 @@ export function createOutlinePanelMenuActions(params: {
                 return;
             }
             uiEditorArrange(documentService, surfaceId, menuSel, op);
+        },
+        align: op => {
+            if (!documentService || !menuSel) {
+                return;
+            }
+            uiEditorAlign(documentService, surfaceId, menuSel, op);
         },
         insertChildInOutline,
         paste: () => {

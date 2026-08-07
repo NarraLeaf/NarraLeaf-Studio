@@ -77,7 +77,7 @@ export const dashboard = {
         streak: "Streak",
         streakNone: "No streak",
         peak: "Peak {words}",
-        empty: "Nothing written yet. Bars appear once a day of writing is recorded.",
+        empty: "No writing recorded. Bars appear once a day of writing is recorded.",
         chartLabel: "Words written per day over the last 30 days",
         tooltip: {
             added: "{date} · {words} added",
@@ -94,7 +94,7 @@ export const dashboard = {
         ok: "Succeeded",
         failed: "Failed",
         empty: "No builds recorded",
-        emptyHint: "Builds you run for this project will be listed here.",
+        emptyHint: "Builds run for this project are listed here.",
         logEmpty: "This build recorded no output.",
         logOmitted: "The first {count} lines were dropped to keep the record small.",
     },
@@ -118,6 +118,6 @@ export const dashboard = {
         clear: "Clear this project's statistics",
         clearConfirm: "Clear this project's statistics?",
         clearDetail:
-            "Erases the writing curve, active time, edit counts and build history. Counts read from the project itself do not change. This cannot be undone.",
+            "Erases the writing curve, active time, edit counts and build history. Counts read from the project itself are unaffected. This cannot be undone.",
     },
 } as const;

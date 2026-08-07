@@ -17,6 +17,20 @@ import {
 } from "@/lib/ui-editor/runtime/pageAnimation";
 
 export const SURFACE_PREPAINT_TIMEOUT_MS = 900;
+/**
+ * How long the hidden prepaint pass will wait for the layer's images before revealing anyway.
+ *
+ * Deliberately far below {@link SURFACE_PREPAINT_TIMEOUT_MS}, because the two waits are not worth
+ * the same. A font that has not arrived restyles every line of text on the page and reflows it; an
+ * image that has not arrived pops into a box that was already laid out. Holding the whole page back
+ * for the second is the trade that made switching pages feel dead: a Load screen with save
+ * screenshots on it measured 218ms between mounting and being allowed to show, during which the
+ * player is still looking at the page they left, with nothing to say the click registered.
+ *
+ * Anything still decoding past this lands under the incoming page's enter animation, which is where
+ * an author's transition can absorb it.
+ */
+const SURFACE_PREPAINT_IMAGE_TIMEOUT_MS = 120;
 const SURFACE_PREPAINT_FRAME_TIMEOUT_MS = 50;
 const SURFACE_ENTER_COMPLETE_FALLBACK_MS = 80;
 
@@ -46,6 +60,12 @@ type SurfaceAnimationLayerProps = {
     onEnterComplete?: (key: string) => void;
     children: ReactNode;
 };
+
+function now(): number {
+    return typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+}
 
 function waitForAnimationFrame(): Promise<void> {
     return new Promise(resolve => {
@@ -112,6 +132,14 @@ function waitForImages(root: HTMLElement | null): Promise<unknown> {
     }));
 }
 
+/**
+ * A wait that resolved without the browser ever getting to paint is a wait that changed nothing.
+ *
+ * Below one frame at 60Hz: fonts already in the document and images already decoded settle inside
+ * the same task, and on that path the second prepaint frame has nothing to reveal.
+ */
+const PREPAINT_ASSET_WAIT_SIGNIFICANT_MS = 16;
+
 function useSurfacePrepaint(prepaintKey: string, rootRef: RefObject<HTMLDivElement | null>) {
     const [ready, setReady] = useState(false);
 
@@ -119,15 +147,22 @@ function useSurfacePrepaint(prepaintKey: string, rootRef: RefObject<HTMLDivEleme
         let cancelled = false;
         setReady(false);
         void (async () => {
+            // One frame to let the freshly mounted (still hidden) surface lay out and paint. This is
+            // the expensive one: on a busy page the browser needs 100ms+ to produce it, and that -
+            // not asset loading - is what a page switch actually costs.
             await waitForAnimationFrame();
-            await waitWithTimeout(
-                Promise.all([
-                    waitForDocumentFonts(),
-                    waitForImages(rootRef.current),
-                ]),
-                SURFACE_PREPAINT_TIMEOUT_MS,
-            );
-            await waitForAnimationFrame();
+            const assetWaitStart = now();
+            await Promise.all([
+                waitWithTimeout(waitForDocumentFonts(), SURFACE_PREPAINT_TIMEOUT_MS),
+                waitWithTimeout(waitForImages(rootRef.current), SURFACE_PREPAINT_IMAGE_TIMEOUT_MS),
+            ]);
+            // A second frame, but only when the waits above actually held something back. They
+            // usually do not (fonts load once per session, images are decoded by the time the layer
+            // is laid out), and waiting for a frame that has nothing to reveal cost another 100ms of
+            // "the click did nothing" on exactly the pages that were already the slowest.
+            if (now() - assetWaitStart >= PREPAINT_ASSET_WAIT_SIGNIFICANT_MS) {
+                await waitForAnimationFrame();
+            }
             if (!cancelled) {
                 setReady(true);
             }

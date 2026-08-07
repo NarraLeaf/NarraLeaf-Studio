@@ -66,8 +66,8 @@ describe("PuppetRenderer", () => {
         const markup = render({}, EDITOR);
 
         expect(markup).toContain("data-ui-puppet-placeholder=\"true\"");
-        expect(markup).toContain("Pick a model bundle and a runtime.");
-        expect(markup).toContain("Studio ships no renderer; the author supplies one.");
+        expect(markup).toContain("Select a model bundle and a runtime.");
+        expect(markup).toContain("Studio ships no renderer. The project supplies one.");
     });
 
     it("always leaves a mount host in the box, whatever the status", () => {

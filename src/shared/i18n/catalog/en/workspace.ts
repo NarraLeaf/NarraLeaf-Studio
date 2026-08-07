@@ -7,7 +7,7 @@ export const workspace = {
     localization: {
         panel: {
             languagesTitle: "Languages",
-            languagesHint: "Languages of the game itself. The source is the one you write in; the rest are translated against it.",
+            languagesHint: "Languages of the game itself. The source language is the one the story is written in; the rest are translated against it.",
             addLanguage: "Add language",
             codePlaceholder: "Code (en, ja, zh-CN…)",
             namePlaceholder: "Display name",
@@ -49,7 +49,7 @@ export const workspace = {
             importNoRows: "No translation units in this file",
             importWarnings: "{count} entries were skipped. First: {first}",
             localeMismatch: "This file is for {declared}. Import it into {name}?",
-            localeMismatchDetail: "Translations land in the language you picked, whatever the file says.",
+            localeMismatchDetail: "The translations are imported into the selected language regardless of what the file declares.",
         },
         table: {
             storyLabel: "Source",
@@ -82,8 +82,8 @@ export const workspace = {
             reviewApprove: "Approve",
             reviewReturn: "Return",
             reviewPendingCount: "{count} pending",
-            reviewAllClear: "All caught up, nothing left to review.",
-            staleHint: "The source line changed after this translation. Review it, then save to re-anchor.",
+            reviewAllClear: "Nothing left to review.",
+            staleHint: "The source line changed after this translation. Save it again to mark it current.",
             placeholderHint: "Keep the {n} placeholders. They render inline values.",
             emptyStory: "This story has no translatable lines yet.",
             emptyFilter: "Nothing matches this filter.",
@@ -98,7 +98,7 @@ export const workspace = {
     voice: {
         panel: {
             languagesTitle: "Voice languages",
-            languagesHint: "Languages you have voice-over for. Independent of the text languages.",
+            languagesHint: "Languages with voice-over. Independent of the text languages.",
             addLanguage: "Add voice language",
             codePlaceholder: "Code (ja, en, zh-CN…)",
             namePlaceholder: "Display name",
@@ -115,14 +115,14 @@ export const workspace = {
             exportPickup: "Export pickup script (outdated only)",
             importAudio: "Import audio…",
             exportDone: "Exported to {path}",
-            pickupEmpty: "Nothing outdated, no pickup needed.",
+            pickupEmpty: "No outdated lines to re-record.",
             importSummary: "Linked {linked} takes ({unmatched} unmatched, {failed} failed)",
             importFailed: "Could not import the audio files",
             importScript: "Import recording script…",
             importScriptSummary: "Applied {applied} rows ({unchanged} unchanged, {unknown} not voiced)",
             importScriptFailed: "Could not read that recording script",
             namingTitle: "Recording filename pattern",
-            namingHint: "Tokens: {tokens}. Imported audio matches back by this name.",
+            namingHint: "Tokens: {tokens}. Imported audio is matched to lines by this name.",
             namingReset: "Reset to default",
         },
         table: {
@@ -150,11 +150,11 @@ export const workspace = {
             approve: "Approve",
             reject: "Return",
             clipMissing: "Clip missing",
-            outdatedHint: "The line changed after this take was imported. Re-import the clip to count it again.",
+            outdatedHint: "The line changed after this take was imported. Import the clip again to mark it current.",
             noStories: "Create a story first. Its spoken lines appear here to voice.",
             emptyStory: "This story has no spoken lines yet.",
             emptyFilter: "Nothing matches this filter.",
-            auditionAllClear: "All caught up, nothing left to audition.",
+            auditionAllClear: "Nothing left to audition.",
             auditionPendingCount: "{count} pending",
             statusMissing: "Missing",
             statusVoiced: "Voiced",
@@ -176,7 +176,7 @@ export const workspace = {
             state: "Recovery mode: read-only, no plugins loaded.",
             exit: "Leave recovery mode",
         },
-        intro: "Run a check to load that part of the project and see what it says. Anything that loads can be browsed as usual.",
+        intro: "Running a check loads that part of the project and reports the result. Whatever loads can be browsed as usual.",
         problems: {
             title: "Problems found",
             count: "{count}",
@@ -228,7 +228,7 @@ export const workspace = {
             checkpointFailed: "Could not record a version: {error}",
             restore: "Restore this version",
             restoreConfirm: "Restore {version}?",
-            restoreExplain: "Every file in the project is replaced with that version. Nothing is lost from the history: the current state is recorded first, and the restore is added as a new version.",
+            restoreExplain: "Every file in the project is replaced with that version's contents. The current state is recorded as a version first, and the restore is added as another. No version is removed.",
             cancel: "Cancel",
             restoreDone: "Restored {version}. Reopening as a normal workspace.",
             restoreUnrecorded: "The files were restored, but the new version could not be recorded: {error}",
@@ -241,8 +241,8 @@ export const workspace = {
             message: "This project did not load correctly",
             // Two wordings rather than "file(s)". The count is the first thing read and a bracketed
             // plural in a data-loss warning reads as a placeholder nobody finished.
-            detailOne: "A file could not be read, so part of your project is missing from this window. Usually an interrupted save, a sync or backup tool writing at the same time, or a plugin. Editing now can save this incomplete state over the files that are still intact.",
-            detailMany: "{count} files could not be read, so part of your project is missing from this window. Usually an interrupted save, a sync or backup tool writing at the same time, or a plugin. Editing now can save this incomplete state over the files that are still intact.",
+            detailOne: "A file could not be read, so part of the project is missing from this window. Common causes: an interrupted save, a sync or backup tool writing at the same time, a plugin. Editing now can write this incomplete state over the files that are still intact.",
+            detailMany: "{count} files could not be read, so part of the project is missing from this window. Common causes: an interrupted save, a sync or backup tool writing at the same time, a plugin. Editing now can write this incomplete state over the files that are still intact.",
             enter: "Open in recovery mode",
         },
         // Each key names what the workspace was doing, not what went wrong: the error itself is
@@ -480,18 +480,18 @@ export const workspace = {
             // The read side: a document that is on disk but cannot be understood. The wording leads
             // with what did NOT happen, because the fear this raises is "has Studio eaten my work?".
             unreadableTitle: "Couldn't read {file}",
-            unreadableDetail: "{reason} The file was left exactly as it was; nothing has been written over it.",
-            unreadableDetailQuarantined: "{reason} The file was left exactly as it was, and a copy of it is at {path}.",
+            unreadableDetail: "{reason} The file is unchanged. Nothing was written over it.",
+            unreadableDetailQuarantined: "{reason} The file is unchanged. A copy of it is at {path}.",
             consoleUnreadable: "read failed ({kind}): {path} · {reason}",
             consoleQuarantined: "kept a copy of the unreadable file at {path}",
             // A write refused because the workspace is frozen. Not a failure: nothing is wrong, and
             // nothing will be retried. The wording has to say why, or it reads as a bug.
-            frozenTitle: "Nothing is being saved right now",
-            frozenDetailRevision: "You are looking at version {version}. Nothing is saved while you look.",
-            frozenDetailManual: "The workspace is frozen. Unfreeze it to start saving again.",
+            frozenTitle: "Changes are not being saved",
+            frozenDetailRevision: "Version {version} is open. Nothing is saved while a version is open.",
+            frozenDetailManual: "The workspace is frozen. Unfreeze it to resume saving.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
-            frozenDetailMerge: "A merge is unfinished. Finish it from the version panel to start saving again.",
+            frozenDetailMerge: "A merge is unfinished. Finish it from the version panel to resume saving.",
             consoleFrozen: "write refused, workspace frozen ({reason}): {path}",
             // Names for the things that hold project data - used when a flush fails, and again when a
             // working-tree re-read cannot reach one of them.
@@ -513,7 +513,7 @@ export const workspace = {
         // speaks up when part of it could not be read back, because that is when a panel is stale.
         reload: {
             failedTitle: "The project was not fully reloaded",
-            failedDetail: "These are still showing what they had before: {stores}. Reopen the project to read them again.",
+            failedDetail: "These still show their previous contents: {stores}. Reopen the project to read them again.",
             console: "re-read the project from disk ({cause}): {count} of them",
             consoleFailed: "could not re-read {label}: {error}",
         },
@@ -523,14 +523,14 @@ export const workspace = {
             command: "Freeze Project (Stop Saving Changes)",
             release: "Unfreeze Project (Resume Saving Changes)",
             enteredTitle: "Project frozen",
-            enteredDetail: "Your project files are left untouched until you unfreeze it.",
+            enteredDetail: "Project files are not written until the project is unfrozen.",
             leftTitle: "Project unfrozen",
             leftDetail: "Changes are being saved again.",
             // Hover text on every top-bar control the freeze switches off. Deliberately one string
             // for all of them: the author has to learn "this is what a frozen project looks like"
             // once, not read a different excuse on each button. The controls are disabled rather
             // than hidden precisely so there is something to hover.
-            unavailable: "Not available while the project is frozen. Unfreeze it to use this again.",
+            unavailable: "Unavailable while the project is frozen. Unfreeze the project to use it.",
         },
         // Browsing history in the real editors, until the version rail exists. "Previous" rather than
         // a picker on purpose: choosing a revision needs a list, the list is the rail, and a milestone
@@ -542,9 +542,9 @@ export const workspace = {
             loadingTitle: "Reading the previous revision…",
             loadingDetail: "The first read of a revision may fetch it from the remote.",
             shownTitle: "Showing revision {revision}",
-            shownDetail: "The editors are read-only, and your files on disk are untouched.",
+            shownDetail: "The editors are read-only. The files on disk are not modified.",
             noneTitle: "There is no earlier revision",
-            noneDetail: "This project has only one revision, so there is nothing earlier to show.",
+            noneDetail: "This project has only one revision.",
             failedTitle: "Could not show that revision",
         },
         // The version control surfaces: the rail down the far left, the version section inside the
@@ -561,7 +561,7 @@ export const workspace = {
             close: "Close the version rail",
             // Hover text on the collapsed rail, the widget and the status cell while a past revision is
             // on screen. `{version}` is the revision's own label, e.g. `#4`.
-            viewingVersion: "You are looking at version {version}",
+            viewingVersion: "Viewing version {version}",
             currentVersion: "Current version",
             // The escape hatch, and the reason it appears in both rail states: a frozen workspace the
             // author cannot get out of is the worst thing this feature can do to them.
@@ -589,8 +589,8 @@ export const workspace = {
             // literal: the checkpoint is committed before a single byte is written, and a
             // checkpoint that cannot be taken cancels the whole thing.
             restoreConfirmDetail:
-                "Your project files will be replaced with the ones from this version. "
-                + "Everything you have now is recorded as a checkpoint first, and no version is deleted.",
+                "The project files are replaced with this version's contents. "
+                + "The current state is recorded as a checkpoint first, and no version is deleted.",
             // Long: a checkpoint, a rewrite of every versioned file, a second version, and then the
             // same full re-read as returning to the current version.
             restoring: "Restoring this version…",
@@ -601,10 +601,10 @@ export const workspace = {
             // they would carry on working on a project that quietly went back a week. `{action}` is
             // the Submit-a-version button, named from its own string so the sentence cannot come to
             // point at a control that no longer says that.
-            restoreNotRecordedTitle: "Your files were restored, but the version was not submitted",
+            restoreNotRecordedTitle: "The files were restored, but the version was not submitted",
             restoreNotRecordedDetail:
-                "Your project files are now the ones from version {version}. Submitting that as a new "
-                + "version failed ({error}). Nothing is lost; press \"{action}\" to submit it yourself.",
+                "The project files now hold the contents of version {version}. Submitting that as a new "
+                + "version failed ({error}). Press \"{action}\" to submit it.",
             // A project with no repository. Named for what is missing, not for the mechanism.
             //
             // Short because two of its three homes are narrow: the status-bar cell and the top-bar
@@ -724,15 +724,15 @@ export const workspace = {
                 // Deliberately counted in versions rather than in files: the author submits
                 // versions, and the number that tells them whether to push is how many of those
                 // have not left this machine.
-                localAhead: "You have versions the server does not",
-                remoteAhead: "The server has versions you do not",
+                localAhead: "Local versions are not on the server",
+                remoteAhead: "The server has versions this machine does not",
                 // Both moved. Push refuses in this state and says so; syncing merges first.
-                diverged: "You and the server have both moved on",
+                diverged: "Local and server versions have both advanced",
                 unreachable: "Cannot reach this server",
                 // The server answered but would not accept us. This is the ONLY state that shows
                 // the credential fields - asking for a token before anyone has been refused is
                 // asking a question most authors will never need to answer.
-                unauthorized: "This server did not accept you",
+                unauthorized: "This server refused access",
                 push: "Send to server",
                 pushing: "Sending to the server…",
                 // "Already there" is a success. Pressing this twice is an ordinary thing to do.
@@ -749,10 +749,15 @@ export const workspace = {
             // deliberately does not take them there: reporting and stopping is the same discipline
             // as never creating a repository on their behalf.
             syncConflictTitle: "Some files could not be merged",
-            syncConflictDetail:
-                "{count} file(s) changed both here and on the server:\n"
+            // Two wordings rather than "file(s)", per docs/help-system.md §3.
+            syncConflictDetailOne:
+                "One file changed both here and on the server:\n"
                 + "{files}\n"
-                + "Your other changes did arrive. Choose which side to keep from the version panel.",
+                + "The remaining changes were merged. Choose which side to keep from the version panel.",
+            syncConflictDetailMany:
+                "{count} files changed both here and on the server:\n"
+                + "{files}\n"
+                + "The remaining changes were merged. Choose which side to keep from the version panel.",
             // An open merge, in the rail. Present only while there is one, which is almost never -
             // and then it is the most important thing in the panel.
             mergeOpen: "Merge in progress",
@@ -761,7 +766,7 @@ export const workspace = {
                 other: "{count} files need a side chosen",
             },
             // The automerge settled everything; all that is left is to record it.
-            mergeNoConflicts: "Everything merged on its own. Submit a version to finish.",
+            mergeNoConflicts: "Everything merged automatically. Submit a version to finish.",
             mergeResolve: "Finish the merge",
         },
         // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.
@@ -812,6 +817,14 @@ export const workspace = {
                     delete: "Delete Selection",
                     rename: "Rename",
                     escape: "Close Menu / Exit Edit",
+                    alignLeft: "Align left",
+                    alignHorizontalCenter: "Center horizontally",
+                    alignRight: "Align right",
+                    alignTop: "Align top",
+                    alignVerticalCenter: "Center vertically",
+                    alignBottom: "Align bottom",
+                    distributeHorizontal: "Distribute horizontally",
+                    distributeVertical: "Distribute vertically",
                 },
                 blueprint: {
                     undo: "Undo",
@@ -878,14 +891,14 @@ export const workspace = {
         // is on. The main process drives it over IPC; the dialog supplies its own title/buttons.
         closeConfirm: {
             message: "Close this workspace?",
-            detail: "Any changes you have made will be saved automatically.",
+            detail: "Unsaved changes are saved automatically.",
         },
         // What the workspace says while it is closing. One line per stage of the close the main
         // process runs (see `WorkspaceCloseStage`); the checkpoint is the one that actually takes
         // time, and the one that needs naming.
         closing: {
             title: "Closing workspace",
-            saving: "Saving your changes…",
+            saving: "Saving changes…",
             checkpoint: "Recording a version of the project…",
             launcher: "Returning to the launcher…",
         },
