@@ -9,6 +9,7 @@ import { PluginAvatar, PluginStatusBadge, hasUpdate, isCompatible } from "@/lib/
 import { useStoreIcon } from "@/lib/plugins/ui/useStoreIcon";
 import { filterInstalled, filterStore, usePluginCatalog } from "@/lib/plugins/ui/usePluginCatalog";
 import { activateWorkspacePlugin, deactivateWorkspacePlugin } from "@/lib/plugins/pluginRuntime";
+import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendingSaves";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
 import { useWorkspace } from "../../context";
@@ -40,7 +41,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
     const [query, setQuery] = useState("");
     const [detailId, setDetailId] = useState<string | null>(null);
     const [menu, setMenu] = useState<{ items: ContextMenuDef; position: { x: number; y: number } } | null>(null);
-    // Raised by the first change of the session and kept until dismissed - see PluginRestartHint.
+    // Raised by the first change of the session; it goes away when the restart it offers happens.
     const [restartHint, setRestartHint] = useState(false);
 
     const activity = useWorkspacePluginActivity();
@@ -105,6 +106,22 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
             catalog.setTask({ status: "success", message: t("plugins.task.reloaded") });
         });
     }, [catalog, context, live, t]);
+
+    /**
+     * Restart the workspace: flush every pending save, then reload this window.
+     *
+     * A reload rather than reopening the project through `workspace.openRecent`, which would find
+     * the window already holding this project and merely focus it. The flush is not optional -
+     * auto-save is debounced, so a reload 300ms after the last keystroke would take that keystroke
+     * with it - and it is the same helper the main process runs before it closes a workspace.
+     */
+    const restartWorkspace = useCallback(() => {
+        if (!context) return;
+        void catalog.runTask(t("plugins.workspace.restarting"), async () => {
+            await flushPendingSaves(context);
+            window.location.reload();
+        });
+    }, [catalog, context, t]);
 
     const uninstall = useCallback((pluginId: string) => {
         catalog.uninstall(pluginId);
@@ -189,7 +206,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
 
             <PluginTaskLine task={task} />
 
-            {restartHint ? <PluginRestartHint onDismiss={() => setRestartHint(false)} /> : null}
+            {restartHint ? <PluginRestartHint onRestart={restartWorkspace} busy={busy} /> : null}
 
             {recovery ? (
                 <div className="shrink-0 border-b border-edge-subtle bg-warning/5 px-3 py-2 text-2xs leading-5 text-warning">
@@ -258,7 +275,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
                             activity={detailInstalled ? activity.activityOf(detailInstalled) : null}
                             task={task}
                             restartHint={restartHint}
-                            onDismissRestartHint={() => setRestartHint(false)}
+                            onRestartWorkspace={restartWorkspace}
                             loadError={detailInstalled ? activity.session.failed[detailInstalled.pluginId] ?? null : null}
                             busy={busy}
                             canReload={live}

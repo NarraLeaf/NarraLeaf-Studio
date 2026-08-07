@@ -107,6 +107,9 @@ export const plugins = {
          * panel could detect, so the honest line is that a restart is what guarantees a clean slate.
          */
         restartHint: "Some plugin changes may need the workspace restarted to take effect.",
+        /** The banner's own action: flush every pending save, then reload this window. */
+        restart: "Restart",
+        restarting: "Saving changes and restarting…",
         recoveryNotice: "Recovery mode loads no plugins. Changes here apply the next time the project opens normally.",
         /** The action on the toasts below, and anywhere else that hands the author to this panel. */
         openPanel: "Open plugins panel",
