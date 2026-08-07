@@ -5,12 +5,21 @@ import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types"
 import { Services } from "@/lib/workspace/services/services";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
+import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { Button, Select, type SelectOption } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
+import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
-import { SceneFlowCanvas, type SceneFlowHighlight } from "./SceneFlowCanvas";
+import {
+    SceneFlowCanvas,
+    type SceneFlowConnectProposal,
+    type SceneFlowEditing,
+    type SceneFlowHighlight,
+} from "./SceneFlowCanvas";
+import type { SceneFlowDrawnLine } from "./sceneFlowLines";
 import {
     formatSceneFlowDelta,
     formatSceneFlowVariableChip,
@@ -33,15 +42,28 @@ import type { SceneFlowTabPayload, SceneFlowViewport } from "./sceneFlowTabId";
 const NO_VARIABLE_FOCUS = "";
 
 /**
- * Read-only map of a story's scenes and the jumps between them. Double-clicking a scene opens its
- * editor, so this is a navigation surface as much as a diagnostic one - nothing here writes to the
- * story. Layout, viewport and which scenes are expanded are the only things the author can move, and
- * all three live on the tab payload rather than in the document.
+ * An **interactive** read-only map of a story's scenes and the jumps between them.
+ *
+ * "Interactive read-only" is the whole design, and the two halves are not in tension:
+ *
+ *  - The map is always a *derivation* of the document. It never writes a jump and never invents an
+ *    edge, so what is drawn is what the story says — a line appears when the jump block behind it
+ *    does, and not a frame before.
+ *  - Every gesture on it is a *request*. Dragging between two boxes opens the source scene's editor
+ *    with the `/jump` typed into a slot and the caret on it: the author's Enter is what writes it,
+ *    and their Escape leaves the story untouched. That detour is the point — a line between two
+ *    boxes cannot show which fork the jump lands under or what guards it, and the editor can.
+ *  - Deleting a line is the mirror image: a warning that names what will go, then the jump blocks
+ *    themselves, which is a real edit and says so.
+ *
+ * Layout, viewport and which scenes are expanded live on the tab payload rather than in the
+ * document — they are how the author is looking at the story, not part of it.
  */
 export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFlowTabPayload | undefined>) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
+    const freeze = useFreezeGuard();
     const storyId = payload?.storyId;
 
     const storyService = useMemo(() => {
@@ -244,6 +266,106 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
         openEditorTab(createStorySceneEditorTab({ storyId: document.id, sceneId }, scene.name));
     }, [document, openEditorTab]);
 
+    /**
+     * A line the author drew: open the source scene with the `/jump` typed and waiting.
+     *
+     * Nothing is written here, deliberately — see this component's own note. The token makes each
+     * drag its own request, so drawing the same line twice offers the author the slot twice rather
+     * than the second drag reading as a no-op against a payload that already says the same thing.
+     */
+    const handleConnect = useCallback((proposal: SceneFlowConnectProposal) => {
+        if (!document) {
+            return;
+        }
+        const scene = document.scenes[proposal.sourceSceneId];
+        if (!scene) {
+            return;
+        }
+        openEditorTab(createStorySceneEditorTab(
+            {
+                storyId: document.id,
+                sceneId: proposal.sourceSceneId,
+                draftJump: {
+                    targetSceneId: proposal.targetSceneId,
+                    ...(proposal.branchBlockId ? { insideBlockId: proposal.branchBlockId } : {}),
+                    token: Date.now(),
+                },
+            },
+            scene.name,
+        ));
+    }, [document, openEditorTab]);
+
+    /**
+     * A line the author deleted: warn, then remove exactly the jump blocks it stood for.
+     *
+     * The blocks come from the map (`SceneFlowDrawnLine`) rather than being re-derived from the
+     * scene pair, because an expanded scene draws its arm-owned jumps as their own lines — deleting
+     * the residual scene line must not take those with it.
+     *
+     * One checkpoint on the SCENE's own undo stack covers the whole line, so a six-jump connection
+     * comes back in one Mod+Z rather than six — and it comes back in the scene editor, which is where
+     * an author undoes a story edit and the only surface that can show them what returned. That
+     * stack outlives its tab (`HistoryService.registerScope`), so this works whether or not the scene
+     * is open; with no scope registered at all `checkpoint` reports false and the delete still goes
+     * ahead, which is the honest outcome — refusing to edit because nothing is watching would be
+     * worse than editing without an undo entry.
+     *
+     * The confirm names both scenes and the count for the same reason the map cannot: from a line
+     * alone there is no way to tell one jump from six.
+     */
+    const handleDisconnect = useCallback(async (line: SceneFlowDrawnLine) => {
+        if (!document || !storyService || !context || line.jumps.length === 0) {
+            return;
+        }
+        const uiService = context.services.get<UIService>(Services.UI);
+        const params = {
+            source: document.scenes[line.sourceSceneId]?.name ?? "",
+            target: document.scenes[line.targetSceneId]?.name ?? "",
+        };
+        const confirmed = await uiService.showDestructiveConfirm(
+            tn("story.flow.edge.confirmRemove", line.jumps.length, params),
+            tn("story.flow.edge.confirmRemoveDetail", line.jumps.length, params),
+            t("story.flow.edge.confirmRemoveAction"),
+        );
+        if (!confirmed) {
+            return;
+        }
+        // Before the first delete: a checkpoint records the state as it is *now*, so the entry has to
+        // be taken while the jumps are still there.
+        context.services.get<HistoryService>(Services.History).checkpoint(
+            storySceneHistoryScope(document.id, line.sourceSceneId),
+            { label: { key: "workspace.history.entry.storyEdit" } },
+        );
+        for (const jump of line.jumps) {
+            storyService.deleteBlock(document.id, line.sourceSceneId, jump.blockId);
+        }
+    }, [context, document, storyService, t, tn]);
+
+    /** "Show these jumps" — the editor, deep-linked to the first block behind the line. */
+    const handleRevealJumps = useCallback((line: SceneFlowDrawnLine) => {
+        const scene = document?.scenes[line.sourceSceneId];
+        const first = line.jumps[0];
+        if (!document || !scene || !first) {
+            return;
+        }
+        openEditorTab(createStorySceneEditorTab(
+            { storyId: document.id, sceneId: line.sourceSceneId, activeBlockId: first.blockId },
+            scene.name,
+        ));
+    }, [document, openEditorTab]);
+
+    /**
+     * Absent while the workspace is frozen, which switches the map back to its pure read-only
+     * reading: the rims lose their handles, the delete key does nothing and a line has no menu.
+     * Nothing here is greyed out instead, because there is no control to grey — the affordances ARE
+     * the gestures, and a handle that refuses to connect is worse than no handle at all.
+     */
+    const editing = useMemo<SceneFlowEditing | undefined>(() => (
+        freeze.frozen
+            ? undefined
+            : { connect: handleConnect, disconnect: handleDisconnect, reveal: handleRevealJumps }
+    ), [freeze.frozen, handleConnect, handleDisconnect, handleRevealJumps]);
+
     const variableOptions = useMemo<SelectOption[]>(() => [
         { value: NO_VARIABLE_FOCUS, label: t("story.flow.variable.none") },
         ...numericVariables.map(variable => ({
@@ -426,10 +548,16 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
                     </span>
                 )}
                 <div className="ml-auto flex shrink-0 items-center gap-2">
-                    {/* One hint at a time. With a variable focused the thing worth saying is what
-                        the numbers on the boxes mean, not how to open a scene. */}
+                    {/* One hint at a time, most specific first. With a variable focused the thing
+                        worth saying is what the numbers on the boxes mean; otherwise it is the
+                        gesture the author cannot see — connecting is invisible until the pointer is
+                        on a rim, while double-clicking a box is the thing everyone tries anyway. */}
                     <span className="hidden text-2xs text-fg-subtle lg:inline">
-                        {t(focus ? "story.flow.variable.hintArrival" : "story.flow.hint.openScene")}
+                        {t(focus
+                            ? "story.flow.variable.hintArrival"
+                            : editing
+                                ? "story.flow.hint.connect"
+                                : "story.flow.hint.openScene")}
                     </span>
                     {numericVariables.length > 0 && (
                         <Select
@@ -508,6 +636,7 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
                             // it wins the mask. The chips stay either way - they are what the
                             // selected route is being read *for*.
                             highlight={selectionHighlight ?? variableHighlight}
+                            editing={editing}
                         />
                     )}
                 </div>

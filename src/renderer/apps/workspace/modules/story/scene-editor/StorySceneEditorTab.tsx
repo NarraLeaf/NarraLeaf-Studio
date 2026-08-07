@@ -1134,6 +1134,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const sceneId = editor.scene?.id;
     const rowCount = editor.visibleRows.length;
     const deepLinkBlockId = payload?.activeBlockId ?? null;
+    const draftJump = payload?.draftJump;
     const panelStateService = useMemo(
         () => (editor.context && editor.isInitialized ? editor.context.services.get<PanelStateService>(Services.PanelState) : null),
         [editor.context, editor.isInitialized],
@@ -1159,9 +1160,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     useLayoutEffect(() => {
         const el = scrollContainerRef.current;
-        // Skip the saved-anchor restore when opening via a deep link — the deep-link effect below
-        // positions the view on the target block instead.
-        if (!el || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId || deepLinkBlockId) {
+        // Skip the saved-anchor restore when opening via a deep link or a drafted jump — those
+        // effects below position the view on the target block / the open slot instead.
+        if (!el || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId || deepLinkBlockId || draftJump) {
             return;
         }
         didRestoreRef.current = sceneId;
@@ -1191,7 +1192,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         };
         attempt();
         return () => window.cancelAnimationFrame(rafId);
-    }, [scrollContainerRef, sceneId, rowCount, panelStateService, deepLinkBlockId]);
+    }, [scrollContainerRef, sceneId, rowCount, panelStateService, deepLinkBlockId, draftJump]);
 
     // Capture the scroll anchor at most once per frame while scrolling (querying row geometry on every
     // raw scroll event would thrash layout on long scenes). The live scrollTop is recorded eagerly so
@@ -1302,6 +1303,33 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         editor.revealBlock(deepLinkBlockId);
         editor.focusRoot();
     }, [active, deepLinkBlockId, rowCount, scrollContainerRef, scrollRowIntoView, editor.revealBlock, editor.focusRoot]);
+
+    // The scene flow map's connect gesture: open a slot with the `/jump` typed into it and the caret
+    // on the end, and leave the committing to the author's Enter (see `StorySceneEditorDraftJump`).
+    //
+    // Gated on the scene actually being loaded (`rowCount` is the effect's re-run signal, exactly as
+    // above): the map opens this tab and hands it the draft in the same breath, so on a cold open the
+    // first pass runs before the document has arrived and there is no scene to seed a slot in. The
+    // token, not the target, is what marks the gesture handled — two drags to the same scene are two
+    // requests.
+    const handledDraftJumpRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (!active || !draftJump || handledDraftJumpRef.current === draftJump.token || !editor.scene) {
+            return;
+        }
+        handledDraftJumpRef.current = draftJump.token;
+        if (!editor.startJumpDraft(draftJump)) {
+            return;
+        }
+        // The slot lands at the end of the scene (or inside an arm), and the author may well be
+        // reading the top of a long chapter — a caret they cannot see is indistinguishable from the
+        // map having done nothing. Waits a frame for the slot to mount before looking for it.
+        window.requestAnimationFrame(() => {
+            scrollContainerRef.current
+                ?.querySelector<HTMLElement>("[data-story-insert-slot]")
+                ?.scrollIntoView({ block: "center" });
+        });
+    }, [active, draftJump, rowCount, scrollContainerRef, editor.scene, editor.startJumpDraft]);
 
     // Dev Mode play head (WI-2): follow the running row in place when this editor owns the scene.
     // Uses the plain row-select visual — never `revealBlock` (which would flip the author's
