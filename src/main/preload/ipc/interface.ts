@@ -7,7 +7,7 @@ import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFree
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
-import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "@shared/types/devMode";
+import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
@@ -320,6 +320,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.devModeForwardStoryRow, payload),
         onStoryRowHighlight: (handler: (payload: DevModeStoryRowHighlight) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceStoryRowHighlight, handler),
+        openStoryRowInWorkspace: (payload: DevModeStoryRowOpenPayload) =>
+            ipcClient.invoke(IPCEventType.devModeOpenStoryRowInWorkspace, payload) as Promise<RequestStatus<void>>,
+        onStoryRowOpen: (handler: (payload: DevModeStoryRowOpenRequest) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceStoryRowOpen, handler),
         resolveAssetUrl: (assetId: string, assetType?: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>

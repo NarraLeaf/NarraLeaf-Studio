@@ -11,6 +11,36 @@ import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/pup
 
 export type GameAppLogLevel = "info" | "warning" | "error";
 
+/**
+ * How a runtime issue was traced back to a story row — which is also how much the attribution is
+ * worth, so a host can say so rather than presenting a guess as a fact:
+ *
+ *  - `compile`: the compiler named the block itself while translating it. Exact.
+ *  - `playHead`: the row the engine was last executing when the failure surfaced. Right for anything
+ *    that throws while a row is running, and a near miss for anything asynchronous — the row named
+ *    is where playback WAS, which is a real place to start looking and not a claim about the cause.
+ *  - `session`: nothing was running that could be blamed (a boot failure, a reload failure). No row.
+ */
+export type GameAppIssueOrigin = "compile" | "playHead" | "session";
+
+/**
+ * A runtime failure with its authored origin attached. See {@link GameAppHost.reportIssue}.
+ *
+ * `blockId` is a Studio block id, deliberately not a scene id or a line number: the runtime knows
+ * which block it was compiling or running and nothing beyond that. Turning a block into "line 37 of
+ * Scene 2" needs the story document, which only a host with the project open has — so the runtime
+ * reports the fact and the host does the locating.
+ */
+export type GameAppRuntimeIssue = {
+    level: Extract<GameAppLogLevel, "warning" | "error">;
+    message: string;
+    origin: GameAppIssueOrigin;
+    /** Studio story block this came from; absent when nothing could be attributed. */
+    blockId?: string;
+    /** The underlying stack, when there was one. Kept for the cases a location cannot explain. */
+    stack?: string;
+};
+
 /** Raw save record as stored by the host (Studio IPC or the game runtime bridge). */
 export type GameAppSaveRecord = {
     savedGame: unknown;
@@ -76,6 +106,19 @@ export type GameAppHost = {
     debuggerEnabled?: boolean;
     disposeMessage: string;
     log: (level: GameAppLogLevel, message: string) => void;
+    /**
+     * The same failures `log` carries, plus where in the author's story they came from.
+     *
+     * `log` takes a string, so everything a host could use to point at the offending row — the block
+     * the compiler blamed, the row the play head was on — was being flattened into prose and thrown
+     * away. A stack trace tells an author which of OUR functions threw; it never tells them that
+     * line 37's `/show` names a character that no longer exists, which is the only fact they can act
+     * on. This channel exists so a host that HAS the story open can say that.
+     *
+     * Optional, and additive: every issue reported here is also logged, so a host that omits this
+     * (the packaged game — it has no editor to point into) loses nothing it had before.
+     */
+    reportIssue?: (issue: GameAppRuntimeIssue) => void;
     resolveStoryAssetUrl: (
         assetId: string,
         assetType?: StoryAssetKind,

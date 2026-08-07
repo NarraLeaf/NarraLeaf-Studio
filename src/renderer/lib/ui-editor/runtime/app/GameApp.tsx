@@ -172,6 +172,21 @@ function normalizeError(error: unknown): string {
     return String(error);
 }
 
+/**
+ * The sentence a failure states, without the stack.
+ *
+ * `normalizeError` prefers the stack, which is right for a console line and wrong for anything shown
+ * to an author: the first thing they should read is what went wrong, not which of our frames noticed.
+ * The stack still travels, next to it rather than instead of it (see {@link GameAppRuntimeIssue}).
+ */
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message || String(error) : String(error);
+}
+
+function errorStack(error: unknown): string | undefined {
+    return error instanceof Error ? error.stack ?? undefined : undefined;
+}
+
 function findSurface(bundle: GameAppHost["bundle"], surfaceId: string | null | undefined): UISurface | null {
     if (surfaceId) {
         const surface = bundle.ui.uidoc.surfaces.find(item => item.id === surfaceId);
@@ -396,6 +411,39 @@ export function GameApp(props: GameAppProps): ReactNode {
     const currentActionIdRef = useRef<string | null>(null);
     const currentActionListenersRef = useRef<Set<(actionId: string | null) => void>>(new Set());
     const nlrCompiledRef = useRef<CompiledNlrStory | null>(null);
+    /**
+     * The story row the engine was last executing, or undefined when nothing was.
+     *
+     * Reads the same action↔block table the Dev Mode timeline reads, so a failure lands on exactly
+     * the row the play head is showing rather than on a second, differently-derived answer.
+     */
+    const playHeadBlockId = useCallback((): string | undefined => {
+        const actionId = currentActionIdRef.current;
+        if (!actionId) {
+            return undefined;
+        }
+        return nlrCompiledRef.current?.actionIdBindings.find(binding => binding.staticId === actionId)?.blockId;
+    }, []);
+    /**
+     * Log a failure AND, for hosts that can point into the story, say where it came from.
+     *
+     * Both, always: the console line is what a packaged build has, and dropping it here would trade
+     * one blind spot for another.
+     */
+    const reportFailure = useCallback((error: unknown, options?: { prefix?: string }) => {
+        const prefix = options?.prefix ?? "";
+        host.log("error", `${prefix}${normalizeError(error)}`);
+        // Compile diagnostics report their own block and do not come through here; everything that
+        // does is a thrown failure, so the play head is the only attribution available.
+        const blockId = playHeadBlockId();
+        host.reportIssue?.({
+            level: "error",
+            message: `${prefix}${errorMessage(error)}`,
+            origin: blockId ? "playHead" : "session",
+            ...(blockId ? { blockId } : {}),
+            ...(errorStack(error) ? { stack: errorStack(error) } : {}),
+        });
+    }, [host, playHeadBlockId]);
     const textReadTrackerRef = useRef<TextReadTracker | null>(null);
     const preferenceSnapshotRef = useRef<Record<string, unknown>>({});
     const dispatchPreferenceChangeRef = useRef<
@@ -1315,7 +1363,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         const compiled = await compileStudioStoryToNlr(compileInput);
         if (compiled.diagnostics.length > 0) {
             for (const diagnostic of compiled.diagnostics) {
-                host.log(diagnostic.level === "error" ? "error" : "warning", diagnostic.message);
+                const level = diagnostic.level === "error" ? "error" : "warning";
+                host.log(level, diagnostic.message);
+                // The compiler already knows which block it was translating when it complained. That
+                // was being dropped on the floor here, which is why "Invalid command, skipped: /show
+                // …" arrived as prose with no way back to the row that wrote it.
+                host.reportIssue?.({
+                    level,
+                    message: diagnostic.message,
+                    origin: "compile",
+                    ...(diagnostic.blockId ? { blockId: diagnostic.blockId } : {}),
+                });
             }
         }
         return compiled;
@@ -1848,7 +1906,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     host.log("info", `[${host.id}] NLR boot superseded: ${err.message}`);
                 } else {
                     nlrBootStartedRef.current = null;
-                    host.log("error", normalizeError(err));
+                    reportFailure(err);
                 }
             } finally {
                 clearTimeout(timeoutId);
@@ -2099,7 +2157,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     host.log("info", `[${host.id}] NLR hot reload restart superseded by a newer bundle revision`);
                     return;
                 }
-                host.log("error", `[${host.id}] NLR hot reload restart failed: ${normalizeError(err)}`);
+                reportFailure(err, { prefix: `[${host.id}] NLR hot reload restart failed: ` });
             }
         })();
     }, [bundle.revision, compileStoryRequest, enterMountedGame, host, mountNlrSession, startEmptyNlrEnvironment]);
@@ -2601,7 +2659,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     return;
                 }
                 rejectPendingGameStarts(err);
-                host.log("error", normalizeError(err));
+                // The engine throws from inside whatever row it was running, and that row is the
+                // only part of this an author can fix. Read it before anything else touches the
+                // play head.
+                reportFailure(err);
             }}
         />
     );

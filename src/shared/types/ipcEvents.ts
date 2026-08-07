@@ -6,7 +6,7 @@ import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
-import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
+import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
@@ -172,6 +172,7 @@ export enum IPCEventType {
     workspaceBlueprintDebugEvent = "workspace.blueprint.debugEvent",
     workspaceDevModeConsoleLog = "workspace.devMode.consoleLog",
     workspaceStoryRowHighlight = "workspace.storyRow.highlight",
+    workspaceStoryRowOpen = "workspace.storyRow.open",
     
     devModeLaunch = "devMode.launch",
     devModeStop = "devMode.stop",
@@ -185,6 +186,7 @@ export enum IPCEventType {
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
     devModeForwardBlueprintDebugEvent = "devMode.blueprintDebug.forward",
     devModeForwardStoryRow = "devMode.storyRow.forward",
+    devModeOpenStoryRowInWorkspace = "devMode.storyRow.openInWorkspace",
     devModeSaveWrite = "devMode.save.write",
     devModeSaveRead = "devMode.save.read",
     devModeSaveListIds = "devMode.save.listIds",
@@ -1539,6 +1541,12 @@ export type IPCWorkspaceEvents = {
         data: DevModeStoryRowHighlight;
         response: never;
     };
+    [IPCEventType.workspaceStoryRowOpen]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: DevModeStoryRowOpenRequest;
+        response: never;
+    };
 };
 
 export type IPCDevModeEvents = {
@@ -1688,6 +1696,12 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Host,
         data: DevModeStoryRowPayload;
         response: never;
+    };
+    [IPCEventType.devModeOpenStoryRowInWorkspace]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: DevModeStoryRowOpenPayload;
+        response: void;
     };
     [IPCEventType.devModeSaveWrite]: {
         type: IPCMessageType.request,
