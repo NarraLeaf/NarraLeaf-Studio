@@ -31,6 +31,7 @@ export const build = {
         appimage: "AppImage",
         dir: "Folder",
         apk: "APK",
+        aab: "AAB",
         ipa: "IPA",
     },
     outputDir: "Output folder",
@@ -196,7 +197,7 @@ export const build = {
         // vocabulary, not the author's, and what to expect is the same either way. The `build`
         // help topic carries the longer version.
         unsigned: "Not code-signed. Players may see a security prompt the first time they open it.",
-        "unsigned-android": "Signed with a local debug identity, which is only good for sideloading. Choose your release keystore to sign it as yourself.",
+        "unsigned-android": "Signed with a local debug identity, which is only good for sideloading; an AAB signed with it is not usable as a Google Play upload key. Choose your release keystore to sign it as yourself.",
         // The chain caveat belongs here rather than on a later error: this is
         // what an author reads while they are exporting the .p12, and a leaf-only
         // export fails the signing step outright.
@@ -211,7 +212,7 @@ export const build = {
         "signing-macos-identity-missing": "No certificate named {identity} is in this Mac's keychain. Install it in Keychain Access, or choose another certificate here.",
         "signing-macos-identity-unusable": "The certificate {identity} cannot sign: it has expired, its private key is missing, or its issuing chain is incomplete. Open it in Keychain Access to see which.",
         "signing-macos-not-developer-id": "{identity} is not a \"Developer ID Application\" certificate. The build runs on this Mac, but Gatekeeper refuses it on anyone else's and Apple will not notarize it.",
-        "signing-android-not-play": "A signed APK works for sideloading and for stores such as itch.io. Google Play accepts only AAB packages, which this pipeline does not produce.",
+        "signing-android-not-play": "A signed APK works for sideloading and for stores such as itch.io. Google Play takes only AAB packages: turn on the AAB format under the Android target to produce one.",
         "signing-ios-profile-mismatch": "The app id {bundleId} is not covered by the provisioning profile, which is issued for {profileAppId}. Change the project identifier, or import the profile that covers it.",
         "cross-build-download": "Cross-building for {platforms} downloads Electron on first use (cached afterwards).",
         "output-not-writable": "Cannot write to {outputDir}.",
