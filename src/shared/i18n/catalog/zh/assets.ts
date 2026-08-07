@@ -30,6 +30,17 @@ export const assets = {
         confirmMessage: "所选分组内的全部内容也会一并删除",
         action: "删除",
         failedTitle: "删除失败",
+        failed: "无法删除：{error}",
+    },
+    rename: {
+        failed: "无法重命名 {name}：{error}",
+    },
+    createGroup: {
+        failed: "无法创建分组",
+    },
+    paste: {
+        failedTitle: "没有任何内容被粘贴",
+        someFailedTitle: "部分内容未能粘贴",
     },
     replace: {
         confirmTitle: "替换 {name} 的文件内容？",
