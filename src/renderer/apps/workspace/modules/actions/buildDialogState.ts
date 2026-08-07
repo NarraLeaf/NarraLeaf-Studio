@@ -27,18 +27,28 @@ export const DESKTOP_PLATFORMS: GameBuildDesktopPlatform[] = ["windows", "macos"
  * Formats offered per platform. Desktop platforms get a portable ZIP, the
  * native installer, and the unpacked folder - the folder skips installer
  * generation entirely, which is the fast path for a local check. The web target
- * has no installer: an archive or the deployable site folder.
+ * has no installer: an archive or the deployable site folder. Android offers
+ * both of its packages: the APK a device installs, and the AAB Google Play
+ * takes.
  */
 export const OFFERED_FORMATS: Record<GameBuildPlatform, GameBuildFormat[]> = {
     windows: ["zip", "nsis", "dir"],
     macos: ["zip", "dmg", "dir"],
     linux: ["zip", "appimage", "dir"],
     web: ["zip", "dir"],
-    android: ["apk"],
+    android: ["apk", "aab"],
     ios: ["ipa"],
 };
 
-/** Formats a platform switches on with - the installer plus the portable archive. */
+/**
+ * Formats a platform switches on with - the installer plus the portable archive.
+ *
+ * Android starts on the APK alone, deliberately. The AAB is a second container
+ * built from the same payload, so producing both costs a second pass over the
+ * expensive part of the build, and most builds are a local check rather than a
+ * store upload. The preflight warning is what points an author who is
+ * publishing at the format they are missing.
+ */
 const DEFAULT_FORMATS: Record<GameBuildPlatform, GameBuildFormat[]> = {
     windows: ["zip", "nsis"],
     macos: ["zip", "dmg"],

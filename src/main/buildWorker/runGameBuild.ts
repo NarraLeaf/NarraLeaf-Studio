@@ -48,6 +48,7 @@ const BUILDER_TARGET_NAMES: Record<GameBuildFormat, string> = {
     // The mobile formats never reach electron-builder (desktop worker targets
     // are typed GameBuildDesktopPlatform); listed to keep the map total.
     apk: "apk",
+    aab: "aab",
     ipa: "ipa",
 };
 

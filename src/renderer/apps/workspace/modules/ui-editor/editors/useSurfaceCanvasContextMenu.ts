@@ -8,6 +8,7 @@ import {
 } from "@/lib/ui-editor/context-menu/resolveCanvasContextSelection";
 import { hasUiEditorClipboard } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import { uiEditorArrange } from "@/lib/ui-editor/commands/uiEditorArrange";
+import { uiEditorAlign } from "@/lib/ui-editor/commands/uiEditorAlign";
 import {
     uiEditorCopySelection,
     uiEditorCutSelection,
@@ -220,6 +221,9 @@ export function useSurfaceCanvasContextMenu(params: {
                     },
                     arrange: op => {
                         uiEditorArrange(documentService, surface.id, menuSel, op);
+                    },
+                    align: op => {
+                        uiEditorAlign(documentService, surface.id, menuSel, op);
                     },
                 },
             });

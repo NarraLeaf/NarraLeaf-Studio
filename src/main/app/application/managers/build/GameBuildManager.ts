@@ -24,6 +24,7 @@ import {
     webExportZipName,
     type BuildPreflightFinding,
     type GameBuildDesktopPlatform,
+    type GameBuildFormat,
     type GameBuildMobilePlatform,
     type GameBuildRequest,
     type GameBuildStateSnapshot,
@@ -999,7 +1000,7 @@ export class GameBuildManager {
                     projectPath,
                     projectConfig,
                     identity,
-                    platforms: mobileTargets.map(target => target.platform),
+                    targets: mobileTargets,
                     site: webArtifact,
                     // When set, the repack protects every payload file with this
                     // key and writes it into shell-config for the shell's decoder.
@@ -1284,9 +1285,12 @@ export class GameBuildManager {
                 findings.push(...await this.macIdentityPreflight(credential.identity));
             }
             findings.push(...await this.signingExpiryPreflight(vault, credential, platform));
-            if (platform === "android") {
+            if (platform === "android" && androidLacksPlayPackage(targets)) {
                 // Signed, and still not publishable on Play - which is exactly
-                // the assumption a release keystore invites.
+                // the assumption a release keystore invites. Read off the
+                // selected formats (which `targets` carries) rather than off the
+                // platform alone: turning the AAB format on is the fix, so a
+                // selection that already has it must stop saying this.
                 findings.push({ code: "signing-android-not-play", severity: "warning", section: "signing" });
             }
             if (platform === "ios" && targets.some(target => target.platform === "ios")) {
@@ -1529,7 +1533,12 @@ export class GameBuildManager {
             projectPath: string;
             projectConfig: ProjectConfigData | null;
             identity: { appId: string; productName: string; artifactBaseName: string; version: string };
-            platforms: GameBuildMobilePlatform[];
+            /**
+             * The mobile targets as selected, formats and all - not just their
+             * platforms: Android's two packages are formats of one target, so
+             * which of them to write is part of the selection.
+             */
+            targets: GameBuildMobileTarget[];
             site: GameRuntimeArtifactCompileResult;
             /** Opaque protection key, or undefined for a plain (unprotected) build. */
             contentKey?: string;
@@ -1572,7 +1581,15 @@ export class GameBuildManager {
             shellConfigJson: JSON.stringify(shellConfig),
         };
 
-        if (input.platforms.includes("android")) {
+        const androidTarget = input.targets.find(target => target.platform === "android");
+        if (androidTarget) {
+            const outputs = androidOutputNames(androidTarget.formats, identity.artifactBaseName, identity.version);
+            // Mirrors the web target's own refusal: a platform selected with no
+            // format it can actually emit would otherwise pack the whole payload
+            // and write nothing.
+            if (!outputs.apk && !outputs.aab) {
+                throw new Error("The Android target has no usable format (expected apk or aab)");
+            }
             const applicationId = normalizeAndroidPackageName(identity.appId);
             if (applicationId !== identity.appId) {
                 this.emit(session, {
@@ -1599,14 +1616,17 @@ export class GameBuildManager {
                     level: "warning",
                     source: "Build",
                     message: "the Android build is signed with your release keystore instead of the local debug "
-                        + "identity; a device that has a debug-signed build of this game must uninstall it first. "
-                        + "A signed APK is for sideloading and stores that take APKs; Google Play accepts only AABs, "
-                        + "which this pipeline does not produce.",
+                        + "identity; a device that has a debug-signed build of this game must uninstall it first."
+                        + (outputs.aab
+                            ? " The same keystore signs the .aab, and Google Play registers it as this app's "
+                                + "upload key."
+                            : " The .apk is for sideloading and for stores that take APKs; turn on the AAB "
+                                + "format to publish on Google Play."),
                 });
             }
             job.android = {
                 templateApkPath: template.androidTemplatePath,
-                outputName: mobileExportFileName("android", identity.artifactBaseName, identity.version),
+                outputs,
                 applicationId,
                 versionName: identity.version,
                 versionCode,
@@ -1622,7 +1642,7 @@ export class GameBuildManager {
             };
         }
 
-        if (input.platforms.includes("ios")) {
+        if (input.targets.some(target => target.platform === "ios")) {
             const bundleId = normalizeIosBundleId(identity.appId);
             if (bundleId !== identity.appId) {
                 this.emit(session, {
@@ -1638,7 +1658,7 @@ export class GameBuildManager {
                 : null;
             job.ios = {
                 templateAppZipPath: template.iosTemplatePath,
-                outputName: mobileExportFileName("ios", identity.artifactBaseName, identity.version),
+                outputName: mobileExportFileName("ios", "ipa", identity.artifactBaseName, identity.version),
                 bundleId,
                 shortVersionString: bundleVersion,
                 bundleVersion,
@@ -2002,10 +2022,52 @@ export function isDesktopTarget(target: GameBuildTarget): target is GameBuildDes
     return isDesktopBuildPlatform(target.platform);
 }
 
-type GameBuildMobileTarget = GameBuildTarget & { platform: GameBuildMobilePlatform };
+export type GameBuildMobileTarget = GameBuildTarget & { platform: GameBuildMobilePlatform };
 
 export function isMobileTarget(target: GameBuildTarget): target is GameBuildMobileTarget {
     return isMobileBuildPlatform(target.platform);
+}
+
+/**
+ * What the repack writes for the Android target, keyed by format. A selection
+ * rather than two jobs: both packages come out of one pass over one payload,
+ * signed with one credential, so the expensive half of the build is shared.
+ *
+ * A format Android does not offer is ignored here exactly as the artifact
+ * preview ignores it, which is what leaves "neither" possible - the caller
+ * refuses that case rather than guessing which package was meant.
+ */
+export function androidOutputNames(
+    formats: GameBuildFormat[],
+    artifactBaseName: string,
+    version: string,
+): { apk?: string; aab?: string } {
+    return {
+        ...(formats.includes("apk")
+            ? { apk: mobileExportFileName("android", "apk", artifactBaseName, version) }
+            : {}),
+        ...(formats.includes("aab")
+            ? { aab: mobileExportFileName("android", "aab", artifactBaseName, version) }
+            : {}),
+    };
+}
+
+/**
+ * Whether a selection earns the "this cannot go to Google Play" warning: an
+ * Android target producing an APK and no AAB.
+ *
+ * Conditional rather than standing, because the store is now reachable from
+ * here. Selecting both says nothing - the author already has the upload
+ * package - and an AAB alone says nothing either, since the APK is what the
+ * warning is about. Only the apk-only selection has something left to say, and
+ * what it says is actionable: turn the other format on.
+ */
+export function androidLacksPlayPackage(targets: GameBuildTarget[]): boolean {
+    const android = targets.find(target => target.platform === "android");
+    if (!android) {
+        return false;
+    }
+    return android.formats.includes("apk") && !android.formats.includes("aab");
 }
 
 function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarget[] {
