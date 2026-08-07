@@ -20,6 +20,7 @@ export const onboarding = {
     done: {
         title: "Studio 设置完成",
         expectation: "语言和外观在设置中调整。在任意位置按 F1 可查看光标所在处的说明。",
+        topics: "帮助主题",
     },
     nav: {
         skip: "跳过设置",
