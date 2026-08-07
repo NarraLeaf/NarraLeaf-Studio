@@ -24,9 +24,32 @@ function run(cmd, args = [], opts = {}) {
     });
 }
 
+/**
+ * The architecture electron-builder was asked to package for, or null when it was not told.
+ *
+ * Load-bearing for anything that stages a native binary, because the runner's architecture and the
+ * installer's are not the same thing: CI builds the Intel mac DMG on an arm64 runner
+ * (`--mac --x64` on macos-latest), so a staging step that keys on `process.arch` puts an arm64
+ * binary inside an Intel installer, where it cannot execute. Same class of mistake npm_config_arch
+ * exists to prevent for the Electron runtime itself - see the note in .github/workflows/release.yml.
+ *
+ * `--universal` deliberately yields null rather than an arch: a universal target needs a fat binary,
+ * which none of the staging steps can produce, and passing either half would be a lie. They fall
+ * back to the host and their own per-arch tables decide.
+ */
+function targetArch(args) {
+    if (args.includes('--x64')) return 'x64';
+    if (args.includes('--arm64')) return 'arm64';
+    return null;
+}
+
 (async () => {
     const rootDir = path.resolve(__dirname, '../..');
     process.chdir(rootDir);
+
+    const extraArgs = process.argv.slice(2);
+    const arch = targetArch(extraArgs);
+    const archArgs = arch === null ? [] : [`--arch=${arch}`];
 
     try {
         console.log('[pack] Building preview runtime (production)...');
@@ -50,11 +73,14 @@ function run(cmd, args = [], opts = {}) {
         console.log('[pack] Staging code-signing tools...');
         await run('node', ['project/build/prepare-codesign-tools.js']);
 
+        // --arch is forwarded here and not to the other staging steps on purpose: this is the one
+        // that *compiles* on macOS, so getting the target wrong costs a 3-5 minute build of a
+        // binary that cannot run in the installer it lands in. See targetArch above; the same
+        // hazard applies to prepare-codesign-tools.js and is not addressed here.
         console.log('[pack] Staging FFmpeg tools...');
-        await run('node', ['project/build/prepare-ffmpeg.js']);
+        await run('node', ['project/build/prepare-ffmpeg.js', ...archArgs]);
 
         console.log('[pack] Packaging with electron-builder...');
-        const extraArgs = process.argv.slice(2);
         // Force output dir to build/ unless user overrides via CLI
         const hasOutputArg = extraArgs.some((arg) => arg.includes('directories.output'));
         const builderArgs = [
