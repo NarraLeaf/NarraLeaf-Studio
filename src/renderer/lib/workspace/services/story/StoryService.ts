@@ -1219,6 +1219,30 @@ export class StoryService extends Service<StoryService> implements IStoryService
         });
     }
 
+    /**
+     * Write many blocks' payloads, across any number of scenes, as ONE mutation.
+     *
+     * {@link mutateDocument} emits `documentChanged` every time it runs, and the story editor
+     * re-renders its visible rows on each emit. Looping {@link updateBlock} therefore costs a full
+     * editor repaint per row - fine for the two or three rows an editing gesture touches, and
+     * seconds of synchronous React for the two hundred a project-wide replace touches. One mutation
+     * means one event, one revision and one save for the whole sweep.
+     */
+    public updateBlocks(
+        storyId: StoryId,
+        edits: readonly { sceneId: StorySceneId; blockId: StoryBlockId; payload: StoryBlock["payload"] }[],
+    ): void {
+        if (edits.length === 0) {
+            return;
+        }
+        this.mutateDocument(storyId, document => {
+            for (const edit of edits) {
+                const scene = this.getSceneOrThrow(document, edit.sceneId);
+                updateBlockPayload(scene, edit.blockId, edit.payload);
+            }
+        });
+    }
+
     public deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void {
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
