@@ -861,9 +861,10 @@ export const workspace = {
             occurrences: "×{count}",
         },
         // The PyCharm-style project switcher in the title bar: current project name plus a
-        // dropdown of recent workspaces to jump between.
+        // dropdown of recent workspaces. A project picked here opens in a window of its own and
+        // this window stays, which is why the label says "open" rather than "switch".
         projectSwitcher: {
-            switchProject: "Switch project",
+            openAnother: "Open another project",
             recentProjects: "Recent Projects",
             current: "Current",
             openProject: "Open Project…",

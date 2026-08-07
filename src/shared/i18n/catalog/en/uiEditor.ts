@@ -119,6 +119,14 @@ export const uiEditor = {
         applied: "Added “{name}”.",
         slotTaken: "The {slot} slot already has a Game UI.",
         slotOccupied: "Slot in use",
+        themesTitle: "Themes",
+        themesBack: "All themes",
+        themeOpen: "See the screens",
+        searchThemes: "Search themes",
+        themeScreens: {
+            one: "{count} screen",
+            other: "{count} screens",
+        },
         assetsSkipped: {
             one: "{count} resource could not be imported.",
             other: "{count} resources could not be imported.",

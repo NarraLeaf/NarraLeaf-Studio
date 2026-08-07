@@ -1,3 +1,4 @@
+import { screen } from "electron";
 import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
@@ -27,6 +28,12 @@ export interface AppConfig extends BaseAppConfig {
  * of its own. A close is not the moment to find that out.
  */
 const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
+
+/**
+ * How far a workspace opening beside another one is stepped from it, so the new window is visibly
+ * a second window rather than the same frame with different contents.
+ */
+const WINDOW_CASCADE_STEP = 32;
 
 export class App extends BaseApp {
     public static create(config: AppConfig): App {
@@ -622,10 +629,11 @@ export class App extends BaseApp {
 
         const key = normalizeProjectPath(projectPath);
         const pending = this.projectOpenings.get(key);
-        const bounds = replaceOpener ? opener.win.getBounds() : undefined;
-        const launch = pending ?? this.launchWorkspace(opener, { projectPath }, bounds
-            ? { minWidth: 800, minHeight: 600, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, center: false }
-            : { minWidth: 800, minHeight: 600, width: 1400, height: 900 });
+        const launch = pending ?? this.launchWorkspace(
+            opener,
+            { projectPath },
+            { minWidth: 800, minHeight: 600, ...this.workspacePlacement(opener, replaceOpener) },
+        );
 
         if (!pending) {
             this.projectOpenings.set(key, launch);
@@ -644,6 +652,50 @@ export class App extends BaseApp {
             });
         }
         return workspaceWindow;
+    }
+
+    /**
+     * Where a workspace window being launched should come up.
+     *
+     * A window replacing the one it was opened from takes over its frame exactly, so the switch
+     * reads as the same window changing project rather than as one window closing and another
+     * appearing somewhere else.
+     *
+     * A window opening *alongside* a workspace is stepped down and to the right of it instead, at
+     * the same size. Same-sized and same-placed would put the new project exactly over the old one,
+     * which is what a replacement looks like - the author would have no way to tell from the screen
+     * that the window they came from is still there. The offset is dropped rather than pushing the
+     * window off the display when there is no room for it (a maximized opener, most often), and the
+     * default centred frame is used instead, which is distinct enough on its own.
+     *
+     * Everything else - the launcher above all, whose frame is nothing like a workspace's - gets
+     * the default.
+     */
+    private workspacePlacement(
+        opener: AppWindow,
+        replaceOpener: boolean,
+    ): Partial<Electron.BrowserWindowConstructorOptions> {
+        const fallback = { width: 1400, height: 900, center: true };
+        if (opener.getWindowType() !== WindowAppType.Workspace || opener.isClosed()) {
+            return fallback;
+        }
+
+        const bounds = opener.win.getBounds();
+        if (replaceOpener) {
+            return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, center: false };
+        }
+
+        const { workArea } = screen.getDisplayMatching(bounds);
+        const x = bounds.x + WINDOW_CASCADE_STEP;
+        const y = bounds.y + WINDOW_CASCADE_STEP;
+        const fits = x >= workArea.x
+            && y >= workArea.y
+            && x + bounds.width <= workArea.x + workArea.width
+            && y + bounds.height <= workArea.y + workArea.height;
+
+        return fits
+            ? { x, y, width: bounds.width, height: bounds.height, center: false }
+            : fallback;
     }
 
     async launchProjectWizard(
