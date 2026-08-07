@@ -1059,26 +1059,31 @@ export function moveBlockInScene(
 }
 
 /**
- * Move several blocks to ONE target, in the order given — the shape a dragged multi-selection has.
+ * Move groups of blocks, each group to one target, in the order given — how a multi-row selection
+ * travels. A drag is one group (everything lands in one place); a keyboard nudge is one group per run
+ * of adjacent rows, since each run steps over its own neighbour and stays where it is in the scene.
  *
- * Every block is inserted before the same anchor, so `[a, b, c]` land as `a b c` in front of it (and
- * appended in that order when the anchor is `null`). The caller owes us an anchor that is not itself
- * moving: {@link insertId} silently appends when it cannot find its anchor, which would scatter the
- * group to the end of the parent instead of failing.
+ * Within a group every block is inserted before the same anchor, so `[a, b, c]` land as `a b c` in
+ * front of it (and appended in that order when the anchor is `null`). The caller owes us anchors that
+ * are not themselves moving: {@link insertId} silently appends when it cannot find its anchor, which
+ * would scatter a group to the end of the parent instead of failing.
  *
  * Validated whole before anything moves. A half-applied move would leave the document mutated with the
  * change event never emitted — the editor would be showing a scene that no longer exists.
  */
 export function moveBlocksInScene(
     scene: StoryScene,
-    blockIds: StoryBlockId[],
-    target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
+    moves: { blockIds: StoryBlockId[]; target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null } }[],
 ): void {
-    for (const blockId of blockIds) {
-        assertBlockMoveAllowed(scene, blockId, target);
+    for (const move of moves) {
+        for (const blockId of move.blockIds) {
+            assertBlockMoveAllowed(scene, blockId, move.target);
+        }
     }
-    for (const blockId of blockIds) {
-        moveBlockInScene(scene, blockId, target);
+    for (const move of moves) {
+        for (const blockId of move.blockIds) {
+            moveBlockInScene(scene, blockId, move.target);
+        }
     }
 }
 
