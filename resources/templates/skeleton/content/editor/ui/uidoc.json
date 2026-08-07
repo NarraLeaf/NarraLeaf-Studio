@@ -4390,6 +4390,13 @@
             }
           ]
         }
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "blueprintValue",
+          "blueprintId": "244ce5e4-90b4-4ec1-9afb-b8376e92f195",
+          "valueType": "string"
+        }
       }
     },
     "465a62e7-7bbc-475d-8002-929ada7ee70b": {
@@ -4577,6 +4584,13 @@
               ]
             }
           ]
+        }
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "blueprintValue",
+          "blueprintId": "6a89cfda-3bde-4156-8d4c-23e0aa770962",
+          "valueType": "string"
         }
       }
     },
@@ -39057,6 +39071,13 @@
             }
           ]
         }
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "blueprintValue",
+          "blueprintId": "cfdd4e6a-e983-4c1e-97b1-1851671262c3",
+          "valueType": "string"
+        }
       }
     },
     "3f75130c-73bb-428a-a7b5-388e32d231e5": {
@@ -40754,6 +40775,13 @@
             }
           ]
         }
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "blueprintValue",
+          "blueprintId": "ea68c89d-41b9-468e-ba47-8d2b4658ecce",
+          "valueType": "string"
+        }
       }
     },
     "31b0ab9e-c79e-4069-9aaa-74d9df120009": {
@@ -41970,6 +41998,13 @@
               ]
             }
           ]
+        }
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "blueprintValue",
+          "blueprintId": "e17db2d7-fd2d-43b7-8571-5724ff6b7dd1",
+          "valueType": "string"
         }
       }
     },
@@ -62202,6 +62237,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-08-07T05:28:57.488Z"
+    "updatedAt": "2026-08-07T05:59:25.078Z"
   }
 }
