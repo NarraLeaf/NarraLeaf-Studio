@@ -301,6 +301,42 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return this.getContext().services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
     }
 
+    /**
+     * The blueprint id an `ensure*` call would have returned without writing anything, if any.
+     *
+     * The three `ensure*` helpers are called once per surface and once per eligible widget on every
+     * uidoc mutation, and they are almost always no-ops - the owner record already exists. Going
+     * through `applyBlueprintMutation` anyway is not free: each call bumps the graph revision, marks
+     * uigraphs.json dirty, schedules a save of it, fires `graphsChanged` at every subscriber, and
+     * revalidates the whole blueprint document. Dragging one element therefore rewrote the graph
+     * document and re-rendered its readers dozens of times over.
+     */
+    private alreadyEnsured(
+        ownerKey: string,
+        displayName: string | undefined,
+        // `ensureComponentWidgetMain` writes `displayName || existing`, so an empty name is a no-op
+        // there; the other two write `displayName` straight through. Kept explicit rather than
+        // guessed, because guessing wrong here means a rename that silently does not stick.
+        emptyNameKeepsExisting: boolean,
+    ): string | null {
+        const doc = this.getBlueprintDocument();
+        const activeId = getActiveBlueprintId(doc, ownerKey);
+        if (!activeId) {
+            return null;
+        }
+        const blueprint = doc.blueprints[activeId];
+        if (!blueprint) {
+            return null;
+        }
+        if (displayName === undefined) {
+            return activeId;
+        }
+        if (emptyNameKeepsExisting && displayName === "") {
+            return activeId;
+        }
+        return blueprint.name === displayName ? activeId : null;
+    }
+
     public applyBlueprintMutation(mutator: (bp: BlueprintDocument, doc: UIGraphDocument) => void): void {
         const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
         graph.applyGraphMutation(doc => {
@@ -401,6 +437,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     public ensureSurfaceMain(surfaceId: string, displayName?: string): string {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         const key = surfaceMainOwnerKey(surfaceId);
+        const settled = this.alreadyEnsured(key, displayName, false);
+        if (settled) {
+            return settled;
+        }
         let outId = "";
         this.applyBlueprintMutation(doc => {
             const active = getActiveBlueprintId(doc, key);
@@ -448,6 +488,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     public ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string, widgetType?: string): string {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         const key = widgetMainOwnerKey(surfaceId, elementId);
+        const settled = this.alreadyEnsured(key, displayName, false);
+        if (settled) {
+            return settled;
+        }
         let outId = "";
         this.applyBlueprintMutation(doc => {
             const active = getActiveBlueprintId(doc, key);
@@ -498,6 +542,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     ): string {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         const key = componentWidgetMainOwnerKey(componentId, elementId);
+        const settled = this.alreadyEnsured(key, displayName, true);
+        if (settled) {
+            return settled;
+        }
         let outId = "";
         this.applyBlueprintMutation(doc => {
             const active = getActiveBlueprintId(doc, key);
