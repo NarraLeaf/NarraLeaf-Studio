@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -489,7 +489,7 @@ describe("planBlockGroupMove", () => {
         if (!plan) {
             return null;
         }
-        moveBlocksInScene(live, plan.blockIds, plan.target);
+        moveBlocksInScene(live, [plan]);
         return live.rootBlockIds;
     }
 
@@ -545,12 +545,74 @@ describe("planBlockGroupMove", () => {
         // `g1` is selected too, but it rides along inside `g` rather than moving on its own.
         const plan = planBlockGroupMove(live, ["g", "g1"], "g1", "a");
         expect(plan?.blockIds).toEqual(["g"]);
-        moveBlocksInScene(live, plan!.blockIds, plan!.target);
+        moveBlocksInScene(live, [plan!]);
         expect(live.rootBlockIds).toEqual(["g", "a"]);
     });
 
     it("declines an empty selection and a target that is gone", () => {
         expect(planBlockGroupMove(flat(), [], "a", "b")).toBeNull();
         expect(planBlockGroupMove(flat(), ["a"], "a", "missing")).toBeNull();
+    });
+});
+
+describe("planSelectionNudge", () => {
+    const rows = (...ids: string[]) => scene(ids.map(id => narration(id)), [...ids]);
+
+    /** Runs the plan the way the controller does, and reports the row order it leaves behind. */
+    function nudged(live: StoryScene, movingIds: string[], direction: "up" | "down"): string[] | null {
+        const plan = planSelectionNudge(live, movingIds, direction);
+        if (!plan) {
+            return null;
+        }
+        moveBlocksInScene(live, plan);
+        return live.rootBlockIds;
+    }
+
+    it("steps one row over its neighbour, either way", () => {
+        expect(nudged(rows("a", "b", "c"), ["b"], "up")).toEqual(["b", "a", "c"]);
+        expect(nudged(rows("a", "b", "c"), ["b"], "down")).toEqual(["a", "c", "b"]);
+    });
+
+    it("hops a run of adjacent rows over the one line beyond it, keeping their order", () => {
+        expect(nudged(rows("a", "b", "c", "d"), ["b", "c"], "up")).toEqual(["b", "c", "a", "d"]);
+        expect(nudged(rows("a", "b", "c", "d"), ["b", "c"], "down")).toEqual(["a", "d", "b", "c"]);
+    });
+
+    it("keeps the gaps in a split selection - each run steps over its own neighbour", () => {
+        expect(nudged(rows("a", "b", "c", "d"), ["a", "c"], "down")).toEqual(["b", "a", "d", "c"]);
+        expect(nudged(rows("a", "b", "c", "d"), ["b", "d"], "up")).toEqual(["b", "a", "d", "c"]);
+    });
+
+    it("is undone by the opposite direction, which a selection that collapsed its gaps would not be", () => {
+        const live = rows("a", "b", "c", "d", "e", "f");
+        const selection = ["a", "c", "e"];
+        expect(nudged(live, selection, "down")).toEqual(["b", "a", "d", "c", "f", "e"]);
+        expect(nudged(live, selection, "up")).toEqual(["a", "b", "c", "d", "e", "f"]);
+    });
+
+    it("moves whole or not at all: one row against the end stops the others too", () => {
+        expect(planSelectionNudge(rows("a", "b", "c"), ["a", "c"], "down")).toBeNull();
+        expect(planSelectionNudge(rows("a", "b", "c"), ["a", "c"], "up")).toBeNull();
+        expect(planSelectionNudge(rows("a", "b"), ["a", "b"], "up")).toBeNull();
+        expect(planSelectionNudge(rows("a", "b"), [], "down")).toBeNull();
+    });
+
+    it("steps each run inside its own parent when the selection spans a container", () => {
+        const live = scene([
+            group("g", ["g1", "g2"]), narration("g1", "g"), narration("g2", "g"),
+            narration("a"), narration("b"),
+        ], ["g", "a", "b"]);
+        // `g1` (inside the container) and `a` (outside it) each move down one, in their own list.
+        expect(nudged(live, ["g1", "a"], "down")).toEqual(["g", "b", "a"]);
+        expect(live.blocks.g.childrenIds).toEqual(["g2", "g1"]);
+    });
+
+    it("carries a selected container's children with it rather than moving them separately", () => {
+        const live = scene([
+            narration("a"),
+            group("g", ["g1"]), narration("g1", "g"),
+        ], ["a", "g"]);
+        expect(nudged(live, ["g", "g1"], "up")).toEqual(["g", "a"]);
+        expect(live.blocks.g.childrenIds).toEqual(["g1"]);
     });
 });
