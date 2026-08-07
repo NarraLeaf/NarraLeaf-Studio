@@ -66,19 +66,26 @@ export function TemplateStep({ projectData, updateProjectData }: TemplateStepPro
                                 template-hover
                                 ${projectData.template === template.id ? "template-selected" : ""}
                                 ${focusedTemplate === template.id ? "template-focused" : ""}
-                                h-full relative
+                                h-full relative overflow-hidden
                             `}
                             onClick={() => handleTemplateSelect(template.id)}
                             onFocus={() => handleFocus(template.id)}
                             onBlur={handleBlur}
                         >
-                            {/* Icon in top-left corner */}
-                            <div className="absolute top-2 left-2 text-fg-muted z-10">
-                                <template.icon className="w-5 h-5" />
-                            </div>
+                            {/*
+                              * The icon is a backdrop, not a label. It says nothing the title does
+                              * not, so instead of sitting in a corner competing with the words it
+                              * runs off the card's own edge at the same faint opacity as the
+                              * workspace logo watermark - readable as a shape, never as content.
+                              */}
+                            <template.icon
+                                aria-hidden
+                                strokeWidth={1}
+                                className="pointer-events-none absolute -bottom-8 -right-8 w-40 h-40 text-fg opacity-5"
+                            />
 
                             {/* Content area */}
-                            <div className="h-full flex items-center justify-center p-4">
+                            <div className="relative h-full flex items-center justify-center p-4">
                                 <div className="text-center w-full">
                                     <CardTitle className="text-lg mb-2">{template.nameKey ? t(template.nameKey) : template.name}</CardTitle>
                                     <CardDescription className="text-sm">
