@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { resolveProjectTemplateText, type ProjectTemplateDescriptor } from "@shared/types/projectTemplate";
@@ -41,7 +41,12 @@ function toCard(descriptor: ProjectTemplateDescriptor, locale: string): ProjectT
         flow: "create",
         name: text.name,
         description: text.description,
-        icon: Sparkles,
+        // One icon for every bundled template, not one per template: a manifest cannot ship a
+        // lucide component, and the card draws it as a watermark rather than an identifier (see
+        // `projectTemplates`). An open book is what they all have in common - a story someone
+        // already wrote - and it keeps its shape at that opacity where a cluster of sparkles
+        // scattered into unreadable specks.
+        icon: BookOpen,
         category: "Template",
         // The manifest already carries the localized strings, so no i18n keys here:
         // `nameKey`/`descriptionKey` would have to name keys that do not exist.
