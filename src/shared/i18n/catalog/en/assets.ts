@@ -33,6 +33,39 @@ export const assets = {
         action: "Delete",
         /** A delete the service refused after the author had already confirmed it. */
         failedTitle: "Failed to delete",
+        /**
+         * The delete that fell over as a whole rather than per row, so there is no list to read and
+         * one line is the entire answer. The per-row refusals go to `failedTitle` above.
+         */
+        failed: "Could not delete: {error}",
+    },
+    /**
+     * Renaming one row. One name, one reason, so a toast carries it: the row is still on screen
+     * under its old name, which is the other half of the message.
+     */
+    rename: {
+        failed: "Could not rename {name}: {error}",
+    },
+    /**
+     * A new group that was not kept. Names are not checked against each other, so the only way here
+     * is the group list failing to reach the disk.
+     *
+     * Carries no reason on purpose. That write also raises the workspace's own save failure, which
+     * is already on screen naming the file and offering a retry, and repeating its sentence in a
+     * second toast says the same thing twice. What that one cannot say is which action was lost,
+     * and the row is drawn either way, so this is the only place the author is told the group in
+     * front of them is not real.
+     */
+    createGroup: {
+        failed: "Could not create the group",
+    },
+    /**
+     * A paste that did not carry everything across. Named per row in an alert rather than counted
+     * in a toast, because which rows are missing is the whole of what the author needs.
+     */
+    paste: {
+        failedTitle: "Nothing was pasted",
+        someFailedTitle: "Some items were not pasted",
     },
     /**
      * Swapping the file behind an asset record. The record keeps its id, so every reference follows;
