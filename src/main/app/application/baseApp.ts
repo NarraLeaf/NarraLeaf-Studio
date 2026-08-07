@@ -28,6 +28,7 @@ import { sweepPsdTempDirectories } from "./managers/storage/cacheInventory";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
+import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
 import { isMainDevMode, parseMainCommandLine } from "./commandLine";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
@@ -69,6 +70,7 @@ export class BaseApp {
     public readonly pluginPermissionManager: PluginPermissionManager;
     public readonly pluginManager: PluginManager;
     public readonly pluginIconCache: PluginIconCache;
+    public readonly uiTemplatePosterCache: UITemplatePosterCache;
 
     private initialized: boolean = false;
     private readyError: Error | null = null;
@@ -110,6 +112,7 @@ export class BaseApp {
             builtInPluginsDir: this.getBuiltInPluginsDir(),
         });
         this.pluginIconCache = new PluginIconCache(this.getUserDataDir());
+        this.uiTemplatePosterCache = new UITemplatePosterCache(this.getUserDataDir());
 
         this.protocolManager = new ProtocolManager(this);
         this.windowManager = new WindowManager(this);
