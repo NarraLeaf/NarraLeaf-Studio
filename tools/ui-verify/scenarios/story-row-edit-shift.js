@@ -40,8 +40,14 @@ const SCENE = process.env.NLS_VERIFY_SCENE || 'First Day';
 const TOLERANCE = 0.5;
 /** Somewhere with no row under it. The title bar: a move there triggers no click and no hover state. */
 const PARKED = { x: 6, y: 6 };
-/** Viewport width for the wrapped-line phase — narrow enough that the fixture's prose takes two lines. */
-const NARROW_WIDTH = 900;
+/**
+ * Viewport width for the wrapped-line phase — narrow enough that the fixture's prose takes two lines.
+ *
+ * Overridable because "narrow enough" depends on the window this run happens to be driving: at 900 on a
+ * wide workspace the fixture wrapped ONE row, and a phase that measures one row is a phase that has
+ * stopped guarding anything. Check the `wrappedRows=` count, and lower this until it is several.
+ */
+const NARROW_WIDTH = Number(process.env.NLS_VERIFY_NARROW_WIDTH || 900);
 
 const results = [];
 function record(name, ok, detail) {
@@ -102,10 +108,22 @@ const MEASURE = function (blockId) {
     };
 };
 
-/** Every row's text, for the before/after diff that proves the drive changed nothing. */
+/**
+ * Every mounted row's text, keyed by block id, for the before/after diff that proves the drive changed
+ * nothing.
+ *
+ * Keyed, not positional. The list is virtualised, and this scenario deliberately scrolls rows into view
+ * and resizes the viewport, so the set of rows in the DOM at the end is not the set that was there at
+ * the start - and an index-by-index comparison then reports every row that merely MOVED as a row whose
+ * text changed. On a long scene that is a red check whose diff is full of untouched prose, which is the
+ * worst kind of failing guard: it looks exactly like the defect it exists to catch.
+ */
 const SNAPSHOT = function () {
-    return Array.from(document.querySelectorAll('[data-story-row-block-id]'))
-        .map(row => row.getAttribute('data-story-row-block-id') + '' + (row.innerText || '').replace(/\s+/g, ' ').trim());
+    const out = {};
+    for (const row of document.querySelectorAll('[data-story-row-block-id]')) {
+        out[row.getAttribute('data-story-row-block-id')] = (row.innerText || '').replace(/\s+/g, ' ').trim();
+    }
+    return out;
 };
 
 /** Text rows worth measuring: they have a read-only body and something in it. */
@@ -343,9 +361,12 @@ async function main() {
         await A.sleep(1200);
 
         const after = await A.call(d, SNAPSHOT);
-        const changed = after.filter((line, i) => before[i] !== line);
-        record('the drive changed no row text', before.length === after.length && changed.length === 0,
-            `rows ${before.length}->${after.length}, changed=${changed.length}${changed.length ? ` ${JSON.stringify(changed.slice(0, 2))}` : ''}`);
+        // Only the rows present in BOTH samples can be compared; the rest were mounted or unmounted by
+        // the virtualiser as the list scrolled, which says nothing at all about their text.
+        const shared = Object.keys(before).filter(id => id in after);
+        const changed = shared.filter(id => before[id] !== after[id]);
+        record('the drive changed no row text', shared.length > 0 && changed.length === 0,
+            `compared ${shared.length} rows present in both samples, changed=${changed.length}` + (changed.length ? ` ${JSON.stringify(changed.slice(0, 2).map(id => [before[id], after[id]]))}` : ''));
     });
 
     const failed = results.filter(r => !r.ok).length;
