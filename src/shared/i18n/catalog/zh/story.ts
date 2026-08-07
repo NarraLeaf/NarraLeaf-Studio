@@ -33,7 +33,7 @@ export const story = {
             other: "章节里的 {count} 个场景会一并删除",
         },
         deleteSceneConfirm: "删除场景“{name}”？",
-        deleteSceneDetail: "此操作将移除该场景及其所有区块，跳转到它的行会失去指向",
+        deleteSceneDetail: "该场景及其全部区块会被移除，跳转到它的行将失去目标",
     },
     script: {
         exportScene: "导出为脚本…",
@@ -176,7 +176,7 @@ export const story = {
             noRoutes: "没有路线。",
             noDecisions: "没有分支选择",
             stopsHere: "在此中断",
-            stopsHereTitle: "路径在此停止，但这里并不是结局：它绕回了已访问过的场景，或某个分支没有后续内容",
+            stopsHereTitle: "路径在此终止，但这里不是结局：它回到了已经过的场景，或者某个分支没有后续内容",
             diagnostics: {
                 unreachableEndings: {
                     other: "{count} 个结局没有路线到达",
@@ -619,13 +619,13 @@ export const story = {
         loadingScene: "正在加载故事场景…",
         notFound: "未找到故事或场景",
         addRow: "点击或输入以添加一行…",
-        emptyHint: "这个场景是空的。在新行里输入 {trigger} 挑一条指令，或者直接写一句旁白",
+        emptyHint: "该场景为空。在新行中输入 {trigger} 选择一条指令，或者输入一段旁白",
         emptyExampleBg: "设置背景",
         emptyExampleShow: "让角色登场",
         emptyExampleSay: "给他一句台词",
         emptyOpenManual: "打开指令手册",
         /** 场景里有行、但筛选把它们全挡住了——和「场景是空的」是两回事，不能共用一句提示。 */
-        filteredEmpty: "没有匹配的行，请调整筛选规则后再试",
+        filteredEmpty: "没有匹配当前筛选条件的行",
         filteredEmptyClear: "显示全部",
         variablesPanel: "故事变量",
         snapshotsPanel: "场景快照",
@@ -777,8 +777,8 @@ export const story = {
         // 「@选项 要回头吗？」下面挂着一串「选项 …」，读起来像同一种东西套了两层。英文本来就是
         // Menu/Option 两个词，这里只是把中文名对回去。
         menu: { label: "菜单", detail: "让玩家做出选择" },
-        repeat: { label: "重复", detail: "按设定次数重复执行所含动作——按条件循环请用 /until" },
-        until: { label: "直到", detail: "重复执行所含动作，直到条件成立为止——每轮开始前检查" },
+        repeat: { label: "重复", detail: "按设定次数重复执行所含动作。按条件循环请用 /until" },
+        until: { label: "直到", detail: "重复执行所含动作，直到条件成立。条件在每轮开始前检查" },
         break: { label: "跳出", detail: "跳出本行所在的重复组" },
         parallel: { label: "并行", detail: "同时执行所含动作" },
         race: { label: "竞速", detail: "全部执行，最先完成者结束" },

@@ -139,12 +139,12 @@ export const wizard = {
             pickPackage: "第一步：选择要解包的 .nlspkg 文件",
             pickFolder: "第二步：选择解包到哪个文件夹",
         },
-        working: "等待你选择安装包和目标文件夹，两个都选好之后才开始解包",
+        working: "等待选择安装包和目标文件夹。两项都选择后开始解包",
         error: {
             failedTitle: "无法导入项目",
             generic: "无法导入该项目安装包",
             notAProjectTitle: "这不是 NarraLeaf Studio 项目",
-            notAProject: "安装包已解包，但其中没有 Studio 项目文件。已解包的内容位于 {path}。请确认拿到的文件是否正确，然后重试",
+            notAProject: "安装包已解包，但其中没有 Studio 项目文件。已解包的内容位于 {path}。请确认该文件是否正确，然后重试",
         },
     },
     source: {

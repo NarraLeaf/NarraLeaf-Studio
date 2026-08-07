@@ -113,9 +113,9 @@ export const lint = {
         variablesRandomOutsideAssignment: {
             title: "Random outside an assignment",
             description: "A random value somewhere it is re-rolled instead of kept",
-            message: "{fn}() is re-rolled every time this condition is tested, so the branch can change on its own. Roll it once with /set, then test that variable",
-            messageChoiceOption: "{fn}() is re-rolled every time the menu draws, so this option will flicker. Roll it once with /set, then test that variable",
-            messageInterpolation: "{fn}() is re-rolled every time this line draws, so the value keeps changing. Roll it once with /set, then show that variable",
+            message: "{fn}() is re-rolled every time this condition is tested, so the branch can change between checks. Roll it once with /set, then test that variable",
+            messageChoiceOption: "{fn}() is re-rolled every time the menu draws, so this option flickers. Roll it once with /set, then test that variable",
+            messageInterpolation: "{fn}() is re-rolled every time this line draws, so the value changes on every redraw. Roll it once with /set, then show that variable",
         },
         textOverlong: {
             title: "Overlong line",

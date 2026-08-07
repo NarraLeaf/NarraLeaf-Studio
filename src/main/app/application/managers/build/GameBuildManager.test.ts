@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import { forgetWorkspaceFreeze, reportWorkspaceFreeze } from "../../utils/workspaceFreeze";
 import {
+    androidLacksPlayPackage,
+    androidOutputNames,
     deriveGameAppId,
     GameBuildManager,
     gameFusesForPlatform,
@@ -68,6 +70,51 @@ describe("isMobileTarget", () => {
         expect(isMobileTarget({ platform: "windows", ...formats })).toBe(false);
         expect(isMobileTarget({ platform: "macos", ...formats })).toBe(false);
         expect(isMobileTarget({ platform: "linux", ...formats })).toBe(false);
+    });
+});
+
+/**
+ * What the repack job's `android.outputs` holds for each selection. This is the
+ * whole difference between "Android builds an APK" and "Android builds the two
+ * packages the author asked for", and the names have to match what the artifact
+ * preview promised - so they are asserted literally rather than through the
+ * helper that produced them.
+ */
+describe("androidOutputNames", () => {
+    it("names only the packages the target selected", () => {
+        expect(androidOutputNames(["apk"], "MyGame", "1.2.0"))
+            .toEqual({ apk: "MyGame-1.2.0-android.apk" });
+        expect(androidOutputNames(["aab"], "MyGame", "1.2.0"))
+            .toEqual({ aab: "MyGame-1.2.0-android.aab" });
+    });
+
+    it("carries both when both were selected, off the one repack", () => {
+        expect(androidOutputNames(["apk", "aab"], "MyGame", "1.2.0")).toEqual({
+            apk: "MyGame-1.2.0-android.apk",
+            aab: "MyGame-1.2.0-android.aab",
+        });
+    });
+
+    it("ignores a format Android does not emit, leaving nothing to write", () => {
+        // Not a shape the dialog can send, but a stored selection or a non-UI
+        // caller can. Answering "nothing" is what lets buildMobileJob refuse it
+        // out loud instead of packing the payload and writing no file.
+        expect(androidOutputNames(["zip"], "MyGame", "1.2.0")).toEqual({});
+    });
+});
+
+describe("androidLacksPlayPackage", () => {
+    it("is true only for an Android target building an APK and no AAB", () => {
+        expect(androidLacksPlayPackage([{ platform: "android", formats: ["apk"] }])).toBe(true);
+        expect(androidLacksPlayPackage([{ platform: "android", formats: ["apk", "aab"] }])).toBe(false);
+        expect(androidLacksPlayPackage([{ platform: "android", formats: ["aab"] }])).toBe(false);
+    });
+
+    it("is false when nothing is building for Android at all", () => {
+        // The warning is about the Android artifact; an iOS or desktop build has
+        // no opinion about Google Play.
+        expect(androidLacksPlayPackage([{ platform: "ios", formats: ["ipa"] }])).toBe(false);
+        expect(androidLacksPlayPackage([])).toBe(false);
     });
 });
 

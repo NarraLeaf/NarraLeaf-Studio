@@ -20,7 +20,7 @@ export const uiEditor = {
         deleteSurface: "Delete {label}",
         surfaceActions: "{label} actions",
         deleteConfirm: "Delete {label}?",
-        deleteDetail: "This will remove all elements in this {label}.",
+        deleteDetail: "All elements in this {label} are removed.",
         duplicateFailed: "Page could not be duplicated.",
         pageValidationHint: "Check the page name and size before creating it.",
         gameUiSlotHint: "Select an available Game UI slot before creating it.",
@@ -107,6 +107,26 @@ export const uiEditor = {
             bringForward: "Bring forward",
             sendBackward: "Send backward",
         },
+    },
+    // One home for the eight command names: the canvas toolbar, the canvas context menu and the
+    // outline context menu all render the same words, so they are not repeated per surface.
+    align: {
+        label: "Align",
+        distribute: "Distribute",
+        left: "Align left",
+        horizontalCenter: "Center horizontally",
+        right: "Align right",
+        top: "Align top",
+        verticalCenter: "Center vertically",
+        bottom: "Align bottom",
+        distributeHorizontal: "Distribute horizontally",
+        distributeVertical: "Distribute vertically",
+    },
+    preview: {
+        label: "Screen preview",
+        aspect: "Aspect ratio",
+        safeArea: "Safe area",
+        off: "Off",
     },
     templateStore: {
         open: "Start from a template",

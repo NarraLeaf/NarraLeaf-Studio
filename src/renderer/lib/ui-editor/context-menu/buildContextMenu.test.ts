@@ -52,6 +52,7 @@ function noopActions() {
     return {
         hideMenu: vi.fn(),
         arrange: vi.fn(),
+        align: vi.fn(),
         insertType: vi.fn(),
         paste: vi.fn(),
         copy: vi.fn(),

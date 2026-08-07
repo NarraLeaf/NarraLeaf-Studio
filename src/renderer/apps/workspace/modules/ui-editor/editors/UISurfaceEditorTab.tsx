@@ -10,7 +10,7 @@ import {
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
-import { MousePointer2, Move, Play, Magnet, ChevronDown, PanelsTopLeft } from "lucide-react";
+import { MousePointer2, Move, Play, Magnet, PanelsTopLeft } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { ContextMenu, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -38,6 +38,8 @@ import {
     useViewportTransform,
     useSmartSnapEnabled,
     useSmartSnapDetailSettings,
+    usePreviewAspectId,
+    usePreviewSafeAreaId,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
 import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
 import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceImageDrop";
@@ -48,6 +50,9 @@ import {
     SurfaceEditorToolbarSegButton,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
 import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceSnapSettingsMenu";
+import { SurfaceAlignTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceAlignMenu";
+import { SurfacePreviewFramesTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
+import { SurfacePreviewFramesOverlay } from "@/lib/ui-editor/preview/SurfacePreviewFramesOverlay";
 import { listInsertPaletteModules } from "@/lib/ui-editor/widget-modules/insertPalette";
 import { MOVEABLE_DOUBLE_CLICK_TARGET_SELECTOR } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 import {
@@ -144,6 +149,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const viewport = useViewportTransform(stateService);
     const smartSnapEnabled = useSmartSnapEnabled(stateService);
     const smartSnapDetail = useSmartSnapDetailSettings(stateService);
+    const previewAspectId = usePreviewAspectId(stateService);
+    const previewSafeAreaId = usePreviewSafeAreaId(stateService);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
     const widgetModules = useMemo(() => listInsertPaletteModules(surface), [surface]);
     const deferredDocumentVersion = useDeferredValue(documentVersion);
@@ -604,7 +611,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         };
     }, [handleSurfaceDoubleClick, active]);
 
-    if (!surface) {
+    // `stateService` is null only while the workspace context is, and `surface` is read through
+    // that same context - so a surface implies a state service. Guarding both here is what lets the
+    // toolbar below use it without a null branch: the alternative is a disabled twin control that
+    // can never render but still has to be written, styled and translated.
+    if (!surface || !stateService) {
         return (
             <div className="h-full flex items-center justify-center text-sm text-fg-subtle">
                 {isComponentEdit ? t("uiEditor.editor.componentNotFound") : t("uiEditor.editor.interfaceNotFound")}
@@ -667,19 +678,25 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 active={smartSnapEnabled}
                                 onClick={handleToggleSmartSnap}
                                 title={t("uiEditor.snap.tip")}
-                                disabled={!stateService}
                                 aria-pressed={smartSnapEnabled}
                             >
                                 <Magnet className="h-4 w-4" />
                             </SurfaceEditorToolbarSegButton>
-                            {stateService ? (
-                                <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} />
-                            ) : (
-                                <SurfaceEditorToolbarSegButton type="button" disabled title={t("uiEditor.snap.settings")} aria-label={t("uiEditor.snap.settings")}>
-                                    <ChevronDown className="h-4 w-4" />
-                                </SurfaceEditorToolbarSegButton>
-                            )}
+                            <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} />
                         </SurfaceEditorToolbarButtonGroup>
+                        <SurfaceAlignTrigger
+                            surfaceId={surface.id}
+                            documentService={documentService}
+                            stateService={stateService}
+                            readOnly={readOnly.active}
+                            readOnlyReason={readOnly.reason}
+                            revision={`${documentVersion}:${selectionVersion}`}
+                        />
+                        <SurfacePreviewFramesTrigger
+                            stateService={stateService}
+                            aspectId={previewAspectId}
+                            safeAreaId={previewSafeAreaId}
+                        />
                         <div className="mx-1 h-6 w-px bg-fill" />
                         <button
                             type="button"
@@ -735,6 +752,13 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         ) : null}
                         <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
                             {surfaceContent}
+                            {/* Design-space reference frames, under the diagnostics and interaction layers. */}
+                            <SurfacePreviewFramesOverlay
+                                designSize={surface.designSize}
+                                aspectId={previewAspectId}
+                                safeAreaId={previewSafeAreaId}
+                                viewportScale={viewport.scale}
+                            />
                             {documentService ? (
                                 <SurfaceLayoutDiagnosticMarkers
                                     document={documentService.getDocument()}
