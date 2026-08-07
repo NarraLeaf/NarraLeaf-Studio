@@ -148,3 +148,49 @@ describe("RichTextHistory - bounds", () => {
         expect(plain(history.undo(snap("5")))).toBe("4");
     });
 });
+
+describe("RichTextHistory - lazy snapshots", () => {
+    it("does not take a snapshot for a keystroke that coalesces into the open burst", () => {
+        const history = new RichTextHistory();
+        let taken = 0;
+        const lazy = (text: string) => () => { taken += 1; return snap(text); };
+
+        history.record(lazy(""), { kind: "typing", now: 0 });
+        history.record(lazy("a"), { kind: "typing", now: 50 });
+        history.record(lazy("ab"), { kind: "typing", now: 100 });
+
+        // One entry opened the burst; the other two joined it and their state was never needed. The
+        // caller reads the whole field out of the DOM to build one of these, so "never needed" is the
+        // difference between paying that on one keystroke and paying it on every keystroke.
+        expect(taken).toBe(1);
+        expect(history.depth).toBe(1);
+        expect(plain(history.undo(snap("abc")))).toBe("");
+    });
+
+    it("takes one per burst when typing is interrupted", () => {
+        const history = new RichTextHistory();
+        let taken = 0;
+        const lazy = (text: string) => () => { taken += 1; return snap(text); };
+
+        history.record(lazy(""), { kind: "typing", now: 0 });
+        history.record(lazy("a"), { kind: "typing", now: 50 });
+        // Past the idle window: a new burst, so a new entry and a new snapshot.
+        history.record(lazy("ab"), { kind: "typing", now: 50 + RICH_TEXT_COALESCE_IDLE_MS + 1 });
+
+        expect(taken).toBe(2);
+        expect(history.depth).toBe(2);
+    });
+
+    it("records nothing when the thunk reports the field has gone", () => {
+        const history = new RichTextHistory();
+        history.record(() => null, { kind: "structural", now: 0 });
+        expect(history.depth).toBe(0);
+        expect(history.undo(snap("x"))).toBeNull();
+    });
+
+    it("still accepts a plain snapshot", () => {
+        const history = new RichTextHistory();
+        history.record(snap("before"), { kind: "structural", now: 0 });
+        expect(plain(history.undo(snap("after")))).toBe("before");
+    });
+});
