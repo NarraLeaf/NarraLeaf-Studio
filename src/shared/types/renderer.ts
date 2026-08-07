@@ -44,6 +44,7 @@ import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
+import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
@@ -752,6 +753,15 @@ export interface RendererPreloadedInterface {
          * then answers `not-modified` and transfers nothing.
          */
         fetchRemote(url: string, validators?: RemoteAssetValidators): Promise<RequestStatus<RemoteAssetFetchResult>>;
+
+        /**
+         * Ask for a folder and copy the named library files into it.
+         *
+         * The dialog belongs to this call: a folder the renderer picks for itself is granted read
+         * access only, so the copying has to happen on the side that can widen the grant. Cancelling
+         * the dialog is a success carrying `canceled: true`, not a failure.
+         */
+        exportToFolder(entries: AssetExportEntry[]): Promise<RequestStatus<AssetExportResult>>;
     };
 
     /**

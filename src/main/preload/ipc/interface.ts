@@ -24,6 +24,7 @@ import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStu
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
+import type { AssetExportEntry } from "@shared/types/assetExport";
 import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
@@ -591,6 +592,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     assets: {
         fetchRemote: (url: string, validators?: RemoteAssetValidators) =>
             ipcClient.invoke(IPCEventType.assetFetchRemote, { url, validators }),
+        exportToFolder: (entries: AssetExportEntry[]) =>
+            ipcClient.invoke(IPCEventType.assetExportToFolder, { entries }),
     },
 
     puppetRuntimes: {
