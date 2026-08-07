@@ -3464,3 +3464,73 @@ describe("break", () => {
         ]);
     });
 });
+
+describe("diagnostics carry their origin row", () => {
+    it("blames the row for a character whose image cannot be resolved, and names the character not its id", async () => {
+        // The case the Dev Mode error banner exists for: a `/show` naming a character the project no
+        // longer resolves an image for. The blockId is what turns this into "line N" in the banner,
+        // and the message must not carry the id — an author cannot match a UUID to anything they wrote.
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: {
+                    id: "show",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "character", operation: "enter", characterId: "char-ghost" },
+                },
+            }, ["show"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-ghost", name: "Nattou", appearance: EMPTY_APPEARANCE }],
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "warning", blockId: "show", message: "Character image source not found for Nattou." },
+        ]);
+    });
+
+    it("falls back to a name the author typed rather than to the character id", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: {
+                    id: "show",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: {
+                        action: "character",
+                        operation: "enter",
+                        characterId: "6f1b9d0e-0000-4000-8000-000000000000",
+                        objectName: "narrator",
+                    },
+                },
+            }, ["show"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics).toHaveLength(1);
+        expect(compiled.diagnostics[0]?.blockId).toBe("show");
+        expect(compiled.diagnostics[0]?.message).toBe("Character image source not found for narrator.");
+        // The specific regression this guards: the id used to be interpolated straight in.
+        expect(compiled.diagnostics[0]?.message).not.toContain("6f1b9d0e");
+    });
+
+    it("blames the row for an unparseable command", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                bad: {
+                    id: "bad",
+                    kind: "invalid",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { source: "/show nobody" },
+                } as unknown as StoryBlock,
+            }, ["bad"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "error", blockId: "bad", message: "Invalid command, skipped: /show nobody" },
+        ]);
+    });
+});

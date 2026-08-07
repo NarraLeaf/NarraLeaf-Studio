@@ -7,10 +7,6 @@ import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeSt
 import type { GameAppStoryRuntimeBridge } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
 import { SceneFlowCanvas } from "@/apps/workspace/modules/story-flow/SceneFlowCanvas";
-// The same readability band the story editor's nametag uses. Imported rather than restated so an
-// accent that the editor refuses to draw cannot quietly reappear here (both are Studio chrome, both
-// render on the light and the dark surface).
-import { isReadableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
 import {
     branchDeltaFor,
     collectBranchEffects,
@@ -38,6 +34,7 @@ import {
     type StorySceneBlockIndex,
     type StoryTimelineRow,
 } from "./storyRuntimeDebugModel";
+import { buildStoryRowLookups } from "./runtimeIssueModel";
 
 type StoryRuntimeTabId = "variables" | "context" | "timeline" | "scene";
 
@@ -55,33 +52,15 @@ const SCENE_GRAPH_MIN_TITLE_PX = 11.5;
  * (a name, no service) and asset names as the bundle's `assetNames` table, so the panel can read a row
  * exactly as the editor writes it without ever reaching for a workspace service.
  *
- * The accent colour is banded here, at the lookup, rather than where it is painted: the projection's
- * `StoryRowCharacter.color` is documented as "when the surface has one and *it is readable*", so the
- * one place that knows this is Studio chrome is the one place that fills the slot.
+ * The building itself lives in `runtimeIssueModel` because the error banner needs the identical
+ * lookups with no panel in sight — an error that quotes line 37 has to quote it the way this panel
+ * and the editor do, and two copies of the rule would drift with only one of them being watched.
  */
 function useStoryRowLookups(bundle: DevModeBundle, document: StoryDocument, scene: StoryScene | undefined): StoryRowLookups {
-    const charactersById = useMemo(
-        () => new Map((bundle.storyLibrary?.characters ?? []).map(character => [character.id, character])),
-        [bundle.storyLibrary],
+    return useMemo(
+        () => buildStoryRowLookups(bundle, document, scene),
+        [bundle, document, scene],
     );
-    const assetNames = bundle.storyLibrary?.assetNames;
-    return useMemo<StoryRowLookups>(() => ({
-        character: characterId => {
-            const character = charactersById.get(characterId);
-            if (!character) {
-                return null;
-            }
-            const color = character.color;
-            return {
-                name: character.name,
-                ...(color && isReadableAccentColor(color) ? { color } : {}),
-            };
-        },
-        assetName: assetId => assetNames?.[assetId] ?? null,
-        scene,
-        scenes: document.scenes,
-        document,
-    }), [charactersById, assetNames, scene, document]);
 }
 
 type StoryRuntimeDebugPanelProps = {
