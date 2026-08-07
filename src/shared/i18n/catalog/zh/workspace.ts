@@ -271,6 +271,7 @@ export const workspace = {
             audioMarkers: "标记变更",
             surfaceEdit: "界面编辑",
             blueprintEdit: "蓝图编辑",
+            replaceText: "文本替换",
         },
     },
     shell: {
@@ -786,6 +787,17 @@ export const workspace = {
             idle: "可搜索场景、角色、剧情文本、资源与蓝图。",
             empty: "没有匹配结果",
             more: "还有 {count} 条",
+            // 与场景查找栏共用的三个匹配开关，同一条查询在两处含义一致。
+            caseSensitive: "区分大小写",
+            wholeWord: "全词匹配",
+            regex: "使用正则表达式",
+            invalidPattern: "表达式无效",
+            // 全工程替换剧情正文。按钮上的数字是匹配次数，不是行数，也不是列表里显示的条数。
+            replacePlaceholder: "替换为",
+            replaceAll: "替换全部",
+            replaceRow: "替换这一行",
+            // 计划里要改的东西已经被删掉或改过了。替换要么整体生效，要么什么都不做，所以这里直接拒绝。
+            replaceStale: "工程刚刚变过，请重新搜索。",
             // 实体分组排在前面：这个框先回答「打开叫 X 的东西」，再回答「找到写着 X 的那句」。
             groups: {
                 scene: "场景",

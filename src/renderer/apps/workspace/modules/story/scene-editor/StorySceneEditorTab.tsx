@@ -54,13 +54,13 @@ import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider } from "./StoryCommandLineView";
 import {
-    findRangesInText,
     getSegmentSlot,
-    replaceAllInSegment,
     replaceInSegment,
+    replaceRangesInSegment,
     segmentPlainText,
     type StoryFindMatch,
 } from "./storyFindReplace";
+import { compileMatcher } from "@/lib/workspace/services/search/textMatcher";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import {
@@ -416,8 +416,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // the old vocabulary after a language change until something else re-renders the tab.
     useCommandTranslation();
     // Adding, duplicating, reordering and deleting rows write the scene. Reading it, playing from a row,
-    // opening the inspector, changing the row density and using Find all stay live while frozen -
-    // density is editor state, not project data, and Find without Replace only navigates.
+    // opening the inspector, changing the row density and *finding* all stay live while frozen -
+    // density is editor state, not project data, and find on its own only navigates. Replace does
+    // write, and is gated on the guard in both the bar and the callbacks (`replaceCurrentMatch`).
     const freeze = useFreezeGuard();
     const editor = useStorySceneEditorController(tabId, payload);
     // The command reference overlay (WI-2), opened from the header. Local state, not a panel — it is a
@@ -1559,8 +1560,22 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const [findQuery, setFindQuery] = useState("");
     const [findReplacement, setFindReplacement] = useState("");
     const [findCaseSensitive, setFindCaseSensitive] = useState(false);
+    const [findWholeWord, setFindWholeWord] = useState(false);
+    const [findRegex, setFindRegex] = useState(false);
     const [findCursor, setFindCursor] = useState(0);
     const [findFocusToken, setFindFocusToken] = useState(0);
+
+    /**
+     * One compiled matcher for the whole sweep.
+     *
+     * Compiling builds three `RegExp`s, and the sweep below runs over every visible row on every
+     * keystroke - so compiling inside the loop would be three constructions per row per character
+     * typed. This is the same matcher the project search panel replaces through.
+     */
+    const findMatcher = useMemo(
+        () => compileMatcher(findQuery, { caseSensitive: findCaseSensitive, wholeWord: findWholeWord, regex: findRegex }),
+        [findQuery, findCaseSensitive, findWholeWord, findRegex],
+    );
 
     const findMatches = useMemo<StoryFindMatch[]>(() => {
         if (!findOpen || !findQuery) {
@@ -1572,12 +1587,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             if (!slot) {
                 return;
             }
-            for (const range of findRangesInText(segmentPlainText(slot.segment), findQuery, { caseSensitive: findCaseSensitive })) {
+            for (const range of findMatcher.findRanges(segmentPlainText(slot.segment))) {
                 matches.push({ ...range, blockId: row.block.id, rowIndex });
             }
         });
         return matches;
-    }, [editor.visibleRows, findCaseSensitive, findOpen, findQuery]);
+    }, [editor.visibleRows, findMatcher, findOpen, findQuery]);
 
     // A shrinking result set must not leave the cursor pointing past the end.
     const activeFindIndex = findMatches.length === 0 ? 0 : findCursor % findMatches.length;
@@ -1599,21 +1614,33 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         goToMatch((activeFindIndex + delta + findMatches.length) % findMatches.length);
     }, [activeFindIndex, findMatches.length, goToMatch]);
 
+    /**
+     * Replace is a write, and a frozen workspace refuses writes.
+     *
+     * Find stays live while frozen - navigating a past revision's prose is the point of browsing one -
+     * but until this check existed the two replace buttons went straight through to the story service
+     * on a project the author was only meant to be reading. The bar greys them too; this is the half
+     * that holds when something else reaches these callbacks.
+     */
     const replaceCurrentMatch = useCallback(() => {
+        if (freeze.frozen) {
+            return;
+        }
         const match = findMatches[activeFindIndex];
         const block = match ? editor.scene?.blocks[match.blockId] : null;
         const slot = block ? getSegmentSlot(block) : null;
         if (!match || !block || !slot) {
             return;
         }
-        const next = replaceInSegment(slot.segment, match, findReplacement);
+        const plain = segmentPlainText(slot.segment);
+        const next = replaceInSegment(slot.segment, match, findMatcher.expand(plain, match, findReplacement));
         editor.updateBlockPayloads([{ blockId: match.blockId, payload: slot.withSegment(next).payload }]);
         // Stay put: the list re-derives and the cursor lands on whatever now occupies this position,
         // which is the next hit when the replacement no longer matches.
-    }, [activeFindIndex, editor, findMatches, findReplacement]);
+    }, [activeFindIndex, editor, findMatcher, findMatches, findReplacement, freeze.frozen]);
 
     const replaceAllMatches = useCallback(() => {
-        if (findMatches.length === 0) {
+        if (freeze.frozen || findMatches.length === 0) {
             return;
         }
         const byBlock = new Map<StoryBlockId, StoryFindMatch[]>();
@@ -1628,13 +1655,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             if (!block || !slot) {
                 continue;
             }
-            const next = replaceAllInSegment(slot.segment, ranges, findReplacement);
+            // Per hit, not per block: in regex mode `$1` expands against the hit it was found in, so
+            // one line can take a different replacement at every position.
+            const plain = segmentPlainText(slot.segment);
+            const next = replaceRangesInSegment(slot.segment, ranges, range =>
+                findMatcher.expand(plain, range, findReplacement),
+            );
             edits.push({ blockId, payload: slot.withSegment(next).payload });
         }
         // One history entry for the sweep, not one per row.
         editor.updateBlockPayloads(edits);
         setFindCursor(0);
-    }, [editor, findMatches, findReplacement]);
+    }, [editor, findMatcher, findMatches, findReplacement, freeze.frozen]);
 
     const openFind = useCallback(() => {
         setFindOpen(true);
@@ -1982,6 +2014,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     onReplacementChange={setFindReplacement}
                     caseSensitive={findCaseSensitive}
                     onToggleCaseSensitive={() => setFindCaseSensitive(value => !value)}
+                    wholeWord={findWholeWord}
+                    onToggleWholeWord={() => setFindWholeWord(value => !value)}
+                    regex={findRegex}
+                    onToggleRegex={() => setFindRegex(value => !value)}
+                    invalidPattern={findMatcher.error !== undefined}
+                    freeze={freeze}
                     matchCount={findMatches.length}
                     activeMatch={findMatches.length === 0 ? 0 : activeFindIndex + 1}
                     onNext={() => stepMatch(1)}
