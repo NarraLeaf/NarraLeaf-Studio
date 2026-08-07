@@ -35,6 +35,7 @@ import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver
 import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
+import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
@@ -546,6 +547,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     });
     private afterMutateHook: (() => void) | null = null;
     private historySuppressionDepth = 0;
+    private readonly contentRevisions = new UIDocumentContentRevisions();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -610,11 +612,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const needsSave = schemaChanged || normalizedChanged || mainSurfaceChanged || flowLayoutsChanged;
         if (needsSave) {
             await this.save(this.document);
+            this.contentRevisions.reset();
             this.revision = 0;
             this.lastSavedRevision = 0;
             this.setDirty(false);
             return this.document;
         }
+        this.contentRevisions.reset();
         this.revision = 0;
         this.lastSavedRevision = 0;
         this.setDirty(false);
@@ -710,6 +714,22 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     public getRevision(): number {
         return this.revision;
+    }
+
+    /**
+     * A counter for one surface, bumped only when that surface's own content changed.
+     *
+     * {@link getRevision} moves on every edit anywhere in the document, so anything keyed on it
+     * redraws for edits it does not show. The interface panel keeps a live element tree per surface,
+     * which is what makes that difference worth having.
+     */
+    public getSurfaceContentRevision(surfaceId: string): number {
+        return this.contentRevisions.getSurfaceContentRevision(this.getDocument(), this.revision, surfaceId);
+    }
+
+    /** The component-library counterpart of {@link getSurfaceContentRevision}. */
+    public getComponentContentRevision(componentId: string): number {
+        return this.contentRevisions.getComponentContentRevision(this.getDocument(), this.revision, componentId);
     }
 
     public updateElementLayout(
@@ -1390,6 +1410,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 updatedAt: now,
             },
         };
+        this.contentRevisions.reset();
         this.revision = 0;
         this.lastSavedRevision = 0;
         this.setDirty(false);

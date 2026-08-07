@@ -265,6 +265,13 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         });
     }, [runtimeBridge]);
 
+    // Each card asks only about itself, so an edit to one page leaves the other cards' element trees
+    // alone. Without this the panel rebuilds every preview in the project on every keystroke.
+    const getSurfaceContentRevision = useCallback(
+        (surface: UISurface) => documentService?.getSurfaceContentRevision(surface.id) ?? 0,
+        [documentService],
+    );
+
     useEffect(() => {
         if (!documentService || hasEnsuredAppSurface) {
             return;
@@ -566,6 +573,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 surfaces={filteredSurfaces}
                 globalBlueprintCard={globalBlueprintCard}
                 renderSurfacePreview={renderSurfacePreview}
+                getSurfaceContentRevision={getSurfaceContentRevision}
                 onSurfaceClick={handleSurfaceClick}
                 onOpenMenu={handleOpenMenu}
             />
