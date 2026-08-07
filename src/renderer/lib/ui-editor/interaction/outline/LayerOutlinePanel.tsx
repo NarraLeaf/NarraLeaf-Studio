@@ -29,6 +29,7 @@ import {
     OutlineDragPreview,
     OutlineSubtree,
 } from "@/lib/ui-editor/interaction/outline/LayerOutlineRows";
+import { computeOutlineSignature } from "@/lib/ui-editor/interaction/outline/outlineSignature";
 import { useLayerOutlineContextMenus } from "@/lib/ui-editor/interaction/outline/useLayerOutlineContextMenus";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -174,13 +175,22 @@ export function UILayersPanel({
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
 
+    // Redraw for the changes the outline can show, and ignore the rest. See `computeOutlineSignature`
+    // for why: a row is not a cheap `<li>`, it is a dnd-kit draggable, and there are one per layer.
+    const outlineSignatureRef = useRef<string | null>(null);
     useEffect(() => {
+        outlineSignatureRef.current = computeOutlineSignature(documentService.getDocument(), surfaceId);
         return documentService.onDocumentChanged(() => {
+            const next = computeOutlineSignature(documentService.getDocument(), surfaceId);
+            if (next === outlineSignatureRef.current) {
+                return;
+            }
+            outlineSignatureRef.current = next;
             startTransition(() => {
                 setDocVersion(v => v + 1);
             });
         });
-    }, [documentService]);
+    }, [documentService, surfaceId]);
 
     useEffect(() => {
         return stateService.on("selectionChanged", selectionNext => {
