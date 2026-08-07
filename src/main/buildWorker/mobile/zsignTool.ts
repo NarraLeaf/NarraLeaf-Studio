@@ -24,9 +24,9 @@ import path from "path";
 export const ZSIGN_VERSION = "1.1.1";
 
 /**
- * Escape hatch for hosts the vendoring cannot serve — Intel macs above all,
- * which have no upstream asset at v1.1.1. Set it to an absolute path and that
- * binary is used verbatim, on any platform.
+ * Escape hatch for hosts the vendoring cannot serve — Windows and Linux arm64
+ * above all, which have no upstream asset at v1.1.1. Set it to an absolute path
+ * and that binary is used verbatim, on any platform.
  */
 export const ZSIGN_PATH_ENV = "NLS_ZSIGN_PATH";
 
@@ -52,9 +52,18 @@ export type ZsignHostTarget = {
  *
  * Kept in step with the ASSETS table in prepare-codesign-tools.js, and short for
  * the same reason: upstream publishes one asset per row and nothing else.
- * **macOS x64 is absent because upstream has no x64 asset** — an Intel mac can
- * only sign via ZSIGN_PATH_ENV pointing at a self-built binary. Windows and
- * Linux arm64 are absent for the same reason.
+ * Windows and Linux arm64 are absent because there is no asset for them; those
+ * hosts can only sign via ZSIGN_PATH_ENV pointing at a self-built binary.
+ *
+ * **macOS x64 is absent for a stronger reason than a missing asset: Studio is
+ * not shipped for Intel Macs at all** (see .github/workflows/release.yml — the
+ * missing zsign asset was one of the three subsystems behind that decision), so
+ * this function is never called with that pair on a real host. The row stays
+ * `null` rather than being asserted away, because the mapping is keyed on
+ * arguments and a caller is free to ask.
+ *
+ * `arch` here is the *host's* — where zsign runs. The architecture of the game
+ * being signed is a separate axis and never reaches this table.
  */
 export function zsignHostTarget(
     platform: string = process.platform,

@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, LayoutTemplate, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronLeft, LayoutTemplate, RefreshCw } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { Button, EmptyState, Modal, SearchInput, TabStrip } from "@/lib/components/elements";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import type { UIStageSlotId, UISurface, UISurfaceKind } from "@shared/types/ui-editor/document";
-import type { UITemplateRegistryEntry } from "@shared/types/uiTemplateRegistry";
+import type { UITemplateRegistryEntry, UIThemeDescriptor } from "@shared/types/uiTemplateRegistry";
 import { applyUITemplate } from "./applyUITemplate";
 import { UITemplateCard, UITemplateCardSkeleton, type UITemplatePreviewState } from "./UITemplateCard";
+import { UIThemeCard } from "./UIThemeCard";
 
 type UITemplateStoreModalProps = {
     isOpen: boolean;
@@ -53,6 +54,10 @@ export function UITemplateStoreModal({
 }: UITemplateStoreModalProps) {
     const { t, tn } = useTranslation();
     const [entries, setEntries] = useState<UITemplateRegistryEntry[] | null>(null);
+    const [themes, setThemes] = useState<UIThemeDescriptor[]>([]);
+    const [posters, setPosters] = useState<Record<string, string>>({});
+    // null = the browse level; a theme id = looking inside that theme.
+    const [openThemeId, setOpenThemeId] = useState<string | null>(null);
     const [previews, setPreviews] = useState<Record<string, UITemplatePreviewState>>({});
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -98,7 +103,23 @@ export function UITemplateStoreModal({
                 return;
             }
             setEntries(result.data.index.templates);
-            await loadPreviews(result.data.index.templates);
+            const loadedThemes = result.data.index.themes ?? [];
+            setThemes(loadedThemes);
+            // Documents are NOT fetched here: at the browse level a theme is one
+            // poster, and pulling every template's document up front is what made
+            // opening the store cost the whole registry.
+            if (loadedThemes.length > 0) {
+                const posterResult = await getInterface().uiTemplates
+                    .fetchThemePreviews(loadedThemes.map(theme => theme.id));
+                if (posterResult.success) {
+                    setPosters(Object.fromEntries(
+                        posterResult.data.map(p => [p.id, `data:${p.mime};base64,${p.dataBase64}`]),
+                    ));
+                }
+            } else {
+                // A registry with no themes has one flat shelf, as before.
+                await loadPreviews(result.data.index.templates);
+            }
         } finally {
             setLoading(false);
         }
@@ -120,9 +141,24 @@ export function UITemplateStoreModal({
         }
     }, [initialKind, isOpen]);
 
+    /** Enter a theme, fetching its screens' documents on the way in. */
+    const openTheme = useCallback(async (themeId: string) => {
+        setOpenThemeId(themeId);
+        setQuery("");
+        const inTheme = (entries ?? []).filter(entry => entry.theme === themeId);
+        await loadPreviews(inTheme);
+    }, [entries, loadPreviews]);
+
+    const themed = useMemo(() => {
+        const all = entries ?? [];
+        // With no themes published the store is one flat shelf; with themes it is
+        // always scoped to the one being looked at.
+        return themes.length === 0 ? all : all.filter(entry => entry.theme === openThemeId);
+    }, [entries, openThemeId, themes.length]);
+
     const inKind = useMemo(
-        () => (entries ?? []).filter(entry => entry.surface.kind === kind),
-        [entries, kind],
+        () => themed.filter(entry => entry.surface.kind === kind),
+        [themed, kind],
     );
 
     const filtered = useMemo(() => {
@@ -196,7 +232,7 @@ export function UITemplateStoreModal({
 
     const tabs = useMemo(() => {
         const count = (target: UISurfaceKind) =>
-            (entries ?? []).filter(entry => entry.surface.kind === target).length;
+            themed.filter(entry => entry.surface.kind === target).length;
         // An element, not a bare string: TabStrip lays its children out with `gap`,
         // and two adjacent strings collapse into one anonymous flex item — which is
         // how the count came to be printed hard against the label ("Page3").
@@ -207,7 +243,11 @@ export function UITemplateStoreModal({
             { id: "appSurface", label: t("uiEditor.surfaceKind.page"), badge: shelfCount("appSurface") },
             { id: "stageSurface", label: t("uiEditor.surfaceKind.gameUi"), badge: shelfCount("stageSurface") },
         ];
-    }, [entries, t]);
+    }, [entries, themed, t]);
+
+    /** True while looking at the shelf of themes rather than inside one. */
+    const browsingThemes = themes.length > 0 && openThemeId === null;
+    const openTheme_name = themes.find(theme => theme.id === openThemeId)?.name ?? "";
 
     const body = () => {
         if (error) {
@@ -228,6 +268,36 @@ export function UITemplateStoreModal({
             return (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
                     {[0, 1, 2, 3].map(index => <UITemplateCardSkeleton key={index} />)}
+                </div>
+            );
+        }
+        if (browsingThemes) {
+            const needle = query.trim().toLowerCase();
+            const shown = needle
+                ? themes.filter(theme => `${theme.name} ${theme.description} ${theme.publisher}`
+                    .toLowerCase().includes(needle))
+                : themes;
+            if (shown.length === 0) {
+                return (
+                    <EmptyState
+                        icon={<LayoutTemplate className="h-6 w-6" />}
+                        title={needle
+                            ? t("uiEditor.templateStore.emptyFiltered")
+                            : t("uiEditor.templateStore.empty")}
+                    />
+                );
+            }
+            return (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3">
+                    {shown.map(theme => (
+                        <UIThemeCard
+                            key={theme.id}
+                            theme={theme}
+                            posterUrl={posters[theme.id] ?? null}
+                            count={(entries ?? []).filter(entry => entry.theme === theme.id).length}
+                            onOpen={() => void openTheme(theme.id)}
+                        />
+                    ))}
                 </div>
             );
         }
@@ -270,13 +340,34 @@ export function UITemplateStoreModal({
         >
             <div className="flex h-[30rem] flex-col">
                 <div className="flex items-center gap-2">
-                    <TabStrip
-                        tabs={tabs}
-                        activeId={kind}
-                        onChange={(id: string) => setKind(id as UISurfaceKind)}
-                        size="sm"
-                        className="min-w-0 flex-1"
-                    />
+                    {browsingThemes ? (
+                        // No shelves to switch between at the browse level, and the
+                        // strip's bottom rule is what separates header from content,
+                        // so an empty one keeps the seam where the eye expects it.
+                        <div className="min-w-0 flex-1 border-b border-edge pb-2 text-sm text-fg">
+                            {t("uiEditor.templateStore.themesTitle")}
+                        </div>
+                    ) : (
+                        <>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setOpenThemeId(null)}
+                                title={t("uiEditor.templateStore.themesBack")}
+                                aria-label={t("uiEditor.templateStore.themesBack")}
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                                {openTheme_name}
+                            </Button>
+                            <TabStrip
+                                tabs={tabs}
+                                activeId={kind}
+                                onChange={(id: string) => setKind(id as UISurfaceKind)}
+                                size="sm"
+                                className="min-w-0 flex-1"
+                            />
+                        </>
+                    )}
                     <Button
                         variant="ghost"
                         size="sm"
@@ -293,7 +384,9 @@ export function UITemplateStoreModal({
                     <SearchInput
                         value={query}
                         onChange={event => setQuery(event.target.value)}
-                        placeholder={t("uiEditor.templateStore.search")}
+                        placeholder={browsingThemes
+                            ? t("uiEditor.templateStore.searchThemes")
+                            : t("uiEditor.templateStore.search")}
                         size="sm"
                         fullWidth
                     />
