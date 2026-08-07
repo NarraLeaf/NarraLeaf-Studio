@@ -37,10 +37,11 @@ export function useFileMenu(): void {
             : recentProjects.map<ActionDefinition>(project => ({
                 id: `${OPEN_RECENT_SUBMENU_ID}:${project.path}`,
                 label: formatRecentProjectLabel(project),
-                // A switch, exactly as in the title-bar switcher: this window goes once the chosen
-                // project is up. Picking the project this window already holds only focuses it -
-                // the list does not hide the current project, and main refuses to retire a window
-                // into itself.
+                // A switch: this window goes once the chosen project is up. Unlike the title-bar
+                // switcher, which opens the project alongside - this is the File menu's "leave for
+                // another project" entry, and it sits beside Close. Picking the project this window
+                // already holds only focuses it - the list does not hide the current project, and
+                // main refuses to retire a window into itself.
                 onClick: () => { void openRecentProject(project.path, { replaceCurrentWindow: true }); },
             }));
 
