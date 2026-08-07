@@ -1,6 +1,7 @@
 import { ImageOff } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { UIThemeDescriptor } from "@shared/types/uiTemplateRegistry";
+import { resolveLocalizedText } from "@shared/types/localizedText";
 
 type UIThemeCardProps = {
     theme: UIThemeDescriptor;
@@ -19,7 +20,10 @@ type UIThemeCardProps = {
  * exactly one thing you can do to it: look inside.
  */
 export function UIThemeCard({ theme, posterUrl, count, onOpen }: UIThemeCardProps) {
-    const { t, tn } = useTranslation();
+    const { t, tn, locale } = useTranslation();
+    // A theme ships its own translations; Studio's catalogs cannot carry text
+    // for content published after this build.
+    const text = resolveLocalizedText(theme, locale);
 
     return (
         <button
@@ -31,7 +35,7 @@ export function UIThemeCard({ theme, posterUrl, count, onOpen }: UIThemeCardProp
                 {posterUrl ? (
                     <img
                         src={posterUrl}
-                        alt={theme.name}
+                        alt={text.name}
                         className="h-full w-full object-cover"
                         draggable={false}
                     />
@@ -42,8 +46,8 @@ export function UIThemeCard({ theme, posterUrl, count, onOpen }: UIThemeCardProp
                 )}
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
-                <div className="truncate text-sm font-medium text-fg" title={theme.name}>
-                    {theme.name}
+                <div className="truncate text-sm font-medium text-fg" title={text.name}>
+                    {text.name}
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5 text-2xs text-fg-subtle">
                     <span>{tn("uiEditor.templateStore.themeScreens", count)}</span>
@@ -54,8 +58,8 @@ export function UIThemeCard({ theme, posterUrl, count, onOpen }: UIThemeCardProp
                         </>
                     ) : null}
                 </div>
-                {theme.description ? (
-                    <p className="line-clamp-3 text-xs leading-relaxed text-fg-muted">{theme.description}</p>
+                {text.description ? (
+                    <p className="line-clamp-3 text-xs leading-relaxed text-fg-muted">{text.description}</p>
                 ) : null}
                 <span className="mt-auto pt-3 text-2xs text-primary">
                     {t("uiEditor.templateStore.themeOpen")}

@@ -1,3 +1,4 @@
+import type { LocalizedTextPack } from "./localizedText";
 import type { UISurfaceKind, UIStageSlotId } from "./ui-editor/document";
 
 /**
@@ -54,6 +55,8 @@ export type UIThemeDescriptor = {
     preview?: string;
     /** How many templates in the index declare this theme. */
     templateCount: number;
+    /** Per-locale name / description; see {@link LocalizedTextPack}. */
+    locales?: LocalizedTextPack;
 };
 
 /**
@@ -89,6 +92,8 @@ export type UITemplateRegistryEntry = {
     assets: UITemplateAssetRef[];
     /** The theme this template belongs to; absent on an unthemed template. */
     theme?: string;
+    /** Per-locale name / description; see {@link LocalizedTextPack}. */
+    locales?: LocalizedTextPack;
 };
 
 export type UITemplateRegistryIndex = {

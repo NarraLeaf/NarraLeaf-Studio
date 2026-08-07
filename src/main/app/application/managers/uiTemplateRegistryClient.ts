@@ -17,6 +17,7 @@ import type {
     UITemplateSurfacePlacement,
 } from "@shared/types/uiTemplateRegistry";
 import { isSafeRelativeEntry } from "@shared/utils/pluginManifest";
+import { normalizeLocalizedTextPack } from "@shared/types/localizedText";
 import { resolveDownloadSource } from "@shared/utils/downloadSource";
 import { applyDownloadRewrite } from "./downloadRewrites";
 
@@ -146,6 +147,7 @@ function normalizeUITemplateEntry(raw: unknown): UITemplateRegistryEntry | null 
         preview: preview || undefined,
         surface: normalizeSurfacePlacement(record.surface),
         assets: normalizeAssets(record.assets),
+        locales: normalizeLocalizedTextPack(record.locales),
     };
 }
 
@@ -177,6 +179,7 @@ function normalizeThemeDescriptor(raw: unknown): UIThemeDescriptor | null {
         path,
         preview: preview || undefined,
         templateCount: typeof record.templateCount === "number" ? record.templateCount : 0,
+        locales: normalizeLocalizedTextPack(record.locales),
     };
 }
 
