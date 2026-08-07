@@ -1,6 +1,12 @@
-# A template's asset store holds raw bytes under extension-less, content-addressed
-# names. Git guesses text-vs-binary for those, and a wrong guess on a machine with
-# `core.autocrlf=true` rewrites line endings inside a JPEG or an Ogg — the file
-# still checks out, but its content hash no longer matches the name it is filed
-# under and the asset silently fails to load. Say it outright instead.
+# A template's `content/` tree is copied byte for byte over a freshly written project,
+# so whatever git hands back on checkout is literally what an author receives. Line-ending
+# normalisation has no business in the middle of that: it would mean the template someone
+# gets depends on their `core.autocrlf`, and that the thing shipped is not the thing tested.
+* -text
+
+# Said outright for the asset store as well, because there the damage is silent rather
+# than cosmetic: it holds raw bytes under extension-less, content-addressed names, git has
+# to guess text-vs-binary for those, and a wrong guess rewrites line endings inside a JPEG
+# or an Ogg. The file still checks out — but its content no longer hashes to the name it is
+# filed under, and the asset just fails to load.
 */content/assets/content/** binary
