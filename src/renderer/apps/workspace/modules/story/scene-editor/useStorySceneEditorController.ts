@@ -25,7 +25,8 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
-import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
+import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
+import { writeStoryJumpLine } from "./storyJumpLine";
 import { createBlockForCommand, type ActionCommandId } from "./storyActionCommands";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { buildStoryCommandContext } from "./storyCommandContext";
@@ -72,7 +73,7 @@ import {
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
-import type { EditorMode, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
+import type { EditorMode, InsertSlot, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers, type StoryPasteWizardRequest } from "./useStorySceneClipboardHandlers";
 import { materializePastedRows } from "@/lib/story/paste/storyPasteModel";
 import type { PastePlan, PasteSeparatorChoice, SpeakerMappingTarget } from "@/lib/story/paste/storyPasteTypes";
@@ -1212,6 +1213,80 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setActiveBlockId(parentId);
         window.requestAnimationFrame(() => insertInputRef.current?.focus());
     }, [ensureExpanded, scene]);
+
+    /**
+     * Open a slot with a `/jump` already typed into it — the scene flow map's connect gesture landing
+     * here (see `StorySceneEditorDraftJump`).
+     *
+     * Nothing is written. The line is seeded, the caret sits at its end, and the author's Enter is what
+     * makes it a row — which is the whole point: the map draws a line between two boxes, but only the
+     * editor can show which fork the jump lands under and what guards it, so that is where the author
+     * confirms it. Escape leaves the document untouched.
+     *
+     * `chooserDismissed` because the line arrives complete: an open candidate menu over a finished
+     * command would take the Enter meant to commit it. It is one-shot — the first keystroke the author
+     * types brings completion straight back (see `handleInsertValueChange`), so editing the target or
+     * adding `t=fade` is offered exactly as it is on a hand-typed line.
+     *
+     * Returns whether the slot opened, so a caller can tell a refused draft (frozen workspace, a
+     * container that has since been deleted) from one the author simply escaped.
+     */
+    const startJumpDraft = useCallback((draft: StorySceneEditorDraftJump): boolean => {
+        if (frozen || !scene || !document) {
+            return false;
+        }
+        const line = writeStoryJumpLine(draft.targetSceneId, document.scenes, slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER);
+        if (!line) {
+            return false;
+        }
+        // Inside the arm the gesture started on, when it started on one. The container has to be on
+        // screen or the slot renders nowhere and the author gets no caret at all — the same two
+        // obstacles `startInsertInside` and `revealBlock` each handle one of.
+        const container = draft.insideBlockId ? scene.blocks[draft.insideBlockId] : null;
+        if (draft.insideBlockId && !container) {
+            return false;
+        }
+        let slot: InsertSlot;
+        if (container) {
+            ensureExpanded(container.id);
+            const lastChildId = container.childrenIds[container.childrenIds.length - 1] ?? null;
+            const anchor = lastChildId ? scene.blocks[lastChildId] : null;
+            // The ANCHOR, not just the container: the slot renders after the arm's last child, and a
+            // slot whose anchor row the filter is hiding is closed again the moment it opens (see the
+            // stranded-slot effect). Both are revealed because both have to be on the page — the arm
+            // to be read, its last line to hang the caret off.
+            revealRowInFilter(container);
+            if (anchor) {
+                revealRowInFilter(anchor);
+            }
+            slot = {
+                afterBlockId: lastChildId ?? container.id,
+                focusToken: Date.now(),
+                target: { parentId: container.id, beforeBlockId: null },
+            };
+        } else {
+            // The end of the scene. `afterBlockId: null` with no before-target is the trailing slot the
+            // "add a row" line opens, which is the one anchor no filter and no fold can take away.
+            slot = { afterBlockId: null, focusToken: Date.now() };
+        }
+        slotDiscardedRef.current = false;
+        insertDraftRef.current = line;
+        setEditorMode({ kind: "insert", slot, initialValue: line, chooserDismissed: true });
+        if (container) {
+            setActiveBlockId(container.id);
+        }
+        window.requestAnimationFrame(() => {
+            const input = insertInputRef.current;
+            if (!input) {
+                return;
+            }
+            input.focus();
+            // Past the line, not in front of it: Chromium drops the caret at offset 0 of a field it
+            // focuses for the first time, and a caret before the "/" makes the next keystroke prose.
+            input.setSelectionRange(line.length, line.length);
+        });
+        return true;
+    }, [document, ensureExpanded, frozen, revealRowInFilter, scene, slashAtAlias]);
 
     // Append a menu option to a choice container and open it for text entry.
     const addMenuOption = useCallback((choiceId: StoryBlockId) => {
@@ -2634,7 +2709,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         handleRowTextPaste,
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
-        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
+        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,

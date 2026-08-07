@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import type { Translator } from "@shared/i18n";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
-import { SCENE_FLOW_HANDLE_CLASS } from "./SceneFlowNode";
+import { SCENE_FLOW_CONNECTABLE_HANDLE_CLASS, SCENE_FLOW_HANDLE_CLASS } from "./SceneFlowNode";
 import {
     SCENE_FLOW_BRANCH_HEADER_HEIGHT,
     SCENE_FLOW_BRANCH_ROW_HEIGHT,
@@ -73,16 +73,18 @@ const FORK_HEADER_STYLE: CSSProperties = {
  * wording, the fall-through marker, the broken-jump badge — is the scene node's vocabulary applied
  * one level down, so the map reads as one map.
  */
-export function SceneFlowBranchNode({ data }: NodeProps) {
+export function SceneFlowBranchNode({ data, isConnectable }: NodeProps) {
     const { t, tn } = useTranslation();
     const arm = data as SceneFlowBranchNodeData;
     const headerHeight = arm.showForkHeader ? SCENE_FLOW_BRANCH_HEADER_HEIGHT : 0;
     const label = formatSceneFlowArmLabel(arm, t);
 
     return (
+        // `group` for the handle's hover reveal: React Flow renders a child node as a DOM sibling of
+        // its parent, not inside it, so the scene box's own group never reaches this row.
         <div
             style={{ width: SCENE_FLOW_NODE_WIDTH, height: headerHeight + SCENE_FLOW_BRANCH_ROW_HEIGHT }}
-            className={cn("relative flex flex-col", arm.dimmed && "opacity-30")}
+            className={cn("group relative flex flex-col", arm.dimmed && "opacity-30")}
         >
             {arm.showForkHeader && (
                 <div
@@ -128,13 +130,15 @@ export function SceneFlowBranchNode({ data }: NodeProps) {
             </div>
 
             {/* Keyed by the arm's own id, so the edges the model attributed to this arm start on
-                this row rather than on the scene's single rim handle. */}
+                this row rather than on the scene's single rim handle — and so a line dragged from
+                this row proposes its jump INSIDE this option, which is the only reason an arm-level
+                handle is worth having over the scene's. */}
             <Handle
                 type="source"
                 id={arm.id}
                 position={Position.Right}
                 style={{ top: headerHeight + SCENE_FLOW_BRANCH_ROW_HEIGHT / 2 }}
-                className={cn(SCENE_FLOW_HANDLE_CLASS, "!right-0")}
+                className={cn(isConnectable ? SCENE_FLOW_CONNECTABLE_HANDLE_CLASS : SCENE_FLOW_HANDLE_CLASS, "!right-0")}
             />
         </div>
     );

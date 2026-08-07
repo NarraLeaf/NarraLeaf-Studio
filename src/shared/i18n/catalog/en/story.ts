@@ -250,6 +250,26 @@ export const story = {
         },
         hint: {
             openScene: "Double-click a scene to open it",
+            // Says what the gesture DOES, not just that it exists: the map deliberately does not
+            // write the jump, and an author who expects it to will read the opened editor as a
+            // detour rather than as the point.
+            connect: "Drag between scenes to write a jump",
+        },
+        // A line on the map, and the jumps behind it.
+        edge: {
+            reveal: "Show these jumps",
+            disconnect: "Delete connection",
+            confirmRemove: {
+                one: "Delete the jump from {source} to {target}?",
+                other: "Delete all {count} jumps from {source} to {target}?",
+            },
+            // Names the one thing an author cannot see from the map: a jump is a line in a scene,
+            // possibly under a fork, and deleting the connection deletes those lines.
+            confirmRemoveDetail: {
+                one: "The jump is removed from {source}. This can be undone in the scene editor.",
+                other: "All {count} jumps are removed from {source}. This can be undone in the scene editor.",
+            },
+            confirmRemoveAction: "Delete Jumps",
         },
         action: {
             resetLayout: "Reset Layout",
