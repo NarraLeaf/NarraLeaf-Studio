@@ -1644,14 +1644,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 const { editor: current } = latest();
                 // The trigger typed into an empty dialogue row is not text the row keeps: it is the
                 // author asking for this speaker's own actions, and the scoped insert slot takes over
-                // the line in place. Every other keystroke falls straight through.
+                // the line in place. Every other keystroke falls straight through. Asked BEFORE the
+                // draft is updated, because "was the line empty" is a question about the keystroke
+                // before this one.
                 if (current.startCharacterActionSlot(blockId, value)) {
                     return;
                 }
                 current.resetGoalColumn();
-                current.setEditorMode(mode => mode.kind === "text" && mode.blockId === blockId
-                    ? { ...mode, value, rich }
-                    : mode);
+                // A ref write, not a state write. This used to publish `{ ...mode, value, rich }` —
+                // a new object on every character, so a keystroke re-rendered the controller, this
+                // tab and every row in the window to show one letter landing in a field that renders
+                // itself. Nothing reads the draft on a render path; see `textDraftRef`. This is the
+                // same bail-out the insert slot has always had in `handleInsertValueChange`.
+                current.updateTextDraft(blockId, value, rich);
             },
             pasteIntoRowText: (_blockId, event) => latest().editor.handleRowTextPaste(event),
             commitTextEdit: () => latest().editor.commitTextEdit(),
