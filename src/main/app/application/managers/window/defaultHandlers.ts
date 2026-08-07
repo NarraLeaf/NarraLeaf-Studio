@@ -87,6 +87,7 @@ import {
 import {
     UITemplateFetchBundleHandler,
     UITemplateFetchPreviewsHandler,
+    UITemplateFetchThemePreviewsHandler,
     UITemplateRegistryFetchHandler,
 } from "./handlers/uiTemplateAction";
 import {
@@ -238,6 +239,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new UITemplateRegistryFetchHandler(),
         new UITemplateFetchBundleHandler(),
         new UITemplateFetchPreviewsHandler(),
+        new UITemplateFetchThemePreviewsHandler(),
         new ProjectTemplateListHandler(),
         new ProjectTemplateScaffoldHandler(),
         new AssetFetchRemoteHandler(),
