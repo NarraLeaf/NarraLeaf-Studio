@@ -57,7 +57,7 @@ export const test = {
     },
     reason: {
         frozen: "工作区冻结时不可用",
-        alreadyRunning: "已有一项在运行",
+        alreadyRunning: "已有测试正在运行",
     },
     console: {
         channel: "测试",
@@ -70,12 +70,12 @@ export const test = {
         failed: "{title} 失败",
         skipped: "{title} 已跳过",
         cancelled: "{title} 已取消",
-        errored: "{title} 没能跑起来",
+        errored: "{title} 未能运行",
     },
     builtin: {
         projectDiagnostics: {
             title: "工程诊断",
-            description: "把工程检查的全部规则作为一项测试跑一遍",
+            description: "将工程检查的全部规则作为一项测试运行",
             summary: {
                 passed: "没有发现问题",
                 failed: "{errors} 个错误，{warnings} 个警告",

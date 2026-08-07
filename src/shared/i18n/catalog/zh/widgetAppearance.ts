@@ -138,7 +138,7 @@ export const widgetAppearance = {
         when: "当",
         toggleTitle: "要求 {condition} = true（循环：未设 → true → false）",
         overridesTitle: "状态覆盖（高级）",
-        overridesHint: "只覆盖单一状态（hover/active/disabled/focused）时请用模块标题栏。同一属性以最后匹配的行为准",
+        overridesHint: "只覆盖单一状态（hover/active/disabled/focused）时请使用模块标题栏。同一属性以最后匹配的行为准",
         conditionalRows: "条件行",
         removeRow: "移除行",
         addRowManually: "手动添加行",

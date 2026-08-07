@@ -34,7 +34,7 @@ export const pluginPermission = {
         type: "Plugin API Permission Request",
         title: "{plugin} requests {capability}",
         body1: "Once approved, this plugin can call the Studio API it asked for.",
-        body2: "Only approve if it needs this for the action you started.",
+        body2: "Approve only if this is required for the action you started.",
     },
     trust: {
         type: "Plugin Trust Request",
