@@ -1,12 +1,14 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "@shared/types/uiTemplateRegistry";
-import { UI_TEMPLATE_MAX_PREVIEWS_PER_REQUEST } from "@shared/constants/uiTemplateRegistry";
+import {
+    UI_TEMPLATE_INDEX_MAX_AGE_MS,
+    UI_TEMPLATE_MAX_PREVIEWS_PER_REQUEST,
+} from "@shared/constants/uiTemplateRegistry";
 import {
     fetchTemplateBundle,
     fetchTemplateIndex,
     fetchTemplatePreviews,
-    fetchThemePreviews,
     resolveTemplateRegistryUrl,
 } from "../../uiTemplateRegistryClient";
 import { AppWindow } from "../appWindow";
@@ -44,7 +46,7 @@ export class UITemplateFetchBundleHandler extends IPCHandler<IPCEventType.uiTemp
         // ones the trusted registry carries, never addresses supplied by the renderer.
         const registryUrl = resolveTemplateRegistryUrl(window.app.getGlobalState().get("uiTemplates.registryUrl"));
         return this.tryUse(async () => {
-            const index = await fetchTemplateIndex(registryUrl);
+            const index = await fetchTemplateIndex(registryUrl, { maxAgeMs: UI_TEMPLATE_INDEX_MAX_AGE_MS });
             const entry = index.templates.find(template => template.id === data.templateId);
             if (!entry) {
                 throw new Error(`Template is not in the registry: ${data.templateId}`);
@@ -64,7 +66,7 @@ export class UITemplateFetchPreviewsHandler extends IPCHandler<IPCEventType.uiTe
     ): Promise<RequestStatus<UITemplatePreview[]>> {
         const registryUrl = resolveTemplateRegistryUrl(window.app.getGlobalState().get("uiTemplates.registryUrl"));
         return this.tryUse(async () => {
-            const index = await fetchTemplateIndex(registryUrl);
+            const index = await fetchTemplateIndex(registryUrl, { maxAgeMs: UI_TEMPLATE_INDEX_MAX_AGE_MS });
             // As above: the renderer names templates, the index supplies the paths.
             // The cap is on how many one call may ask for, so a renderer cannot turn
             // one message into an unbounded run of requests to the registry host.
@@ -85,10 +87,12 @@ export class UITemplateFetchThemePreviewsHandler extends IPCHandler<IPCEventType
     ): Promise<RequestStatus<UIThemePreview[]>> {
         const registryUrl = resolveTemplateRegistryUrl(window.app.getGlobalState().get("uiTemplates.registryUrl"));
         return this.tryUse(async () => {
-            const index = await fetchTemplateIndex(registryUrl);
+            const index = await fetchTemplateIndex(registryUrl, { maxAgeMs: UI_TEMPLATE_INDEX_MAX_AGE_MS });
             // As elsewhere: the renderer names themes, the index supplies the paths.
             const requested = new Set(data.themeIds.slice(0, UI_TEMPLATE_MAX_PREVIEWS_PER_REQUEST));
-            return fetchThemePreviews(index.themes.filter(theme => requested.has(theme.id)), registryUrl);
+            const themes = index.themes.filter(theme => requested.has(theme.id));
+            const cached = await window.app.uiTemplatePosterCache.getMany(themes, registryUrl);
+            return cached.map(entry => ({ id: entry.id, dataUrl: entry.dataUrl }));
         });
     }
 }
