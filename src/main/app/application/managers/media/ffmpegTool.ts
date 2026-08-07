@@ -21,13 +21,20 @@ import path from "path";
  * comment on the table.
  */
 
-/** Upstream build we vendor. Mirrors FFMPEG_VERSION in project/build/prepare-ffmpeg.js. */
+/**
+ * Prebuilt upstream build we vendor on Windows and Linux. Mirrors FFMPEG_VERSION in
+ * `project/build/prepare-ffmpeg.js`.
+ *
+ * Not the macOS one: that is compiled from the FFmpeg 8.1.2 release tarball and carries the plain
+ * release version. Nothing at runtime reads either — the staged `manifest.json` is where a build's
+ * own version, licence and provenance live — so this is a documentation anchor, not a lookup key.
+ */
 export const FFMPEG_VERSION = "n8.1.2-34-g9b6c8969e0";
 
 /**
- * Escape hatch for hosts the vendoring cannot serve — macOS above all, which has no LGPL build to
- * pin. Set it to a **directory** holding both binaries (not to a single file, as the zsign override
- * does) and they are used verbatim, on any platform.
+ * Escape hatch for hosts the vendoring cannot serve — an Intel Mac above all, which cannot build
+ * the macOS binaries without nasm. Set it to a **directory** holding both binaries (not to a single
+ * file, as the zsign override does) and they are used verbatim, on any platform.
  *
  * Anyone using it on a machine that ships a product build is responsible for the licence of what
  * they point it at.
@@ -57,16 +64,18 @@ export type FfmpegHostTarget = {
 /**
  * Which hosts the vendoring covers.
  *
- * **macOS is absent, and that is a pending decision rather than an oversight.** BtbN/FFmpeg-Builds
- * — the LGPL source used for Windows and Linux — publishes no macOS asset at all, and every
- * mainstream macOS FFmpeg distribution is GPL (evermeet.cx, osxexperts.net, Homebrew's formula, and
- * the popular npm and PyPI wrappers all configure with `--enable-gpl --enable-libx264
- * --enable-libx265`). Two genuinely LGPL macOS builds do exist, and neither is a drop-in: one is
- * current but dynamically linked against a large dependency closure, the other is static but frozen
- * on a 2023 FFmpeg snapshot. Choosing between them is a distribution call for the project to make.
- * Until it is made this row stays empty and conversion reports as unavailable on macOS — the same
- * posture iOS signing already takes on hosts zsign does not serve. The evidence and the two
- * candidates are written up on the ASSETS table in `project/build/prepare-ffmpeg.js`.
+ * **macOS is Apple Silicon only, and that is a toolchain limit rather than a licence one.** There is
+ * no prebuilt LGPL FFmpeg for macOS to pin — BtbN/FFmpeg-Builds, the source used for Windows and
+ * Linux, publishes no macOS asset at all, and every mainstream macOS distribution is GPL
+ * (evermeet.cx, osxexperts.net, Homebrew's formula, and the popular npm and PyPI wrappers all
+ * configure with `--enable-gpl --enable-libx264 --enable-libx265`). So macOS is *compiled* from
+ * pinned source by `project/build/build-ffmpeg-macos.sh` while Studio is packaged, and only for the
+ * building machine's own architecture: an x86_64 target would need nasm to assemble libvpx's SIMD,
+ * which is not in the Command Line Tools. Hence a row for `arm64` and none for `x64` — the same
+ * Apple-Silicon-only shape zsign already has, for its own reason.
+ *
+ * That build is **LGPL v2.1**, where the Windows and Linux ones are v3; the difference is recorded
+ * per platform in the staged `manifest.json` rather than assumed here.
  *
  * Kept in step with the ASSETS table in `project/build/prepare-ffmpeg.js`.
  */
@@ -79,6 +88,9 @@ export function ffmpegHostTarget(
     }
     if (platform === "linux" && arch === "x64") {
         return { platformKey: "linux", executableSuffix: "" };
+    }
+    if (platform === "darwin" && arch === "arm64") {
+        return { platformKey: "darwin", executableSuffix: "" };
     }
     return null;
 }
