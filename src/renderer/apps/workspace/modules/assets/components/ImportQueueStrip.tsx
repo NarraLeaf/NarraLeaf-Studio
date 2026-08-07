@@ -51,28 +51,20 @@ export function ImportQueueStrip({
                     {tn("assets.import.failedCount", state.failures.length)}
                 </span>
                 {/*
-                  * Two lines per failure, name over reason, with the gap between entries carrying
-                  * the grouping. The reason used to live only in `title=`, which for a refusal the
-                  * author can act on ("convert this to .mp4 first") is the same as not saying it:
-                  * the list scrolls, so hovering is not a reading strategy. `title=` is kept for the
-                  * full path, which is the part that does not fit.
+                  * One line per failure: the file name, and nothing else. The reason used to be
+                  * rendered underneath it, which turned a twenty-file drop into a wall of prose in a
+                  * panel column narrow enough to wrap every sentence three times. The reason is the
+                  * import dialog's job now - it says what is wrong *before* anything is copied, while
+                  * the author can still act on it. Here it stays in `title=`, with the full path.
                   */}
                 <ul className="mt-1 max-h-32 overflow-y-auto space-y-1">
                     {state.failures.map(failure => (
                         <li
                             key={failure.path}
+                            className="text-xs text-fg-subtle truncate"
                             title={failure.error ? `${failure.path}\n${failure.error}` : failure.path}
                         >
-                            <div className="text-xs text-fg-subtle truncate">
-                                {basename(failure.path)}
-                            </div>
-                            {failure.error ? (
-                                // Wraps rather than truncating — a reason cut off at the panel edge
-                                // loses exactly the instruction at its end.
-                                <div className="text-2xs text-fg-muted break-words">
-                                    {failure.error}
-                                </div>
-                            ) : null}
+                            {basename(failure.path)}
                         </li>
                     ))}
                 </ul>

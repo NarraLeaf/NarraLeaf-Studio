@@ -22,6 +22,8 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
+import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
+import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
@@ -150,6 +152,10 @@ export enum IPCEventType {
     workspaceClose = "workspace.close",
     psdOpen = "psd.open",
     psdBake = "psd.bake",
+    mediaProbe = "media.probe",
+    mediaConvertStart = "media.convert.start",
+    mediaConvertCancel = "media.convert.cancel",
+    mediaConvertGetStatus = "media.convert.getStatus",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
@@ -1275,6 +1281,58 @@ export type IPCWorkspaceEvents = {
         };
         response: {
             layers: PsdBakedLayer[];
+        };
+    };
+    /**
+     * What is inside a media file, and whether the engine can play it. Read-only: it runs ffprobe
+     * and nothing else, converts nothing, and writes nothing.
+     */
+    [IPCEventType.mediaProbe]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+        };
+        response: {
+            outcome: MediaProbeOutcome;
+        };
+    };
+    /**
+     * Convert one media file, in the shape `gameBuild` uses for a long task: `start` returns a job
+     * id straight away, `getStatus` is polled while it runs, `cancel` stops it.
+     *
+     * Split into three calls rather than one long-running request because a request that does not
+     * answer for four minutes cannot report progress and cannot be called off, and because the work
+     * has to outlive a renderer that reloads.
+     */
+    [IPCEventType.mediaConvertStart]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            request: MediaConvertRequest;
+        };
+        response: {
+            state: MediaConvertStateSnapshot;
+        };
+    };
+    [IPCEventType.mediaConvertCancel]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            jobId: string;
+        };
+        response: {
+            state: MediaConvertStateSnapshot;
+        };
+    };
+    [IPCEventType.mediaConvertGetStatus]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            jobId: string;
+        };
+        response: {
+            state: MediaConvertStateSnapshot;
         };
     };
     [IPCEventType.workspaceSelectFolder]: {

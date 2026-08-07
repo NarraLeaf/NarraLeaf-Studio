@@ -5,7 +5,7 @@ import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
-import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
+import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -13,6 +13,9 @@ import { SearchBox } from "./components/SearchBox";
 import { FilterSystem, type ActiveFilter } from "./components/FilterSystem";
 import { ImportQueueStrip } from "./components/ImportQueueStrip";
 import { ModelImportWizard } from "./components/ModelImportWizard";
+import { MediaImportDialog } from "./components/MediaImportDialog";
+import { MediaConvertAssetDialog } from "./components/MediaConvertAssetDialog";
+import { useMediaAssetSupport } from "./state/useMediaAssetSupport";
 
 import { useAssetData } from "./state/useAssetData";
 import { useMultiSelection } from "./state/useMultiSelection";
@@ -303,7 +306,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const {
         handleCreateGroup, handleCreateTextFile, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
         handleCreateMagicTags, handleApplyMagicTags,
-        modelImportRequest, completeModelImport, cancelModelImport
+        modelImportRequest, completeModelImport, cancelModelImport,
+        mediaImportRequest, completeMediaImport, cancelMediaImport,
+        mediaConvertRequest, handleConvertMedia, finishMediaConvert, cancelMediaConvert
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
         focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup, importQueue
@@ -413,6 +418,27 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         registerClipboardShortcuts: false, // already provided by action shortcuts
     });
 
+    /**
+     * Which assets will not play as they are. Read by both views to draw their mark, and by the
+     * menu to decide whether to offer the conversion.
+     *
+     * Keyed by asset id and never by `Asset` identity: the library edits its records in place, so a
+     * reference to one lives forever and would never look changed.
+     */
+    const mediaSupport = useMediaAssetSupport();
+
+    const canConvertMedia = useMemo(() => {
+        const item = contextMenuTarget?.item;
+        if (!item || contextMenuTarget?.isGroup) {
+            return false;
+        }
+        const asset = item as Asset;
+        if (asset.source !== AssetSource.Local) {
+            return false;
+        }
+        return mediaSupport.get(asset.id)?.state === "convertible";
+    }, [contextMenuTarget, mediaSupport]);
+
     const { menuState, contextMenu, showContextMenu, closeContextMenu } = useAssetsContextMenu({
         clipboard, contextMenuTarget, setContextMenuTarget, selectedItems, isMultiSelectMode,
         handleClearSelection,
@@ -422,6 +448,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleDelete: () => handleDeleteRef.current(),
         handleRename,
         handleReplaceContent: () => handleReplaceContent(),
+        handleConvertMedia: () => handleConvertMedia(),
+        canConvertMedia,
         handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
     });
 
@@ -549,6 +577,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         isNarrowed,
         compactToolbar: !showHeader,
         setAssetsIconToolbarCenter,
+        mediaSupport,
+        handleConvertMedia,
     };
 
     return (
@@ -726,6 +756,25 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     onClose={cancelModelImport}
                     onImport={(selection) => void completeModelImport(selection)}
                 />
+                {/* Mounted only while there is something to ask about, so a run's conversion state
+                    cannot survive into the next import. */}
+                {mediaImportRequest && (
+                    <MediaImportDialog
+                        plan={mediaImportRequest.plan}
+                        onCancel={cancelMediaImport}
+                        onResolve={(resolution) => void completeMediaImport(resolution)}
+                    />
+                )}
+                {/* Mounted only while there is an asset to convert, for the same reason as the
+                    import dialog above: half its state describes a conversion in flight. */}
+                {mediaConvertRequest && (
+                    <MediaConvertAssetDialog
+                        asset={mediaConvertRequest.asset}
+                        record={mediaConvertRequest.record}
+                        onClose={cancelMediaConvert}
+                        onConverted={finishMediaConvert}
+                    />
+                )}
                 <MagicTagDialog
                     visible={magicTagDialogVisible}
                     assets={magicTagAssets}
