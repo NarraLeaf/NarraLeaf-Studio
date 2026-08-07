@@ -6,7 +6,7 @@ export const settings = {
     loading: "正在加载设置…",
     noResults: "没有匹配的设置",
     empty: "暂无可用设置",
-    noneExposed: "当前没有已实装的设置可供配置",
+    noneExposed: "该分区没有可配置的设置",
     invalidValue: "请输入有效的值",
     persistFailed: "保存设置失败",
     resetToDefault: "恢复默认值",
@@ -19,7 +19,7 @@ export const settings = {
         noMatches: "没有匹配的字体",
         loading: "正在读取本机已安装的字体…",
         unavailable: "当前版本无法列出本机字体，上面的预设仍然可用",
-        denied: "Studio 没有获得读取本机字体的许可，请把此窗口切到最前再重新展开列表",
+        denied: "Studio 无法读取本机已安装的字体。请将此窗口切换到前台，然后重新展开列表",
         failed: "读取本机字体失败：{message}",
         notInstalled: "未安装",
     },
@@ -60,7 +60,7 @@ export const settings = {
         },
         developerMode: {
             label: "开发者选项",
-            description: "右键菜单里多出一段，用来复制所点对象的 ID",
+            description: "右键菜单中增加一组操作，用于复制所选对象的 ID",
         },
         themeMode: {
             label: "主题",
@@ -84,7 +84,7 @@ export const settings = {
         },
         reduceMotion: {
             label: "减少动效",
-            description: "关闭 Studio 界面中的动画过渡，不影响你的游戏本身的动画",
+            description: "关闭 Studio 界面中的动画过渡，不影响游戏本身的动画",
         },
         zoomPercent: {
             label: "界面缩放",
@@ -96,7 +96,7 @@ export const settings = {
         },
         editorFontFamily: {
             label: "故事编辑器字体",
-            description: "场景编辑器中故事文本所用的字体，可从本机已安装的字体中挑选",
+            description: "场景编辑器中故事文本使用的字体，可从本机已安装的字体中选择",
             options: {
                 default: "默认",
                 sansSerif: "无衬线",
@@ -110,19 +110,19 @@ export const settings = {
         },
         maxActiveEditors: {
             label: "最大活动编辑器数",
-            description: "同时保持加载、保留滚动位置与焦点的编辑器标签数（{min}-{max}），其余的重新打开时会重新加载",
+            description: "同时保持加载并保留滚动位置与焦点的编辑器标签数（{min}-{max}）。其余标签在重新打开时重新加载",
         },
         blueprintDragConnectExecOutput: {
             label: "从执行输出引脚拖拽创建节点",
-            description: "拖到空白画布松手即可挑选节点，它会被接在该引脚之后",
+            description: "拖到空白画布后松开即可选择节点，该节点接在此引脚之后",
         },
         blueprintDragConnectDataOutput: {
             label: "从数据输出引脚拖拽创建节点",
-            description: "拖到空白画布松手即可挑选节点，菜单只列出能接收该数据类型的节点",
+            description: "拖到空白画布后松开即可选择节点，菜单只列出接受该数据类型的节点",
         },
         blueprintDragConnectInput: {
             label: "从输入引脚拖拽创建节点",
-            description: "拖到空白画布松手即可挑选节点，它的输出会连到该引脚",
+            description: "拖到空白画布后松开即可选择节点，该节点的输出连到此引脚",
         },
         slashAtAlias: {
             label: "用“@”打开动作创建",
@@ -130,7 +130,7 @@ export const settings = {
         },
         localizedCommands: {
             label: "指令跟随界面语言",
-            description: "关掉它，动作创建里的指令名、参数名与取值保持英文。无论显示哪种语言，英文写法始终可用",
+            description: "关闭后，动作创建中的指令名、参数名与取值保持英文。无论显示哪种语言，英文写法始终可用",
         },
         hideParamNames: {
             label: "指令只显示参数值",
@@ -138,7 +138,7 @@ export const settings = {
         },
         storyRowHighlight: {
             label: "高亮故事行",
-            description: "给其中一类行加一层底色，让它和其余的行一眼分开。",
+            description: "给其中一类行加一层底色，使其与其余行区分开。",
             options: {
                 none: "不高亮",
                 script: "高亮对话行",
@@ -206,13 +206,13 @@ export const settings = {
         },
         clearAllStats: {
             label: "清空所有统计数据",
-            description: "抹除所有项目的写作历史、活跃时长和构建历史。从项目本身算出的数字不受影响",
+            description: "清除所有项目的写作历史、活跃时长和构建历史。从项目内容统计得出的数字不受影响",
             action: "清空",
             confirm: "确认清空",
         },
         statusBarVisible: {
             label: "显示状态栏",
-            description: "工作区底部的那一条",
+            description: "工作区底部的状态栏",
         },
         titleBarSearchVisible: {
             label: "显示标题栏搜索框",
@@ -220,9 +220,9 @@ export const settings = {
         },
         backgroundImage: {
             label: "自定义背景图",
-            description: "在工作区背后显示一张你选择的图片",
+            description: "在工作区背后显示指定的图片",
             action: "配置…",
-            needsWorkspace: "必须打开一个工作区才能配置背景图",
+            needsWorkspace: "打开工作区后才能配置背景图",
         },
         keybindings: {
             label: "快捷键",
@@ -231,17 +231,17 @@ export const settings = {
             label: "缓存文件",
         },
         settingsTransfer: {
-            label: "在设备之间搬运设置",
+            label: "在设备之间迁移设置",
         },
         resetWorkspaceLayout: {
             label: "还原工作区布局",
-            description: "把面板、侧栏和打开的编辑器标签恢复成初始状态，不会动到你的工程",
+            description: "把面板、侧栏和已打开的编辑器标签恢复为初始状态。工程内容不受影响",
             action: "还原",
             confirm: "还原布局",
         },
         resetAllPreferences: {
             label: "还原所有设置",
-            description: "把每一项设置都恢复成默认值。工程、工程历史和统计数据都不会被动到",
+            description: "把所有设置恢复为默认值。工程、工程历史和统计数据不受影响",
             action: "还原",
             confirm: "全部还原",
         },
@@ -257,15 +257,15 @@ export const settings = {
             buckets: {
                 electronBuilder: {
                     label: "游戏构建工具",
-                    description: "构建游戏时下载的 Electron 与安装器工具",
+                    description: "构建时下载的 Electron 与安装器工具",
                 },
                 buildDependencies: {
                     label: "插件构建文件",
-                    description: "插件为了打进游戏而下载的压缩包",
+                    description: "插件为打包进游戏而下载的压缩包",
                 },
                 browser: {
                     label: "界面缓存",
-                    description: "界面为了下次启动更快而留下的东西",
+                    description: "界面为加快下次启动而保留的数据",
                 },
                 pluginIcons: {
                     label: "插件商店缩略图",
@@ -281,7 +281,7 @@ export const settings = {
                 },
                 logs: {
                     label: "日志",
-                    description: "导出诊断文件时用的就是这些",
+                    description: "导出诊断文件时使用的日志",
                 },
             },
         },
@@ -290,27 +290,27 @@ export const settings = {
         export: "导出…",
         import: "导入…",
         apply: "应用",
-        exportHint: "把设置写成一份纯 JSON 文件。工作区背景图、记在提交版本上的署名、最近项目、统计数据和窗口布局都留在这台机器上",
+        exportHint: "把设置写入一份纯 JSON 文件。工作区背景图、提交版本上的署名、最近项目、统计数据和窗口布局仅保留在本机",
         exported: "已保存到 {path}",
         imported: "已应用 {count} 项设置",
-        exportFailed: "设置没能保存",
-        importFailed: "这个文件读不出来",
-        planSummary: "{change} 项会变化，{same} 项本来就一样，{skipped} 项跳过",
-        skippedUnknown: "{key}：这个版本的 Studio 没有这项设置",
+        exportFailed: "设置保存失败",
+        importFailed: "无法读取该文件",
+        planSummary: "{change} 项将变更，{same} 项已相同，{skipped} 项跳过",
+        skippedUnknown: "{key}：当前版本的 Studio 没有这项设置",
         skippedInvalid: "{key}：{reason}",
     },
     network: {
         test: "测试",
         probing: "正在检查…",
-        probeAnswered: "该地址返回了 {status}",
+        probeAnswered: "该地址返回 {status}",
         probeNoAnswer: "没有响应：{error}",
-        probeFailed: "检查没能执行",
+        probeFailed: "检查未能执行",
         rewrites: {
-            hint: "有些下载的地址来自目录文件而不是上面的设置，例如插件的安装包。这里的规则会替换掉那类地址的开头部分。",
-            empty: "没有替换规则，下载会使用它们自带的地址",
+            hint: "部分下载地址来自目录文件而不是上述设置，例如插件的安装包。此处的规则替换这类地址的开头部分。",
+            empty: "没有替换规则，下载使用地址原文",
             add: "添加规则",
-            remove: "删除这条规则",
-            enabled: "启用这条规则",
+            remove: "删除该规则",
+            enabled: "启用该规则",
             fromPlaceholder: "https://github.com/",
             toPlaceholder: "https://your-mirror.example/gh/",
         },

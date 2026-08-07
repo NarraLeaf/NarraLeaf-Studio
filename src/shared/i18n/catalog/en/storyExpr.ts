@@ -17,18 +17,18 @@ export const storyExpr = {
         unknownQualifiedVariable: "No \"{name}\" in the {scope} scope.",
         unknownScopePrefix: "\"{prefix}\" is not a scope. Use scene, saved or persis.",
         unknownFunction: "There is no \"{name}\" function.",
-        badArity: "{fn} takes {expected} argument(s), not {received}.",
+        badArity: "Wrong argument count for {fn}: {received} given, {expected} expected.",
         unknownVisitedTarget: "{call} does not know anything called \"{name}\".",
         unknownBlueprint: "There is no story value blueprint named \"{name}\".",
         blueprintTakesNoArguments: "\"{name}\" is a blueprint, and a blueprint call takes no arguments.",
-        ambiguousReference: "More than one thing is called \"{name}\" — rename one.",
+        ambiguousReference: "More than one thing is called \"{name}\". Rename one of them.",
         blueprintShadowsFunction: "\"{name}\" is a built-in function, so it cannot also name a blueprint. Rename the blueprint, or write '{name}'() to call it.",
     },
     /** Checks the *command line* adds on top of parsing, where the slot expects a particular shape. */
     check: {
         notBoolean: "A condition has to be a true/false test, like gold >= 100.",
         typeMismatch: "This produces {received}, but the variable holds {expected}.",
-        notConstant: "A default cannot read another variable; it is set before any of them exist.",
+        notConstant: "A default cannot read another variable. Defaults are set before any variable exists.",
         duplicateVariable: "A variable with this name already exists in this scope.",
         compoundWithoutTarget: "There is no variable here to add to.",
     },
@@ -54,9 +54,9 @@ export const storyExpr = {
         unknownVariable: "No variable named \"{value}\".",
         unknownForm: "{characterName} has no \"{value}\" expression.",
         notPuppetCharacter: "{value} is not drawn by a runtime, so it has no motion or skin to set.",
-        ambiguousName: "More than one thing is called \"{value}\". Rename one.",
-        conflictingParams: "{keys} cannot both be set on one line. Split it in two.",
-        repeatTimesAndUntil: "A repeat runs a set number of times or until a condition, not both. Drop one.",
+        ambiguousName: "More than one thing is called \"{value}\". Rename one of them.",
+        conflictingParams: "{keys} cannot both be set on one line. Split the line in two.",
+        repeatTimesAndUntil: "A repeat runs a set number of times or until a condition, not both. Remove one of them.",
         expressionError: "{message}",
         expressionNotBoolean: "A condition has to be a true/false test, like gold >= 100.",
         // `{variable}` is the assignment target, never the expression source: the variable is the only
@@ -64,9 +64,9 @@ export const storyExpr = {
         // of boolean/number/string here (a `json` target accepts anything and an undecidable
         // expression infers `unknown`, and neither reaches this message), so the articles always read.
         expressionTypeMismatch: "\"{variable}\" holds a {expected}, so it cannot take a {received}.",
-        duplicateVariable: "\"{value}\" already exists. Pick another name, or use /set to change it.",
+        duplicateVariable: "\"{value}\" already exists. Choose another name, or use /set to change its value.",
         unknownTarget: "Nothing on stage is named \"{value}\".",
-        unsupportedOption: "\"{value}\" does not apply here. Try: {allowed}.",
+        unsupportedOption: "\"{value}\" does not apply here. Allowed values: {allowed}.",
         missingCore: "/{token} still needs its {slot}.",
     },
 };

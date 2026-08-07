@@ -355,7 +355,7 @@ export const storyInspector = {
         seekTime: "跳到",
     },
     nvl: {
-        hint: "子行在 NLR NVL 模式下运行，下方的变换效果会在 NVL 图层进入时对其进行动画处理",
+        hint: "子行在 NVL 模式下运行。下方的变换在 NVL 图层进入时播放",
         motionLabel: "NVL 进入动画",
     },
     character: {
@@ -374,7 +374,7 @@ export const storyInspector = {
         puppetParamAdd: "添加参数",
         puppetParamRemove: "移除参数",
         puppetNoParams: "这一行还没有设置任何参数",
-        notPuppetHint: "这个角色由 Studio 绘制，没有运行时状态可设置",
+        notPuppetHint: "该角色由 Studio 绘制，没有可设置的运行时状态",
     },
     asset: {
         missing: "资源缺失",
@@ -432,13 +432,13 @@ export const storyInspector = {
         loopKindTimes: "按次数",
         loopKindUntil: "直到条件成立",
         until: "何时停止",
-        untilHint: "条件为假时不断重复，一旦成立立即停止。每轮开始前检查，因此一开始就成立的条件会让整组一次都不执行",
+        untilHint: "条件为假时重复执行，条件成立时停止。条件在每轮开始前检查，因此初始即成立的条件会使整组一次都不执行",
         breakHint: "跳出本行所在的重复组。不在重复组里时它什么也不做",
         branch: "分支",
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },
     condition: {
-        brokenExpression: "该表达式已无法解析，它引用的变量可能被重命名或删除了。修复前该分支恒为假",
+        brokenExpression: "该表达式无法解析，它引用的变量可能已被重命名或删除。修复之前该分支恒为假",
         clear: "清除条件",
     },
     declaration: {
