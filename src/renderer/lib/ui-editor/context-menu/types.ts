@@ -21,6 +21,8 @@ export type UiEditorContextMenuActions = {
     /** Multi or single: set layout.visible */
     setSelectedVisible: (visible: boolean) => void;
     addSelectionToLeaderGroup: () => void;
+    /** Dissolve the selected groups; their children take their place. */
+    ungroupSelection: () => void;
     addSelectionToComponentLibrary: () => void;
 };
 
@@ -35,6 +37,8 @@ export type BuildCanvasContextMenuInput = {
     actions: UiEditorContextMenuActions;
     /** Leader is first id and is nl.container, multi-select */
     canAddToGroup: boolean;
+    /** At least one selected element is a group that can be dissolved */
+    canUngroup: boolean;
     allowAddToComponentLibrary?: boolean;
 };
 
@@ -56,6 +60,8 @@ export type BuildOutlineContextMenuInput = {
         insertChildInOutline: (type: string) => void;
     };
     canAddToGroup: boolean;
+    /** At least one selected element is a group that can be dissolved */
+    canUngroup: boolean;
     allowAddToComponentLibrary?: boolean;
     /** For insert-child submenu on a row */
     insertParentIdForRow: string | null;
