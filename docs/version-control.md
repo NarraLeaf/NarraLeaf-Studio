@@ -20,7 +20,7 @@ Studio 的版本控制以 [Epic Games Lore](https://github.com/EpicGames/lore) �
 | 能纯离线吗 | **单机能**，已验证；团队场景首次读远端历史要联网 |
 | 原生库能进 Electron 吗 | **能**，Electron 38 直接可用，无需重编 |
 | 需要写服务端包装吗 | **P0 不需要**，见 §5。局域网协作已实现，连接流程见 §5.3.1 |
-| Intel Mac 怎么办 | **VCS 做成可插拔可降级**，Studio 照常全平台分发，见 §7 |
+| Intel Mac 怎么办 | 当时的答案是**可插拔可降级**；后来 Studio 直接**不再发 Intel Mac 宿主**，见 §7 |
 
 ## 1. Lore 架构（够用的最小认知）
 
@@ -800,7 +800,7 @@ clone**，但**连接是两件事，只做第一件会静默地半成功**。
 
 单机场景（P0）完全不涉及这些——所有 fragment 本来就在本地。
 
-## 7. 可插拔与降级 —— Studio 依旧全平台分发
+## 7. 可插拔与降级 —— 缺后端只砍一个功能，不砍整个 app
 
 v0.8.5 官方产物只有四个：
 
@@ -813,7 +813,22 @@ v0.8.5 官方产物只有四个：
 | **`darwin-x64`（Intel Mac）** | ❌ **没有** |
 | **`win32-arm64`** | ❌ **没有** |
 
-**决定：不砍平台，砍能力。** Studio 在所有平台照常分发；没有原生构建的机器上，版本控制这一个功能报告自己不可用，其余功能完全不受影响。
+**当时的决定：不砍平台，砍能力。** 没有原生构建的机器上，版本控制这一个功能报告自己不可用，其余功能完全不受影响。
+
+> **⚠ 后续推翻（Intel Mac 部分）：Studio 不再把 Intel Mac 当宿主平台，只发 Apple Silicon 版。**
+>
+> 降级机制本身没变，也仍然必须留着——`win32-arm64` 还在用它。变的是 `darwin-x64`：那台机器上缺的
+> 不止版本控制，还有 iOS 签名（zsign 不发 macOS x64 资产）和媒体转换（我们的 LGPL ffmpeg 只编
+> arm64），三个子系统里两个不归我们管。作者会在把内容投进工具**之后**一个一个撞上去，而
+> 「这个平台不支持」是一次性的诚实坏消息。Rosetta 也是单向的：x64 能跑在 Apple Silicon 上，arm64
+> 不能跑在 Intel 上，所以 arm64 安装包不是替代品。决定与理由写在
+> [.github/workflows/release.yml](../.github/workflows/release.yml) 顶部。
+>
+> **这说的是 Studio 跑在哪，不是游戏跑在哪。** 作者在 Apple Silicon 上做的游戏仍然可以打给
+> Intel Mac，见 `GAME_BUILD_ARCHS_BY_PLATFORM`（`src/shared/types/gameBuild.ts`）。
+>
+> 所以下表里 `darwin-x64` 那行现在是「不会被命中」而不是「会降级」；本节其余内容照旧适用于
+> `win32-arm64` 与自建库（`LORE_LIB_PATH`）。
 
 ### 为什么必须是动态加载
 

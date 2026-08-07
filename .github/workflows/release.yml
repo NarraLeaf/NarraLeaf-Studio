@@ -1,9 +1,21 @@
 name: Release
 
 # Cuts a downloadable, versioned GitHub Release from a version tag. Push a tag
-# like v0.1.1 and this builds the three desktop installers — Windows x64 and
-# macOS on both architectures — and attaches them to a Release named for the
-# tag, marked as the latest stable.
+# like v0.1.1 and this builds the desktop installers — Windows x64 and macOS
+# Apple Silicon — and attaches them to a Release named for the tag, marked as
+# the latest stable.
+#
+# There is deliberately no macOS x64 installer: Studio is not shipped for Intel
+# Macs. Three of its subsystems have no Intel-Mac implementation and two of them
+# are not ours to fix — @lore-vcs publishes only sdk-arm64-apple-darwin (version
+# control is a core feature), zsign publishes no macOS x64 asset (iOS signing),
+# and our LGPL FFmpeg is compiled host-arch-only (media conversion). Shipping an
+# Intel build would mean an author discovers each gap one at a time, after their
+# work is already inside the tool. Rosetta only runs the other way round, so an
+# arm64 installer is not a substitute either.
+#
+# This is about where *Studio* runs. Games built with Studio still target Intel
+# Macs — see GAME_BUILD_ARCHS_BY_PLATFORM in src/shared/types/gameBuild.ts.
 #
 # Nothing here is code-signed, so every installer is unsigned and the OS will
 # quarantine it on first launch — the same caveat as the nightly builds.
@@ -29,17 +41,13 @@ concurrency:
 jobs:
   build:
     strategy:
-      # One broken target must not hide the results of the other two.
+      # One broken target must not hide the results of the other.
       fail-fast: false
       matrix:
         include:
           - name: windows-x64
             os: windows-latest
             args: --win --x64
-            electron_arch: x64
-          - name: macos-x64
-            os: macos-latest
-            args: --mac --x64
             electron_arch: x64
           - name: macos-arm64
             os: macos-latest
@@ -60,13 +68,17 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      # npm_config_arch is load-bearing on the macos-x64 target: prepare-preview-
-      # runner.js stages node_modules/electron/dist into resources/, and that copy
-      # becomes the Electron runtime the packaged Studio ships. Electron's installer
-      # honours npm_config_arch, so without this the x64 job — running on an arm64
-      # runner — would embed an arm64 runtime in an Intel-Mac installer, where it
-      # cannot execute. --no-immutable because this repo deliberately does not
-      # commit yarn.lock, so every CI run legitimately writes one.
+      # npm_config_arch pins the Electron runtime to the *target's* architecture
+      # rather than the runner's: prepare-preview-runner.js stages
+      # node_modules/electron/dist into resources/, and that copy becomes the
+      # Electron runtime the packaged Studio ships. Electron's installer honours
+      # npm_config_arch, so a job whose runner arch differs from its target arch
+      # would otherwise embed a runtime that cannot execute where the installer
+      # lands. Every row above happens to be self-matched today (the macOS x64
+      # target, which was the one that genuinely cross-built, is gone), so this is
+      # now defence against a runner image moving or a row being added — keep it.
+      # --no-immutable because this repo deliberately does not commit yarn.lock,
+      # so every CI run legitimately writes one.
       - name: Install dependencies
         run: yarn install --no-immutable
         env:

@@ -4,11 +4,16 @@ import { isVcsPlatformSupported, VCS_SUPPORTED_PLATFORMS } from "@shared/types/v
 /**
  * Degradation tests for the optional VCS backend.
  *
- * The contract these defend: Studio ships on every platform, and a host with no
- * Lore native build loses version control WITHOUT losing the app. The failure
- * being guarded against is not subtle - `@lore-vcs/sdk` calls `koffi.load()` at
- * module scope, so a static import on such a host throws during main-process
- * startup and takes Studio down entirely.
+ * The contract these defend: a host with no Lore native build loses version
+ * control WITHOUT losing the app. The failure being guarded against is not subtle
+ * - `@lore-vcs/sdk` calls `koffi.load()` at module scope, so a static import on
+ * such a host throws during main-process startup and takes Studio down entirely.
+ *
+ * Of the hosts Studio ships on, only Windows ARM64 still exercises this in the
+ * field. macOS Intel used to be the other, and the missing darwin-x64 backend is
+ * why Studio no longer ships there at all - version control is a core feature, not
+ * a nice-to-have. The darwin-x64 cases below are kept because the gate is keyed on
+ * platform/arch and LORE_LIB_PATH lets a self-built library run anywhere.
  */
 
 afterEach(() => {
@@ -40,7 +45,9 @@ describe("platform support table", () => {
     });
 
     it("excludes the two platforms with no native build", () => {
-        // These are the reason VCS has to be optional at all.
+        // Windows on ARM is why VCS has to be optional at all. Intel Mac was the other, and is
+        // now moot from Studio's side: no darwin-x64 backend is why the platform was dropped as
+        // a Studio host, so the false below is belt-and-braces rather than a live degradation.
         expect(isVcsPlatformSupported("darwin", "x64")).toBe(false); // Intel Mac
         expect(isVcsPlatformSupported("win32", "arm64")).toBe(false); // Windows on ARM
     });
