@@ -23,7 +23,7 @@ export const assets = {
         moreReferences: "…and {count} more",
         unverifiedTitle: "Cannot check what uses these assets",
         unverifiedMessage:
-            "The reference index could not be read, so nothing can say whether these are still in use. Delete them anyway?",
+            "The reference index could not be read, so their usage cannot be determined. Delete them anyway?",
         confirmTitle: {
             one: "Delete {count} item?",
             other: "Delete {count} items?",
@@ -184,14 +184,14 @@ export const assets = {
         title: "Some files need converting",
         /** When nothing on the list can be converted, offering one would be a lie. */
         titleRefusedOnly: "Some files cannot be imported",
-        intro: "Converting puts a new file in the project and leaves your original where it is.",
+        intro: "Converting writes a new file into the project. The original file is not modified.",
         convertingTitle: "Converting",
         convertingIntro: "Whatever finishes is imported.",
         group: {
             lossless: "Can be converted",
-            losslessHint: "The picture and sound stay exactly as they are.",
+            losslessHint: "The picture and sound are unchanged.",
             lossy: "Can be converted, with some quality loss",
-            lossyHint: "The picture and sound are rebuilt, which takes a while and softens them a little.",
+            lossyHint: "The picture and sound are re-encoded, which takes longer and loses some quality.",
             refused: "Cannot be imported",
         },
         /** Row subtitle: what the author ends up with. */
@@ -228,7 +228,7 @@ export const assets = {
      */
     support: {
         needsConverting: "Needs converting",
-        needsConvertingHint: "This file does not play in the game. Convert it and it will.",
+        needsConvertingHint: "This file does not play in the game. Converting it makes it playable.",
         /**
          * The same mark, on an asset pinned to a URL, where there is no button behind it.
          *
@@ -240,13 +240,13 @@ export const assets = {
          */
         needsConvertingRemoteHint:
             "This file does not play in the game, and a file kept as a link cannot be converted. "
-            + "Convert it on your computer and add it as a file.",
+            + "Convert it outside Studio and add the result as a file.",
         notPlayable: "Will not play",
-        notPlayableHint: "This file holds no sound and no picture, so there is nothing to convert.",
+        notPlayableHint: "This file contains no audio and no video, so there is nothing to convert.",
         menuConvert: "Convert File…",
         convertTitle: "Convert File",
         /** Says what changes, because the swap keeps the asset and everything pointing at it. */
-        convertIntro: "The converted file takes the place of this one. Everything that uses it follows.",
+        convertIntro: "The converted file replaces this one, and every reference to it is updated.",
         convertAction: "Convert",
         /** The moment between a finished conversion and the library holding the new bytes. */
         replacing: "Putting the file in place",
@@ -264,7 +264,7 @@ export const assets = {
         title: "Import Models",
         familyStep: "What kind of model is this?",
         /** Said up front because the runtime installer is the step authors expect to be blocked by. */
-        familyNoRuntime: "Nothing is installed here. The drawing runtime is set up later, on the character.",
+        familyNoRuntime: "No runtime is installed here. The drawing runtime is set on the character.",
         family: {
             live2d: "Live2D Cubism",
             live2dHint: "A folder holding a .model3.json, or Cubism 2's model.json.",
@@ -272,7 +272,7 @@ export const assets = {
             spineHint: "A folder holding a .skel or .json skeleton beside its .atlas.",
         },
         folderStep: "Choose a folder",
-        folderHint: "One model's folder, or a folder holding several. Everything inside is searched.",
+        folderHint: "One model's folder, or a folder holding several. The whole folder is searched.",
         chooseFolder: "Choose Folder…",
         changeFolder: "Change…",
         rescan: "Scan again",
@@ -282,7 +282,7 @@ export const assets = {
             other: "{count} models found",
         },
         noneFound: "No {family} models in this folder.",
-        noneFoundHint: "Check the kind chosen above, then the folder. It should be the one the exporter wrote.",
+        noneFoundHint: "Check the kind selected above, then the folder. It must be the folder the exporter wrote.",
         entry: "Entry",
         /** Row subtitle: what the folder holds, before any of it is copied. */
         fileSummary: "{count} files · {size}",
@@ -294,7 +294,7 @@ export const assets = {
             other: "Import {count} models",
         },
         /** Why a row starts unticked, and that ticking it anyway is allowed. */
-        blockedHint: "Models with missing files start unticked. Tick one to import it as it is.",
+        blockedHint: "Models with missing files start unticked. Tick one to import it as-is.",
         problemCount: {
             one: "{count} problem",
             other: "{count} problems",
@@ -325,7 +325,7 @@ export const assets = {
         failedTitle: "Could not scan that folder",
         unreadable: "That folder could not be read.",
         /** Refused rather than truncated: a partial listing would report present files as missing. */
-        tooManyFiles: "That folder holds {count} files, too many to check. Pick the folder the models are in.",
+        tooManyFiles: "That folder holds {count} files, too many to check. Select the folder the models are in.",
     },
     menu: {
         newGroup: "New Group",
@@ -476,8 +476,8 @@ export const assets = {
         typePlaceholder: "Type to preview your own text…",
     },
     jsonPreview: {
-        invalid: "This file is not valid JSON, showing raw content.",
-        truncated: "File is too large to pretty-print, showing the beginning only.",
+        invalid: "This file is not valid JSON. Showing the raw content.",
+        truncated: "This file is too large to format. Showing the beginning only.",
     },
     // The built-in Monaco text editor. It has no status bar of its own: the file name, encoding,
     // line ending and selection are cells in the WORKSPACE status bar, so most of what follows is
