@@ -38,6 +38,40 @@ export type BlueprintRunGraphKind =
 
 const SEPARATOR = ":";
 
+/**
+ * Every kind, as a value the parse can check against.
+ *
+ * A union type is erased by the time a string arrives from somewhere else, so without this the
+ * parse's only options are to cast (and hand back a `kind` no branch of this module has heard of)
+ * or to stop reporting one at all.
+ */
+const RUN_GRAPH_KIND_LIST = [
+    "blueprintEvent",
+    "widgetEvent",
+    "surfaceEvent",
+    "globalEvent",
+    "broadcastEvent",
+    "elementFlush",
+    "elementClick",
+    "fnCall",
+    "blueprintValue",
+    "storyAction",
+    "storyActionValue",
+    "storyActionFn",
+    "validate",
+] as const;
+
+/**
+ * Adding a kind to {@link BlueprintRunGraphKind} without adding it to the list above is a type
+ * error here rather than a run graph id that silently stops parsing. `never` is the passing value:
+ * it means the union has nothing left over that the list does not name.
+ */
+type UnlistedRunGraphKind = Exclude<BlueprintRunGraphKind, typeof RUN_GRAPH_KIND_LIST[number]>;
+const _allRunGraphKindsListed: UnlistedRunGraphKind[] = [];
+void _allRunGraphKindsListed;
+
+const RUN_GRAPH_KINDS: ReadonlySet<string> = new Set<BlueprintRunGraphKind>(RUN_GRAPH_KIND_LIST);
+
 export type BlueprintRunGraphRef = {
     kind: BlueprintRunGraphKind;
     blueprintId: string;
@@ -52,6 +86,11 @@ export function buildBlueprintRunGraphId(kind: BlueprintRunGraphKind, blueprintI
 /**
  * Recover the three parts of a run graph id. Returns null for anything this module did not build,
  * which callers must treat as "not attributable to an authored graph" rather than guessing.
+ *
+ * The kind is checked against {@link RUN_GRAPH_KINDS}, not cast to it. An unrecognised kind is a
+ * string this module did not write, and the difference matters downstream:
+ * {@link isPausableBlueprintRunGraphKind} is a deny-list, so a kind nobody has heard of would come
+ * back "pausable" and the debugger would offer to stop a frame it cannot describe.
  */
 export function parseBlueprintRunGraphId(runGraphId: string | undefined): BlueprintRunGraphRef | null {
     if (!runGraphId) {
@@ -65,8 +104,12 @@ export function parseBlueprintRunGraphId(runGraphId: string | undefined): Bluepr
     if (secondSeparator <= firstSeparator + 1 || secondSeparator === runGraphId.length - 1) {
         return null;
     }
+    const kind = runGraphId.slice(0, firstSeparator);
+    if (!RUN_GRAPH_KINDS.has(kind)) {
+        return null;
+    }
     return {
-        kind: runGraphId.slice(0, firstSeparator) as BlueprintRunGraphKind,
+        kind: kind as BlueprintRunGraphKind,
         blueprintId: runGraphId.slice(firstSeparator + 1, secondSeparator),
         graphId: runGraphId.slice(secondSeparator + 1),
     };

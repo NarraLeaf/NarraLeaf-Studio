@@ -35,13 +35,10 @@ export const menu = {
             stopSpeaking: "停止朗读",
         },
     },
-    // 正式构建与测试不在这里：开发菜单直接复用运行下拉框的文案
-    //（`actions.run.productionBuild`、`test.action.open` / `test.action.stop`），
-    // 免得同一个对话框在两处叫两个名字。
+    // 这里只留菜单自己的标题。菜单里的每一项都复用运行下拉框的文案
+    //（`actions.run.*`、`test.action.*`），免得同样的四件事在两处叫两个名字。
     dev: {
         title: "开发",
-        devMode: "开发模式",
-        preview: "预览模式",
     },
     window: {
         title: "窗口",

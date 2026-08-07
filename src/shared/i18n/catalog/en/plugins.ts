@@ -96,7 +96,7 @@ export const plugins = {
             failed: "Failed to load",
         },
         // Warned once at load, naming the plugins this project's dependency table turned away.
-        suppressedNotice: "Not loaded for this project: {names}. The installed version is incompatible with the one the project was authored against — see the Plugins panel.",
+        suppressedNotice: "Not loaded for this project: {names}. The installed version is incompatible with the one the project was authored against. See the Plugins panel.",
         // A plugin that changed state while the workspace could not act on it.
         pendingReopen: "Takes effect the next time this project opens.",
         /**
