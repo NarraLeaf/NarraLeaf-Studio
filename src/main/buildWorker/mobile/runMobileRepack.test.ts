@@ -9,6 +9,7 @@ import { derivePackEncryptionKey, isProtectedPayload } from "@narraleaf/encrypti
 import { parseBinaryManifest } from "./axml";
 import { parseArscPackageNames } from "./arsc";
 import { verifyApkV2 } from "./apkSigningV2";
+import { verifyJarSignature } from "./jarSigning";
 import { validateMobileShellManifest, type MobileShellManifest } from "./mobileShellManifest";
 import { MAX_PAYLOAD_BYTES, payloadExceedsLimit, runMobileRepack } from "./runMobileRepack";
 import { generateSigningIdentity } from "./signingIdentity";
@@ -82,7 +83,7 @@ async function makeJob(overrides: Partial<GameBuildWorkerMobileJob> = {}): Promi
         shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000" }),
         android: {
             templateApkPath: path.join(TEMPLATE_DIR, templateManifest.android.template),
-            outputName: "MyGame-1.2.3-android.apk",
+            outputs: { apk: "MyGame-1.2.3-android.apk", aab: "MyGame-1.2.3-android.aab" },
             applicationId: "com.example.mygame",
             versionName: "1.2.3",
             versionCode: 1_002_003,
@@ -150,6 +151,55 @@ describe("runMobileRepack against the real shell templates", () => {
         const bgm = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}assets/bgm.ogg`)!);
         expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).toBe(0);
         expect(isProtectedPayload(bgm)).toBe(false);
+    });
+
+    it("produces an AAB beside the APK, signed by the same identity", async () => {
+        const job = await makeJob();
+        const outputDir = await tempDir("nls-out-");
+
+        const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
+
+        // Two packages out of one Android target - that is the shape the format
+        // decision buys, and the thing a second target would have prevented.
+        expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+        expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.aab"));
+
+        const aab = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.aab"));
+        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+
+        // The bundle layout: proto resources, no binary leftovers. bundletool
+        // rejects a bundle carrying resources.arsc, and so should we.
+        const names = parseZipIndex(aab).entries.map(entry => entry.name);
+        expect(names).toContain("BundleConfig.pb");
+        expect(names).toContain("base/manifest/AndroidManifest.xml");
+        expect(names).toContain("base/resources.pb");
+        expect(names).not.toContain("resources.arsc");
+        expect(names).not.toContain("AndroidManifest.xml");
+
+        // The payload lands under the bundle's assets root, not the APK's.
+        const { wwwRoot, shellConfigPath } = job.templateManifest.android;
+        expect(names).toContain(`base/${wwwRoot}assets/bgm.ogg`);
+        expect(names).toContain(`base/${shellConfigPath}`);
+
+        // Signed with the JAR scheme Play reads, by the same certificate that
+        // v2-signed the APK: one keystore, two encodings.
+        const jar = verifyJarSignature(aab);
+        expect(jar.verified).toBe(true);
+        expect(jar.certificateChainDer[0].toString("base64"))
+            .toBe(job.android!.signingIdentity.certificateDerBase64);
+        expect(verifyApkV2(apk).verified).toBe(true);
+    });
+
+    it("builds only the format that was asked for", async () => {
+        const job = await makeJob();
+        job.android!.outputs = { aab: "MyGame-1.2.3-android.aab" };
+        const outputDir = await tempDir("nls-out-");
+
+        const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
+
+        expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.aab"));
+        expect(artifacts).not.toContain(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+        await expect(fs.access(path.join(outputDir, "MyGame-1.2.3-android.apk"))).rejects.toThrow();
     });
 
     it("protects every payload file under a content key, and leaves shell-config plain", async () => {
@@ -303,17 +353,23 @@ describe("runMobileRepack against the real shell templates", () => {
         const [first, second] = [await tempDir("nls-out-"), await tempDir("nls-out-")];
         await runMobileRepack(job, first, log, MTIME);
         await runMobileRepack(job, second, log, MTIME);
-        for (const name of ["MyGame-1.2.3-android.apk", "MyGame-1.2.3-ios.ipa"]) {
+        for (const name of ["MyGame-1.2.3-android.apk", "MyGame-1.2.3-android.aab", "MyGame-1.2.3-ios.ipa"]) {
             expect(await fs.readFile(path.join(first, name))).toEqual(await fs.readFile(path.join(second, name)));
         }
-    });
+        // Six real packages off the real templates; the default 5s holds when
+        // this file runs alone and does not when the whole suite is loading the
+        // machine, which reads as a flake rather than as the timeout it is.
+    }, 60_000);
 
     it("packages one platform without the other", async () => {
         const job = await makeJob();
         delete job.ios;
         const outputDir = await tempDir("nls-out-");
         const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
-        expect(artifacts).toEqual([path.join(outputDir, "MyGame-1.2.3-android.apk")]);
+        expect(artifacts).toEqual([
+            path.join(outputDir, "MyGame-1.2.3-android.apk"),
+            path.join(outputDir, "MyGame-1.2.3-android.aab"),
+        ]);
         await expect(fs.access(path.join(outputDir, "MyGame-1.2.3-ios.ipa"))).rejects.toThrow();
     });
 
