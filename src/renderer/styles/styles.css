@@ -734,6 +734,32 @@ input[type="radio"]:focus {
     inset: -4px -12px -4px -6px;
 }
 
+/*
+ * Scene flow: the selected line.
+ *
+ * `!important` because the line paints its stroke inline — the colour carries the conditional dash
+ * pattern and the dim state, both of which are per-edge facts a stylesheet cannot know. Selection is
+ * the one thing that has to override them, since it is what the Delete key is aimed at: a line the
+ * author cannot see they have selected is a line they delete by surprise.
+ */
+.narraleaf-scene-flow .react-flow__edge.selected .react-flow__edge-path {
+    stroke: var(--narraleaf-accent-strong) !important;
+    stroke-width: 2.5 !important;
+    opacity: 1 !important;
+}
+
+/*
+ * The same near-miss problem the blueprint pins have, for the same reason: a scene's connect handle
+ * is a ~10px dot on the box rim, and a press a pixel outside it starts dragging the scene instead of
+ * pulling a line. Inherited `pointer-events` keeps this inert on the read-only map, where the handles
+ * are not connectable at all (see SCENE_FLOW_HANDLE_CLASS).
+ */
+.narraleaf-scene-flow .react-flow__handle::before {
+    content: "";
+    position: absolute;
+    inset: -5px -8px;
+}
+
 .moveable,
 .moveable * {
     --moveable-color: var(--narraleaf-accent-strong);
