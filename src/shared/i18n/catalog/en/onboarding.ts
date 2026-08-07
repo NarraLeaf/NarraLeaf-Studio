@@ -31,6 +31,11 @@ export const onboarding = {
     done: {
         title: "Studio is set up",
         expectation: "Language and appearance are in Settings. Press F1 anywhere for help on what is under the cursor.",
+        /**
+         * Lead-in for the three links under it. Only the label: the links themselves are titled
+         * from `help.topics.*`, so setup cannot name a topic differently from the list it opens.
+         */
+        topics: "Help topics",
     },
     nav: {
         skip: "Skip setup",

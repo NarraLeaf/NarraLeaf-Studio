@@ -106,7 +106,9 @@ export const help = {
                 + "- A new project needs a name, an app identifier and a stage size. The identifier cannot be "
                 + "changed once the project exists.\n"
                 + "- The target folder must be empty. A folder that does not exist yet is created.\n"
-                + "- A project copied from a server stays connected to it, and the local copy is editable.",
+                + "- A project copied from a server stays connected to it, and the local copy is editable.\n"
+                + "- The bundled template is a short story that already runs: three scenes, one choice, and the "
+                + "title, save, load, config and backlog screens already wired.",
         },
         undo: {
             title: "Undoing",
