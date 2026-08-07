@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
-import { resolvePasteTargetAfterSelection } from "./uiEditorCommands";
+import { resolvePasteTargetAfterSelection, uiEditorUngroupSelection } from "./uiEditorCommands";
+import { applyUngroupContainer } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
+import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 
 function element(id: string, type: string, parentId: string | null, childrenIds: string[] = []): UIElement {
     return {
@@ -72,5 +75,63 @@ describe("UI editor paste target resolution", () => {
             parentId: "root",
             beforeChildId: null,
         });
+    });
+});
+
+/** Stands in for the services, running the real tree edit over a plain document. */
+function ungroupHarness(doc: UIDocument) {
+    const setUIElementSelection = vi.fn();
+    const setSelection = vi.fn();
+    const documentService = {
+        getDocument: () => doc,
+        ungroupContainers: (surfaceId: string, containerIds: string[]) =>
+            containerIds.flatMap(id => applyUngroupContainer(doc, surfaceId, id) ?? []),
+    } as unknown as UIDocumentService;
+    const stateService = {
+        setUIElementSelection,
+        setSelection,
+        getSelection: () => ({ type: "none" }),
+    } as unknown as UIEditorStateService;
+    return { documentService, stateService, setUIElementSelection, setSelection };
+}
+
+describe("UI editor ungroup", () => {
+    it("hands the selection to what came out of the group, keeping untouched elements selected", () => {
+        const doc = makeDocument();
+        const { documentService, stateService, setUIElementSelection } = ungroupHarness(doc);
+
+        expect(uiEditorUngroupSelection(documentService, stateService, "surface", selection(["source", "next"]))).toBe(
+            true,
+        );
+
+        // `next` is an empty group, so it goes too and only `source`'s child is left to select.
+        expect(setUIElementSelection).toHaveBeenCalledWith({
+            editor: "ui",
+            surfaceId: "surface",
+            elementIds: ["source-child"],
+            primaryId: "source-child",
+        });
+        expect(doc.elements.root.childrenIds).toEqual(["source-child"]);
+    });
+
+    it("falls back to the surface when the group was empty", () => {
+        const doc = makeDocument();
+        const { documentService, stateService, setUIElementSelection, setSelection } = ungroupHarness(doc);
+
+        expect(uiEditorUngroupSelection(documentService, stateService, "surface", selection(["next"]))).toBe(true);
+
+        expect(setUIElementSelection).not.toHaveBeenCalled();
+        expect(setSelection).toHaveBeenCalledWith({ type: "scene", data: "surface" });
+    });
+
+    it("does nothing when nothing selected is a group", () => {
+        const doc = makeDocument();
+        const { documentService, stateService, setUIElementSelection } = ungroupHarness(doc);
+
+        expect(uiEditorUngroupSelection(documentService, stateService, "surface", selection(["source-child"]))).toBe(
+            false,
+        );
+        expect(setUIElementSelection).not.toHaveBeenCalled();
+        expect(doc.elements.source.childrenIds).toEqual(["source-child"]);
     });
 });

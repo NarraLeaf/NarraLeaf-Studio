@@ -807,6 +807,7 @@ export const workspace = {
                     paste: "Paste",
                     duplicate: "Duplicate",
                     group: "Group",
+                    ungroup: "Ungroup",
                     selectAll: "Select All",
                     delete: "Delete Selection",
                     rename: "Rename",

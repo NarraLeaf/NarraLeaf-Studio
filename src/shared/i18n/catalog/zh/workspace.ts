@@ -739,6 +739,7 @@ export const workspace = {
                     paste: "粘贴",
                     duplicate: "创建副本",
                     group: "编组",
+                    ungroup: "取消编组",
                     selectAll: "全选",
                     delete: "删除所选",
                     rename: "重命名",
