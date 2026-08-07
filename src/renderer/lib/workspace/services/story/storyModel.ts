@@ -1026,13 +1026,12 @@ export function deleteBlockFromScene(scene: StoryScene, blockId: StoryBlockId): 
     }
 }
 
-export function moveBlockInScene(
+function assertBlockMoveAllowed(
     scene: StoryScene,
     blockId: StoryBlockId,
     target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
 ): void {
-    const block = scene.blocks[blockId];
-    if (!block) {
+    if (!scene.blocks[blockId]) {
         throw new Error(`Block not found: ${blockId}`);
     }
     if (target.parentId && !canAcceptChildren(scene.blocks[target.parentId])) {
@@ -1041,6 +1040,15 @@ export function moveBlockInScene(
     if (target.parentId && collectBlockSubtree(scene, blockId).includes(target.parentId)) {
         throw new Error("Cannot move a block into its own subtree");
     }
+}
+
+export function moveBlockInScene(
+    scene: StoryScene,
+    blockId: StoryBlockId,
+    target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
+): void {
+    assertBlockMoveAllowed(scene, blockId, target);
+    const block = scene.blocks[blockId];
     const oldSiblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
     if (oldSiblings) {
         removeId(oldSiblings, blockId);
@@ -1048,6 +1056,30 @@ export function moveBlockInScene(
     block.parentId = target.parentId;
     const nextSiblings = target.parentId ? scene.blocks[target.parentId].childrenIds : scene.rootBlockIds;
     insertId(nextSiblings, blockId, target.beforeBlockId ?? null);
+}
+
+/**
+ * Move several blocks to ONE target, in the order given — the shape a dragged multi-selection has.
+ *
+ * Every block is inserted before the same anchor, so `[a, b, c]` land as `a b c` in front of it (and
+ * appended in that order when the anchor is `null`). The caller owes us an anchor that is not itself
+ * moving: {@link insertId} silently appends when it cannot find its anchor, which would scatter the
+ * group to the end of the parent instead of failing.
+ *
+ * Validated whole before anything moves. A half-applied move would leave the document mutated with the
+ * change event never emitted — the editor would be showing a scene that no longer exists.
+ */
+export function moveBlocksInScene(
+    scene: StoryScene,
+    blockIds: StoryBlockId[],
+    target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
+): void {
+    for (const blockId of blockIds) {
+        assertBlockMoveAllowed(scene, blockId, target);
+    }
+    for (const blockId of blockIds) {
+        moveBlockInScene(scene, blockId, target);
+    }
 }
 
 export function createTextId(generateId: StoryIdFactory): StoryTextId {
