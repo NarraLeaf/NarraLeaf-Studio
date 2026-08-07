@@ -310,7 +310,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const { importQueue, importState, dismissImportFailures } = useImportQueue();
 
     const {
-        handleCreateGroup, handleCreateTextFile, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
+        handleCreateGroup, handleCreateTextFile, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleExport, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
         handleCreateMagicTags, handleApplyMagicTags,
         modelImportRequest, completeModelImport, cancelModelImport,
         mediaImportRequest, completeMediaImport, cancelMediaImport,
@@ -331,12 +331,14 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const handleCutRef = useRef(handleCut);
     const handlePasteRef = useRef(handlePaste);
     const handleDeleteRef = useRef(handleDelete);
+    const handleExportRef = useRef(handleExport);
 
     // Update refs when functions change
     handleCopyRef.current = handleCopy;
     handleCutRef.current = handleCut;
     handlePasteRef.current = handlePaste;
     handleDeleteRef.current = handleDelete;
+    handleExportRef.current = handleExport;
 
     // Magic Tags handler
     const handleMagicTagsClick = useCallback(async () => {
@@ -452,6 +454,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleCut: () => handleCutRef.current(),
         handlePaste: () => handlePasteRef.current(),
         handleDelete: () => handleDeleteRef.current(),
+        handleExport: () => handleExportRef.current(),
         handleRename,
         handleReplaceContent: () => handleReplaceContent(),
         handleConvertMedia: () => handleConvertMedia(),
