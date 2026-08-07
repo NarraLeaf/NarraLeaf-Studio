@@ -20,7 +20,7 @@ export const uiEditor = {
         deleteSurface: "Delete {label}",
         surfaceActions: "{label} actions",
         deleteConfirm: "Delete {label}?",
-        deleteDetail: "This will remove all elements in this {label}.",
+        deleteDetail: "All elements in this {label} are removed.",
         duplicateFailed: "Page could not be duplicated.",
         pageValidationHint: "Check the page name and size before creating it.",
         gameUiSlotHint: "Select an available Game UI slot before creating it.",
