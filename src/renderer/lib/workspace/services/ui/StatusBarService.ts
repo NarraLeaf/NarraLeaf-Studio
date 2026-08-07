@@ -3,7 +3,11 @@ import { StatusBarItem, StatusBarAlignment } from "./types";
 
 /**
  * Status Bar Service
- * Manages status bar items (not implemented in UI yet, but ready for future use)
+ *
+ * Items registered here render in the workspace status bar next to the built-in entries, and are
+ * listed in its right-click toggle menu like any of them. `alignment` picks the side; `priority`
+ * orders the registered items among themselves, highest first, with equal priorities keeping
+ * registration order. See `components/layout/StatusBar.tsx`.
  */
 export class StatusBarService {
     private store: UIStore;

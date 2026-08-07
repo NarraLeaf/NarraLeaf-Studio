@@ -207,7 +207,7 @@ export const story = {
             noDecisions: "No decisions",
             // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
             stopsHere: "stops here",
-            stopsHereTitle: "A path stops here but this is not an ending: it looped back, or an option ran out of continuations",
+            stopsHereTitle: "A path stops here but this is not an ending: it looped back to a visited scene, or an option has nothing written after it",
             diagnostics: {
                 unreachableEndings: {
                     one: "{count} ending no route reaches",
@@ -689,13 +689,13 @@ export const story = {
         loadingScene: "Loading story scene…",
         notFound: "Story or scene not found.",
         addRow: "Click or type to add a row…",
-        emptyHint: "This scene is empty. Type {trigger} on a new row to pick a command, or just write a line of narration.",
+        emptyHint: "This scene is empty. Type {trigger} on a new row to pick a command, or write a line of narration.",
         emptyExampleBg: "set the backdrop",
         emptyExampleShow: "bring someone on stage",
         emptyExampleSay: "give them a line",
         emptyOpenManual: "Open the command manual",
         /** The scene has rows, but the filter is hiding all of them — a different thing from an empty scene. */
-        filteredEmpty: "No rows match the filter. Adjust it and try again.",
+        filteredEmpty: "No rows match the filter.",
         filteredEmptyClear: "Show all",
         variablesPanel: "Story Variables",
         snapshotsPanel: "Scene Snapshots",
@@ -854,10 +854,10 @@ export const story = {
         declarePersis: { label: "Global variable", detail: "Declare an app-level variable blueprints can read" },
         if: { label: "If", detail: "Branch on a condition" },
         menu: { label: "Menu", detail: "Let the player choose" },
-        repeat: { label: "Repeat", detail: "Run the enclosed actions a set number of times — for a condition instead, use /until" },
+        repeat: { label: "Repeat", detail: "Run the enclosed actions a set number of times. For a condition instead, use /until" },
         // The detail carries the one thing the token cannot: `until` says when to STOP, so the group
         // runs while the condition is false. Named as a stop condition because that is what it is.
-        until: { label: "Until", detail: "Repeat the enclosed actions until a condition becomes true — it is checked before each pass" },
+        until: { label: "Until", detail: "Repeat the enclosed actions until a condition becomes true. The condition is checked before each pass" },
         break: { label: "Break", detail: "Leave the repeat group this row sits in" },
         parallel: { label: "Parallel", detail: "Run the enclosed actions together" },
         race: { label: "Race", detail: "Run all, continue when the first finishes" },

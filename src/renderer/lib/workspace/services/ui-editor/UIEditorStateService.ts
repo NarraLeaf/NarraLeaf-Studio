@@ -11,6 +11,10 @@ import type { ViewportTransform } from "../../../ui-editor/geometry/types";
 import type { UITool } from "../../../ui-editor/editor/types";
 import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../../ui-editor/snapping/types";
 import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "../../../ui-editor/snapping/types";
+import {
+    isSafeAreaPresetId,
+    isSurfacePreviewAspectPresetId,
+} from "../../../ui-editor/preview/surfacePreviewFrames";
 
 const VIEWPORT_SETTINGS_KEY = "uiEditor.viewport";
 
@@ -19,6 +23,12 @@ const SMART_SNAP_ENABLED_KEY = "uiEditor.smartSnap.enabled";
 
 /** Persisted: smart snap category toggles (element centers, edges, canvas). */
 const SMART_SNAP_DETAIL_KEY = "uiEditor.smartSnap.detail";
+
+/** Persisted: screen-ratio preview frame preset id for the surface canvas (null = off). Pure view state. */
+const PREVIEW_ASPECT_KEY = "uiEditor.preview.aspect";
+
+/** Persisted: safe-area preview frame device preset id for the surface canvas (null = off). Pure view state. */
+const PREVIEW_SAFE_AREA_KEY = "uiEditor.preview.safeArea";
 
 /** Editing-area cache: inspector appearance variant picker per widget element (global settings, not UIDocument). */
 const APPEARANCE_INSPECTOR_VARIANT_CACHE_KEY = "uiEditor.editingArea.appearanceInspectorVariantByElementId";
@@ -58,6 +68,11 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private smartSnapEnabled = true;
     private smartSnapDetail: SmartSnapDetailSettings = { ...DEFAULT_SMART_SNAP_DETAIL_SETTINGS };
     private snapGuides: ActiveSnapGuides | null = null;
+
+    /** Pure view state: screen-ratio preview frame preset id, `null` = off. Never touches the UIDocument. */
+    private previewAspectId: string | null = null;
+    /** Pure view state: safe-area preview frame device preset id, `null` = off. Never touches the UIDocument. */
+    private previewSafeAreaId: string | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const uiService = ctx.services.get<UIService>(Services.UI);
@@ -124,6 +139,17 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
 
         const detailStored = this.settingsService.getSync<unknown>(SMART_SNAP_DETAIL_KEY);
         this.smartSnapDetail = normalizeSmartSnapDetailSettings(detailStored);
+
+        // Validate against the known preset ids: a stale/garbage setting must fall back to "off"
+        // rather than produce a broken frame on the canvas.
+        const aspectStored = this.settingsService.getSync<unknown>(PREVIEW_ASPECT_KEY);
+        this.previewAspectId = isSurfacePreviewAspectPresetId(aspectStored) ? aspectStored : null;
+
+        const safeAreaStored = this.settingsService.getSync<unknown>(PREVIEW_SAFE_AREA_KEY);
+        this.previewSafeAreaId =
+            typeof safeAreaStored === "string" && isSafeAreaPresetId(safeAreaStored)
+                ? safeAreaStored
+                : null;
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
@@ -322,6 +348,48 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         }
         void this.settingsService.set(SMART_SNAP_DETAIL_KEY, this.smartSnapDetail).catch(err => {
             console.warn("[UIEditorStateService] failed to persist smart snap detail settings", err);
+        });
+    }
+
+    public getPreviewAspectId(): string | null {
+        return this.previewAspectId;
+    }
+
+    /**
+     * Pure view state — persisted in global settings only. Deliberately does NOT go through
+     * `UIDocumentService`, so toggling a preview frame never dirties the project, never emits
+     * `documentChanged` and never enters the undo stack.
+     */
+    public setPreviewAspectId(aspectId: string | null): void {
+        if (this.previewAspectId === aspectId) {
+            return;
+        }
+        this.previewAspectId = aspectId;
+        this.events.emit("previewAspectChanged", aspectId);
+        if (!this.settingsService) {
+            return;
+        }
+        void this.settingsService.set(PREVIEW_ASPECT_KEY, aspectId).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist preview aspect", err);
+        });
+    }
+
+    public getPreviewSafeAreaId(): string | null {
+        return this.previewSafeAreaId;
+    }
+
+    /** Pure view state — see `setPreviewAspectId`. */
+    public setPreviewSafeAreaId(safeAreaId: string | null): void {
+        if (this.previewSafeAreaId === safeAreaId) {
+            return;
+        }
+        this.previewSafeAreaId = safeAreaId;
+        this.events.emit("previewSafeAreaChanged", safeAreaId);
+        if (!this.settingsService) {
+            return;
+        }
+        void this.settingsService.set(PREVIEW_SAFE_AREA_KEY, safeAreaId).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist preview safe area", err);
         });
     }
 

@@ -22,6 +22,12 @@ type NlrNotification = {
  * NarraLeaf wraps it in a full-size, ratio-scaled, pointer-events-none layer and re-renders it
  * with the live `notifications` array; the bridge mirrors those into the widget runtime list
  * store, the blueprint global scope, and slot flush dispatch.
+ *
+ * Rendered `passive`: toasts are something the game says, not something the player operates, and
+ * the slot floats over the stage for the whole session. NarraLeaf's own wrapper is already
+ * pointer-events-none, but every widget wrapper sets it back to `auto`, so the toast list's box -
+ * 440x400 pinned to the top right, present whether or not anything is in it - was eating every
+ * click in that corner of the stage. The dialogue simply did not advance there.
  */
 export function NotificationSlotSurface(props: {
     options: GameUiSlotHostOptions;
@@ -57,7 +63,7 @@ export function NotificationSlotSurface(props: {
         flushSlotElements();
     }, [core, flushSlotElements, items, listElementIds, runtimeScopeId, widgetRuntimeStore]);
 
-    return <StageSlotSurfaceBody options={options} surface={surface} runtime={runtime} />;
+    return <StageSlotSurfaceBody options={options} surface={surface} runtime={runtime} passive />;
 }
 
 export function createNotificationSlotComponent(options: GameUiSlotHostOptions, surface: UIStageSurface) {

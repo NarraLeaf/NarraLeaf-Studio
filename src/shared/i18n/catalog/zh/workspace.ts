@@ -4,7 +4,7 @@ export const workspace = {
     localization: {
         panel: {
             languagesTitle: "语言",
-            languagesHint: "游戏本体的语言。源语言是你编写时用的那一种，其余都以它为基准翻译",
+            languagesHint: "游戏本体的语言。源语言是故事的编写语言，其余语言以它为基准翻译",
             addLanguage: "添加语言",
             codePlaceholder: "代码（en、ja、zh-CN…）",
             namePlaceholder: "显示名称",
@@ -15,7 +15,7 @@ export const workspace = {
             setSource: "设为源语言",
             removeLanguage: "移除语言",
             removeConfirm: "移除 {name}？",
-            removeConfirmDetail: "翻译仍保留在磁盘上，下一次添加该语言时会自动恢复",
+            removeConfirmDetail: "译文仍保留在磁盘上，再次添加该语言时会恢复",
             openTable: "打开翻译表",
             progress: "已翻译 {completed}/{total}",
             staleCount: "{count} 条待校对",
@@ -46,7 +46,7 @@ export const workspace = {
             importNoRows: "该文件里没有翻译条目",
             importWarnings: "有 {count} 条被跳过，第一条：{first}",
             localeMismatch: "该文件标注的语言是 {declared}，仍要导入到{name}吗？",
-            localeMismatchDetail: "翻译会写入你选中的语言，与文件里的标注无关",
+            localeMismatchDetail: "译文写入所选语言，与文件中的标注无关",
         },
         table: {
             storyLabel: "范围",
@@ -79,12 +79,12 @@ export const workspace = {
             reviewApprove: "通过",
             reviewReturn: "退回",
             reviewPendingCount: "{count} 条待校对",
-            reviewAllClear: "全部校对完毕，没有校对条目",
-            staleHint: "翻译后原文有改动，请校对后重新保存以完成锚定",
+            reviewAllClear: "没有待校对的条目",
+            staleHint: "翻译之后原文有改动。重新保存该译文即可标记为最新",
             placeholderHint: "请保留 {n} 占位符，它们用于渲染内联数值",
             emptyStory: "这个故事没有可翻译的文本",
             emptyFilter: "没有符合当前筛选的条目",
-            noStories: "请先创建一个故事，它的台词会显示在此处以供翻译",
+            noStories: "请先创建故事。故事中的台词会显示在这里供翻译",
             statusUntranslated: "未翻译",
             statusMachine: "机翻",
             statusTranslated: "已翻译",
@@ -95,7 +95,7 @@ export const workspace = {
     voice: {
         panel: {
             languagesTitle: "配音语言",
-            languagesHint: "游戏已有配音的语言，与文本语言相互独立。",
+            languagesHint: "已有配音的语言，与文本语言相互独立。",
             addLanguage: "添加配音语言",
             codePlaceholder: "代码（ja、en、zh-CN…）",
             namePlaceholder: "显示名称",
@@ -104,7 +104,7 @@ export const workspace = {
             confirm: "确认",
             removeLanguage: "移除配音语言",
             removeConfirm: "移除 {name}？",
-            removeConfirmDetail: "配音指派仍保留在磁盘上，重新添加该语言即可恢复。",
+            removeConfirmDetail: "配音指派仍保留在磁盘上，再次添加该语言时会恢复。",
             openTable: "打开配音表",
             progress: "已配音 {covered}/{total}",
             staleCount: "{count} 处待更新",
@@ -112,14 +112,14 @@ export const workspace = {
             exportPickup: "导出补录脚本（仅待更新）",
             importAudio: "导入音频…",
             exportDone: "已导出到 {path}",
-            pickupEmpty: "没有待更新的行，无需补录。",
+            pickupEmpty: "没有需要补录的台词。",
             importSummary: "已关联 {linked} 条（{unmatched} 条未匹配，{failed} 条失败）",
             importFailed: "无法导入音频文件",
             importScript: "导入录音本…",
             importScriptSummary: "应用了 {applied} 行（{unchanged} 行未变，{unknown} 行没有语音）",
             importScriptFailed: "无法读取该录音本",
             namingTitle: "录音文件名规则",
-            namingHint: "可用占位符：{tokens}。批量导入的音频按这个名字回连。",
+            namingHint: "可用占位符：{tokens}。导入的音频按此名称与台词匹配。",
             namingReset: "恢复默认",
         },
         table: {
@@ -147,11 +147,11 @@ export const workspace = {
             approve: "通过",
             reject: "退回",
             clipMissing: "音频缺失",
-            outdatedHint: "导入该配音后台词发生了变化。重新导入音频后才会重新计入。",
-            noStories: "先创建一个故事，它的口白台词会显示在这里供配音。",
-            emptyStory: "这个故事还没有可配音的口白台词。",
-            emptyFilter: "没有符合此筛选条件的内容。",
-            auditionAllClear: "已全部处理，没有需要试听的内容了。",
+            outdatedHint: "导入该配音之后台词有改动。重新导入音频即可标记为最新。",
+            noStories: "请先创建故事。故事中的口白台词会显示在这里供配音。",
+            emptyStory: "该故事没有可配音的口白台词。",
+            emptyFilter: "没有符合当前筛选条件的内容。",
+            auditionAllClear: "没有待试听的内容。",
             auditionPendingCount: "{count} 项待处理",
             statusMissing: "缺失",
             statusVoiced: "已配音",
@@ -169,11 +169,11 @@ export const workspace = {
             state: "恢复模式：只读，未加载插件。",
             exit: "退出恢复模式",
         },
-        intro: "点一项检查就会去加载工程的那一部分，并把结果原样显示出来。能加载起来的部分可以照常浏览。",
+        intro: "运行一项检查会加载工程的对应部分并报告结果。可以加载的部分能够照常浏览。",
         problems: {
             title: "发现的问题",
             count: "{count}",
-            empty: "窗口打开过程中没有报出任何问题。",
+            empty: "窗口打开过程中没有报告任何问题。",
             showRaw: "原始错误",
             copy: "复制这条错误",
             copied: "已复制。",
@@ -221,20 +221,20 @@ export const workspace = {
             checkpointFailed: "提交版本失败：{error}",
             restore: "恢复到该版本",
             restoreConfirm: "确认恢复 {version}？",
-            restoreExplain: "工程里的每个文件都会被替换成那个版本的内容。历史不会丢任何东西：当前状态会先提交下来，恢复结果再作为一个新版本追加。",
+            restoreExplain: "工程中的每个文件都会被替换为该版本的内容。当前状态会先提交为一个版本，恢复结果作为新版本追加，不会删除任何版本。",
             cancel: "取消",
             restoreDone: "已恢复到 {version}，正在重新打开为普通工作区。",
-            restoreUnrecorded: "文件已经恢复，但新版本没能提交成功：{error}",
+            restoreUnrecorded: "文件已恢复，但新版本提交失败：{error}",
             restoreFailed: "恢复失败：{error}",
         },
         offer: {
-            message: "这个工程没有正常加载",
-            detailOne: "有一个文件读不出来，所以这个窗口里缺了一部分内容。常见原因是保存被中断、同步或备份工具正在同时写入，或者某个插件。现在继续编辑，可能把这份残缺的状态存回磁盘，盖掉那些还完好的文件。",
-            detailMany: "有 {count} 个文件读不出来，所以这个窗口里缺了一部分内容。常见原因是保存被中断、同步或备份工具正在同时写入，或者某个插件。现在继续编辑，可能把这份残缺的状态存回磁盘，盖掉那些还完好的文件。",
+            message: "该工程未能正常加载",
+            detailOne: "有一个文件无法读取，本窗口中缺少工程的一部分内容。常见原因：保存被中断、同步或备份工具同时写入、插件干扰。此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件。",
+            detailMany: "有 {count} 个文件无法读取，本窗口中缺少工程的一部分内容。常见原因：保存被中断、同步或备份工具同时写入、插件干扰。此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件。",
             enter: "以恢复模式打开",
         },
         operations: {
-            enteredBecause: "把你带到这里的那个错误",
+            enteredBecause: "触发恢复模式的错误",
             shellService: "启动恢复模式的服务",
             preflight: "检查工程目录",
             assetsShardCreate: "创建资产索引",
@@ -450,24 +450,24 @@ export const workspace = {
         save: {
             failedTitle: "无法保存 {file}",
             failedDetailTransient: "正在后台继续重试。{error}",
-            failedDetailPermanent: "在修复之前重试也无济于事。{error}",
+            failedDetailPermanent: "在此问题修复之前重试无效。{error}",
             retry: "立即重试",
             consoleFailed: "写入失败（{code}，第 {attempt} 次尝试）：{path} · {error}",
             consoleRecovered: "写入成功：{path}",
             flushFailed: "{label} 刷盘失败：{error}",
             // 读取侧：文件在盘上，但读不懂。文案先说「没发生什么」——这时作者最怕的是「Studio 把我的东西吃了」。
             unreadableTitle: "无法读取 {file}",
-            unreadableDetail: "{reason} 文件保持原样，没有任何内容被覆盖。",
+            unreadableDetail: "{reason} 文件保持原样，没有内容被覆盖。",
             unreadableDetailQuarantined: "{reason} 文件保持原样，其副本已保存在 {path}。",
             consoleUnreadable: "读取失败（{kind}）：{path} · {reason}",
             consoleQuarantined: "已保留无法读取的文件副本：{path}",
             // 因工作区冻结而被拒绝的写入。这不是失败：没有出错，也不会重试。文案必须说清原因，
             // 否则读起来就是个 bug。
-            frozenTitle: "当前不会保存任何改动",
-            frozenDetailRevision: "你正在查看版本 {version}，查看期间的改动不会保存。",
-            frozenDetailManual: "工作区已冻结，解除冻结后才会重新保存。",
+            frozenTitle: "当前不保存任何改动",
+            frozenDetailRevision: "当前正在查看版本 {version}，查看期间的改动不会保存。",
+            frozenDetailManual: "工作区已冻结，解除冻结后恢复保存。",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
-            frozenDetailMerge: "有一次合并还没做完，到版本面板把合并完成后才会重新保存。",
+            frozenDetailMerge: "有一次合并尚未完成，在版本面板中完成合并后恢复保存。",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
             // 持有项目数据的各方名称：刷盘失败时用，重读工作树失败时也用。
             stores: {
@@ -486,8 +486,8 @@ export const workspace = {
         // 重读工作树：磁盘上的内容不再是编辑器显示的内容（解除冻结、恢复版本）。正常情况下作者
         // 什么都不该看到——只有某一部分读不回来时才出声，因为那时面板里是旧内容。
         reload: {
-            failedTitle: "项目没有完整重新读取",
-            failedDetail: "以下内容仍是重读之前的：{stores}。重新打开项目可再试一次。",
+            failedTitle: "项目未完整重新读取",
+            failedDetail: "以下内容仍显示重读之前的内容：{stores}。重新打开项目以再次读取。",
             console: "已从磁盘重读项目（{cause}）：{count} 项",
             consoleFailed: "无法重读 {label}：{error}",
         },
@@ -497,13 +497,13 @@ export const workspace = {
             command: "冻结项目（停止保存改动）",
             release: "解除冻结（恢复保存改动）",
             enteredTitle: "项目已冻结",
-            enteredDetail: "在解除冻结之前，项目文件不会被改动。",
+            enteredDetail: "解除冻结之前，项目文件不会被写入。",
             leftTitle: "已解除冻结",
             leftDetail: "改动会重新写入项目。",
             // 顶栏中被冻结关掉的每一个控件的悬浮提示。故意所有控件共用一句：作者只需要认一次
             // 「冻结的项目就是这个样子」，而不是在每个按钮上读一套不同的说辞。控件是禁用而不是
             // 隐藏，正是为了给这句话留一个可悬浮的落点。
-            unavailable: "项目冻结期间不可用，解除冻结后即可继续使用。",
+            unavailable: "项目冻结期间不可用，解除冻结后恢复使用。",
         },
         // 用真编辑器浏览历史，在版本轨道做出来之前的入口。故意只做「上一个版本」而不是选择器：
         // 选版本需要一份列表，那份列表就是轨道本身；而一个人手上够不着的里程碑没法验收。
@@ -516,7 +516,7 @@ export const workspace = {
             shownTitle: "正在查看版本 {revision}",
             shownDetail: "编辑器为只读，磁盘上的文件不会被改动。",
             noneTitle: "没有更早的版本",
-            noneDetail: "这个项目只有一个版本，没有更早的内容可看。",
+            noneDetail: "该项目只有一个版本。",
             failedTitle: "无法显示该版本",
         },
         // 版本控制的三个界面：最左侧的版本轨道、项目切换器菜单里的版本那一段、状态栏那一位。三者一律只说
@@ -531,7 +531,7 @@ export const workspace = {
             close: "关闭版本轨道",
             // 正在看历史版本时，折叠轨道、切换器菜单与状态栏那一位的悬停文案。`{version}` 是该版本自己的
             // 标签，例如 `#4`。
-            viewingVersion: "你正在查看版本 {version}",
+            viewingVersion: "正在查看版本 {version}",
             currentVersion: "当前版本",
             // 逃生口，也是它为什么在轨道的两种状态下都在：让作者卡在一个出不去的冻结工作区里，
             // 是这个功能能造成的最坏结果。
@@ -553,7 +553,7 @@ export const workspace = {
             // 就是把一个可回退的操作演成不可逆的，而一个被当成不可逆的功能没人敢用。
             // 「先记录」是字面意思：检查点在写下第一个字节之前就提交，而检查点打不出来时整个
             // 恢复直接中止。
-            restoreConfirmDetail: "项目文件会被这个版本的内容替换。你现在的东西会先记录成一个检查点，而且不会有任何版本被删掉。",
+            restoreConfirmDetail: "项目文件会被替换为该版本的内容。当前状态会先记录为一个检查点，不会删除任何版本。",
             // 很慢：一次检查点、重写每一个受版本控制的文件、再提交一个版本，然后跟「回到当前
             // 版本」一样整体重读一遍。
             restoring: "正在恢复到这个版本…",
@@ -561,10 +561,10 @@ export const workspace = {
             // 先说他的项目现在是什么样，再说错误——因为作者本来会得出的结论「失败了所以什么都没
             // 发生」正好与事实相反，然后他就在一个悄悄退回上周的项目上继续干活。`{action}` 是
             // 「提交版本」那个按钮，从按钮自己的文案取，免得这句话指向一个已经改了名的控件。
-            restoreNotRecordedTitle: "文件已经恢复了，但这个版本没能提交",
+            restoreNotRecordedTitle: "文件已恢复，但该版本未能提交",
             restoreNotRecordedDetail:
-                "你的项目文件现在是版本 {version} 的内容。把它提交成一个新版本时失败了（{error}）。"
-                + "什么都没丢，按「{action}」就能自己提交一次。",
+                "项目文件现在是版本 {version} 的内容。将其提交为新版本时失败（{error}）。"
+                + "按「{action}」可以重新提交。",
             // 还没有版本库的项目。按「缺什么」命名，而不是按机制命名。
             //
             // 原文案是「没有版本历史」，与下面的 `noHistory`（仓库存在但还没有版本）几乎撞车。
@@ -636,8 +636,8 @@ export const workspace = {
             // 这两句话不一样，因为作者只有其中一种情况能自己动手。两者都不渲染成禁用控件：在那些
             // 机器上这个功能从未发货，灰掉的轨道会把一台好机器说成装坏了。
             unavailable: {
-                platform: "这台机器上没有版本控制。",
-                installation: "这个 Studio 安装里没有版本控制。",
+                platform: "本机不支持版本控制。",
+                installation: "当前 Studio 安装不包含版本控制。",
             },
             // 版本轨道里的服务器区。用「服务器」不用「远端」：没用过版本控制的作者知道服务器是什么，
             // 而「远端」这个词要先懂模型才有意义。
@@ -657,36 +657,40 @@ export const workspace = {
                 // 由这个按钮去问。
                 check: "检查服务器",
                 checking: "正在检查服务器…",
-                notChecked: "还没查",
+                notChecked: "未检查",
                 upToDate: "已是最新",
                 // 故意按「版本」数而不是按文件数：作者提交的是版本，
                 // 而决定要不要推送的，正是有多少个版本还没离开这台机器。
-                localAhead: "有版本还没上传到服务器",
-                remoteAhead: "服务器上有你还没有的版本",
+                localAhead: "本地有未上传到服务器的版本",
+                remoteAhead: "服务器上有本地没有的版本",
                 // 两边都动过。这种状态下推送会被拒绝并说明原因，先同步就会合并。
-                diverged: "你和服务器都有新的改动",
-                unreachable: "连不上这个服务器",
+                diverged: "本地和服务器都有新版本",
+                unreachable: "无法连接该服务器",
                 // 服务器答应了但不接受我们。**只有这个状态**才显示凭据字段——
                 // 在没有人被拒绝之前就问令牌，是在问一个多数作者永远不需要回答的问题。
-                unauthorized: "这个服务器不接受你的身份",
+                unauthorized: "该服务器拒绝了访问",
                 push: "上传到服务器",
                 pushing: "正在上传到服务器…",
                 // 「已经有了」是成功。按两次是很正常的事。
-                pushedAlready: "服务器上已经有这些版本了",
+                pushedAlready: "服务器上已有这些版本",
                 sync: "从服务器获取",
                 syncing: "正在从服务器获取版本…",
-                syncedNothing: "已经是最新的了",
+                syncedNothing: "已是最新",
             },
             // 同步时合不拢的文件。用常驻通知而不是行内错误：同步在收尾时会离开版本视图，
             // 而轨道会因为这个状态变化重新读一遍，行内错误在有人看见之前就被清掉了。
             //
             // 说的是「接下来去哪」而不是「发生了什么」：同步只报告然后停下，不会把作者
             // 直接拖进解决界面——和「绝不替作者建仓库」是同一条纪律。
-            syncConflictTitle: "有文件没能合并",
-            syncConflictDetail:
-                "有 {count} 个文件在你这里和服务器上都改过：\n"
+            syncConflictTitle: "部分文件无法合并",
+            syncConflictDetailOne:
+                "有一个文件在本地和服务器上都被修改过：\n"
                 + "{files}\n"
-                + "其余的改动已经拿下来了。在版本面板里选择每个文件保留哪一边。",
+                + "其余改动已合并。在版本面板中选择每个文件保留哪一边。",
+            syncConflictDetailMany:
+                "有 {count} 个文件在本地和服务器上都被修改过：\n"
+                + "{files}\n"
+                + "其余改动已合并。在版本面板中选择每个文件保留哪一边。",
             // 合并进行中，只在真的有合并时出现——那时它就是面板里最要紧的一块。
             mergeOpen: "合并进行中",
             mergeConflicts: {
@@ -694,8 +698,8 @@ export const workspace = {
                 other: "有 {count} 个文件要选保留哪一边",
             },
             // 自动合并全都合上了，只差记一个版本。
-            mergeNoConflicts: "全部自动合并完成，提交一个版本即可收尾。",
-            mergeResolve: "去完成合并",
+            mergeNoConflicts: "全部内容已自动合并，提交一个版本即可完成。",
+            mergeResolve: "完成合并",
         },
         // 快捷键自定义（设置 tab）+「?」速查浮层。
         keybindings: {
@@ -745,6 +749,14 @@ export const workspace = {
                     delete: "删除所选",
                     rename: "重命名",
                     escape: "关闭菜单 / 退出编辑",
+                    alignLeft: "左对齐",
+                    alignHorizontalCenter: "水平居中",
+                    alignRight: "右对齐",
+                    alignTop: "顶端对齐",
+                    alignVerticalCenter: "垂直居中",
+                    alignBottom: "底端对齐",
+                    distributeHorizontal: "水平等距",
+                    distributeVertical: "垂直等距",
                 },
                 blueprint: {
                     undo: "撤销",
@@ -770,9 +782,9 @@ export const workspace = {
         search: {
             placeholder: "搜索项目…",
             // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。`{name}` 为当前项目名。
-            titleBarPlaceholder: "在 {name} 里搜索",
+            titleBarPlaceholder: "在 {name} 中搜索",
             building: "正在建立搜索索引…",
-            idle: "可以搜场景、角色、剧情文本、资源与蓝图。",
+            idle: "可搜索场景、角色、剧情文本、资源与蓝图。",
             empty: "没有匹配结果",
             more: "还有 {count} 条",
             // 与场景查找栏共用的三个匹配开关，同一条查询在两处含义一致。
@@ -814,8 +826,8 @@ export const workspace = {
             untitled: "未命名项目",
         },
         closeConfirm: {
-            message: "确定要关闭当前工作区吗？",
-            detail: "将会自动保存已作出的更改",
+            message: "关闭当前工作区？",
+            detail: "未保存的更改会自动保存",
         },
         // 关闭过程中工作区自己说的话，一个阶段一句（见 `WorkspaceCloseStage`）。
         // 真正花时间的是检查点那一步，也正是需要点名说清楚的那一步。

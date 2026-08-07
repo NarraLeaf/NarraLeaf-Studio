@@ -23,6 +23,39 @@ node tools/ui-verify/drive.js click 700 450 --target dev-mode
 node tools/ui-verify/drive.js shot before-panel --target dev-mode --out docs/plans/reports/assets --prefix 2026-07-26-U0-
 ```
 
+## Starting where the run actually begins
+
+A launch lands on the launcher's home screen — or, on a profile that has never been through it, on
+first-run setup. Both are in the way of a run that is here to look at a project, and clicking past
+them is where a scripted pass is most likely to break (the setup buttons are localized: on a Chinese
+machine an English selector finds nothing and the run reads as stuck, not as mislocalized).
+
+Three switches skip that, all of them **development-only** — a packaged build ignores them, because
+argv there is where shortcuts and file associations arrive:
+
+| | |
+|---|---|
+| `--skip-onboarding` | Open the home screen even on a profile that has never been through setup. Records nothing: the profile still owes the flow, and the next launch without the flag asks for it. |
+| `--project <name-or-path>` | Open this project's workspace instead of the home screen. Implies `--skip-onboarding`. |
+| `--onboarding` | Force first-run setup. Beats both of the above. |
+
+```sh
+node tools/ui-verify/drive.js projects           # which projects does this profile remember?
+yarn dev:verify --project demo3                  # …then start in one of them
+yarn dev:verify --skip-onboarding                # or on the home screen, setup out of the way
+```
+
+`--project` takes a directory path (absolute or relative to the working directory), or a name from
+the recent list — exactly, or any unambiguous part of one, case-insensitively. Two matches is an
+error rather than a guess. Anything that does not resolve leaves the launcher up and says why in the
+main log, so a wrong name is a message, never a windowless app.
+
+`projects` reads the profile's store directly (`.dev/temp/userData-dev/state/global.json`, or
+`--user-data <dir>`), so it answers before an app is running and while one is. It marks entries whose
+folder is gone. `--json` for machine-readable output. A worktree has its own profile and therefore
+its own list — seed one by opening a project there once, or just launch with `--project <path>`,
+which adds it on the way in.
+
 Coordinates are **CSS pixels**; screenshot pixels are CSS px x `devicePixelRatio` (1.25 here), so divide
 before clicking a point read off an image. The same factor applies to any distance you *report*: a
 "61px" gap measured off a screenshot in the version-rail round was 49 CSS px, which was exactly the

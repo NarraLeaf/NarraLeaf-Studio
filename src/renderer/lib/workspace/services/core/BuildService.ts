@@ -222,7 +222,7 @@ export class BuildService extends Service<BuildService> {
                 startedAt,
                 finishedAt: Date.now(),
                 platforms,
-                error: translate("build.invalidCommandSummary", { count: invalid.length }),
+                error: translateN("build.invalidCommandSummary", invalid.length, { count: invalid.length }),
             });
             return this.state;
         }
