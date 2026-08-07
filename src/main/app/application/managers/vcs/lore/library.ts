@@ -85,8 +85,10 @@ export interface LoreLibrary {
  * Resolve the native library path.
  *
  * `LORE_LIB_PATH` wins and **skips the platform check** on purpose: it exists for
- * hosts Epic ships no build for (Intel Mac, Windows ARM64), where a user who built
- * lorelib themselves should be able to point Studio at it.
+ * hosts Epic ships no build for, where a user who built lorelib themselves should
+ * be able to point Studio at it. In practice that means Windows ARM64 - darwin-x64
+ * is also unserved by Epic, but Studio is no longer shipped for Intel Macs at all,
+ * so a self-built lorelib would have no Studio to load it.
  */
 export function resolveLoreLibraryPath(): string {
     const override = process.env.LORE_LIB_PATH;

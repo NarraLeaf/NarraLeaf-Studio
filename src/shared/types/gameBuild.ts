@@ -233,7 +233,25 @@ export function deriveGameAppId(identifier: string | undefined, projectName: str
     return `com.narraleaf.games.${sanitized}`;
 }
 
-/** Archs offered per desktop platform, in display order. */
+/**
+ * Archs offered per desktop platform, in display order.
+ *
+ * **This is where the author's game runs, not where Studio runs. Do not "tidy" the two into
+ * agreement.**
+ *
+ * Studio itself is no longer shipped for Intel Macs: three of its subsystems have no darwin-x64
+ * implementation and two of them are upstream gaps we cannot close (@lore-vcs publishes only
+ * `sdk-arm64-apple-darwin`, so version control - a core feature - is simply missing; zsign publishes
+ * no macOS x64 asset, so iOS signing is missing; our LGPL FFmpeg is compiled host-arch-only, so
+ * media conversion is missing). See .github/workflows/release.yml.
+ *
+ * None of that touches this table. A game packaged on Apple Silicon still ships for Intel Macs, and
+ * must keep doing so - that is a large installed base of *players*, who are not running Studio.
+ * Nothing in the pipeline needs an Intel Mac to produce it either: @narraleaf/encryption vendors a
+ * prebuilt `darwin-x64` bindings.node, and Electron's own x64 runtime is downloaded by
+ * electron-builder. `macos: [..., "x64", ...]` is therefore load-bearing, and gameBuild.test.ts
+ * asserts it stays.
+ */
 export const GAME_BUILD_ARCHS_BY_PLATFORM: Record<GameBuildDesktopPlatform, GameBuildArch[]> = {
     windows: ["x64", "arm64"],
     macos: ["arm64", "x64", "universal"],

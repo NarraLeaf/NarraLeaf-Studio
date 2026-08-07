@@ -577,6 +577,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.uiTemplateFetchBundle, { templateId }),
         fetchPreviews: (templateIds: string[]) =>
             ipcClient.invoke(IPCEventType.uiTemplateFetchPreviews, { templateIds }),
+        fetchThemePreviews: (themeIds: string[]) =>
+            ipcClient.invoke(IPCEventType.uiTemplateFetchThemePreviews, { themeIds }),
     },
 
     projectTemplates: {

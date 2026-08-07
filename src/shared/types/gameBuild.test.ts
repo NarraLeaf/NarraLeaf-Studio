@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    GAME_BUILD_ARCHS_BY_PLATFORM,
     defaultGameBuildArch,
     deriveAndroidVersionCode,
     deriveGameAppId,
@@ -305,6 +306,28 @@ describe("defaultGameBuildArch", () => {
 
     it("uses x64 for a cross build regardless of host arch", () => {
         expect(defaultGameBuildArch("windows", "macos", "arm64")).toBe("x64");
+    });
+});
+
+describe("GAME_BUILD_ARCHS_BY_PLATFORM", () => {
+    // This guards against a specific plausible edit, not against a typo.
+    //
+    // Studio itself is no longer shipped for Intel Macs (no @lore-vcs darwin-x64 backend, no zsign
+    // macOS x64 asset, no x86_64 LGPL FFmpeg build). Someone tidying up after that decision could
+    // very reasonably read "we dropped Intel Mac" and delete this row too - which would silently
+    // strip a large installed base of *players* from every game built with Studio.
+    //
+    // Host and target are different questions. Nothing in the pipeline needs an Intel Mac to
+    // produce an Intel-Mac game: @narraleaf/encryption vendors a prebuilt darwin-x64
+    // bindings.node, and electron-builder downloads Electron's x64 runtime. If this assertion is
+    // in your way, the answer is not to delete it.
+    it("still offers x64 and universal for macOS, because a game's host is not Studio's host", () => {
+        expect(GAME_BUILD_ARCHS_BY_PLATFORM.macos).toContain("x64");
+        expect(GAME_BUILD_ARCHS_BY_PLATFORM.macos).toContain("universal");
+    });
+
+    it("normalizes an explicit macOS x64 choice to itself rather than dropping it", () => {
+        expect(normalizeGameBuildArch("macos", "x64")).toBe("x64");
     });
 });
 
