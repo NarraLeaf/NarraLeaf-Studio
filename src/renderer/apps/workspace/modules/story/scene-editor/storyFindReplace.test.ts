@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { StoryTextSegment } from "@shared/types/story";
+import { compileMatcher } from "@/lib/workspace/services/search/textMatcher";
 import {
     findRangesInText,
     plainOffsetToUnit,
     replaceAllInSegment,
     replaceInSegment,
+    replaceRangesInSegment,
     segmentPlainText,
 } from "./storyFindReplace";
 
@@ -33,6 +35,15 @@ describe("findRangesInText", () => {
 
     it("matches nothing on an empty query, rather than everything", () => {
         expect(findRangesInText("anything", "", { caseSensitive: false })).toEqual([]);
+    });
+
+    it("carries the shared matcher's options through", () => {
+        expect(findRangesInText("cat catalog", "cat", { caseSensitive: true, wholeWord: true }))
+            .toEqual([{ start: 0, end: 3 }]);
+        expect(findRangesInText("a1 b2", "\\w\\d", { caseSensitive: true, regex: true })).toEqual([
+            { start: 0, end: 2 },
+            { start: 3, end: 5 },
+        ]);
     });
 });
 
@@ -120,5 +131,31 @@ describe("replaceAllInSegment", () => {
         const segment = plain("a a a");
         const ranges = findRangesInText(segment.value, "a", { caseSensitive: true });
         expect(replaceAllInSegment(segment, ranges, "bbb").value).toBe("bbb bbb bbb");
+    });
+});
+
+describe("replaceRangesInSegment", () => {
+    it("gives each hit its own replacement, which is what `$1` needs", () => {
+        const matcher = compileMatcher("(\\w)(\\d)", { caseSensitive: true, wholeWord: false, regex: true });
+        const segment = plain("a1 and b2");
+        const ranges = matcher.findRanges(segment.value);
+        const next = replaceRangesInSegment(segment, ranges, range =>
+            matcher.expand(segment.value, range, "$2$1"),
+        );
+        expect(next.value).toBe("1a and 2b");
+    });
+
+    it("splices per hit without disturbing the marks or tokens around them", () => {
+        const segment: StoryTextSegment = {
+            textId: "t1",
+            role: "dialogue",
+            value: "cat and cat",
+            rich: [{ text: "cat" }, { pause: true }, { text: " and " }, { text: "cat", marks: { bold: true } }],
+        };
+        const ranges = findRangesInText(segmentPlainText(segment), "cat", { caseSensitive: true });
+        const next = replaceRangesInSegment(segment, ranges, (_range, index) => `dog${index}`);
+        expect(segmentPlainText(next)).toBe("dog0 and dog1");
+        expect(next.rich).toContainEqual({ pause: true });
+        expect(next.rich).toContainEqual({ text: "dog1", marks: { bold: true } });
     });
 });

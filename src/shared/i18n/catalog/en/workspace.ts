@@ -285,6 +285,7 @@ export const workspace = {
             audioMarkers: "marker change",
             surfaceEdit: "interface edit",
             blueprintEdit: "blueprint edit",
+            replaceText: "text replacement",
         },
     },
     shell: {
@@ -845,6 +846,20 @@ export const workspace = {
             idle: "Search scenes, characters, story text, assets and blueprints.",
             empty: "No results",
             more: "{count} more",
+            // Refined matching, shared with the scene find bar so the same query means one thing.
+            caseSensitive: "Match case",
+            wholeWord: "Match whole word",
+            regex: "Use a regular expression",
+            invalidPattern: "Invalid pattern",
+            // Project-wide replace of story prose. The trailing number on the button is occurrences,
+            // not rows and not the capped visible count.
+            replacePlaceholder: "Replace with",
+            replaceAll: "Replace all",
+            replaceRow: "Replace this line",
+            // The plan no longer fits the project: something it was going to rewrite has been
+            // deleted or changed since. A replace applies completely or not at all, so this refuses
+            // rather than writing what is left.
+            replaceStale: "The project changed. Search again.",
             // Entity groups come first: the box answers "open the thing called X" before
             // "find the line that says X".
             groups: {
