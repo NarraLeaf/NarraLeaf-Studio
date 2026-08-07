@@ -292,7 +292,28 @@ const KILL_ESCALATION_MS = 5_000;
 export type MediaTranscodeResult =
     | { status: "done"; outputPath: string }
     | { status: "cancelled" }
-    | { status: "error"; reason: MediaConvertFailureReason; detail: string };
+    | {
+        status: "error";
+        reason: MediaConvertFailureReason;
+        /** One line, for a caller that has to put a failure in front of an author. */
+        detail: string;
+        /**
+         * Everything ffmpeg wrote to stderr, up to {@link STDERR_TAIL_BYTES}, verbatim.
+         *
+         * Separate from `detail` because the two have different readers. `detail` is an author's
+         * sentence and is deliberately short; this is the encoder's own words - line numbers,
+         * stream indices, the codec it could not open - and is the only thing that makes a failed
+         * conversion diagnosable after the fact. `MediaConvertManager` writes it to the log file
+         * and nothing puts it on screen: see docs/help-system.md on why a stderr tail in a list
+         * row's tooltip was the wrong home for it.
+         *
+         * Empty when no process ever ran, which is a fact rather than a gap.
+         */
+        stderr: string;
+    };
+
+/** The failure arm, named so a helper can promise it rather than the whole union. */
+export type MediaTranscodeError = Extract<MediaTranscodeResult, { status: "error" }>;
 
 export type MediaTranscodeHandle = {
     result: Promise<MediaTranscodeResult>;
@@ -388,6 +409,7 @@ export function startMediaTranscode(
                 status: "error",
                 reason: "target-exists",
                 detail: `${request.targetPath} already exists`,
+                stderr: "",
             };
         }
         if (cancelled) {
@@ -463,7 +485,12 @@ export function startMediaTranscode(
         }
         if (exit.error) {
             await remove(tempPath);
-            return { status: "error", reason: "spawn-failed", detail: exit.error.message };
+            return {
+                status: "error",
+                reason: "spawn-failed",
+                detail: exit.error.message,
+                stderr: exit.stderr,
+            };
         }
         if (exit.code !== 0) {
             await remove(tempPath);
@@ -471,12 +498,16 @@ export function startMediaTranscode(
             // show an author than "the encoder failed", and it is the one thing they can fix.
             const missing = await checkSource(request.sourcePath);
             if (missing) {
-                return missing;
+                // ffmpeg did run and did complain, even though the sentence the author gets is
+                // about the file rather than the encoder. Carrying its output means the log still
+                // says which of the two happened first.
+                return { ...missing, stderr: exit.stderr };
             }
             return {
                 status: "error",
                 reason: "exited",
                 detail: `ffmpeg exited with ${exit.signal ?? exit.code}: ${tailOf(exit.stderr)}`,
+                stderr: exit.stderr,
             };
         }
 
@@ -489,6 +520,8 @@ export function startMediaTranscode(
                 status: "error",
                 reason: code === "EEXIST" ? "target-exists" : "write-failed",
                 detail: error instanceof Error ? error.message : String(error),
+                // ffmpeg exited zero; whatever it said on the way is not why this failed.
+                stderr: "",
             };
         }
         return { status: "done", outputPath: request.targetPath };
@@ -496,17 +529,23 @@ export function startMediaTranscode(
 }
 
 /** `null` when the source is a readable file, an error result when it is not. */
-async function checkSource(sourcePath: string): Promise<MediaTranscodeResult | null> {
+async function checkSource(sourcePath: string): Promise<MediaTranscodeError | null> {
     try {
         if ((await fs.stat(sourcePath)).isFile()) {
             return null;
         }
-        return { status: "error", reason: "source-missing", detail: `${sourcePath} is not a file` };
+        return {
+            status: "error",
+            reason: "source-missing",
+            detail: `${sourcePath} is not a file`,
+            stderr: "",
+        };
     } catch (error: unknown) {
         return {
             status: "error",
             reason: "source-missing",
             detail: error instanceof Error ? error.message : String(error),
+            stderr: "",
         };
     }
 }
