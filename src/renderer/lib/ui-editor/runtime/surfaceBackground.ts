@@ -9,6 +9,39 @@ export function getSurfaceBackgroundColor(surface: UISurface): string {
     return surface.settings?.backgroundColor ?? (surface.kind === "stageSurface" ? "transparent" : "#ffffff");
 }
 
+/**
+ * How much of a page's own background survives when that page is opened OVER a running game.
+ *
+ * A surface authored for the title menu is opaque, because behind it there is nothing to see. The
+ * same surface opened mid-game as an overlay - Config, Save, Log from the quick menu - has the stage
+ * behind it, and painting over it at full opacity throws away the one thing that tells the player
+ * they are still in the scene. Halving it reads as a pane laid on the stage instead of a screen that
+ * replaced it.
+ *
+ * Only the page's own background is thinned; its widgets keep their authored opacity, so labels and
+ * controls stay as legible as they are anywhere else.
+ */
+export const GAME_OVERLAY_BACKGROUND_ALPHA = 0.5;
+
+/**
+ * The background a surface layer paints, given how it is being presented.
+ *
+ * `color-mix` rather than parsing: the authored value can be any CSS colour the inspector produced
+ * (hex, `#rrggbbaa`, `rgb()`, `hsl()`), and mixing towards `transparent` scales whatever alpha it
+ * already carries without this file having to understand the syntax. `transparent` stays transparent
+ * either way, which is what a stage surface wants.
+ */
+export function getSurfaceLayerBackgroundColor(
+    surface: UISurface,
+    presentation: "appPage" | "gameOverlay",
+): string {
+    const color = getSurfaceBackgroundColor(surface);
+    if (presentation !== "gameOverlay" || getCssBackgroundAlpha(color) <= 0) {
+        return color;
+    }
+    return `color-mix(in srgb, ${color} ${GAME_OVERLAY_BACKGROUND_ALPHA * 100}%, transparent)`;
+}
+
 function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
 }

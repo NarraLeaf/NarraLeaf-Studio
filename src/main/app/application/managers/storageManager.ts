@@ -234,6 +234,61 @@ export class StorageManager extends Manager {
     }
 
     /**
+     * Re-key an existing read grant under a token DERIVED from what it points at, and hand that
+     * token back. The caller then serves `app://fs/{stable}` instead of the random one.
+     *
+     * Why this exists: a random per-read token makes the URL a fact about *this run*, and the game
+     * engine writes the URLs it was given into the SavedGame (`Image.state.currentSrc`). Restart
+     * Studio and every one of them 404s, so a loaded save came up with a blank stage - the whole
+     * feature lost, with no error an author could act on. The packaged runtime never had the bug
+     * because it mints `nlr://asset/{assetId}`; this gives Dev Mode the same property without a
+     * second protocol.
+     *
+     * The token covers path AND the bytes' identity (size + mtime), which is what keeps
+     * {@link FileSystemHashHandler}'s `max-age` honest: replacing an asset mints a different token,
+     * so a cached response can never outlive the file it came from. The cost is the other side of
+     * the same coin - a save that references an asset the author has since replaced 404s on that one
+     * image, which is the truth rather than a stale picture of it.
+     *
+     * Deriving a capability token is not a widening here: the only caller is the Dev Mode window,
+     * which already holds a declared recursive read grant over the whole project directory
+     * (`windowPermissionDeclarations`), so nothing becomes reachable that was not already.
+     *
+     * Returns null when the grant is missing, is not a read, or its target cannot be stat'd - the
+     * caller keeps the original token in that case.
+     */
+    public async stabilizeSessionRead(hash: string, ownerWebContentsId: number): Promise<string | null> {
+        const info = this.storage.get(hash);
+        if (!info || info.operation !== "read") {
+            return null;
+        }
+        const target = path.resolve(info.path);
+        let stats: Awaited<ReturnType<typeof fs.stat>>;
+        try {
+            stats = await fs.stat(target);
+        } catch {
+            return null;
+        }
+        const stable = crypto
+            .createHash("sha256")
+            .update(
+                [
+                    "nls.stable-read",
+                    target,
+                    info.directory ? "d" : "f",
+                    String(stats.size),
+                    String(stats.mtimeMs),
+                ].join("\0"),
+            )
+            .digest("base64url");
+        this.storage.set(stable, { ...info, lifetime: "session", ownerWebContentsId });
+        if (stable !== hash) {
+            this.storage.delete(hash);
+        }
+        return stable;
+    }
+
+    /**
      * Promote an existing one-shot read grant to a session-lived, repeatable-read
      * grant owned by the given webContents. The same app://fs/{hash} URL then
      * stays readable until the owner window closes, at which point
