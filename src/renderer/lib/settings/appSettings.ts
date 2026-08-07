@@ -54,6 +54,7 @@ import {
     RECENT_PROJECTS_LIMIT_MAX,
     RECENT_PROJECTS_LIMIT_MIN,
 } from "@shared/constants/recentProjects";
+import { DEVELOPER_MODE_DEFAULT, DEVELOPER_MODE_KEY } from "@/lib/developer";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -151,6 +152,22 @@ export const AppSettings: AppSettingDefinition[] = [
         optionLabels: Object.fromEntries(
             SUPPORTED_LOCALES.map((code) => [code, LOCALE_META[code].nativeName]),
         ),
+    },
+    {
+        // Read by `lib/developer`, whose store every context menu consults as it is assembled: with
+        // this on, a menu grows a final section that copies the identifier of whatever was
+        // right-clicked. Nothing else in Studio reads it - it is not a mode the app runs in, and in
+        // particular it is not Dev Mode, which runs the game. Kept in General rather than behind an
+        // "Advanced" category, because a preference nobody can find is one that gets asked for again.
+        key: DEVELOPER_MODE_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Developer options",
+        labelKey: "settings.items.developerMode.label",
+        description: "Right-click menus gain a section for copying the ID of what you clicked.",
+        descriptionKey: "settings.items.developerMode.description",
+        defaultValue: DEVELOPER_MODE_DEFAULT,
     },
     {
         // Applied by the main process (`applyThemeMode`): the stored mode drives

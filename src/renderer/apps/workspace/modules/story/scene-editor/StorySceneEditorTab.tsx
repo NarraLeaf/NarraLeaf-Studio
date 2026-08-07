@@ -50,6 +50,7 @@ import type { TranslationKey } from "@shared/i18n";
 import { getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
 import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
+import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider } from "./StoryCommandLineView";
 import {
@@ -1793,6 +1794,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         { id: "sep-del", separator: true },
         { id: "delete", label: t("story.rowMenu.delete"), ...freeze.menuRow(), onClick: () => void editor.deleteRows(editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget]) },
     ] : [];
+    const rowMenuItemsWithDeveloperRows = menuTarget
+        ? appendDeveloperIdSection(
+            rowMenuItems,
+            [{ kind: "storyRow", value: menuTarget }, { kind: "scene", value: scene.id }],
+            {
+                hideMenu: rowMenu.hideMenu,
+                // Resolved when the row is clicked rather than on every render of the editor.
+                notify: (message, type) =>
+                    editor.context?.services.get<UIService>(Services.UI).showNotification(message, type),
+            },
+        )
+        : rowMenuItems;
 
     return (
         <StoryEditorTextStyleProvider density={editor.density}>
@@ -2156,7 +2169,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 </div>
             ) : null}
             <ContextMenu
-                items={rowMenuItems}
+                items={rowMenuItemsWithDeveloperRows}
                 position={rowMenu.menuState.position}
                 visible={rowMenu.menuState.visible}
                 onClose={rowMenu.hideMenu}
