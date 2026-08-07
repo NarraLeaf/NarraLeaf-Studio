@@ -10,7 +10,8 @@ import {
     type BuildDialogInfo,
     type BuildPluginEntry,
 } from "./BuildDialog";
-import { initialDialogState, togglePlatform } from "./buildDialogState";
+import { build as enBuild } from "@shared/i18n/catalog/en/build";
+import { initialDialogState, OFFERED_FORMATS, togglePlatform } from "./buildDialogState";
 import { SigningSection } from "./BuildSigningSection";
 
 /**
@@ -47,6 +48,37 @@ describe("the build dialog's rail", () => {
 
     it("keeps Output last, so the footer's Build button is the end of the walk", () => {
         expect(SECTIONS[SECTIONS.length - 1]).toBe("output");
+    });
+});
+
+/**
+ * The targets section renders one pill per offered format, straight off
+ * OFFERED_FORMATS and labelled by `build.format.<format>`. That indirection is
+ * what makes a new format cheap and also what makes it silent: a format added
+ * to the table with no label renders an untranslated key in the dialog, and
+ * nothing else in the suite would notice.
+ */
+describe("the targets section's format pills", () => {
+    it("offers Android both of its packages, with the APK first", () => {
+        // Two formats of one platform, not two platforms: same payload, same
+        // signing credential, different container.
+        expect(OFFERED_FORMATS.android).toEqual(["apk", "aab"]);
+    });
+
+    it("has a label for every format any platform offers", () => {
+        for (const [platform, formats] of Object.entries(OFFERED_FORMATS)) {
+            for (const format of formats) {
+                expect(enBuild.format[format], `build.format.${format} is missing (offered by ${platform})`)
+                    .toBeTruthy();
+            }
+        }
+    });
+
+    it("starts Android on the APK alone, so the AAB is a deliberate choice", () => {
+        // Both formats mean a second container built from the same payload; the
+        // preflight warning is what points a publishing author at the AAB.
+        const state = togglePlatform(initialDialogState(null, "windows", "x64"), "android", true);
+        expect([...state.formats.android]).toEqual(["apk"]);
     });
 });
 

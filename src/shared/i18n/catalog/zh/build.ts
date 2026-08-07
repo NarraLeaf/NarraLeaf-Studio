@@ -32,6 +32,7 @@ export const build = {
         appimage: "AppImage",
         dir: "文件夹",
         apk: "APK",
+        aab: "AAB",
         ipa: "IPA",
     },
     outputDir: "输出目录",
@@ -188,7 +189,7 @@ export const build = {
         // 不再点名 Gatekeeper / SmartScreen：那是厂商的词，不是作者的，而且两边的预期一样。
         // 更长的说法在 `build` 帮助主题里。
         unsigned: "未做代码签名。玩家首次打开时可能看到安全提示",
-        "unsigned-android": "使用本地调试签名，仅供旁加载安装。选择你自己的 release keystore 即可用你的身份签名",
+        "unsigned-android": "使用本地调试签名，仅供旁加载安装，这样签出的 AAB 也不能用作 Google Play 的上传密钥。选择你自己的 release keystore 即可用你的身份签名",
         "unsigned-ios": "这份 .ipa 未签名，而 iOS 不允许安装任何未签名应用。请选择一份 Apple 签名凭据。从钥匙串导出 .p12 时要连同签发链一起导出，否则签名会失败",
         "signing-credential-missing": "本机没有本工程为 {platform} 指定的签名凭据，密钥材料不会随工程流转。请在此导入，或清除该选择以未签名方式构建 {platform}",
         "signing-credential-expired": "{platform} 签名证书不在有效期内（{notBefore} 至 {notAfter}），签名会失败。请向签发方续期并导入新证书",
@@ -200,7 +201,7 @@ export const build = {
         "signing-macos-identity-missing": "本机钥匙串里没有名为 {identity} 的证书。请在「钥匙串访问」中安装它，或在此改选其他证书",
         "signing-macos-identity-unusable": "证书 {identity} 无法用于签名：它已过期、私钥不在、或签发链不完整。请在「钥匙串访问」中打开它确认原因",
         "signing-macos-not-developer-id": "{identity} 不是「Developer ID Application」证书。产物能在本机运行，但在别人的 Mac 上会被 Gatekeeper 拒绝，Apple 也不会为它公证",
-        "signing-android-not-play": "签名后的 APK 适用于旁加载安装，以及 itch.io 等接受 APK 的平台。Google Play 只收 AAB 包，本管线不产出 AAB",
+        "signing-android-not-play": "签名后的 APK 适用于旁加载安装，以及 itch.io 等接受 APK 的平台。Google Play 只收 AAB 包，在 Android 目标下打开 AAB 格式即可产出",
         "signing-ios-profile-mismatch": "应用 ID {bundleId} 不在描述文件的覆盖范围内，该描述文件签发给的是 {profileAppId}。请修改工程标识符，或导入与之匹配的描述文件",
         "cross-build-download": "跨平台构建 {platforms} 需要下载 Electron（首次下载，之后会缓存）",
         "output-not-writable": "无法写入 {outputDir}",
