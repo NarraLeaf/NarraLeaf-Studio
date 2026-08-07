@@ -16,8 +16,13 @@ import {
     uiEditorGroupIntoLeaderContainer,
     uiEditorPaste,
     uiEditorSelectAllInSurface,
+    uiEditorUngroupSelection,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
-import { canAddRestToLeaderContainer, getMoversToGroupIntoLeaderContainer } from "@/lib/ui-editor/commands/uiEditorSelection";
+import {
+    canAddRestToLeaderContainer,
+    getContainersToUngroup,
+    getMoversToGroupIntoLeaderContainer,
+} from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { InputDialog } from "@/lib/components/dialogs";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
@@ -115,6 +120,7 @@ export function useSurfaceCanvasContextMenu(params: {
                 Boolean(menuSel) &&
                 canAddRestToLeaderContainer(menuSel!, doc) &&
                 getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+            const canUngroup = getContainersToUngroup(doc, surface.id, menuSel).length > 0;
 
             const items = buildCanvasContextMenu({
                 document: doc,
@@ -124,6 +130,7 @@ export function useSurfaceCanvasContextMenu(params: {
                 widgetModules,
                 documentService,
                 canAddToGroup: canGroup,
+                canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions: {
                     hideMenu,
@@ -188,6 +195,9 @@ export function useSurfaceCanvasContextMenu(params: {
                     },
                     addSelectionToLeaderGroup: () => {
                         uiEditorGroupIntoLeaderContainer(documentService, stateService, surface.id, menuSel);
+                    },
+                    ungroupSelection: () => {
+                        uiEditorUngroupSelection(documentService, stateService, surface.id, menuSel, uiService);
                     },
                     addSelectionToComponentLibrary: () => {
                         if (!menuSel || menuSel.elementIds.length === 0) {

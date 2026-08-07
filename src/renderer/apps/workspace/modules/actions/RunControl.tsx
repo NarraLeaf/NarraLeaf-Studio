@@ -30,6 +30,7 @@ import type { TestRunRecord } from "@/lib/testing/types";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { GameBuildStatus } from "@shared/types/gameBuild";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
+import { WorkspaceRunCommand } from "@shared/types/menu";
 import type { TranslationKey } from "@shared/i18n";
 
 /**
@@ -309,14 +310,14 @@ export function RunControl() {
         const launch = (target: RunMode) => runStateRef.current.launchMode(target);
         return commandService.registerMany([
             {
-                id: "run:dev-mode",
+                id: WorkspaceRunCommand.RunDevMode,
                 titleKey: "actions.run.runDevMode",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 when: idle,
                 run: () => launch("devMode"),
             },
             {
-                id: "run:preview",
+                id: WorkspaceRunCommand.RunPreview,
                 titleKey: "actions.run.runPreview",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 // Preview is what a frozen workspace is specifically not claiming to be; see above.
@@ -324,14 +325,14 @@ export function RunControl() {
                 run: () => launch("preview"),
             },
             {
-                id: "run:stop-dev-mode",
+                id: WorkspaceRunCommand.StopDevMode,
                 titleKey: "workspace.shell.stopDevMode",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 when: () => runStateRef.current.devActive,
                 run: () => runStateRef.current.runOrStop(),
             },
             {
-                id: "run:stop-preview",
+                id: WorkspaceRunCommand.StopPreview,
                 titleKey: "workspace.shell.stopPreview",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 when: () => runStateRef.current.previewActive,
@@ -350,7 +351,7 @@ export function RunControl() {
                 run: () => runStateRef.current.openTest(),
             },
             {
-                id: "run:stop-test",
+                id: WorkspaceRunCommand.StopTest,
                 titleKey: "test.action.stop",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 when: () => runStateRef.current.testActive,

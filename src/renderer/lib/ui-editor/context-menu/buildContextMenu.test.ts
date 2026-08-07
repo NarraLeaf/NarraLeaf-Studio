@@ -62,6 +62,7 @@ function noopActions() {
         renamePrimary: vi.fn(),
         setSelectedVisible: vi.fn(),
         addSelectionToLeaderGroup: vi.fn(),
+        ungroupSelection: vi.fn(),
         addSelectionToComponentLibrary: vi.fn(),
     };
 }
@@ -83,6 +84,7 @@ describe("UI editor context menus", () => {
             documentService: {} as any,
             actions: noopActions(),
             canAddToGroup: false,
+            canUngroup: false,
             allowAddToComponentLibrary: true,
         });
 
@@ -98,6 +100,7 @@ describe("UI editor context menus", () => {
             "show-selected",
             "hide-selected",
             "add-to-group",
+            "ungroup",
         ]) {
             expect(findItem(items, id).disabled).toBe(true);
         }
@@ -128,6 +131,7 @@ describe("UI editor context menus", () => {
             documentService: { updateElementLayout: vi.fn() } as any,
             actions,
             canAddToGroup: false,
+            canUngroup: false,
             allowAddToComponentLibrary: true,
             insertParentIdForRow: "root",
         });
@@ -144,6 +148,7 @@ describe("UI editor context menus", () => {
             "delete",
             "add-to-component-library",
             "add-to-group",
+            "ungroup",
         ]) {
             expect(findItem(items, id).disabled).toBe(true);
         }
@@ -179,6 +184,7 @@ describe("UI editor context menus", () => {
             documentService: { updateElementLayout: vi.fn() } as any,
             actions,
             canAddToGroup: false,
+            canUngroup: false,
             allowAddToComponentLibrary: true,
             insertParentIdForRow: "child",
         });

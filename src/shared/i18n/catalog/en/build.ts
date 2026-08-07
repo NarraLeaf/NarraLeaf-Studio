@@ -72,6 +72,7 @@ export const build = {
         protectionOff: "Assets and saves ship readable.",
         plugins: "Bundled plugins",
         pluginsNone: "No plugins ship with this game.",
+        pluginsRescanUnavailable: "The plugin list cannot be rescanned in this window.",
         locales: "Bundled languages",
         localesNone: "Localization is not set up; the game ships in one language.",
         localeSource: "{name} (source)",

@@ -39,11 +39,11 @@ export const menu = {
             stopSpeaking: "Stop Speaking",
         },
     },
+    // Only the menu's own title lives here. Every entry inside it reuses the Run dropdown's labels
+    // (`actions.run.*`, `test.action.*`), so the two places that start the same four things cannot
+    // end up calling them different names.
     dev: {
         title: "Develop",
-        devMode: "Dev Mode",
-        preview: "Preview Mode",
-        build: "Build Release",
     },
     window: {
         title: "Window",

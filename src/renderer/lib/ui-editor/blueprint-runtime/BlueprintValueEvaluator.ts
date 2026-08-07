@@ -1,5 +1,6 @@
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
+import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -96,7 +97,7 @@ export async function evaluateBlueprintValue(input: {
         if (safetyErrors.length > 0) {
             throw new BlueprintGraphExecutionError(safetyErrors[0]!, headIds[0]);
         }
-        const graph = adaptBlueprintGraphIr(eventGraph.graph, `blueprintValue:${input.blueprintId}:${eventGraph.id}`);
+        const graph = adaptBlueprintGraphIr(eventGraph.graph, buildBlueprintRunGraphId("blueprintValue", input.blueprintId, eventGraph.id));
         for (const headId of headIds) {
             const result = await executeGraph({
                 graph,

@@ -6,7 +6,6 @@ import {
     useState,
     type Dispatch,
     type PointerEvent as ReactPointerEvent,
-    type ReactNode,
     type SetStateAction,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
@@ -25,6 +24,9 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
 import { StoryRuntimeDebugPanel } from "./StoryRuntimeDebugPanel";
+import { BlueprintDebuggerProvider } from "./debugger/BlueprintDebuggerContext";
+import { BlueprintDebuggerOverlay } from "./debugger/BlueprintDebuggerOverlay";
+import { BlueprintDebuggerPanel } from "./debugger/BlueprintDebuggerPanel";
 import type { DevModePanelChrome } from "./DevModePanelChrome";
 import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
 import type {
@@ -37,6 +39,8 @@ import type {
 } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { blockIdForActionId } from "./storyRuntimeDebugModel";
+import { SessionErrorBanner } from "./SessionErrorBanner";
+import { appendRuntimeIssue, locateRuntimeIssue, type LocatedRuntimeIssue } from "./runtimeIssueModel";
 import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
 import { resolveDevModeViewportSize } from "./devModeViewport";
 import { createDevModePuppetHost, listDevModePuppetBackendModules } from "../devModePuppetHost";
@@ -55,34 +59,7 @@ type DevModeContentProps = {
     onDismissSessionError: () => void;
 };
 
-function SessionErrorBanner(props: {
-    sessionError: string | null;
-    onDismissSessionError: () => void;
-}): ReactNode {
-    const { sessionError, onDismissSessionError } = props;
-    const { t } = useTranslation();
-    if (!sessionError) {
-        return null;
-    }
-    return (
-        <div className="shrink-0 border-b border-danger/40 bg-danger/15 px-3 py-2 text-xs text-danger">
-            <div className="flex items-start justify-between gap-2">
-                <pre className="max-h-24 flex-1 overflow-auto whitespace-pre-wrap font-mono text-2xs leading-snug">
-                    {sessionError}
-                </pre>
-                <button
-                    type="button"
-                    className="shrink-0 rounded-md border border-danger/50 px-2 py-0.5 text-2xs text-danger hover:bg-danger/25"
-                    onClick={onDismissSessionError}
-                >
-                    {t("devMode.dismiss")}
-                </button>
-            </div>
-        </div>
-    );
-}
-
-type DevModeDebugPanelId = "none" | "blueprint" | "story";
+type DevModeDebugPanelId = "none" | "blueprint" | "story" | "debugger";
 
 /** Width the debug drawer takes off the stage while it is open. */
 const DEBUG_PANEL_WIDTH = 380;
@@ -392,7 +369,11 @@ function DevModeDebugOverlay(props: {
     }), [panelFloating, setPanelFloating, handleTitleBarPointerDown]);
 
     return (
-        <>
+        <BlueprintDebuggerProvider
+            session={core.debugSession}
+            blueprintDocument={bundle.ui.localBlueprints}
+            projectPath={projectPath}
+        >
             <AnimatePresence>
                 {activePanel !== "none" ? (
                     // Docked, this is a flex SIBLING of the stage, not an overlay: the stage yields
@@ -408,7 +389,13 @@ function DevModeDebugOverlay(props: {
                         key={activePanel}
                         ref={panelRef}
                         role="complementary"
-                        aria-label={activePanel === "story" ? t("devMode.runtime.title") : t("devMode.devtools.title")}
+                        aria-label={
+                            activePanel === "story"
+                                ? t("devMode.runtime.title")
+                                : activePanel === "debugger"
+                                  ? t("devMode.debugger.title")
+                                  : t("devMode.devtools.title")
+                        }
                         className={
                             panelFloating
                                 // A plain border rather than a `ring`: the game window has
@@ -440,7 +427,9 @@ function DevModeDebugOverlay(props: {
                         transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                     >
                         <div className="absolute inset-y-0 right-0" style={{ width: DEBUG_PANEL_WIDTH }}>
-                            {activePanel === "story" ? (
+                            {activePanel === "debugger" ? (
+                                <BlueprintDebuggerPanel className="h-full min-h-0 w-full" chrome={panelChrome} />
+                            ) : activePanel === "story" ? (
                                 <StoryRuntimeDebugPanel
                                     storyRuntime={storyRuntime}
                                     scopeBridge={core.scopeBridge}
@@ -503,6 +492,7 @@ function DevModeDebugOverlay(props: {
                                     [
                                         ["story", t("devMode.runtime.title")],
                                         ["blueprint", t("devMode.devtools.title")],
+                                        ["debugger", t("devMode.debugger.title")],
                                     ] as const
                                 ).map(([id, label]) => {
                                     const open = activePanel === id;
@@ -548,7 +538,10 @@ function DevModeDebugOverlay(props: {
                     </div>
                 </div>
             </div>
-        </>
+
+            {/* Over the stage, and over the drawer: while stopped, the graph is the window. */}
+            <BlueprintDebuggerOverlay />
+        </BlueprintDebuggerProvider>
     );
 }
 
@@ -650,6 +643,36 @@ export function DevModeContent(props: DevModeContentProps) {
             console.info(message);
         }
     }, []);
+
+    /**
+     * Failures the running game reported, located against the story that is open.
+     *
+     * Kept here rather than inside the banner because a bundle reload has to clear it: the issues
+     * describe rows in a document that has just been replaced, and a stale "line 37" pointing into
+     * the previous revision is worse than no line at all.
+     */
+    const [runtimeIssues, setRuntimeIssues] = useState<readonly LocatedRuntimeIssue[]>([]);
+    // A plain counter, not a timestamp: two issues reported inside the same millisecond would share
+    // a key, and React would treat the second as the first.
+    const issueSeqRef = useRef(0);
+    const bundleRef = useRef(bundle);
+    bundleRef.current = bundle;
+    const reportIssue = useCallback<NonNullable<GameAppHost["reportIssue"]>>(issue => {
+        const current = bundleRef.current;
+        if (!current) {
+            return;
+        }
+        issueSeqRef.current += 1;
+        const located = locateRuntimeIssue(current, issue, `issue-${issueSeqRef.current}`);
+        setRuntimeIssues(previous => appendRuntimeIssue(previous, located));
+    }, []);
+    useEffect(() => {
+        setRuntimeIssues([]);
+    }, [bundle?.bundleId, bundle?.revision]);
+    const dismissIssue = useCallback((id: string) => {
+        setRuntimeIssues(previous => previous.filter(issue => issue.id !== id));
+    }, []);
+    const dismissAllIssues = useCallback(() => setRuntimeIssues([]), []);
 
     const resolveStoryAssetUrl = useCallback<GameAppHost["resolveStoryAssetUrl"]>(async (assetId, assetType) => {
         const result = await getInterface().devMode.resolveAssetUrl(assetId, assetType);
@@ -927,8 +950,10 @@ export function DevModeContent(props: DevModeContentProps) {
             bootAction,
             persistenceAdapter,
             onDebugEvent,
+            debuggerEnabled: true,
             disposeMessage: "Dev Mode runtime disposed",
             log,
+            reportIssue,
             resolveStoryAssetUrl,
             saveStore,
             listPuppetBackendModules,
@@ -947,6 +972,7 @@ export function DevModeContent(props: DevModeContentProps) {
         persistenceAdapter,
         quitApplication,
         listPuppetBackendModules,
+        reportIssue,
         resolveStoryAssetUrl,
         runtimePlugins.ready,
         saveStore,
@@ -1022,7 +1048,14 @@ export function DevModeContent(props: DevModeContentProps) {
     if (!bundle || !host) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
-                <SessionErrorBanner sessionError={sessionError} onDismissSessionError={onDismissSessionError} />
+                <SessionErrorBanner
+                    sessionError={sessionError}
+                    onDismissSessionError={onDismissSessionError}
+                    issues={runtimeIssues}
+                    onDismissIssue={dismissIssue}
+                    onDismissAllIssues={dismissAllIssues}
+                    projectPath={projectPath}
+                />
                 <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
                     {t("devMode.waitingPayload")}
                 </div>
@@ -1033,7 +1066,14 @@ export function DevModeContent(props: DevModeContentProps) {
     if (!surface) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
-                <SessionErrorBanner sessionError={sessionError} onDismissSessionError={onDismissSessionError} />
+                <SessionErrorBanner
+                    sessionError={sessionError}
+                    onDismissSessionError={onDismissSessionError}
+                    issues={runtimeIssues}
+                    onDismissIssue={dismissIssue}
+                    onDismissAllIssues={dismissAllIssues}
+                    projectPath={projectPath}
+                />
                 <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
                     {t("devMode.surfaceNotFound", { surfaceId })}
                 </div>
@@ -1043,7 +1083,14 @@ export function DevModeContent(props: DevModeContentProps) {
 
     return (
         <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
-            <SessionErrorBanner sessionError={sessionError} onDismissSessionError={onDismissSessionError} />
+            <SessionErrorBanner
+                sessionError={sessionError}
+                onDismissSessionError={onDismissSessionError}
+                issues={runtimeIssues}
+                onDismissIssue={dismissIssue}
+                onDismissAllIssues={dismissAllIssues}
+                projectPath={projectPath}
+            />
             {/* Stage and debug drawer are siblings in one row: GameApp renders the frame and the
                 overlays next to each other, so the drawer takes width from the stage instead of
                 covering it. The FAB layer inside the overlays is still absolute, against this box. */}

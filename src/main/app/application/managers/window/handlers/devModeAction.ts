@@ -306,3 +306,54 @@ export class DevModeForwardStoryRowHandler extends IPCHandler<IPCEventType.devMo
         return this.success(void 0 as never);
     }
 }
+
+/**
+ * "Open this row in Studio", from the Dev Mode error banner.
+ *
+ * The sibling of {@link DevModeForwardStoryRowHandler} that is allowed to be rude: it opens the
+ * scene editor and pulls the workspace forward, because unlike the play head it only ever runs
+ * because the author clicked something asking for exactly that. A request rather than a message so
+ * the banner can say "no workspace open for this project" instead of appearing to do nothing.
+ */
+export class DevModeOpenStoryRowInWorkspaceHandler extends IPCHandler<IPCEventType.devModeOpenStoryRowInWorkspace> {
+    readonly name = IPCEventType.devModeOpenStoryRowInWorkspace;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.devModeOpenStoryRowInWorkspace]["data"],
+    ): Promise<RequestStatus<void>> {
+        if (window.getWindowType() !== WindowAppType.DevMode) {
+            return this.failed("Invalid window");
+        }
+        const devWindow = window as AppWindow<WindowAppType.DevMode>;
+        if (!pathsEqual(devWindow.getProps().projectPath, data.projectPath)) {
+            return this.failed("Project mismatch");
+        }
+
+        const workspaceWindow = window
+            .getApp()
+            .windowManager.getWindows()
+            .find(
+                w =>
+                    w.getWindowType() === WindowAppType.Workspace &&
+                    !w.isDestroyed() &&
+                    !w.isClosed() &&
+                    pathsEqual(w.getProps().projectPath, data.projectPath),
+            );
+
+        if (!workspaceWindow) {
+            return this.failed("No workspace for project");
+        }
+
+        workspaceWindow.sendIpcEvent(IPCEventType.workspaceStoryRowOpen, {
+            storyId: data.storyId,
+            sceneId: data.sceneId,
+            blockId: data.blockId,
+        });
+        workspaceWindow.getBrowserWindow().show();
+        workspaceWindow.getBrowserWindow().focus();
+
+        return this.success();
+    }
+}

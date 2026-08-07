@@ -250,6 +250,26 @@ export const story = {
         },
         hint: {
             openScene: "Double-click a scene to open it",
+            // Says what the gesture DOES, not just that it exists: the map deliberately does not
+            // write the jump, and an author who expects it to will read the opened editor as a
+            // detour rather than as the point.
+            connect: "Drag between scenes to write a jump",
+        },
+        // A line on the map, and the jumps behind it.
+        edge: {
+            reveal: "Show these jumps",
+            disconnect: "Delete connection",
+            confirmRemove: {
+                one: "Delete the jump from {source} to {target}?",
+                other: "Delete all {count} jumps from {source} to {target}?",
+            },
+            // Names the one thing an author cannot see from the map: a jump is a line in a scene,
+            // possibly under a fork, and deleting the connection deletes those lines.
+            confirmRemoveDetail: {
+                one: "The jump is removed from {source}. This can be undone in the scene editor.",
+                other: "All {count} jumps are removed from {source}. This can be undone in the scene editor.",
+            },
+            confirmRemoveAction: "Delete Jumps",
         },
         action: {
             resetLayout: "Reset Layout",
@@ -600,6 +620,12 @@ export const story = {
         placeholderNote: "Note…",
         placeholderText: "Text…",
         dragRow: "Drag row",
+        // A grip on a selected row carries the whole selection, and says so before it is pulled — the
+        // count is the only warning that a drag is about to move more than the line under the pointer.
+        dragRows: {
+            one: "Drag {count} row",
+            other: "Drag {count} rows",
+        },
         // Two strings per row button, and the difference is load-bearing: `insert`/`delete` are the
         // ACCESSIBLE NAMES and `insertTitle`/`deleteTitle` the tooltips, which add the keybinding. They
         // read the same because a screen reader and a pointer deserve the same sentence — these used to
@@ -999,8 +1025,8 @@ export const story = {
         moveSelectionUp: "Move story row selection up",
         extendSelectionDown: "Extend story row selection down",
         extendSelectionUp: "Extend story row selection up",
-        moveRowDown: "Move the selected story row down",
-        moveRowUp: "Move the selected story row up",
+        moveRowDown: "Move the selected story rows down",
+        moveRowUp: "Move the selected story rows up",
         selectFirst: "Select the first story row",
         selectLast: "Select the last story row",
         pageDown: "Move story row selection down a page",

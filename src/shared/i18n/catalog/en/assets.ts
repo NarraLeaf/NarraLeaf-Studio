@@ -346,6 +346,22 @@ export const assets = {
             one: "Delete {count} item",
             other: "Delete {count} items",
         },
+        export: "Export…",
+        exportCount: {
+            one: "Export {count} item…",
+            other: "Export {count} items…",
+        },
+    },
+    export: {
+        /** A folder with nothing in it: the command worked, there was simply nothing to copy. */
+        empty: "There are no files to export.",
+        success: {
+            one: "Exported {count} file.",
+            other: "Exported {count} files.",
+        },
+        partial: "Exported {exported} files, {failed} could not be exported.",
+        partialTitle: "Some files were not exported",
+        failed: "Export failed: {error}",
     },
     selector: {
         selectType: "Select {type}",

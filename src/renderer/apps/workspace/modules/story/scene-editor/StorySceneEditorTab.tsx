@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2, Variable } from "lucide-react";
-import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -47,7 +47,7 @@ import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
 import { toReadOnlyStoryKeybindings, toReadOnlyStoryRowActions } from "./storySceneReadOnly";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
-import { getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
+import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
 import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
 import { appendDeveloperIdSection } from "@/lib/developer";
@@ -162,6 +162,9 @@ function describeScrollContext(
 
 /** A row's `py-1`, the part of its height the density's box does not cover. */
 const ROW_VERTICAL_PADDING_PX = 8;
+
+/** "No drag in progress", as one shared value — a fresh `new Set()` would re-render every row. */
+const EMPTY_DRAG_GROUP: Set<StoryBlockId> = new Set();
 
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
 const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
@@ -422,6 +425,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const sensors = useSensors(
         useSensor(PointerSensor),
     );
+    /** The rows currently in the air. Empty except during a drag; see {@link handleDragStart}. */
+    const [draggingGroup, setDraggingGroup] = useState<Set<StoryBlockId>>(EMPTY_DRAG_GROUP);
     // The find bar's opener lives with the rest of the find state, further down; the binding table is
     // built before it exists, so it reaches the current one through a ref.
     const openFindRef = useRef<() => void>(() => {});
@@ -775,6 +780,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // `useStorySceneEditorController`. Nothing to register here any more.
 
     const sortableRowIds = useMemo(() => editor.visibleRows.map(row => row.block.id), [editor.visibleRows]);
+
+    /**
+     * How many rows a grip on a SELECTED row would pick up — the selection, deduped to roots the way
+     * every other selection-scoped action dedupes it. Resolved once for the whole list because the row
+     * needs only the number, which keeps it a primitive at the `memo` boundary.
+     */
+    const selectionDragSize = useMemo(() => {
+        const scene = editor.scene;
+        if (!scene || editor.selectedBlockIds.size < 2) {
+            return 1;
+        }
+        return filterOutSelectedDescendants(scene, [...editor.selectedBlockIds]).length;
+    }, [editor.scene, editor.selectedBlockIds]);
 
     /**
      * The row list is windowed: only the rows on screen (plus a little overscan) exist in the DOM.
@@ -1134,6 +1152,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const sceneId = editor.scene?.id;
     const rowCount = editor.visibleRows.length;
     const deepLinkBlockId = payload?.activeBlockId ?? null;
+    const draftJump = payload?.draftJump;
     const panelStateService = useMemo(
         () => (editor.context && editor.isInitialized ? editor.context.services.get<PanelStateService>(Services.PanelState) : null),
         [editor.context, editor.isInitialized],
@@ -1159,9 +1178,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     useLayoutEffect(() => {
         const el = scrollContainerRef.current;
-        // Skip the saved-anchor restore when opening via a deep link — the deep-link effect below
-        // positions the view on the target block instead.
-        if (!el || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId || deepLinkBlockId) {
+        // Skip the saved-anchor restore when opening via a deep link or a drafted jump — those
+        // effects below position the view on the target block / the open slot instead.
+        if (!el || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId || deepLinkBlockId || draftJump) {
             return;
         }
         didRestoreRef.current = sceneId;
@@ -1191,7 +1210,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         };
         attempt();
         return () => window.cancelAnimationFrame(rafId);
-    }, [scrollContainerRef, sceneId, rowCount, panelStateService, deepLinkBlockId]);
+    }, [scrollContainerRef, sceneId, rowCount, panelStateService, deepLinkBlockId, draftJump]);
 
     // Capture the scroll anchor at most once per frame while scrolling (querying row geometry on every
     // raw scroll event would thrash layout on long scenes). The live scrollTop is recorded eagerly so
@@ -1302,6 +1321,33 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         editor.revealBlock(deepLinkBlockId);
         editor.focusRoot();
     }, [active, deepLinkBlockId, rowCount, scrollContainerRef, scrollRowIntoView, editor.revealBlock, editor.focusRoot]);
+
+    // The scene flow map's connect gesture: open a slot with the `/jump` typed into it and the caret
+    // on the end, and leave the committing to the author's Enter (see `StorySceneEditorDraftJump`).
+    //
+    // Gated on the scene actually being loaded (`rowCount` is the effect's re-run signal, exactly as
+    // above): the map opens this tab and hands it the draft in the same breath, so on a cold open the
+    // first pass runs before the document has arrived and there is no scene to seed a slot in. The
+    // token, not the target, is what marks the gesture handled — two drags to the same scene are two
+    // requests.
+    const handledDraftJumpRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (!active || !draftJump || handledDraftJumpRef.current === draftJump.token || !editor.scene) {
+            return;
+        }
+        handledDraftJumpRef.current = draftJump.token;
+        if (!editor.startJumpDraft(draftJump)) {
+            return;
+        }
+        // The slot lands at the end of the scene (or inside an arm), and the author may well be
+        // reading the top of a long chapter — a caret they cannot see is indistinguishable from the
+        // map having done nothing. Waits a frame for the slot to mount before looking for it.
+        window.requestAnimationFrame(() => {
+            scrollContainerRef.current
+                ?.querySelector<HTMLElement>("[data-story-insert-slot]")
+                ?.scrollIntoView({ block: "center" });
+        });
+    }, [active, draftJump, rowCount, scrollContainerRef, editor.scene, editor.startJumpDraft]);
 
     // Dev Mode play head (WI-2): follow the running row in place when this editor owns the scene.
     // Uses the plain row-select visual — never `revealBlock` (which would flip the author's
@@ -1765,14 +1811,28 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const backgroundAsset = scene.defaultBackgroundAssetId
         ? assetsService.getAssets()[AssetType.Image]?.[scene.defaultBackgroundAssetId] ?? null
         : null;
+    // Dragging a row that is part of the selection drags the whole selection: the rows the author
+    // picked up are settled here, at pick-up, and dimmed together while the drag runs so it is visible
+    // that more than one line is in the air.
+    const handleDragStart = (event: DragStartEvent) => {
+        setDraggingGroup(new Set(editor.beginBlockDrag(String(event.active.id))));
+    };
     const handleDragEnd = (event: DragEndEvent) => {
+        setDraggingGroup(EMPTY_DRAG_GROUP);
         const activeId = String(event.active.id);
         const overId = event.over ? String(event.over.id) : null;
         if (!overId || activeId === overId) {
+            editor.endBlockDrag();
             return;
         }
-        editor.moveDraggedBlockToSortablePosition(activeId, overId);
+        editor.moveDraggedBlocksToSortablePosition(activeId, overId);
     };
+    const handleDragCancel = () => {
+        setDraggingGroup(EMPTY_DRAG_GROUP);
+        editor.endBlockDrag();
+    };
+    /** What this row's grip says it will move: the selection it belongs to, or just itself. */
+    const dragGroupSizeFor = (blockId: StoryBlockId) => (editor.selectedBlockIds.has(blockId) ? selectionDragSize : 1);
 
     // Row context-menu items (WI-3). Insert / play / inspector act on the pointed-at row; duplicate /
     // disable / delete act on the whole selection (which the right-click already normalized). The
@@ -1952,7 +2012,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     onUpdateScene={editor.updateSceneMetadata}
                     panelStateService={panelStateService}
                 />
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
                     {/* `items` stays the WHOLE list, not the window. dnd-kit tolerates a rect it has
                         not measured (its strategy and gap helpers both guard on it), and telling it
                         only about the rows currently on screen would make "which index is this" mean
@@ -2038,6 +2098,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     tempSpeakers={editor.tempSpeakers}
                                     density={editor.density}
                                     rowHighlight={rowHighlight}
+                                    dragGroupSize={dragGroupSizeFor(row.block.id)}
+                                    coDragging={draggingGroup.size > 1 && draggingGroup.has(row.block.id)}
                                 />
                                 )}
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (

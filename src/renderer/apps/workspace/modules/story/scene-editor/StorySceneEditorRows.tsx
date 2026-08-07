@@ -127,8 +127,15 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      * when the author changes it.
      */
     rowHighlight: StoryRowHighlight;
+    /**
+     * How many rows this row's grip picks up: 1 normally, the whole selection when this row is part of
+     * one. A number rather than the selection itself, so the row stays memoised on primitives.
+     */
+    dragGroupSize: number;
+    /** This row is in the air with the row being dragged, and dims with it. */
+    coDragging: boolean;
 }) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef } = props;
     // The name column carries the editor's body type, so the nametag and the words it introduces are
     // the same size — the column, not a smaller type, is what makes the name read as a label.
@@ -265,12 +272,17 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     // Withheld whole while frozen rather than left attached and inert: a grip that picks the row up and
     // then refuses to drop it reads as a broken editor.
     const dragListeners = freeze.gesture(listeners) ?? {};
+    // A multi-row drag lifts one row under the pointer; the rest of the group stays put. They dim with
+    // it so the gesture reads as "these lines are in the air" rather than "one line is, and the others
+    // happen to be selected".
     const sortableStyle: CSSProperties = {
         transform: toSortableTransform(transform),
         transition,
         zIndex: isDragging ? 20 : undefined,
-        opacity: isDragging ? 0.72 : undefined,
+        opacity: isDragging || props.coDragging ? 0.72 : undefined,
     };
+    const dragsGroup = props.dragGroupSize > 1;
+    const dragLabel = dragsGroup ? tn("story.rows.dragRows", props.dragGroupSize) : t("story.rows.dragRow");
 
     return (
         <div
@@ -370,8 +382,8 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     {...dragListeners}
                     role="button"
                     tabIndex={0}
-                    aria-label={t("story.rows.dragRow")}
-                    title={freeze.frozen ? freeze.reason : t("story.rows.dragRow")}
+                    aria-label={dragLabel}
+                    title={freeze.frozen ? freeze.reason : dragLabel}
                     className={`absolute right-2 top-1 flex h-[var(--nl-story-row-box)] w-[18px] touch-none select-none items-center justify-center rounded-md text-fg-subtle transition-opacity hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${showGrip ? "opacity-100" : "opacity-0"} ${freeze.frozen ? "cursor-not-allowed" : "hover:cursor-grab"}`}
                     onFocus={() => setGripFocused(true)}
                     onBlur={() => setGripFocused(false)}
@@ -380,6 +392,19 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 >
                     <GripVertical className="pointer-events-none h-3.5 w-3.5" />
                 </div>
+                {/* How many lines are in the air, shown on the row the pointer is carrying. The other
+                    members of the group only dim — a count beside each of them would be the same fact
+                    printed once per row. */}
+                {isDragging && dragsGroup ? (
+                    <span
+                        aria-hidden
+                        // Clear of the grip (18px wide, 8px in) and standing where the line number
+                        // would be — which is already yielding, because the pointer is on this row.
+                        className="pointer-events-none absolute right-[30px] top-1 flex h-[var(--nl-story-row-box)] items-center rounded-md bg-primary px-1 text-2xs font-medium tabular-nums text-on-primary"
+                    >
+                        {props.dragGroupSize}
+                    </span>
+                ) : null}
             </div>
             <div className="relative min-w-0 py-1">
                 <RowNesting

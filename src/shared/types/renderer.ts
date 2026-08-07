@@ -12,7 +12,7 @@ import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbilit
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
-import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
+import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
@@ -44,6 +44,7 @@ import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
+import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
@@ -376,6 +377,14 @@ export interface RendererPreloadedInterface {
         forwardBlueprintDebugEvent(payload: DevModeBlueprintDebugEventPayload): void;
         forwardStoryRow(payload: DevModeStoryRowPayload): void;
         onStoryRowHighlight(handler: (payload: DevModeStoryRowHighlight) => void): AppEventToken;
+        /**
+         * Open a story row in the workspace and bring that window forward. Unlike `forwardStoryRow`
+         * this is a deliberate navigation — it opens the scene editor if it is not already open — so
+         * it is only ever called from something the author clicked.
+         */
+        openStoryRowInWorkspace(payload: DevModeStoryRowOpenPayload): Promise<RequestStatus<void>>;
+        /** Workspace side of {@link openStoryRowInWorkspace}. */
+        onStoryRowOpen(handler: (payload: DevModeStoryRowOpenRequest) => void): AppEventToken;
         resolveAssetUrl(assetId: string, assetType?: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         openBlueprintInWorkspace(
@@ -752,6 +761,15 @@ export interface RendererPreloadedInterface {
          * then answers `not-modified` and transfers nothing.
          */
         fetchRemote(url: string, validators?: RemoteAssetValidators): Promise<RequestStatus<RemoteAssetFetchResult>>;
+
+        /**
+         * Ask for a folder and copy the named library files into it.
+         *
+         * The dialog belongs to this call: a folder the renderer picks for itself is granted read
+         * access only, so the copying has to happen on the side that can widen the grant. Cancelling
+         * the dialog is a success carrying `canceled: true`, not a failure.
+         */
+        exportToFolder(entries: AssetExportEntry[]): Promise<RequestStatus<AssetExportResult>>;
     };
 
     /**

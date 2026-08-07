@@ -51,7 +51,7 @@ export interface FileStorageInfo {
     ownerWebContentsId?: number;
 }
 
-type SecurityScopedResourceLifetime = "window" | "session";
+export type SecurityScopedResourceLifetime = "window" | "session";
 type SecurityScopedBookmarkGrant = {
     path: string;
     recursive: boolean;
@@ -152,6 +152,25 @@ export class StorageManager extends Manager {
             grants.push({ path: path.resolve(fsPath), recursive, mode: grantMode });
         }
         this.runtimeFileSystemGrants.set(this.getWindowStorageKey(window), grants);
+    }
+
+    /**
+     * Open the macOS security scope for a path the MAIN process is about to touch on the author's
+     * behalf, without handing the renderer any grant over it.
+     *
+     * {@link grantFileSystemAccess} bundles these two, which is right when the renderer is the side
+     * that will do the reading or writing. It is wrong for work main does itself out of a fresh
+     * picker result - exporting library files to a chosen folder - because registering a grant there
+     * widens what the renderer may reach on its own for the rest of the session, well past the
+     * read-only scope `selectDirectory` deliberately hands back.
+     */
+    public startSecurityScopedAccess(
+        window: AppWindow,
+        fsPath: string,
+        securityScopedBookmark?: string,
+        lifetime: SecurityScopedResourceLifetime = "window",
+    ): void {
+        this.startSecurityScopedResource(window, fsPath, securityScopedBookmark, lifetime);
     }
 
     public async isPathAllowed(window: AppWindow, fsPath: string, mode: FileSystemAccessMode): Promise<boolean> {

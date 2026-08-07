@@ -2448,7 +2448,7 @@ async function compileCharacterStageAction(
     // authored against the wrong character rather than being a no-op worth swallowing.
     if (payload.operation === "setMotion" || payload.operation === "setSkin" || payload.operation === "setParams") {
         const channel = payload.operation === "setMotion" ? "motion" : payload.operation === "setSkin" ? "skin" : "parameters";
-        diagnostic(ctx, "warning", block.id, `${payload.characterId || name} is not drawn by a runtime, so it has no ${channel} to set.`);
+        diagnostic(ctx, "warning", block.id, `${characterDiagnosticName(ctx, payload)} is not drawn by a runtime, so it has no ${channel} to set.`);
         return statements;
     }
 
@@ -2487,7 +2487,7 @@ async function compileCharacterStageAction(
             return statements;
         }
         if (tags.length === 0) {
-            diagnostic(ctx, "warning", block.id, `Expression for ${payload.characterId || name} selects no tag; nothing changes.`);
+            diagnostic(ctx, "warning", block.id, `Expression for ${characterDiagnosticName(ctx, payload)} selects no tag; nothing changes.`);
             return statements;
         }
         const chain = image.char(tags as never, createTransition(payload.transition, ctx, block.id) as any);
@@ -2499,7 +2499,7 @@ async function compileCharacterStageAction(
         ? await resolveAsset(ctx, payload.assetId, "image", block.id)
         : await resolveCharacterImageUrl(ctx, payload.characterId, payload.pose, block.id);
     if (!src) {
-        diagnostic(ctx, "warning", block.id, `Character image source not found for ${payload.characterId || name}.`);
+        diagnostic(ctx, "warning", block.id, `Character image source not found for ${characterDiagnosticName(ctx, payload)}.`);
         return statements;
     }
 
@@ -4580,6 +4580,33 @@ function setStableActionId(action: NlrAction, staticId: string): void {
 
 function diagnostic(ctx: SceneCompileContext, level: NlrStoryCompileDiagnostic["level"], blockId: string | undefined, message: string): void {
     pushDiagnostic(ctx.diagnostics, level, blockId, message);
+}
+
+/**
+ * What to call a character inside a diagnostic an author will read.
+ *
+ * Never the id. `characterStageName` falls back to the character id when no explicit stage name was
+ * given, so `payload.characterId || stageName` — which is what these messages used to interpolate —
+ * printed a bare UUID either way. That was survivable while diagnostics only reached the console;
+ * they are now shown in the Dev Mode error banner, where a UUID is exactly the thing an author
+ * cannot match to anything they wrote.
+ *
+ * Order: the author's own name for the character, then a stage name they typed, then a generic —
+ * every rung being something that appears somewhere in their project.
+ */
+function characterDiagnosticName(
+    ctx: SceneCompileContext,
+    payload: Extract<StoryActionPayload, { action: "character" }>,
+): string {
+    const summaryName = payload.characterId ? ctx.characterSummaries.get(payload.characterId)?.name?.trim() : "";
+    if (summaryName) {
+        return summaryName;
+    }
+    const explicitName = payload.objectName?.trim();
+    if (explicitName && explicitName !== "character") {
+        return explicitName;
+    }
+    return "this character";
 }
 
 function pushDiagnostic(

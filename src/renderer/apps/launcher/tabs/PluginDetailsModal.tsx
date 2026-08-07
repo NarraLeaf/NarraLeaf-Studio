@@ -1,96 +1,9 @@
-import { useState } from "react";
-import { ExternalLink } from "lucide-react";
-import { Badge, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
-import { getInterface } from "@/lib/app/bridge";
-import { getAppInfo } from "@/lib/renderApp";
+import { Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
-import type { Translator } from "@shared/i18n";
-import { compareSemver, satisfiesRange } from "@shared/utils/semver";
-import { PluginInstallPermissionSections } from "@/lib/plugins/PluginInstallPermissions";
-import type { PluginListItem, PluginStatus } from "@shared/types/plugins";
+import { PluginDetailsBody } from "@/lib/plugins/ui/PluginDetailsBody";
+import { hasUpdate, isCompatible } from "@/lib/plugins/ui/pluginPresentation";
+import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
-import { projectAvatarColor, projectInitials } from "../projectAvatar";
-import { useStoreIcon } from "./useStoreIcon";
-
-/** Whether a registry entry offers a newer version than what is installed. */
-export function hasUpdate(installed: PluginListItem | null | undefined, entry: PluginRegistryEntry | null | undefined): boolean {
-    if (!installed || !entry) return false;
-    return compareSemver(entry.version, installed.manifest.version) > 0;
-}
-
-/**
- * Whether this Studio build satisfies the range the entry declares. Kept
- * separate from {@link hasUpdate} on purpose: an update the running build cannot
- * take is still worth surfacing, it just needs to say why rather than offering a
- * button that the main process would refuse.
- */
-export function isCompatible(entry: PluginRegistryEntry | null | undefined): boolean {
-    if (!entry?.studioVersion) return true;
-    return satisfiesRange(getAppInfo().version, entry.studioVersion);
-}
-
-export function statusText(status: PluginStatus, t: Translator["t"]): string {
-    switch (status) {
-        case "enabled":
-            return t("launcher.plugins.status.enabled");
-        case "disabled":
-            return t("launcher.plugins.status.disabled");
-        case "needsAuthorization":
-            return t("launcher.plugins.status.needsAuthorization");
-        case "error":
-            return t("common.error");
-        default:
-            return status;
-    }
-}
-
-/** Status pill, only rendered for states worth flagging (enabled is the quiet default). */
-export function PluginStatusBadge({ status }: { status: PluginStatus }) {
-    const { t } = useTranslation();
-    if (status === "enabled") return null;
-    const tone = status === "error" ? "danger" : status === "needsAuthorization" ? "warning" : "neutral";
-    return <Badge tone={tone}>{statusText(status, t)}</Badge>;
-}
-
-/**
- * The plugin's thumbnail, or a monogram tile colored from its name — the same
- * language as the projects list.
- *
- * `src` is always local: an `app://` address for an installed package, a
- * `data:` URL for a store thumbnail main fetched on our behalf. The image is
- * boxed to the same square either way, so a plugin cannot change the shape of
- * its row by what it ships, and anything that still fails to decode falls back
- * to the monogram rather than to a broken-image glyph.
- */
-export function PluginAvatar({ name, src, size = 36 }: { name: string; src?: string | null; size?: number }) {
-    const [failedSrc, setFailedSrc] = useState<string | null>(null);
-
-    if (src && failedSrc !== src) {
-        return (
-            <img
-                src={src}
-                alt=""
-                aria-hidden
-                width={size}
-                height={size}
-                decoding="async"
-                onError={() => setFailedSrc(src)}
-                className="shrink-0 rounded-lg object-cover"
-                style={{ width: size, height: size }}
-            />
-        );
-    }
-
-    return (
-        <span
-            aria-hidden
-            className="flex shrink-0 items-center justify-center rounded-lg text-xs font-medium text-white/90"
-            style={{ width: size, height: size, backgroundColor: projectAvatarColor(name) }}
-        >
-            {projectInitials(name)}
-        </span>
-    );
-}
 
 export interface PluginDetailsModalProps {
     installed: PluginListItem | null;
@@ -104,10 +17,8 @@ export interface PluginDetailsModalProps {
 }
 
 /**
- * One modal for both faces of a plugin: an installed record and/or its registry
- * entry. It reads whatever is present, so it covers an installed-only plugin
- * (built-in, local), a store-only plugin (not yet installed), and the overlap
- * (installed *and* listed, possibly with an update).
+ * The Launcher's plugin details: the shared body in a modal, with this surface's actions in the
+ * footer. The workspace shows the same body as a sidebar sub-page instead.
  */
 export function PluginDetailsModal({
     installed,
@@ -121,23 +32,10 @@ export function PluginDetailsModal({
 }: PluginDetailsModalProps) {
     const { t } = useTranslation();
 
-    const manifest = installed?.manifest;
     const pluginId = installed?.pluginId ?? registryEntry?.id ?? "";
-    const name = manifest?.name ?? registryEntry?.name ?? pluginId;
-    const version = manifest?.version ?? registryEntry?.version ?? "";
-    const publisher = manifest?.publisher ?? registryEntry?.publisher;
-    const description = manifest?.description ?? registryEntry?.description;
-    const permissions = manifest?.permissions ?? registryEntry?.permissions ?? [];
-    const entries = manifest
-        ? (["studio", "runtime"] as const).filter(target => manifest.entries[target])
-        : registryEntry?.targets ?? [];
-    const categories = registryEntry?.categories ?? [];
+    const name = installed?.manifest.name ?? registryEntry?.name ?? pluginId;
     const updateAvailable = hasUpdate(installed, registryEntry);
     const compatible = isCompatible(registryEntry);
-    const link = registryEntry?.homepage || registryEntry?.release.page;
-    // The installed copy's icon was checked at install time and is already on
-    // disk; only fall back to asking main for the registry's.
-    const storeIcon = useStoreIcon(pluginId, Boolean(registryEntry?.icon) && !installed?.iconUrl);
 
     const footer = (
         <div className="flex items-center gap-2">
@@ -148,7 +46,7 @@ export function PluginDetailsModal({
                     onClick={() => onUninstall(installed.pluginId)}
                     disabled={busy}
                 >
-                    {t("launcher.plugins.uninstall")}
+                    {t("plugins.uninstall")}
                 </button>
             ) : null}
             {installed && installed.status === "needsAuthorization" ? (
@@ -158,7 +56,7 @@ export function PluginDetailsModal({
                     onClick={() => onAuthorize(installed.pluginId)}
                     disabled={busy}
                 >
-                    {t("launcher.plugins.authorize")}
+                    {t("plugins.authorize")}
                 </button>
             ) : installed && installed.status !== "error" ? (
                 <button
@@ -177,7 +75,7 @@ export function PluginDetailsModal({
                     onClick={() => onInstall(pluginId)}
                     disabled={busy || !compatible}
                 >
-                    {t("launcher.plugins.store.update")}
+                    {t("plugins.store.update")}
                 </button>
             ) : !installed && registryEntry ? (
                 <button
@@ -186,7 +84,7 @@ export function PluginDetailsModal({
                     onClick={() => onInstall(pluginId)}
                     disabled={busy || !compatible}
                 >
-                    {t("launcher.plugins.store.install")}
+                    {t("plugins.store.install")}
                 </button>
             ) : null}
         </div>
@@ -194,86 +92,7 @@ export function PluginDetailsModal({
 
     return (
         <Modal isOpen onClose={onClose} title={name} size="md" footer={footer}>
-            <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                    <PluginAvatar name={name} src={installed?.iconUrl ?? storeIcon} size={44} />
-                    <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            {version ? <Badge tone="neutral">v{version}</Badge> : null}
-                            {installed?.builtIn ? <Badge tone="primary">{t("launcher.plugins.builtIn")}</Badge> : null}
-                            {installed ? <PluginStatusBadge status={installed.status} /> : null}
-                            {updateAvailable ? <Badge tone="warning">{t("launcher.plugins.updateAvailable")}</Badge> : null}
-                        </div>
-                        <div className="mt-1 font-mono text-xs text-fg-subtle">{pluginId}</div>
-                        {publisher ? <div className="mt-0.5 text-xs text-fg-muted">{publisher}</div> : null}
-                    </div>
-                </div>
-
-                {description ? (
-                    <p className="text-sm leading-6 text-fg-muted">{description}</p>
-                ) : null}
-
-                {!compatible && registryEntry?.studioVersion ? (
-                    <div className="rounded-md border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
-                        {t("launcher.plugins.requiresStudio", {
-                            range: registryEntry.studioVersion,
-                            version: getAppInfo().version,
-                        })}
-                    </div>
-                ) : null}
-
-                {categories.length > 0 ? (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                        {categories.map(category => (
-                            <Badge key={category} tone="neutral">{category}</Badge>
-                        ))}
-                    </div>
-                ) : null}
-
-                <div>
-                    <div className="mb-2 text-xs font-medium text-fg-subtle">{t("launcher.plugins.permissions")}</div>
-                    {permissions.length > 0 ? (
-                        <PluginInstallPermissionSections permissions={permissions} />
-                    ) : (
-                        <div className="rounded-md border border-edge bg-fill-subtle px-3 py-2 text-sm text-fg-subtle">
-                            {t("launcher.plugins.noPermissions")}
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-subtle">
-                    {entries.length > 0 ? (
-                        <span>
-                            {t("launcher.plugins.field.entries")}
-                            {": "}
-                            <span className="font-mono text-fg-muted">{entries.join(" · ")}</span>
-                        </span>
-                    ) : null}
-                    {installed ? (
-                        <span>
-                            {t("launcher.plugins.field.installed")}
-                            {": "}
-                            {new Date(installed.installedAt).toLocaleDateString()}
-                        </span>
-                    ) : null}
-                    {link ? (
-                        <button
-                            type="button"
-                            onClick={() => void getInterface().app.openExternal(link)}
-                            className="no-drag inline-flex cursor-default items-center gap-1 text-primary hover:underline"
-                        >
-                            <ExternalLink className="h-3 w-3" />
-                            {registryEntry?.homepage ? t("launcher.plugins.homepage") : t("launcher.plugins.openReleasePage")}
-                        </button>
-                    ) : null}
-                </div>
-
-                {installed?.lastError ? (
-                    <div className="rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
-                        {installed.lastError}
-                    </div>
-                ) : null}
-            </div>
+            <PluginDetailsBody installed={installed} registryEntry={registryEntry} />
         </Modal>
     );
 }
