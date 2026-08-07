@@ -1,11 +1,12 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview } from "@shared/types/uiTemplateRegistry";
+import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "@shared/types/uiTemplateRegistry";
 import { UI_TEMPLATE_MAX_PREVIEWS_PER_REQUEST } from "@shared/constants/uiTemplateRegistry";
 import {
     fetchTemplateBundle,
     fetchTemplateIndex,
     fetchTemplatePreviews,
+    fetchThemePreviews,
     resolveTemplateRegistryUrl,
 } from "../../uiTemplateRegistryClient";
 import { AppWindow } from "../appWindow";
@@ -70,6 +71,24 @@ export class UITemplateFetchPreviewsHandler extends IPCHandler<IPCEventType.uiTe
             const requested = new Set(data.templateIds.slice(0, UI_TEMPLATE_MAX_PREVIEWS_PER_REQUEST));
             const entries = index.templates.filter(template => requested.has(template.id));
             return fetchTemplatePreviews(entries, registryUrl);
+        });
+    }
+}
+
+export class UITemplateFetchThemePreviewsHandler extends IPCHandler<IPCEventType.uiTemplateFetchThemePreviews> {
+    readonly name = IPCEventType.uiTemplateFetchThemePreviews;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.uiTemplateFetchThemePreviews]["data"],
+    ): Promise<RequestStatus<UIThemePreview[]>> {
+        const registryUrl = resolveTemplateRegistryUrl(window.app.getGlobalState().get("uiTemplates.registryUrl"));
+        return this.tryUse(async () => {
+            const index = await fetchTemplateIndex(registryUrl);
+            // As elsewhere: the renderer names themes, the index supplies the paths.
+            const requested = new Set(data.themeIds.slice(0, UI_TEMPLATE_MAX_PREVIEWS_PER_REQUEST));
+            return fetchThemePreviews(index.themes.filter(theme => requested.has(theme.id)), registryUrl);
         });
     }
 }

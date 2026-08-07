@@ -120,6 +120,14 @@ export const uiEditor = {
         applied: "已添加「{name}」",
         slotTaken: "{slot} 槽位已有一个游戏界面",
         slotOccupied: "槽位已占用",
+        themesTitle: "主题",
+        themesBack: "全部主题",
+        themeOpen: "查看界面",
+        searchThemes: "搜索主题",
+        themeScreens: {
+            one: "{count} 个界面",
+            other: "{count} 个界面",
+        },
         assetsSkipped: {
             one: "有 {count} 个资源导入失败",
             other: "有 {count} 个资源导入失败",
