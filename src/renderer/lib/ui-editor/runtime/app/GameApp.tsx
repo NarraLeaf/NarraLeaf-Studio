@@ -216,6 +216,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     const core = useBlueprintRuntimeCore(bundle, {
         persistenceAdapter: host.persistenceAdapter,
         onDebugEvent: host.onDebugEvent,
+        debuggerEnabled: host.debuggerEnabled,
         disposeMessage: host.disposeMessage,
     });
     // Runtime plugins reach story variables and the player's language through the

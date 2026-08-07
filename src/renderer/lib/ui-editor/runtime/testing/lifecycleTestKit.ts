@@ -45,6 +45,9 @@ export function createRecordingCore(log: LifecycleEventLog): BlueprintRuntimeCor
         debug: new DebugBridge(),
         bindingDebugCoalescer: new BindingDebugCoalescer(),
         executionManager,
+        // Lifecycle tests exercise scope open/close, not breakpoints; no session means the executor
+        // never consults a debugger, which is also how every non-Dev-Mode host runs.
+        debugSession: null,
     };
 }
 

@@ -50,6 +50,7 @@ import {
     type BlueprintEventLayerDialogValue,
 } from "../components/BlueprintEventLayerDialogContent";
 import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
+import { BlueprintBreakpointScope } from "../components/BlueprintBreakpointScope";
 import {
     BlueprintFlowCanvas,
     cloneBlueprintIr,
@@ -108,7 +109,10 @@ import {
     createComponentDocumentServiceAdapter,
     getComponentTabId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
-import { buildAccessibleBlueprintVariableOptions } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
+import {
+    buildAccessibleBlueprintVariableOptions,
+    listEffectiveBlueprintVariables,
+} from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
 import {
     buildBlueprintGraphClipboardPayload,
@@ -1432,6 +1436,18 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }));
     }, [doc, revision, payload.blueprintId, payload.surfaceId]);
 
+    // A breakpoint condition may only test the blueprint's OWN variables: the debugger reads them
+    // off the paused frame's locals by bare id, and a variable belonging to another blueprint is
+    // reachable there only under its explicit `bp:` ref.
+    const breakpointConditionVariables = useMemo(
+        () =>
+            listEffectiveBlueprintVariables(bp).map(variable => ({
+                id: variable.id,
+                name: variable.name || variable.id,
+            })),
+        [bp, revision],
+    );
+
     const blueprintPersistentVariables = useMemo(() => {
         return localBp.listPersistentVariables()
             .map(variable => ({
@@ -1744,6 +1760,13 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
 
     const canvas =
         editor.graphView && ir ? (
+            <BlueprintBreakpointScope
+                projectPath={context.project.getConfig().projectPath}
+                blueprintId={payload.blueprintId}
+                graphId={editor.graphView.graphId}
+                ir={ir}
+                variables={breakpointConditionVariables}
+            >
             <div className="flex h-full min-h-0 flex-col">
                 <BlueprintGraphToolbar
                     graphLabel={getGraphToolbarLabel(bp, editor.graphView)}
@@ -1780,6 +1803,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     />
                 </div>
             </div>
+            </BlueprintBreakpointScope>
         ) : !hasAnyGraph ? (
             <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-4 py-8">
                 <button
