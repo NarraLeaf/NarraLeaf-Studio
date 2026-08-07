@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { deleteBlockFromScene, insertBlockInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planRowBackspaceReplacement } from "./storySceneBlockUtils";
+import { deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -476,5 +476,81 @@ describe("planRowBackspaceReplacement", () => {
         const restored = JSON.parse(JSON.stringify(snapshot)) as StoryScene;
         expect(restored.blocks.blank).toBeUndefined();
         expect(restored).toEqual(scene(blocks, ["n1", "a1", "n2"]));
+    });
+});
+
+describe("planBlockGroupMove", () => {
+    /** Four rows at the top level: the shape most drags happen in. */
+    const flat = () => scene([narration("a"), narration("b"), narration("c"), narration("d")], ["a", "b", "c", "d"]);
+
+    /** Runs the plan the way the controller does, and reports the row order it leaves behind. */
+    function applied(live: StoryScene, movingIds: string[], grabbed: string, target: string): string[] | null {
+        const plan = planBlockGroupMove(live, movingIds, grabbed, target);
+        if (!plan) {
+            return null;
+        }
+        moveBlocksInScene(live, plan.blockIds, plan.target);
+        return live.rootBlockIds;
+    }
+
+    it("drops the whole group after the target when the grabbed row came from above it", () => {
+        expect(applied(flat(), ["a", "b"], "a", "d")).toEqual(["c", "d", "a", "b"]);
+    });
+
+    it("drops the whole group before the target when the grabbed row came from below it", () => {
+        expect(applied(flat(), ["c", "d"], "d", "b")).toEqual(["a", "c", "d", "b"]);
+    });
+
+    it("keeps document order however the selection was built", () => {
+        // Selected bottom-up (`d` clicked first), grabbed by `c` and dragged above `a`: the rows still
+        // land as c, then d.
+        expect(applied(flat(), ["d", "c"], "c", "a")).toEqual(["c", "d", "a", "b"]);
+    });
+
+    it("anchors on a row that is NOT moving, so a non-contiguous group lands together", () => {
+        // `c` sits right after the drop point and is itself moving. Anchoring on it would insert `a`
+        // in front of a row about to leave, and `c` would then be appended to the end of the scene.
+        expect(applied(flat(), ["a", "c"], "a", "b")).toEqual(["b", "a", "c", "d"]);
+    });
+
+    it("carries the group into the container it is dropped on", () => {
+        const live = scene([
+            narration("a"), narration("b"),
+            group("g", ["g1"]), narration("g1", "g"),
+        ], ["a", "b", "g"]);
+        expect(applied(live, ["a", "b"], "a", "g1")).toEqual(["g"]);
+        expect(live.blocks.g.childrenIds).toEqual(["g1", "a", "b"]);
+        expect(live.blocks.a.parentId).toBe("g");
+    });
+
+    it("declines a drop on one of the moving rows", () => {
+        expect(planBlockGroupMove(flat(), ["a", "b"], "a", "b")).toBeNull();
+    });
+
+    it("declines a drop inside a moving container - a block cannot be moved into itself", () => {
+        const live = scene([
+            narration("a"),
+            group("g", ["g1"]), narration("g1", "g"),
+        ], ["a", "g"]);
+        expect(planBlockGroupMove(live, ["g"], "g", "g1")).toBeNull();
+        // Grabbing a row inside the container drags the container, so the same drop is still refused.
+        expect(planBlockGroupMove(live, ["g", "g1"], "g1", "g1")).toBeNull();
+    });
+
+    it("drags the container when the grabbed row is a selected descendant of it", () => {
+        const live = scene([
+            narration("a"),
+            group("g", ["g1"]), narration("g1", "g"),
+        ], ["a", "g"]);
+        // `g1` is selected too, but it rides along inside `g` rather than moving on its own.
+        const plan = planBlockGroupMove(live, ["g", "g1"], "g1", "a");
+        expect(plan?.blockIds).toEqual(["g"]);
+        moveBlocksInScene(live, plan!.blockIds, plan!.target);
+        expect(live.rootBlockIds).toEqual(["g", "a"]);
+    });
+
+    it("declines an empty selection and a target that is gone", () => {
+        expect(planBlockGroupMove(flat(), [], "a", "b")).toBeNull();
+        expect(planBlockGroupMove(flat(), ["a"], "a", "missing")).toBeNull();
     });
 });

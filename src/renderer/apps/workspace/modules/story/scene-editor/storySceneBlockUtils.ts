@@ -351,6 +351,88 @@ export function getMoveTargetBefore(scene: StoryScene, movingBlockId: StoryBlock
     };
 }
 
+/** Where a dragged group lands, and the order its rows are inserted in. See {@link planBlockGroupMove}. */
+export interface StoryBlockGroupMove {
+    /** The roots to move, in document order. Every one is inserted at {@link target}, in this order. */
+    blockIds: StoryBlockId[];
+    target: StoryBlockTarget;
+}
+
+/** The ids in `ids`, in the order a reader meets them walking the scene. */
+function inDocumentOrder(scene: StoryScene, ids: Set<StoryBlockId>): StoryBlockId[] {
+    const ordered: StoryBlockId[] = [];
+    const visit = (blockId: StoryBlockId) => {
+        if (ids.has(blockId)) {
+            ordered.push(blockId);
+        }
+        for (const childId of scene.blocks[blockId]?.childrenIds ?? []) {
+            visit(childId);
+        }
+    };
+    scene.rootBlockIds.forEach(visit);
+    return ordered;
+}
+
+/** The member of `ancestors` that contains `blockId` (or is it), else null. */
+function enclosingId(scene: StoryScene, blockId: StoryBlockId, ancestors: Set<StoryBlockId>): StoryBlockId | null {
+    let id: StoryBlockId | null = blockId;
+    while (id) {
+        if (ancestors.has(id)) {
+            return id;
+        }
+        id = scene.blocks[id]?.parentId ?? null;
+    }
+    return null;
+}
+
+/**
+ * Where a dropped selection lands: one target for the whole group, plus the order to apply it in.
+ *
+ * The single-row drag has an easy time of it — {@link getMoveTargetAfter} takes the row out of its
+ * siblings and reads off the next one. A group cannot, because the row after the drop point may be
+ * *another member of the group*, and an anchor that is about to move is an anchor {@link insertId}
+ * will not find: it appends instead, and the group silently scatters to the end of the parent. So the
+ * anchor here is the first sibling at or after the drop point that is NOT moving, which is stable for
+ * the whole run of inserts.
+ *
+ * Which side of `targetBlockId` the group lands on follows the row the author actually grabbed, the
+ * way a sortable list behaves: dragging downwards drops *after* the row under the pointer, upwards
+ * drops *before* it.
+ *
+ * Returns null when the drop cannot mean anything: an empty selection, a target that is one of the
+ * moving rows, or a target inside a moving row's own subtree (a container cannot be moved into itself).
+ */
+export function planBlockGroupMove(
+    scene: StoryScene,
+    movingIds: StoryBlockId[],
+    grabbedBlockId: StoryBlockId,
+    targetBlockId: StoryBlockId,
+): StoryBlockGroupMove | null {
+    const roots = filterOutSelectedDescendants(scene, [...new Set(movingIds)]);
+    const target = scene.blocks[targetBlockId];
+    if (roots.length === 0 || !target) {
+        return null;
+    }
+    const rootSet = new Set(roots);
+    if (enclosingId(scene, targetBlockId, rootSet)) {
+        return null;
+    }
+    const siblings = target.parentId ? scene.blocks[target.parentId]?.childrenIds : scene.rootBlockIds;
+    const targetIndex = siblings?.indexOf(targetBlockId) ?? -1;
+    if (!siblings || targetIndex === -1) {
+        return null;
+    }
+    const blockIds = inDocumentOrder(scene, rootSet);
+    // The grabbed row tells us the direction, but a row grabbed *inside* a moving container is not
+    // itself a root — the container's own position is the one being dragged, so ask for that instead.
+    const grabbedRoot = enclosingId(scene, grabbedBlockId, rootSet) ?? blockIds[0];
+    const order = inDocumentOrder(scene, new Set([grabbedRoot, targetBlockId]));
+    const draggingDown = order.indexOf(grabbedRoot) < order.indexOf(targetBlockId);
+    const anchorIndex = draggingDown ? targetIndex + 1 : targetIndex;
+    const beforeBlockId = siblings.slice(anchorIndex).find(id => !rootSet.has(id)) ?? null;
+    return { blockIds, target: { parentId: target.parentId, beforeBlockId } };
+}
+
 export function canAcceptChildren(block: StoryBlock | undefined): boolean {
     if (!block) {
         return false;
