@@ -3,8 +3,9 @@ import type {
     MediaConvertRequest,
     MediaConvertStateSnapshot,
 } from "@shared/types/mediaConvert";
+import { Logger } from "@shared/utils/logger";
 import { resolveFfmpegBinary, type FfmpegResolveOptions, type FfmpegResolverApp } from "./ffmpegTool";
-import { startMediaTranscode, type MediaTranscodeOptions } from "./mediaTranscode";
+import { startMediaTranscode, type MediaTranscodeError, type MediaTranscodeOptions } from "./mediaTranscode";
 
 /**
  * Conversions in flight, and what to tell a renderer that asks about one.
@@ -18,7 +19,22 @@ import { startMediaTranscode, type MediaTranscodeOptions } from "./mediaTranscod
  * The difference is the key. A build is keyed by project because there is one build per project; a
  * conversion is keyed by an opaque job id because an author importing a folder of video has several
  * at once, and "the conversion for this project" would be a meaningless handle.
+ *
+ * ## Where a failed conversion goes to be diagnosed
+ *
+ * The snapshot a renderer polls carries one sentence, and that is all the UI shows. It is not enough
+ * to work out *why* ffmpeg refused a file: the answer to that is in the encoder's own stderr, which
+ * is a wall of stream indices and codec names.
+ *
+ * That wall does not belong on screen - it is internal vocabulary, and a long block of it stacked
+ * into a list row is the shape docs/help-system.md rules out. It belongs in the log file, which
+ * already exists for exactly this (`logging/fileLogSink.ts` writes every line here to
+ * `<userData>/logs/main.log` and keeps five generations). So this class logs, and the dialogs stay
+ * as they are. An author who reports "the conversion failed" can be asked for that file, and the
+ * failure is answerable afterwards rather than only while it is on screen.
  */
+
+const logger = new Logger("MediaConvert");
 
 /**
  * How long a finished job stays answerable.
@@ -59,6 +75,9 @@ export class MediaConvertManager {
         const jobId = crypto.randomUUID();
         const tool = await resolveFfmpegBinary(this.app, "ffmpeg", options);
         if (!tool.available) {
+            logger.warn(
+                `No ffmpeg on this host, so ${request.sourcePath} was not converted: ${tool.detail}`,
+            );
             // Recorded like any other job so a caller that polls before reading the return value
             // gets the same answer twice, rather than `idle` for a job it was just handed.
             return this.record(jobId, {
@@ -91,6 +110,10 @@ export class MediaConvertManager {
             }
             const finishedAt = Date.now();
             if (result.status === "done") {
+                logger.info(
+                    `Converted ${request.sourcePath} to ${result.outputPath} in `
+                    + `${finishedAt - startedAt}ms (${describeTarget(request)})`,
+                );
                 job.snapshot = {
                     ...job.snapshot,
                     status: "done",
@@ -100,6 +123,7 @@ export class MediaConvertManager {
             } else if (result.status === "cancelled") {
                 job.snapshot = { ...job.snapshot, status: "cancelled", finishedAt };
             } else {
+                logger.error(failureReport(request, result));
                 job.snapshot = {
                     ...job.snapshot,
                     status: "error",
@@ -154,4 +178,49 @@ export class MediaConvertManager {
         const timer = setTimeout(() => this.jobs.delete(jobId), FINISHED_JOB_RETENTION_MS);
         timer.unref?.();
     }
+}
+
+/**
+ * What was asked for, in one line.
+ *
+ * The target is logged rather than the argv because `transcodeArgs` is pure and total on it: the
+ * target *is* the command, and reproducing it needs no second copy of the argument assembly here to
+ * drift out of step with the one that ran.
+ */
+function describeTarget(request: MediaConvertRequest): string {
+    const target = request.target;
+    if (target.kind === "image") {
+        return `image -> ${target.container}`;
+    }
+    if (target.kind === "remux") {
+        return `remux -> ${target.container}${target.audioOnly ? " (audio only)" : ""}`;
+    }
+    return `reencode -> ${target.container} `
+        + `(video ${target.video ?? "none"}, audio ${target.audio ?? "none"})`;
+}
+
+/**
+ * The whole of what is known about a failed conversion, as one log entry.
+ *
+ * One entry rather than several lines through the logger: the sink writes a timestamp and a level
+ * per call, and a failure split across six of them is six things to correlate when two conversions
+ * were running at once - which is the normal case, since an author imports a folder.
+ *
+ * ffmpeg's stderr goes in last and verbatim, indented so the block is visibly one thing. It is
+ * quoted rather than summarised because the parts that matter are unpredictable; `detail` already
+ * carries the summary, and it is the summary the author was shown.
+ */
+function failureReport(request: MediaConvertRequest, result: MediaTranscodeError): string {
+    const lines = [
+        `Conversion failed (${result.reason}): ${result.detail}`,
+        `  source: ${request.sourcePath}`,
+        `  target: ${request.targetPath} [${describeTarget(request)}]`,
+    ];
+    const stderr = result.stderr.trimEnd();
+    lines.push(
+        stderr
+            ? `  ffmpeg wrote:\n${stderr.split(/\r?\n/).map(line => `    ${line}`).join("\n")}`
+            : "  ffmpeg wrote nothing to stderr",
+    );
+    return lines.join("\n");
 }

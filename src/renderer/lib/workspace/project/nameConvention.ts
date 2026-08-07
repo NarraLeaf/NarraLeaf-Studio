@@ -50,7 +50,9 @@ export const ProjectNameConvention = {
      */
     StudioServices: [".nlstudio", "services/"],
     /**
-     * Where an import writes a converted file before the importer copies it into the library.
+     * Scratch space for media that is on its way into the library and not in it yet: the file a
+     * conversion writes before the importer copies it in, and the copy of a downloaded file that
+     * `RemoteAssetsManager` probes before deciding whether to keep it.
      *
      * Inside the project because that is the only tree the workspace window is allowed to write to
      * (`windowPermissionDeclarations`), and under `.nlstudio/` because the file is scaffolding: it

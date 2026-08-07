@@ -115,15 +115,29 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
         blueprintBindingContext,
     } = props;
     const [, setBindingTick] = useState(0);
-    const valueRuntime = useMemo(
-        () => new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1)),
-        [surface.id, hostAdapter.blueprintRuntime?.runtimeScopeId],
-    );
-
-    useEffect(() => () => valueRuntime.dispose(), [valueRuntime]);
+    const runtimeScopeId = hostAdapter.blueprintRuntime?.runtimeScopeId ?? null;
+    /**
+     * The store is built by an effect rather than by `useMemo`, because `dispose()` is terminal:
+     * a disposed store answers every `sync` / `ensureElementValue` with an early return and has no
+     * way back. `React.StrictMode` - on in every unpackaged build, see `renderApp.tsx` - mounts,
+     * tears down, and mounts again, and that second mount re-runs the effects against the *same*
+     * instance the first mount captured. A memoized store would be killed by the throwaway
+     * teardown and then synced while dead, so nothing on the surface would ever resolve and
+     * nothing would say so. Letting the effect own the instance means the remount gets a live one.
+     */
+    const [valueRuntime, setValueRuntime] = useState<BlueprintValueRuntimeStore | null>(null);
 
     useEffect(() => {
-        if (!blueprintBindingContext) {
+        const store = new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1));
+        setValueRuntime(store);
+        return () => {
+            store.dispose();
+            setValueRuntime(current => (current === store ? null : current));
+        };
+    }, [runtimeScopeId, surface.id]);
+
+    useEffect(() => {
+        if (!blueprintBindingContext || !valueRuntime) {
             return;
         }
         valueRuntime.sync({
@@ -136,7 +150,7 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
     }, [blueprintBindingContext, document, hostAdapter, surface, valueRuntime]);
 
     useEffect(() => {
-        if (!blueprintBindingContext) {
+        if (!blueprintBindingContext || !valueRuntime) {
             return undefined;
         }
         const onStateChanged = () => {

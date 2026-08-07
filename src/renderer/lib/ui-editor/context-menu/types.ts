@@ -49,7 +49,6 @@ export type BuildOutlineContextMenuInput = {
     widgetModules: UIWidgetModule[];
     documentService: UIDocumentService;
     actions: UiEditorContextMenuActions & {
-        copyElementId: (elementId: string) => void;
         pasteIntoParent: (parentId: string) => void;
         expandAllBranches: () => void;
         collapseAllBranches: () => void;
