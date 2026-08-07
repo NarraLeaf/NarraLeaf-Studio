@@ -6,6 +6,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { useWorkspace } from "../../context";
 import { useOpenRecentProject, useRecentProjects } from "../../hooks/useRecentProjects";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
@@ -47,8 +48,12 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     const displayName = currentName?.trim() || t("workspace.shell.projectSwitcher.untitled");
 
     // The current project is already in the history; the switcher is for jumping elsewhere, so
-    // drop it from the list rather than offering a no-op "switch to what you're in".
-    const others = recentProjects.filter(project => !isSamePath(project.path, currentPath));
+    // drop it from the list rather than offering a no-op "switch to what you're in". Compared
+    // through the shared identity rather than as text: this window's path and the history's are
+    // written by different code, and on Windows the same project reaches them spelled differently
+    // often enough that a text comparison offered the author their own project as somewhere to go.
+    const currentIdentity = normalizeProjectPath(currentPath);
+    const others = recentProjects.filter(project => normalizeProjectPath(project.path) !== currentIdentity);
 
     useEffect(() => {
         if (!open) return;
@@ -308,6 +313,3 @@ function SwitcherAction(
     );
 }
 
-function isSamePath(a: string, b: string): boolean {
-    return a.replace(/[\\/]+$/, "") === b.replace(/[\\/]+$/, "");
-}
