@@ -2,8 +2,14 @@ import { useEffect } from "react";
 import { useWorkspace } from "../context";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
-import { loadWorkspacePlugins, type WorkspacePluginLoadResult } from "@/lib/plugins/pluginRuntime";
+import { translate } from "@/lib/i18n";
+import {
+    loadWorkspacePlugins,
+    unloadWorkspacePlugins,
+    type WorkspacePluginLoadResult,
+} from "@/lib/plugins/pluginRuntime";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
+import { openPluginsPanel } from "../modules/plugins/openPluginsPanel";
 
 export function useWorkspacePlugins() {
     const { context, recovery } = useWorkspace();
@@ -21,15 +27,11 @@ export function useWorkspacePlugins() {
         }
 
         let disposed = false;
-        const cleanups: Array<() => void | Promise<void>> = [];
         const ui = context.services.get<UIService>(Services.UI);
 
         const handleResults = async (results: WorkspacePluginLoadResult[]) => {
             for (const result of results) {
                 if (result.ok) {
-                    if (result.cleanup) {
-                        cleanups.push(result.cleanup);
-                    }
                     continue;
                 }
                 // Logged as well as toasted: the toast is gone in five seconds, and a plugin that
@@ -41,14 +43,28 @@ export function useWorkspacePlugins() {
                     error: result.error,
                     severity: "degraded",
                 });
-                ui.notifications.error(`Plugin ${result.pluginId} failed to load: ${result.error}`);
+                // The toast now leads somewhere: the plugins panel shows the same failure with its
+                // reason, and the reload / disable / uninstall that answer it.
+                ui.notifications.error(
+                    translate("plugins.workspace.error.loadFailed", { name: result.pluginId }),
+                    result.error,
+                    [{
+                        label: translate("plugins.workspace.openPanel"),
+                        onClick: () => openPluginsPanel(context, { pluginId: result.pluginId }),
+                    }],
+                );
             }
         };
 
         loadWorkspacePlugins(context)
             .then(async results => {
+                // Unmounted mid-load: the teardown below has already queued the unload behind this
+                // very load, so the plugins that just came up go straight back down and there is
+                // nothing left to report to a workspace nobody is showing. Teardown is the
+                // session's now rather than a local list of cleanups - the plugins panel starts and
+                // stops plugins too, and only one of the two knowing what is running is what made a
+                // live toggle impossible before.
                 if (disposed) {
-                    await Promise.all(results.map(result => result.ok ? result.cleanup?.() : undefined));
                     return;
                 }
                 await handleResults(results);
@@ -61,14 +77,12 @@ export function useWorkspacePlugins() {
                     error,
                     severity: "degraded",
                 });
-                ui.notifications.error(`Failed to load workspace plugins: ${message}`);
+                ui.notifications.error(translate("plugins.workspace.error.hostFailed"), message);
             });
 
         return () => {
             disposed = true;
-            for (const cleanup of cleanups.splice(0).reverse()) {
-                void cleanup();
-            }
+            void unloadWorkspacePlugins(context);
         };
     }, [context, recovery]);
 }

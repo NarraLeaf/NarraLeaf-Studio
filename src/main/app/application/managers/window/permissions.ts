@@ -82,7 +82,17 @@ const launcherDefaultCapabilities = (): PrivilegedCapability[] => [
     PrivilegedCapability.PluginPermissionRequest,
 ];
 
+/**
+ * `PluginInstall` is here because the workspace now manages plugins too (the Plugins panel), not
+ * only the Launcher. It is the capability behind install / enable / disable / uninstall.
+ *
+ * It does NOT hand plugins that power: a plugin calls through its own actor identity, which is
+ * checked against the permissions it was installed with (`isPluginCapabilityAllowed`), never
+ * against the window's defaults. Installing from the store still raises the permission prompt
+ * window the author has to answer.
+ */
 const workspaceDefaultCapabilities = (): PrivilegedCapability[] => [
+    PrivilegedCapability.PluginInstall,
     PrivilegedCapability.PluginPermissionRequest,
     PrivilegedCapability.BashExecute,
 ];

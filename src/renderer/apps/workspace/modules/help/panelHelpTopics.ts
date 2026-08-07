@@ -25,6 +25,7 @@ export const PANEL_HELP_TOPICS: Readonly<Record<string, HelpTopicId>> = {
     "narraleaf-studio:voice": "voice",
     "narraleaf-studio:ui-surfaces": "uiSurfaces",
     "narraleaf-studio:search": "search",
+    "narraleaf-studio:plugins": "plugins",
     "narraleaf-studio:recovery": "recovery",
 };
 
