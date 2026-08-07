@@ -1,6 +1,7 @@
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
+import { appendAlignSubmenu } from "./appendAlignSubmenu";
 import type { BuildOutlineContextMenuInput } from "./types";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { translate } from "@/lib/i18n";
@@ -149,6 +150,14 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         menuSelection: menuSelection,
         hideMenu: actions.hideMenu,
         arrange: actions.arrange,
+    });
+
+    appendAlignSubmenu(items, {
+        document: input.document,
+        surfaceId: input.surfaceId,
+        menuSelection: menuSelection,
+        hideMenu: actions.hideMenu,
+        align: actions.align,
     });
 
     items.push(

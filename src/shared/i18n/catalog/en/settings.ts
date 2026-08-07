@@ -3,9 +3,9 @@ export const settings = {
     title: "Settings",
     searchPlaceholder: "Search settings…",
     loading: "Loading settings…",
-    noResults: "No settings match your search.",
+    noResults: "No settings match the search.",
     empty: "No settings available.",
-    noneExposed: "No implemented settings are currently exposed.",
+    noneExposed: "No settings are exposed in this section.",
     invalidValue: "Please provide a valid value",
     persistFailed: "Failed to persist setting",
     resetToDefault: "Reset to default",
@@ -21,7 +21,7 @@ export const settings = {
         noMatches: "No fonts match your search.",
         loading: "Reading the fonts installed on this computer…",
         unavailable: "This build cannot list installed fonts. The presets above still work.",
-        denied: "Studio was not allowed to read your installed fonts. Bring this window to the front and reopen the list.",
+        denied: "Studio could not read the installed fonts. Bring this window to the front and reopen the list.",
         failed: "Could not read installed fonts: {message}",
         notInstalled: "not installed",
     },
@@ -64,7 +64,7 @@ export const settings = {
         },
         developerMode: {
             label: "Developer options",
-            description: "Right-click menus gain a section for copying the ID of what you clicked.",
+            description: "Right-click menus gain a section for copying the ID of the item clicked.",
         },
         themeMode: {
             label: "Theme",
@@ -88,7 +88,7 @@ export const settings = {
         },
         reduceMotion: {
             label: "Reduce motion",
-            description: "Turn off animated transitions in the Studio interface. Your game's own animations are unaffected.",
+            description: "Turn off animated transitions in the Studio interface. The game's own animations are unaffected.",
         },
         zoomPercent: {
             label: "Interface zoom",
@@ -146,7 +146,7 @@ export const settings = {
         },
         storyRowHighlight: {
             label: "Highlight story rows",
-            description: "Give one kind of row a background tint, so it separates from the rest at a glance.",
+            description: "Give one kind of row a background tint, so it separates from the rest.",
             options: {
                 none: "No highlight",
                 script: "Highlight spoken lines",
@@ -212,12 +212,12 @@ export const settings = {
         },
         dashboardOnOpen: {
             label: "Show the project dashboard by default",
-            description: "Applies to projects you haven't decided about. Each project can override it.",
+            description: "Applies to projects with no setting of their own. Each project can override it.",
         },
         clearAllStats: {
             label: "Clear all statistics data",
             description:
-                "Erase the writing history, active time, and build history of every project. Counts read from your projects are unaffected.",
+                "Erase the writing history, active time, and build history of every project. Counts read from the projects are unaffected.",
             action: "Clear",
             confirm: "Clear everything",
         },
@@ -231,7 +231,7 @@ export const settings = {
         },
         backgroundImage: {
             label: "Custom background image",
-            description: "Show a picture of your choice behind the workspace.",
+            description: "Show an image behind the workspace.",
             action: "Configure…",
             needsWorkspace: "Open a workspace to configure the background image.",
         },
@@ -247,14 +247,14 @@ export const settings = {
         resetWorkspaceLayout: {
             label: "Reset the workspace layout",
             description:
-                "Put the panels, sidebars and open editor tabs back to how they start. Your projects are not touched.",
+                "Return the panels, sidebars and open editor tabs to their initial state. Projects are not modified.",
             action: "Reset",
             confirm: "Reset the layout",
         },
         resetAllPreferences: {
             label: "Reset all settings",
             description:
-                "Put every setting back to its default. Your projects, their history and your statistics are not touched.",
+                "Return every setting to its default. Projects, their history and the statistics are not modified.",
             action: "Reset",
             confirm: "Reset everything",
         },
@@ -271,7 +271,7 @@ export const settings = {
             buckets: {
                 electronBuilder: {
                     label: "Game build tooling",
-                    description: "Electron and the installer tools downloaded when you build your game.",
+                    description: "Electron and the installer tools downloaded for a build.",
                 },
                 buildDependencies: {
                     label: "Plugin build files",
@@ -279,7 +279,7 @@ export const settings = {
                 },
                 browser: {
                     label: "Interface cache",
-                    description: "What the interface keeps between runs so it starts faster.",
+                    description: "Interface state kept between runs to speed up startup.",
                 },
                 pluginIcons: {
                     label: "Plugin store thumbnails",
@@ -304,7 +304,7 @@ export const settings = {
         export: "Export…",
         import: "Import…",
         apply: "Apply",
-        exportHint: "Writes your settings to a plain JSON file. The workspace background, the name recorded on commits, your recent projects, statistics and window layout stay on this machine.",
+        exportHint: "Writes the settings to a plain JSON file. The workspace background, the name recorded on commits, recent projects, statistics and window layout stay on this machine.",
         exported: "Saved to {path}",
         imported: "Applied {count} settings.",
         exportFailed: "The settings could not be saved.",
