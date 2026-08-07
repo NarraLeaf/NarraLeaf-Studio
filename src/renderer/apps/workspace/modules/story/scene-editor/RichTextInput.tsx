@@ -216,9 +216,45 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         onChangeRef.current(richRunsToPlain(runs), runs);
     }, []);
 
-    const reportActive = useCallback(() => {
+    /**
+     * The marks last published to the toolbar. `onActiveMarksChange` is a `setState` on the row's edit
+     * box, so calling it with a fresh object that says the same thing re-renders the box and the strip
+     * for nothing — and it was being called at least twice per keystroke.
+     */
+    const lastMarksRef = useRef<ActiveMarks | null>(null);
+    /**
+     * The DOM selection the marks below were last read for.
+     *
+     * The same caret position gets reported twice for one keystroke — `selectionchange` on the document
+     * and the field's own `keyup` — and at typing speed those land in different frames, so batching
+     * alone does not merge them. The second read cannot produce a different answer: the selection has
+     * not moved and the text has not changed. Skipping it halves the `queryCommand*` calls, which are
+     * the most expensive thing on this path because each one makes Chromium flush style.
+     *
+     * Any path that *changes* something passes `force`, because a mark can change under a caret that
+     * never moved: `Bold` on a collapsed caret sets the style the next characters inherit, and reading
+     * "the selection is where it was" would leave the strip showing the old state.
+     */
+    const lastReportedSelectionRef = useRef<{ anchorNode: Node | null; anchorOffset: number; focusNode: Node | null; focusOffset: number } | null>(null);
+
+    const reportActive = useCallback((force = false) => {
         try {
             const el = editorRef.current;
+            const selection = globalThis.window.getSelection();
+            const reported = lastReportedSelectionRef.current;
+            if (!force && selection && reported
+                && reported.anchorNode === selection.anchorNode && reported.anchorOffset === selection.anchorOffset
+                && reported.focusNode === selection.focusNode && reported.focusOffset === selection.focusOffset) {
+                return;
+            }
+            lastReportedSelectionRef.current = selection
+                ? {
+                    anchorNode: selection.anchorNode,
+                    anchorOffset: selection.anchorOffset,
+                    focusNode: selection.focusNode,
+                    focusOffset: selection.focusOffset,
+                }
+                : null;
             const range = el ? getSelectionUnitRange(el) : null;
             if (el) {
                 markSelectedChips(el, range);
@@ -241,10 +277,46 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 italic = rangeHasMark(runs, range.start, range.end, "italic");
                 color = rangeMarkColor(runs, range.start, range.end);
             }
-            onActiveRef.current?.({ bold, italic, color });
+            const previousMarks = lastMarksRef.current;
+            if (!previousMarks || previousMarks.bold !== bold || previousMarks.italic !== italic || previousMarks.color !== color) {
+                lastMarksRef.current = { bold, italic, color };
+                onActiveRef.current?.({ bold, italic, color });
+            }
             setCaretColor(color ?? null);
         } catch {
             // queryCommandState can throw when there is no selection; ignore.
+        }
+    }, []);
+
+    /**
+     * Ask for the toolbar's state to be brought up to date, at most once per frame.
+     *
+     * Every caret move fires this from two directions at once — `selectionchange` on the document and
+     * the field's own `keyup`/`mouseup` — so a single keystroke ran the whole read twice. The read is
+     * not free: `queryCommandState`/`queryCommandValue` each force Chromium to flush style, and they
+     * were the most expensive DOM calls on the typing path (measured at 0.69ms per character between
+     * them).
+     *
+     * A frame of latency is the right trade. Nothing about the caret's own behaviour goes through
+     * here — this only decides whether the B in the style strip looks pressed.
+     */
+    const reportActiveFrameRef = useRef<number | null>(null);
+    const reportActiveForceRef = useRef(false);
+    const scheduleReportActive = useCallback((force = false) => {
+        reportActiveForceRef.current = reportActiveForceRef.current || force;
+        if (reportActiveFrameRef.current !== null) {
+            return;
+        }
+        reportActiveFrameRef.current = globalThis.requestAnimationFrame(() => {
+            reportActiveFrameRef.current = null;
+            const forced = reportActiveForceRef.current;
+            reportActiveForceRef.current = false;
+            reportActive(forced);
+        });
+    }, [reportActive]);
+    useEffect(() => () => {
+        if (reportActiveFrameRef.current !== null) {
+            globalThis.cancelAnimationFrame(reportActiveFrameRef.current);
         }
     }, []);
 
@@ -255,10 +327,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
 
     /** Record the pre-edit state of a mutation we perform ourselves (a chip, a mark, an inserted value). */
     const recordStructural = useCallback(() => {
-        const before = snapshot();
-        if (before) {
-            historyRef.current.record(before, { kind: "structural", now: performance.now() });
-        }
+        historyRef.current.record(snapshot, { kind: "structural", now: performance.now() });
     }, [snapshot]);
 
     // Typing goes through `beforeinput` because it is the only point where the pre-edit state still
@@ -273,11 +342,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 return;
             }
             const input = event as InputEvent;
-            const before = snapshot();
-            if (!before) {
-                return;
-            }
-            historyRef.current.record(before, {
+            // `snapshot` itself, not its result: it walks the whole field out of the DOM and measures
+            // the selection, and a burst of typing coalesces into ONE undo entry — so on all but the
+            // first keystroke of a burst the history would have thrown the answer away. See `record`.
+            historyRef.current.record(snapshot, {
                 kind: editKindForInputType(input.inputType),
                 boundary: input.data === " ",
                 now: performance.now(),
@@ -298,8 +366,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             savedRange.current = state.range;
         }
         emitChange();
-        reportActive();
-    }, [emitChange, reportActive]);
+        // Forced: undo/redo re-renders the runs, so the marks under the restored caret can differ
+        // from the ones under the caret it replaced even when the two sit at the same offset.
+        scheduleReportActive(true);
+    }, [emitChange, scheduleReportActive]);
 
     /** Returns false when this row has nothing left to undo, so the caller can hand off to story history. */
     const undo = useCallback((): boolean => {
@@ -333,12 +403,14 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         if (!el) {
             return;
         }
+        // The range itself is saved synchronously and always has been: `onTab` hands the caret to the
+        // style strip on this very keystroke, and the strip has nothing else to read it from.
         const range = getSelectionUnitRange(el);
         if (range) {
             savedRange.current = range;
         }
-        reportActive();
-    }, [reportActive]);
+        scheduleReportActive();
+    }, [scheduleReportActive]);
 
     /**
      * Where the collapsed caret currently sits, relative to the line's edges. `atFirstLine`/`atLastLine`
@@ -469,12 +541,12 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             const el = editorRef.current;
             const selection = globalThis.window.getSelection();
             if (el && selection && selection.rangeCount > 0 && el.contains(selection.getRangeAt(0).commonAncestorContainer)) {
-                reportActive();
+                scheduleReportActive();
             }
         };
         globalThis.document.addEventListener("selectionchange", onSelectionChange);
         return () => globalThis.document.removeEventListener("selectionchange", onSelectionChange);
-    }, [reportActive]);
+    }, [scheduleReportActive]);
 
     /**
      * Apply a bold/italic/color mark. For a real selection we go through the unit model so inline value
@@ -509,6 +581,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 programmaticRef.current = false;
             }
             saveSelection();
+            // The caret has not moved — only the style the next characters will inherit has changed —
+            // so the "same selection, same answer" shortcut has to be told this one is different.
+            scheduleReportActive(true);
             emitChange();
             return;
         }
@@ -525,8 +600,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         renderRunsToElement(el, next, renderOptionsRef.current);
         setSelectionUnitRange(el, range.start, range.end);
         saveSelection();
+        scheduleReportActive(true);
         emitChange();
-    }, [emitChange, recordStructural, saveSelection]);
+    }, [emitChange, recordStructural, saveSelection, scheduleReportActive]);
 
     // Splice by explicit unit range without focusing the editor (so a pause popover's input keeps
     // focus). Caret is only restored when the editor already holds focus.
@@ -679,7 +755,17 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                     }
                 }
             }}
-            onInput={emitChange}
+            onInput={() => {
+                emitChange();
+                // Forced, because an edit can change the marks under a caret that never moved — and
+                // the caret's own NODE can survive it. Chromium's native Ctrl+B wraps the existing
+                // text node in a <b> rather than replacing it, so anchorNode/anchorOffset come back
+                // identical and the "same selection, same answer" shortcut in `reportActive` would
+                // skip the one read that mattered: the strip stayed unpressed on the keystroke that
+                // pressed it, then caught up on the next caret move. Every browser-driven edit
+                // (native formatting, paste, drop, IME) arrives here and nowhere else.
+                scheduleReportActive(true);
+            }}
             onPaste={event => {
                 if (readOnly || !props.onMultiLinePaste) {
                     return;
