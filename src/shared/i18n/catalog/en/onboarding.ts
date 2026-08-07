@@ -21,16 +21,16 @@ export const onboarding = {
     windowTitle: "Welcome to {name}",
     language: {
         title: "Language",
-        expectation: "The language Studio's interface is written in. You can change it in Settings later.",
+        expectation: "The language of Studio's interface. It can be changed in Settings.",
         matchedToDevice: "matched to this device",
     },
     appearance: {
         title: "Appearance",
-        expectation: "How Studio looks while you write. Both apply as you pick them.",
+        expectation: "The appearance of Studio's interface. Both settings apply immediately.",
     },
     done: {
         title: "Studio is set up",
-        expectation: "Language and appearance live in Settings. Press F1 anywhere to read about whatever is under the cursor.",
+        expectation: "Language and appearance are in Settings. Press F1 anywhere for help on what is under the cursor.",
     },
     nav: {
         skip: "Skip setup",

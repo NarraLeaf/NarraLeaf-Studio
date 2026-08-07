@@ -70,17 +70,17 @@ export const wizard = {
     },
     template: {
         title: "Where Is This Project Coming From?",
-        subtitle: "Start something new, or bring in a project that already exists.",
+        subtitle: "Create a new project, or add an existing one.",
         // Option labels - keyed by the card `id` in constants.ts.
         options: {
             empty: {
                 name: "Empty",
-                description: "Start with a blank project and build from scratch",
+                description: "Start from a blank project",
                 category: "Custom",
             },
             import: {
                 name: "From a package",
-                description: "Unpack a project someone exported as a .nlspkg file",
+                description: "Unpack a project exported as a .nlspkg file",
                 category: "Existing project",
             },
             clone: {
@@ -115,7 +115,7 @@ export const wizard = {
         descriptionPlaceholder: "Describe your project…",
         resolutionPlaceholder: "Select stage size…",
         requiredFieldsTitle: "Required Fields",
-        requiredFieldsMessage: "Please fill in the required fields: Project Name, App ID, and Stage Size.",
+        requiredFieldsMessage: "Fill in the required fields: Project Name, App ID and Stage Size.",
     },
     settings: {
         title: "Project Settings",
@@ -136,7 +136,7 @@ export const wizard = {
         // Accessible name for the folder button inside the location field.
         browseLocation: "Choose folder…",
         validatingDirectory: "Validating directory…",
-        directoryWillBeCreated: "This directory will be created automatically when you create the project",
+        directoryWillBeCreated: "This directory is created together with the project",
         versionControlSystem: "Version Control System",
         versionControlPlaceholder: "Select version control…",
         // Backup cadence option labels - keyed by the backup option `value` in constants.ts.
@@ -162,25 +162,25 @@ export const wizard = {
         // front of a file dialog and nothing is being unpacked - saying otherwise is a spinner
         // that lies about what it is waiting for, and it reads as a hang if they alt-tab away
         // from the dialog and come back.
-        working: "Waiting for you to choose a package and a folder. Unpacking starts once both are picked.",
+        working: "Waiting for a package and a folder. Unpacking starts once both are chosen.",
         error: {
             failedTitle: "Could not import the project",
             generic: "Could not import the project package.",
             notAProjectTitle: "This is not a NarraLeaf Studio project",
-            notAProject: "The package unpacked, but there is no Studio project file in it. What was unpacked is in {path}. Check you were given the right file, then try again.",
+            notAProject: "The package unpacked, but it holds no Studio project file. The unpacked contents are in {path}. Check that the file is the right one, then try again.",
         },
     },
     // The clone flow's first page. Deliberately short: everything else about the project is
     // already recorded on the server.
     source: {
         title: "Where the Project Lives",
-        subtitle: "Point Studio at the server that holds the project, and choose where to keep your copy.",
+        subtitle: "Enter the server that holds the project, and choose where to keep the local copy.",
         server: {
             title: "Server",
             description: "The address of the project on its version-control server.",
         },
         addressLabel: "Project address",
-        addressHint: "Ask whoever set up the project for this address.",
+        addressHint: "This address comes from whoever set up the project.",
         // Names what is missing rather than saying "invalid": the mistake this catches is almost
         // always an address with the server but not the project name on the end.
         addressInvalid: "A project address needs the project's name on the end, like lore://studio.example.lan:41337/my-game",
@@ -194,19 +194,19 @@ export const wizard = {
         // Said before they choose, not after: the emptiness check runs in the main process and a
         // refusal there is a refusal after the author has already committed to the folder.
         destinationHint: "Must be a new or empty folder.",
-        destinationWillBeCreated: "This folder will be created when the project is copied down",
+        destinationWillBeCreated: "This folder is created when the project is copied",
     },
     // The clone flow's last page - the one that touches the network.
     clone: {
         title: "Get the Project",
-        subtitle: "Nothing has been downloaded yet. This copies the whole project onto this machine.",
+        subtitle: "Nothing has been downloaded. This copies the whole project onto this machine.",
         summary: {
             title: "What Will Be Copied",
-            description: "Check this before starting; the whole project comes over the network.",
+            description: "Check this before starting. The whole project is transferred over the network.",
         },
         // No percentage: the backend reports a clone's progress only once it has finished, so a
         // bar here would sit at zero and then disappear.
-        working: "Copying the project from the server. This can take a while.",
+        working: "Copying the project from the server. This can take several minutes.",
         error: {
             failedTitle: "Could not get the project",
             generic: "Could not get the project from the server.",
@@ -214,12 +214,12 @@ export const wizard = {
             // project. The files are named because they are real, they are why this folder cannot
             // be reused, and nothing else on screen says where they went.
             notAProjectTitle: "This is not a NarraLeaf Studio project",
-            notAProject: "The copy finished, but there is no Studio project file in it. What was copied is in {path}. Check the address with whoever set up the project, then try again with a different empty folder.",
+            notAProject: "The copy finished, but it holds no Studio project file. The copied contents are in {path}. Check the address with whoever set up the project, then try again with a different empty folder.",
         },
     },
     review: {
         title: "Review Project",
-        subtitle: "Review your project settings before creating it.",
+        subtitle: "Review the project settings before creating it.",
         summary: {
             title: "Project Summary",
             description: "Overview of your project configuration.",
@@ -229,7 +229,7 @@ export const wizard = {
             description: "Project template that will be used.",
         },
         settings: {
-            description: "Configuration that will be applied to your project.",
+            description: "Configuration applied to the new project.",
         },
         notSpecified: "Not specified",
         custom: "Custom",
