@@ -1,0 +1,6 @@
+# A template's asset store holds raw bytes under extension-less, content-addressed
+# names. Git guesses text-vs-binary for those, and a wrong guess on a machine with
+# `core.autocrlf=true` rewrites line endings inside a JPEG or an Ogg — the file
+# still checks out, but its content hash no longer matches the name it is filed
+# under and the asset silently fails to load. Say it outright instead.
+*/content/assets/content/** binary
