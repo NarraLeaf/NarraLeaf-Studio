@@ -1,6 +1,6 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
-import { translate } from "@/lib/i18n";
+import { translate, translateN } from "@/lib/i18n";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { buildReadonlySurfaceMainSummary } from "@/lib/workspace/services/ui-editor/blueprint/readonlyBlueprintSummary";
 import { collectSubtreeElements } from "./collectSubtreeElements";
@@ -50,7 +50,7 @@ export function collectSurfaceDiagnostics(
                 id: `bp:broken:${surfaceId}`,
                 severity: "warning",
                 source: "blueprint",
-                message: translate("blueprint.diagnostics.surface.brokenBindings", { count: sum.brokenBindingCount }),
+                message: translateN("blueprint.diagnostics.surface.brokenBindings", sum.brokenBindingCount, { count: sum.brokenBindingCount }),
                 hint: translate("blueprint.diagnostics.surface.brokenBindingsHint"),
             });
         }

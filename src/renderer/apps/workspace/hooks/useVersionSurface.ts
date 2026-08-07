@@ -744,10 +744,15 @@ export function useVersionSurface(): VersionSurface {
                 services.ui.notifications.showSticky({
                     type: NotificationType.Error,
                     message: translate("workspace.shell.versionControl.syncConflictTitle"),
-                    detail: translate("workspace.shell.versionControl.syncConflictDetail", {
-                        count: String(result.conflicts.length),
-                        files: result.conflicts.slice(0, 5).join("\n"),
-                    }),
+                    detail: translate(
+                        result.conflicts.length === 1
+                            ? "workspace.shell.versionControl.syncConflictDetailOne"
+                            : "workspace.shell.versionControl.syncConflictDetailMany",
+                        {
+                            count: String(result.conflicts.length),
+                            files: result.conflicts.slice(0, 5).join("\n"),
+                        },
+                    ),
                 });
             }
             setSyncState(await services.versionControl.getSyncState());

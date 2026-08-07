@@ -2,11 +2,13 @@ import { useCallback, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/lib/components/elements";
 import { AppLayout } from "@/lib/components/layout";
+import type { HelpTopicId } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
 import type { TranslationKey } from "@shared/i18n";
 import { WindowControlPolicy } from "@shared/types/window";
 import { AppearanceStep } from "./steps/AppearanceStep";
+import { DoneStep } from "./steps/DoneStep";
 import { LanguageStep } from "./steps/LanguageStep";
 
 const STEPS = ["language", "appearance", "done"] as const;
@@ -39,8 +41,13 @@ export interface OnboardingFlowProps {
     /**
      * Leave setup for good - reached by finishing and by skipping, which mean the same thing to
      * the marker. See `useOnboardingMode`.
+     *
+     * The optional topic is the last screen's three links: leaving is leaving either way, and the
+     * topic only says where to put the author down. Every call site that is a plain exit passes
+     * nothing, so a click handler must never be wired to this directly - a `MouseEvent` would
+     * arrive as the topic.
      */
-    onFinish: () => void;
+    onFinish: (topic?: HelpTopicId) => void;
 }
 
 /**
@@ -79,6 +86,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                         <div className="mt-6 empty:mt-0">
                             {step === "language" && <LanguageStep />}
                             {step === "appearance" && <AppearanceStep />}
+                            {step === "done" && <DoneStep onOpenTopic={onFinish} />}
                         </div>
                     </div>
                 </div>
@@ -94,12 +102,12 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
 
                     <div className="flex items-center gap-2">
                         {!isLast && (
-                            <Button variant="ghost" onClick={onFinish}>
+                            <Button variant="ghost" onClick={() => onFinish()}>
                                 {t("onboarding.nav.skip")}
                             </Button>
                         )}
                         {isLast ? (
-                            <Button variant="primary" onClick={onFinish}>
+                            <Button variant="primary" onClick={() => onFinish()}>
                                 {t("onboarding.nav.finish")}
                             </Button>
                         ) : (
