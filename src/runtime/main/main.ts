@@ -21,6 +21,8 @@ import {
     resolveGameRuntimeInitialBackgroundColor,
 } from "@shared/utils/gameRuntimeEntrySurface";
 import { resolveSingleByteRange } from "@shared/utils/httpRange";
+import type { BlueprintNetworkFetchRequest } from "@shared/types/blueprint/network";
+import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
@@ -822,6 +824,21 @@ function registerRuntimeIpc(): void {
     ipcMain.handle("runtime:persistence:getValue", (_event, key: string) => persistence.getValue(key));
     ipcMain.handle("runtime:persistence:setValue", (_event, key: string, value: unknown) => persistence.setValue(key, value));
     ipcMain.handle("runtime:persistence:removeValue", (_event, key: string) => persistence.removeValue(key));
+
+    // The Fetch node's request.
+    //
+    // Issued here rather than in the renderer for two reasons: the renderer's origin is `nlgame:`,
+    // so a request to a third-party API would be refused by CORS; and the timeout, size cap and
+    // scheme check are only enforceable somewhere the page cannot reach around.
+    //
+    // Which is also why `allowHttp` is re-read here from the pack. This process sits OUTSIDE the CSP
+    // and `webRequest` cage that `installRuntimeNetworkPolicy` puts the renderer in, so that cage
+    // cannot be what enforces the project's setting on this path - without the check below, routing
+    // through main would hand a game that shipped with the network off a working network.
+    ipcMain.handle("runtime:network:fetch", async (_event, request: BlueprintNetworkFetchRequest) => {
+        const pack = await readPack();
+        return executeBlueprintNetworkFetch(request, { allowHttp: pack.network?.allowHttp === true });
+    });
 
     // Sidecar control.
     //
