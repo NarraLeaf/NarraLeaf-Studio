@@ -15,13 +15,17 @@ export function getSurfaceBackgroundColor(surface: UISurface): string {
  * A surface authored for the title menu is opaque, because behind it there is nothing to see. The
  * same surface opened mid-game as an overlay - Config, Save, Log from the quick menu - has the stage
  * behind it, and painting over it at full opacity throws away the one thing that tells the player
- * they are still in the scene. Halving it reads as a pane laid on the stage instead of a screen that
- * replaced it.
+ * they are still in the scene.
+ *
+ * 0.85 rather than something bolder: the point is a reminder that the scene is still there, not a
+ * view of it. At half opacity the stage competes with the page's own labels and the screen becomes
+ * hard to read against a busy background; this leaves the shape of the scene showing through and
+ * nothing else.
  *
  * Only the page's own background is thinned; its widgets keep their authored opacity, so labels and
  * controls stay as legible as they are anywhere else.
  */
-export const GAME_OVERLAY_BACKGROUND_ALPHA = 0.5;
+export const GAME_OVERLAY_BACKGROUND_ALPHA = 0.85;
 
 /**
  * The background a surface layer paints, given how it is being presented.

@@ -174,7 +174,7 @@ export function TestReportTab({ payload }: EditorTabComponentProps<TestReportPay
                     options={SEVERITY_FILTER_OPTIONS}
                     value={severityFilter}
                     onChange={value => setSeverityFilter(value as SeverityFilter)}
-                    aria-label={t("test.report.severityFilter")}
+                    ariaLabel={t("test.report.severityFilter")}
                     portalMenu
                 />
                 <button
