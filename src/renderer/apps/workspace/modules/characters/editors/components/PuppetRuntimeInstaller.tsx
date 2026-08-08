@@ -201,7 +201,7 @@ export function PuppetRuntimeInstaller(props: {
             return (
                 <div className="space-y-3 py-1">
                     <p className="text-2xs font-medium tracking-wide text-fg-muted">
-                        {t("characters.editor.runtime.licenceTitle")}
+                        {t("characters.editor.runtime.licenseTitle")}
                     </p>
                     <p className="text-xs leading-relaxed text-fg-muted">{t(TERMS_KEY[runtime.id])}</p>
                     <p className="text-2xs leading-relaxed text-fg-subtle">
@@ -229,7 +229,7 @@ export function PuppetRuntimeInstaller(props: {
                     </div>
                     <label className="flex items-center gap-2 pt-1 text-xs text-fg">
                         <input type="checkbox" checked={agreed} onChange={event => setAgreed(event.target.checked)} />
-                        {t("characters.editor.runtime.licenceAgree")}
+                        {t("characters.editor.runtime.licenseAgree")}
                     </label>
                 </div>
             );

@@ -113,7 +113,7 @@ export function decodePngToRgba(bytes: Uint8Array, inflate: (data: Uint8Array) =
     const colorType = bytes[25];
     const interlace = bytes[28];
     if (bitDepth !== 8 || (colorType !== 2 && colorType !== 6) || interlace !== 0) {
-        throw new Error(`Unsupported PNG (bitDepth ${bitDepth}, colourType ${colorType}, interlace ${interlace})`);
+        throw new Error(`Unsupported PNG (bitDepth ${bitDepth}, colorType ${colorType}, interlace ${interlace})`);
     }
 
     const channels = colorType === 6 ? 4 : 3;

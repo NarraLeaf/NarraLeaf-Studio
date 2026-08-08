@@ -1,3 +1,4 @@
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
 import type { DevModeSaveRecord } from "./devModeSave";
 import type { NormalizedPluginManifestV2 } from "./plugins";
@@ -288,6 +289,10 @@ export type GameRuntimePersistenceBridge = {
     removeValue(key: string): Promise<void>;
 };
 
+export type GameRuntimeNetworkBridge = {
+    fetch(request: BlueprintNetworkFetchRequest): Promise<BlueprintNetworkFetchResult>;
+};
+
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
@@ -324,6 +329,16 @@ export type GameRuntimePreloadBridge = {
     };
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
+    /**
+     * One Fetch node request.
+     *
+     * Present on every shell, and satisfied differently by each - the desktop shell hands it to the
+     * main process (no CORS, and the only place `network.allowHttp` can be enforced), the web export
+     * uses the browser's own `fetch`. Unlike {@link sidecar} there is no honest absence here: a page
+     * can make an HTTP request, so a web build that omitted this would be refusing something it can
+     * do.
+     */
+    network: GameRuntimeNetworkBridge;
     /**
      * Absent on shells with no child processes (the web export). Absence is the
      * whole signal - the runtime plugin host passes no sidecar backend when this

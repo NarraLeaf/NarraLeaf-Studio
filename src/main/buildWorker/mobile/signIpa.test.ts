@@ -49,7 +49,7 @@ type Invocation = { executable: string; args: string[]; keystoreAtCallTime: Buff
  * A stand-in zsign that records how it was called, snapshots the ephemeral
  * container while it still exists, and writes whatever output the test wants.
  */
-function recorder(behaviour: (invocation: Invocation) => Promise<ZsignRun> | ZsignRun) {
+function recorder(behavior: (invocation: Invocation) => Promise<ZsignRun> | ZsignRun) {
     const calls: Invocation[] = [];
     const run = async (executable: string, args: string[]): Promise<ZsignRun> => {
         const keyPath = args[args.indexOf("-k") + 1];
@@ -59,7 +59,7 @@ function recorder(behaviour: (invocation: Invocation) => Promise<ZsignRun> | Zsi
             keystoreAtCallTime: await fs.readFile(keyPath).catch(() => null),
         };
         calls.push(invocation);
-        return behaviour(invocation);
+        return behavior(invocation);
     };
     return { calls, run };
 }
