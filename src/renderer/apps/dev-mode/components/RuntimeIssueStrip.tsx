@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
@@ -6,12 +6,24 @@ import { countRuntimeIssues, type LocatedRuntimeIssue } from "./runtimeIssueMode
 import { RUNTIME_ISSUE_TONE } from "./runtimeIssueTone";
 
 export type RuntimeIssueStripProps = {
-    /** Launch/compile failure from the main process. Carries no location — there is no session yet. */
+    /**
+     * Launch/compile failure from the main process, or null once it has been acknowledged here.
+     * Carries no location — there is no session yet.
+     */
     sessionError: string | null;
-    onDismissSessionError: () => void;
-    /** Located failures reported by the running game, newest first. */
+    /**
+     * Located failures the author has not acknowledged yet, newest first. NOT the whole list — the
+     * Issues panel holds that, and this is only what has still to be announced.
+     */
     issues: readonly LocatedRuntimeIssue[];
-    onDismissAllIssues: () => void;
+    /**
+     * Take the strip down.
+     *
+     * An acknowledgement, NOT a delete: everything on it stays in the Issues panel, where it can be
+     * read and cleared deliberately. Getting a notice out of the way and throwing the report away
+     * are different intentions, and the ✕ on a one-line strip can only credibly mean the first.
+     */
+    onDismiss: () => void;
     /**
      * Opens the Issues panel, which is where the failures are actually read. Null while the window
      * has no running session to hang a drawer off — and the strip then carries the session failure
@@ -32,15 +44,8 @@ export type RuntimeIssueStripProps = {
  * different situations.
  */
 export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
-    const { sessionError, onDismissSessionError, issues, onDismissAllIssues, onOpenIssues } = props;
+    const { sessionError, issues, onDismiss, onOpenIssues } = props;
     const { t } = useTranslation();
-
-    // One press clears the strip. Which of the two channels a line came from is a distinction the
-    // author never made, so dismissing what they can see clears both.
-    const dismissEverything = useCallback(() => {
-        onDismissAllIssues();
-        onDismissSessionError();
-    }, [onDismissAllIssues, onDismissSessionError]);
 
     if (!sessionError && issues.length === 0) {
         return null;
@@ -102,7 +107,7 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
             <button
                 type="button"
                 className={cn("shrink-0 rounded-md p-0.5", tone.ghost, inlineFailure && "mt-0.5")}
-                onClick={dismissEverything}
+                onClick={onDismiss}
                 title={t("devMode.dismiss")}
                 aria-label={t("devMode.dismiss")}
             >
