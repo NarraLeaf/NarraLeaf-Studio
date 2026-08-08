@@ -118,6 +118,7 @@ export const blueprint = {
             noRuntime: "Node \"{node}\": no runtime for type \"{type}\".",
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",
+            savedVariableIdInvalid: "Node \"{node}\": pick a saved variable.",
         },
         fn: {
             nameMissing: "Fn \"{node}\": set a function name.",

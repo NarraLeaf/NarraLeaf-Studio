@@ -1,7 +1,6 @@
 import type { LocaleNamespace } from "../types";
 
 export const storyVars = {
-    empty: "打开一个故事场景以管理其变量",
     valueType: {
         boolean: "布尔值",
         number: "数字",

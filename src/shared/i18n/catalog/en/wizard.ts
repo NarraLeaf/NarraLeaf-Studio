@@ -6,10 +6,14 @@
  * `origin -> import` unpacks one from a `.nlspkg`, and
  * `origin -> source -> clone` copies one down from a version-control server.
  * The `steps.*` entries cover every page of all three, and they are rail labels rather than
- * headings - no page repeats its own name at the top any more.
+ * headings - no page repeats its own name at the top.
  *
  * Titled "Add" rather than "Create": two of the three flows create nothing, they bring in a
  * project somebody else already made.
+ *
+ * Wording follows `docs/help-system.md` §3a: state what a control does or what a field holds, in
+ * as few words as it takes. No page narrates what is about to happen - each one now has the fields
+ * that answer for it.
  */
 export const wizard = {
     appTitle: "Add Project",
@@ -19,17 +23,15 @@ export const wizard = {
         stage: "Stage",
         review: "Review",
         source: "Address",
-        clone: "Get Project",
+        clone: "Clone",
         import: "Import",
     },
     nav: {
         createProject: "Create Project",
         creating: "Creating…",
-        cloneProject: "Get Project",
-        cloning: "Getting…",
-        // Names the next thing that happens - a file dialog - rather than the whole operation,
-        // because that dialog opening unannounced is the confusing part.
-        importProject: "Choose Package…",
+        cloneProject: "Start Clone",
+        cloning: "Cloning…",
+        importProject: "Start Import",
         importing: "Importing…",
     },
     error: {
@@ -50,52 +52,46 @@ export const wizard = {
     origin: {
         create: {
             label: "New project",
-            description: "Made here, from a template",
+            description: "Create from a template",
         },
         import: {
-            label: "From a package",
-            description: "A .nlspkg somebody exported",
-            next: "Two dialogs open in turn once you press Choose Package: the file to unpack, then the folder to unpack it into.",
+            label: "Import .nlspkg",
+            description: "Unpack an exported project file",
+            next: "The next page asks for the .nlspkg file and where to unpack it.",
         },
         clone: {
-            label: "From a server",
-            description: "A project on a version-control server",
-            next: "The next page asks for the project's address and where to keep the local copy.",
+            label: "Clone from a server",
+            description: "Copy a project on a version-control server",
+            next: "The next page asks for the project address and where to keep the local copy.",
         },
     },
     template: {
         blank: {
             name: "Empty",
-            description: "Nothing but the project structure",
+            description: "Project structure only",
         },
     },
     project: {
         name: "Project Name",
-        namePlaceholder: "Enter project name…",
-        appIdPlaceholder: "Enter app identifier…",
-        // Says the part that matters more than the character rule: this one is frozen once the
-        // project exists, and the project panel shows it under a padlock.
-        appIdHelper: "Lowercase letters, numbers and hyphens. Cannot be changed later.",
+        namePlaceholder: "Project name",
+        appIdPlaceholder: "App identifier",
+        appIdHelper: "Lowercase letters, digits and hyphens only. Cannot be changed after creation.",
         appIdRequired: "App ID is required",
         appIdInvalid: "App ID can only contain lowercase letters, numbers, and hyphens",
-        locationPlaceholder: "Enter project location…",
-        // Accessible name for the folder button inside the location field.
-        browseLocation: "Choose folder…",
+        locationPlaceholder: "Project location",
+        browseLocation: "Choose folder",
         validatingDirectory: "Checking the folder…",
         directoryWillBeCreated: "This folder is created together with the project",
-        // Under the field only while Lore is selected: it describes what pressing Create will
-        // additionally do, which is the one thing this choice is not otherwise visible as.
-        versionControlLoreHint: "A version history is created inside the project folder, recording it as the first version.",
-        versionControlUnavailablePlatform: "Version control is not available on this machine, so the project is created without it.",
-        versionControlUnavailableInstallation: "Version control is not available in this Studio build, so the project is created without it.",
+        versionControlLoreHint: "A version history is created inside the project folder, recording the project as its first version.",
+        versionControlUnavailablePlatform: "Version control is not available on this machine. The project is created without it.",
+        versionControlUnavailableInstallation: "Version control is not available in this Studio build. The project is created without it.",
         moreDetails: "More details",
-        // Why a field the project panel can edit is worth filling in now.
-        versionHelper: "A build refuses to start without one.",
-        authorPlaceholder: "Author Email / Organization / Project",
-        descriptionPlaceholder: "Describe your project…",
+        versionHelper: "A build cannot start without one.",
+        authorPlaceholder: "Author email / organization / project",
+        descriptionPlaceholder: "Project description",
     },
     stage: {
-        sizePlaceholder: "Select stage size…",
+        sizePlaceholder: "Select stage size",
         custom: "Custom…",
         customInvalid: "Width and height must be whole numbers between {min} and {max}.",
         width: "Width",
@@ -103,40 +99,26 @@ export const wizard = {
         // The one consequence of this choice that is not visible in the numbers.
         orientationLandscape: "Mobile builds lock to landscape.",
         orientationPortrait: "Mobile builds lock to portrait.",
-        // Says where the rest of the answer lives, because this field offers a short list and the
-        // panel takes any language at all.
         scriptLocaleHelper: "The language the story is written in. Translations are added in the localization panel.",
     },
-    // The import flow's only page. It collects nothing - both choices are made in native dialogs
-    // once the button is pressed - so its job is to say what is about to appear.
+    // The import flow's only page: two pickers and the button that unpacks.
     import: {
-        subtitle: "Unpack a .nlspkg file into a folder on this machine.",
-        steps: {
-            title: "What Happens Next",
-            description: "Two dialogs open in turn, then the project is unpacked.",
-            pickPackage: "First: choose the .nlspkg file to unpack.",
-            pickFolder: "Then: choose the folder to unpack it into.",
-        },
-        // NOT "unpacking". For almost all of the time this is on screen the author is standing in
-        // front of a file dialog and nothing is being unpacked - saying otherwise is a spinner
-        // that lies about what it is waiting for, and it reads as a hang if they alt-tab away
-        // from the dialog and come back.
-        working: "Waiting for a package and a folder. Unpacking starts once both are chosen.",
+        packageLabel: ".nlspkg file",
+        packagePlaceholder: "No file selected",
+        choosePackage: "Choose File",
+        locationPlaceholder: "No folder selected",
+        chooseFolder: "Choose Folder",
+        working: "Unpacking…",
         error: {
-            failedTitle: "Could not import the project",
-            generic: "Could not import the project package.",
+            failedTitle: "Import failed",
+            generic: "The file could not be unpacked.",
             notAProjectTitle: "This is not a NarraLeaf Studio project",
-            notAProject: "The package unpacked, but it holds no Studio project file. The unpacked contents are in {path}. Check that the file is the right one, then try again.",
+            notAProject: "Unpacking finished, but the result holds no Studio project file. The unpacked contents are in {path}",
         },
     },
     // The clone flow's first page. Deliberately short: everything else about the project is
     // already recorded on the server.
     source: {
-        subtitle: "Enter the server that holds the project, and choose where to keep the local copy.",
-        server: {
-            title: "Server",
-            description: "The address of the project on its version-control server.",
-        },
         addressLabel: "Project address",
         addressHint: "This address comes from whoever set up the project.",
         // Names what is missing rather than saying "invalid": the mistake this catches is almost
@@ -144,34 +126,24 @@ export const wizard = {
         addressInvalid: "A project address needs the project's name on the end, like lore://studio.example.lan:41337/my-game",
         parsedServer: "Server",
         parsedName: "Project on the server",
-        destination: {
-            title: "Destination",
-            description: "Where the copy is kept on this machine.",
-        },
-        destinationLabel: "Where to put it",
         // Said before they choose, not after: the emptiness check runs in the main process and a
         // refusal there is a refusal after the author has already committed to the folder.
         destinationHint: "Must be a new or empty folder.",
-        destinationWillBeCreated: "This folder is created when the project is copied",
     },
     // The clone flow's last page - the one that touches the network.
     clone: {
-        subtitle: "Nothing has been downloaded. This copies the whole project onto this machine.",
-        summary: {
-            title: "What Will Be Copied",
-            description: "Check this before starting. The whole project is transferred over the network.",
-        },
+        subtitle: "This copies the whole project onto this machine.",
         // No percentage: the backend reports a clone's progress only once it has finished, so a
         // bar here would sit at zero and then disappear.
-        working: "Copying the project from the server. This can take several minutes.",
+        working: "Copying the project from the server…",
         error: {
-            failedTitle: "Could not get the project",
-            generic: "Could not get the project from the server.",
+            failedTitle: "Clone failed",
+            generic: "The project could not be fetched from the server.",
             // A Lore server holds repositories, and a repository is not necessarily a Studio
-            // project. The files are named because they are real, they are why this folder cannot
-            // be reused, and nothing else on screen says where they went.
+            // project. The files are named because they are real, and they are why this folder
+            // cannot be reused.
             notAProjectTitle: "This is not a NarraLeaf Studio project",
-            notAProject: "The copy finished, but it holds no Studio project file. The copied contents are in {path}. Check the address with whoever set up the project, then try again with a different empty folder.",
+            notAProject: "The copy finished, but it holds no Studio project file. The copied contents are in {path}",
         },
     },
     review: {

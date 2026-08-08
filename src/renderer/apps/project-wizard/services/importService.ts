@@ -5,27 +5,36 @@ import { isStudioProject } from "./projectVerification";
 /**
  * What an import ended as.
  *
- * `cancelled` is a first-class outcome rather than a failure. The author backing out of a native
- * file dialog is an ordinary thing to do, and reporting it as an error would put a red panel on
- * screen for someone who simply changed their mind.
+ * No `cancelled`: cancelling now happens in the pickers, which simply return nothing and leave the
+ * page as it was. By the time this runs the author has chosen both answers and pressed the button.
  */
 export type ImportOutcome =
     | { status: "imported"; root: string; projectName?: string; fileCount?: number }
-    | { status: "cancelled" }
     | { status: "notAProject"; root: string }
     | { status: "failed"; error: string };
 
 /**
  * Unpacking a project someone handed over as a `.nlspkg` file.
  *
- * **One call does the whole thing, and that is why this flow has no fields of its own.** The main
- * process puts up two native dialogs - pick the package, pick where to put it - copies the tree
- * out, and grants this window access to the result. There is nothing for a wizard page to collect
- * beforehand, so the page explains what is about to happen and the footer button starts it.
+ * **Three calls, not one.** The package and the destination are picked separately and shown on the
+ * page, so the author can see both, change either, and be told about an occupied folder before
+ * anything is written. It used to be a single call that put up two native dialogs back to back,
+ * with a page in front of them that could only describe what was about to happen.
  */
 export class ImportService {
+    /** Pick the package. Null means the dialog was dismissed, which is not an error. */
+    static async selectPackage(): Promise<string | null> {
+        try {
+            const result = await getInterface().selectProjectPackage();
+            return result.success ? result.data.dest : null;
+        } catch (error) {
+            console.error("Failed to select project package:", error);
+            return null;
+        }
+    }
+
     /**
-     * Ask for a package and a destination, unpack it, then decide whether Studio can open what
+     * Unpack the chosen package into the chosen folder, then decide whether Studio can open what
      * came out.
      *
      * The check is the same one a clone gets, and it earns its place for the same reason: a
@@ -33,14 +42,11 @@ export class ImportService {
      * the usual case passes - but "usually correct" is exactly the kind of input that turns a
      * missing check into a launcher that fails to open a folder with no explanation.
      */
-    static async importProject(): Promise<ImportOutcome> {
+    static async importProject(packagePath: string, targetDir: string): Promise<ImportOutcome> {
         try {
-            const result = await getInterface().workspace.importProjectPackage();
+            const result = await getInterface().workspace.importProjectPackage(packagePath, targetDir);
             if (!result.success) {
                 return { status: "failed", error: result.error || translate("wizard.import.error.generic") };
-            }
-            if (result.data.canceled || !result.data.projectPath) {
-                return { status: "cancelled" };
             }
 
             const root = result.data.projectPath;
