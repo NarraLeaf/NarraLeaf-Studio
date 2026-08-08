@@ -90,6 +90,18 @@ function greatestCommonDivisor(a: number, b: number): number {
 }
 
 /**
+ * Ratios whose lowest terms are not what anybody calls them.
+ *
+ * 1920 × 1200 reduces to 8:5, and no author, monitor spec or storefront has ever written it that
+ * way - it is 16:10 everywhere it appears. Reducing correctly and then printing the answer nobody
+ * uses reads as a bug in the readback.
+ */
+const ASPECT_RATIO_ALIASES: Record<string, string> = {
+    "8:5": "16:10",
+    "5:8": "10:16",
+};
+
+/**
  * The aspect as an author would say it: `16:9`, `4:3`, `9:16`.
  *
  * A hand-typed size usually reduces to nothing sayable - 1000 × 777 is 1000:777, which is not a
@@ -104,7 +116,8 @@ export function formatStageAspectRatio(size: StageSize): string {
     const width = size.width / divisor;
     const height = size.height / divisor;
     if (width <= 64 && height <= 64) {
-        return `${width}:${height}`;
+        const reduced = `${width}:${height}`;
+        return ASPECT_RATIO_ALIASES[reduced] ?? reduced;
     }
     return `${(size.width / size.height).toFixed(2)}:1`;
 }
