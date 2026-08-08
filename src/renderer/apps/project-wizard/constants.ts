@@ -102,6 +102,7 @@ export const defaultProjectData = {
     appId: "",
     sourceLocale: "",
     remoteUrl: "",
+    packagePath: "",
     // Pre-selected, the way "git" was: a new project is the one moment where turning version
     // control on costs nothing and turning it on later means the work before that point is
     // unrecorded. It is still a choice the author sees twice - on this step and on the review -

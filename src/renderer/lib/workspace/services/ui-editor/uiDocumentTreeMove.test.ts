@@ -6,6 +6,7 @@ import {
     canUngroupContainer,
     filterToTopLevelMovers,
     normalizeFlowChildLayouts,
+    planMoveElementsInSurface,
 } from "./uiDocumentTreeMove";
 import { COMPONENT_EDITOR_ROOT_EXTRA_KEY } from "@/lib/ui-editor/componentEditorRoot";
 
@@ -238,5 +239,96 @@ describe("uiDocumentTreeMove ungroup", () => {
 
         expect(applyUngroupContainer(document, "surface", "group")).toEqual(["row"]);
         expect(document.elements.row.extra?.listSlot).toBe("itemTemplate");
+    });
+});
+
+/**
+ * A widget's own parts cannot be dragged out of it.
+ *
+ * The asymmetry is the point: moving something *into* a slider or switch was already refused
+ * (`uiElementTypeAcceptsUserChildren`), so a part moved out could never be moved back by the same
+ * gesture. The widget would render its fallback chrome while an orphan carrying a dead slot marker
+ * sat elsewhere on the canvas - and a switch's part takes the `on` appearance variant with it, so
+ * the authored travel and transition leave too.
+ */
+describe("uiDocumentTreeMove structural parts", () => {
+    function sliderDocument() {
+        return makeDocument({
+            root: element("root", "nl.root", null, ["slider", "panel"]),
+            slider: element("slider", "nl.slider", "root", ["track", "handle"]),
+            track: element("track", "nl.container", "slider", [], { extra: { sliderSlot: "track" } }),
+            handle: element("handle", "nl.container", "slider", [], { extra: { sliderSlot: "handle" } }),
+            panel: element("panel", "nl.container", "root", []),
+        });
+    }
+
+    function switchDocument() {
+        return makeDocument({
+            root: element("root", "nl.root", null, ["toggle", "panel"]),
+            toggle: element("toggle", "nl.switch", "root", ["track", "thumb"]),
+            track: element("track", "nl.container", "toggle", [], { extra: { switchSlot: "track" } }),
+            thumb: element("thumb", "nl.container", "toggle", [], { extra: { switchSlot: "thumb" } }),
+            panel: element("panel", "nl.container", "root", []),
+        });
+    }
+
+    it("refuses to move a slider's track or handle out of the slider", () => {
+        const document = sliderDocument();
+
+        expect(planMoveElementsInSurface(document, "surface", ["track"], "panel", null))
+            .toEqual({ ok: false, reason: "invalid_movers" });
+        expect(planMoveElementsInSurface(document, "surface", ["handle"], "root", null))
+            .toEqual({ ok: false, reason: "invalid_movers" });
+    });
+
+    it("refuses to move a switch's track or thumb out of the switch", () => {
+        const document = switchDocument();
+
+        expect(planMoveElementsInSurface(document, "surface", ["thumb"], "panel", null))
+            .toEqual({ ok: false, reason: "invalid_movers" });
+        expect(planMoveElementsInSurface(document, "surface", ["track"], "root", null))
+            .toEqual({ ok: false, reason: "invalid_movers" });
+    });
+
+    it("moves the rest of a mixed selection and leaves the part where it is", () => {
+        const document = switchDocument();
+        // A second ordinary element so the move has something legitimate to carry.
+        document.elements.stray = element("stray", "nl.text", "root");
+        document.elements.root.childrenIds.push("stray");
+
+        const planned = planMoveElementsInSurface(document, "surface", ["thumb", "stray"], "panel", null);
+
+        expect(planned.ok).toBe(true);
+        expect(planned.ok && planned.plan.movers).toEqual(["stray"]);
+        expect(document.elements.thumb.parentId).toBe("toggle");
+    });
+
+    it("still lets an element with no slot marker out of a part-owning widget", () => {
+        // The escape hatch: only a child that actually claims a slot is sealed in. Without this a
+        // stray that somehow ended up under a slider would be stuck there with no way to recover it.
+        const document = sliderDocument();
+        document.elements.orphan = element("orphan", "nl.text", "slider");
+        document.elements.slider.childrenIds.push("orphan");
+
+        const planned = planMoveElementsInSurface(document, "surface", ["orphan"], "panel", null);
+
+        expect(planned.ok).toBe(true);
+        expect(planned.ok && planned.plan.movers).toEqual(["orphan"]);
+    });
+
+    it("leaves a list's item template movable, because a list can take it back", () => {
+        // Deliberately not covered by the guard - `nl.list` accepts user children, so lifting a
+        // template out is undone by the same drag that did it.
+        const document = makeDocument({
+            root: element("root", "nl.root", null, ["list", "panel"]),
+            list: element("list", "nl.list", "root", ["tpl"]),
+            tpl: element("tpl", "nl.container", "list", [], { extra: { listSlot: "itemTemplate" } }),
+            panel: element("panel", "nl.container", "root", []),
+        });
+
+        const planned = planMoveElementsInSurface(document, "surface", ["tpl"], "panel", null);
+
+        expect(planned.ok).toBe(true);
+        expect(planned.ok && planned.plan.movers).toEqual(["tpl"]);
     });
 });

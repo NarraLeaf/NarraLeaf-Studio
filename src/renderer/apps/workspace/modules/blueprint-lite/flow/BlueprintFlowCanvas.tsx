@@ -117,6 +117,7 @@ function buildPlacementPreviewFlowNode(
     position: { x: number; y: number },
     memberVariables: BlueprintFlowNodeData["memberVariables"],
     persistentVariables: BlueprintFlowNodeData["persistentVariables"],
+    savedVariables: BlueprintFlowNodeData["savedVariables"],
 ): Node<BlueprintFlowNodeData> {
     const stub = createGraphNodeForPalette(entry.type, BP_PLACEMENT_PREVIEW_ID);
     return {
@@ -134,6 +135,7 @@ function buildPlacementPreviewFlowNode(
             params: stub.params ?? {},
             memberVariables,
             persistentVariables,
+            savedVariables,
             wiredInputPortIds: new Set(),
         },
     };
@@ -161,6 +163,7 @@ type BlueprintFlowCanvasInnerProps = {
     blueprintMembersSig: string;
     blueprintMemberVariables: NonNullable<BlueprintFlowNodeData["memberVariables"]>;
     blueprintPersistentVariables: NonNullable<BlueprintFlowNodeData["persistentVariables"]>;
+    blueprintSavedVariables: NonNullable<BlueprintFlowNodeData["savedVariables"]>;
     selectedNodeIds: readonly string[];
     onSelectNodeIds: (ids: string[]) => void;
     onCommitIr: (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => void;
@@ -305,6 +308,7 @@ function BlueprintFlowCanvasInner({
     blueprintMembersSig,
     blueprintMemberVariables,
     blueprintPersistentVariables,
+    blueprintSavedVariables,
     selectedNodeIds,
     onSelectNodeIds,
     onCommitIr,
@@ -788,6 +792,7 @@ function BlueprintFlowCanvasInner({
                     stablePatchNodeParam,
                     blueprintMemberVariables,
                     blueprintPersistentVariables,
+                    blueprintSavedVariables,
                     stableAddDynamicInputPin,
                     stableRemoveDynamicInputPin,
                     dynamicSelectOptions,
@@ -807,6 +812,7 @@ function BlueprintFlowCanvasInner({
                             pendingPlacementPosRef.current,
                             blueprintMemberVariables,
                             blueprintPersistentVariables,
+                            blueprintSavedVariables,
                         ),
                     ];
                 }
@@ -837,6 +843,7 @@ function BlueprintFlowCanvasInner({
                         pendingPlacementPosRef.current,
                         blueprintMemberVariables,
                         blueprintPersistentVariables,
+                        blueprintSavedVariables,
                     ),
                 ];
             });
@@ -849,6 +856,7 @@ function BlueprintFlowCanvasInner({
     }, [
         blueprintMemberVariables,
         blueprintPersistentVariables,
+        blueprintSavedVariables,
         blueprintMembersSig,
         variableTypeContext,
         graphKey,

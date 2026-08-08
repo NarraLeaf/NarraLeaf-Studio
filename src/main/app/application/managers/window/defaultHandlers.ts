@@ -20,7 +20,11 @@ import {
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
-import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
+import {
+    ProjectWizardSelectPackageHandler,
+    WorkspaceExportProjectPackageHandler,
+    WorkspaceImportProjectPackageHandler,
+} from "./handlers/projectPackageAction";
 import { PsdBakeHandler, PsdOpenHandler } from "./handlers/psdImport";
 import {
     MediaConvertCancelHandler,
@@ -163,6 +167,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         // Project wizard handlers
         new ProjectWizardLaunchHandler(),
         new ProjectWizardSelectDirectoryHandler(),
+        new ProjectWizardSelectPackageHandler(),
         new ProjectWizardGetDefaultDirectoryHandler(),
 
         // Workspace handlers

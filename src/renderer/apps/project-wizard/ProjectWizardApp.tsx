@@ -50,6 +50,7 @@ export function ProjectWizardApp() {
         directoryValidation,
         isValidatingDirectory,
         isSelectingDirectory,
+        isSelectingPackage,
         isCreatingProject,
         creationError,
         cloneStatus,
@@ -66,6 +67,7 @@ export function ProjectWizardApp() {
         handleSelectDirectory,
         cloneProject,
         importProject,
+        selectPackage,
         nextStep,
         prevStep,
         createProject,
@@ -180,7 +182,20 @@ export function ProjectWizardApp() {
                     />
                 );
             case "import":
-                return <ImportStep importStatus={importStatus} importFailure={importFailure} />;
+                return (
+                    <ImportStep
+                        projectData={projectData}
+                        importStatus={importStatus}
+                        importFailure={importFailure}
+                        validationErrors={validationErrors}
+                        directoryValidation={directoryValidation}
+                        isValidatingDirectory={isValidatingDirectory}
+                        onSelectPackage={selectPackage}
+                        isSelectingPackage={isSelectingPackage}
+                        onSelectDirectory={handleSelectDirectory}
+                        isSelectingDirectory={isSelectingDirectory}
+                    />
+                );
             default:
                 return null;
         }

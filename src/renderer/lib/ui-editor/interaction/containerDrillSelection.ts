@@ -1,5 +1,6 @@
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
+import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import { isStrictDescendantOf } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 
@@ -117,7 +118,8 @@ export function isUiContainerDrillLockHit(
     const selectedEl = document.elements[selectedId];
     const drillable =
         selectedEl?.type === "nl.container" ||
-        selectedEl?.type === "nl.slider";
+        selectedEl?.type === "nl.slider" ||
+        selectedEl?.type === UI_SWITCH_ELEMENT_TYPE;
     if (!selectedEl || !drillable || (selectedEl.childrenIds?.length ?? 0) === 0) {
         return false;
     }
