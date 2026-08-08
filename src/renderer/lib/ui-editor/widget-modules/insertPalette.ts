@@ -31,6 +31,7 @@ export const DEFAULT_INSERT_PALETTE_CONFIG = [
     { type: "nl.image" },
     { type: "nl.button" },
     { type: "nl.textInput" },
+    { type: "nl.switch" },
     { type: "nl.video", placement: "overflow" },
     { type: "nl.puppet", placement: "overflow" },
     { type: "nl.slider", placement: "overflow" },

@@ -697,7 +697,6 @@ export const story = {
         /** The scene has rows, but the filter is hiding all of them — a different thing from an empty scene. */
         filteredEmpty: "No rows match the filter.",
         filteredEmptyClear: "Show all",
-        variablesPanel: "Story Variables",
         snapshotsPanel: "Scene Snapshots",
     },
     preview: {
