@@ -275,6 +275,11 @@ export const story = {
         clickHint: "等待玩家点击后继续",
         remove: "移除暂停",
     },
+    ruby: {
+        title: "注音",
+        placeholder: "读音",
+        remove: "移除注音",
+    },
     interpolation: {
         title: "插入值",
         kindVariable: "变量",
@@ -293,6 +298,8 @@ export const story = {
         insertValue: "插入内联值",
         insertValueHint: "插入内联值（变量或蓝图）",
         insertExpression: "插入表情切换",
+        ruby: "注音",
+        rubyHint: "注音（先选中要注音的文字）",
         tools: "富文本工具",
         pauseClick: "暂停（等待点击）",
         pauseSeconds: "暂停 {seconds} 秒",
