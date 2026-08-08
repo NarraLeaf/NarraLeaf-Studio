@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
@@ -96,6 +96,24 @@ export type SurfaceElementTreeProps = {
     keyboardInteractive?: boolean;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
     blueprintLifecycleReady?: boolean;
+    /**
+     * Set by hosts whose `document` is a snapshot nothing can edit under them - the game runtime,
+     * whose uidoc comes out of a compiled bundle and is replaced wholesale (a new object) when that
+     * bundle is. It is what licenses {@link SurfaceElementTreeContent} to treat prop identity as the
+     * whole truth and reuse the tree it built last time.
+     *
+     * The editor canvas must NOT set it: `UIDocumentService.mutateDocument` edits the document
+     * object in place and re-emits the *same* reference, so identity there says nothing about
+     * content and a memoised tree would simply stop showing edits.
+     */
+    staticDocument?: boolean;
+    /**
+     * Counter the host bumps when a store it subscribes to *on this tree's behalf* has changed -
+     * `GameSurfaceRenderer` watches the surface-state store and the widget runtime patches for
+     * exactly that reason. It has to be a prop because what those stores change is read during the
+     * tree walk rather than passed in, so nothing else here would tell the memo they moved.
+     */
+    hostRenderTick?: number;
 };
 
 /**
@@ -115,7 +133,9 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
         hostAdapter,
         blueprintBindingContext,
     } = props;
-    const [, setBindingTick] = useState(0);
+    // Kept as a value, not a write-only tick setter: it is the only thing that can tell the memo
+    // below that the value runtime handed out different values for the same document.
+    const [bindingTick, setBindingTick] = useState(0);
     const runtimeScopeId = hostAdapter.blueprintRuntime?.runtimeScopeId ?? null;
     /**
      * The store is built by an effect rather than by `useMemo`, because `dispose()` is terminal:
@@ -167,8 +187,51 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
         };
     }, [blueprintBindingContext, valueRuntime]);
 
-    return <>{renderSurfaceElementTreeWithValueRuntime(props, valueRuntime)}</>;
+    return <SurfaceElementTreeContent {...props} valueRuntime={valueRuntime} bindingTick={bindingTick} />;
 }
+
+type SurfaceElementTreeContentProps = SurfaceElementTreeProps & {
+    valueRuntime: BlueprintValueRuntimeStore | null;
+    /** See {@link SurfaceValueRuntimeBoundary}: the value runtime's own "I changed" counter. */
+    bindingTick: number;
+};
+
+function areSurfaceElementTreeInputsEqual(
+    previous: SurfaceElementTreeContentProps,
+    next: SurfaceElementTreeContentProps,
+): boolean {
+    // Only a host that promised its document is a snapshot may be told "nothing changed" - see
+    // `staticDocument`. Everyone else falls through to a plain re-render, exactly as before.
+    if (next.staticDocument !== true) {
+        return false;
+    }
+    const previousKeys = Object.keys(previous) as (keyof SurfaceElementTreeContentProps)[];
+    const nextKeys = Object.keys(next) as (keyof SurfaceElementTreeContentProps)[];
+    if (previousKeys.length !== nextKeys.length) {
+        return false;
+    }
+    return nextKeys.every(key => Object.is(previous[key], next[key]));
+}
+
+/**
+ * Building the element tree is the most expensive thing a surface does, and almost none of the
+ * re-renders that reach it change what it produces.
+ *
+ * One page switch renders this ~33 times (measured in Dev Mode on a 16-element page): navigation
+ * state settling, prepaint and interaction readiness, lifecycle signal bumps and each layer's own
+ * transition state all land here, and every one of them used to walk every element, re-run the
+ * binding merge and rebuild every `EditorNodeWrapper` - to produce a tree identical to the last one.
+ *
+ * The comparison is `React.memo`'s own, over *all* props rather than a hand-kept list, so a prop
+ * added to {@link SurfaceElementTreeProps} later cannot quietly fall out of it. What it cannot see
+ * is a store read during the walk; those have to announce themselves through `bindingTick` /
+ * `hostRenderTick`.
+ */
+const SurfaceElementTreeContent = memo(function SurfaceElementTreeContent(
+    props: SurfaceElementTreeContentProps,
+): ReactNode {
+    return renderSurfaceElementTreeWithValueRuntime(props, props.valueRuntime);
+}, areSurfaceElementTreeInputsEqual);
 
 function renderSurfaceElementTreeWithValueRuntime(
     props: SurfaceElementTreeProps,

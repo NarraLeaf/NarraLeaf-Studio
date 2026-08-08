@@ -181,8 +181,34 @@ export class BlueprintValueRuntimeStore {
     private readonly entries = new Map<string, BindingRuntimeEntry>();
     private disposed = false;
     private lastSyncContext: ValueRuntimeSyncContext | null = null;
+    private changeAnnounced = false;
 
     public constructor(private readonly onChange: () => void) {}
+
+    /**
+     * Announce "some value on this surface resolved" at most once per microtask checkpoint.
+     *
+     * Every entry evaluates behind its own `await`, so a page with sixteen value-bound widgets used
+     * to announce sixteen separate changes - and the subscriber's answer to a change is to rebuild
+     * the entire element tree. Nothing renders between two microtasks, so the sixteen rebuilds all
+     * produced frames no one could see; only the last one was ever painted.
+     *
+     * Deliberately a microtask and not a frame: the batch still lands before the browser can paint,
+     * so this collapses redundant work without deferring anything an author could observe.
+     */
+    private announceChange(): void {
+        if (this.changeAnnounced) {
+            return;
+        }
+        this.changeAnnounced = true;
+        queueMicrotask(() => {
+            this.changeAnnounced = false;
+            if (this.disposed) {
+                return;
+            }
+            this.onChange();
+        });
+    }
 
     /**
      * Terminal. A disposed store answers `sync` / `ensureElementValue` / `refreshAll` with an early
@@ -399,7 +425,7 @@ export class BlueprintValueRuntimeStore {
             entry.hasResolved = true;
             entry.resolvedValue = coerceValue(result.value, entry.input.valueType);
             if (!this.disposed && this.entries.get(entry.input.key) === entry) {
-                this.onChange();
+                this.announceChange();
             }
         } catch (err) {
             console.warn("[BlueprintValueRuntime] evaluation skipped", err);
