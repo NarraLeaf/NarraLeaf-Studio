@@ -1000,5 +1000,5 @@ export class SidecarHost {
 }
 
 function instanceKey(pluginId: string, sidecarId: string): string {
-    return `${pluginId} ${sidecarId}`;
+    return `${pluginId}\u0000${sidecarId}`;
 }

@@ -108,6 +108,13 @@ export type BlueprintFlowNodeData = {
         value: string;
         valueType?: string;
     }>;
+    /** Project-level saved variables for savedVariableRef inspector controls. */
+    savedVariables?: Array<{
+        id: string;
+        name: string;
+        value: string;
+        valueType?: string;
+    }>;
     /** Input ports that have an incoming edge (any semantic). */
     wiredInputPortIds?: ReadonlySet<string>;
     /**
@@ -1221,6 +1228,7 @@ function InspectorParamOnCard({
     onPatchNodeParam,
     memberVariables,
     persistentVariables,
+    savedVariables,
     dynamicSelectOptions,
 }: {
     spec: BlueprintInspectorParamDef;
@@ -1230,6 +1238,7 @@ function InspectorParamOnCard({
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
     memberVariables?: BlueprintFlowNodeData["memberVariables"];
     persistentVariables?: BlueprintFlowNodeData["persistentVariables"];
+    savedVariables?: BlueprintFlowNodeData["savedVariables"];
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
 }) {
     const { t } = useTranslation();
@@ -1243,6 +1252,12 @@ function InspectorParamOnCard({
     const persistentVariableSelectValue =
         spec.kind === "persistentVariableRef"
             ? typeof raw === "string" && persistentVariables?.some(v => v.value === raw)
+                ? raw
+                : ""
+            : undefined;
+    const savedVariableSelectValue =
+        spec.kind === "savedVariableRef"
+            ? typeof raw === "string" && savedVariables?.some(v => v.value === raw)
                 ? raw
                 : ""
             : undefined;
@@ -1274,6 +1289,13 @@ function InspectorParamOnCard({
     const persistentVariableComponentOptions: SelectOption[] = [
         { value: "", label: "-" },
         ...(persistentVariables ?? []).map(v => ({
+            value: v.value,
+            label: v.name,
+        })),
+    ];
+    const savedVariableComponentOptions: SelectOption[] = [
+        { value: "", label: "-" },
+        ...(savedVariables ?? []).map(v => ({
             value: v.value,
             label: v.name,
         })),
@@ -1326,6 +1348,19 @@ function InspectorParamOnCard({
                     size="sm"
                     options={persistentVariableComponentOptions}
                     value={persistentVariableSelectValue}
+                    onChange={value => {
+                        const v = String(value);
+                        onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
+                    }}
+                    portalMenu
+                    menuPlacement="below"
+                />
+            ) : spec.kind === "savedVariableRef" ? (
+                <Select
+                    fullWidth
+                    size="sm"
+                    options={savedVariableComponentOptions}
+                    value={savedVariableSelectValue}
                     onChange={value => {
                         const v = String(value);
                         onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
@@ -2392,6 +2427,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
         onRemoveDynamicInputPin,
         memberVariables,
         persistentVariables,
+        savedVariables,
         wiredInputPortIds,
         dynamicSelectOptions,
         nodeDiagnostics,
@@ -2636,6 +2672,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                               onPatchNodeParam={onPatchNodeParam}
                               memberVariables={memberVariables}
                               persistentVariables={persistentVariables}
+                              savedVariables={savedVariables}
                               dynamicSelectOptions={dynamicSelectOptions}
                           />
                       ))

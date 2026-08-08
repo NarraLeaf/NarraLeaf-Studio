@@ -244,7 +244,7 @@ export function listSceneDisplayableTargets(
         if (!name) {
             continue;
         }
-        const key = `${introduced.kind} ${name.toLowerCase()}`;
+        const key = `${introduced.kind}\u0000${name.toLowerCase()}`;
         const existing = byKey.get(key);
         if (existing) {
             byKey.set(key, {
