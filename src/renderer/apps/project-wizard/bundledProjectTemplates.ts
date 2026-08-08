@@ -1,21 +1,25 @@
-import { useEffect, useState } from "react";
-import { BookOpen } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
-import { resolveProjectTemplateText, type ProjectTemplateDescriptor } from "@shared/types/projectTemplate";
+import {
+    projectTemplateStageSizes,
+    resolveProjectTemplateText,
+    type ProjectTemplateDescriptor,
+} from "@shared/types/projectTemplate";
+import { blankTemplate } from "./constants";
 import type { ProjectTemplate } from "./types";
 
 /**
- * The project templates this build ships, as first-page cards.
+ * The templates this build offers, as the first page's right-hand list.
  *
- * They are read from `resources/templates` rather than declared in `constants.ts`
- * because they are *content*: adding one is dropping a directory into resources,
- * not editing the wizard. Their wording travels in their own manifest for the same
- * reason — a template added after a release cannot add keys to the app's catalogs.
+ * All but the blank one are read from `resources/templates` rather than declared in
+ * `constants.ts` because they are *content*: adding one is dropping a directory into
+ * resources, not editing the wizard. Their wording travels in their own manifest for
+ * the same reason — a template added after a release cannot add keys to the app's catalogs.
  *
- * Fetched once per window and cached: the first page renders before, during and
- * after the fetch, and a card list that reshuffles under the pointer is worse than
- * one that arrives a beat late.
+ * Fetched once per window and cached: the list renders before, during and after the
+ * fetch, and one that reshuffles under the pointer is worse than one that arrives a
+ * beat late.
  */
 
 let cache: Promise<ProjectTemplateDescriptor[]> | null = null;
@@ -34,30 +38,28 @@ function loadDescriptors(): Promise<ProjectTemplateDescriptor[]> {
     return cache;
 }
 
-function toCard(descriptor: ProjectTemplateDescriptor, locale: string): ProjectTemplate {
+function toEntry(descriptor: ProjectTemplateDescriptor, locale: string): ProjectTemplate {
     const text = resolveProjectTemplateText(descriptor, locale);
     return {
         id: descriptor.id,
-        flow: "create",
         name: text.name,
         description: text.description,
-        // One icon for every bundled template, not one per template: a manifest cannot ship a
-        // lucide component, and the card draws it as a watermark rather than an identifier (see
-        // `projectTemplates`). An open book is what they all have in common - a story someone
-        // already wrote - and it keeps its shape at that opacity where a cluster of sparkles
-        // scattered into unreadable specks.
-        icon: BookOpen,
-        category: "Template",
         // The manifest already carries the localized strings, so no i18n keys here:
         // `nameKey`/`descriptionKey` would have to name keys that do not exist.
         contentTemplateId: descriptor.id,
-        designSize: descriptor.designSize,
+        stageSizes: projectTemplateStageSizes(descriptor),
     };
 }
 
-export function useBundledProjectTemplates(): ProjectTemplate[] {
+/**
+ * Blank first, then whatever this build ships.
+ *
+ * Blank leads because it is the answer that constrains nothing, and because a list whose first
+ * row is content would read as though a template were required.
+ */
+export function useProjectTemplates(): ProjectTemplate[] {
     const [descriptors, setDescriptors] = useState<ProjectTemplateDescriptor[]>([]);
-    // From the hook, so switching language re-labels the cards in place.
+    // From the hook, so switching language re-labels the entries in place.
     const { locale } = useTranslation();
 
     useEffect(() => {
@@ -72,5 +74,8 @@ export function useBundledProjectTemplates(): ProjectTemplate[] {
         };
     }, []);
 
-    return descriptors.map(descriptor => toCard(descriptor, locale));
+    return useMemo(
+        () => [blankTemplate, ...descriptors.map(descriptor => toEntry(descriptor, locale))],
+        [descriptors, locale],
+    );
 }

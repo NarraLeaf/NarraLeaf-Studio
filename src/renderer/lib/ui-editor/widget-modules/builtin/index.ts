@@ -9,6 +9,7 @@ import { ButtonWidgetModule } from "./button";
 import { ListWidgetModule } from "./list";
 import { FrameWidgetModule } from "./frame";
 import { SliderWidgetModule } from "./slider";
+import { SwitchWidgetModule } from "./switch";
 import { TextInputWidgetModule } from "./textInput";
 import { DialogSentenceWidgetModule } from "./dialog";
 import { NotificationListWidgetModule } from "./notificationList";
@@ -30,6 +31,7 @@ export const BuiltinWidgetModules: UIWidgetModule[] = [
     ButtonWidgetModule,
     TextInputWidgetModule,
     SliderWidgetModule,
+    SwitchWidgetModule,
     ListWidgetModule,
     FrameWidgetModule,
     DialogSentenceWidgetModule,

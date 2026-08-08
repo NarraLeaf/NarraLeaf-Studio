@@ -160,12 +160,23 @@ export type LocatedRuntimeIssue = {
 };
 
 /**
- * How many issues the banner keeps.
+ * How many issues the window keeps.
  *
- * Small on purpose. One failing row usually fails on every pass through it, and a list that grows
- * without bound turns the one thing an author needs to read into a scroll region.
+ * Still bounded now that the list lives in a scrolling panel rather than in a strip that grew down
+ * over the stage: a session left running reports for as long as it runs, and the failures being
+ * debugged are the recent ones. Repeats collapse (see `appendRuntimeIssue`), so reaching this many
+ * means that many DISTINCT problems, which is already far past the point of reading them one by one.
  */
 export const RUNTIME_ISSUE_LIMIT = 20;
+
+/** Errors and warnings in the list, for the one-line count the strip and the panel heading show. */
+export function countRuntimeIssues(issues: readonly LocatedRuntimeIssue[]): {
+    errors: number;
+    warnings: number;
+} {
+    const errors = issues.reduce((total, issue) => (issue.level === "error" ? total + 1 : total), 0);
+    return { errors, warnings: issues.length - errors };
+}
 
 /**
  * The identity two reports have to share to count as the same problem: same text, same place.

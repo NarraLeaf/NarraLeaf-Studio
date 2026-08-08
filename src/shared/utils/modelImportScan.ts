@@ -351,14 +351,14 @@ function createCollector(baseDir: string) {
         }
         const resolved = resolveModelReference(baseDir, value);
         if (resolved === null) {
-            const key = `${role} ${value}`;
+            const key = `${role}\u0000${value}`;
             if (!seenUnusable.has(key)) {
                 seenUnusable.add(key);
                 unusable.push({ raw: value, role });
             }
             return;
         }
-        const key = `${role} ${resolved}`;
+        const key = `${role}\u0000${resolved}`;
         if (!seen.has(key)) {
             seen.add(key);
             references.push({ path: resolved, role, raw: value });

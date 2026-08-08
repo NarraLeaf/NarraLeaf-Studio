@@ -71,6 +71,8 @@ import type {
 } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
+import type { UISwitchRuntimeValue, UISwitchWidgetProps } from "@shared/types/ui-editor/switch";
+import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/ui-editor/switch";
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
@@ -132,6 +134,14 @@ export type BlueprintTextPropertiesPatch = Partial<BlueprintTextProperties>;
 export type BlueprintSliderProperties = UISliderRuntimeValue;
 
 export type BlueprintSliderPropertiesPatch = Partial<Pick<UISliderWidgetProps, "value" | "min" | "max" | "step">>;
+
+export type BlueprintSwitchProperties = UISwitchRuntimeValue;
+
+/**
+ * Only `checked`. `interactionDisabled` stays an authored prop - the runtime value carries nothing
+ * else, so patching it here would be silently dropped.
+ */
+export type BlueprintSwitchPropertiesPatch = Partial<Pick<UISwitchWidgetProps, "checked">>;
 
 export type BlueprintTextInputProperties = UITextInputRuntimeValue;
 
@@ -261,6 +271,8 @@ export type BlueprintHostApiRuntime = {
         setImageProperties: (elementId: string, patch: Partial<BlueprintImageProperties>) => Promise<void>;
         getSliderProperties: (elementId: string) => BlueprintSliderProperties;
         setSliderProperties: (elementId: string, patch: BlueprintSliderPropertiesPatch) => Promise<void>;
+        getSwitchProperties: (elementId: string) => BlueprintSwitchProperties;
+        setSwitchProperties: (elementId: string, patch: BlueprintSwitchPropertiesPatch) => Promise<void>;
         getTextInputProperties: (elementId: string) => BlueprintTextInputProperties;
         setTextInputProperties: (elementId: string, patch: BlueprintTextInputPropertiesPatch) => Promise<void>;
         getListProperties: (elementId: string) => BlueprintListProperties;
@@ -843,6 +855,14 @@ function assertSliderElement(document: UIDocument, elementId: string) {
     return el;
 }
 
+function assertSwitchElement(document: UIDocument, elementId: string) {
+    const el = requireDocumentElement(document, elementId, "switch");
+    if (el.type !== "nl.switch") {
+        throw new Error(`switch: element is not a Switch widget: ${el.type}`);
+    }
+    return el;
+}
+
 function assertTextInputElement(document: UIDocument, elementId: string) {
     const el = requireDocumentElement(document, elementId, "textInput");
     if (el.type !== "nl.textInput") {
@@ -996,6 +1016,23 @@ function readSliderProperties(
     const authored = readAuthoredSliderProperties(document, elementId);
     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
     return widgetRuntimeStore.getSliderProperties(scopedKey) ?? resolveSliderRuntimeValue(authored);
+}
+
+function readAuthoredSwitchProperties(document: UIDocument, elementId: string): UISwitchWidgetProps {
+    const el = assertSwitchElement(document, elementId);
+    return normalizeSwitchProps(el.props);
+}
+
+function readSwitchProperties(
+    document: UIDocument,
+    widgetRuntimeStore: WidgetRuntimeStateStore,
+    runtimeScopeId: string | undefined,
+    activeSurfaceId: string,
+    elementId: string,
+): BlueprintSwitchProperties {
+    const authored = readAuthoredSwitchProperties(document, elementId);
+    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+    return widgetRuntimeStore.getSwitchProperties(scopedKey) ?? resolveSwitchRuntimeValue(authored);
 }
 
 function readDisplayableProperties(
@@ -1544,6 +1581,10 @@ function sliderPropertiesEqual(a: BlueprintSliderProperties, b: BlueprintSliderP
         a.max === b.max &&
         a.step === b.step
     );
+}
+
+function switchPropertiesEqual(a: BlueprintSwitchProperties, b: BlueprintSwitchProperties): boolean {
+    return a.checked === b.checked;
 }
 
 function emitHostCall(emit: (event: BlueprintDebugEvent) => void, capabilityId: string, phase: "call" | "return"): void {
@@ -2250,6 +2291,45 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         patch,
                     );
                     if (!sliderPropertiesEqual(before, after)) {
+                        scheduleElementFlush(elementId);
+                    }
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSwitchProperties: (elementId: string) => {
+                const cap = "widget.getSwitchProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readSwitchProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setSwitchProperties: async (elementId: string, patch: BlueprintSwitchPropertiesPatch) => {
+                const cap = "widget.setSwitchProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const before = readSwitchProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                    const authored = readAuthoredSwitchProperties(document, elementId);
+                    const after = widgetRuntimeStore.setSwitchProperties(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        authored,
+                        patch,
+                    );
+                    if (!switchPropertiesEqual(before, after)) {
                         scheduleElementFlush(elementId);
                     }
                 } finally {

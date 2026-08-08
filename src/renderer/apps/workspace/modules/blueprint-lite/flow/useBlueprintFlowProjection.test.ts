@@ -52,6 +52,9 @@ describe("blueprintIrToFlowNodes", () => {
                     pins: [],
                 }),
             } as any,
+            // onPatchNodeParam, memberVariables, persistentVariables, savedVariables,
+            // onAddDynamicInputPin, onRemoveDynamicInputPin - then the two option maps under test.
+            undefined,
             undefined,
             undefined,
             undefined,
