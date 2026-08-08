@@ -119,6 +119,7 @@ export const blueprint = {
             noRuntime: "节点“{node}”：类型“{type}”没有运行时",
             variableIdInvalid: "节点“{node}”：请选择一个变量",
             persistentVariableIdInvalid: "节点“{node}”：请选择一个持久化变量",
+            savedVariableIdInvalid: "节点“{node}”：请选择一个存档变量",
         },
         fn: {
             nameMissing: "Fn“{node}”：请设置函数名称",

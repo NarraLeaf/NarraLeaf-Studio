@@ -86,74 +86,43 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
     }
 }
 
+/**
+ * Unpack a package the caller already chose, into a folder the caller already chose.
+ *
+ * **It puts up no dialogs.** It used to put up two, back to back, which meant the wizard page in
+ * front of them could not say what had been picked, could not check the folder was empty before
+ * committing to it, and could not let the author change one of the two answers without starting
+ * over. The picking now happens on that page, one button each.
+ *
+ * Neither path is granted here. Both pickers grant on the way out, so a path this window was never
+ * handed fails the checks below - which is what keeps a renderer-supplied path from being a way to
+ * read anywhere on the disk.
+ */
 export class WorkspaceImportProjectPackageHandler extends IPCHandler<IPCEventType.workspaceImportProjectPackage> {
     readonly name = IPCEventType.workspaceImportProjectPackage;
     readonly type = IPCMessageType.request;
 
     public async handle(
         window: AppWindow,
+        { packagePath, targetDir }: IPCEvents[IPCEventType.workspaceImportProjectPackage]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.workspaceImportProjectPackage]["response"]>> {
         try {
-            const packageSelection = await dialog.showOpenDialog(window.win, {
-                title: "Select Project Package",
-                buttonLabel: "Select Package",
-                properties: ["openFile"],
-                filters: [
-                    { name: "NarraLeaf Studio Project Package", extensions: [PROJECT_PACKAGE_EXTENSION.slice(1)] },
-                    { name: "All Files", extensions: ["*"] },
-                ],
-                securityScopedBookmarks: true,
-            });
-
-            if (packageSelection.canceled || packageSelection.filePaths.length === 0) {
-                return this.success({ canceled: true });
+            const resolvedPackage = path.resolve(packagePath);
+            if (!await window.app.storageManager.isPathAllowed(window, resolvedPackage, "read")) {
+                return this.failed(`File system access is not allowed for package: ${resolvedPackage}`);
             }
 
-            const packagePath = path.resolve(packageSelection.filePaths[0]);
-            window.app.storageManager.grantFileSystemAccess(
-                window,
-                packagePath,
-                "read",
-                false,
-                packageSelection.bookmarks?.[0],
-                "session",
-            );
-            if (!await window.app.storageManager.isPathAllowed(window, packagePath, "read")) {
-                return this.failed(`File system access is not allowed for package: ${packagePath}`);
-            }
-
-            const targetSelection = await dialog.showOpenDialog(window.win, {
-                title: "Select Import Folder",
-                buttonLabel: "Import Here",
-                properties: ["openDirectory", "createDirectory"],
-                securityScopedBookmarks: true,
-            });
-
-            if (targetSelection.canceled || targetSelection.filePaths.length === 0) {
-                return this.success({ canceled: true });
-            }
-
-            const targetDir = path.resolve(targetSelection.filePaths[0]);
-            if (await window.app.storageManager.isPathProtected(targetDir)) {
+            const resolvedTarget = path.resolve(targetDir);
+            if (await window.app.storageManager.isPathProtected(resolvedTarget)) {
                 return this.failed("Selected import folder is inside protected Studio storage.");
             }
-            window.app.storageManager.grantFileSystemAccess(
-                window,
-                targetDir,
-                "readwrite",
-                true,
-                targetSelection.bookmarks?.[0],
-                "session",
-            );
-            if (!await window.app.storageManager.isPathAllowed(window, targetDir, "write")) {
-                return this.failed(`File system access is not allowed for import folder: ${targetDir}`);
+            if (!await window.app.storageManager.isPathAllowed(window, resolvedTarget, "write")) {
+                return this.failed(`File system access is not allowed for import folder: ${resolvedTarget}`);
             }
 
-            const result = await importProjectPackage(packagePath, targetDir);
-            window.app.storageManager.grantFileSystemAccess(window, targetDir, "readwrite", true, undefined, "session");
+            const result = await importProjectPackage(resolvedPackage, resolvedTarget);
             return this.success({
-                canceled: false,
-                projectPath: targetDir,
+                projectPath: resolvedTarget,
                 projectName: result.projectName,
                 fileCount: result.fileCount,
                 byteLength: result.byteLength,
@@ -161,6 +130,47 @@ export class WorkspaceImportProjectPackageHandler extends IPCHandler<IPCEventTyp
         } catch (error) {
             return this.failed(error);
         }
+    }
+}
+
+/**
+ * The `.nlspkg` file picker, and the grant that makes the path it returns usable.
+ *
+ * Lives with the wizard's directory picker rather than with the import handler, because it is the
+ * same kind of thing: a native dialog whose only job is to turn a click into a path this window is
+ * allowed to touch.
+ */
+export class ProjectWizardSelectPackageHandler extends IPCHandler<IPCEventType.projectWizardSelectPackage> {
+    readonly name = IPCEventType.projectWizardSelectPackage;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ dest: string | null }>> {
+        const selection = await dialog.showOpenDialog(window.win, {
+            title: "Select Project Package",
+            buttonLabel: "Select Package",
+            properties: ["openFile"],
+            filters: [
+                { name: "NarraLeaf Studio Project Package", extensions: [PROJECT_PACKAGE_EXTENSION.slice(1)] },
+                { name: "All Files", extensions: ["*"] },
+            ],
+            securityScopedBookmarks: true,
+        });
+
+        if (selection.canceled || selection.filePaths.length === 0) {
+            return this.success({ dest: null });
+        }
+
+        const packagePath = path.resolve(selection.filePaths[0]);
+        // Read, not readwrite, and not recursive: this is one file that gets copied out of.
+        window.app.storageManager.grantFileSystemAccess(
+            window,
+            packagePath,
+            "read",
+            false,
+            selection.bookmarks?.[0],
+            "session",
+        );
+        return this.success({ dest: packagePath });
     }
 }
 
