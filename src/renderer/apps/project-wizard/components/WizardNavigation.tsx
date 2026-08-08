@@ -53,7 +53,7 @@ export function WizardNavigation({
     const finishLabel = isBusy ? finishLabels[flow].busy : finishLabels[flow].idle;
 
     return (
-        <div className="flex items-center justify-between p-6 border-t border-edge">
+        <div className="flex items-center justify-between border-t border-edge px-5 py-3">
             {/* Locked while a project is being written or copied down: both leave a folder
                 half-populated if abandoned, and the clone has a server on the other end. */}
             <Button

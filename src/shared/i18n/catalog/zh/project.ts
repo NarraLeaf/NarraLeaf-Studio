@@ -57,6 +57,10 @@ export const project = {
         // 会写进打包后应用的文件属性与「关于」框。改在这里，构建对话框只回读不再询问。
         copyrightLabel: "版权",
         copyrightPlaceholder: "© 你的工作室",
+        // 长文形式，与上面那一行分开：那一行进二进制的文件属性，这一段进玩家能打开的文件。
+        copyrightTextLabel: "版权声明",
+        copyrightTextPlaceholder: "用到的字体、音乐与素材，以及它们各自归谁所有…",
+        copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt。留空则不生成该文件",
         descriptionPlaceholder: "描述你的项目…",
         required: "必填",
     },

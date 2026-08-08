@@ -2,49 +2,25 @@
  * `wizard` - the add-project wizard.
  *
  * Three flows behind one entry point, chosen on the first page:
- * `template -> details -> settings -> review` writes a new project here,
- * `template -> import` unpacks one from a `.nlspkg`, and
- * `template -> source -> clone` copies one down from a version-control server.
- * The `steps.*` entries cover every page of all three.
+ * `origin -> project -> stage -> review` writes a new project here,
+ * `origin -> import` unpacks one from a `.nlspkg`, and
+ * `origin -> source -> clone` copies one down from a version-control server.
+ * The `steps.*` entries cover every page of all three, and they are rail labels rather than
+ * headings - no page repeats its own name at the top any more.
  *
  * Titled "Add" rather than "Create": two of the three flows create nothing, they bring in a
  * project somebody else already made.
  */
 export const wizard = {
     appTitle: "Add Project",
-    header: {
-        title: "Add a Project",
-        stepIndicator: "Step {current} of {total}",
-    },
     steps: {
-        template: {
-            label: "Template",
-            description: "Choose a project template",
-        },
-        details: {
-            label: "Details",
-            description: "Project information",
-        },
-        settings: {
-            label: "Settings",
-            description: "Project configuration",
-        },
-        review: {
-            label: "Review",
-            description: "Review and create",
-        },
-        source: {
-            label: "Source",
-            description: "Server and destination",
-        },
-        clone: {
-            label: "Get Project",
-            description: "Copy it onto this machine",
-        },
-        import: {
-            label: "Import",
-            description: "Unpack it onto this machine",
-        },
+        origin: "Source",
+        project: "Project",
+        stage: "Stage",
+        review: "Review",
+        source: "Address",
+        clone: "Get Project",
+        import: "Import",
     },
     nav: {
         createProject: "Create Project",
@@ -57,100 +33,83 @@ export const wizard = {
         importing: "Importing…",
     },
     error: {
-        createFailedTitle: "Failed to Create Project",
         closeError: "Close error",
     },
     fields: {
-        author: "Author",
-        license: "License",
-        location: "Location",
-        versionControl: "Version Control",
-        resolution: "Stage Size",
         appId: "App ID",
+        author: "Author",
+        location: "Location",
+        scriptLocale: "Script Language",
+        stageSize: "Stage Size",
+        version: "Version",
+        versionControl: "Version Control",
+        website: "Website",
+    },
+    // The first page's left column: where the project comes from. `next` is what the right column
+    // says for the two origins that have no template list, so the page is never blank.
+    origin: {
+        create: {
+            label: "New project",
+            description: "Made here, from a template",
+        },
+        import: {
+            label: "From a package",
+            description: "A .nlspkg somebody exported",
+            next: "Two dialogs open in turn once you press Choose Package: the file to unpack, then the folder to unpack it into.",
+        },
+        clone: {
+            label: "From a server",
+            description: "A project on a version-control server",
+            next: "The next page asks for the project's address and where to keep the local copy.",
+        },
     },
     template: {
-        title: "Where Is This Project Coming From?",
-        subtitle: "Create a new project, or add an existing one.",
-        // Option labels - keyed by the card `id` in constants.ts.
-        options: {
-            empty: {
-                name: "Empty",
-                description: "Start from a blank project",
-                category: "Custom",
-            },
-            import: {
-                name: "From a package",
-                description: "Unpack a project exported as a .nlspkg file",
-                category: "Existing project",
-            },
-            clone: {
-                name: "From a server",
-                description: "Copy a project that already exists on a version-control server",
-                category: "Existing project",
-            },
+        blank: {
+            name: "Empty",
+            description: "Nothing but the project structure",
         },
     },
-    details: {
-        title: "Project Details",
-        subtitle: "Provide basic information about your project.",
-        basicInfo: {
-            title: "Basic Information",
-            description: "Essential project details and metadata",
-        },
-        application: {
-            title: "Application",
-            description: "Most of these cannot be changed once the project is created.",
-        },
-        projectName: "Project Name",
-        projectNamePlaceholder: "Enter project name…",
+    project: {
+        name: "Project Name",
+        namePlaceholder: "Enter project name…",
         appIdPlaceholder: "Enter app identifier…",
-        appIdHelper: "Only lowercase letters, numbers, and hyphens allowed.",
+        // Says the part that matters more than the character rule: this one is frozen once the
+        // project exists, and the project panel shows it under a padlock.
+        appIdHelper: "Lowercase letters, numbers and hyphens. Cannot be changed later.",
         appIdRequired: "App ID is required",
         appIdInvalid: "App ID can only contain lowercase letters, numbers, and hyphens",
-        authorPlaceholder: "Author Email / Organization / Project",
-        licensePlaceholder: "Select license…",
-        customLicense: "Custom License",
-        customLicensePlaceholder: "Enter custom license…",
-        licenseOther: "Other",
-        descriptionPlaceholder: "Describe your project…",
-        resolutionPlaceholder: "Select stage size…",
-        requiredFieldsTitle: "Required Fields",
-        requiredFieldsMessage: "Fill in the required fields: Project Name, App ID and Stage Size.",
-    },
-    settings: {
-        title: "Project Settings",
-        subtitle: "Configure project location, backup, and version control settings.",
-        location: {
-            description: "Choose where to save your project.",
-        },
-        versionControl: {
-            description: "Set up version control for your project.",
-            // Under the field only while Lore is selected: it describes what pressing Create will
-            // additionally do, which is the one thing this choice is not otherwise visible as.
-            loreHint: "A version history is created inside the project folder, recording it as the first version.",
-            unavailablePlatform: "Version control is not available on this machine, so the project is created without it.",
-            unavailableInstallation: "Version control is not available in this Studio build, so the project is created without it.",
-        },
-        projectLocation: "Project Location",
-        projectLocationPlaceholder: "Enter project location…",
+        locationPlaceholder: "Enter project location…",
         // Accessible name for the folder button inside the location field.
         browseLocation: "Choose folder…",
-        validatingDirectory: "Validating directory…",
-        directoryWillBeCreated: "This directory is created together with the project",
-        versionControlSystem: "Version Control System",
-        versionControlPlaceholder: "Select version control…",
-        // Backup cadence option labels - keyed by the backup option `value` in constants.ts.
-        backup: {
-            none: "No backups",
-            hourly: "Hourly",
-            daily: "Daily",
-            weekly: "Weekly",
-        },
+        validatingDirectory: "Checking the folder…",
+        directoryWillBeCreated: "This folder is created together with the project",
+        // Under the field only while Lore is selected: it describes what pressing Create will
+        // additionally do, which is the one thing this choice is not otherwise visible as.
+        versionControlLoreHint: "A version history is created inside the project folder, recording it as the first version.",
+        versionControlUnavailablePlatform: "Version control is not available on this machine, so the project is created without it.",
+        versionControlUnavailableInstallation: "Version control is not available in this Studio build, so the project is created without it.",
+        moreDetails: "More details",
+        // Why a field the project panel can edit is worth filling in now.
+        versionHelper: "A build refuses to start without one.",
+        authorPlaceholder: "Author Email / Organization / Project",
+        descriptionPlaceholder: "Describe your project…",
+    },
+    stage: {
+        sizePlaceholder: "Select stage size…",
+        custom: "Custom…",
+        customInvalid: "Width and height must be whole numbers between {min} and {max}.",
+        width: "Width",
+        height: "Height",
+        // The one consequence of this choice that is not visible in the numbers.
+        orientationLandscape: "Mobile builds lock to landscape.",
+        orientationPortrait: "Mobile builds lock to portrait.",
+        // Says where the rest of the answer lives, because this field offers a short list and the
+        // panel takes any language at all.
+        scriptLocaleHelper: "The language the story is written in. Translations are added in the localization panel.",
     },
     // The import flow's only page. It collects nothing - both choices are made in native dialogs
     // once the button is pressed - so its job is to say what is about to appear.
     import: {
-        title: "Import a Project Package",
         subtitle: "Unpack a .nlspkg file into a folder on this machine.",
         steps: {
             title: "What Happens Next",
@@ -173,7 +132,6 @@ export const wizard = {
     // The clone flow's first page. Deliberately short: everything else about the project is
     // already recorded on the server.
     source: {
-        title: "Where the Project Lives",
         subtitle: "Enter the server that holds the project, and choose where to keep the local copy.",
         server: {
             title: "Server",
@@ -198,7 +156,6 @@ export const wizard = {
     },
     // The clone flow's last page - the one that touches the network.
     clone: {
-        title: "Get the Project",
         subtitle: "Nothing has been downloaded. This copies the whole project onto this machine.",
         summary: {
             title: "What Will Be Copied",
@@ -218,21 +175,8 @@ export const wizard = {
         },
     },
     review: {
-        title: "Review Project",
-        subtitle: "Review the project settings before creating it.",
-        summary: {
-            title: "Project Summary",
-            description: "Overview of your project configuration.",
-        },
-        selectedTemplate: {
-            title: "Selected Template",
-            description: "Project template that will be used.",
-        },
-        settings: {
-            description: "Configuration applied to the new project.",
-        },
+        template: "Template",
         notSpecified: "Not specified",
-        custom: "Custom",
     },
     // User-facing errors surfaced by the wizard validation/creation services.
     validation: {
@@ -240,6 +184,7 @@ export const wizard = {
         nameRequired: "Project name is required",
         locationRequired: "Project location is required",
         templateRequired: "Project template is required",
+        stageSizeRequired: "Stage size is required",
         invalidPath: "Invalid path",
         notADirectory: "That path exists but is not a directory. Choose a directory, or create a new one.",
         cannotWrite: "Cannot write to that directory. Check its permissions, or choose another.",
