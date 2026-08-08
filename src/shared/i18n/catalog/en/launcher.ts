@@ -22,8 +22,16 @@ export const launcher = {
         },
         // The whole tab before the first project - see WelcomePane. One line, and it is the tier-2
         // "what will be here": the two tiles under it are the "how to put something here".
+        //
+        // The second tile has its own label instead of reusing `openFolder`. That one lives in the
+        // header, where a label has to survive on its own as a tooltip; here the tiles sit side by
+        // side as one choice, and the trailing ellipsis is what tells the author a file dialog
+        // opens next - it would say nothing as a header tooltip. The first tile keeps `addProject`,
+        // since the wizard behind it still does more than create.
         empty: {
+            title: "Welcome to NarraLeaf Studio",
             subtitle: "Projects you open appear here.",
+            openFolder: "Open…",
         },
         removeFromRecent: "Remove from recent",
         moreActions: "More actions",

@@ -22,8 +22,13 @@ export const launcher = {
             empty: "没有匹配“{query}”的项目。",
         },
         // 第一个项目出现之前的整个标签页，见 WelcomePane。
+        // 第二块磁贴不复用 openFolder：那条在标题栏里要单独当 tooltip 用，
+        // 这里两块并排是同一个选择，「打开…」的省略号才说明下一步会弹出文件对话框。
+        // 第一块仍用 addProject，向导做的事不止「新建」。
         empty: {
+            title: "欢迎使用NarraLeaf Studio",
             subtitle: "打开过的项目会显示在此处",
+            openFolder: "打开…",
         },
         removeFromRecent: "从最近移除",
         moreActions: "更多操作",
