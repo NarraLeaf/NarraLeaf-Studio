@@ -3,6 +3,7 @@ import {
     useEffect,
     useMemo,
     useRef,
+    useState,
     type CSSProperties,
     type KeyboardEvent,
     type PointerEvent,
@@ -21,6 +22,19 @@ import {
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { getSwitchProps } from "./helpers";
 
+/**
+ * Pointer travel, in px, below which a press is still a click rather than a drag.
+ *
+ * A hand always slides a pixel or two while pressing, and a switch is a small target: without a
+ * slop every click would be classified as a drag, and a drag that ends where it started commits
+ * nothing, so plain clicking would silently stop working. Four pixels is the same order as the
+ * slop the platform itself uses to tell a tap from a drag.
+ */
+const SWITCH_DRAG_CLICK_SLOP_PX = 4;
+
+/** Ratio along the track past which releasing commits the on state. */
+const SWITCH_DRAG_COMMIT_RATIO = 0.5;
+
 function findSwitchPart(
     element: UIElement,
     document: WidgetRendererProps["document"],
@@ -35,6 +49,29 @@ function findSwitchPart(
     return element.childrenIds
         .map(id => document.elements[id])
         .find(child => getUISwitchChildSlot(child?.extra) === wanted) ?? null;
+}
+
+function findRenderedUiElement(root: Element | null, id: string): HTMLElement | null {
+    if (!root) {
+        return null;
+    }
+    for (const node of root.querySelectorAll<HTMLElement>("[data-ui-element-id]")) {
+        if (node.getAttribute("data-ui-element-id") === id) {
+            return node;
+        }
+    }
+    return null;
+}
+
+/**
+ * Where the pointer sits along a rect: 0 at its left edge, 1 at its right.
+ *
+ * This is the only measurement the switch ever takes, and it measures the *pointer* against the
+ * track it was pressed on - never a part's position. The thumb's travel stays the `on` variant's
+ * `transformOffsetX`, owned by the appearance system, exactly as it was before dragging existed.
+ */
+function rectRatioX(rect: DOMRect, clientX: number): number {
+    return (clientX - rect.left) / Math.max(1, rect.width);
 }
 
 /** Flips one part to its `on` appearance variant. Geometry is deliberately left untouched. */
@@ -53,14 +90,24 @@ function withOnVariant(element: UIElement): UIElement {
  * colour, the thumb's `transformOffsetX`), so this renderer only decides *which variant* the two
  * parts resolve with and dispatches the blueprint events. Compare `slider/renderer.tsx`, which has
  * to compute the handle's position on every render.
+ *
+ * Dragging keeps that property. A press does not toggle; the pointer's normalized position on the
+ * track decides what a release commits, and the mid-drag preview is the same variant override the
+ * committed state uses - so the thumb snaps across under the author's own transition instead of
+ * being dragged by an inline transform this renderer would have to compute.
  */
 export function SwitchRenderer(props: WidgetRendererProps) {
     const { element, document, hostAdapter, renderChildren } = props;
+    const rootRef = useRef<HTMLDivElement | null>(null);
     const flushFrameRef = useRef<number | null>(null);
     // A toggle whose graph is still running swallows further toggles rather than queueing them:
     // unlike the slider there is no stream of values to coalesce, and running the same graph
     // concurrently from a double click is the failure this guards.
     const toggleInFlightRef = useRef(false);
+    /** Tears down the live drag's window listeners; set only while a gesture is in flight. */
+    const dragDisposeRef = useRef<(() => void) | null>(null);
+    /** What a release would commit right now, or null when no drag is in flight. */
+    const [pendingChecked, setPendingChecked] = useState<boolean | null>(null);
     const runtimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
     const snapshot = useWidgetRuntimeSnapshot();
@@ -80,6 +127,9 @@ export function SwitchRenderer(props: WidgetRendererProps) {
     useEffect(() => {
         checkedRef.current = checked;
     }, [checked]);
+    // What the parts are drawn as. Mid-drag this previews the release rather than the committed
+    // state, which is why nothing writes to the runtime store until the pointer comes up.
+    const displayChecked = pendingChecked ?? checked;
 
     const trackElement = useMemo(() => findSwitchPart(element, document, "track"), [document, element]);
     const thumbElement = useMemo(() => findSwitchPart(element, document, "thumb"), [document, element]);
@@ -93,6 +143,7 @@ export function SwitchRenderer(props: WidgetRendererProps) {
             window.cancelAnimationFrame(flushFrameRef.current);
             flushFrameRef.current = null;
         }
+        dragDisposeRef.current?.();
     }, []);
 
     const scheduleSwitchFlush = useCallback(() => {
@@ -114,47 +165,67 @@ export function SwitchRenderer(props: WidgetRendererProps) {
         });
     }, [blueprintRuntime, element.id, element.type]);
 
-    const toggle = useCallback(() => {
-        if (!canRunSwitchInteraction || !runtimeStore || !blueprintRuntime) {
-            return;
-        }
-        if (toggleInFlightRef.current) {
-            return;
-        }
-        const previousChecked = checkedRef.current;
-        const next = runtimeStore.setSwitchProperties(runtimeElementKey, authoredProps, {
-            checked: !previousChecked,
-        }).checked;
-        if (next === previousChecked) {
-            return;
-        }
-        checkedRef.current = next;
-        toggleInFlightRef.current = true;
-        void (async () => {
-            try {
-                await blueprintRuntime.dispatchElementBlueprintEvent(element.id, "changed", {
-                    checked: next,
-                    previousChecked,
-                });
-                await blueprintRuntime.dispatchElementBlueprintEvent(
-                    element.id,
-                    next ? "turnedOn" : "turnedOff",
-                    { checked: next },
-                );
-            } finally {
-                toggleInFlightRef.current = false;
-                scheduleSwitchFlush();
+    const applyChecked = useCallback(
+        (nextChecked: boolean) => {
+            if (!canRunSwitchInteraction || !runtimeStore || !blueprintRuntime) {
+                return;
             }
-        })();
-    }, [
-        authoredProps,
-        blueprintRuntime,
-        canRunSwitchInteraction,
-        element.id,
-        runtimeElementKey,
-        runtimeStore,
-        scheduleSwitchFlush,
-    ]);
+            if (toggleInFlightRef.current) {
+                return;
+            }
+            const previousChecked = checkedRef.current;
+            if (nextChecked === previousChecked) {
+                return;
+            }
+            const next = runtimeStore.setSwitchProperties(runtimeElementKey, authoredProps, {
+                checked: nextChecked,
+            }).checked;
+            if (next === previousChecked) {
+                return;
+            }
+            checkedRef.current = next;
+            toggleInFlightRef.current = true;
+            void (async () => {
+                try {
+                    await blueprintRuntime.dispatchElementBlueprintEvent(element.id, "changed", {
+                        checked: next,
+                        previousChecked,
+                    });
+                    await blueprintRuntime.dispatchElementBlueprintEvent(
+                        element.id,
+                        next ? "turnedOn" : "turnedOff",
+                        { checked: next },
+                    );
+                } finally {
+                    toggleInFlightRef.current = false;
+                    scheduleSwitchFlush();
+                }
+            })();
+        },
+        [
+            authoredProps,
+            blueprintRuntime,
+            canRunSwitchInteraction,
+            element.id,
+            runtimeElementKey,
+            runtimeStore,
+            scheduleSwitchFlush,
+        ],
+    );
+
+    const toggle = useCallback(() => {
+        applyChecked(!checkedRef.current);
+    }, [applyChecked]);
+
+    const trackRatioFromPointer = useCallback(
+        (clientX: number): number | null => {
+            const root = rootRef.current;
+            const trackNode = trackElement ? findRenderedUiElement(root, trackElement.id) : null;
+            const rect = trackNode?.getBoundingClientRect() ?? root?.getBoundingClientRect();
+            return rect ? rectRatioX(rect, clientX) : null;
+        },
+        [trackElement],
+    );
 
     const handlePointerDown = useCallback(
         (event: PointerEvent<HTMLDivElement>) => {
@@ -163,9 +234,77 @@ export function SwitchRenderer(props: WidgetRendererProps) {
             }
             event.preventDefault();
             event.stopPropagation();
-            toggle();
+
+            const startX = event.clientX;
+            const startY = event.clientY;
+            let dragged = false;
+            let releaseChecked: boolean | null = null;
+            let disposed = false;
+
+            const endDrag = () => {
+                if (disposed) {
+                    return;
+                }
+                disposed = true;
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+                window.removeEventListener("pointercancel", onCancel);
+                if (dragDisposeRef.current === endDrag) {
+                    dragDisposeRef.current = null;
+                }
+            };
+            const onMove = (moveEvent: globalThis.PointerEvent) => {
+                if (disposed) {
+                    return;
+                }
+                if (
+                    !dragged &&
+                    Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) <
+                        SWITCH_DRAG_CLICK_SLOP_PX
+                ) {
+                    return;
+                }
+                dragged = true;
+                moveEvent.preventDefault();
+                const ratio = trackRatioFromPointer(moveEvent.clientX);
+                if (ratio === null) {
+                    return;
+                }
+                releaseChecked = ratio >= SWITCH_DRAG_COMMIT_RATIO;
+                setPendingChecked(releaseChecked);
+            };
+            const onUp = () => {
+                if (disposed) {
+                    return;
+                }
+                endDrag();
+                setPendingChecked(null);
+                if (!dragged) {
+                    // Never left the slop: this was a click, and a click toggles.
+                    toggle();
+                    return;
+                }
+                if (releaseChecked !== null) {
+                    applyChecked(releaseChecked);
+                }
+            };
+            // A cancelled gesture (the OS took the pointer, the window lost it) is not a release:
+            // it must leave the switch exactly as it found it.
+            const onCancel = () => {
+                if (disposed) {
+                    return;
+                }
+                endDrag();
+                setPendingChecked(null);
+            };
+
+            dragDisposeRef.current?.();
+            dragDisposeRef.current = endDrag;
+            window.addEventListener("pointermove", onMove, { passive: false });
+            window.addEventListener("pointerup", onUp, { once: true });
+            window.addEventListener("pointercancel", onCancel, { once: true });
         },
-        [canRunSwitchInteraction, toggle],
+        [applyChecked, canRunSwitchInteraction, toggle, trackRatioFromPointer],
     );
 
     const handleKeyDown = useCallback(
@@ -184,7 +323,7 @@ export function SwitchRenderer(props: WidgetRendererProps) {
 
     const canRenderParts = Boolean(renderChildren);
     const childrenIds = [trackElement?.id, thumbElement?.id].filter((id): id is string => Boolean(id));
-    const elementOverrides = checked
+    const elementOverrides = displayChecked
         ? Object.fromEntries(
               [trackElement, thumbElement]
                   .filter((part): part is UIElement => Boolean(part))
@@ -206,14 +345,14 @@ export function SwitchRenderer(props: WidgetRendererProps) {
         position: "absolute",
         inset: 0,
         borderRadius: 999,
-        background: checked ? "rgba(59, 130, 246, 0.9)" : "rgba(100, 116, 139, 0.75)",
+        background: displayChecked ? "rgba(59, 130, 246, 0.9)" : "rgba(100, 116, 139, 0.75)",
     };
     const fallbackThumbStyle: CSSProperties = {
         position: "absolute",
         top: 3,
         bottom: 3,
-        left: checked ? "auto" : 3,
-        right: checked ? 3 : "auto",
+        left: displayChecked ? "auto" : 3,
+        right: displayChecked ? 3 : "auto",
         aspectRatio: "1 / 1",
         borderRadius: 999,
         background: "#f8fafc",
@@ -222,11 +361,14 @@ export function SwitchRenderer(props: WidgetRendererProps) {
 
     return (
         <div
+            ref={rootRef}
             style={hostStyle}
             role="switch"
             aria-checked={checked}
             aria-disabled={canRunSwitchInteraction ? undefined : true}
             data-ui-switch-checked={checked ? "true" : "false"}
+            // Present only while a drag is in flight; says what releasing now would commit.
+            data-ui-switch-pending={pendingChecked === null ? undefined : pendingChecked ? "true" : "false"}
             tabIndex={0}
             onPointerDown={handlePointerDown}
             onKeyDown={handleKeyDown}
