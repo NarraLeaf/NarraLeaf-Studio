@@ -381,7 +381,7 @@ function WelcomePane({
     return (
         <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-8 pb-10 text-center">
             <div>
-                <h1 className="text-xl font-medium text-fg">NarraLeaf Studio</h1>
+                <h1 className="text-xl font-medium text-fg">{t("launcher.projects.empty.title")}</h1>
                 <p className="mt-2 text-sm text-fg-muted">{t("launcher.projects.empty.subtitle")}</p>
             </div>
             <div className="flex items-start justify-center gap-4">
@@ -393,7 +393,7 @@ function WelcomePane({
                 />
                 <WelcomeAction
                     icon={<FolderOpen className="h-6 w-6" />}
-                    label={t("launcher.projects.openFolder")}
+                    label={t("launcher.projects.empty.openFolder")}
                     onClick={onOpenFolder}
                     disabled={isBusy}
                 />
