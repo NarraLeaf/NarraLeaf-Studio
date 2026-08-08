@@ -245,6 +245,18 @@ export const build = {
         one: "Build stopped: {count} asset will not play. See the console.",
         other: "Build stopped: {count} assets will not play. See the console.",
     },
+    /**
+     * The network gate: blueprints request the network in a project that does not allow it.
+     *
+     * Unconditional like the media gate above, and phrased the same way: what is wrong, then what to
+     * do about it. Both remedies are named because either is valid - the author wanted the request
+     * and forgot the setting, or they no longer want the request.
+     */
+    networkNodeDisallowed: "{blueprint} makes a network request, which this project does not allow.",
+    networkSummary: {
+        one: "Build stopped: {count} network node cannot run. Turn on Allow HTTP in project settings, or remove the node.",
+        other: "Build stopped: {count} network nodes cannot run. Turn on Allow HTTP in project settings, or remove the nodes.",
+    },
     /** Printed when this computer has no converter, so the check could not be made at all. */
     mediaUnchecked: {
         one: "{count} media file was not checked. This computer has no converter.",

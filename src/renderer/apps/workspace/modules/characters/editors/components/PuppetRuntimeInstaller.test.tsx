@@ -64,7 +64,7 @@ function Host({ open }: { open: PuppetRuntimeInstallTarget | null }) {
     );
 }
 
-const licenceShown = () => screen.queryByText("characters.editor.runtime.licenceAgree") !== null;
+const licenseShown = () => screen.queryByText("characters.editor.runtime.licenseAgree") !== null;
 const pickerShown = () => screen.queryByText("characters.editor.runtime.sdkPick") !== null;
 
 afterEach(cleanup);
@@ -74,7 +74,7 @@ describe("the puppet runtime installer's first step", () => {
         const view = render(<Host open={null} />);
         view.rerender(<Host open={LIVE2D} />);
 
-        expect(licenceShown()).toBe(true);
+        expect(licenseShown()).toBe(true);
         expect(pickerShown()).toBe(false);
     });
 
@@ -83,12 +83,12 @@ describe("the puppet runtime installer's first step", () => {
         // A custom runtime has no terms of ours and opens at the picker — which must not become the
         // step Live2D inherits.
         view.rerender(<Host open={{ kind: "custom" }} />);
-        expect(licenceShown()).toBe(false);
+        expect(licenseShown()).toBe(false);
 
         view.rerender(<Host open={null} />);
         view.rerender(<Host open={LIVE2D} />);
 
-        expect(licenceShown()).toBe(true);
+        expect(licenseShown()).toBe(true);
     });
 
     it("holds the picker back until the terms are agreed to", () => {
@@ -116,7 +116,7 @@ describe("the puppet runtime installer's first step", () => {
         view.rerender(<Host open={null} />);
         view.rerender(<Host open={LIVE2D} />);
 
-        expect(licenceShown()).toBe(true);
+        expect(licenseShown()).toBe(true);
         expect(pickerShown()).toBe(false);
     });
 });
