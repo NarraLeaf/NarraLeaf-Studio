@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Wand2, AlertCircle, Check } from 'lucide-react';
 import { MagicTagTemplate, MagicTagPreview } from '@/lib/workspace/services/core/MagicTagManager';
 import { Asset } from '@/lib/workspace/services/assets/types';
+import { useWindowOverlayHost } from '@/lib/components/layout';
 import { useTranslation } from '@/lib/i18n';
 
 export interface MagicTagDialogProps {
@@ -14,6 +16,7 @@ export interface MagicTagDialogProps {
 
 export function MagicTagDialog({ visible, assets, template, onClose, onApply }: MagicTagDialogProps) {
     const { t } = useTranslation();
+    const overlayHost = useWindowOverlayHost();
     const [categoryMapping, setCategoryMapping] = useState<Record<number, string>>({});
     const [selectedDelimiters, setSelectedDelimiters] = useState<string[]>([]);
     const [preview, setPreview] = useState<MagicTagPreview[]>([]);
@@ -90,7 +93,10 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
 
     if (!visible || !template) return null;
 
-    return (
+    // Raised into the window's overlay layer for the same reason `Modal` is: rendered by the assets
+    // panel, this layer's `z-50` would otherwise be trapped in whatever stacking context that panel
+    // sits in, and the dock seams would paint over the dialog.
+    return createPortal(
         <div className="nl-window-content-layer z-50 flex items-center justify-center p-4">
             {/* Backdrop */}
             <div
@@ -293,6 +299,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        overlayHost,
     );
 }

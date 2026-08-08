@@ -1127,6 +1127,11 @@ interface ILocalizationService extends IService {
     addLocale(entry: LocalizationLocaleEntry): Promise<LocalizationConfiguration>;
     removeLocale(code: string): Promise<LocalizationConfiguration>;
     setSourceLocale(code: string): Promise<LocalizationConfiguration>;
+    /** Edit a language's display name and fallback. Rejects a fallback that would never be read. */
+    updateLocaleEntry(
+        code: string,
+        patch: Partial<Pick<LocalizationLocaleEntry, "displayName" | "fallback">>,
+    ): Promise<LocalizationConfiguration>;
     loadDocument(locale: string): Promise<LocalizationDocument>;
     getDocumentIfLoaded(locale: string): LocalizationDocument | undefined;
     onDocumentChanged(handler: (event: { locale: string; document: LocalizationDocument }) => void): () => void;

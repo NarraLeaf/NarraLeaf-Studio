@@ -14,7 +14,7 @@ import { isMacPlatform } from "@/lib/app/platform";
 import { getInterface } from "@/lib/app/bridge";
 
 /**
- * Reveal the keyboard-shortcut table, which lives in the Settings window under Editor. Main
+ * Reveal the keyboard-shortcut table, which lives in the Settings window under Shortcuts. Main
  * focuses an already-open Settings window rather than opening a second one, so this is safe to
  * call from every surface that offers "customize shortcuts".
  */
