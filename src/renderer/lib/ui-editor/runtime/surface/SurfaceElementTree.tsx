@@ -10,6 +10,7 @@ import {
     isUIElementFlowLayoutChild,
 } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
+import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
@@ -891,7 +892,14 @@ function renderElementTree(
         .filter((node): node is ReactNode => node !== null);
     };
 
-    const children = isListLikeWidgetType(resolved.type) || resolved.type === "nl.slider" ? [] : renderChildren();
+    // Widgets that place their own children call `renderChildren` themselves - with slot ids, an
+    // instance key and (for the switch) per-part variant overrides - so the tree must not also
+    // render them here, or every part would be drawn twice.
+    const rendersOwnChildren =
+        isListLikeWidgetType(resolved.type)
+        || resolved.type === "nl.slider"
+        || resolved.type === UI_SWITCH_ELEMENT_TYPE;
+    const children = rendersOwnChildren ? [] : renderChildren();
 
     const renderer = rendererRegistry.get(resolved.type);
     const linkedComponentContent = renderLinkedComponentInstanceContent({

@@ -2,6 +2,7 @@ import { isContainerFlowLayoutParent } from "./container";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
+import { getUISwitchChildSlot } from "./switch";
 
 export const UI_DOCUMENT_SCHEMA_VERSION = 11 as const;
 
@@ -101,7 +102,7 @@ export type UIElementExtraComponentLink = {
 };
 
 /** Types that may own `childrenIds` (structural parents). Leaf widgets must stay childless. */
-const UI_PARENT_CAPABLE_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.button", "nl.slider", ...UI_LIST_LIKE_WIDGET_TYPES]);
+const UI_PARENT_CAPABLE_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.button", "nl.slider", "nl.switch", ...UI_LIST_LIKE_WIDGET_TYPES]);
 /** Types that accept ordinary user-inserted children. Structural part parents can be narrower. */
 const UI_USER_CHILD_PARENT_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.button", ...UI_LIST_LIKE_WIDGET_TYPES]);
 
@@ -206,6 +207,9 @@ export function isUIElementFlowLayoutChild(document: UIDocument, element: UIElem
         return false;
     }
     if (parent?.type === "nl.slider" && getUISliderChildSlot(element.extra) != null) {
+        return false;
+    }
+    if (parent?.type === "nl.switch" && getUISwitchChildSlot(element.extra) != null) {
         return false;
     }
     return parent != null && isUIFlowLayoutParentElement(parent);

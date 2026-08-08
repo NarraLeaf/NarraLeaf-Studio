@@ -24,6 +24,8 @@ import {
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_SAVED_SET,
     BLUEPRINT_NODE_TYPE_STRING_FORMAT,
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
@@ -198,6 +200,55 @@ describe("blueprint graph validation", () => {
         });
 
         expect(diagnostics.map(d => d.code)).toContain("node.persistent_variable_id_invalid");
+    });
+
+    // The saved twin of the rule above. The node card only ever offers ids the registry holds, so the
+    // two ways to end up outside that set are an author who never picked (empty) and a variable that was
+    // deleted after the pick (dangling) - the second being the one a picker alone cannot prevent.
+    it("reports saved variable references that are empty or name a variable the registry lost", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                dangling: {
+                    id: "dangling",
+                    type: BLUEPRINT_NODE_TYPE_SAVED_GET,
+                    params: { savedVariableId: "deleted" },
+                },
+                empty: { id: "empty", type: BLUEPRINT_NODE_TYPE_SAVED_SET, params: {} },
+            },
+            edges: [],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+            validSavedVariableIds: new Set(["known"]),
+        });
+
+        const savedDiagnostics = diagnostics.filter(d => d.code === "node.saved_variable_id_invalid");
+        expect(savedDiagnostics.map(d => d.target?.kind === "node" ? d.target.nodeId : undefined).sort())
+            .toEqual(["dangling", "empty"]);
+    });
+
+    it("leaves a saved variable reference the registry still holds alone", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                get: { id: "get", type: BLUEPRINT_NODE_TYPE_SAVED_GET, params: { savedVariableId: "known" } },
+                set: { id: "set", type: BLUEPRINT_NODE_TYPE_SAVED_SET, params: { savedVariableId: "known" } },
+            },
+            edges: [],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+            validSavedVariableIds: new Set(["known"]),
+        });
+
+        expect(diagnostics.map(d => d.code)).not.toContain("node.saved_variable_id_invalid");
     });
 
     it("validates Get Var references against Var declaration nodes", () => {

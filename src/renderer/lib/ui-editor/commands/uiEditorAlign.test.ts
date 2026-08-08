@@ -270,6 +270,35 @@ describe("UI editor align, excluded elements", () => {
         expect(result).toEqual({ b: { x: 10 } });
     });
 
+    it("skips switch track and thumb slots", () => {
+        const doc = makeDocument();
+        doc.elements.panel = element("panel", "nl.switch", "root", { x: 300, y: 400, width: 52, height: 28 }, [
+            "inner",
+        ]);
+        doc.elements.inner = element(
+            "inner",
+            "nl.container",
+            "panel",
+            { x: 3, y: 3, width: 22, height: 22 },
+            [],
+            { switchSlot: "thumb" },
+        );
+        const result = computeUiEditorAlignPatches(doc, "surface", selection(["a", "b", "inner"]), "left");
+        expect(result).toEqual({ b: { x: 10 } });
+    });
+
+    it("still aligns a switch child that carries no slot", () => {
+        // Guards the pair of conditions: the exclusion is "a switch part", not "anything under a
+        // switch". Without the `switchSlot` check the case above would pass for the wrong reason.
+        const doc = makeDocument();
+        doc.elements.panel = element("panel", "nl.switch", "root", { x: 300, y: 400, width: 52, height: 28 }, [
+            "inner",
+        ]);
+        doc.elements.inner = element("inner", "nl.container", "panel", { x: 3, y: 3, width: 22, height: 22 });
+        const result = computeUiEditorAlignPatches(doc, "surface", selection(["a", "b", "inner"]), "left");
+        expect(result).toEqual({ b: { x: 10 }, inner: { x: -290 } });
+    });
+
     it("skips the surface root", () => {
         expect(patches(makeDocument(), ["root"], "left")).toEqual({});
         // Root plus a child is empty rather than "align the child": the top-level-mover filter drops
