@@ -1,5 +1,9 @@
 import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
+import { isValidLocaleCode, localeAutonym } from "@shared/types/localization";
+import { parseStageSize, stageOrientation } from "@shared/types/stageSize";
+import { DEFAULT_NETWORK_CONFIGURATION } from "@/lib/workspace/project/configuration";
+import type { ProjectAppConfiguration } from "@/lib/workspace/project/configuration";
 import { ProjectData } from "../types";
 import { encodeProjectConfig, getProjectConfigFileName } from "@shared/utils/nlproj";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
@@ -40,6 +44,16 @@ export class ProjectService {
                 throwException(await BaseFileSystemService.createDir(basePath));
             }
 
+            // The stage the project is authored in. Read once and used for BOTH the manifest and
+            // the interface document, because they are the same fact told to two readers: the
+            // story preview and every surface created later read `metadata.resolution`, while the
+            // editor lays out against the surface's own `designSize`. They disagreed whenever a
+            // content template was applied - the template's surfaces landed at the size they were
+            // drawn for while the manifest kept whatever the author had picked - and nothing on
+            // screen said so. The wizard now only offers sizes the chosen template declares, so
+            // this one value is true of both.
+            const designSize = getDesignSize(projectData.resolution);
+
             // Write .nlproj (msgpack-encoded project config)
             const projectConfigFileName = getProjectConfigFileName(projectData.name);
             const projectConfigPath = join(basePath, projectConfigFileName);
@@ -49,10 +63,15 @@ export class ProjectService {
                 metadata: {
                     description: projectData.description,
                     author: projectData.author,
-                    license: projectData.license,
-                    licenseString: projectData.licenseCustom,
-                    resolution: BaseProjectService.parseResolution(projectData.resolution),
+                    website: projectData.website,
+                    // Written even though the project panel can edit it, because leaving it unset
+                    // is not neutral: the build preflight refuses outright on a missing version
+                    // (`version-missing`), so every project created without one had to be sent
+                    // back to the panel before it could be packaged even once.
+                    version: projectData.version,
+                    resolution: designSize,
                 },
+                app: buildAppConfiguration(projectData, designSize),
             });
             const encoded = encodeProjectConfig(projectConfig);
             throwException(await BaseFileSystemService.writeRaw(projectConfigPath, encoded));
@@ -76,7 +95,7 @@ export class ProjectService {
             throwException(await BaseFileSystemService.write(editorConfigPath, JSON.stringify(editorConfig), "utf-8"));
 
             // Write default UI document so App Surface has a default page
-            const uiDocument = createDefaultUIDocument(getDesignSizeFromResolution(projectData.resolution));
+            const uiDocument = createDefaultUIDocument(designSize);
             const uiDocumentPath = this.resolve(basePath, ProjectNameConvention.EditorUIDocument);
             throwException(await BaseFileSystemService.write(uiDocumentPath, JSON.stringify(uiDocument, null, 2), "utf-8"));
 
@@ -203,7 +222,7 @@ export class ProjectService {
         }
 
         if (!projectData.appId.trim()) {
-            errors.push(translate("wizard.details.appIdRequired"));
+            errors.push(translate("wizard.project.appIdRequired"));
         }
 
         if (!projectData.location.trim()) {
@@ -214,6 +233,13 @@ export class ProjectService {
             errors.push(translate("wizard.validation.templateRequired"));
         }
 
+        // Last line of defence for the one answer that cannot be corrected afterwards. The stage
+        // step already refuses to be valid without it; this is what makes a future caller that
+        // skips the steps fail loudly rather than write a project at 1280x720 by accident.
+        if (!parseStageSize(projectData.resolution)) {
+            errors.push(translate("wizard.validation.stageSizeRequired"));
+        }
+
         return {
             isValid: errors.length === 0,
             errors
@@ -221,11 +247,44 @@ export class ProjectService {
     }
 }
 
-function getDesignSizeFromResolution(resolution?: string): UISurfaceDesignSize {
-    const parsed = BaseProjectService.parseResolution(resolution ?? "");
-    const width = Number.isFinite(parsed.width) ? parsed.width : DEFAULT_UI_SURFACE_SIZE.width;
-    const height = Number.isFinite(parsed.height) ? parsed.height : DEFAULT_UI_SURFACE_SIZE.height;
-    return { width, height };
+function getDesignSize(resolution: string): UISurfaceDesignSize {
+    // The wizard cannot reach Create with an unusable size (the stage step clears it and the step
+    // stops being valid), so the fallback is for a path that does not exist rather than a size
+    // anybody chose - and it must still not be NaN, which is what `parseResolution` returns.
+    return parseStageSize(resolution) ?? { ...DEFAULT_UI_SURFACE_SIZE };
+}
+
+/**
+ * The `app` block a new project starts with.
+ *
+ * Only the parts the wizard has an answer for. Everything else in `ProjectAppConfiguration` is
+ * absent on purpose: those fields default at read time, and writing today's defaults into every
+ * project ever created would freeze them there - improving a default would never reach a project
+ * that had already been made.
+ */
+function buildAppConfiguration(
+    projectData: ProjectData,
+    designSize: UISurfaceDesignSize,
+): ProjectAppConfiguration {
+    const sourceLocale = projectData.sourceLocale.trim();
+    return {
+        network: { ...DEFAULT_NETWORK_CONFIGURATION },
+        // Derived rather than asked. A project laid out taller than it is wide plays upright, and
+        // a second control that agrees with the stage size in every case but the one where somebody
+        // set them apart by accident is not a choice, it is a way to be inconsistent. The project
+        // panel still offers `auto` for anyone who wants it.
+        mobile: { orientation: stageOrientation(designSize) },
+        // The source language only; targets are the localization panel's business. Absent when
+        // there is none, which is what `sourceLocale: ""` means to every reader of this field.
+        ...(isValidLocaleCode(sourceLocale)
+            ? {
+                localization: {
+                    sourceLocale,
+                    locales: [{ code: sourceLocale, displayName: localeAutonym(sourceLocale) }],
+                },
+            }
+            : {}),
+    };
 }
 
 function createDefaultUIDocument(designSize: UISurfaceDesignSize): UIDocument {

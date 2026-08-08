@@ -28,16 +28,11 @@ export function CloneStep({ projectData, remote, cloneStatus, cloneFailure }: Cl
     const busy = cloneStatus === "cloning";
 
     return (
-        <div className="p-6">
-            <div className="space-y-6">
-                <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-fg">{t("wizard.clone.title")}</h2>
-                    <p className="text-sm text-fg-muted">
-                        {t("wizard.clone.subtitle")}
-                    </p>
-                </div>
+        <div className="h-full overflow-y-auto p-5">
+            <div className="space-y-4">
+                <p className="text-sm text-fg-muted">{t("wizard.clone.subtitle")}</p>
 
-                <div className="grid gap-6 max-w-2xl">
+                <div className="grid max-w-xl gap-4">
                     <Card>
                         <CardHeader>
                             <CardTitle>{t("wizard.clone.summary.title")}</CardTitle>
