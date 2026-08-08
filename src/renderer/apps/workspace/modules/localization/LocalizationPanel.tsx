@@ -17,8 +17,8 @@ import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freez
 /**
  * The localization locale menu row that keeps working while frozen: the export.
  *
- * It writes to a path the author picks, outside the project. Set-as-source, Import and Remove
- * Language all write the project and are off.
+ * It writes to a path the author picks, outside the project. Language Settings, Set-as-source,
+ * Import and Remove Language all write the project and are off.
  */
 const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["export-translations"]);
 import { useRegistry } from "../../registry";
@@ -42,6 +42,7 @@ import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import {
+    findLocaleFallbackConflict,
     isValidLocaleCode,
     type LocalizationConfiguration,
     type LocalizationDocument,
@@ -57,6 +58,7 @@ import {
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { createLocalizationEditorTab } from "./openLocalizationEditorTab";
 import { TranslationExportForm } from "./TranslationExportForm";
+import { LanguageSettingsForm, type FallbackCandidate } from "./LanguageSettingsForm";
 
 /** One translatable unit with translator-facing context (for progress and export). */
 type PanelRow = TranslatableUnitContext;
@@ -309,6 +311,68 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         openEditorTab(createLocalizationEditorTab(code, displayName));
     }, [openEditorTab]);
 
+    /**
+     * The language's own two settings: the name players see, and its fallback language.
+     *
+     * The entry is read from the service rather than from the menu state, which carries only what
+     * the row renders - a menu that also had to carry the fallback would be a second copy of the
+     * configuration, stale from the moment it opened.
+     */
+    const handleLanguageSettings = useCallback((code: string) => {
+        if (!localizationService || !uiService) {
+            return;
+        }
+        const current = localizationService.getConfiguration();
+        const entry = current.locales.find(locale => locale.code === code);
+        if (!entry) {
+            return;
+        }
+        const candidates: FallbackCandidate[] = current.locales
+            .filter(locale => locale.code !== code)
+            .map(locale => ({
+                code: locale.code,
+                displayName: locale.displayName,
+                loops: findLocaleFallbackConflict(current, code, locale.code) !== null,
+            }));
+
+        // The footer buttons are snapshotted when the dialog opens, so the edit lives here
+        // and the form reports into it.
+        let displayName = entry.displayName;
+        let fallback = entry.fallback ?? "";
+        const dialogId = uiService.dialogs.show({
+            title: t("workspace.localization.settings.title", { name: entry.displayName }),
+            width: 420,
+            closable: true,
+            content: (
+                <LanguageSettingsForm
+                    code={code}
+                    initialDisplayName={displayName}
+                    initialFallback={fallback}
+                    candidates={candidates}
+                    onChange={(nextDisplayName, nextFallback) => {
+                        displayName = nextDisplayName;
+                        fallback = nextFallback;
+                    }}
+                />
+            ),
+            buttons: [
+                { label: t("common.cancel"), onClick: () => uiService.dialogs.close(dialogId) },
+                {
+                    label: t("common.save"),
+                    primary: true,
+                    onClick: () => {
+                        uiService.dialogs.close(dialogId);
+                        // One call for both fields: they are one edit, and the configuration is
+                        // written through whole either way.
+                        void localizationService
+                            .updateLocaleEntry(code, { displayName, fallback })
+                            .catch(error => uiService.showError(error instanceof Error ? error : String(error)));
+                    },
+                },
+            ],
+        });
+    }, [localizationService, uiService, t]);
+
     /** Write one exchange file, after the dialog below has settled format and scope. */
     const writeExport = useCallback(async (code: string, format: TranslationExchangeFormat, scope: TranslationExportScope) => {
         if (!localizationService || !context) {
@@ -476,6 +540,12 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         }
         items.push(
             {
+                id: "language-settings",
+                label: t("workspace.localization.settings.menu"),
+                onClick: () => handleLanguageSettings(code),
+            },
+            { id: "separator-exchange", separator: true },
+            {
                 id: "export-translations",
                 label: t("workspace.localization.exchange.exportMenu"),
                 onClick: () => void handleExport(code, displayName),
@@ -493,7 +563,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             },
         );
         return items;
-    }, [localeMenu, handleSetSource, handleExport, handleImport, handleRemoveLocale, t]);
+    }, [localeMenu, handleSetSource, handleLanguageSettings, handleExport, handleImport, handleRemoveLocale, t]);
     const frozenLocaleMenuItems = useMemo(
         () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS, freeze.reason),
         [freeze, localeMenuItems],

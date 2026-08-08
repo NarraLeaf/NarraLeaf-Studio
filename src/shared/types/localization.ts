@@ -305,3 +305,59 @@ export function resolveLocaleChain(config: Pick<GameLocalizationBundle, "sourceL
     }
     return chain;
 }
+
+/**
+ * Why a proposed `fallback` for `code` cannot be stored, or null when it can.
+ *
+ * - `self` - a language cannot fall back to itself.
+ * - `unknown` - the fallback names a language the project does not have.
+ * - `cycle` - following the fallback leads back to `code`.
+ */
+export type LocaleFallbackConflict = "self" | "unknown" | "cycle";
+
+/**
+ * Validate a fallback edit before it is written.
+ *
+ * {@link resolveLocaleChain} is already cycle-safe, so a cycle on disk does not break playback - it
+ * just means the second language in the loop is never consulted, which buys the author nothing and
+ * reads as "the fallback I set is being ignored". This is the write-side half: refuse to store the
+ * edge that closes the loop, so the configuration says what it does.
+ *
+ * The walk starts at `fallback` and follows the CURRENT configuration, which is the same thing as
+ * walking the would-be one: the only edge this patch changes is `code -> fallback`, and the walk is
+ * already past it. Should the walk reach `code`, it reports the cycle before it would have needed
+ * that entry's (stale) fallback.
+ *
+ * Reaching the source language ends the walk exactly as it ends a read: the source text is the
+ * compiled default, never a table lookup, so nothing beyond it is consulted.
+ *
+ * An empty `fallback` clears the field and is always allowed.
+ */
+export function findLocaleFallbackConflict(
+    config: Pick<LocalizationConfiguration, "sourceLocale" | "locales">,
+    code: LocaleCode,
+    fallback: LocaleCode,
+): LocaleFallbackConflict | null {
+    if (!fallback) {
+        return null;
+    }
+    if (fallback === code) {
+        return "self";
+    }
+    if (!config.locales.some(entry => entry.code === fallback)) {
+        return "unknown";
+    }
+    const visited = new Set<LocaleCode>();
+    let current: LocaleCode | undefined = fallback;
+    while (current !== undefined && !visited.has(current)) {
+        if (current === code) {
+            return "cycle";
+        }
+        if (current === config.sourceLocale) {
+            return null;
+        }
+        visited.add(current);
+        current = config.locales.find(entry => entry.code === current)?.fallback;
+    }
+    return null;
+}

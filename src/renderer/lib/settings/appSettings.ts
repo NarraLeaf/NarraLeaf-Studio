@@ -93,6 +93,16 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 3,
     },
     {
+        // Its own category rather than a panel filed under Editor: shortcuts reach every surface in
+        // Studio, not just the editors, and nobody looking for them thought to open Editor first.
+        key: "shortcuts",
+        label: "Shortcuts",
+        labelKey: "settings.categories.shortcuts.label",
+        description: "Keys bound to each command throughout Studio.",
+        descriptionKey: "settings.categories.shortcuts.description",
+        order: 4,
+    },
+    {
         // Was "Sync", whose description promised a backup cadence that was never implemented; the
         // keys behind that promise are gone (RETIRED_GLOBAL_STATE_KEYS) and what is left here is
         // version control, so the category now says so.
@@ -101,7 +111,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.versionControl.label",
         description: "Checkpoints and the identity recorded on them.",
         descriptionKey: "settings.categories.versionControl.description",
-        order: 4,
+        order: 5,
     },
     {
         // Absorbed the former "Plugins" and "Advanced" categories, which between them held four
@@ -112,7 +122,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.network.label",
         description: "Where Studio downloads plugins, templates and build tooling from.",
         descriptionKey: "settings.categories.network.description",
-        order: 5,
+        order: 6,
     },
     {
         key: "data",
@@ -120,7 +130,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.data.label",
         description: "Cached files, resetting preferences, and moving them between machines.",
         descriptionKey: "settings.categories.data.description",
-        order: 6,
+        order: 7,
     },
 ];
 
@@ -681,7 +691,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // `catalogId -> chord` map, and every open workspace picks the change up through the
         // global-state broadcast (see UIService's keybinding override sync).
         key: KEYBINDING_OVERRIDES_SETTINGS_KEY,
-        category: "editor",
+        category: "shortcuts",
         scope: SettingScope.Global,
         type: SettingValueType.Custom,
         panel: "keybindings",

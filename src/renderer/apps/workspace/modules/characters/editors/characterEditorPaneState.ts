@@ -5,12 +5,13 @@ import type { CharacterTagSelection } from "@/lib/workspace/services/character/t
 /**
  * What the character editor remembers between mounts.
  *
- * Two different lifetimes, so two keys. The inspector's width is a workbench preference — one
- * number, the same for every character, the way the story editor's preview pane works. What the
- * author was *looking at* (which pose, which tags, what was selected) is per character, and it is
- * the thing that used to be thrown away every time the tab was closed: reopening a character with
- * eight poses put you back on the default pose with the tag selection reset, which on a layered
- * character means re-picking one tag per axis before the picture is the one you were working on.
+ * Two different lifetimes, so two keys. How the workbench is laid out — the inspector's width, how
+ * tall a puppet is previewed — is the same for every character, the way the story editor's preview
+ * pane works. What the author was *looking at* (which pose, which tags, what was selected) is per
+ * character, and it is the thing that used to be thrown away every time the tab was closed:
+ * reopening a character with eight poses put you back on the default pose with the tag selection
+ * reset, which on a layered character means re-picking one tag per axis before the picture is the
+ * one you were working on.
  *
  * Deliberately NOT stored: which layers are hidden and which are locked. Those are a way of looking
  * at a stack in the moment, not a state of the work — the same reason they are kept off the
@@ -24,7 +25,18 @@ export const CHARACTER_INSPECTOR_DEFAULT_WIDTH = 360;
 /** The inspector may take at most this fraction of the editor's width. */
 export const CHARACTER_INSPECTOR_MAX_FRACTION = 0.7;
 
-type CharacterInspectorState = { width: number };
+export const PUPPET_PREVIEW_MIN_HEIGHT = 120;
+export const PUPPET_PREVIEW_DEFAULT_HEIGHT = 168;
+/**
+ * The ceiling on the puppet preview.
+ *
+ * The preview shares a scrolling column with the controls that change what it shows, so a preview
+ * free to take the whole column would let an author drag the motion and expression pickers out of
+ * sight — and then have nothing left on screen to drag back with.
+ */
+export const PUPPET_PREVIEW_MAX_HEIGHT = 560;
+
+type CharacterInspectorState = { width: number; puppetPreviewHeight: number };
 
 export function getCharacterInspectorWidth(panelState: PanelStateService): number {
     const stored = panelState.getPanelState<Partial<CharacterInspectorState>>(INSPECTOR_STATE_KEY);
@@ -35,6 +47,26 @@ export function getCharacterInspectorWidth(panelState: PanelStateService): numbe
 
 export function setCharacterInspectorWidth(panelState: PanelStateService, width: number): void {
     panelState.setPanelState<CharacterInspectorState>(INSPECTOR_STATE_KEY, { width });
+}
+
+/**
+ * How tall the puppet preview is drawn.
+ *
+ * The same lifetime as the inspector's width and stored beside it: how big a picture an author wants
+ * of a model is a fact about their screen and how they work, not about the character being edited.
+ * Clamped on read as well as on write, because the stored number outlives the bounds it was written
+ * under.
+ */
+export function getPuppetPreviewHeight(panelState: PanelStateService): number {
+    const stored = panelState.getPanelState<Partial<CharacterInspectorState>>(INSPECTOR_STATE_KEY);
+    const height = stored?.puppetPreviewHeight;
+    return typeof height === "number" && Number.isFinite(height)
+        ? Math.min(PUPPET_PREVIEW_MAX_HEIGHT, Math.max(PUPPET_PREVIEW_MIN_HEIGHT, height))
+        : PUPPET_PREVIEW_DEFAULT_HEIGHT;
+}
+
+export function setPuppetPreviewHeight(panelState: PanelStateService, height: number): void {
+    panelState.setPanelState<CharacterInspectorState>(INSPECTOR_STATE_KEY, { puppetPreviewHeight: height });
 }
 
 export type CharacterEditorViewState = {
