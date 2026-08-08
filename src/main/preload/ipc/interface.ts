@@ -191,6 +191,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         getPathForFile: (file: File) => getPathForFile(file),
     },
     selectProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardSelectDirectory, {}),
+    selectProjectPackage: () => ipcClient.invoke(IPCEventType.projectWizardSelectPackage, {}),
     
     // Workspace
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
@@ -214,8 +215,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
         exportProjectPackage: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportProjectPackage, { projectPath }),
-        importProjectPackage: () =>
-            ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, {}),
+        importProjectPackage: (packagePath: string, targetDir: string) =>
+            ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, { packagePath, targetDir }),
         exportConsoleLogs: (defaultFileName: string, content: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
         setRecoveryMode: (enabled: boolean, reason?: string) =>
