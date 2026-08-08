@@ -105,6 +105,7 @@ export enum IPCEventType {
     appGlobalStateChanged = "app.globalState.changed",
     appAddRecentProject = "app.addRecentProject",
     appRemoveRecentProject = "app.removeRecentProject",
+    appRevealRecentProject = "app.revealRecentProject",
     appCheckRecentProjects = "app.checkRecentProjects",
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
@@ -540,6 +541,21 @@ export type IPCEvents = {
      * read-modify-write, so a stale renderer snapshot cannot erase another window's changes.
      */
     [IPCEventType.appRemoveRecentProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: void;
+    };
+    /**
+     * Show one remembered project's folder in the OS file manager.
+     *
+     * Takes a path, unlike its workspace counterpart, because the launcher has no project of its
+     * own - the list is what it acts on. The host still refuses any path that is not in the
+     * history, so this is a "reveal one of these", never a "reveal anything".
+     */
+    [IPCEventType.appRevealRecentProject]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {

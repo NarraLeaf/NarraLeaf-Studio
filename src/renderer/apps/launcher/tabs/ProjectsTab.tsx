@@ -1,15 +1,16 @@
 
 import { getInterface } from "@/lib/app/bridge";
 import { RecentProjectMissingReason, RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
-import { ContextMenu, IconButton, Input, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
+import { ConfirmModal, ContextMenu, IconButton, Input, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import type { ContextMenuDef } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { AlertTriangle, FolderOpen, MoreVertical, Plus, Search, X } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { collapseHomePath, normalizeProjectPath } from "@shared/utils/recentProject";
+import { isMacPlatform, isWindowsPlatform } from "@/lib/app/platform";
 import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
-import { useMissingRecentProjects, useRecentProjects, useRemoveRecentProject } from "@/lib/app/hooks/useRecentProjects";
+import { useMissingRecentProjects, useRecentProjects, useRemoveRecentProject, useRevealRecentProject } from "@/lib/app/hooks/useRecentProjects";
 import { createProjectFromWizard, openProjectFromFolder, relocateRecentProject } from "../projectActions";
 import { nameMonogramColor, nameInitials } from "@/lib/components/monogram";
 
@@ -20,6 +21,7 @@ export function ProjectsTab() {
     // Live, so a project opened or removed from another window shows up here too.
     const recentProjects = useRecentProjects();
     const removeRecentProject = useRemoveRecentProject();
+    const revealRecentProject = useRevealRecentProject();
     // Checked once, on the way into the app - see useMissingRecentProjects.
     const missingByPath = useMissingRecentProjects();
     // The entry whose "cannot find this" dialog is open, if any.
@@ -29,6 +31,9 @@ export function ProjectsTab() {
     const [searchQuery, setSearchQuery] = useState("");
     // The row whose overflow menu is open, with the screen point to anchor it to.
     const [rowMenu, setRowMenu] = useState<{ project: RecentlyOpenedProject; x: number; y: number } | null>(null);
+    // The entry waiting on a "yes, forget this one". Removing is one click in a menu and the row it
+    // took away is the only record of where that project lives, so it asks first.
+    const [removeTarget, setRemoveTarget] = useState<RecentlyOpenedProject | null>(null);
     const homeDir = useHomeDir();
     const isBusy = isOpening;
 
@@ -98,11 +103,21 @@ export function ProjectsTab() {
         setMissingTarget(null);
     };
 
-    const handleRemoveRecentProject = async (project: RecentlyOpenedProject) => {
+    const handleConfirmRemoveRecentProject = async () => {
+        if (!removeTarget) return;
         // The main process rebuilds the list and broadcasts it back, which is what re-renders this
         // one. No optimistic local copy: writing a filtered snapshot back would erase whatever
         // another window did to the history in the meantime.
-        await removeRecentProject(project.path);
+        await removeRecentProject(removeTarget.path);
+        setRemoveTarget(null);
+    };
+
+    const handleRevealProject = async (project: RecentlyOpenedProject) => {
+        setOperationError(null);
+        const error = await revealRecentProject(project.path);
+        if (error !== null) {
+            setOperationError(error || t("launcher.projects.errorReveal"));
+        }
     };
 
     /**
@@ -125,12 +140,18 @@ export function ProjectsTab() {
                     setMissingError(null);
                     setMissingTarget(project);
                 },
-            }] : []),
+            }] : [{
+                // Left out for a missing entry: the row already says the folder is gone, and an
+                // action whose only possible outcome is an error is not one to offer.
+                id: "reveal",
+                label: t(revealInFileManagerKey()),
+                onClick: () => void handleRevealProject(project),
+            }]),
             { id: "sep", separator: true as const },
             {
                 id: "remove",
                 label: t("launcher.projects.removeFromRecent"),
-                onClick: () => void handleRemoveRecentProject(project),
+                onClick: () => setRemoveTarget(project),
             },
         ];
     };
@@ -332,6 +353,17 @@ export function ProjectsTab() {
                 />
             )}
 
+            {removeTarget && (
+                <ConfirmModal
+                    isOpen
+                    onClose={() => setRemoveTarget(null)}
+                    onConfirm={() => void handleConfirmRemoveRecentProject()}
+                    title={t("launcher.projects.removeConfirm.title")}
+                    message={t("launcher.projects.removeConfirm.message", { name: removeTarget.name })}
+                    confirmText={t("launcher.projects.removeConfirm.confirm")}
+                />
+            )}
+
             {missingTarget && (
                 <MissingProjectDialog
                     project={missingTarget}
@@ -444,6 +476,18 @@ function WelcomeAction({
             <span className="text-sm">{label}</span>
         </button>
     );
+}
+
+/**
+ * What this system calls the thing that is about to open.
+ *
+ * Read at call time rather than through a hook: the platform cannot change while the window is up,
+ * and `getPlatformInfo` is a synchronous read of what the preload already handed over.
+ */
+function revealInFileManagerKey() {
+    if (isMacPlatform()) return "launcher.projects.revealInFinder" as const;
+    if (isWindowsPlatform()) return "launcher.projects.revealInExplorer" as const;
+    return "launcher.projects.revealInFileManager" as const;
 }
 
 function missingReasonKey(reason: RecentProjectMissingReason) {
