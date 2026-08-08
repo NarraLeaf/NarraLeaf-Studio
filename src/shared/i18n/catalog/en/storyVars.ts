@@ -1,4 +1,11 @@
-/** `storyVars` - the Story Variables side panel (scene / saved / persistent variables). */
+/**
+ * `storyVars` - the Story Variables side panel.
+ *
+ * The section titles carry the ownership split the panel is built on: the two project scopes are
+ * defined in the project (this panel writes them), the scene scope is declared in the story and only
+ * mirrored here. `persistent` keeps its key - it is the scope's name everywhere in the code - but
+ * reads as "global", which is what the story's own `/global` row and its badge already call it.
+ */
 export const storyVars = {
     empty: "Open a story scene to manage its variables.",
     valueType: {
@@ -15,15 +22,14 @@ export const storyVars = {
     },
     scene: {
         title: "Scene variables",
-        hint: "Per scene; kept in the save file.",
+        hint: "Declared in the story with /local. Click a row to go to it.",
     },
     saved: {
         title: "Saved variables",
-        hint: "Per save file; must be serializable.",
+        hint: "Defined in the project; the value lives in the save file.",
     },
     persistent: {
-        title: "Persistent variables",
-        hint: "App-level; shared with blueprints.",
-        empty: "No persistent variables. Add them in the blueprint editor.",
+        title: "Global variables",
+        hint: "Defined in the project; app-level, shared with blueprints.",
     },
 } as const;

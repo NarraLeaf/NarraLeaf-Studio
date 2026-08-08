@@ -42,8 +42,6 @@ export const STORY_COMMAND_PINYIN: Record<string, { full: string; initials: stri
     toggle: { full: "fanzhuan", initials: "fz" },
     reset: { full: "chongzhi", initials: "cz" },
     declareLocal: { full: "changjingbianliang", initials: "cjbl" },
-    declareVar: { full: "cundangbianliang", initials: "cdbl" },
-    declarePersis: { full: "quanjubianliang", initials: "qjbl" },
     if: { full: "tiaojian", initials: "tj" },
     menu: { full: "caidan", initials: "cd" },
     repeat: { full: "chongfu", initials: "cf" },

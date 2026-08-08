@@ -3,7 +3,7 @@ import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/stor
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import { sceneLabelNames } from "@shared/types/story/labels";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
-import { buildMergedPersistentView } from "@shared/variables/mergedPersistentView";
+import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
@@ -33,14 +33,15 @@ function assetRefs(assets: AssetsMap | undefined, type: AssetType): StoryCommand
  * declaration, with `saved.gold` as the escape hatch when a name is shadowed. See
  * `createStoryExpressionScope`, which sorts by the same rule.
  *
- * Persistent variables are declared in the *blueprint* document (keyed by `storageKey`, shared with UI
- * blueprints), which is why they arrive here as a separate input rather than off the story document.
- * They used to be missing entirely, so `/set` on a game-level flag reported "unknown variable"; they
- * are the whole point of having a persistent scope, so they belong in the list.
+ * Both project scopes arrive as separate inputs rather than off the story document, because both are
+ * declared in the project registry as well as in story rows. They used to be missing entirely, so
+ * `/set` on a game-level flag reported "unknown variable"; they are the whole point of having those
+ * scopes, so they belong in the list.
  */
 function variableEntries(
     document: StoryDocument | null,
     scene: StoryScene | null,
+    savedVariables: readonly VariableRegistryEntry[],
     persistentVariables: readonly VariableRegistryEntry[],
 ): StoryCommandVariableEntry[] {
     const entries: StoryCommandVariableEntry[] = [];
@@ -53,18 +54,25 @@ function variableEntries(
             defaultValue: definition.defaultValue,
         });
     }
-    for (const definition of Object.values(document ? savedVariableDefs(document) : {})) {
+    // Saved variables: the same two-surface merge the persistent arm below does, because `saved` is a
+    // project-level scope now too. Addressed by `id` - the registry mints an entry's id from the
+    // declaration row's block id, so a `/set` written before the registry existed still resolves.
+    const savedView = buildMergedVariableView(
+        savedVariables,
+        document ? Object.values(savedVariableDefs(document)) : [],
+    );
+    for (const entry of savedView.entries) {
         entries.push({
-            name: definition.name,
-            ref: { scope: "saved", variableId: definition.id },
-            valueType: definition.valueType,
-            defaultValue: definition.defaultValue,
+            name: entry.name,
+            ref: { scope: "saved", variableId: entry.id },
+            valueType: entry.valueType,
+            defaultValue: entry.defaultValue,
         });
     }
-    // Persistent variables: the merged view of the registry (blueprint-declared) and story `/persis`
-    // rows - one scope, two authoring surfaces (WI-3). Addressed by `storageKey`, the rename-stable key
-    // the compiler hands the host persistence bridge.
-    const persistentView = buildMergedPersistentView(
+    // Persistent variables: the merged view of the registry and story `/persis` rows - one scope, two
+    // authoring surfaces (WI-3). Addressed by `storageKey`, the rename-stable key the compiler hands
+    // the host persistence bridge.
+    const persistentView = buildMergedVariableView(
         persistentVariables,
         document ? Object.values(storyPersistentDefs(document)) : [],
     );
@@ -173,8 +181,16 @@ export function buildStoryCommandContext(input: {
     document: StoryDocument | null;
     sceneId: StorySceneId | null | undefined;
     scene: StoryScene | null;
-    /** Blueprint-declared persistent (game-level) variables from the M-VAR registry; empty when none. */
+    /** Registry-declared persistent (game-level) variables from the M-VAR registry; empty when none. */
     persistentVariables?: readonly VariableRegistryEntry[];
+    /**
+     * Registry-declared saved (per-playthrough) variables; empty when none.
+     *
+     * Separate from `persistentVariables` rather than one registry list, because the two scopes are
+     * addressed differently once they leave here - `saved` by entry id, `persistent` by storage key -
+     * and a single list would make the caller's scope filter this module's guess.
+     */
+    savedVariables?: readonly VariableRegistryEntry[];
     /**
      * The project's blueprint document, for the `mode:"value"` blueprints an expression may call.
      * Omitted wherever no project is open, which reports every blueprint name as unknown - the honest
@@ -240,7 +256,12 @@ export function buildStoryCommandContext(input: {
         // The one scan, shared with the compiler's `goto` validation (§12.9) - not a completion-layer
         // special case, just another table this projection carries.
         labels: sceneLabelNames(input.scene),
-        variables: variableEntries(input.document, input.scene, input.persistentVariables ?? []),
+        variables: variableEntries(
+            input.document,
+            input.scene,
+            input.savedVariables ?? [],
+            input.persistentVariables ?? [],
+        ),
         appearanceByCharacterId,
         puppetCharacterIds,
         // Only the characters that ARE puppets, so a stale entry left behind by an appearance the

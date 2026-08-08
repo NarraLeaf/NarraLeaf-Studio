@@ -252,7 +252,12 @@ function blueprintWithNode(params: Record<string, unknown>): BlueprintDocument {
 }
 
 function registryEntry(id: string, name: string, storageKey?: string): VariableRegistryEntry {
-    return { id, name, valueType: "number", storageKey: storageKey ?? id };
+    return { id, name, scope: "persistent", valueType: "number", storageKey: storageKey ?? id };
+}
+
+/** A registry entry in the `saved` scope - project-level, with no story row behind it. */
+function savedRegistryEntry(id: string, name: string, storageKey?: string): VariableRegistryEntry {
+    return { id, name, scope: "saved", valueType: "number", storageKey: storageKey ?? id };
 }
 
 function run(id: LintRuleId, ctx: LintContext): LintFinding[] {
@@ -373,6 +378,34 @@ describe("variables/undeclared", () => {
             variableRegistry: [registryEntry("reg-1", "Playthroughs", "pk-1")],
         });
         expect(run("variables/undeclared", ctx)).toEqual([]);
+    });
+
+    it("does not flag a saved variable declared only in the project registry", () => {
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Prologue", [setVariable("b1", { scope: "saved", variableId: "sv-1" })])])],
+            variableRegistry: [savedRegistryEntry("sv-1", "Affection")],
+        });
+        expect(run("variables/undeclared", ctx)).toEqual([]);
+    });
+
+    /**
+     * The scope filter, from the side that matters: a `saved` entry is not a persistent declaration.
+     * The rules used to read `ctx.variableRegistry` flat, so every saved variable in the project
+     * silently vouched for a persistent reference that resolves to nothing at runtime.
+     */
+    it("does not let a saved registry entry vouch for a persistent reference", () => {
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Prologue", [setVariable("b1", { scope: "persistent", variableId: "sv-1" })])])],
+            variableRegistry: [savedRegistryEntry("sv-1", "Affection")],
+        });
+        expect(run("variables/undeclared", ctx)).toHaveLength(1);
+    });
+
+    it("flags a saved variable no surface declares", () => {
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Prologue", [setVariable("b1", { scope: "saved", variableId: "sv-1" })])])],
+        });
+        expect(run("variables/undeclared", ctx)).toHaveLength(1);
     });
 
     it("flags a persistent variable no surface declares", () => {
@@ -522,6 +555,75 @@ describe("variables/unused", () => {
     });
 
     /**
+     * The bug this rule is most likely to regress into.
+     *
+     * A registry `saved` variable belongs to the PROJECT, not to a story. While saved uses were
+     * tallied per-story, a variable read in story A was reported unused for every other story in the
+     * library - a warning telling the author to delete something the game reads, growing with the
+     * project. The second story is the whole point of the case: with only story A present, a
+     * per-story tally passes just as well as a project-wide one.
+     */
+    it("counts a saved registry variable as used when ANY story reads it", () => {
+        const ctx = createTestLintContext({
+            stories: [
+                story("s1", "Main", [scene("sc1", "Prologue", [setVariable("b1", { scope: "saved", variableId: "sv-1" })])]),
+                // A second, self-consistent story: it declares and uses only its own scene variable,
+                // so it contributes no finding of its own and the assertion below stays about the
+                // registry entry.
+                story("s2", "Side", [
+                    scene("sc9", "Extras", [
+                        declaration("v9", "scene", "Mood"),
+                        setVariable("b9", { scope: "scene", variableId: "v9" }),
+                    ]),
+                ]),
+            ],
+            variableRegistry: [savedRegistryEntry("sv-1", "Affection")],
+        });
+        expect(run("variables/unused", ctx)).toEqual([]);
+    });
+
+    /** The same project-wide reach for a story `/save` ROW, so the two surfaces cannot disagree. */
+    it("counts a saved declaration row read from another story", () => {
+        const ctx = createTestLintContext({
+            stories: [
+                story("s1", "Main", [scene("sc1", "Prologue", [declaration("d1", "saved", "Affection")])]),
+                story("s2", "Side", [scene("sc9", "Extras", [setVariable("b9", { scope: "saved", variableId: "d1" })])]),
+            ],
+        });
+        expect(run("variables/unused", ctx)).toEqual([]);
+    });
+
+    it("reports a saved registry entry nothing reads, against the project", () => {
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Prologue", [setVariable("b1", { scope: "saved", variableId: "other" })])])],
+            variableRegistry: [savedRegistryEntry("sv-1", "Affection")],
+        });
+
+        const findings = run("variables/unused", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams).toEqual({ variable: "Affection" });
+        expect(findings[0].location).toEqual({ kind: "project" });
+    });
+
+    /**
+     * The other half of the scope filter: a saved entry read by a saved `/set` is used, and a
+     * persistent entry with the same id is not. Reading both off one tally made each vouch for the
+     * other, so neither scope's dead variables were ever reported once both existed.
+     */
+    it("does not let a use in one project scope excuse the other scope's entry", () => {
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Prologue", [setVariable("b1", { scope: "saved", variableId: "shared" })])])],
+            variableRegistry: [savedRegistryEntry("shared", "Affection"), registryEntry("shared-p", "Playthroughs", "shared")],
+        });
+
+        const findings = run("variables/unused", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams).toEqual({ variable: "Playthroughs" });
+    });
+
+    /**
      * `repeat.until` is the fourth `StoryConditionRef` slot and the last one `collectVariableUses`
      * learned about; while it was unscanned, a scene holding nothing but `gold: number = 0` and
      * `Repeat until gold >= 10` reported `gold` as never used - a warning telling the author to delete
@@ -582,6 +684,35 @@ describe("variables/name-collision", () => {
         expect(findings).toHaveLength(1);
         expect(findings[0].location).toEqual({ kind: "project" });
         expect(findings[0].target).toBeUndefined();
+    });
+
+    it("reports a saved collision too, anchored on the saved row", () => {
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Prologue", [declaration("d1", "saved", "Affection", "sk-1")])])],
+            savedNameCollisions: [{ name: "Affection", storageKeys: ["sk-1", "reg-1"] }],
+        });
+
+        const findings = run("variables/name-collision", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams).toEqual({ variable: "Affection" });
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "d1" });
+    });
+
+    /**
+     * The jump target is scope-specific: a saved collision must not anchor on a persistent row that
+     * happens to carry the same storage key, or "go to the declaration" opens the wrong variable.
+     */
+    it("does not anchor a saved collision on a persistent row with the same key", () => {
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Prologue", [declaration("d1", "persistent", "Affection", "sk-1")])])],
+            savedNameCollisions: [{ name: "Affection", storageKeys: ["sk-1"] }],
+        });
+
+        const findings = run("variables/name-collision", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toEqual({ kind: "project" });
     });
 
     it("says nothing when the merged view reports no collision", () => {

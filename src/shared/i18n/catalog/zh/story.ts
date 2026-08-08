@@ -767,8 +767,6 @@ export const story = {
         toggle: { label: "翻转", detail: "翻转真/假变量" },
         reset: { label: "重置", detail: "把变量恢复为默认值" },
         declareLocal: { label: "场景变量", detail: "声明仅本场景有效的变量" },
-        declareVar: { label: "存档变量", detail: "声明跟随存档的变量" },
-        declarePersis: { label: "全局变量", detail: "声明应用级变量，界面蓝图可读取" },
         if: { label: "条件", detail: "按条件分支" },
         // 「菜单」而不是「选项」：选项是它的子行的名字（containerHeader.option），两者同名时
         // 「@选项 要回头吗？」下面挂着一串「选项 …」，读起来像同一种东西套了两层。英文本来就是

@@ -158,22 +158,22 @@ describe("defaultHighlights", () => {
     });
 
     it("does not highlight a slot the author has not typed into, so an optional param can be skipped", () => {
-        // Reported from real use: `/var gold ` offers true/false, and with one highlighted there was no
-        // key left meaning "I am done" - Enter declared a boolean nobody asked for.
-        expect(defaultHighlights(at("/var gold |"), items(real(), real()))).toBe(false);
+        // Reported from real use: `/local gold ` offers true/false, and with one highlighted there was
+        // no key left meaning "I am done" - Enter declared a boolean nobody asked for.
+        expect(defaultHighlights(at("/local gold |"), items(real(), real()))).toBe(false);
         expect(defaultHighlights(at("/bg |"), items(real()))).toBe(false);
     });
 
     it("does not highlight when the slot found nothing to offer", () => {
-        // `/var gold 1` - `1` matches neither true nor false, and it is a perfectly good default.
-        expect(defaultHighlights(at("/var gold 1|"), [])).toBe(false);
+        // `/local gold 1` - `1` matches neither true nor false, and it is a perfectly good default.
+        expect(defaultHighlights(at("/local gold 1|"), [])).toBe(false);
     });
 
     it("does not highlight when the typed text already IS the top candidate", () => {
-        // `/var met true` - taking `true` changes nothing, so Enter must submit, not complete.
-        expect(defaultHighlights(at("/var met true|"), [{ value: "true" }, { value: "false" }] as never)).toBe(false);
-        // A prefix still highlights: `/var met tr` completing to `true` is a real completion.
-        expect(defaultHighlights(at("/var met tr|"), [{ value: "true" }] as never)).toBe(true);
+        // `/local met true` - taking `true` changes nothing, so Enter must submit, not complete.
+        expect(defaultHighlights(at("/local met true|"), [{ value: "true" }, { value: "false" }] as never)).toBe(false);
+        // A prefix still highlights: `/local met tr` completing to `true` is a real completion.
+        expect(defaultHighlights(at("/local met tr|"), [{ value: "true" }] as never)).toBe(true);
     });
 
     it("does not highlight when the best offer is the author's own text echoed back", () => {

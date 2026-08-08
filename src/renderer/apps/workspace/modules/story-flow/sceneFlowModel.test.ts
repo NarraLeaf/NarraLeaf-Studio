@@ -480,6 +480,43 @@ describe("buildSceneFlowGraph branch topology", () => {
         expect(graph.branchEdges).toHaveLength(0);
     });
 
+    /**
+     * The story is only readable if the map says which counter the fork asks about.
+     *
+     * A `saved` variable is declared in the project registry, not in the story - after the declaration
+     * migration that is the ONLY place it is declared - so an arm testing one has no row to read its
+     * name off. Without `variableNames` `describeVariableRef` falls back to the word it prints for a
+     * declaration that was DELETED, and a perfectly valid fork reads to the author like a broken one.
+     */
+    it("labels a condition arm on a registry-only saved variable with the variable's name", () => {
+        const story = document([
+            scene("a", "Opening", [
+                {
+                    id: "if1",
+                    kind: "control",
+                    parentId: null,
+                    childrenIds: ["j1"],
+                    payload: {
+                        control: "conditionBranch",
+                        branch: "if",
+                        condition: {
+                            kind: "variable",
+                            target: { scope: "saved", variableId: "sv-1" },
+                            operator: "isTrue",
+                        },
+                    },
+                } as StoryBlock,
+                jumpBlock("j1", "b", "if1"),
+            ]),
+            scene("b", "River", []),
+        ], "a");
+
+        expect(buildSceneFlowGraph(story, { variableNames: new Map([["saved:sv-1", "好感"]]) }).branches.map(branch => branch.label))
+            .toEqual(["好感 isTrue"]);
+        // The regression this guards: the same fork with no registry in hand.
+        expect(buildSceneFlowGraph(story).branches.map(branch => branch.label)).toEqual(["variable isTrue"]);
+    });
+
     it("terminates on a corrupted childrenIds cycle", () => {
         const graph = buildSceneFlowGraph(document([
             scene("a", "Loop", [

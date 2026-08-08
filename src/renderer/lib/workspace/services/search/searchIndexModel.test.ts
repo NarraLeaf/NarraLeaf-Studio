@@ -225,7 +225,10 @@ describe("extractBlueprintEntries", () => {
         extractBlueprintEntries(blueprintDoc(), {
             resolveNodeLabel,
             resolveOwnerLabel,
-            persistentVariables: [{ id: "pv1", name: "Total Playtime", valueType: "json", storageKey: "pv1" }],
+            registryVariables: [
+                { id: "pv1", name: "Total Playtime", scope: "persistent", valueType: "json", storageKey: "pv1" },
+                { id: "sv1", name: "Affection", scope: "saved", valueType: "number", storageKey: "sv1" },
+            ],
             labels,
         });
     const entries = extract(ownerKey => (ownerKey === "surfaceMain:surf-1" ? "Main Menu › Portrait" : undefined));
@@ -250,6 +253,20 @@ describe("extractBlueprintEntries", () => {
     it("indexes persistent variables against the global blueprint", () => {
         const persistent = entries.find(e => e.text === "Total Playtime");
         expect(persistent).toMatchObject({ target: { kind: "blueprint", blueprintId: "bp-global", ownerKey: "globalMain" } });
+    });
+
+    /**
+     * Saved registry entries were invisible to search: the slice read `listPersistentVariables()`, so
+     * a saved variable declared in the project registry - which, after the declaration migration, is
+     * where every saved variable lives - could not be found by name anywhere in Studio.
+     */
+    it("indexes saved registry variables too, scoped in the entry id", () => {
+        const saved = entries.find(e => e.text === "Affection");
+        expect(saved).toMatchObject({
+            id: "bpvar:saved:sv1",
+            group: "variable",
+            target: { kind: "blueprint", blueprintId: "bp-global", ownerKey: "globalMain" },
+        });
     });
 
     it("resolves node labels through the catalog and falls back to the raw type", () => {

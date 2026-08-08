@@ -14,6 +14,16 @@ import { savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
 
 export type PersistentVariableOption = { storageKey: string; name: string; valueType: StoryVariableValueType };
 
+/**
+ * A registry-declared `saved` variable, addressed by entry id.
+ *
+ * By id and not by storage key, unlike its persistent sibling: a `StoryVariableRef`'s saved arm
+ * carries `variableId`, and the registry mints an entry's id from the declaration row's block id so
+ * refs authored before the registry existed keep resolving. Changing the key here would break every
+ * stored ref and every scene snapshot at once.
+ */
+export type SavedVariableOption = { id: string; name: string; valueType: StoryVariableValueType };
+
 export type StoryVariableOption = { id: string; name: string; valueType: StoryVariableValueType };
 
 /**
@@ -38,10 +48,20 @@ export function defaultInterpolationForKind(kind: StoryInterpolationRef["kind"])
         : { kind: "variable", target: { scope: "scene", variableId: "" } };
 }
 
+/**
+ * The three scopes' pickable variables.
+ *
+ * `savedRegistry` is a trailing optional rather than a second required list so the two callers that
+ * legitimately have no project services to read it from (the read-only row projections) keep
+ * compiling and keep behaving exactly as before. Where it IS passed, saved variables declared only in
+ * the project registry become selectable; without it they are invisible in the picker even though a
+ * typed `/set` resolves them.
+ */
 export function collectStoryVariableOptions(
     document: StoryDocument,
     sceneId: StorySceneId,
     persistent: PersistentVariableOption[],
+    savedRegistry: readonly SavedVariableOption[] = [],
 ): { scene: StoryVariableOption[]; saved: StoryVariableOption[]; persistent: StoryVariableOption[] } {
     const sceneDoc = document.scenes[sceneId];
     const scene = Object.values(sceneDoc ? sceneVariableDefs(sceneDoc) : {}).map(v => ({
@@ -49,11 +69,14 @@ export function collectStoryVariableOptions(
         name: v.name,
         valueType: v.valueType,
     }));
-    const saved = Object.values(savedVariableDefs(document)).map(v => ({
-        id: v.id,
-        name: v.name,
-        valueType: v.valueType,
-    }));
+    const saved = [
+        ...savedRegistry.map(v => ({ id: v.id, name: v.name, valueType: v.valueType })),
+        ...Object.values(savedVariableDefs(document)).map(v => ({
+            id: v.id,
+            name: v.name,
+            valueType: v.valueType,
+        })),
+    ];
     return {
         scene,
         saved,
@@ -66,13 +89,16 @@ export function resolveVariableRefName(
     sceneId: StorySceneId,
     persistent: PersistentVariableOption[],
     ref: StoryVariableRef,
+    savedRegistry: readonly SavedVariableOption[] = [],
 ): string {
     if (ref.scope === "scene") {
         const sceneDoc = document.scenes[sceneId];
         return (sceneDoc ? sceneVariableDefs(sceneDoc) : {})[ref.variableId]?.name ?? "variable";
     }
     if (ref.scope === "saved") {
-        return savedVariableDefs(document)[ref.variableId]?.name ?? "variable";
+        return savedVariableDefs(document)[ref.variableId]?.name
+            ?? savedRegistry.find(option => option.id === ref.variableId)?.name
+            ?? "variable";
     }
     return persistent.find(option => option.storageKey === ref.variableId)?.name ?? "persistent";
 }
@@ -82,9 +108,10 @@ export function resolveInterpolationName(
     sceneId: StorySceneId,
     persistent: PersistentVariableOption[],
     interp: StoryInterpolationRef,
+    savedRegistry: readonly SavedVariableOption[] = [],
 ): string {
     if (interp.kind === "variable") {
-        return resolveVariableRefName(document, sceneId, persistent, interp.target);
+        return resolveVariableRefName(document, sceneId, persistent, interp.target, savedRegistry);
     }
     return "blueprint";
 }

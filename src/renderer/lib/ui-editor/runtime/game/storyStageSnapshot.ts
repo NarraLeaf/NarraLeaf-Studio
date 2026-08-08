@@ -14,6 +14,8 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import { isStoryExpressionEvaluable, resolveDisplayableTargetRef, savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
+import type { SavedVariableRuntimeTable } from "@shared/types/variables/registry";
+import { buildMergedVariableView, type MergedPersistentView } from "@shared/variables/mergedPersistentView";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import { translate } from "@/lib/i18n";
@@ -130,11 +132,57 @@ function finiteOr(value: number | undefined, fallback: number): number {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/**
+ * "Every saved variable" for a runtime consumer: the project registry's `saved` entries unioned with
+ * the story's own `/save` declaration rows (M-VAR WI-3). The view also carries the cross-surface name
+ * collisions, which the compiler reports as diagnostics.
+ *
+ * Lives in this module rather than in the compiler because the compiler and this snapshot walk must
+ * agree on which saved variables exist - if they ever diverged, the preview would seed a different
+ * starting state than the game - and the dependency between them already runs compiler → snapshot.
+ */
+export function collectSavedVariableView(
+    document: StoryDocument,
+    savedVariables?: SavedVariableRuntimeTable,
+): MergedPersistentView {
+    return buildMergedVariableView(Object.values(savedVariables ?? {}), Object.values(savedVariableDefs(document)));
+}
+
+/**
+ * Flatten a merged saved view into the `variableId → definition` table every resolver indexes.
+ *
+ * One flat table keyed by id is exact, not a compromise: a registry entry id and a story declaration
+ * block id are both uuids minted by their own surface, so the two key spaces cannot collide and no
+ * per-source prefixing is needed. A `StoryVariableRef` therefore resolves the same way whichever
+ * surface declared the variable, which is the whole point of the registry scope.
+ */
+export function savedVariableDefsFromView(view: MergedPersistentView): Record<string, StorySavedVariableDefinition> {
+    const defs: Record<string, StorySavedVariableDefinition> = {};
+    for (const entry of view.entries) {
+        defs[entry.id] = {
+            id: entry.id,
+            name: entry.name,
+            valueType: entry.valueType,
+            // Spread, never `defaultValue: entry.defaultValue`: "no default" and "default undefined"
+            // are the same in TypeScript but not downstream - the seeding loop tells them apart.
+            ...(entry.defaultValue === undefined ? {} : { defaultValue: entry.defaultValue }),
+            storageKey: entry.storageKey,
+        };
+    }
+    return defs;
+}
+
 export function computeStoryStageSnapshot(input: {
     document: StoryDocument;
     sceneId: string;
     targetBlockId: string | null;
     animations?: ReadonlyMap<string, StoryAnimationAsset> | Record<string, StoryAnimationAsset>;
+    /**
+     * The project registry's `saved` entries (bundle `ui.savedVariables`). Omitting them narrows the
+     * walk to story-declared saved variables, so a registry-backed one would silently miss its
+     * default and every `/set` on it would be dropped - pass them whenever the caller has a bundle.
+     */
+    savedVariables?: SavedVariableRuntimeTable;
 }): StoryStageSnapshot {
     const scene = input.document.scenes[input.sceneId];
     if (!scene) {
@@ -143,7 +191,12 @@ export function computeStoryStageSnapshot(input: {
     const animations = input.animations instanceof Map
         ? input.animations
         : new Map(Object.entries(input.animations ?? {}));
-    const walker = new SnapshotWalker(input.document, scene, input.targetBlockId, animations);
+    const walker = new SnapshotWalker(
+        scene,
+        input.targetBlockId,
+        animations,
+        savedVariableDefsFromView(collectSavedVariableView(input.document, input.savedVariables)),
+    );
     return walker.run();
 }
 
@@ -157,7 +210,6 @@ class SnapshotWalker {
     private readonly pathBlockIds = new Set<string>();
     /** Declaration tables (variableId → def), scanned once per walk from the v6 declaration rows. */
     private readonly sceneDefs: Record<string, StorySceneVariableDefinition>;
-    private readonly savedDefs: Record<string, StorySavedVariableDefinition>;
     private readonly displayables = new Map<string, StageSnapshotDisplayable>();
     private readonly order: string[] = [];
     private readonly diagnostics: StageSnapshotDiagnostic[] = [];
@@ -174,10 +226,11 @@ class SnapshotWalker {
     private reachedTarget = false;
 
     constructor(
-        document: StoryDocument,
         private readonly scene: StoryScene,
         private readonly targetBlockId: string | null,
         private readonly animations: ReadonlyMap<string, StoryAnimationAsset>,
+        /** Merged saved table (registry + story rows); see {@link collectSavedVariableView}. */
+        private readonly savedDefs: Record<string, StorySavedVariableDefinition>,
     ) {
         let cursor = targetBlockId ? scene.blocks[targetBlockId] : undefined;
         while (cursor && !this.pathBlockIds.has(cursor.id)) {
@@ -185,7 +238,6 @@ class SnapshotWalker {
             cursor = cursor.parentId ? scene.blocks[cursor.parentId] : undefined;
         }
         this.sceneDefs = sceneVariableDefs(scene);
-        this.savedDefs = savedVariableDefs(document);
         for (const saved of Object.values(this.savedDefs)) {
             this.variables.saved.set(saved.storageKey, saved.defaultValue ?? null);
         }

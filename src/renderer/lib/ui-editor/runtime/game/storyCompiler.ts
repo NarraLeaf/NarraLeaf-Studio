@@ -83,7 +83,6 @@ import {
     sceneLabelNames,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
-    savedVariableDefs,
     sceneVariableDefs,
     storyPersistentDefs,
     storyVariableRefKey,
@@ -91,7 +90,7 @@ import {
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
-import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
+import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "@shared/types/variables/registry";
 import {
     buildMergedPersistentView,
     mergedPersistentStorageKeys,
@@ -126,6 +125,7 @@ import {
     toNlrTransformSequence,
 } from "./storyTransformProps";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
+import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
     collectStoryPlaybackPlan,
     groupPlaybackStepsByNvl,
@@ -162,15 +162,19 @@ export type StoryPersistenceBridge = {
 const SAVED_PERSISTENT_NAMESPACE = "__nlr_story_saved__";
 
 /**
- * Story-declared persistent defaults, keyed by storage key. The host bridge only carries values that
- * were ever written; a declared `//persis` row's default lives in the story document, so reads fall
- * back here when the snapshot has no entry.
+ * Declared persistent defaults, keyed by storage key. The host bridge only carries values that were
+ * ever written, so a read with no stored entry falls back here.
+ *
+ * Taken off the MERGED view rather than the document's own `/persis` rows, exactly as the saved
+ * defaults are: a persistent variable declared in the project registry - which since the declaration
+ * migration is nearly all of them - otherwise reached the runtime with no default at all, so a flag
+ * the author gave a starting value read as "not set" until something wrote it.
  */
-function collectPersistentDefaults(document: StoryDocument): Record<string, StoryLiteralValue> {
+function collectPersistentDefaults(view: MergedPersistentView): Record<string, StoryLiteralValue> {
     const defaults: Record<string, StoryLiteralValue> = {};
-    for (const def of Object.values(storyPersistentDefs(document))) {
-        if (def.defaultValue !== undefined) {
-            defaults[def.storageKey] = def.defaultValue;
+    for (const entry of view.entries) {
+        if (entry.defaultValue !== undefined) {
+            defaults[entry.storageKey] = entry.defaultValue;
         }
     }
     return defaults;
@@ -205,6 +209,38 @@ function pushPersistentNameCollisionDiagnostics(diagnostics: NlrStoryCompileDiag
             `Persistent variable "${collision.name}" is declared in both the variable registry and a story row; references are ambiguous.`,
         );
     }
+}
+
+/**
+ * The saved twin of {@link pushPersistentNameCollisionDiagnostics}. `saved` became a registry scope
+ * alongside `persistent`, so it inherited the same two-surface ambiguity: one display name can now be
+ * declared once in the variables panel and once as a `/save` row, and an author reading either row
+ * has no way to tell which one a reference points at.
+ */
+function pushSavedNameCollisionDiagnostics(diagnostics: NlrStoryCompileDiagnostic[], view: MergedPersistentView): void {
+    for (const collision of view.nameCollisions) {
+        pushDiagnostic(
+            diagnostics,
+            "warning",
+            undefined,
+            `Saved variable "${collision.name}" is declared in both the variable registry and a story row; references are ambiguous.`,
+        );
+    }
+}
+
+/**
+ * The saved namespace's seed record: every declared saved variable's default, keyed by storage key.
+ *
+ * `?? null` rather than "skip when absent", unlike the persistent defaults: the NLR Storable namespace
+ * is created once from this record, so a key missing here is a key the namespace never holds, and a
+ * later read of a default-less variable would come back `undefined` instead of empty.
+ */
+function collectSavedDefaults(savedVariables: Record<string, StorySavedVariableDefinition>): Record<string, StoryLiteralValue> {
+    const defaults: Record<string, StoryLiteralValue> = {};
+    for (const saved of Object.values(savedVariables)) {
+        defaults[saved.storageKey] = saved.defaultValue ?? null;
+    }
+    return defaults;
 }
 
 /**
@@ -501,6 +537,8 @@ export type StagePreviewCompileInput = {
     blueprintDocument?: BlueprintDocument;
     /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
     persistentVariables?: PersistentVariableRuntimeTable;
+    /** M-VAR: saved variable registry table; see {@link CompileInput.savedVariables}. */
+    savedVariables?: SavedVariableRuntimeTable;
     persistence?: StoryPersistenceBridge;
     /** In/out points marked on audio assets; see {@link CompileInput.audioClips}. */
     audioClips?: Record<string, AudioClipRegion>;
@@ -570,7 +608,12 @@ type SceneCompileContext = {
     visitedPersistent: Persistent<StoryVisitedContent>;
     /** Scene-scope declaration table of this scene (variableId → def), scanned once per compile. */
     sceneVariables: Record<string, StorySceneVariableDefinition>;
-    /** Document-wide "saved" declaration table (variableId → def), scanned once per compile. */
+    /**
+     * Every saved variable of this compile (variableId → def), built once: the project registry's
+     * `saved` entries merged with the document's `/save` declaration rows. Resolvers index it
+     * directly by `variableId`, which is why the merge has to happen before the table is built rather
+     * than at each lookup.
+     */
     savedVariables: Record<string, StorySavedVariableDefinition>;
     /** Story-declared persistent defaults (storageKey → default), the fallback for host reads. */
     persistentDefaults: Record<string, StoryLiteralValue>;
@@ -627,6 +670,14 @@ type CompileInput = {
     blueprintDocument?: BlueprintDocument;
     /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
     persistentVariables?: PersistentVariableRuntimeTable;
+    /**
+     * M-VAR: saved variable registry table (bundle `ui.savedVariables`), keyed by variable id.
+     *
+     * Half of the saved-variable population; the story's own `/save` declaration rows are the other
+     * half, and the compiler unions the two. Absent means "no project-level saved variables", which
+     * compiles exactly as it did before the registry grew a saved scope.
+     */
+    savedVariables?: SavedVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); from the Dev Mode scope-store bridge. */
     persistence?: StoryPersistenceBridge;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
@@ -741,14 +792,16 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     });
     const allScenes = scenesBuild.scenes;
 
-    // Single Storable-backed namespace seeded with every saved variable's default.
-    const savedVariables = savedVariableDefs(input.document);
-    const savedDefaults: Record<string, StoryLiteralValue> = {};
-    for (const saved of Object.values(savedVariables)) {
-        savedDefaults[saved.storageKey] = saved.defaultValue ?? null;
-    }
+    // Single Storable-backed namespace seeded with every saved variable's default. "Every" spans both
+    // authoring surfaces since `saved` became a registry scope: the project registry's saved entries
+    // and the document's `/save` rows land in one table, and a name declared on both is reported.
+    const savedView = collectSavedVariableView(input.document, input.savedVariables);
+    const savedVariables = savedVariableDefsFromView(savedView);
+    pushSavedNameCollisionDiagnostics(diagnostics, savedView);
+    const savedDefaults = collectSavedDefaults(savedVariables);
     // A launch starts the story mid-way, so the saved namespace opens at the snapshot's accumulated
-    // values (defaults overlaid with everything set on the path to the target row).
+    // values (defaults overlaid with everything set on the path to the target row). Applied AFTER the
+    // defaults: the snapshot is the later state, and re-seeding a default over it would rewind it.
     if (input.launch) {
         Object.assign(savedDefaults, input.launch.snapshot.savedVariables);
     }
@@ -757,9 +810,9 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     // and pretending the player had already walked the scenes on the way there would put fake
     // entries in a record whose whole job is to say where the player has actually been.
     const visitedPersistent = createStoryVisitedPersistent(nlrStory);
-    const persistentDefaults = collectPersistentDefaults(input.document);
     const persistentVariables = input.persistentVariables ?? {};
     const persistentView = collectPersistentView(input.document, persistentVariables);
+    const persistentDefaults = collectPersistentDefaults(persistentView);
     const persistentKeys = mergedPersistentStorageKeys(persistentView);
     pushPersistentNameCollisionDiagnostics(diagnostics, persistentView);
     const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
@@ -1153,11 +1206,12 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     let actionIndex = 0;
 
     const nlrStory = new Story(`${input.document.name || input.document.id} (preview)`);
-    const savedVariables = savedVariableDefs(input.document);
-    const savedDefaults: Record<string, StoryLiteralValue> = {};
-    for (const saved of Object.values(savedVariables)) {
-        savedDefaults[saved.storageKey] = saved.defaultValue ?? null;
-    }
+    // Same merged saved table as a full compile - the preview must agree with the game about which
+    // saved variables exist, or a registry-backed one would resolve here and not there.
+    const savedView = collectSavedVariableView(input.document, input.savedVariables);
+    const savedVariables = savedVariableDefsFromView(savedView);
+    pushSavedNameCollisionDiagnostics(diagnostics, savedView);
+    const savedDefaults = collectSavedDefaults(savedVariables);
     Object.assign(savedDefaults, snapshot.savedVariables);
     const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
     // The preview compiles a single row, not a playthrough, so nothing here ever records a visit -
@@ -1199,7 +1253,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         visitedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables,
-        persistentDefaults: collectPersistentDefaults(input.document),
+        persistentDefaults: collectPersistentDefaults(previewPersistentView),
         persistentKeys: mergedPersistentStorageKeys(previewPersistentView),
         persistentVariables: input.persistentVariables ?? {},
         persistence: input.persistence,

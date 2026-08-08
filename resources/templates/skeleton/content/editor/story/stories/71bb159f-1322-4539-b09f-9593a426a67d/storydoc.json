@@ -25,7 +25,6 @@
       "runtimeName": "corridor",
       "description": "",
       "rootBlockIds": [
-        "6987a20b-6086-4aee-b49a-04397af993f6",
         "4ed7e788-e36a-4615-9d03-75b6c4432d58",
         "db4296b2-35a8-4bd9-a86e-256716e9a383",
         "a63fe9cb-8f8b-4b52-8b4d-1a6d88964c37",
@@ -39,19 +38,6 @@
         "4ae3fc91-8959-4cb0-ac6c-15a0c6c05fc9"
       ],
       "blocks": {
-        "6987a20b-6086-4aee-b49a-04397af993f6": {
-          "id": "6987a20b-6086-4aee-b49a-04397af993f6",
-          "parentId": null,
-          "childrenIds": [],
-          "kind": "declaration",
-          "payload": {
-            "scope": "saved",
-            "name": "Honest",
-            "valueType": "boolean",
-            "defaultValue": false,
-            "storageKey": "6987a20b-6086-4aee-b49a-04397af993f6"
-          }
-        },
         "db4296b2-35a8-4bd9-a86e-256716e9a383": {
           "id": "db4296b2-35a8-4bd9-a86e-256716e9a383",
           "parentId": null,

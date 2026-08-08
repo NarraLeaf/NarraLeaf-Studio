@@ -161,7 +161,9 @@ export const help = {
                 + "- Save: belongs to a save file, and has to be something that can be written to one.\n"
                 + "- Persistent: application-wide, and shared with blueprints.\n"
                 + "\n"
-                + "Persistent variables are declared in the blueprint editor. The other two are declared here.",
+                + "A scene variable is declared in the scene it belongs to, as a row like any other. Save and "
+                + "persistent variables outlive the scene they were written in, so they are declared once for "
+                + "the whole project, in the variables panel - any scene and any blueprint can then use them.",
         },
         storyFlow: {
             title: "Branches and routes",

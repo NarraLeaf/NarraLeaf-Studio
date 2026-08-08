@@ -334,7 +334,20 @@ export interface BlueprintExtractionOptions {
      * ("Image"), which is exactly as much provenance as no provenance.
      */
     resolveOwnerLabel?: (ownerKey: string) => string | undefined;
-    persistentVariables?: VariableRegistryEntry[];
+    /**
+     * The project variable registry, BOTH scopes.
+     *
+     * Both, because the registry is the only declaration site either project scope has once the
+     * declaration migration has run - a saved variable that lives there and nowhere else was
+     * previously unreachable from search entirely, while its persistent sibling was indexed.
+     *
+     * Story declaration rows are deliberately NOT merged in here: the story slice already indexes
+     * every one of them (`storyvar:…`) with a jump straight to the declaring row, which is a strictly
+     * better target than the global blueprint these rows would land on. Unioning the two surfaces
+     * would put the same variable in the result list twice, the second time pointing somewhere the
+     * author did not declare it.
+     */
+    registryVariables?: VariableRegistryEntry[];
     labels: BlueprintEntryLabels;
 }
 
@@ -355,7 +368,7 @@ export function extractBlueprintEntries(
     document: BlueprintDocument,
     options: BlueprintExtractionOptions,
 ): SearchIndexEntry[] {
-    const { resolveNodeLabel, resolveOwnerLabel, persistentVariables = [], labels } = options;
+    const { resolveNodeLabel, resolveOwnerLabel, registryVariables = [], labels } = options;
     const entries: SearchIndexEntry[] = [];
 
     // blueprintId → ownerKey (active blueprint first so it wins over historical siblings).
@@ -368,15 +381,17 @@ export function extractBlueprintEntries(
         }
     }
 
-    // Persistent variables are project-level (M-VAR registry), surfaced against the global blueprint when one exists.
+    // Registry variables are project-level (M-VAR), surfaced against the global blueprint when one
+    // exists. The id carries the scope because the two scopes may legitimately share an entry id space
+    // and a search row must not be able to shadow one from the other scope.
     const globalRecord = document.ownerRecords["globalMain"];
     if (globalRecord) {
-        for (const definition of persistentVariables) {
+        for (const definition of registryVariables) {
             if (!definition.name) {
                 continue;
             }
             entries.push({
-                id: `bpvar:persistent:${definition.id}`,
+                id: `bpvar:${definition.scope}:${definition.id}`,
                 group: "variable",
                 text: definition.name,
                 target: {

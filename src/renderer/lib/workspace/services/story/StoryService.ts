@@ -941,6 +941,23 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.deleteDeclaration(storyId, variableId);
     }
 
+    /**
+     * Delete a declaration row by id whatever scope it declares - the scope-agnostic name for what
+     * `deleteSceneVariable` / `deleteSavedVariable` already do.
+     *
+     * It exists for the `/save` + `/global` retirement pass (`storyDeclarationMigration`), which
+     * removes rows of both project scopes and has no business calling the *saved* method to delete a
+     * *persistent* row. The scope-named methods stay because the panels that call them are scoped,
+     * and a caller that knows the scope should say so.
+     *
+     * Rides the ordinary document dirty/autosave path and pushes nothing onto the undo history,
+     * which is what the migration needs: an undo step holding a pre-migration document would restore
+     * the row while its registry entry stayed, i.e. re-create the duplicate the pass just removed.
+     */
+    public deleteDeclarationRow(storyId: StoryId, variableId: string): boolean {
+        return this.deleteDeclaration(storyId, variableId);
+    }
+
     // -----------------------------------------------------------------------
     // Scene Snapshots (变量快照): named per-scene sets of variable override values, used to launch a
     // row-precise Dev Mode preview under conditions the editor cannot analyse statically. Stored on

@@ -53,7 +53,12 @@ import { RichTextToolbar } from "./RichTextToolbar";
 import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
 import { ExpressionPopover } from "./ExpressionPopover";
-import { collectStoryVariableOptions, resolveInterpolationName, type PersistentVariableOption } from "./storyInterpolation";
+import {
+    collectStoryVariableOptions,
+    resolveInterpolationName,
+    type PersistentVariableOption,
+    type SavedVariableOption,
+} from "./storyInterpolation";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { RichTextView } from "./RichTextView";
 import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
@@ -684,29 +689,39 @@ function TextEditBox(props: {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const toolbarRef = useRef<RichTextToolbarHandle | null>(null);
     const { context, isInitialized } = useWorkspace();
-    const [persistentVars, setPersistentVars] = useState<PersistentVariableOption[]>([]);
+    // Both project scopes, because both are declared in the registry as well as in story rows: the
+    // inline `{value}` picker and the chip label beside it must offer and name the same set a typed
+    // `/set` resolves, or a registry-declared variable is addressable only from the command line.
+    const [projectVars, setProjectVars] = useState<{ saved: SavedVariableOption[]; persistent: PersistentVariableOption[] }>(
+        { saved: [], persistent: [] },
+    );
     useEffect(() => {
         if (!context || !isInitialized) return;
         const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const read = () =>
-            setPersistentVars(
-                service.listPersistentVariables().map(variable => ({
+            setProjectVars({
+                saved: service.listSavedVariables().map(variable => ({
+                    id: variable.id,
+                    name: variable.name,
+                    valueType: (variable.valueType as SavedVariableOption["valueType"]) ?? "string",
+                })),
+                persistent: service.listPersistentVariables().map(variable => ({
                     storageKey: variable.storageKey,
                     name: variable.name,
                     valueType: (variable.valueType as PersistentVariableOption["valueType"]) ?? "string",
                 })),
-            );
+            });
         read();
         return service.onBlueprintHistoryChanged(read);
     }, [context, isInitialized]);
     const variableOptions = useMemo(
-        () => collectStoryVariableOptions(props.document, props.scene.id, persistentVars),
-        [props.document, props.scene.id, persistentVars],
+        () => collectStoryVariableOptions(props.document, props.scene.id, projectVars.persistent, projectVars.saved),
+        [props.document, props.scene.id, projectVars],
     );
     const resolveInterpolationLabel = useMemo(
         () => (interp: Parameters<typeof resolveInterpolationName>[3]) =>
-            resolveInterpolationName(props.document, props.scene.id, persistentVars, interp),
-        [props.document, props.scene.id, persistentVars],
+            resolveInterpolationName(props.document, props.scene.id, projectVars.persistent, interp, projectVars.saved),
+        [props.document, props.scene.id, projectVars],
     );
     // The inline expression chip names the look the author picked, through the same lookup the command
     // line reads — so the chip and a typed `/face` say the same word. See `storyAppearanceLabel`.

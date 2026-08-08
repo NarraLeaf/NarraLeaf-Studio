@@ -470,6 +470,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             document,
             sceneId,
             scene,
+            // Both project scopes come off the same registry and refresh on the same revision. Saved is
+            // not optional trimming: after the declaration migration a saved variable exists ONLY as a
+            // registry entry, so leaving it out makes `/set` report every one of them as unknown.
+            savedVariables: blueprintService?.listSavedVariables() ?? [],
             persistentVariables: blueprintService?.listPersistentVariables() ?? [],
             // For the `mode:"value"` blueprints an expression may call by name. Rebuilt with the rest
             // of the context on `blueprintRevision`, so renaming one in the blueprint editor changes

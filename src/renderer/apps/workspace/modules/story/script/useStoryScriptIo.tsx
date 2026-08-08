@@ -10,6 +10,7 @@ import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { Services } from "@/lib/workspace/services/services";
 import type { TranslationKey } from "@shared/i18n";
 import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
@@ -94,6 +95,7 @@ export function useStoryScriptIo(): StoryScriptIo {
         try {
             const storyService = context.services.get<StoryService>(Services.Story);
             const characterService = context.services.get<CharacterService>(Services.Character);
+            const blueprintService = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
             const document: StoryDocument = await storyService.loadStory(exportTarget.storyId);
             const sceneIds = exportTarget.sceneIds ?? listSceneIdsInDocumentOrder(document);
             const characters = characterService.listCharacter();
@@ -106,6 +108,9 @@ export function useStoryScriptIo(): StoryScriptIo {
                     characters,
                     resolveAssetName,
                     animationId => motions.get(animationId) ?? null,
+                    // Read at export time rather than held in state: an export is a one-shot command,
+                    // so the freshest registry is simply the one on disk when the author asked.
+                    [...blueprintService.listSavedVariables(), ...blueprintService.listPersistentVariables()],
                 ),
                 speaker: createStoryScriptSpeakerLabeller(characters),
             });
