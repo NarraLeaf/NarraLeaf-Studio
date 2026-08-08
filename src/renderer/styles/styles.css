@@ -964,29 +964,30 @@ input[type="radio"]:focus {
  * (see `RUBY_CLASS` in richText.ts). A pseudo-element carries no text node and is invisible to
  * `Selection`, so the reading can be visible and weightless at the same time.
  *
- * The span is `inline-block` with the reading's room reserved as padding, so a row carrying a
- * reading grows to fit instead of the reading landing on top of the line above it. The same
- * declaration keeps an annotated word whole across a line break, which is the only place a reading
- * makes sense.
+ * The span stays a plain inline box and the reading is taken out of flow above it, so a row that
+ * carries a reading is exactly as tall as one that does not. Reserving room for the reading instead
+ * — padding on an inline-block — was tried and rejected: it made the row grow the moment a reading
+ * was written, which moves every line below it and turns annotating one word into a change the
+ * whole scene can see.
+ *
+ * The reading therefore lives in the leading above the line. `line-height: 1` keeps its box to the
+ * glyphs, and half the base size keeps those glyphs inside the space the line already had.
  *
  * Everything but the size is inherited on purpose: a bold, coloured word carries a bold, coloured
  * reading, which is what the game draws.
  */
 .story-rt-ruby {
     position: relative;
-    display: inline-block;
-    padding-top: 0.95em;
 }
 
 .story-rt-ruby::before {
     content: attr(data-ruby);
     position: absolute;
-    top: 0;
+    bottom: 100%;
     left: 50%;
     transform: translateX(-50%);
-    /* Half the base size is where a reading stops competing with the line it annotates. */
     font-size: 0.5em;
-    line-height: 1.4;
+    line-height: 1;
     white-space: nowrap;
     /* The reading is a label, not a target: a click there belongs to the word underneath. */
     pointer-events: none;
