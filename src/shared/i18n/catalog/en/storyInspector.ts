@@ -154,7 +154,7 @@ export const storyInspector = {
         dots: "A grid of dots grows until the cells flood together.",
         slide: "The new image slides in from one edge as the old one slides out.",
         darkness: "Swaps images at the starting darkness, then animates to the ending one. 1 → 0 emerges out of black, 0 → 1 dims into it.",
-        throughColor: "Covers the frame with a colour, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
+        throughColor: "Covers the frame with a color, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
     },
 
     wipeDirection: {
@@ -351,7 +351,7 @@ export const storyInspector = {
         optionText: "Option text",
         hiddenWhen: "Hidden when",
         disabledWhen: "Disabled when",
-        hint: "Leave a condition untouched to always show / enable this option.",
+        hint: "Leave the condition empty to always show and enable this option.",
     },
 
     jump: {
@@ -405,7 +405,7 @@ export const storyInspector = {
     },
 
     nvl: {
-        hint: "Child rows run inside NLR NVL mode. The transform below animates the NVL layer as it enters.",
+        hint: "Child rows run in NVL mode. The transform below animates the NVL layer as it enters.",
         motionLabel: "NVL enter animation",
     },
 
@@ -497,14 +497,14 @@ export const storyInspector = {
         until: "Stop when",
         // Spells out the two things the token itself does not: it is a STOP condition, and it is
         // tested before the body, so a condition already true means the group never runs.
-        untilHint: "The group repeats while this is false, and stops the moment it becomes true. Checked before each pass.",
-        breakHint: "Leaves the repeat group around this row. It does nothing outside one.",
+        untilHint: "The group repeats while this is false and stops when it becomes true. The condition is checked before each pass.",
+        breakHint: "Leaves the repeat group containing this row. It has no effect outside a repeat group.",
         branch: "Branch",
         elseHint: "Else branch runs when previous branches do not match.",
     },
 
     condition: {
-        brokenExpression: "This expression no longer resolves; a variable it reads may have been renamed or deleted. The branch stays false until it is fixed.",
+        brokenExpression: "This expression no longer resolves. A variable it reads may have been renamed or deleted. The branch stays false until the expression is fixed.",
         clear: "Clear condition",
     },
 

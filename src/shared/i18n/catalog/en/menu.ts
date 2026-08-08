@@ -39,13 +39,11 @@ export const menu = {
             stopSpeaking: "Stop Speaking",
         },
     },
-    // Production Build and Test are deliberately absent: the Develop menu reuses the Run
-    // dropdown's own labels (`actions.run.productionBuild`, `test.action.open` / `test.action.stop`)
-    // so the two places that open those dialogs cannot end up calling them different things.
+    // Only the menu's own title lives here. Every entry inside it reuses the Run dropdown's labels
+    // (`actions.run.*`, `test.action.*`), so the two places that start the same four things cannot
+    // end up calling them different names.
     dev: {
         title: "Develop",
-        devMode: "Dev Mode",
-        preview: "Preview Mode",
     },
     window: {
         title: "Window",

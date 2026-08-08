@@ -8,7 +8,7 @@ import type { ProjectMetadata } from "@/lib/workspace/project/project";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
-type MetadataTextKey = "version" | "author" | "website" | "description";
+type MetadataTextKey = "version" | "author" | "website" | "copyright" | "copyrightText" | "description";
 
 export function ProjectDetailsSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
     const { t } = useTranslation();
@@ -74,6 +74,31 @@ export function ProjectDetailsSection({ projectService, uiService, config, onCon
                     onError={message => uiService?.showNotification(message, "error")}
                 />
 
+                {/* Was only ever editable inside the build dialog, which meant the one line that ends
+                    up in the packaged app's file properties could not be written without opening a
+                    dialog about producing a build. Same service, same field, same file. */}
+                <DetailField
+                    label={t("project.details.copyrightLabel")}
+                    initialValue={metadata.copyright ?? ""}
+                    placeholder={t("project.details.copyrightPlaceholder")}
+                    onCommit={value => commitMetadata("copyright", value)}
+                    onError={message => uiService?.showNotification(message, "error")}
+                />
+
+                {/* The notice a player opens, as opposed to the line above that goes into the
+                    binary's file properties. Shipped as `COPYRIGHT.txt` beside the game, so it is
+                    the one place fonts, music and asset credits can travel with the build. */}
+                <DetailField
+                    label={t("project.details.copyrightTextLabel")}
+                    initialValue={metadata.copyrightText ?? ""}
+                    placeholder={t("project.details.copyrightTextPlaceholder")}
+                    helper={t("project.details.copyrightTextHelper")}
+                    multiline
+                    rows={6}
+                    onCommit={value => commitMetadata("copyrightText", value)}
+                    onError={message => uiService?.showNotification(message, "error")}
+                />
+
                 <DetailField
                     label={t("common.description")}
                     initialValue={metadata.description ?? ""}
@@ -98,16 +123,21 @@ function DetailField({
     onCommit,
     onError,
     placeholder,
+    helper,
     required = false,
     multiline = false,
+    rows = 3,
 }: {
     label: string;
     initialValue: string;
     onCommit: (value: string) => Promise<void>;
     onError?: (message: string) => void;
     placeholder?: string;
+    /** One line under the field, for a field whose effect is not visible from its name. */
+    helper?: string;
     required?: boolean;
     multiline?: boolean;
+    rows?: number;
 }) {
     const { t } = useTranslation();
     // Name, version, author, website and description all commit to `project.json` on blur - which is
@@ -154,7 +184,7 @@ function DetailField({
                     onChange={event => setDraft(event.target.value)}
                     onBlur={() => void commit()}
                     placeholder={placeholder}
-                    rows={3}
+                    rows={rows}
                     fullWidth
                     disabled={frozen.disabled}
                 />
@@ -176,6 +206,7 @@ function DetailField({
                     placeholder={placeholder}
                 />
             )}
+            {helper ? <span className="text-2xs text-fg-subtle">{helper}</span> : null}
         </label>
     );
 }

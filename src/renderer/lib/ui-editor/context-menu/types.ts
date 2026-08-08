@@ -4,12 +4,15 @@ import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UiEditorArrangeOp } from "@/lib/ui-editor/commands/uiEditorArrange";
+import type { UiEditorAlignOp } from "@/lib/ui-editor/commands/uiEditorAlign";
 
 /** User-triggered actions; callers wire to uiEditorCommands + UI state. */
 export type UiEditorContextMenuActions = {
     hideMenu: () => void;
     /** Z-order / sibling index within parent (`childrenIds`). */
     arrange: (op: UiEditorArrangeOp) => void;
+    /** Geometric alignment and distribution, computed in surface space. */
+    align: (op: UiEditorAlignOp) => void;
     insertType: (type: string) => void;
     paste: () => void;
     copy: () => void;

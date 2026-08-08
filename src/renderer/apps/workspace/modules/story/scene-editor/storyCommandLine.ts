@@ -31,7 +31,7 @@ import { ACTION_TRIGGER } from "./commandTrigger";
 import { localizedEnumValue } from "./commands/localizedEnums";
 import { localizedParamKey } from "./commands/localizedParams";
 import { localizedUnit } from "./commands/localizedUnits";
-import { getDefById, localizedCommandToken } from "./commands/registry";
+import { getDefById, localizedCommandToken, retiredCommandToken } from "./commands/registry";
 import { DECLARATION_COMMANDS } from "./commands/specs/variables";
 import {
     transformPresetFor,
@@ -1019,7 +1019,7 @@ function actionSentence(
             return {
                 commandId,
                 args: [
-                    positional("variable", variableRefShortLabel(payload.target, lookups.scene, lookups.scenes), variables.length === 0 ? {} : {
+                    positional("variable", variableRefShortLabel(payload.target, lookups), variables.length === 0 ? {} : {
                         // Keyed by the ref's own key, since a variable is a scope plus an id rather
                         // than a name — two scopes may hold the same word.
                         choices: variables.map(entry => ({ value: storyVariableRefKey(entry.ref), label: entry.name })),
@@ -1216,6 +1216,15 @@ export function projectStoryCommandLine(block: StoryBlock, lookups: StoryCommand
     const def = getDefById(sentence.commandId);
     // The verb in the author's own command language, and always a spelling the parser accepts —
     // `localizedCommandToken` comes out of the same pass that built the parser's accept table.
-    const verb = def ? localizedCommandToken(def) : sentence.commandId;
+    //
+    // A row whose command was RETIRED has neither: no def, so no localized spelling and no localized
+    // keys either, and the whole line comes out in the source vocabulary. It still has to say the verb
+    // the author would have typed — a `saved` declaration surviving in a frozen project reads
+    // `/save Honest type=boolean`, not `/declareVar Honest type=boolean`, which is a name from the
+    // inside of this module and is also what the script export would put in the file.
+    //
+    // That line no longer re-parses, and must not: re-importing it would recreate a project-scope
+    // declaration inside a story document, which is the shape the retirement exists to remove.
+    const verb = def ? localizedCommandToken(def) : retiredCommandToken(sentence.commandId) ?? sentence.commandId;
     return writeLine(def, verb, sentence.args);
 }

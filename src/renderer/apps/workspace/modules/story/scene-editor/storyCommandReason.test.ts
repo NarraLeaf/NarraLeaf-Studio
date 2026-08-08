@@ -10,7 +10,7 @@ import { EMPTY_STORY_COMMAND_CONTEXT } from "./storyCommandResolution";
  * Why a line will not commit.
  *
  * The behaviour this replaces: every failure — a name collision, a typo'd command, an unbalanced
- * paren — showed the same "won't build" badge. An author who typed `/var gold 1` where `gold` was
+ * paren — showed the same "won't build" badge. An author who typed `/local met 1` where `met` was
  * already taken had no way to find that out from the editor, which is exactly how it was reported.
  */
 const CONTEXT: StoryCommandContext = {
@@ -39,11 +39,15 @@ function reasonFor(source: string): string | null {
 
 describe("getCommandLineReason", () => {
     it("names a variable already taken, which is what the generic badge could never say", () => {
-        expect(reasonFor("/var gold 1")).toBe(en.reason.duplicateVariable);
+        // `met` is the SCENE variable in the context, and scene is the only scope a story row still
+        // declares — a name taken at project scope (`gold`, saved) is not this collision and is not
+        // refused here, which is why the assertion moved off it when `/save` was retired.
+        expect(reasonFor("/local met 1")).toBe(en.reason.duplicateVariable);
+        expect(reasonFor("/local gold 1")).toBe(null);
     });
 
     it("stays silent on a line that is fine", () => {
-        expect(reasonFor("/var fresh 1")).toBe(null);
+        expect(reasonFor("/local fresh 1")).toBe(null);
         expect(reasonFor("/set gold gold + 1")).toBe(null);
         expect(reasonFor("/bg forest")).toBe(null);
         // An unfilled command still commits, so it is not a problem to report.

@@ -25,6 +25,12 @@ export interface PluginDetailsPageProps {
     onRestartWorkspace: () => void;
     /** False in a recovery window, where nothing is loaded and nothing can be. */
     canReload: boolean;
+    /**
+     * False in a recovery window. Not a capability limit - the record is writable there - but a
+     * deliberate one: that mode exists to keep the evidence of a broken open intact, and which
+     * plugin was installed at which version is part of it. Disabling still works.
+     */
+    canUninstall: boolean;
     onBack: () => void;
     onAuthorize: (pluginId: string) => void;
     onSetEnabled: (pluginId: string, enabled: boolean) => void;
@@ -47,6 +53,7 @@ export function PluginDetailsPage({
     restartHint,
     onRestartWorkspace,
     canReload,
+    canUninstall,
     onBack,
     onAuthorize,
     onSetEnabled,
@@ -120,7 +127,7 @@ export function PluginDetailsPage({
                         {t("plugins.workspace.reload")}
                     </Button>
                 ) : null}
-                {installed && !installed.builtIn ? (
+                {installed && !installed.builtIn && canUninstall ? (
                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => onUninstall(installed.pluginId)}>
                         {t("plugins.uninstall")}
                     </Button>

@@ -30,8 +30,11 @@ export class AssetFetchRemoteHandler extends IPCHandler<IPCEventType.assetFetchR
 
 /** Reduce one renderer-supplied path segment to something safe to create on any platform. */
 function sanitizeExportSegment(segment: string): string {
+    // Trailing dots are stripped after the trim, not before it: Windows drops a trailing dot from a
+    // filename, so `"chapter one. "` has to lose both the space and the dot to name what it says.
     const cleaned = segment
         .replace(/[/\\:*?"<>|\x00-\x1f]+/g, "-")
+        .trim()
         .replace(/\.+$/, "")
         .trim();
     // "." and ".." collapse to nothing here, which is the point: a segment that means "somewhere
@@ -85,6 +88,9 @@ async function resolveAvailableExportPath(target: string): Promise<string> {
  *
  * Runs entirely in main because a folder picked through `fsSelectDirectory` carries a read-only
  * grant - see `permissions.ts` - so the renderer cannot write into it even though it just chose it.
+ * Doing the copy here rather than widening that grant is the point: the read-only scope survives,
+ * and this handler stays the only thing that can write into the chosen folder.
+ *
  * Every source is checked against the window's own grants before it is read, which keeps this from
  * becoming a way to copy an arbitrary file off the machine on a compromised renderer's say-so.
  *
@@ -119,17 +125,18 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
             if (await window.app.storageManager.isPathProtected(exportDir)) {
                 return this.failed("Selected export folder is inside protected Studio storage.");
             }
-            window.app.storageManager.grantFileSystemAccess(
+            // macOS wants the security scope opened before anything may write into a folder that
+            // has just come back from a picker. Deliberately NOT `grantFileSystemAccess`: the
+            // copying below happens here, in main, so the renderer needs no grant over the author's
+            // folder at all - and issuing one would hand it a recursive, session-long readwrite
+            // reach into a directory that `selectDirectory` only ever grants read on, which is the
+            // policy that makes the picker safe to offer in the first place.
+            window.app.storageManager.startSecurityScopedAccess(
                 window,
                 exportDir,
-                "readwrite",
-                true,
                 selection.bookmarks?.[0],
                 "session",
             );
-            if (!await window.app.storageManager.isPathAllowed(window, exportDir, "write")) {
-                return this.failed(`File system access is not allowed for export folder: ${exportDir}`);
-            }
 
             const failures: AssetExportFailure[] = [];
             let exportedCount = 0;

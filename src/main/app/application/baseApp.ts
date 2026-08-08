@@ -441,6 +441,35 @@ export class BaseApp {
         return this.isDevMode() && this.commandLine.onboarding;
     }
 
+    /**
+     * Whether this launch asked *not* to be shown first-run setup - `--skip-onboarding`, or
+     * `--project`, which says where the session is going and therefore is not going to sit on the
+     * home screen answering questions.
+     *
+     * Same dev gate and same single-reader rule as {@link wantsOnboardingRerun}; `--onboarding`
+     * beats both, which is settled in `App.shouldRunOnboarding` rather than here.
+     */
+    public wantsOnboardingSkipped(): boolean {
+        if (!this.isDevMode()) {
+            return false;
+        }
+        return this.commandLine.skipOnboarding || this.commandLine.project.selector !== null;
+    }
+
+    /**
+     * The project this launch asked to open, exactly as it was written on the command line - a
+     * path, or a name to look for in the recent list. Null when nothing was asked for, which is
+     * also what a packaged build always sees.
+     */
+    public getStartupProjectSelector(): string | null {
+        return this.isDevMode() ? this.commandLine.project.selector : null;
+    }
+
+    /** What was wrong with `--project`, for the one place that reports it. Dev-gated as above. */
+    public getStartupProjectError(): string | null {
+        return this.isDevMode() ? this.commandLine.project.error : null;
+    }
+
     public getAppEntry(type: WindowAppType): string {
         return path.resolve(this.getDistDir(), "windows", type, "index.html");
     }

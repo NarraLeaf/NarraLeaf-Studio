@@ -13,10 +13,10 @@ import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { getBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { resolveBlueprintNodeTitle } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "../DevModePanelChrome";
+import { formatDebugValue } from "../debugValueFormat";
 import { BlueprintDebuggerToolbar } from "./BlueprintDebuggerToolbar";
 import { useBlueprintDebuggerContext } from "./BlueprintDebuggerContext";
 import {
-    formatDebugValue,
     groupBreakpointsByBlueprint,
     resolveBlueprintGraphIr,
     resolveBlueprintGraphName,
@@ -107,7 +107,7 @@ export function BlueprintDebuggerPanel(props: {
                                     return (
                                         <li
                                             key={frame.frameId}
-                                            className={`rounded px-1.5 py-1 ${
+                                            className={`rounded-md px-1.5 py-1 ${
                                                 frame.frameId === snapshot.pausedFrameId
                                                     ? "bg-fill-strong text-fg"
                                                     : "text-fg-muted"
@@ -187,7 +187,10 @@ function Section(props: { title: string; action?: ReactNode; children: ReactNode
     return (
         <section className="border-b border-edge p-2">
             <div className="mb-1 flex items-center justify-between gap-2">
-                <h3 className="text-2xs font-medium uppercase tracking-wide text-fg-subtle">{props.title}</h3>
+                {/* FieldLabel's typography, spelled out because that component is a label/span/div
+                    and a section heading wants to stay an <h3>. Not uppercased: the eyebrow style
+                    this matches is not, and shouting a word is not what makes it read as a heading. */}
+                <h3 className="text-2xs font-medium tracking-wide text-fg-subtle">{props.title}</h3>
                 {props.action}
             </div>
             {props.children}

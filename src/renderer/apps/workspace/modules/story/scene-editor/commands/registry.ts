@@ -57,7 +57,8 @@ const SPEC_BY_ID = new Map<string, AnyStoryCommandSpec>(ALL_SPECS.map(spec => [s
 const DEF_BY_ID = new Map<string, StoryCommandDef>(DEFS.map(def => [def.commandId, def]));
 
 /**
- * Tokens a retired command burned: spelled by no spec, and claimable by none.
+ * Every retired command, keyed by the id it had, spelling out the tokens it burned: canonical first,
+ * aliases after.
  *
  * A token is not just a name, it is what a stored line RE-PARSES as. `invalid` rows keep the author's
  * source text verbatim, the script codec round-trips scenes through their command lines, and both
@@ -66,8 +67,41 @@ const DEF_BY_ID = new Map<string, StoryCommandDef>(DEFS.map(def => [def.commandI
  * command's semantics, with no diagnostic anywhere. `/code` (schema v13) is the first of these: the
  * block kind is gone, and a `/code typescript` line left in a project must keep failing to resolve
  * rather than one day meaning something.
+ *
+ * `/save` and `/global` (with their aliases) joined on the same reasoning when the two project-scope
+ * declarations were retired in favour of the variable registry. `/save` is the sharpest case in the
+ * set: the obvious next meaning for that word is "write a save file", and a scene exported to a
+ * script file years ago still holds `/save gold 10 type=number` lines that the importer re-parses
+ * verbatim. Handing the token to a save-triggering command would turn every one of those old
+ * declarations into a runtime action, silently.
+ *
+ * Keyed by ID rather than kept as a flat word list because of the one thing a retired command can
+ * still be asked: what its ROWS read back as ({@link retiredCommandToken}). `/code` left none behind
+ * and is here only to burn its words; the two declarations left plenty.
  */
-const RESERVED_TOKENS: ReadonlySet<string> = new Set(["code", "script"]);
+const RETIRED_COMMAND_TOKENS: ReadonlyMap<string, readonly [string, ...string[]]> = new Map([
+    ["code", ["code", "script"]],
+    ["declareVar", ["save", "var", "savedvar"]],
+    ["declarePersis", ["global", "persis", "persistent"]],
+]);
+
+const RESERVED_TOKENS: ReadonlySet<string> = new Set([...RETIRED_COMMAND_TOKENS.values()].flat());
+
+/**
+ * The spelling a retired command's rows still read back as, or `null` for any live or unknown id.
+ *
+ * A row outlives the command that wrote it. A `saved` or `persistent` declaration in a project the
+ * retirement pass could not migrate - a frozen one, where every write silently no-ops - still sits in
+ * its scene, and `getDefById` answers `null` for it. Without this, the line such a row prints falls
+ * back to the raw command id and the author is shown `/declareVar Honest type=boolean`: an internal
+ * identifier, in the row, and in the file the script export writes.
+ *
+ * The canonical token is the answer rather than an alias because it is the spelling the row's own
+ * `/save …` line was most likely typed as, and the only one of the three that is a word.
+ */
+export function retiredCommandToken(commandId: string): string | null {
+    return RETIRED_COMMAND_TOKENS.get(commandId)?.[0] ?? null;
+}
 
 // Duplicate ids or tokens are authoring mistakes worth failing loudly on, at import time.
 if (SPEC_BY_ID.size !== ALL_SPECS.length) {

@@ -13,6 +13,7 @@ import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendin
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
 import { useWorkspace } from "../../context";
+import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { SearchBox } from "../assets/components/SearchBox";
 import type { PanelComponentProps } from "../types";
 import type { PluginsPanelPayload } from "./openPluginsPanel";
@@ -46,9 +47,18 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
 
     const activity = useWorkspacePluginActivity();
 
-    // A recovery window loads no plugins at all, so it must not pretend to start or stop one - the
-    // record is all it can change. Everywhere else, the record and this window move together.
-    const live = Boolean(context) && !recovery;
+    // Whether a change may also start or stop the plugin *in this window*, as opposed to only
+    // writing the record every window shares.
+    //
+    // A recovery window loads no plugins at all, so it must not pretend to. A frozen one is the
+    // subtler case: the record is global and stays perfectly writable - freezing a project does not
+    // make the author's plugin list read-only - but mounting a plugin's code fresh would run its
+    // `setup()` against a document that is a past revision or an unresolved merge, and a plugin's
+    // own store is versioned, so a plugin that writes on startup would write there. Deferring the
+    // mount costs nothing: `onChanged` raises the restart banner either way, and the restart is
+    // where it comes up honestly.
+    const frozen = useWorkspaceFrozen();
+    const live = Boolean(context) && !recovery && !frozen;
 
     const catalog = usePluginCatalog({
         beforeDeactivate: async pluginId => {
@@ -152,7 +162,12 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
         if (live && activity.activityOf(plugin) !== "off" && plugin.manifest.entries.studio) {
             items.push({ id: "reload", label: t("plugins.workspace.reload"), onClick: () => reload(plugin.pluginId) });
         }
-        if (!plugin.builtIn) {
+        // Uninstall is the one action a recovery window may not offer. That mode exists because
+        // opening a broken project can destroy the evidence of why it broke, and "which plugin, at
+        // which version, was installed when this started" is exactly that kind of evidence -
+        // deleting it answers the question the author came here to ask. Disable is right there and
+        // stops the plugin loading next time without taking the bytes with it.
+        if (!plugin.builtIn && !recovery) {
             items.push({ separator: true, id: "sep-uninstall" });
             items.push({ id: "uninstall", label: t("plugins.uninstall"), onClick: () => uninstall(plugin.pluginId) });
         }
@@ -279,6 +294,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
                             loadError={detailInstalled ? activity.session.failed[detailInstalled.pluginId] ?? null : null}
                             busy={busy}
                             canReload={live}
+                            canUninstall={!recovery}
                             onBack={() => setDetailId(null)}
                             onAuthorize={catalog.approve}
                             onSetEnabled={catalog.setEnabled}

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, X } from "lucide-react";
 import type { Translator } from "@shared/i18n";
 import type { StoryDocument, StorySceneId } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { formatSceneFlowArmLabel } from "./SceneFlowBranchNode";
@@ -50,6 +51,12 @@ export type SceneFlowVariableFocus = {
     sceneEffects: Map<StorySceneId, SceneFlowVariableEffect[]>;
     /** {@link computeVariableRanges} — the range **on arrival**, before the scene's own writes. */
     ranges: Map<StorySceneId, SceneFlowRange>;
+    /**
+     * The project registry, both project scopes, so a route's final value is folded from the same
+     * declaration list `ranges` was computed against. Without it a registry-declared counter has no
+     * default here and every route reads `?` while the scene boxes show real numbers.
+     */
+    registryVariables: readonly VariableRegistryEntry[];
 };
 
 export interface SceneFlowRouteRailProps {
@@ -394,6 +401,6 @@ function routeValueChip(
     route: SceneFlowRoute,
     focus: SceneFlowVariableFocus,
 ): string {
-    const folded = foldRouteVariableValue(graph, document, focus.variable.key, route);
+    const folded = foldRouteVariableValue(graph, document, focus.variable.key, route, focus.registryVariables);
     return folded.kind === "known" ? formatNumber(folded.min) : "?";
 }

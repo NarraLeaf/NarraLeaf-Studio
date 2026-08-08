@@ -770,6 +770,15 @@ export function readBlueprintFnSignatureSnapshot(
     };
 }
 export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
+/**
+ * Pop the page opened last and reveal whatever it covered - the other half of Go Page.
+ *
+ * Every page a game opens over a running story (save, load, config, backlog) needs a way out, and
+ * Go Page is not it: navigation is a stack, so "go to the page I came from" pushes a third layer
+ * over the two already there and the game is still buried. The host has had `navigation.closeLayer`
+ * since the stack existed; until this node there was no way for an author to reach it.
+ */
+export const BLUEPRINT_NODE_TYPE_PAGE_BACK = "blueprint.page.back" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS = "blueprint.page.getProps" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSurfaceExiting" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING = "blueprint.page.isSurfaceEntering" as const;
@@ -892,6 +901,32 @@ export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT = "blueprint.game.setSk
  */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME = "blueprint.game.getTrackVolume" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME = "blueprint.game.setTrackVolume" as const;
+
+/**
+ * Network nodes: an HTTP request and the two nodes that read what came back.
+ *
+ * Reading is deferred to its own node rather than published as `responseText`/`responseJson` pins on
+ * Fetch, because a response that nobody reads should cost nothing to decode, and because a JSON
+ * parse failure needs an execution branch - as an output pin it can only be reported as `null`,
+ * which is indistinguishable from a body that really was `null`.
+ *
+ * All three publish through `execute()`'s `outputValues`, so all three are listed on the read side
+ * in `resolveSelfOutput` in `graphParamResolvers.ts`.
+ */
+export const BLUEPRINT_NODE_TYPE_NETWORK_FETCH = "blueprint.network.fetch" as const;
+export const BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT = "blueprint.network.readResponseText" as const;
+export const BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON = "blueprint.network.readResponseJson" as const;
+
+/** The request methods the Fetch node offers, in display order. */
+export const BLUEPRINT_NETWORK_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"] as const;
+
+export type BlueprintNetworkMethod = typeof BLUEPRINT_NETWORK_METHODS[number];
+
+/** Inspector param holding the request method. */
+export const BLUEPRINT_NETWORK_PARAM_METHOD = "networkMethod";
+
+/** Methods that carry a request body; the `body` pin is ignored on the others. */
+export const BLUEPRINT_NETWORK_METHODS_WITH_BODY: readonly BlueprintNetworkMethod[] = ["POST", "PUT", "PATCH"];
 
 // Localization nodes. Every getter here is latent and publishes its result through
 // `execute()`'s `outputValues`, so each one also has to be listed on the read side,

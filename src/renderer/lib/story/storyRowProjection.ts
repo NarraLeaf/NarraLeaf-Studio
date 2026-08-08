@@ -6,6 +6,7 @@ import type {
     StoryConditionRef,
     StoryDocument,
     StoryExpr,
+    StoryInterpolationRef,
     StoryScene,
     StorySceneId,
     StoryTextSegment,
@@ -29,7 +30,6 @@ import { storyVerbLabelKey } from "./storyVerbVocabulary";
 import { getCommandGroup, type StoryCommandGroupId } from "@/apps/workspace/modules/story/scene-editor/storyCommandCategories";
 import { isEventRun, isInterpolationRun, isTextRun, segmentToRuns } from "@/apps/workspace/modules/story/scene-editor/richText";
 import { storyAppearanceLabel } from "@/apps/workspace/modules/story/scene-editor/storyAppearanceLabel";
-import { resolveInterpolationName } from "@/apps/workspace/modules/story/scene-editor/storyInterpolation";
 
 /**
  * "What sentence is this row" — one projection, consumed by the story editor and by the Dev Mode
@@ -92,7 +92,30 @@ export type StoryRowLookups = {
     scenes?: Record<StorySceneId, StoryScene>;
     /** The story document, used to name the inline interpolation chips a text row carries. */
     document?: StoryDocument;
+    /**
+     * The author-facing name of a project-level variable declared in the project REGISTRY
+     * (`editor/variables.json`) rather than as a story declaration row, or `null` when the id names
+     * nothing there.
+     *
+     * One lookup covers both project scopes because a `StoryVariableRef` already says which scope it
+     * is, and each addresses its entry the way the ref carries it: `saved` by entry id, `persistent`
+     * by storage key.
+     *
+     * Optional like the tables above, but with a far sharper consequence: the declaration migration
+     * made the registry the ONLY declaration site for saved and persistent variables, so a caller
+     * that omits this prints the bare fallback word ("variable") for every one of them — the story
+     * itself becoming unreadable rather than a name degrading to an id.
+     */
+    projectVariableName?: (scope: "saved" | "persistent", variableId: string) => string | null;
 };
+
+/**
+ * The slice of {@link StoryRowLookups} that naming a variable actually reads.
+ *
+ * Named rather than spelled out at each signature so a caller can see, from the type alone, that
+ * `variableRefShortLabel` needs no characters and no assets — only where declarations live.
+ */
+export type StoryVariableNameLookups = Pick<StoryRowLookups, "scene" | "scenes" | "projectVariableName">;
 
 /** A lookup that resolves nothing — for call sites with no characters (tests, clipboard of a bare block). */
 export const noStoryRowCharacters: StoryRowLookups["character"] = () => null;
@@ -149,16 +172,12 @@ export function getStoryEmptyTextPlaceholder(block: StoryBlock): string {
  * came out of the old debug projection as `OK`, silently dropping the thing the author put there.
  */
 export function storyTextSegmentPlain(segment: StoryTextSegment, lookups: StoryRowLookups): string {
-    const sceneId = lookups.scene?.id;
-    const document = lookups.document;
     let out = "";
     for (const run of segmentToRuns(segment)) {
         if (isTextRun(run)) {
             out += run.text;
         } else if (isInterpolationRun(run)) {
-            out += document && sceneId
-                ? resolveInterpolationName(document, sceneId, [], run.interpolation)
-                : translate("story.richText.valueFallback");
+            out += interpolationLabel(run.interpolation, lookups);
         } else if (isEventRun(run)) {
             const expression = run.event.expression;
             out += (expression ? storyAppearanceLabel(expression, lookups.appearanceName) : null) ?? "";
@@ -167,6 +186,21 @@ export function storyTextSegmentPlain(segment: StoryTextSegment, lookups: StoryR
         }
     }
     return out;
+}
+
+/**
+ * What an inline `{value}` chip prints.
+ *
+ * Resolved through {@link variableRefShortLabel} rather than through the editor's
+ * `resolveInterpolationName`: that one takes each project scope as a LIST, and this call site had no
+ * list to hand it — it passed the empty one — so every registry-declared saved and persistent
+ * variable came out as the bare fallback word. That sentence is not only read on screen: the story
+ * script export writes it to disk.
+ */
+function interpolationLabel(interpolation: StoryInterpolationRef, lookups: StoryVariableNameLookups): string {
+    return interpolation.kind === "variable"
+        ? variableRefShortLabel(interpolation.target, lookups)
+        : translate("story.describe.blueprint");
 }
 
 /** Whether a segment holds anything at all (the editor swaps in a placeholder when it does not). */
@@ -423,29 +457,34 @@ export function storyRowBarColor(block: StoryBlock): string | null {
  * as `gold += 5`: a row that does not say WHICH variable it touches is a row the author has to open
  * to understand, which fails the first principle.
  */
-export function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene, scenes?: Record<string, StoryScene>): string {
+export function variableRefShortLabel(ref: StoryVariableRef, lookups: StoryVariableNameLookups): string {
     if (ref.scope === "persistent") {
-        for (const candidate of Object.values(scenes ?? {})) {
+        for (const candidate of Object.values(lookups.scenes ?? {})) {
             for (const block of Object.values(candidate.blocks)) {
                 if (block.kind === "declaration" && block.payload.storageKey === ref.variableId) {
                     return block.payload.name;
                 }
             }
         }
-        // Blueprint-declared: its name lives in the blueprint document, out of reach here.
-        return translate("story.describe.persistent");
+        // The registry, which since the declaration migration is where persistent variables actually
+        // live - a row printing the word "persistent" at its author is the failure this exists to stop.
+        return lookups.projectVariableName?.("persistent", ref.variableId)
+            ?? translate("story.describe.persistent");
     }
-    const inScene = scene?.blocks[ref.variableId];
+    const inScene = lookups.scene?.blocks[ref.variableId];
     if (inScene?.kind === "declaration") {
         return inScene.payload.name;
     }
-    for (const candidate of Object.values(scenes ?? {})) {
+    for (const candidate of Object.values(lookups.scenes ?? {})) {
         const block = candidate.blocks[ref.variableId];
         if (block?.kind === "declaration") {
             return block.payload.name;
         }
     }
-    return translate("story.describe.variableFallback");
+    // Same story-rows-then-registry order the command line and the compiler resolve a saved name in,
+    // so one variable cannot be two things depending on which surface is asking.
+    return (ref.scope === "saved" ? lookups.projectVariableName?.("saved", ref.variableId) : null)
+        ?? translate("story.describe.variableFallback");
 }
 
 /**
@@ -458,8 +497,7 @@ export function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene,
  */
 export function storyConditionSummary(
     condition: StoryConditionRef | undefined,
-    scene?: StoryScene,
-    scenes?: Record<string, StoryScene>,
+    lookups: StoryVariableNameLookups,
 ): string {
     if (!condition) {
         return translate("story.condition.summarySet");
@@ -472,7 +510,7 @@ export function storyConditionSummary(
         // switches a loop to its conditional form, so it reads as a prompt rather than as blank.
         return condition.expression.source.trim() || translate("story.condition.summaryExpression");
     }
-    const name = variableRefShortLabel(condition.target, scene, scenes);
+    const name = variableRefShortLabel(condition.target, lookups);
     const operator = translate(`story.condition.op${conditionOperatorSuffix(condition.operator)}` as TranslationKey);
     const suffix = condition.operator === "equals" || condition.operator === "notEquals"
         ? ` ${String(condition.value ?? "")}`
@@ -666,7 +704,7 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             // `{operation}` used to interpolate the raw enum, so a Chinese author read "setBgm piano".
             return `${verbWord(payload, payload.operation)} ${payload.objectName || named || payload.assetId || translate("story.describe.unassigned")}`;
         }
-        if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, scene, scenes));
+        if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, lookups));
         if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { seconds: storyMsToSeconds(payload.durationMs ?? 0) }) : translate("story.describe.waitClick");
         if (payload.action === "image") return translate("story.describe.image", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
         if (payload.action === "displayable") return `${verbWord(payload, payload.operation)} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
@@ -782,7 +820,7 @@ export function storyRowFragments(
             fragments.push({ kind: "text", text: `${container.repeatTimes} ${translate("story.repeat.times")}` });
         }
         if (container.repeatUntil !== undefined) {
-            fragments.push({ kind: "text", text: storyConditionSummary(container.repeatUntil, lookups.scene, lookups.scenes) });
+            fragments.push({ kind: "text", text: storyConditionSummary(container.repeatUntil, lookups) });
         }
     }
     const segment = getStoryTextSegment(block);

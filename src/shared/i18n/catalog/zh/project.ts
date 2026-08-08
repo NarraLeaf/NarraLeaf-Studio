@@ -22,7 +22,7 @@ export const project = {
         },
         settings: {
             title: "设置",
-            description: "安全、优化与移动端方向",
+            description: "安全、签名、优化与移动端",
         },
     },
     // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
@@ -34,6 +34,7 @@ export const project = {
         playerDefaults: "玩家默认值",
         audioTracks: "音频轨道",
         security: "安全",
+        signing: "签名",
         optimization: "优化",
         mobile: "移动端",
     },
@@ -53,6 +54,13 @@ export const project = {
         authorLabel: "作者",
         authorPlaceholder: "作者、组织或邮箱",
         websiteLabel: "网站",
+        // 会写进打包后应用的文件属性与「关于」框。改在这里，构建对话框只回读不再询问。
+        copyrightLabel: "版权",
+        copyrightPlaceholder: "© 你的工作室",
+        // 长文形式，与上面那一行分开：那一行进二进制的文件属性，这一段进玩家能打开的文件。
+        copyrightTextLabel: "版权声明",
+        copyrightTextPlaceholder: "用到的字体、音乐与素材，以及它们各自归谁所有…",
+        copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt。留空则不生成该文件",
         descriptionPlaceholder: "描述你的项目…",
         required: "必填",
     },
@@ -77,17 +85,17 @@ export const project = {
     },
     game: {
         autoSaveTitle: "自动保存",
-        autoSaveDescription: "按间隔自动保存进度，崩溃时只损失片刻，而不是一整段游玩",
+        autoSaveDescription: "按间隔自动保存进度，崩溃时最多损失一个间隔内的进度",
         autoSaveIntervalTitle: "保存间隔",
         autoSaveIntervalDescription: "多久检查一次。剧情没有推进就不会写入",
         autoSaveIntervalUnit: "秒",
         autoSaveSlotsTitle: "保留数量",
-        autoSaveSlotsDescription: "自动存档在这么多个槽位间轮转，最旧的先被覆盖，不会混进玩家自己的存档槽",
+        autoSaveSlotsDescription: "自动存档在指定数量的槽位间轮转，最旧的先被覆盖，与玩家自己的存档槽相互独立",
     },
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
         // 要么对正在看这些行的作者没有用处。
-        intro: "玩家没有改过时，各项设置从这里的值开始。玩家仍然可以改，改完的值会被保留。",
+        intro: "玩家未修改时，各项设置从这里的值开始。玩家可以修改全部设置，修改结果会被保留。",
         group: {
             dialogue: "对话",
             skipping: "跳过",
@@ -114,7 +122,7 @@ export const project = {
         },
         showDialog: {
             title: "显示对话框",
-            description: "关闭后游戏以隐藏对话框的状态开始，与玩家自己按下隐藏界面时一样",
+            description: "关闭后游戏以隐藏对话框的状态启动，与玩家按下隐藏界面时的状态相同",
         },
         skip: {
             title: "允许跳过",
@@ -150,7 +158,7 @@ export const project = {
         },
         voiceEndMode: {
             title: "语音随句子结束时",
-            description: "一句话说完之后，这条语音怎么处理。无论选哪个，都不会有两条语音同时响",
+            description: "台词结束后如何处理该语音。无论选择哪一项，都不会有两条语音同时播放",
             option: {
                 stop: "立即停止",
                 fade: "淡出",
@@ -175,7 +183,7 @@ export const project = {
         volumeTitle: "音量",
         volumeUnit: "%",
         loopTitle: "默认循环",
-        loopDescription: "在这条轨道上播放的片段默认循环，除非播放它的动作另有指定",
+        loopDescription: "在该轨道上播放的片段默认循环，除非播放它的动作另有指定",
         duplicate: "复制",
         delete: "删除",
         // 展开后紧挨着「删除」：确认框接下来要说的就是这个数字。
@@ -204,10 +212,13 @@ export const project = {
     settings: {
         allowHttpTitle: "允许 HTTP",
         allowHttpDescription: "关闭时，游戏将被限制在应用协议内，所有 HTTP/HTTPS 请求均会被阻止",
-        allowHttpWebHint: "对 Web 导出不适用，此设置仅影响桌面构建",
+        allowHttpWebHint: "Web 导出不受此项限制，该构建本身通过 HTTP 提供。网络节点在 Web 导出中仍会运行",
         encryptAssetsTitle: "加密资源",
         encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
+        // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
+        // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
+        signingDescription: "为每个平台指定签名凭据。证书与密码只留在本机，工程里存的只有用哪一份",
         webLosslessImagesTitle: "图像转为 WebP",
         webLosslessImagesDescription: "在体积更小时，将导出的图像重编码为无损 WebP",
         webLosslessImagesHint: "每次转换都会与原图逐像素比对，解码结果不一致即丢弃。Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",

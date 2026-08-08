@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -148,6 +149,17 @@ export type GameAppHost = {
      * the close. Returns an unsubscribe function. Hosts without a real window (story preview) omit it.
      */
     subscribeCloseRequested?: (listener: () => Promise<boolean> | boolean) => () => void;
+    /**
+     * Issue one Fetch node request. Where it goes is the host's business, and the three shells
+     * differ: Dev Mode and the packaged desktop game hand it to their main process, which is the
+     * only origin not subject to CORS and the only place the project's Allow HTTP setting can be
+     * enforced; the web export has no main process and uses the browser's own `fetch`.
+     *
+     * Omitted by hosts with nowhere to send it (the workspace story preview). The node then reports
+     * a `networkError` saying so, which is the same degradation the sound family takes when there is
+     * no running game to play through.
+     */
+    networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
 };
 
 /** A read-only view of the current execution stacks (root + in-flight async branches). */
@@ -170,8 +182,20 @@ export type GameAppStoryRuntimeBridge = {
     } | null;
     /** action↔block bindings of the running compiled story (empty when none). */
     getActionIdBindings: () => readonly NlrActionIdBinding[];
-    /** Resolved Storable namespace names for the running story's variable scopes. */
-    getVariableNamespaces: () => { saved: string | null; sceneLocal: Record<string, string> };
+    /**
+     * Resolved Storable namespace names for the running story's scopes, exactly as they key the
+     * save file's `game.store`. They carry the engine's own prefix (`persistent:` / `local:`), so a
+     * reader of a save blob matches these strings rather than rebuilding one.
+     *
+     * `visited` is the reserved record of entered scenes and picked options (see `storyVisited.ts`).
+     * It is not a variable scope an author writes to, but it travels inside the save alongside the
+     * ones that are, and the Saves panel is where it becomes readable.
+     */
+    getVariableNamespaces: () => {
+        saved: string | null;
+        visited: string | null;
+        sceneLocal: Record<string, string>;
+    };
     /** Most recently executed action id (engine play head), or null before the first action. */
     getCurrentActionId: () => string | null;
     /**
@@ -207,6 +231,29 @@ export type GameAppStoryRuntimeBridge = {
     relaunch: (options: { sceneId?: string; startBlockId?: string; snapshotId?: string }) => Promise<void>;
 };
 
+/**
+ * Save slots, for a host debug overlay that lists and loads them.
+ *
+ * Every method is the SAME call the game's own Save/Load nodes make, deliberately: the question the
+ * Saves panel answers is "does this save still load", and a debug-only load path would answer it for
+ * a code path no player ever takes.
+ */
+export type GameAppSaveBridge = {
+    /** Player slot ids - the authoring view, with the reserved autosave slots filtered out. */
+    listIds: () => Promise<string[]>;
+    /** The stored record as written: author metadata plus the serialized game. */
+    read: (id: string) => Promise<GameAppSaveRecord | null>;
+    /**
+     * Load a save into the RUNNING game.
+     *
+     * Throws whatever `LiveGame.deserialize` throws - and it throws AFTER `reset()` and
+     * `forceRemount()`, so by the time a caller catches anything the stage is already empty. A
+     * caller that means to survive a failure has to put the session back itself (`relaunch`).
+     */
+    load: (id: string) => Promise<void>;
+    remove: (id: string) => Promise<void>;
+};
+
 /** Context handed to host-rendered overlays (e.g. the Dev Mode debug panel). */
 export type GameAppOverlayContext = {
     core: BlueprintRuntimeCore | null;
@@ -219,6 +266,8 @@ export type GameAppOverlayContext = {
     fastForwardToNextChoice: () => Promise<void>;
     /** Read/write bridge over the running story runtime for the story-runtime debug panel. */
     storyRuntime: GameAppStoryRuntimeBridge;
+    /** Save-slot access for the Saves panel, on the game's own paths. */
+    saves: GameAppSaveBridge;
 };
 
 /** Context handed to the host frame around the game content. */

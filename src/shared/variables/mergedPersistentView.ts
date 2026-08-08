@@ -1,15 +1,21 @@
 /**
- * The merged persistent-variable view (M-VAR WI-3).
+ * The merged project-variable view (M-VAR WI-3).
  *
- * Persistent variables come from two authoring surfaces: the project-level registry (blueprint-
- * declared, the one class not authored as a story row) and story `/persis` declaration rows. Every
- * consumer that needs "all persistent variables" - the compiler's reference validation, the variable
- * panel, the blueprint member tree - reads this single merged projection instead of unioning the two
- * inline, so they can never disagree about what exists.
+ * Both project-level scopes - `saved` and `persistent` - come from two authoring surfaces: the
+ * project-level registry (`editor/variables.json`, created from the variables panel) and story
+ * declaration rows (`/save`, `/global`). Every consumer that needs "all saved variables" or "all
+ * persistent variables" - the compiler's reference validation, the variable panel, the blueprint
+ * member tree - reads this single merged projection instead of unioning the two inline, so they can
+ * never disagree about what exists.
  *
  * The merge is a union keyed by `storageKey` (the addressable, rename-stable identity both surfaces
  * share). A display NAME appearing in BOTH surfaces is a genuine ambiguity - the author sees two
  * variables with one name - so it is reported as a collision and surfaced as a compile diagnostic.
+ *
+ * The merge itself is scope-blind: it unions exactly what it is handed. Selecting the registry
+ * entries and the declaration rows of ONE scope is the caller's job, because only the caller knows
+ * which scope it is asking about, and a merge that filtered internally would quietly make a
+ * mis-scoped call site look like it worked.
  */
 
 import type { StoryLiteralValue, StorySavedVariableDefinition, StoryVariableValueType } from "../types/story/document";
@@ -41,7 +47,14 @@ export type MergedPersistentView = {
     nameCollisions: MergedPersistentNameCollision[];
 };
 
-export function buildMergedPersistentView(
+/**
+ * The general merge, for either project scope.
+ *
+ * `registryEntries` are assumed pre-filtered to the scope being asked about (see the file header);
+ * `storyDefs` are that scope's declaration rows. Both scopes share the
+ * `StorySavedVariableDefinition` shape, which is why one implementation covers them.
+ */
+export function buildMergedVariableView(
     registryEntries: readonly VariableRegistryEntry[],
     storyDefs: readonly StorySavedVariableDefinition[],
 ): MergedPersistentView {
@@ -87,6 +100,17 @@ export function buildMergedPersistentView(
         }
     }
     return { entries, nameCollisions };
+}
+
+/**
+ * The persistent merge. Kept as its own export because every existing persistent call site names it,
+ * and because "persistent" is the scope a reader of those call sites expects to see spelled out.
+ */
+export function buildMergedPersistentView(
+    registryEntries: readonly VariableRegistryEntry[],
+    storyDefs: readonly StorySavedVariableDefinition[],
+): MergedPersistentView {
+    return buildMergedVariableView(registryEntries, storyDefs);
 }
 
 /** The set of persistent storage keys the compiler validates references against. */

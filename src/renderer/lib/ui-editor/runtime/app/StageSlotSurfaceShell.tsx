@@ -339,8 +339,10 @@ export function StageSlotSurfaceBody(props: {
     runtime: StageSlotSurfaceRuntime;
     /** "none" makes the surface shell click-through (On-Stage overlay). */
     surfacePointerEvents?: CSSProperties["pointerEvents"];
+    /** Display-only slot: no widget inside takes pointer events (notification toasts). */
+    passive?: boolean;
 }) {
-    const { options, surface, runtime, surfacePointerEvents } = props;
+    const { options, surface, runtime, surfacePointerEvents, passive } = props;
     const { core, bundle, rendererRegistry, lifecycleRef, makeStateAccessors, widgetRuntimeStore, widgetPatchesByScopeRef } = options;
     const document = bundle.ui.uidoc;
     const { runtimeScopeId, hostAdapter } = runtime;
@@ -394,6 +396,7 @@ export function StageSlotSurfaceBody(props: {
                     surfaceLifecycleSignals={STATIC_SURFACE_LIFECYCLE_SIGNALS}
                     onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     surfacePointerEvents={surfacePointerEvents}
+                    passive={passive}
                 />
             </WidgetRuntimeStateProvider>
         </SurfaceLifecycleBoundary>

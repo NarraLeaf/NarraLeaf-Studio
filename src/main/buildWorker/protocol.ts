@@ -289,8 +289,22 @@ export type GameBuildWorkerMobileJob = {
     android?: {
         /** Template APK for the variant the manager picked (release/debug). */
         templateApkPath: string;
-        /** File name written under outputDir. */
-        outputName: string;
+        /**
+         * The packages to write under outputDir, keyed by format, each already
+         * named. Both are formats of the one Android target and share
+         * everything above - the payload, the identity, the icons and the
+         * signing credential - so they are a selection here rather than two
+         * jobs; producing both must not cost a second payload pass.
+         *
+         * At least one is present: the manager refuses an Android target with
+         * neither, the same way it refuses a web target with no usable format.
+         */
+        outputs: {
+            /** Installs on a device: sideloading, and stores that take APKs. */
+            apk?: string;
+            /** The upload Google Play accepts. */
+            aab?: string;
+        };
         /** Already through normalizeAndroidPackageName. */
         applicationId: string;
         /** android:versionName - the project's raw semver. */
@@ -309,6 +323,11 @@ export type GameBuildWorkerMobileJob = {
          * replaces `signingIdentity` rather than adding to it: an APK carries
          * one signer, and installing over a build signed by the other identity
          * fails on the device until the old one is uninstalled.
+         *
+         * One credential covers both outputs. The APK is signed with Signature
+         * Scheme v2 (what the device verifies) and the AAB with JAR v1 (what
+         * Play registers as the upload key); the key material is the same, so
+         * there is deliberately no second signing slot here.
          */
         signing?: GameBuildWorkerAndroidSigning;
     };
@@ -346,6 +365,13 @@ export type GameBuildWorkerConfig = {
     electronVersion: string;
     /** Copyright line embedded in the binaries; unset leaves it to electron-builder. */
     copyright?: string;
+    /**
+     * Absolute path to the project's `COPYRIGHT.txt`, shipped beside the executable.
+     *
+     * An extra file rather than part of the app dir: the app dir becomes `app.asar`, and a notice
+     * a player is meant to read cannot live inside an archive. Unset when the project has none.
+     */
+    copyrightFile?: string;
     /** Payload compression; unset uses electron-builder's default ("maximum"). */
     compression?: GameBuildCompression;
     /** Download mirror for Electron dists (cross builds); empty = official. */

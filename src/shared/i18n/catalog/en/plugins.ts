@@ -27,7 +27,7 @@ export const plugins = {
     updateAvailable: "Update available",
     // Shown when the entry's studioVersion range excludes this build, so the
     // install/update button is withheld rather than failing in the main process.
-    requiresStudio: "This plugin requires Studio {range}. You are running {version}.",
+    requiresStudio: "This plugin requires Studio {range}. The installed version is {version}.",
     openReleasePage: "View release notes",
     homepage: "Homepage",
     moreActions: "More actions",
@@ -90,13 +90,13 @@ export const plugins = {
             // Enabled, has a studio entry, and still did not come up in this window.
             stopped: "Not running here",
             runtimeOnly: "Game runtime only",
-            runtimeOnlyHint: "This plugin only extends the running game, so there is nothing for it to do in the editor.",
+            runtimeOnlyHint: "This plugin only extends the running game. It contributes nothing to the editor.",
             suppressed: "Off for this project",
             suppressedHint: "The installed version is incompatible with the one this project was authored against. Update it, or update the project's dependency table from Project → Dependencies.",
             failed: "Failed to load",
         },
         // Warned once at load, naming the plugins this project's dependency table turned away.
-        suppressedNotice: "Not loaded for this project: {names}. The installed version is incompatible with the one the project was authored against — see the Plugins panel.",
+        suppressedNotice: "Not loaded for this project: {names}. The installed version is incompatible with the one the project was authored against. See the Plugins panel.",
         // A plugin that changed state while the workspace could not act on it.
         pendingReopen: "Takes effect the next time this project opens.",
         /**
@@ -106,7 +106,7 @@ export const plugins = {
          * global, a timer. Most plugins come and go cleanly; the ones that do not leave no trace the
          * panel could detect, so the honest line is that a restart is what guarantees a clean slate.
          */
-        restartHint: "Some plugin changes may need the workspace restarted to take effect.",
+        restartHint: "Some plugin changes take effect only after the workspace is restarted.",
         /** The banner's own action: flush every pending save, then reload this window. */
         restart: "Restart",
         restarting: "Saving changes and restarting…",

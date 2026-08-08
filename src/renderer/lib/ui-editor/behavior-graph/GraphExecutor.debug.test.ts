@@ -260,6 +260,33 @@ describe("blueprint breakpoints", () => {
         expect(ran).toEqual(["n1"]);
     });
 
+    it("cancelling the stopped execution leaves the session able to run again", async () => {
+        // The gate every other execution parks on belongs to the session, not to the frame that
+        // opened it. Cancelling the paused frame used to remove the frame and leave the gate held,
+        // which read as "running" while nothing could run and no button could reopen it.
+        const session = new BlueprintDebugSession();
+        session.setBreakpoints([breakpoint("n2")]);
+        const controller = new AbortController();
+        const cancelled = run(session, controller.signal);
+        await settle();
+        expect(session.getSnapshot().status).toBe("paused");
+
+        controller.abort();
+        await expect(cancelled).rejects.toSatisfy(isBlueprintGraphExecutionCancelledError);
+        expect(session.getSnapshot().status).toBe("running");
+
+        // A second execution must still be stoppable and resumable, rather than parking forever.
+        ran.length = 0;
+        const done = run(session);
+        await settle();
+        expect(ran).toEqual(["n1"]);
+        expect(session.getSnapshot().status).toBe("paused");
+
+        session.resume();
+        await done;
+        expect(ran).toEqual(["n1", "n2", "sub1", "sub2", "n3"]);
+    });
+
     it("disposing releases whatever it had stopped", async () => {
         const session = new BlueprintDebugSession();
         session.setBreakpoints([breakpoint("n2")]);

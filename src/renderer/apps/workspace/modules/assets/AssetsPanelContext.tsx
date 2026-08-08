@@ -58,7 +58,8 @@ interface AssetsPanelContextType {
 
     /** True when the panel uses the compact toolbar (e.g. bottom dock). Icon view can merge group navigation there. */
     compactToolbar: boolean;
-    setAssetsIconToolbarCenter: (state: AssetsIconViewToolbarCenter | null) => void;
+    /** Takes an updater as well, so a view can leave the breadcrumb alone when nothing about it moved. */
+    setAssetsIconToolbarCenter: React.Dispatch<React.SetStateAction<AssetsIconViewToolbarCenter | null>>;
 
     /**
      * Assets that will not play as they are, keyed by asset id.

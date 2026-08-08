@@ -28,11 +28,22 @@ describe("searchActionCommands", () => {
         expect(ids("transform")[0]).toBe("transform");
     });
 
-    it("finds the renamed declarations by their new tokens, and by the old ones kept as aliases", () => {
-        expect(ids("save")[0]).toBe("declareVar");
-        expect(ids("global")[0]).toBe("declarePersis");
-        expect(ids("var")[0]).toBe("declareVar");
-        expect(ids("persis")[0]).toBe("declarePersis");
+    it("finds the one surviving declaration by its token and its alias", () => {
+        expect(ids("local")[0]).toBe("declareLocal");
+        expect(ids("scenevar")[0]).toBe("declareLocal");
+    });
+
+    /**
+     * `/save` and `/global` were retired: a saved or persistent variable is a project-level
+     * definition and is declared in the variables panel, not as a row in one story. The palette must
+     * not keep offering a way to make one - and in particular must not answer these queries with
+     * `/local`, which declares a variable of a different scope that the author did not ask for.
+     */
+    it("offers nothing for the retired project-scope declarations", () => {
+        expect(COMMANDS.map(command => command.id).filter(id => id.startsWith("declare"))).toEqual(["declareLocal"]);
+        for (const query of ["save", "global", "savedvar", "persis"]) {
+            expect(ids(query)).not.toContain("declareLocal");
+        }
     });
 
     it("ranks an exact token above a command that merely has it as a prefix", () => {

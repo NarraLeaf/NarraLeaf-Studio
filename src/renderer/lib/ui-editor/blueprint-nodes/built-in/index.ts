@@ -21,6 +21,7 @@ import { localizationBlueprintNodes } from "./localizationNodes";
 import { voiceBlueprintNodes } from "./voiceNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
+import { networkBlueprintNodes } from "./networkNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { soundBlueprintNodes } from "./soundNodes";
@@ -49,6 +50,7 @@ export { localizationBlueprintNodes } from "./localizationNodes";
 export { voiceBlueprintNodes } from "./voiceNodes";
 export { localVariableBlueprintNodes } from "./localVariableNodes";
 export { mathBlueprintNodes } from "./mathNodes";
+export { networkBlueprintNodes } from "./networkNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
 export { visitedBlueprintNodes } from "./visitedNodes";
@@ -79,6 +81,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...localizationBlueprintNodes,
     ...voiceBlueprintNodes,
     ...soundBlueprintNodes,
+    ...networkBlueprintNodes,
     ...persistentVariableBlueprintNodes,
     ...storyVariableBlueprintNodes,
     ...mathBlueprintNodes,

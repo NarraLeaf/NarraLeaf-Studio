@@ -2,6 +2,7 @@ import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/u
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
@@ -708,6 +709,19 @@ export interface RendererPreloadedInterface {
         getValue(projectRef: BlueprintPersistenceProjectRef, key: string): Promise<RequestStatus<{ value: unknown }>>;
         setValue(projectRef: BlueprintPersistenceProjectRef, key: string, value: unknown): Promise<RequestStatus<void>>;
         removeValue(projectRef: BlueprintPersistenceProjectRef, key: string): Promise<RequestStatus<void>>;
+    };
+
+    blueprintNetwork: {
+        /**
+         * One Fetch node request, issued by the main process for a Dev Mode preview.
+         *
+         * `projectPath` decides whose Allow HTTP setting applies; the handler reads it off disk
+         * rather than taking the renderer's word for it.
+         */
+        fetch(
+            projectPath: string,
+            request: BlueprintNetworkFetchRequest,
+        ): Promise<RequestStatus<{ result: BlueprintNetworkFetchResult }>>;
     };
 
     pluginPermissions: {

@@ -14,11 +14,8 @@ import {
     type BlueprintBreakpointTarget,
 } from "@/lib/ui-editor/blueprint-runtime/useBlueprintBreakpoints";
 import { listEffectiveBlueprintVariables } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
-import {
-    listDebuggableBlueprints,
-    resolveBlueprintGraphIr,
-    type DebuggableBlueprint,
-} from "./blueprintDebuggerModel";
+import { listDevModeBlueprints, type DebuggableBlueprint } from "../blueprintDebugPanelModel";
+import { resolveBlueprintGraphIr } from "./blueprintDebuggerModel";
 
 const RUNNING: BlueprintDebugSnapshot = { status: "running", stack: [], pausePending: false };
 
@@ -81,7 +78,10 @@ export function useBlueprintDebugger(input: {
         session?.setBreakpoints(breakpoints);
     }, [session, breakpoints]);
 
-    const blueprints = useMemo(() => listDebuggableBlueprints(blueprintDocument), [blueprintDocument]);
+    const blueprints = useMemo(
+        () => listDevModeBlueprints(blueprintDocument?.blueprints ?? {}, { purpose: "breakpoints" }),
+        [blueprintDocument],
+    );
 
     const [picked, setPicked] = useState<{ blueprintId: string | null; graphId: string | null }>({
         blueprintId: null,
