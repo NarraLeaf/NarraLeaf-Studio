@@ -235,6 +235,10 @@ import {
     BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_SWITCH_GET_CHECKED,
+    BLUEPRINT_NODE_TYPE_SWITCH_TOGGLE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_GET_CHECKED,
+    BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE,
     BLUEPRINT_NODE_TYPE_TEXT_INPUT_GET_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE,
     BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES,
@@ -2063,6 +2067,55 @@ function resolveSliderNodeOutput(
     return undefined;
 }
 
+function resolveSwitchNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    type: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (portId !== "checked") {
+        return undefined;
+    }
+    // Toggle is an exec node: the value on its `checked` pin is the post-toggle state its
+    // `execute()` published into the per-execution output cache, not something re-read from
+    // the widget. Without this branch the pin resolves to `undefined` with no error at all.
+    if (type === BLUEPRINT_NODE_TYPE_SWITCH_TOGGLE || type === BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    const isElementTarget = type === BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_GET_CHECKED;
+    if (!isElementTarget && type !== BLUEPRINT_NODE_TYPE_SWITCH_GET_CHECKED) {
+        return undefined;
+    }
+    const ref = isElementTarget
+        ? sameSurfaceElementRef(
+            normalizeBlueprintElementRefValue(resolveInput(graph, nodeId, "switch", params, blueprintLocals, depth, runtime)),
+            runtime,
+        )
+        : undefined;
+    if (isElementTarget && ref?.elementType !== "nl.switch") {
+        return undefined;
+    }
+    const elementId = isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId;
+    const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
+    if (!elementId || !api) {
+        return undefined;
+    }
+    let props: ReturnType<typeof api.widget.getSwitchProperties>;
+    try {
+        props = api.widget.getSwitchProperties(elementId);
+    } catch {
+        return undefined;
+    }
+    if (ref) {
+        trackElementDependency(runtime, ref, "props.checked");
+    }
+    return props.checked;
+}
+
 function resolveListNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -2125,6 +2178,7 @@ const WIDGET_PROPERTY_ELEMENT_TYPES: Record<string, string> = {
     image: "nl.image",
     button: "nl.button",
     slider: "nl.slider",
+    switch: "nl.switch",
     list: "nl.list",
     frame: "nl.frame",
     frameWidget: "nl.frame",
@@ -2741,6 +2795,19 @@ function resolveSelfOutput(
     );
     if (sliderOutput !== undefined) {
         return sliderOutput;
+    }
+    const switchOutput = resolveSwitchNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    if (switchOutput !== undefined) {
+        return switchOutput;
     }
     const textInputOutput = resolveTextInputNodeOutput(
         graph,
