@@ -1,11 +1,12 @@
 /**
- * Project -> Settings: what the project is allowed to reach, what it costs to download, and how it
- * sits on a phone.
+ * Project -> Settings: what the project is allowed to reach, who it says it came from, what it costs
+ * to download, and how it sits on a phone.
  *
- * Three parts under three headings rather than one list of eight switches. The list was in no
- * particular order and mixed the two questions an author actually asks here: "can this game talk to
- * the network and is what it ships readable" and "how big is the download". Nothing here changes
- * what the player sees, which is what keeps it off the Game page.
+ * Four parts under four headings rather than one list of switches. The list was in no particular
+ * order and mixed the two questions an author actually asks here: "can this game talk to the network
+ * and is what it ships readable" and "how big is the download". Signing joined them because it
+ * answers the same class of question - it changes what leaves the machine, not what the player meets,
+ * which is what keeps all of this off the Game page.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -15,6 +16,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { SettingRow, SettingShell } from "./settingRows";
 import { NumberField } from "./NumberField";
+import { ProjectSigningSection } from "./ProjectSigningSection";
 import { SettingsGroup } from "../components/SettingsGroup";
 import {
     MOBILE_ORIENTATIONS,
@@ -32,7 +34,8 @@ import {
 } from "@/lib/workspace/project/configuration";
 import type { ProjectSectionProps } from "./types";
 
-export function ProjectSettingsSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
+export function ProjectSettingsSection(props: ProjectSectionProps) {
+    const { projectService, uiService, config, onConfigChange } = props;
     const { t } = useTranslation();
     // `SettingRow` reads the freeze itself; the orientation dropdown sits in a bare `SettingShell`, so
     // it needs its own.
@@ -159,6 +162,12 @@ export function ProjectSettingsSection({ projectService, uiService, config, onCo
                     onChange={value => void setEncryptAssets(value)}
                 />
             </SettingsGroup>
+
+            {/* Next to Security rather than after Optimization: both are about whether what ships can
+                be trusted, and the two questions read as one block. It renders its own SettingsGroup,
+                so it is a direct child of this grid - which is what the hairline between parts keys
+                off (see SettingsGroup). */}
+            <ProjectSigningSection {...props} />
 
             <SettingsGroup
                 title={t("project.group.optimization")}

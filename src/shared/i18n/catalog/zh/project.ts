@@ -22,7 +22,7 @@ export const project = {
         },
         settings: {
             title: "设置",
-            description: "安全、优化与移动端方向",
+            description: "安全、签名、优化与移动端",
         },
     },
     // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
@@ -34,6 +34,7 @@ export const project = {
         playerDefaults: "玩家默认值",
         audioTracks: "音频轨道",
         security: "安全",
+        signing: "签名",
         optimization: "优化",
         mobile: "移动端",
     },
@@ -53,6 +54,9 @@ export const project = {
         authorLabel: "作者",
         authorPlaceholder: "作者、组织或邮箱",
         websiteLabel: "网站",
+        // 会写进打包后应用的文件属性与「关于」框。改在这里，构建对话框只回读不再询问。
+        copyrightLabel: "版权",
+        copyrightPlaceholder: "© 你的工作室",
         descriptionPlaceholder: "描述你的项目…",
         required: "必填",
     },
@@ -208,6 +212,9 @@ export const project = {
         encryptAssetsTitle: "加密资源",
         encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
+        // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
+        // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
+        signingDescription: "为每个平台指定签名凭据。证书与密码只留在本机，工程里存的只有用哪一份",
         webLosslessImagesTitle: "图像转为 WebP",
         webLosslessImagesDescription: "在体积更小时，将导出的图像重编码为无损 WebP",
         webLosslessImagesHint: "每次转换都会与原图逐像素比对，解码结果不一致即丢弃。Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
