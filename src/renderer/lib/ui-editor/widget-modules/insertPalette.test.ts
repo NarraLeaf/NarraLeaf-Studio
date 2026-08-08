@@ -19,6 +19,7 @@ const DEFAULT_MODULE_TYPES = [
     "nl.image",
     "nl.button",
     "nl.textInput",
+    "nl.switch",
     "nl.video",
     "nl.puppet",
     "nl.slider",
@@ -66,6 +67,7 @@ describe("insert palette", () => {
             "nl.image",
             "nl.button",
             "nl.textInput",
+            "nl.switch",
             "nl.video",
             "nl.puppet",
             "nl.slider",
@@ -73,6 +75,7 @@ describe("insert palette", () => {
             "nl.frame",
         ]);
         expect(entries.map(entry => entry.placement)).toEqual([
+            "primary",
             "primary",
             "primary",
             "primary",

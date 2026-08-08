@@ -26,6 +26,23 @@ export function isValidLocaleCode(code: unknown): code is LocaleCode {
     return typeof code === "string" && LOCALE_CODE_PATTERN.test(code);
 }
 
+/**
+ * A language's name in itself ("ja" → "日本語"), falling back to the code.
+ *
+ * The autonym and not the translated name, because this is what players see in the language
+ * picker: somebody looking for their own language is looking for the word they call it by, not for
+ * whatever the author's language calls it. Shared rather than copied per panel - three surfaces
+ * offer languages (localization, voice, the new-project wizard) and they must agree.
+ */
+export function localeAutonym(code: LocaleCode): string {
+    try {
+        const name = new Intl.DisplayNames([code], { type: "language" }).of(code);
+        return name && name !== code ? name : code;
+    } catch {
+        return code;
+    }
+}
+
 export type LocalizationLocaleEntry = {
     code: LocaleCode;
     /** Author-facing autonym shown to players (e.g. "日本語", never "Japanese"). */

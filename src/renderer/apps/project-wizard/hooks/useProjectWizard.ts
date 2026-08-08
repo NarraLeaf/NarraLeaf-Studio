@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getInterface } from "@/lib/app/bridge";
-import { translate } from "@/lib/i18n";
+import { translate, useTranslation } from "@/lib/i18n";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
 import { CloneFailure, CloneStatus, ImportFailure, ImportStatus, ProjectData, ProjectFlow, WizardStep, ValidationErrors, DirectoryValidationResult } from "../types";
-import { defaultProjectData, projectTemplates, WIZARD_FLOW_STEPS } from "../constants";
+import { defaultProjectData, WIZARD_FLOW_STEPS } from "../constants";
 import { ValidationService } from "../services/validationService";
 import { DirectoryService } from "../services/directoryService";
 import { ProjectService } from "../services/projectService";
@@ -21,14 +21,15 @@ import { join } from "@shared/utils/path";
  * the clone flow gets a Next button gated on errors from a page it never visits.
  */
 function ownsLocation(step: WizardStep): boolean {
-    return step === "settings" || step === "source";
+    return step === "project" || step === "source";
 }
 
 /**
  * Custom hook for managing project wizard state and logic
  */
 export function useProjectWizard() {
-    const [currentStep, setCurrentStep] = useState<WizardStep>("template");
+    const { locale } = useTranslation();
+    const [currentStep, setCurrentStep] = useState<WizardStep>("origin");
     const [appIdManuallyEdited, setAppIdManuallyEdited] = useState(false);
     const [platformInfo, setPlatformInfo] = useState<any>(null);
     const [defaultLocation, setDefaultLocation] = useState<string>("");
@@ -48,12 +49,26 @@ export function useProjectWizard() {
 
     const [projectData, setProjectData] = useState<ProjectData>(defaultProjectData);
 
-    /** Which wizard the first-page card started. `create` until one is picked. */
-    const flow: ProjectFlow = useMemo(
-        () => projectTemplates.find(template => template.id === projectData.template)?.flow ?? "create",
-        [projectData.template],
-    );
+    /**
+     * Which of the three wizards the author is in.
+     *
+     * State of its own rather than derived from the chosen template, which is what it used to be:
+     * the first page now asks the two questions separately, and a template belongs only to the
+     * flow that makes one here.
+     */
+    const [flow, setFlow] = useState<ProjectFlow>("create");
     const steps = WIZARD_FLOW_STEPS[flow];
+
+    /**
+     * The story is written in the language the author is reading this in, until they say otherwise.
+     *
+     * Only ever fills a blank: switching the Studio language later must not overwrite a language
+     * they picked for the game, which is a different question that happens to have the same answer
+     * most of the time.
+     */
+    useEffect(() => {
+        setProjectData(prev => (prev.sourceLocale ? prev : { ...prev, sourceLocale: locale }));
+    }, [locale]);
 
     /** The server and repository name the address names, or null while it is not an address yet. */
     const remote = useMemo(() => parseVcsRemoteUrl(projectData.remoteUrl), [projectData.remoteUrl]);
@@ -77,16 +92,21 @@ export function useProjectWizard() {
      * Keep the location field pointed somewhere sensible for the flow the author is in, and check
      * it without waiting for a blur that may never come.
      *
-     * The two flows want different suggestions from the same default folder. A project being
-     * created goes IN it. **A clone cannot**: the destination has to be empty, and on any machine
-     * that has ever made a project the default folder is not - so the clone flow's suggestion is a
-     * new subfolder named after the repository, which is both the only answer that works and the
-     * one the author would have typed. Until an address parses there is nothing to name it after,
-     * and the field stays empty rather than holding a path that would be refused.
+     * **The default folder is a container of projects, and a project never goes directly in it.**
+     * It has to be empty to be written into, so on the second project ever it is not - which is
+     * exactly what the create flow used to suggest, landing every author after their first on a
+     * page whose destination field was already refusing before they had touched it. And on the
+     * first, the project WAS the container. So both flows suggest a new subfolder of it: named
+     * after the app id for a project being created, and after the repository for one being copied
+     * down, which is the same name the server knows it by.
      *
-     * Both are validated here rather than on blur, because in the clone flow nobody necessarily
-     * ever focuses this field - and an occupied folder has to be said on this page, not by the
-     * backend after the button on the last page has started a transfer.
+     * Until there is a name to derive one from there is nothing to suggest, and the field holds
+     * the bare container unvalidated rather than a path that would be refused - the author cannot
+     * leave this page without a name anyway, so that state is never one they can act on.
+     *
+     * Validated here rather than on blur, because in the clone flow nobody necessarily ever
+     * focuses this field - and an occupied folder has to be said on this page, not by the backend
+     * after the button on the last page has started a transfer.
      *
      * **Everything stops the moment the author edits the field themselves.** Past that point the
      * path is theirs; moving one that somebody has edited is worse than leaving a stale
@@ -97,23 +117,24 @@ export function useProjectWizard() {
             return;
         }
 
-        const suggested = flow === "clone"
-            ? (remote ? join(defaultLocation, remote.name) : "")
-            : defaultLocation;
+        const folderName = flow === "clone" ? remote?.name : projectData.appId.trim();
+        const suggested = folderName
+            ? join(defaultLocation, folderName)
+            : (flow === "clone" ? "" : defaultLocation);
 
         setProjectData(prev => (prev.location === suggested ? prev : { ...prev, location: suggested }));
         setValidationErrors(prev => ({ ...prev, location: undefined, directory: undefined }));
         setDirectoryValidation(null);
         setLocationInputDirty(false);
 
-        if (!suggested) {
+        if (!folderName) {
             return;
         }
-        // Debounced: the clone flow's suggestion changes on every keystroke of the repository
-        // name, and a mid-word path is not worth an IPC round trip.
+        // Debounced: the suggestion changes on every keystroke of the project name or the
+        // repository name, and a mid-word path is not worth an IPC round trip.
         const timer = setTimeout(() => void validateProjectDirectory(suggested), 200);
         return () => clearTimeout(timer);
-    }, [flow, remote, defaultLocation, locationManuallyEdited]);
+    }, [flow, remote, defaultLocation, locationManuallyEdited, projectData.appId]);
 
     /**
      * Update project name and auto-generate app ID if not manually edited
@@ -335,8 +356,8 @@ export function useProjectWizard() {
      * Check if current step is valid
      */
     const isStepValid = useCallback(() => {
-        return ValidationService.isStepValid(currentStep, projectData);
-    }, [currentStep, projectData]);
+        return ValidationService.isStepValid(currentStep, projectData, flow);
+    }, [currentStep, projectData, flow]);
 
     /**
      * Check if can proceed to next step
@@ -469,6 +490,7 @@ export function useProjectWizard() {
         appIdManuallyEdited,
 
         // Actions
+        setFlow,
         updateProjectName,
         updateAppId,
         updateProjectData,

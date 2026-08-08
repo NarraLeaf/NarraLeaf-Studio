@@ -325,6 +325,39 @@ const TEXT_INPUT_EVENTS: readonly WidgetLogicEventDef[] = [
 ];
 
 /**
+ * The switch is a button-family control, so it gets the whole displayable set (hover, focus, right
+ * click) on top of its three state events - a settings-page toggle is something the mouse touches.
+ */
+const SWITCH_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    FLUSH_EVENT,
+    ...SURFACE_LIFECYCLE_EVENTS,
+    UNMOUNT_EVENT,
+    {
+        id: "changed",
+        displayName: "Changed",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.switchChanged"],
+    },
+    {
+        id: "turnedOn",
+        displayName: "Turned on",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.switchTurnedOn"],
+    },
+    {
+        id: "turnedOff",
+        displayName: "Turned off",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.switchTurnedOff"],
+    },
+    // DISPLAYABLE_EVENTS already contains the keyboard pair - do not spread KEYBOARD_EVENTS again.
+    ...DISPLAYABLE_EVENTS,
+    ...BROADCAST_EVENTS,
+    ...WINDOW_EVENTS,
+];
+
+/**
  * The displayable set plus the three media events. They are `lifecycle`, not `interaction`: the
  * element raises them on its own as the clip advances - nothing the player did causes `ended`.
  */
@@ -733,6 +766,35 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { propPath: "placeholder", displayName: "Placeholder" },
             { propPath: "readOnly", displayName: "Read only" },
             { propPath: "disabled", displayName: "Disabled" },
+        ],
+    },
+    "nl.switch": {
+        supportsPrivateBlueprint: true,
+        blueprintLabel: "Switch logic",
+        events: SWITCH_EVENTS,
+        commands: [
+            ...baseCommands,
+            {
+                id: "setChecked",
+                displayName: "Set checked",
+                capabilityId: "widget.setSwitchProperties",
+                availability: "available",
+            },
+            {
+                id: "toggle",
+                displayName: "Toggle",
+                capabilityId: "widget.setSwitchProperties",
+                availability: "available",
+            },
+        ],
+        readableState: [
+            { id: "checked", displayName: "Checked" },
+            { id: "visible", displayName: "Visible" },
+            { id: "enabled", displayName: "Enabled" },
+        ],
+        writableProps: [
+            { propPath: "checked", displayName: "Checked" },
+            { propPath: "interactionDisabled", displayName: "Interaction disabled" },
         ],
     },
     "nl.frame": {
