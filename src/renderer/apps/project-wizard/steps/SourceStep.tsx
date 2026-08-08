@@ -51,16 +51,11 @@ export function SourceStep({
     const addressInvalid = projectData.remoteUrl.trim() !== "" && !remote;
 
     return (
-        <div className="p-6">
-            <div className="space-y-6">
-                <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-fg">{t("wizard.source.title")}</h2>
-                    <p className="text-sm text-fg-muted">
-                        {t("wizard.source.subtitle")}
-                    </p>
-                </div>
+        <div className="h-full overflow-y-auto p-5">
+            <div className="space-y-4">
+                <p className="text-sm text-fg-muted">{t("wizard.source.subtitle")}</p>
 
-                <div className="grid gap-6 max-w-2xl">
+                <div className="grid max-w-xl gap-4">
                     <Card>
                         <CardHeader>
                             <CardTitle>{t("wizard.source.server.title")}</CardTitle>
@@ -120,7 +115,7 @@ export function SourceStep({
                                 <div className="space-y-1">
                                     <div className="relative">
                                         <Input
-                                            placeholder={t("wizard.settings.projectLocationPlaceholder")}
+                                            placeholder={t("wizard.project.locationPlaceholder")}
                                             value={projectData.location}
                                             onChange={(e) => onLocationChange(e.target.value)}
                                             onBlur={onLocationBlur}
@@ -131,15 +126,15 @@ export function SourceStep({
                                             type="button"
                                             onClick={onSelectDirectory}
                                             disabled={isSelectingDirectory || isValidatingDirectory}
-                                            title={t("wizard.settings.browseLocation")}
-                                            aria-label={t("wizard.settings.browseLocation")}
+                                            title={t("wizard.project.browseLocation")}
+                                            aria-label={t("wizard.project.browseLocation")}
                                             className="absolute inset-y-0 right-0 pr-3 flex items-center text-fg-muted hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             <FolderOpen className="w-4 h-4" />
                                         </button>
                                     </div>
                                     {isValidatingDirectory && (
-                                        <p className="text-sm text-fg-muted">{t("wizard.settings.validatingDirectory")}</p>
+                                        <p className="text-sm text-fg-muted">{t("wizard.project.validatingDirectory")}</p>
                                     )}
                                     {directoryValidation && !directoryValidation.exists && !validationErrors.directory && (
                                         <div className="text-xs text-primary mt-1">
