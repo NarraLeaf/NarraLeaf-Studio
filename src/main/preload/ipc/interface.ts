@@ -4,6 +4,7 @@ import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
@@ -537,6 +538,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.blueprintPersistenceSetValue, { projectRef, key, value }) as Promise<RequestStatus<void>>,
         removeValue: (projectRef: BlueprintPersistenceProjectRef, key: string) =>
             ipcClient.invoke(IPCEventType.blueprintPersistenceRemoveValue, { projectRef, key }) as Promise<RequestStatus<void>>,
+    },
+
+    blueprintNetwork: {
+        fetch: (projectPath: string, request: BlueprintNetworkFetchRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintNetworkFetch, { projectPath, request }) as Promise<
+                RequestStatus<{ result: BlueprintNetworkFetchResult }>
+            >,
     },
 
     pluginPermissions: {

@@ -59,6 +59,7 @@ export const HELP_TOPIC_IDS = [
     "uiComponents",
     "blueprints",
     "uiBindings",
+    "networkNodes",
     "lint",
     "tests",
     "dashboard",
@@ -259,6 +260,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "interface",
         related: ["blueprints", "uiSurfaces", "storyVariables"],
     },
+    {
+        id: "networkNodes",
+        section: "interface",
+        related: ["blueprints", "assetProtection", "lint"],
+    },
 
     // --- Checks ---------------------------------------------------------------
     {
@@ -340,7 +346,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "assetProtection",
         section: "ship",
-        related: ["build", "webOptimization", "plugins"],
+        related: ["build", "webOptimization", "plugins", "networkNodes"],
     },
     {
         id: "webOptimization",
