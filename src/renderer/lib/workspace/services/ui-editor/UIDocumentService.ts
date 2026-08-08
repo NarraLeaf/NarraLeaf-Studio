@@ -111,6 +111,11 @@ import {
 } from "@shared/constants/ui-editor";
 import { isListLikeWidgetType, type UIListElementExtra } from "@shared/types/ui-editor/list";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
+import {
+    UI_SWITCH_ELEMENT_TYPE,
+    getUISwitchChildSlot,
+    type UISwitchElementExtra,
+} from "@shared/types/ui-editor/switch";
 import { normalizeUIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import {
     DEFAULT_UI_STAGE_SLOT_ID,
@@ -1340,6 +1345,30 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     child.extra = {
                         ...(child.extra ?? {}),
                         sliderSlot,
+                    };
+                }
+            }
+            if (element.type === UI_SWITCH_ELEMENT_TYPE) {
+                const props = (element.props ?? {}) as Record<string, unknown>;
+                const trackElementId = typeof props.trackElementId === "string" ? props.trackElementId : null;
+                const thumbElementId = typeof props.thumbElementId === "string" ? props.thumbElementId : null;
+                for (const childId of element.childrenIds) {
+                    const child = document.elements[childId];
+                    if (!child || getUISwitchChildSlot(child.extra) != null) {
+                        continue;
+                    }
+                    const switchSlot =
+                        childId === thumbElementId
+                            ? "thumb"
+                            : childId === trackElementId
+                              ? "track"
+                              : null;
+                    if (!switchSlot) {
+                        continue;
+                    }
+                    child.extra = {
+                        ...(child.extra ?? {}),
+                        switchSlot,
                     };
                 }
             }
@@ -3207,6 +3236,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                             ...(defaultElement.extra ?? {}),
                             sliderSlot: getUISliderChildSlot(defaultElement.extra) ?? "track",
                         } satisfies UISliderElementExtra)
+                    : parent.type === UI_SWITCH_ELEMENT_TYPE
+                      ? ({
+                            ...(defaultElement.extra ?? {}),
+                            switchSlot: getUISwitchChildSlot(defaultElement.extra) ?? "track",
+                        } satisfies UISwitchElementExtra)
                     : defaultElement.extra,
         };
         const defaultChildrenResult = definition.createDefaultChildElements?.({

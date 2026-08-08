@@ -367,3 +367,15 @@ export function useWorkspace() {
     }
     return ctx;
 }
+
+/**
+ * The same read for code that legitimately runs both inside and outside a workspace window.
+ *
+ * The shared `@/lib/ui-editor` tree renders in the editor (provider present) and in the Dev Mode
+ * window (no provider), and "no workspace" is an ordinary answer there, not a mistake. Catching
+ * {@link useWorkspace}'s throw was the previous way to ask - which built and threw an Error, stack
+ * capture and all, once per element per render: 1424 of them in a single Dev Mode page switch.
+ */
+export function useOptionalWorkspace() {
+    return useContext(WorkspaceContext) ?? null;
+}

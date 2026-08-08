@@ -47,7 +47,12 @@ import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/run
 import { blockIdForActionId, resolveSceneIdForBlock } from "./storyRuntimeDebugModel";
 import { RuntimeIssueStrip } from "./RuntimeIssueStrip";
 import { RuntimeIssuesPanel } from "./RuntimeIssuesPanel";
-import { appendRuntimeIssue, locateRuntimeIssue, type LocatedRuntimeIssue } from "./runtimeIssueModel";
+import {
+    appendRuntimeIssue,
+    locateRuntimeIssue,
+    runtimeIssueKey,
+    type LocatedRuntimeIssue,
+} from "./runtimeIssueModel";
 import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
 import { isMacPlatform } from "@/lib/app/platform";
 import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
@@ -87,6 +92,9 @@ const DEBUG_FAB_TOGGLE_BINDING = "mod+shift+d";
 
 /** Fast-forward to the next choice — shown beside its menu item for the same reason. */
 const FAST_FORWARD_BINDING = "mod+arrowright";
+
+/** Nothing acknowledged yet. One frozen instance so a reset is not a new object every time. */
+const NO_ACKNOWLEDGED_KEYS: ReadonlySet<string> = new Set();
 
 /** Width the debug drawer takes off the stage while it is open. */
 const DEBUG_PANEL_WIDTH = 380;
@@ -786,6 +794,20 @@ export function DevModeContent(props: DevModeContentProps) {
      * the previous revision is worse than no line at all.
      */
     const [runtimeIssues, setRuntimeIssues] = useState<readonly LocatedRuntimeIssue[]>([]);
+    /**
+     * What the strip has already announced.
+     *
+     * Taking the strip down is an acknowledgement and NOT a delete — the Issues panel keeps every
+     * entry, and clearing the report is a deliberate act performed there. So the two need separate
+     * state, and this is the half the strip owns.
+     *
+     * Held as problem KEYS rather than entry ids because a row inside a loop reports the same
+     * failure on every pass, each report being a new entry (`appendRuntimeIssue` collapses them by
+     * exactly this key). Acknowledging by entry would put the strip back a frame after it was
+     * dismissed, for the whole time the loop runs.
+     */
+    const [acknowledgedKeys, setAcknowledgedKeys] = useState<ReadonlySet<string>>(NO_ACKNOWLEDGED_KEYS);
+    const [acknowledgedSessionError, setAcknowledgedSessionError] = useState<string | null>(null);
     // A plain counter, not a timestamp: two issues reported inside the same millisecond would share
     // a key, and React would treat the second as the first.
     const issueSeqRef = useRef(0);
@@ -802,11 +824,40 @@ export function DevModeContent(props: DevModeContentProps) {
     }, []);
     useEffect(() => {
         setRuntimeIssues([]);
+        setAcknowledgedKeys(NO_ACKNOWLEDGED_KEYS);
+        setAcknowledgedSessionError(null);
     }, [bundle?.bundleId, bundle?.revision]);
     const dismissIssue = useCallback((id: string) => {
         setRuntimeIssues(previous => previous.filter(issue => issue.id !== id));
     }, []);
     const dismissAllIssues = useCallback(() => setRuntimeIssues([]), []);
+
+    // Acknowledgement follows the list down: a problem cleared from the panel is no longer
+    // acknowledged, so the strip speaks up again if it comes back. Without this, an entry dismissed
+    // by hand would be silently muted for the rest of the session.
+    useEffect(() => {
+        setAcknowledgedKeys(previous => {
+            if (previous.size === 0) {
+                return previous;
+            }
+            const live = new Set(runtimeIssues.map(runtimeIssueKey));
+            const next = new Set([...previous].filter(key => live.has(key)));
+            return next.size === previous.size ? previous : next;
+        });
+    }, [runtimeIssues]);
+
+    /** The failures the strip still has to announce, and the session error if it has not seen it. */
+    const pendingIssues = useMemo(
+        () => runtimeIssues.filter(issue => !acknowledgedKeys.has(runtimeIssueKey(issue))),
+        [runtimeIssues, acknowledgedKeys],
+    );
+    const pendingSessionError = sessionError !== null && sessionError !== acknowledgedSessionError
+        ? sessionError
+        : null;
+    const dismissStrip = useCallback(() => {
+        setAcknowledgedKeys(new Set(runtimeIssues.map(runtimeIssueKey)));
+        setAcknowledgedSessionError(sessionError);
+    }, [runtimeIssues, sessionError]);
 
     const resolveStoryAssetUrl = useCallback<GameAppHost["resolveStoryAssetUrl"]>(async (assetId, assetType) => {
         const result = await getInterface().devMode.resolveAssetUrl(assetId, assetType);
@@ -1268,10 +1319,9 @@ export function DevModeContent(props: DevModeContentProps) {
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
                 {/* No session, so no drawer: the strip carries the failure itself here. */}
                 <RuntimeIssueStrip
-                    sessionError={sessionError}
-                    onDismissSessionError={onDismissSessionError}
-                    issues={runtimeIssues}
-                    onDismissAllIssues={dismissAllIssues}
+                    sessionError={pendingSessionError}
+                    issues={pendingIssues}
+                    onDismiss={dismissStrip}
                     onOpenIssues={null}
                 />
                 <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
@@ -1285,10 +1335,9 @@ export function DevModeContent(props: DevModeContentProps) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
                 <RuntimeIssueStrip
-                    sessionError={sessionError}
-                    onDismissSessionError={onDismissSessionError}
-                    issues={runtimeIssues}
-                    onDismissAllIssues={dismissAllIssues}
+                    sessionError={pendingSessionError}
+                    issues={pendingIssues}
+                    onDismiss={dismissStrip}
                     onOpenIssues={null}
                 />
                 <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
@@ -1303,10 +1352,9 @@ export function DevModeContent(props: DevModeContentProps) {
             {/* One line, never more: what went wrong is read in the Issues panel this opens, which
                 takes width from the stage instead of height off the top of it. */}
             <RuntimeIssueStrip
-                sessionError={sessionError}
-                onDismissSessionError={onDismissSessionError}
-                issues={runtimeIssues}
-                onDismissAllIssues={dismissAllIssues}
+                sessionError={pendingSessionError}
+                issues={pendingIssues}
+                onDismiss={dismissStrip}
                 onOpenIssues={openIssues}
             />
             {/* Stage and debug drawer are siblings in one row: GameApp renders the frame and the

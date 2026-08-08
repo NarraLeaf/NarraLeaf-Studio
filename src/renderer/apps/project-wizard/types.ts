@@ -120,6 +120,13 @@ export interface ProjectData {
      * sends, and asking again would let the author give answers that the clone then overwrites.
      */
     remoteUrl: string;
+    /**
+     * The `.nlspkg` an import unpacks, as the file picker returned it.
+     *
+     * Only the `import` flow reads it. Held here rather than in the page so it survives stepping
+     * back to the first page and returning, the same way the clone flow's address does.
+     */
+    packagePath: string;
 }
 
 /**
@@ -171,12 +178,12 @@ export type CloneFailure =
 /**
  * How an import is going.
  *
- * `picking` is not cosmetic: the whole of an import happens inside one main-process call that puts
- * two native dialogs on screen, so for most of its life this page is waiting on the author rather
- * than on work. Saying "unpacking" through that would be a lie, and a spinner with no explanation
- * over a dialog the author is already looking at is noise.
+ * `unpacking` says what it says, which it could not before: the whole of an import used to happen
+ * inside one call that put two native dialogs on screen, so for most of its life the page was
+ * waiting on the author rather than on work, and a spinner there was a lie. Both answers are now
+ * collected before the button, so everything after it is real work.
  */
-export type ImportStatus = "idle" | "picking";
+export type ImportStatus = "idle" | "unpacking";
 
 /**
  * An import that did not end with an openable project.

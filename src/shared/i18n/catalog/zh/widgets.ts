@@ -120,6 +120,18 @@ export const widgets = {
         handle: "手柄",
         repairParts: "修复部件",
     },
+    switch: {
+        title: "开关",
+        state: "状态",
+        defaultChecked: "默认开启",
+        defaultCheckedHint: "切换画布预览的初始状态，不是玩家的运行时状态",
+        interactionDisabled: "禁用交互",
+        parts: "部件",
+        track: "轨道",
+        thumb: "滑钮",
+        repairParts: "修复部件",
+        recomputeTravel: "按当前尺寸重算行程",
+    },
     textInput: {
         title: "文本输入框",
         value: "值",
@@ -300,6 +312,7 @@ export const widgets = {
     },
     blueprintValue: {
         sliderTitle: "滑块值",
+        switchCheckedTitle: "开关开启状态",
         textInputValueTitle: "文本输入框值",
         pagePropsTitle: "页面参数值",
         buttonTextTitle: "按钮文本值",
@@ -358,6 +371,12 @@ export const widgets = {
             name: "滑块",
             track: "滑块轨道",
             handle: "滑块手柄",
+        },
+        switch: {
+            name: "开关",
+            track: "开关轨道",
+            thumb: "开关滑钮",
+            onVariant: "开启",
         },
         text: {
             name: "文本",

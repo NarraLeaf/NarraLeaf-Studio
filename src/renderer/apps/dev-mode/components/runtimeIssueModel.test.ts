@@ -9,6 +9,7 @@ import {
     countRuntimeIssues,
     locateRuntimeIssue,
     locateStoryBlock,
+    runtimeIssueKey,
     type LocatedRuntimeIssue,
 } from "./runtimeIssueModel";
 
@@ -228,6 +229,13 @@ describe("appendRuntimeIssue", () => {
     it("puts the newest first", () => {
         const list = appendRuntimeIssue(appendRuntimeIssue([], issue("1", "first")), issue("2", "second"));
         expect(list.map(entry => entry.id)).toEqual(["2", "1"]);
+    });
+
+    it("keys a repeat the same as the report it repeats, and two rows apart", () => {
+        // What the strip's acknowledgement rests on: a looping row reports the same failure as a
+        // NEW entry every pass, so a dismissal keyed on entry ids would come undone immediately.
+        expect(runtimeIssueKey(issue("1", "boom", "row-1"))).toBe(runtimeIssueKey(issue("2", "boom", "row-1")));
+        expect(runtimeIssueKey(issue("1", "boom", "row-1"))).not.toBe(runtimeIssueKey(issue("2", "boom", "row-2")));
     });
 
     it("collapses a repeat instead of stacking it, and moves it back to the front", () => {

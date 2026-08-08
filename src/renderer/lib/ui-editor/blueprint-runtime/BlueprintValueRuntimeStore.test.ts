@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
-import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
+import {
+    UI_DOCUMENT_SCHEMA_VERSION,
+    type UIDocument,
+    type UIElementValueBindingValueType,
+    type UISurface,
+} from "@shared/types/ui-editor/document";
+import { normalizeSwitchProps, UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
@@ -9,6 +15,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
@@ -42,6 +49,17 @@ function literalInitGraph(nodeType: string, value: unknown): BlueprintGraphIr {
             { from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } },
             { from: { nodeId: "value", port: "value" }, to: { nodeId: "ret", port: "value" } },
         ],
+    };
+}
+
+/** Return Value reached with nothing wired into it: the graph returns, and returns nothing. */
+function emptyReturnInitGraph(): BlueprintGraphIr {
+    return {
+        nodes: {
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
+            ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
+        },
+        edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } }],
     };
 }
 
@@ -117,7 +135,7 @@ function singleValueBlueprintDocument(input: {
     blueprintId: string;
     elementId: string;
     propPath: string;
-    valueType: "string" | "json" | "float";
+    valueType: UIElementValueBindingValueType;
     graph: BlueprintGraphIr;
 }): BlueprintDocument {
     const ownerKey = `widgetValue:surface:${input.elementId}:${input.propPath}`;
@@ -150,6 +168,74 @@ function singleValueBlueprintDocument(input: {
                 initializedFrontend: "visual",
             },
         },
+    };
+}
+
+function switchDocument(authoredChecked = false): { document: UIDocument; surface: UISurface } {
+    const surface: UISurface = {
+        id: "surface",
+        name: "Surface",
+        host: "app",
+        kind: "appSurface",
+        designSize: { width: 320, height: 180 },
+        rootElementId: "root",
+    };
+    return {
+        surface,
+        document: {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [surface],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["switch"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                switch: {
+                    id: "switch",
+                    type: UI_SWITCH_ELEMENT_TYPE,
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 52, height: 28 },
+                    props: { checked: authoredChecked, interactionDisabled: false },
+                    valueBindings: {
+                        checked: { kind: "blueprintValue", blueprintId: "bp-switch", valueType: "boolean" },
+                    },
+                },
+            },
+        },
+    };
+}
+
+async function resolveSwitchChecked(input: {
+    document: UIDocument;
+    surface: UISurface;
+    graph: BlueprintGraphIr;
+}): Promise<{ resolved: unknown; merged: unknown }> {
+    const store = new BlueprintValueRuntimeStore(() => undefined);
+    store.sync({
+        document: input.document,
+        surface: input.surface,
+        persistentVariables: {},
+        blueprintDocument: singleValueBlueprintDocument({
+            blueprintId: "bp-switch",
+            elementId: "switch",
+            propPath: "checked",
+            valueType: "boolean",
+            graph: input.graph,
+        }),
+        hostAdapter: { host: "app" },
+    });
+    await waitFor(() => {
+        expect(store.getResolvedValue("surface", "switch", "checked", "bp-switch").hasResolved).toBe(true);
+    });
+    return {
+        resolved: store.getResolvedValue("surface", "switch", "checked", "bp-switch").value,
+        merged: mergeElementWithBlueprintValues(input.document.elements.switch!, "surface", store).props?.checked,
     };
 }
 
@@ -614,5 +700,40 @@ describe("BlueprintValueRuntimeStore", () => {
         });
         const merged = mergeElementWithBlueprintValues(document.elements.slider!, "surface", store);
         expect(merged.props?.value).toBe(90);
+    });
+
+    /**
+     * The boolean branch has one job the other three do not: keep "the graph returned nothing" apart
+     * from "the graph returned false". `undefined` is how this store spells the former, so a `false`
+     * that came back as `undefined` would be indistinguishable from a binding that never produced a
+     * value at all.
+     */
+    it.each([
+        { name: "a boolean literal true", graph: literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN, true), expected: true },
+        { name: "a boolean literal false", graph: literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN, false), expected: false },
+        { name: "the string \"true\"", graph: literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_STRING, "true"), expected: true },
+        { name: "the string \"false\"", graph: literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_STRING, "false"), expected: false },
+        { name: "the number 1", graph: literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_FLOAT, 1), expected: true },
+        { name: "a JSON object", graph: literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_JSON, { enabled: true }), expected: false },
+        { name: "nothing at all", graph: emptyReturnInitGraph(), expected: undefined },
+    ])("coerces a Switch checked binding returning $name", async ({ graph, expected }) => {
+        const { document, surface } = switchDocument();
+        const { resolved, merged } = await resolveSwitchChecked({ document, surface, graph });
+        expect(resolved).toBe(expected);
+        expect(merged).toBe(expected);
+    });
+
+    it("reads a Switch whose graph returned nothing as off rather than as the authored value", async () => {
+        // The slider falls back to its authored number here, because it carries a `normalize` to
+        // clamp into its range anyway. The switch has no range and so no `normalize`: the unusable
+        // value reaches `normalizeSwitchProps`, which reads anything that is not `true` as off.
+        const { document, surface } = switchDocument(true);
+        const { resolved, merged } = await resolveSwitchChecked({
+            document,
+            surface,
+            graph: emptyReturnInitGraph(),
+        });
+        expect(resolved).toBeUndefined();
+        expect(normalizeSwitchProps({ checked: merged }).checked).toBe(false);
     });
 });

@@ -62,6 +62,14 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END = "blueprint.event.h
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED = "blueprint.event.head.textInputValueChanged" as const;
 /** Fires when the player commits the field (Enter), not on every keystroke. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT = "blueprint.event.head.textInputSubmit" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED = "blueprint.event.head.switchChanged" as const;
+/**
+ * Sugar over `switchChanged`: all three run for the same flip, in the order changed -> turnedOn |
+ * turnedOff. They exist because a settings-page graph almost always cares about one direction only,
+ * which would otherwise cost every such graph a Branch.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON = "blueprint.event.head.switchTurnedOn" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF = "blueprint.event.head.switchTurnedOff" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
 /** Entry for global NarraLeaf game runtime readiness. */
@@ -128,6 +136,9 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
@@ -1048,6 +1059,17 @@ export const BLUEPRINT_NODE_TYPE_TEXT_INPUT_CLEAR = "blueprint.textInput.clear" 
 export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE = "blueprint.element.textInput.getValue" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_SET_VALUE = "blueprint.element.textInput.setValue" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_CLEAR = "blueprint.element.textInput.clear" as const;
+
+export const BLUEPRINT_NODE_TYPE_SWITCH_GET_CHECKED = "blueprint.switch.getChecked" as const;
+export const BLUEPRINT_NODE_TYPE_SWITCH_SET_CHECKED = "blueprint.switch.setChecked" as const;
+export const BLUEPRINT_NODE_TYPE_SWITCH_TOGGLE = "blueprint.switch.toggle" as const;
+export const BLUEPRINT_NODE_TYPE_SWITCH_TURN_ON = "blueprint.switch.turnOn" as const;
+export const BLUEPRINT_NODE_TYPE_SWITCH_TURN_OFF = "blueprint.switch.turnOff" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_GET_CHECKED = "blueprint.element.switch.getChecked" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_SET_CHECKED = "blueprint.element.switch.setChecked" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE = "blueprint.element.switch.toggle" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TURN_ON = "blueprint.element.switch.turnOn" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TURN_OFF = "blueprint.element.switch.turnOff" as const;
 
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS = "blueprint.list.setItems" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS = "blueprint.list.getItems" as const;

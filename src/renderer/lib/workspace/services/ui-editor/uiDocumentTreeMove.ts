@@ -2,6 +2,7 @@ import type { UIDocument, UIElement, UIElementId, UILayout } from "@shared/types
 import {
     isLinkedUIComponentElement,
     isUIElementFlowLayoutChild,
+    isUIStructuralWidgetPart,
     uiElementTypeAcceptsUserChildren,
 } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
@@ -188,6 +189,19 @@ export function planMoveElementsInSurface(
             return false;
         }
         if (el.type === ROOT_WIDGET_TYPE) {
+            return false;
+        }
+        // A widget's own part cannot leave it. The move is one-way - the target check above refuses
+        // to put anything back into a widget that takes no user children - so a track dropped on the
+        // canvas is gone for good: the widget falls back to placeholder chrome while an orphan with
+        // a dead slot marker sits somewhere else. For a switch the part carries the `on` appearance
+        // variant too, so the authored travel and its transition leave with it and the only symptom
+        // the author sees is that the switch stopped animating.
+        //
+        // Dropped from the selection rather than failing the whole move, matching how `nl.root` is
+        // handled just above: dragging four elements one of which is a track should move the other
+        // three.
+        if (isUIStructuralWidgetPart(document, el)) {
             return false;
         }
         return true;
