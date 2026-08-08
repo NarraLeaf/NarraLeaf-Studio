@@ -44,6 +44,7 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import {
     findLocaleFallbackConflict,
     isValidLocaleCode,
+    localeAutonym as autonymFor,
     type LocalizationConfiguration,
     type LocalizationDocument,
 } from "@shared/types/localization";
@@ -76,16 +77,6 @@ const INPUT_CLASS =
 
 const GHOST_ROW_CLASS =
     "flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40";
-
-/** Autonym for a language code via Intl (e.g. "ja" → "日本語"); falls back to the code. */
-function autonymFor(code: string): string {
-    try {
-        const name = new Intl.DisplayNames([code], { type: "language" }).of(code);
-        return name && name !== code ? name : code;
-    } catch {
-        return code;
-    }
-}
 
 export function LocalizationPanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
