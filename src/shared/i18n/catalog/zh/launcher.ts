@@ -19,7 +19,7 @@ export const launcher = {
         search: {
             placeholder: "搜索项目",
             clear: "清除搜索",
-            empty: "没有匹配“{query}”的项目。",
+            empty: "没有匹配“{query}”的项目",
         },
         // 第一个项目出现之前的整个标签页，见 WelcomePane。
         // 第二块磁贴不复用 openFolder：那条在标题栏里要单独当 tooltip 用，

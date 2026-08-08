@@ -15,7 +15,7 @@ export const storySnapshot = {
     },
     launch: {
         needSnapshot: "从此处启动游戏需要一个快照",
-        needSnapshotDetail: "从某一行开始播放需要具体的变量值。请先创建场景快照",
+        needSnapshotDetail: "从某一行开始播放需要具体的变量值；请先创建场景快照",
         createAction: "创建快照",
     },
 } satisfies LocaleNamespace<"storySnapshot">;

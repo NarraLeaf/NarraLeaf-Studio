@@ -26,7 +26,7 @@ export const properties = {
     diagnostics: {
         title: "静态检查",
         selectOnCanvas: "→ 在画布中选中",
-        help: "图结构与绑定问题请打开蓝图编辑器。实时执行轨迹只在开发模式中显示",
+        help: "图结构与绑定问题请打开蓝图编辑器；实时执行轨迹只在开发模式中显示",
     },
     layout: {
         title: "布局",
@@ -90,7 +90,7 @@ export const properties = {
         fallbackName: "字体",
         none: "无字体",
         choose: "选择字体",
-        loadError: "字体无法加载（{error}）。在素材有效之前，预览使用回退字体",
+        loadError: "字体无法加载（{error}）；在素材有效之前，预览使用回退字体",
         select: "选择字体",
     },
     imageFill: {
@@ -105,7 +105,7 @@ export const properties = {
         selectHint: "点击打开素材浏览器",
         changeImage: "更换图片",
         openEditor: "点击打开编辑器",
-        resolveError: "图片素材无法解析（{error}）。在该素材存在之前，预览不准确",
+        resolveError: "图片素材无法解析（{error}）；在该素材存在之前，预览不准确",
         selectFillImage: "选择填充图片",
         mode: {
             cover: "覆盖",
@@ -133,7 +133,7 @@ export const properties = {
             other: "{count} 处引用",
         },
         dormant: "未生效",
-        dormantHint: "已保存在控件上，但当前不显示，因为填充方式设为纯色。删除该素材会清空该字段。",
+        dormantHint: "已保存在控件上，但当前不显示，因为填充方式设为纯色；删除该素材会清空该字段",
         kind: {
             story: "剧情",
             blueprint: "蓝图",
@@ -224,8 +224,8 @@ export const properties = {
             info: "模型信息",
             entry: "入口文件",
             entryAuto: "自动识别：{entry}",
-            entryUnresolvedNone: "未能识别入口文件，请手动选择。",
-            entryUnresolvedAmbiguous: "有多个文件可能是入口，请手动选择。",
+            entryUnresolvedNone: "未能识别入口文件，请手动选择",
+            entryUnresolvedAmbiguous: "有多个文件可能是入口，请手动选择",
             files: "文件",
             fileCount: {
                 one: "{count} 个文件",
