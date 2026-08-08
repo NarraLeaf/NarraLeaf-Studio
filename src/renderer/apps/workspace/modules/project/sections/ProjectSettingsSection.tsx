@@ -230,7 +230,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         size="sm"
                         portalMenu
                         className="w-32 shrink-0"
-                        aria-label={t("project.settings.orientationTitle")}
+                        ariaLabel={t("project.settings.orientationTitle")}
                     />
                 </SettingShell>
             </SettingsGroup>

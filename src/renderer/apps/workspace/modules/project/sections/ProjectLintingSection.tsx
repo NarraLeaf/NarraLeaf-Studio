@@ -235,7 +235,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
                         portalMenu
                         className={OPTION_SELECT_CLASS}
                         fullWidth
-                        aria-label={label}
+                        ariaLabel={label}
                     />
                 )}
             </LintRow>
@@ -268,7 +268,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
                         portalMenu
                         className={RULE_SELECT_CLASS}
                         fullWidth
-                        aria-label={title}
+                        ariaLabel={title}
                     />
                 </LintRow>
                 {optionSpecs.length > 0 ? (
@@ -317,7 +317,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
                     portalMenu
                     className={THRESHOLD_SELECT_CLASS}
                     fullWidth
-                    aria-label={t("lint.settings.failBuildOn")}
+                    ariaLabel={t("lint.settings.failBuildOn")}
                 />
             </LintRow>
 
