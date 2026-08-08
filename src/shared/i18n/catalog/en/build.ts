@@ -66,6 +66,10 @@ export const build = {
         icons: "Icons",
         iconsHint: "Click an icon to change it in project settings",
         iconUnset: "Not set",
+        // What an empty version or copyright reads as. The section only reports these now, so a blank
+        // field has to say it is blank rather than look like a control waiting for input.
+        notSet: "Not set",
+        editInProject: "Edit in Project ▸ App",
     },
     content: {
         protection: "Asset protection",
@@ -89,6 +93,8 @@ export const build = {
         none: "Not signed",
         missing: "Missing on this machine",
         import: "Import…",
+        // The dialog reports the selection; choosing and importing happen in the panel.
+        editInProject: "Manage in Project ▸ Settings",
         remove: "Remove from this machine",
         removeConfirm: "Remove {label} from this machine?",
         removeConfirmDetail: "Its key material is deleted from this machine. Projects that use it build unsigned until it is imported again.",

@@ -40,6 +40,10 @@ export const settings = {
             label: "工作区",
             description: "启动行为、工作区历史与自动保存",
         },
+        shortcuts: {
+            label: "快捷键",
+            description: "Studio 中各条命令绑定的按键",
+        },
         versionControl: {
             label: "版本控制",
             description: "提交版本的记录频率，以及记在上面的身份",

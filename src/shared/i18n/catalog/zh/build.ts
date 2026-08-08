@@ -66,6 +66,10 @@ export const build = {
         icons: "图标",
         iconsHint: "点击图标可在项目设置中修改",
         iconUnset: "未设置",
+        // 版本或版权为空时显示什么。这一段现在只回读，空字段得说明自己是空的，
+        // 而不是看起来像一个等着输入的控件。
+        notSet: "未设置",
+        editInProject: "在「项目 ▸ 应用」中编辑",
     },
     content: {
         protection: "资源保护",
@@ -89,6 +93,8 @@ export const build = {
         none: "不签名",
         missing: "本机没有这份凭据",
         import: "导入…",
+        // 对话框只报告选择，挑选与导入都在面板里完成。
+        editInProject: "在「项目 ▸ 设置」中管理",
         remove: "从本机移除",
         removeConfirm: "从本机移除 {label}？",
         removeConfirmDetail: "它的密钥材料会在本机删除。使用它的工程在重新导入之前都会以未签名方式构建",
