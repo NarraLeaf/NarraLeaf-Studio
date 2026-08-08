@@ -43,6 +43,11 @@ export const lint = {
             description: "部分已选构建目标不支持的编码",
             message: "{asset} 在 {platform} 上无法播放",
         },
+        networkFetchDisallowed: {
+            title: "网络节点无法访问网络",
+            description: "工程不允许 HTTP，但蓝图里有网络节点",
+            message: "{blueprint} 发起了网络请求，本工程不允许",
+        },
         storyInvalidCommand: {
             title: "无效指令",
             description: "编译器不接受的行",
@@ -159,6 +164,7 @@ export const lint = {
     category: {
         assets: "资源",
         portability: "可移植性",
+        network: "网络",
         story: "故事",
         variables: "变量",
         text: "文本",

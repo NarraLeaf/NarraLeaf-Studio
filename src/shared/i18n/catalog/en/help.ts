@@ -373,6 +373,20 @@ export const help = {
                 + "- A binding whose field no longer exists is reported as broken, on the surface and in the "
                 + "blueprint.",
         },
+        networkNodes: {
+            title: "Reading data from the internet",
+            body:
+                "The Fetch node makes an HTTP request while the game runs, for an online notice board or a "
+                + "leaderboard. It leaves by one of four paths: the request succeeded, the server answered with an "
+                + "error, the network failed, or it took too long.\n"
+                + "\n"
+                + "- Fetch produces a Response. Read Response Text or Read Response JSON turns it into a value.\n"
+                + "- A Response is only readable during the run that fetched it. To keep the data, read it and "
+                + "store it in a variable.\n"
+                + "- Allow HTTP in project settings decides whether these nodes work at all. With it off, the "
+                + "project reports an error and the build is refused.\n"
+                + "- Only http and https addresses can be fetched.",
+        },
         lint: {
             title: "Project checks",
             body:
