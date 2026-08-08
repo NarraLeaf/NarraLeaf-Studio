@@ -73,6 +73,26 @@ export function useRemoveRecentProject(): (projectPath: string) => Promise<void>
 }
 
 /**
+ * Show a remembered project's folder in the OS file manager.
+ *
+ * Returns the failure message rather than swallowing it, unlike the remove above: removing is a
+ * change the list itself reports back, so a silent failure is visible, while a folder that never
+ * opened leaves nothing on screen to notice. `null` means it worked; an empty string means it
+ * failed without saying why, and the caller supplies the wording - same contract as the launcher's
+ * other project actions.
+ */
+export function useRevealRecentProject(): (projectPath: string) => Promise<string | null> {
+    return useCallback(async (projectPath: string) => {
+        try {
+            const result = await getInterface().app.revealRecentProject(projectPath);
+            return result.success ? null : (result.error ?? "");
+        } catch (error) {
+            return error instanceof Error ? error.message : String(error);
+        }
+    }, []);
+}
+
+/**
  * Which remembered projects are not on disk, keyed by normalized path. Checked once, when the
  * surface using this mounts.
  *
