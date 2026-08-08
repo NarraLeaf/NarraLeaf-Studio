@@ -12,6 +12,16 @@ const INTERP_CHIP_CLASS = "story-rt-interp mx-0.5 inline-flex select-none items-
 const INTERP_CHIP_INTERACTIVE_CLASS = "cursor-pointer hover:bg-success/30";
 const INTERP_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"></path><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"></path></svg>';
 
+/**
+ * Ruby class. The reading itself is drawn by a `::before` in styles.css off `data-ruby`, NOT as a
+ * `<ruby>`/`<rt>` pair, and that is a hard constraint rather than a styling preference: the unit
+ * model counts characters in text nodes, so an `<rt>` would add units the runs never had and every
+ * offset past the first annotation — caret, selection, mark application — would land in the wrong
+ * place. A pseudo-element carries no text node and is invisible to `Selection`, so the reading can
+ * be visible and weightless at once.
+ */
+const RUBY_CLASS = "story-rt-ruby";
+
 /** Inline reveal-time event chip class (expression switch / SE). */
 const EVENT_CHIP_CLASS = "story-rt-event mx-0.5 inline-flex select-none items-center rounded-md bg-warning/20 px-1 py-0.5 align-middle text-2xs font-medium text-warning";
 const EVENT_CHIP_INTERACTIVE_CLASS = "cursor-pointer hover:bg-warning/30";
@@ -256,8 +266,7 @@ function createMarkSpan(text: string, marks: StoryTextMarks): HTMLSpanElement {
     }
     if (marks.ruby) {
         span.dataset.ruby = marks.ruby;
-        span.title = `ruby: ${marks.ruby}`;
-        span.style.textDecoration = "underline dotted";
+        span.classList.add(RUBY_CLASS);
     }
     if (typeof marks.cps === "number") span.dataset.cps = String(marks.cps);
     span.textContent = text;
@@ -500,12 +509,85 @@ export function rangeMarkColor(runs: StoryRichRun[], start: number, end: number)
     return color;
 }
 
-/** Apply a marks patch to the text units in [start, end), splitting runs at the boundaries. */
+/**
+ * The single ruby reading shared by every text unit in [start, end), or undefined if they differ.
+ *
+ * Deliberately narrower than {@link rangeMarkColor}: an inline value chip is skipped rather than
+ * counted, because a reading annotates characters the author wrote and the chip's characters are
+ * not known until the game runs. A selection that is nothing but chips therefore has no reading,
+ * which is the same answer as "these units disagree" and leads to the same disabled control.
+ */
+export function rangeMarkRuby(runs: StoryRichRun[], start: number, end: number): string | undefined {
+    let pos = 0;
+    let ruby: string | undefined;
+    let first = true;
+    for (const run of runs) {
+        const len = runLength(run);
+        const runStart = pos;
+        const runEnd = pos + len;
+        pos = runEnd;
+        if (runEnd <= start || runStart >= end || !isTextRun(run)) {
+            continue;
+        }
+        const value = run.marks?.ruby;
+        if (first) {
+            ruby = value;
+            first = false;
+        } else if (value !== ruby) {
+            return undefined;
+        }
+    }
+    return ruby;
+}
+
+/**
+ * The annotated run a collapsed caret sits in, as a unit range plus its reading.
+ *
+ * A collapsed caret cannot say "these characters", so the ruby control needs something else to
+ * address before it can offer to edit an existing reading: the run itself. `normalizeRuns` merges
+ * adjacent text carrying identical marks, so one reading is always exactly one run, and naming it
+ * is unambiguous.
+ *
+ * At the seam between two runs the preceding one wins — that is where the caret lands after typing
+ * the last character of an annotated word, and it is the reading the author was just working on.
+ */
+export function rubyRunAt(runs: StoryRichRun[], unit: number): { start: number; end: number; ruby: string } | null {
+    let pos = 0;
+    let seam: { start: number; end: number; ruby: string } | null = null;
+    for (const run of runs) {
+        const len = runLength(run);
+        const runStart = pos;
+        const runEnd = pos + len;
+        pos = runEnd;
+        if (unit < runStart || unit > runEnd || !isTextRun(run)) {
+            continue;
+        }
+        const ruby = run.marks?.ruby;
+        if (!ruby) {
+            continue;
+        }
+        if (unit > runStart && unit < runEnd) {
+            return { start: runStart, end: runEnd, ruby };
+        }
+        seam = seam ?? { start: runStart, end: runEnd, ruby };
+    }
+    return seam;
+}
+
+/**
+ * Apply a marks patch to the text units in [start, end), splitting runs at the boundaries.
+ *
+ * `textOnly` leaves inline value chips in the range untouched. Ruby is the mark that needs it: a
+ * reading is written for characters the author can see, and a chip's characters are not decided
+ * until the game runs — annotating one would also make NLR draw the same reading a second time,
+ * over the value, since every run compiles to its own `Word`.
+ */
 export function applyMarkToRange(
     runs: StoryRichRun[],
     start: number,
     end: number,
     patch: (marks: StoryTextMarks) => StoryTextMarks,
+    options?: { textOnly?: boolean },
 ): StoryRichRun[] {
     if (start >= end) {
         return runs;
@@ -522,6 +604,10 @@ export function applyMarkToRange(
             continue;
         }
         if (isInterpolationRun(run)) {
+            if (options?.textOnly) {
+                out.push(run);
+                continue;
+            }
             // Atomic single-unit chip fully inside the range: style its value text.
             const marks = cleanMarks(patch({ ...(run.marks ?? {}) }));
             out.push(marks ? { interpolation: run.interpolation, marks } : { interpolation: run.interpolation });

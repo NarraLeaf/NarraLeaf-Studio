@@ -320,6 +320,11 @@ export const story = {
         clickHint: "Waits until the player clicks to continue.",
         remove: "Remove pause",
     },
+    ruby: {
+        title: "Ruby text",
+        placeholder: "Reading",
+        remove: "Remove ruby text",
+    },
     interpolation: {
         title: "Insert value",
         kindVariable: "Variable",
@@ -338,6 +343,8 @@ export const story = {
         insertValue: "Insert inline value",
         insertValueHint: "Insert inline value (variable or blueprint)",
         insertExpression: "Insert expression change",
+        ruby: "Ruby text",
+        rubyHint: "Ruby text (select the words to annotate)",
         tools: "Rich text tools",
         pauseClick: "Pause (waits for a click)",
         pauseSeconds: "Pause {seconds}s",
