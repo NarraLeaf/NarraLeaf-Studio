@@ -168,6 +168,8 @@ export interface RendererPreloadedInterface {
     };
 
     selectProjectDirectory(): Promise<RequestStatus<{ dest: string | null }>>;
+    /** Pick the `.nlspkg` an import unpacks; the chosen file becomes readable to this window. */
+    selectProjectPackage(): Promise<RequestStatus<{ dest: string | null }>>;
 
     // Workspace
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
@@ -212,9 +214,8 @@ export interface RendererPreloadedInterface {
             byteLength?: number;
             skippedCount?: number;
         }>>;
-        importProjectPackage(): Promise<RequestStatus<{
-            canceled: boolean;
-            projectPath?: string;
+        importProjectPackage(packagePath: string, targetDir: string): Promise<RequestStatus<{
+            projectPath: string;
             projectName?: string;
             fileCount?: number;
             byteLength?: number;
