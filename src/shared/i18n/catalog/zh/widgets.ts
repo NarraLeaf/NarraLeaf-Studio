@@ -124,6 +124,7 @@ export const widgets = {
         title: "开关",
         state: "状态",
         defaultChecked: "默认开启",
+        defaultCheckedHint: "切换画布预览的初始状态，不是玩家的运行时状态",
         interactionDisabled: "禁用交互",
         parts: "部件",
         track: "轨道",
@@ -311,6 +312,7 @@ export const widgets = {
     },
     blueprintValue: {
         sliderTitle: "滑块值",
+        switchCheckedTitle: "开关开启状态",
         textInputValueTitle: "文本输入框值",
         pagePropsTitle: "页面参数值",
         buttonTextTitle: "按钮文本值",

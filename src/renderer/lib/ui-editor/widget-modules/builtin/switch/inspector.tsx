@@ -10,7 +10,8 @@ import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UI
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { CompactModuleCard } from "@/lib/ui-editor/widget-modules/shared/appearance/compact/CompactModuleCard";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
-import { i18nStore, useTranslation } from "@/lib/i18n";
+import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
+import { i18nStore, translate, useTranslation } from "@/lib/i18n";
 import {
     createSwitchPartProps,
     getSwitchProps,
@@ -63,17 +64,51 @@ function ToggleRow({
     );
 }
 
+/**
+ * The literal side of `checked`: the same toggle as before, shown only while nothing is bound.
+ * `readOnly` cannot reach here - `renderLiteralEditor` is handed only the data - but the framework
+ * wraps a frozen custom field in a `disabled` `<fieldset>`, and the shared `Switch` is a `<button>`,
+ * so the browser disables it anyway. Same arrangement as the slider's literal editor.
+ */
+function SwitchCheckedLiteralEditor({
+    data,
+    liveElement,
+}: {
+    data: UIInspectorData;
+    liveElement: UIInspectorData["element"];
+}) {
+    const { t } = useTranslation();
+    return (
+        <ToggleRow
+            label={t("widgets.switch.defaultChecked")}
+            checked={getSwitchProps(liveElement).checked}
+            onChange={checked => patchSwitch(data, { checked })}
+        />
+    );
+}
+
+const SwitchCheckedBlueprintValueField = createBlueprintValueField({
+    propPath: "checked",
+    valueType: "boolean",
+    valueLabel: "boolean",
+    title: "widgets.blueprintValue.switchCheckedTitle",
+    clearLabel: "widgets.blueprintValue.literalValue",
+    getDisplayName: ({ liveElement }) =>
+        translate("widgets.blueprintValue.nameValue", {
+            name: liveElement.name ?? translate("widgets.defaults.switch.name"),
+        }),
+    getLiteralValue: ({ liveElement }) => getSwitchProps(liveElement).checked,
+    renderLiteralEditor: ({ data, liveElement }) => (
+        <SwitchCheckedLiteralEditor data={data} liveElement={liveElement} />
+    ),
+});
+
 function SwitchStateField(props: CustomFieldProps<UIInspectorData>) {
     const { t } = useTranslation();
     const current = getLiveSwitchProps(props.data);
     return (
         <CompactModuleCard title={t("widgets.switch.state")}>
-            <ToggleRow
-                label={t("widgets.switch.defaultChecked")}
-                checked={current.checked}
-                disabled={props.readOnly}
-                onChange={checked => patchSwitch(props.data, { checked })}
-            />
+            <SwitchCheckedBlueprintValueField {...props} />
             <ToggleRow
                 label={t("widgets.switch.interactionDisabled")}
                 checked={current.interactionDisabled}

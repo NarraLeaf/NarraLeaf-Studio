@@ -147,7 +147,7 @@ export function isLinkedUIComponentElement(element: Pick<UIElement, "extra"> | n
     return getUIComponentLink(element) != null;
 }
 
-export type UIElementValueBindingValueType = "string" | "json" | "float";
+export type UIElementValueBindingValueType = "string" | "json" | "float" | "boolean";
 
 export type UIElementValueBinding =
     | {

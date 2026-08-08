@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, type RenderResult } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
@@ -14,9 +14,40 @@ type RenderCall = {
     elementOverrides?: Record<string, UIElement>;
 };
 
+/**
+ * jsdom lays nothing out, so every rect is 0x0 and the drag maths would be meaningless. These are
+ * the numbers the stub below reports for both the host and the track, so a clientX of
+ * `TRACK_LEFT + n` sits at `n / TRACK_WIDTH` along the track.
+ */
+const TRACK_LEFT = 100;
+const TRACK_TOP = 50;
+const TRACK_WIDTH = 52;
+const TRACK_HEIGHT = 28;
+
 afterEach(() => {
     cleanup();
 });
+
+function stubbedRect(): DOMRect {
+    return {
+        x: TRACK_LEFT,
+        y: TRACK_TOP,
+        left: TRACK_LEFT,
+        top: TRACK_TOP,
+        right: TRACK_LEFT + TRACK_WIDTH,
+        bottom: TRACK_TOP + TRACK_HEIGHT,
+        width: TRACK_WIDTH,
+        height: TRACK_HEIGHT,
+        toJSON: () => ({}),
+    } as DOMRect;
+}
+
+function stubLayout(view: RenderResult): void {
+    const rect = stubbedRect();
+    for (const node of view.container.querySelectorAll<HTMLElement>('[role="switch"], [data-ui-element-id]')) {
+        node.getBoundingClientRect = () => rect;
+    }
+}
 
 function createDocument(options?: { checked?: boolean; interactionDisabled?: boolean; withParts?: boolean }): UIDocument {
     const withParts = options?.withParts ?? true;
@@ -103,6 +134,7 @@ function mountSwitch(document: UIDocument, options?: { withRuntime?: boolean }) 
             />
         </WidgetRuntimeStateProvider>,
     );
+    stubLayout(view);
 
     const root = view.container.querySelector<HTMLElement>('[role="switch"]')!;
     return { renderCalls, store, dispatchElementBlueprintEvent, root, view };
@@ -115,6 +147,35 @@ function lastCall(renderCalls: RenderCall[]): RenderCall | undefined {
 function variantOf(call: RenderCall | undefined, id: string): string | undefined {
     const override = call?.elementOverrides?.[id];
     return (override?.extra as { runtimeVariantOverrideId?: string } | undefined)?.runtimeVariantOverrideId;
+}
+
+function interactionEvents(dispatch: ReturnType<typeof vi.fn>): unknown[] {
+    return dispatch.mock.calls.map(call => call[1]).filter(name => name !== "flush");
+}
+
+async function press(root: HTMLElement, offsetX: number): Promise<void> {
+    await act(async () => {
+        fireEvent.pointerDown(root, {
+            button: 0,
+            clientX: TRACK_LEFT + offsetX,
+            clientY: TRACK_TOP + TRACK_HEIGHT / 2,
+        });
+    });
+}
+
+async function movePointer(offsetX: number, offsetY = TRACK_HEIGHT / 2): Promise<void> {
+    await act(async () => {
+        fireEvent.pointerMove(window, { clientX: TRACK_LEFT + offsetX, clientY: TRACK_TOP + offsetY });
+    });
+}
+
+async function release(offsetX: number): Promise<void> {
+    await act(async () => {
+        fireEvent.pointerUp(window, {
+            clientX: TRACK_LEFT + offsetX,
+            clientY: TRACK_TOP + TRACK_HEIGHT / 2,
+        });
+    });
 }
 
 describe("SwitchRenderer", () => {
@@ -141,22 +202,107 @@ describe("SwitchRenderer", () => {
         expect(variantOf(lastCall(renderCalls), "thumb")).toBeUndefined();
     });
 
-    it("toggles on pointer down and dispatches changed then turnedOn", async () => {
+    it("toggles on release of a press that never moved, and dispatches changed then turnedOn", async () => {
         const document = createDocument({ checked: false });
         const { renderCalls, root, store, dispatchElementBlueprintEvent } = mountSwitch(document);
 
-        await act(async () => {
-            fireEvent.pointerDown(root, { button: 0 });
-        });
+        await press(root, 5);
+        // Pressing alone commits nothing - the release is what decides.
+        expect(store.getSwitchProperties("switch")).toBeUndefined();
+
+        await release(5);
 
         expect(store.getSwitchProperties("switch")).toEqual({ checked: true });
         expect(root.getAttribute("aria-checked")).toBe("true");
         expect(variantOf(lastCall(renderCalls), "thumb")).toBe(UI_SWITCH_ON_VARIANT_ID);
         // `flush` is rAF-coalesced and may or may not have landed yet; the ordered pair is the contract.
-        expect(
-            dispatchElementBlueprintEvent.mock.calls.map(call => call[1]).filter(name => name !== "flush"),
-        ).toEqual(["changed", "turnedOn"]);
+        expect(interactionEvents(dispatchElementBlueprintEvent)).toEqual(["changed", "turnedOn"]);
         expect(dispatchElementBlueprintEvent.mock.calls[0]?.[2]).toEqual({ checked: true, previousChecked: false });
+    });
+
+    it("treats a press that drifts inside the slop as a click, not as a drag", async () => {
+        const document = createDocument({ checked: false });
+        const { root, store, dispatchElementBlueprintEvent } = mountSwitch(document);
+
+        await press(root, 5);
+        // 2px of drift. Read as a drag this would resolve to the near (off) side and commit nothing.
+        await movePointer(7);
+        expect(root.getAttribute("data-ui-switch-pending")).toBeNull();
+
+        await release(7);
+
+        expect(store.getSwitchProperties("switch")).toEqual({ checked: true });
+        expect(interactionEvents(dispatchElementBlueprintEvent)).toEqual(["changed", "turnedOn"]);
+    });
+
+    it("previews and then commits the far side when a drag crosses half the track", async () => {
+        const document = createDocument({ checked: false });
+        const { renderCalls, root, store, dispatchElementBlueprintEvent } = mountSwitch(document);
+
+        await press(root, 5);
+        await movePointer(45);
+
+        // Mid-drag feedback is the same variant override the committed state uses; no runtime write yet.
+        expect(root.getAttribute("data-ui-switch-pending")).toBe("true");
+        expect(root.getAttribute("data-ui-switch-checked")).toBe("false");
+        expect(variantOf(lastCall(renderCalls), "thumb")).toBe(UI_SWITCH_ON_VARIANT_ID);
+        expect(lastCall(renderCalls)?.elementOverrides?.thumb?.layout).toEqual(document.elements.thumb!.layout);
+        expect(store.getSwitchProperties("switch")).toBeUndefined();
+        expect(dispatchElementBlueprintEvent).not.toHaveBeenCalled();
+
+        await release(45);
+
+        expect(store.getSwitchProperties("switch")).toEqual({ checked: true });
+        expect(root.getAttribute("data-ui-switch-pending")).toBeNull();
+        expect(interactionEvents(dispatchElementBlueprintEvent)).toEqual(["changed", "turnedOn"]);
+        expect(dispatchElementBlueprintEvent.mock.calls[0]?.[2]).toEqual({ checked: true, previousChecked: false });
+    });
+
+    it("commits nothing when a drag stops short of half the track", async () => {
+        const document = createDocument({ checked: false });
+        const { root, store, dispatchElementBlueprintEvent } = mountSwitch(document);
+
+        await press(root, 5);
+        await movePointer(15);
+        expect(root.getAttribute("data-ui-switch-pending")).toBe("false");
+
+        await release(15);
+
+        expect(store.getSwitchProperties("switch")).toBeUndefined();
+        expect(root.getAttribute("aria-checked")).toBe("false");
+        expect(dispatchElementBlueprintEvent).not.toHaveBeenCalled();
+    });
+
+    it("drags an on switch back off once the pointer crosses below half", async () => {
+        const document = createDocument({ checked: true });
+        const { root, store, dispatchElementBlueprintEvent } = mountSwitch(document);
+
+        await press(root, 45);
+        await movePointer(10);
+        expect(root.getAttribute("data-ui-switch-pending")).toBe("false");
+
+        await release(10);
+
+        expect(store.getSwitchProperties("switch")).toEqual({ checked: false });
+        expect(interactionEvents(dispatchElementBlueprintEvent)).toEqual(["changed", "turnedOff"]);
+        expect(dispatchElementBlueprintEvent.mock.calls[0]?.[2]).toEqual({ checked: false, previousChecked: true });
+    });
+
+    it("leaves the switch untouched when the gesture is cancelled instead of released", async () => {
+        const document = createDocument({ checked: false });
+        const { root, store, dispatchElementBlueprintEvent } = mountSwitch(document);
+
+        await press(root, 5);
+        await movePointer(45);
+        expect(root.getAttribute("data-ui-switch-pending")).toBe("true");
+
+        await act(async () => {
+            fireEvent.pointerCancel(window, { clientX: TRACK_LEFT + 45, clientY: TRACK_TOP + 14 });
+        });
+
+        expect(root.getAttribute("data-ui-switch-pending")).toBeNull();
+        expect(store.getSwitchProperties("switch")).toBeUndefined();
+        expect(dispatchElementBlueprintEvent).not.toHaveBeenCalled();
     });
 
     it("toggles on Space and on Enter", async () => {
@@ -180,8 +326,8 @@ describe("SwitchRenderer", () => {
 
         expect(root.getAttribute("aria-disabled")).toBe("true");
 
+        await press(root, 5);
         await act(async () => {
-            fireEvent.pointerDown(root, { button: 0 });
             fireEvent.keyDown(root, { key: " " });
         });
 
@@ -190,14 +336,28 @@ describe("SwitchRenderer", () => {
         expect(dispatchElementBlueprintEvent).not.toHaveBeenCalled();
     });
 
+    it("does not drag while interaction is disabled", async () => {
+        const document = createDocument({ checked: false, interactionDisabled: true });
+        const { root, store, dispatchElementBlueprintEvent } = mountSwitch(document);
+
+        await press(root, 5);
+        await movePointer(45);
+        expect(root.getAttribute("data-ui-switch-pending")).toBeNull();
+
+        await release(45);
+
+        expect(store.getSwitchProperties("switch")).toBeUndefined();
+        expect(root.getAttribute("data-ui-switch-checked")).toBe("false");
+        expect(dispatchElementBlueprintEvent).not.toHaveBeenCalled();
+    });
+
     it("does not toggle without a blueprint runtime (the editor canvas is not playable)", async () => {
         const document = createDocument({ checked: false });
         const { root, store } = mountSwitch(document, { withRuntime: false });
 
         expect(root.getAttribute("aria-disabled")).toBe("true");
-        await act(async () => {
-            fireEvent.pointerDown(root, { button: 0 });
-        });
+        await press(root, 5);
+        await release(5);
         expect(store.getSwitchProperties("switch")).toBeUndefined();
     });
 
@@ -209,9 +369,8 @@ describe("SwitchRenderer", () => {
         expect(view.container.querySelector('[data-ui-switch-part="thumb"]')).not.toBeNull();
         expect(renderCalls).toEqual([]);
 
-        await act(async () => {
-            fireEvent.pointerDown(root, { button: 0 });
-        });
+        await press(root, 5);
+        await release(5);
         expect(root.getAttribute("aria-checked")).toBe("true");
     });
 });
