@@ -123,6 +123,7 @@ export const widgets = {
         title: "Switch",
         state: "State",
         defaultChecked: "On by default",
+        defaultCheckedHint: "Flips the starting state the canvas previews, not the player's runtime state.",
         interactionDisabled: "Interaction disabled",
         parts: "Parts",
         track: "Track",
@@ -314,6 +315,7 @@ export const widgets = {
     },
     blueprintValue: {
         sliderTitle: "Slider Value",
+        switchCheckedTitle: "Switch Checked",
         textInputValueTitle: "Text Input Value",
         pagePropsTitle: "Page Props Value",
         buttonTextTitle: "Button Text Value",
