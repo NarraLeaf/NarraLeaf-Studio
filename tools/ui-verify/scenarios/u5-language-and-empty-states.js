@@ -25,7 +25,7 @@ const KEEP = [
     'Nothing on stage is named',
 ];
 
-function phaseCatalogue() {
+function phaseCatalog() {
     const dir = path.join(REPO, 'src/shared/i18n/catalog/en');
     const hits = [];
     for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
@@ -170,7 +170,7 @@ async function phaseTimeline() {
 
 (async () => {
     const phase = (process.argv.find((a) => a.startsWith('--phase=')) || '--phase=all').split('=')[1];
-    if (phase === 'all' || phase === 'catalogue') phaseCatalogue();
+    if (phase === 'all' || phase === 'catalog') phaseCatalog();
     if (phase === 'all' || phase === 'inspector') await phaseInspector();
     if (phase === 'all' || phase === 'dashboard') await phaseDashboard();
     if (phase === 'all' || phase === 'surface') await phaseSurface();

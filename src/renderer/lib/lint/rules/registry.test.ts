@@ -26,6 +26,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "portability/asset-name",
     "portability/case-collision",
     "portability/media-format",
+    "network/fetch-disallowed",
     "story/invalid-command",
     "story/goto-missing",
     "story/label-duplicate",
@@ -55,7 +56,7 @@ const ZH_KEYS = flattenCatalog(zh);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(27);
+        expect(LINT_RULES).toHaveLength(28);
     });
 
     it("gives every rule a unique id", () => {

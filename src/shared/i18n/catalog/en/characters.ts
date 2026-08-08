@@ -47,11 +47,11 @@ export const characters = {
         },
         runtimeGroup: "Drawn by a runtime",
         runtimeHint: "Requires that runtime to be installed in this project. Install it from the character editor.",
-        colorLabel: "Colour",
+        colorLabel: "Color",
         // Not a "default colour": nothing is written, and the name keeps deciding for as long as it
         // stays that way — including if the character is renamed. Said once, in the hint: the label
         // that used to sit beside the swatch was the same sentence with the reasons taken out.
-        colorAutoHint: "With no colour chosen, a character's name decides their colour. The same name gives the same colour in every project.",
+        colorAutoHint: "With no color chosen, a character's name decides their color. The same name gives the same color in every project.",
         colorReset: "Compute from the name",
     },
     editor: {
@@ -108,8 +108,8 @@ export const characters = {
         runtime: {
             title: "Install {product}",
             installed: "{product} is installed",
-            licenceTitle: "Before you install",
-            licenceAgree: "I have read the terms above",
+            licenseTitle: "Before you install",
+            licenseAgree: "I have read the terms above",
             vendorLink: "Open the {product} download page",
             docsLink: "Read the {product} guide",
             customDocsLink: "Read how to write a runtime",

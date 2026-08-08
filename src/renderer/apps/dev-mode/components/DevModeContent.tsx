@@ -715,6 +715,36 @@ export function DevModeContent(props: DevModeContentProps) {
         return projectRef;
     }, [projectRef]);
 
+    /**
+     * The Fetch node's request, handed to the main process.
+     *
+     * The project path travels with it because the handler reads the project's own Allow HTTP
+     * setting off disk rather than trusting anything sent from here - this window is the one the
+     * setting is meant to constrain.
+     */
+    const networkFetch = useCallback<NonNullable<GameAppHost["networkFetch"]>>(async request => {
+        if (!projectPath) {
+            return {
+                outcome: "networkError",
+                status: 0,
+                body: null,
+                error: "Fetch: no project is open",
+            };
+        }
+        const result = await getInterface().blueprintNetwork.fetch(projectPath, request);
+        if (!result.success) {
+            // The channel itself failed, which is Studio malfunctioning rather than the request
+            // failing. Reported on the node's error branch anyway: the graph has to go somewhere.
+            return {
+                outcome: "networkError",
+                status: 0,
+                body: null,
+                error: result.error ?? "Fetch failed",
+            };
+        }
+        return result.data.result;
+    }, [projectPath]);
+
     const saveStore = useMemo<GameAppSaveStore>(() => ({
         write: async (id, savedGame, capture, metadata) => {
             const ref = requireProjectRef("Save Game");
@@ -962,12 +992,14 @@ export function DevModeContent(props: DevModeContentProps) {
             setFullscreen,
             subscribeFullscreenChanged,
             subscribeCloseRequested,
+            networkFetch,
         };
     }, [
         bootAction,
         bundle,
         getFullscreen,
         log,
+        networkFetch,
         onDebugEvent,
         persistenceAdapter,
         quitApplication,

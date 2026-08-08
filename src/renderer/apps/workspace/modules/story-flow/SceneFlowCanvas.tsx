@@ -333,7 +333,7 @@ function SceneFlowCanvasInner({
                         showForkHeader,
                         chip: branchChips?.[branch.id],
                         dimmed: highlight
-                            ? !isBranchEmphasised(branch, branchEdgeIdsByBranchId.get(branch.id), highlight)
+                            ? !isBranchEmphasized(branch, branchEdgeIdsByBranchId.get(branch.id), highlight)
                             : false,
                     } as SceneFlowBranchNodeData,
                 });
@@ -663,7 +663,7 @@ function SceneFlowCanvasInner({
  * gets to stay lit. An arm with no lines at all has nothing of its own to be judged on and follows
  * its scene; dimming it independently would say the fork has fewer answers than it does.
  */
-function isBranchEmphasised(
+function isBranchEmphasized(
     branch: SceneFlowBranchNodeModel,
     ownEdgeIds: readonly string[] | undefined,
     highlight: SceneFlowHighlight,
