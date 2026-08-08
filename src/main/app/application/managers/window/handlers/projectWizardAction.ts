@@ -14,8 +14,12 @@ export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectW
         const wizardWindow = await window.getApp().launchProjectWizard(window, {}, {
             parent: window.win,
             resizable: false,
-            width: 600,
-            height: 800,
+            // Wider than it is tall, unlike the 600x800 this used to be. The first page is now two
+            // columns - the three origins beside the template list - and the pages that follow are
+            // a step rail beside a form; both are horizontal shapes, and the tall window spent its
+            // extra height on a progress header that no longer exists.
+            width: 760,
+            height: 620,
             center: true,
             x: undefined,
             y: undefined,
