@@ -124,7 +124,7 @@ export async function writeScaledIcons(
         const resized = source.resize({ width: drawWidth, height: drawHeight, quality: "good" });
         const fitted = drawWidth === width && drawHeight === height
             ? resized
-            : centreOnTransparentCanvas(resized, width, height);
+            : centerOnTransparentCanvas(resized, width, height);
         const outputPath = path.join(outputDir, `${index}-${path.basename(slot)}`);
         // nativeImage.toPNG() always encodes RGBA, so an iOS icon that arrived
         // here alpha-free would leave with an alpha channel again - and be
@@ -160,7 +160,7 @@ export async function stripAlphaChannel(png: Buffer): Promise<Buffer> {
  * of the pixel rows - no blending - so it is indifferent to whether the
  * platform's bitmaps carry premultiplied alpha.
  */
-function centreOnTransparentCanvas(
+function centerOnTransparentCanvas(
     image: Electron.NativeImage,
     width: number,
     height: number,

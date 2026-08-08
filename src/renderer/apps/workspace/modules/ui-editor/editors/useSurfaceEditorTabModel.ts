@@ -75,6 +75,42 @@ export function useSmartSnapDetailSettings(stateService: EditorStateService | nu
     return detail;
 }
 
+/** Screen-ratio preview frame preset id (`null` = off). Pure view state — never dirties the project. */
+export function usePreviewAspectId(stateService: EditorStateService | null | undefined) {
+    const [aspectId, setAspectId] = useState<string | null>(
+        () => stateService?.getPreviewAspectId() ?? null,
+    );
+
+    useEffect(() => {
+        if (!stateService) {
+            setAspectId(null);
+            return undefined;
+        }
+        setAspectId(stateService.getPreviewAspectId());
+        return stateService.on("previewAspectChanged", setAspectId);
+    }, [stateService]);
+
+    return aspectId;
+}
+
+/** Safe-area preview frame device preset id (`null` = off). Pure view state — never dirties the project. */
+export function usePreviewSafeAreaId(stateService: EditorStateService | null | undefined) {
+    const [safeAreaId, setSafeAreaId] = useState<string | null>(
+        () => stateService?.getPreviewSafeAreaId() ?? null,
+    );
+
+    useEffect(() => {
+        if (!stateService) {
+            setSafeAreaId(null);
+            return undefined;
+        }
+        setSafeAreaId(stateService.getPreviewSafeAreaId());
+        return stateService.on("previewSafeAreaChanged", setSafeAreaId);
+    }, [stateService]);
+
+    return safeAreaId;
+}
+
 export function useSurfaceDocument(
     surfaceId: string | undefined,
     stateService: EditorStateService,

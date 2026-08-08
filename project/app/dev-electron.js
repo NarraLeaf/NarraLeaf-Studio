@@ -249,7 +249,13 @@ function broadcastReload(target = 'all') {
         platform: 'node',
         bundle: true,
         format: 'cjs',
-        external: ['electron', '@narraleaf/encryption', 'koffi'],
+        // esbuild is external for the same reason as koffi: it locates its platform
+        // binary by a path relative to its own lib/main.js, and refuses to run at all
+        // when that file has been inlined somewhere else ("The esbuild JavaScript API
+        // cannot be bundled"). It is a *runtime* dependency here — the Live2D runtime
+        // installer bundles the author's Cubism SDK on their machine. Keep this list in
+        // sync with build-main.js, which has carried the entry since that feature landed.
+        external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi'],
         sourcemap: true,
         target: ['node18'],
     }, () => {

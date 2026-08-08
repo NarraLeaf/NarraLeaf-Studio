@@ -1,4 +1,8 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type {
+    BlueprintNetworkFetchRequest,
+    BlueprintNetworkFetchResult,
+} from "@shared/types/blueprint/network";
 import {
     normalizeBlueprintImageAssetValue,
     normalizeBlueprintRGBAColor,
@@ -428,6 +432,16 @@ export type BlueprintHostApiRuntime = {
         getTrackVolume: (trackId: string) => number;
         setTrackVolume: (trackId: string, volume: number) => Promise<void>;
     };
+    /**
+     * HTTP, for the Fetch node.
+     *
+     * The host does not issue the request itself: it hands it to whatever the shell supplied, which
+     * on desktop and in Dev Mode is the main process (`onNetworkFetch`). Nothing here calls
+     * `fetch()` - see `@shared/utils/blueprintNetworkFetch` for why the renderer must not.
+     */
+    network: {
+        fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    };
     devtools: {
         log: (level: string, message: string) => void;
     };
@@ -616,6 +630,17 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     voiceConfig?: { voicedLocales: VoiceLocaleEntry[] } | null;
     /** Plays one voice unit in the current dub language; absent outside a game runtime. */
     onPlayVoice?: (unitId: string) => Promise<boolean>;
+    /**
+     * Issues one Fetch node request, in a main process.
+     *
+     * Absent in every environment with nowhere to send it - the editor preview, and the story
+     * preview. There the node reports a `networkError` saying so rather than throwing, matching how
+     * the sound family degrades: a Page previewed in Studio should still lay out.
+     *
+     * The web export supplies one backed by the browser's own `fetch`, which is the one shell where
+     * there is no main process to reach and no project network policy to enforce.
+     */
+    onNetworkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -1701,6 +1726,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsSoundPlaying,
         onGetTrackVolume,
         onSetTrackVolume,
+        onNetworkFetch,
         audioTracks,
         onSubscribeGamePreferences,
         emit,
@@ -3323,6 +3349,28 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // own bus gain clamps to 0..1 anyway.
                     const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
                     await onSetTrackVolume?.(String(trackId ?? "").trim(), safeVolume);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        network: {
+            fetch: async (request: BlueprintNetworkFetchRequest) => {
+                const cap = "network.fetch";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onNetworkFetch) {
+                        // No backend = nowhere to send it (editor preview, story preview). Reported as
+                        // a `networkError` rather than thrown, so a Page being previewed in Studio
+                        // still lays out and the author's own error branch is what runs.
+                        return {
+                            outcome: "networkError" as const,
+                            status: 0,
+                            body: null,
+                            error: "Network is not available here. Run the project in Dev Mode to make requests.",
+                        };
+                    }
+                    return await onNetworkFetch(request);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

@@ -95,7 +95,7 @@ async function buildApk(signing?: GameBuildWorkerAndroidSigning): Promise<string
         shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000" }),
         android: {
             templateApkPath: path.join(TEMPLATE_DIR, templateManifest.android.template),
-            outputName: "oracle.apk",
+            outputs: { apk: "oracle.apk" },
             applicationId: "com.example.oraclegame",
             versionName: "1.2.3",
             versionCode: 1_002_003,

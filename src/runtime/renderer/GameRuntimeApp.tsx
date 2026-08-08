@@ -367,6 +367,18 @@ export function GameRuntimeApp() {
     }, [bridge]);
 
     /**
+     * The Fetch node's request. Every shell backs this - the desktop preload forwards it to the main
+     * process, the web shell runs it in the page - so unlike `sidecar` there is no absent case to
+     * branch on, only a bridge that has not been installed yet.
+     */
+    const networkFetch = useCallback<NonNullable<GameAppHost["networkFetch"]>>(async request => {
+        if (!bridge) {
+            return { outcome: "networkError", status: 0, body: null, error: "Runtime bridge unavailable" };
+        }
+        return bridge.network.fetch(request);
+    }, [bridge]);
+
+    /**
      * A model bundle resolves to the URL of its *entry file*, not of the asset id.
      *
      * The engine's `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against whatever
@@ -481,9 +493,11 @@ export function GameRuntimeApp() {
             subscribeFullscreenChanged,
             subscribeCloseRequested,
             listPuppetBackendModules,
+            networkFetch,
         };
     }, [
         entrySurfaceId,
+        networkFetch,
         getFullscreen,
         listPuppetBackendModules,
         log,

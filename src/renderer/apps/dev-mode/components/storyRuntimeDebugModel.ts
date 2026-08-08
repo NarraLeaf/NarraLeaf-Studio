@@ -650,7 +650,7 @@ export function projectStoryTrailHighlight(
         if (taken) {
             edgeIds.add(taken.id);
             // The arm itself, so it stays bright even where its line is not drawn (a collapsed
-            // scene draws only the scene edge) — `isBranchEmphasised` accepts an arm's own id.
+            // scene draws only the scene edge) — `isBranchEmphasized` accepts an arm's own id.
             edgeIds.add(taken.sourceBranchId);
         }
         if (sceneEdge) {

@@ -17,10 +17,16 @@
  * two repacked games collide at install time.
  */
 
-const RES_STRING_POOL_TYPE = 0x0001;
-const RES_XML_TYPE = 0x0003;
-const RES_XML_RESOURCE_MAP_TYPE = 0x0180;
-const RES_XML_START_ELEMENT_TYPE = 0x0102;
+/**
+ * Chunk types, the chunk reader and the string-pool decoder are exported for
+ * axmlProto.ts, which walks the very same chunks to emit the protobuf form of
+ * the manifest an .aab needs. One decoder, two consumers: a second copy of the
+ * pool's varint length rules is exactly the kind of thing that drifts.
+ */
+export const RES_STRING_POOL_TYPE = 0x0001;
+export const RES_XML_TYPE = 0x0003;
+export const RES_XML_RESOURCE_MAP_TYPE = 0x0180;
+export const RES_XML_START_ELEMENT_TYPE = 0x0102;
 
 const UTF8_FLAG = 0x0100;
 
@@ -34,7 +40,7 @@ const NO_ENTRY = 0xffffffff;
 /** Typed-value dataType codes (ResValue). */
 const TYPE_STRING = 0x03;
 
-type Chunk = {
+export type Chunk = {
     type: number;
     /** Absolute offset of the chunk header. */
     start: number;
@@ -42,7 +48,7 @@ type Chunk = {
     size: number;
 };
 
-function readChunk(buffer: Buffer, offset: number): Chunk {
+export function readChunk(buffer: Buffer, offset: number): Chunk {
     if (offset + 8 > buffer.length) {
         throw new Error("Truncated AXML chunk header");
     }
@@ -60,7 +66,7 @@ function readChunk(buffer: Buffer, offset: number): Chunk {
 
 /* ------------------------------------------------------------ string pool */
 
-type StringPool = {
+export type StringPool = {
     flags: number;
     utf8: boolean;
     strings: string[];
@@ -69,7 +75,7 @@ type StringPool = {
     styleOffsets: number[];
 };
 
-function parseStringPool(buffer: Buffer, chunk: Chunk): StringPool {
+export function parseStringPool(buffer: Buffer, chunk: Chunk): StringPool {
     const base = chunk.start;
     const stringCount = buffer.readUInt32LE(base + 8);
     const styleCount = buffer.readUInt32LE(base + 12);
