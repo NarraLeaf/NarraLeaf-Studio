@@ -183,26 +183,33 @@ export function countRuntimeIssues(issues: readonly LocatedRuntimeIssue[]): {
  *
  * Not the message alone — the same message from two different rows is two problems, and collapsing
  * them would hide the second row entirely.
+ *
+ * `runtimeIssueKey` below is the public face of it, and the strip acknowledges problems BY THAT KEY
+ * rather than by entry: a row inside a loop reports the same failure on every pass and each report
+ * is a new entry, so an acknowledgement keyed on entries would be undone a frame after it was made.
  */
 function issueKey(issue: Pick<LocatedRuntimeIssue, "level" | "message"> & { blockId?: string }): string {
     return `${issue.level}\u0000${issue.blockId ?? ""}\u0000${issue.message}`;
 }
 
+/** That identity, for a located issue — the form every caller outside this file has. */
+export function runtimeIssueKey(issue: LocatedRuntimeIssue): string {
+    return issueKey({ ...issue, ...(issue.location ? { blockId: issue.location.blockId } : {}) });
+}
+
 /**
  * Add an issue to the list, newest first, collapsing repeats.
  *
- * A row inside a loop reports the same failure every pass; without this the banner would be a
- * hundred copies of one sentence. A repeat is moved back to the front rather than merely counted, so
- * "what is failing right now" stays at the top.
+ * A row inside a loop reports the same failure every pass; without this the list would be a hundred
+ * copies of one sentence. A repeat is moved back to the front rather than merely counted, so "what
+ * is failing right now" stays at the top.
  */
 export function appendRuntimeIssue(
     current: readonly LocatedRuntimeIssue[],
     issue: LocatedRuntimeIssue,
 ): LocatedRuntimeIssue[] {
-    const key = issueKey({ ...issue, ...(issue.location ? { blockId: issue.location.blockId } : {}) });
-    const withoutRepeat = current.filter(
-        entry => issueKey({ ...entry, ...(entry.location ? { blockId: entry.location.blockId } : {}) }) !== key,
-    );
+    const key = runtimeIssueKey(issue);
+    const withoutRepeat = current.filter(entry => runtimeIssueKey(entry) !== key);
     return [issue, ...withoutRepeat].slice(0, RUNTIME_ISSUE_LIMIT);
 }
 

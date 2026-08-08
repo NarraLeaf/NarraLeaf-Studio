@@ -179,7 +179,7 @@ function areUIBehaviorSnapshotsEqual(a: UIBehaviorSnapshot, b: UIBehaviorSnapsho
 
 function createValueGraphIr(input: {
     headNodeType: string;
-    valueType: UIElementValueBindingValueType | "boolean";
+    valueType: UIElementValueBindingValueType;
     literalValue: unknown;
     generateId: () => string;
 }): BlueprintGraphIr {
@@ -232,7 +232,7 @@ function createValueGraphIr(input: {
     };
 }
 
-function normalizeBlueprintValueLiteral(value: unknown, valueType: UIElementValueBindingValueType | "boolean"): unknown {
+function normalizeBlueprintValueLiteral(value: unknown, valueType: UIElementValueBindingValueType): unknown {
     if (valueType === "boolean") {
         return value === true || value === "true";
     }

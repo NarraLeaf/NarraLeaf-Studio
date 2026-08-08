@@ -147,6 +147,7 @@ export enum IPCEventType {
 
     projectWizardLaunch = "projectWizard.launch",
     projectWizardSelectDirectory = "projectWizard.selectDirectory",
+    projectWizardSelectPackage = "projectWizard.selectPackage",
     projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
     
     workspaceLaunch = "workspace.launch",
@@ -1256,6 +1257,21 @@ export type IPCProjectWizardEvents = {
             dest: string | null;
         };
     };
+    /**
+     * Choose the `.nlspkg` an import unpacks, granting this window read access to it.
+     *
+     * Separate from the import itself, so the wizard can show what was chosen and let the author
+     * change their mind before anything is unpacked. That grant is also the only way the path the
+     * renderer hands back is usable: the import handler checks rather than grants.
+     */
+    [IPCEventType.projectWizardSelectPackage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            dest: string | null;
+        };
+    };
     [IPCEventType.projectWizardGetDefaultDirectory]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -1385,13 +1401,23 @@ export type IPCWorkspaceEvents = {
             skippedCount?: number;
         };
     };
+    /**
+     * Unpack a chosen package into a chosen folder.
+     *
+     * Both paths are the caller's, and neither is granted here: the two pickers
+     * (`projectWizardSelectPackage`, `projectWizardSelectDirectory`) are what give this window
+     * access to them, and this handler only checks. A path the renderer was never given stays
+     * unreadable, which is the whole point of asking for them separately.
+     */
     [IPCEventType.workspaceImportProjectPackage]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: {
+            packagePath: string;
+            targetDir: string;
+        },
         response: {
-            canceled: boolean;
-            projectPath?: string;
+            projectPath: string;
             projectName?: string;
             fileCount?: number;
             byteLength?: number;

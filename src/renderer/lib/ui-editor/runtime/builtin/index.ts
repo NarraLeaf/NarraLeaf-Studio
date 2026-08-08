@@ -11,6 +11,7 @@ import { ButtonRenderer } from "@/lib/ui-editor/widget-modules/builtin/button/re
 import { ListRenderer } from "@/lib/ui-editor/widget-modules/builtin/list/renderer";
 import { FrameRenderer } from "@/lib/ui-editor/widget-modules/builtin/frame/renderer";
 import { SliderRenderer } from "@/lib/ui-editor/widget-modules/builtin/slider/renderer";
+import { SwitchRenderer } from "@/lib/ui-editor/widget-modules/builtin/switch/renderer";
 import { TextInputRenderer } from "@/lib/ui-editor/widget-modules/builtin/textInput/renderer";
 import { DialogSentenceRenderer } from "@/lib/ui-editor/widget-modules/builtin/dialog/renderer";
 import { NvlTextsRenderer } from "@/lib/ui-editor/widget-modules/builtin/nvl/renderer";
@@ -58,6 +59,10 @@ export const BuiltinElementRenderers: ElementRendererDefinition[] = [
     {
         type: "nl.slider",
         render: props => createElement(SliderRenderer, props),
+    },
+    {
+        type: "nl.switch",
+        render: props => createElement(SwitchRenderer, props),
     },
     {
         type: "nl.list",
