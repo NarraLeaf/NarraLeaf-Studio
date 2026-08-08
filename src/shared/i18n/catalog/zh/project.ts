@@ -60,7 +60,7 @@ export const project = {
         // 长文形式，与上面那一行分开：那一行进二进制的文件属性，这一段进玩家能打开的文件。
         copyrightTextLabel: "版权声明",
         copyrightTextPlaceholder: "用到的字体、音乐与素材，以及它们各自归谁所有…",
-        copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt。留空则不生成该文件",
+        copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt；留空则不生成该文件",
         descriptionPlaceholder: "描述你的项目…",
         required: "必填",
     },
@@ -87,7 +87,7 @@ export const project = {
         autoSaveTitle: "自动保存",
         autoSaveDescription: "按间隔自动保存进度，崩溃时最多损失一个间隔内的进度",
         autoSaveIntervalTitle: "保存间隔",
-        autoSaveIntervalDescription: "多久检查一次。剧情没有推进就不会写入",
+        autoSaveIntervalDescription: "多久检查一次；剧情没有推进就不会写入",
         autoSaveIntervalUnit: "秒",
         autoSaveSlotsTitle: "保留数量",
         autoSaveSlotsDescription: "自动存档在指定数量的槽位间轮转，最旧的先被覆盖，与玩家自己的存档槽相互独立",
@@ -95,9 +95,9 @@ export const project = {
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
         // 要么对正在看这些行的作者没有用处。
-        intro: "玩家未修改时，各项设置从这里的值开始。玩家可以修改全部设置，修改结果会被保留。",
+        intro: "玩家未修改时，各项设置从这里的值开始；玩家可以修改全部设置，修改结果会被保留",
         group: {
-            dialogue: "对话",
+            dialogue: "对白",
             skipping: "跳过",
             // 不叫「音频」：混音台现在就在同一页上，隔一屏出现两个「音频」小标题，
             // 正是这次合并要消掉的那种混淆。
@@ -158,7 +158,7 @@ export const project = {
         },
         voiceEndMode: {
             title: "语音随句子结束时",
-            description: "台词结束后如何处理该语音。无论选择哪一项，都不会有两条语音同时播放",
+            description: "台词结束后如何处理该语音；无论选择哪一项，都不会有两条语音同时播放",
             option: {
                 stop: "立即停止",
                 fade: "淡出",
@@ -212,21 +212,21 @@ export const project = {
     settings: {
         allowHttpTitle: "允许 HTTP",
         allowHttpDescription: "关闭时，游戏将被限制在应用协议内，所有 HTTP/HTTPS 请求均会被阻止",
-        allowHttpWebHint: "Web 导出不受此项限制，该构建本身通过 HTTP 提供。网络节点在 Web 导出中仍会运行",
+        allowHttpWebHint: "Web 导出不受此项限制，该构建本身通过 HTTP 提供；网络节点在 Web 导出中仍会运行",
         encryptAssetsTitle: "加密资源",
         encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
-        signingDescription: "为每个平台指定签名凭据。证书与密码只留在本机，工程里存的只有用哪一份",
+        signingDescription: "为每个平台指定签名凭据；证书与密码只留在本机，工程里存的只有用哪一份",
         webLosslessImagesTitle: "图像转为 WebP",
         webLosslessImagesDescription: "在体积更小时，将导出的图像重编码为无损 WebP",
-        webLosslessImagesHint: "每次转换都会与原图逐像素比对，解码结果不一致即丢弃。Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
+        webLosslessImagesHint: "每次转换都会与原图逐像素比对，解码结果不一致即丢弃；Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
         webPrecompressTitle: "预压缩文本文件",
         webPrecompressDescription: "为站点的脚本、样式与剧本数据额外生成 Brotli 与 Gzip 副本",
         webPrecompressHint: "只有配置了预压缩支持的服务器会用到这些副本，其余主机一律照常提供原文件",
         webLossyImagesTitle: "重压缩图像",
-        webLossyImagesDescription: "将导出的图像重编码为有损 WebP。体积小得多，但损失的画面细节无法恢复",
+        webLossyImagesDescription: "将导出的图像重编码为有损 WebP；体积小得多，但损失的画面细节无法恢复",
         webLossyQualityTitle: "图像质量",
         webLossyQualityDescription: "重压缩时使用的 WebP 质量，取值 1 到 100",
         webSharedWithMobileHint: "Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
@@ -244,7 +244,7 @@ export const project = {
         scanning: "正在扫描项目…",
         empty: "没有插件依赖，本项目仅使用 Studio 内置功能",
         banner: {
-            blocked: "部分插件在本项目中被禁用：已安装版本不兼容。请更新或重新安装",
+            blocked: "部分插件在本项目中被禁用：已安装版本不兼容；请更新或重新安装",
             warnings: "部分依赖项需要处理，某个插件版本过旧或某项软依赖不可用",
         },
         status: {

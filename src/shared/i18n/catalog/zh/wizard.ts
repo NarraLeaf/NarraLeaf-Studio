@@ -81,7 +81,7 @@ export const wizard = {
         height: "高",
         orientationLandscape: "移动端构建将锁定横屏",
         orientationPortrait: "移动端构建将锁定竖屏",
-        scriptLocaleHelper: "剧本撰写所用的语言。译文在本地化面板里添加",
+        scriptLocaleHelper: "剧本撰写所用的语言；译文在本地化面板里添加",
     },
     import: {
         subtitle: "把一个 .nlspkg 文件解包到本机的文件夹里",
@@ -91,12 +91,12 @@ export const wizard = {
             pickPackage: "第一步：选择要解包的 .nlspkg 文件",
             pickFolder: "第二步：选择解包到哪个文件夹",
         },
-        working: "等待选择安装包和目标文件夹。两项都选择后开始解包",
+        working: "等待选择安装包和目标文件夹；两项都选择后开始解包",
         error: {
             failedTitle: "无法导入项目",
             generic: "无法导入该项目安装包",
             notAProjectTitle: "这不是 NarraLeaf Studio 项目",
-            notAProject: "安装包已解包，但其中没有 Studio 项目文件。已解包的内容位于 {path}。请确认该文件是否正确，然后重试",
+            notAProject: "安装包已解包，但其中没有 Studio 项目文件；已解包的内容位于 {path}；请确认该文件是否正确，然后重试",
         },
     },
     source: {
@@ -119,7 +119,7 @@ export const wizard = {
         destinationWillBeCreated: "复制项目时将创建该文件夹",
     },
     clone: {
-        subtitle: "尚未开始下载。此操作会把整个项目复制到本机",
+        subtitle: "尚未开始下载；此操作会把整个项目复制到本机",
         summary: {
             title: "将要复制的内容",
             description: "开始前请确认；整个项目都会经网络传输",
@@ -129,7 +129,7 @@ export const wizard = {
             failedTitle: "无法获取项目",
             generic: "无法从服务器获取该项目",
             notAProjectTitle: "这不是 NarraLeaf Studio 项目",
-            notAProject: "复制已完成，但其中没有 Studio 项目文件。已复制的内容位于 {path}。请与搭建该项目的人核对地址，然后另选一个空文件夹重试",
+            notAProject: "复制已完成，但其中没有 Studio 项目文件；已复制的内容位于 {path}；请与搭建该项目的人核对地址，然后另选一个空文件夹重试",
         },
     },
     review: {
@@ -143,9 +143,9 @@ export const wizard = {
         templateRequired: "项目模板为必填项",
         stageSizeRequired: "舞台尺寸为必填项",
         invalidPath: "无效路径",
-        notADirectory: "该路径已存在，但不是目录。换一个目录，或新建一个",
-        cannotWrite: "无法写入该目录。检查权限，或换一个位置",
-        notEmpty: "该目录不为空。换一个空目录，或新建一个",
+        notADirectory: "该路径已存在，但不是目录；换一个目录，或新建一个",
+        cannotWrite: "无法写入该目录；检查权限，或换一个位置",
+        notEmpty: "该目录不为空；换一个空目录，或新建一个",
         validationFailed: "目录校验失败",
         failedToValidate: "校验目录失败",
         checkExistenceFailed: "检查目录是否存在失败",

@@ -135,7 +135,7 @@ describe("parseCommandLine - a command named in the active locale", () => {
         i18nStore.setLocale("zh");
         expect(command("/背景").def?.commandId).toBe("background");
         expect(command("/跳转").def?.commandId).toBe("jump");
-        expect(command("/对话").def?.commandId).toBe("say");
+        expect(command("/对白").def?.commandId).toBe("say");
     });
 
     it("parses a Chinese token's arguments exactly as the English token would - English keys keep working", () => {
