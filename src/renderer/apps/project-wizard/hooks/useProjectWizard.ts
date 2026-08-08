@@ -21,7 +21,13 @@ import { join } from "@shared/utils/path";
  * the clone flow gets a Next button gated on errors from a page it never visits.
  */
 function ownsLocation(step: WizardStep): boolean {
-    return step === "project" || step === "source";
+    return step === "project" || step === "source" || step === "import";
+}
+
+/** `My Game.nlspkg` -> `My Game`, which is the folder name an author would have typed. */
+function packageBaseName(packagePath: string): string {
+    const fileName = packagePath.split(/[\\/]/).pop() ?? "";
+    return fileName.replace(/\.[^.]+$/, "").trim();
 }
 
 /**
@@ -37,6 +43,7 @@ export function useProjectWizard() {
     const [directoryValidation, setDirectoryValidation] = useState<DirectoryValidationResult | null>(null);
     const [isValidatingDirectory, setIsValidatingDirectory] = useState(false);
     const [isSelectingDirectory, setIsSelectingDirectory] = useState(false);
+    const [isSelectingPackage, setIsSelectingPackage] = useState(false);
     const [locationInputDirty, setLocationInputDirty] = useState(false);
     const [locationInputFocused, setLocationInputFocused] = useState(false);
     const [isCreatingProject, setIsCreatingProject] = useState(false);
@@ -117,10 +124,18 @@ export function useProjectWizard() {
             return;
         }
 
-        const folderName = flow === "clone" ? remote?.name : projectData.appId.trim();
+        // Each flow names the new subfolder after the only thing it knows the project by at this
+        // point: the app id being typed, the repository on the server, or the package file itself
+        // (which export named after the project, so it is the project's name in all but the rare
+        // case where somebody renamed the file).
+        const folderName = flow === "clone"
+            ? remote?.name
+            : flow === "import"
+                ? packageBaseName(projectData.packagePath)
+                : projectData.appId.trim();
         const suggested = folderName
             ? join(defaultLocation, folderName)
-            : (flow === "clone" ? "" : defaultLocation);
+            : (flow === "create" ? defaultLocation : "");
 
         setProjectData(prev => (prev.location === suggested ? prev : { ...prev, location: suggested }));
         setValidationErrors(prev => ({ ...prev, location: undefined, directory: undefined }));
@@ -134,7 +149,7 @@ export function useProjectWizard() {
         // repository name, and a mid-word path is not worth an IPC round trip.
         const timer = setTimeout(() => void validateProjectDirectory(suggested), 200);
         return () => clearTimeout(timer);
-    }, [flow, remote, defaultLocation, locationManuallyEdited, projectData.appId]);
+    }, [flow, remote, defaultLocation, locationManuallyEdited, projectData.appId, projectData.packagePath]);
 
     /**
      * Update project name and auto-generate app ID if not manually edited
@@ -280,11 +295,13 @@ export function useProjectWizard() {
                 // Validate the selected directory first
                 const validationResult = await ValidationService.validateProjectDirectory(selectedPath, platformInfo);
 
-                // A folder that already holds something gets a subfolder rather than a refusal.
-                // Named after the app for a project being created, and after the repository for
-                // one being copied down - which is the only name a clone has at this point, and
-                // the same one the server knows it by.
-                const subfolder = flow === "clone" ? remote?.name : projectData.appId;
+                // A folder that already holds something gets a subfolder rather than a refusal,
+                // named the same way the automatic suggestion above names one.
+                const subfolder = flow === "clone"
+                    ? remote?.name
+                    : flow === "import"
+                        ? packageBaseName(projectData.packagePath)
+                        : projectData.appId;
 
                 // If directory is not empty and a subfolder name exists, append it to the path
                 if (validationResult.data && !validationResult.data.isEmpty && subfolder) {
@@ -314,7 +331,7 @@ export function useProjectWizard() {
         } finally {
             setIsSelectingDirectory(false);
         }
-    }, [updateProjectData, validateProjectDirectory, projectData.appId, platformInfo, flow, remote]);
+    }, [updateProjectData, validateProjectDirectory, projectData.appId, projectData.packagePath, platformInfo, flow, remote]);
 
     /**
      * Move to an adjacent page of whichever flow the author is in.
@@ -445,12 +462,9 @@ export function useProjectWizard() {
      */
     const importProject = useCallback(async (): Promise<void> => {
         setImportFailure(null);
-        setImportStatus("picking");
+        setImportStatus("unpacking");
         try {
-            const outcome = await ImportService.importProject();
-            if (outcome.status === "cancelled") {
-                return;
-            }
+            const outcome = await ImportService.importProject(projectData.packagePath, projectData.location);
             if (outcome.status === "failed") {
                 setImportFailure({ kind: "failed", message: outcome.error });
                 return;
@@ -466,6 +480,28 @@ export function useProjectWizard() {
         } finally {
             setImportStatus("idle");
         }
+    }, [projectData.packagePath, projectData.location]);
+
+    /**
+     * Choose the package, through the native dialog that also grants access to it.
+     *
+     * A dismissed dialog leaves everything as it was: it is not an error, and clearing a package
+     * the author already chose because they opened the picker and thought better of it would be
+     * the wrong reading of what they did.
+     */
+    const selectPackage = useCallback(async (): Promise<void> => {
+        setIsSelectingPackage(true);
+        try {
+            const dest = await ImportService.selectPackage();
+            if (!dest) {
+                return;
+            }
+            // A new package is a new import; the last attempt's verdict describes nothing now.
+            setImportFailure(null);
+            setProjectData(prev => ({ ...prev, packagePath: dest }));
+        } finally {
+            setIsSelectingPackage(false);
+        }
     }, []);
 
     return {
@@ -479,6 +515,7 @@ export function useProjectWizard() {
         directoryValidation,
         isValidatingDirectory,
         isSelectingDirectory,
+        isSelectingPackage,
         isCreatingProject,
         creationError,
         cloneStatus,
@@ -501,6 +538,7 @@ export function useProjectWizard() {
         handleSelectDirectory,
         cloneProject,
         importProject,
+        selectPackage,
         nextStep,
         prevStep,
         createProject,
