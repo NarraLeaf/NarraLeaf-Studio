@@ -43,6 +43,10 @@ export const settings = {
             label: "Workspace",
             description: "Startup behavior, workspace history, and auto-save helpers.",
         },
+        shortcuts: {
+            label: "Shortcuts",
+            description: "Keys bound to each command throughout Studio.",
+        },
         versionControl: {
             label: "Version control",
             description: "Checkpoints and the identity recorded on them.",

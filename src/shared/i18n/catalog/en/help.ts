@@ -85,7 +85,7 @@ export const help = {
                 "The shortcut sheet lists every shortcut in Studio, including those that apply only while a "
                 + "particular editor is open.\n"
                 + "\n"
-                + "- Every shortcut can be changed in Settings, under Editor.\n"
+                + "- Every shortcut can be changed in Settings, under Shortcuts.\n"
                 + "- A changed shortcut is updated in the sheet, the menus and the command palette.",
         },
         search: {
