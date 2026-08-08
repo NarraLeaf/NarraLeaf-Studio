@@ -37,12 +37,6 @@ export const build = {
     },
     outputDir: "输出目录",
     chooseFolder: "选择文件夹…",
-    info: {
-        version: "版本",
-        protection: "资源保护",
-        protectionOn: "已开启",
-        protectionOff: "未开启",
-    },
     section: {
         targets: "目标",
         identity: "标识",
@@ -58,7 +52,6 @@ export const build = {
     },
     identity: {
         version: "版本",
-        versionHint: "三段数字，例如 1.0.0",
         productName: "产品名",
         productNameSource: "源自项目名",
         appId: "应用 ID",
@@ -175,7 +168,7 @@ export const build = {
         "icon-missing": "未设置应用图标，将使用 NarraLeaf 图标",
         "icon-unusable": "{platform} 图标无法读取，将使用 NarraLeaf 图标",
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
-        "icon-stale": "{platform} 图标尚未烘焙，请打开 项目 ▸ 图标 生成",
+        "icon-stale": "{platform} 图标尚未烘焙，请打开 项目 ▸ 应用 生成",
         "plugins-invalid": "插件校验失败：\n{errors}",
         "build-dependency-unavailable":
             "{plugin} 在 {platform} 上需要构建依赖 {dependency}，本机没有缓存，也无法从 {url} 获取（{reason}）。"
@@ -214,8 +207,6 @@ export const build = {
         "output-not-empty": "输出目录已有文件，同名产物会被覆盖",
     },
     webStaticNotice: "Web 构建是可部署到任意网页服务器的静态站点；资源加密与 HTTP 限制对它不生效",
-    unsignedNotice: "未做代码签名。玩家首次打开时可能看到安全提示",
-    selectAtLeastOne: "请至少选择一个平台和格式",
     toast: {
         submitted: "构建已开始，进度显示在控制台",
         done: "构建完成",
