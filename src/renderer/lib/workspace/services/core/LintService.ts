@@ -162,6 +162,7 @@ export class LintService extends Service<LintService> implements ILintService {
 
         return {
             config: projectService.getLintingConfiguration(),
+            network: projectService.getNetworkConfiguration(),
             stories,
             blueprintDocument: safely(() => uiGraphService.getDocument().blueprintDocument, null),
             uiDocument: safely(() => uiDocumentService.getDocument(), null),

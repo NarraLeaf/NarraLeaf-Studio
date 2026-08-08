@@ -8,7 +8,7 @@ import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { MergedPersistentNameCollision } from "@shared/variables/mergedPersistentView";
 import type { AssetType } from "../workspace/services/assets/assetTypes";
 import type { AssetReference } from "../workspace/services/references/referenceModel";
-import type { LintingConfiguration } from "../workspace/project/configuration";
+import type { LintingConfiguration, NetworkConfiguration } from "../workspace/project/configuration";
 
 /**
  * The snapshot every lint rule reads.
@@ -78,6 +78,15 @@ export type LintVoiceContext = {
 
 export type LintContext = {
     config: LintingConfiguration;
+    /**
+     * The project's network policy.
+     *
+     * Here rather than read off a service, for the reason stated above: a rule is a pure function of
+     * this value. `network/fetch-disallowed` is the whole reason it exists - whether a blueprint's
+     * network nodes are a problem is not a property of the blueprint, it is a property of the
+     * blueprint *and* the setting that decides whether the shipped game may reach the network.
+     */
+    network: NetworkConfiguration;
     stories: readonly LintStoryEntry[];
     blueprintDocument: BlueprintDocument | null;
     uiDocument: UIDocument | null;

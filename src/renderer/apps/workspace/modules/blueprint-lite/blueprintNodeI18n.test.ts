@@ -32,9 +32,17 @@ const UNTRANSLATED_TITLES = new Set(["+", "+1", "−", "−1", "×", "÷", "<", 
 
 /**
  * Labels that stay in their original form: single-letter operand pins (`A + B`),
- * coordinate axes, and the placeholder for an empty select option.
+ * coordinate axes, the placeholder for an empty select option, and the HTTP request
+ * methods.
+ *
+ * The methods are protocol tokens rather than words. They are spelled this way in the
+ * request the author is composing and in every API's documentation, so a translated
+ * `GET` would name something that does not exist.
  */
-const UNTRANSLATED_LABELS = new Set(["A", "B", "X", "Y", "-"]);
+const UNTRANSLATED_LABELS = new Set([
+    "A", "B", "X", "Y", "-",
+    "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD",
+]);
 
 function collectLabels(): Array<{ text: string; where: string }> {
     const out: Array<{ text: string; where: string }> = [];
