@@ -28,6 +28,21 @@ describe("which page may be left", () => {
         expect(ValidationService.isStepValid("origin", data(), "clone")).toBe(true);
     });
 
+    /** Both answers are picked on the page, so both gate the button that unpacks. */
+    it("holds the import page until a package and a folder are both chosen", () => {
+        expect(ValidationService.isStepValid("import", data(), "import")).toBe(false);
+        expect(ValidationService.isStepValid("import", data({
+            packagePath: "D:/Downloads/My-Game.nlspkg",
+        }), "import")).toBe(false);
+        expect(ValidationService.isStepValid("import", data({
+            location: "D:/Projects/my-game",
+        }), "import")).toBe(false);
+        expect(ValidationService.isStepValid("import", data({
+            packagePath: "D:/Downloads/My-Game.nlspkg",
+            location: "D:/Projects/my-game",
+        }), "import")).toBe(true);
+    });
+
     it("holds the project page until the three permanent answers are there", () => {
         expect(ValidationService.isStepValid("project", data({ name: "Game" }), "create")).toBe(false);
         expect(ValidationService.isStepValid("project", data({
