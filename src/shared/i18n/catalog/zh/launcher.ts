@@ -21,6 +21,10 @@ export const launcher = {
             clear: "清除搜索",
             empty: "没有匹配“{query}”的项目。",
         },
+        // 第一个项目出现之前的整个标签页，见 WelcomePane。
+        empty: {
+            subtitle: "打开过的项目会显示在此处",
+        },
         removeFromRecent: "从最近移除",
         moreActions: "更多操作",
         moreActionsNamed: "{name} 的更多操作",

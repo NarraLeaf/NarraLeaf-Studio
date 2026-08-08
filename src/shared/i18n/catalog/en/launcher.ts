@@ -20,6 +20,11 @@ export const launcher = {
             clear: "Clear search",
             empty: "No projects match \"{query}\".",
         },
+        // The whole tab before the first project - see WelcomePane. One line, and it is the tier-2
+        // "what will be here": the two tiles under it are the "how to put something here".
+        empty: {
+            subtitle: "Projects you open appear here.",
+        },
         removeFromRecent: "Remove from recent",
         moreActions: "More actions",
         moreActionsNamed: "More actions for {name}",
