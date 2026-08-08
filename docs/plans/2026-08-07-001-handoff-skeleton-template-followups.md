@@ -206,25 +206,58 @@ so down is negative. The cut now sits behind the dialogue band.
 ### 3.2 Scene changes should fade
 
 They were `dissolve` 600ms and read as a cut, because a scene mounts with its own
-`defaultBackgroundAssetId` and a dissolve from an image to *itself* is invisible. Now
-`throughColor` 800ms through `#000`. **Residual, deliberate:** the outgoing scene still does not
-fade out — the new scene appears (in near-darkness) and then lifts. Fixing that properly means
-dropping `defaultBackgroundAssetId` from the non-entry scenes, which would cost the editor its
-scene thumbnails. Measured at 220ms into the jump the frame is genuinely dark, so it reads as a
-fade.
+`defaultBackgroundAssetId` and a dissolve from an image to *itself* is invisible.
+
+**The transition belongs on the `jump` row, not on the next scene's `setBackground`.**
+`StoryJumpPayload.transition` compiles to `Scene.jumpTo(target, transition)`, and the engine runs
+it as `_transitionToScene(transition, targetScene.background)` on the **outgoing** scene, before
+unmount — so it is a genuine fade out and back in. A transition on the incoming scene's
+`setBackground` can never be that: by the time it runs, that scene has already mounted with its own
+background.
+
+Now: both jump rows carry `throughColor` 800ms through `#000`. The entry scene has no jump into
+it, so its opening `setBackground` keeps `throughColor` as the game's fade-up; the other two scenes'
+opening `setBackground` went back to `dissolve` (invisible, and a second fade there would stutter).
+Verified frame by frame: 170ms into the jump the corridor is at near-black, 340ms in the clubroom
+has emerged.
+
+**Known cosmetic residual:** the character sprite does not dim with the background, because the
+transition targets the scene's background image and a sprite is a separate displayable. Corridor
+and Clubroom would look better with a `character exit` before their jump — Last light already has
+one. Not done: it changes the staging, which is the owner's call.
 
 ### 3.3 Page switches lag, and the config controls lie
 
 Two unrelated things.
 
-**The lag was never asset loading.** Frame-cadence sampling during a switch: fonts ready at
-0.7ms, the one image already decoded, and then frames at 121ms / 280ms / 384ms — the browser
-simply cannot produce a frame while it lays out and paints a freshly mounted surface. The
-prepaint gate waited *two* frames, so it paid that cost twice. It now waits the second frame only
-when the asset waits actually deferred (`PREPAINT_ASSET_WAIT_SIGNIFICANT_MS`), and images get
-their own short budget instead of the 900ms font budget. Click → page visible went **302ms → 143ms**
-on the worst page (Load, with a save screenshot) and 68–85ms → 82–112ms elsewhere. What is left is
-surface mount cost; making it smaller means making surfaces cheaper to mount, not tuning gates.
+**The lag was never asset loading.** Frame-cadence sampling: fonts ready at 0.7ms, images already
+decoded. The prepaint gate nonetheless waited *two* animation frames, and on a busy page each of
+those is 100ms+. It now waits the second one only when the asset waits actually deferred
+(`PREPAINT_ASSET_WAIT_SIGNIFICANT_MS`), and images get their own short budget instead of the 900ms
+font budget. Click → page visible went **302ms → 143ms** on the worst page.
+
+**Where the remaining ~140ms goes**, from a devtools timeline trace across one Title → Config
+switch (`disabled-by-default-devtools.timeline`):
+
+| | |
+|---|---|
+| click → navigation state updated | **3.4ms** (blueprint graph + `Go Page` are not the cost) |
+| one React render + commit | **97ms** |
+| style + layout + paint, whole 700ms window | **~20ms total** (`Layout` 5.3ms across 3 events) |
+| one animation frame before reveal | 9ms (Title) – 38ms (Config) |
+
+So it is React, not the browser and not I/O. An earlier read of this as "layout and paint" came
+from a sampling profile whose `(program)` bucket I took for browser work; the trace says otherwise.
+
+**And it is the cross-fade that makes it expensive.** Mount cost by target: Title (10 widgets)
+62–65ms, Config (61) 88–98ms, Load (66) 92ms. But the *same Config page* opened from inside the
+game — where the page underneath is hidden, so only one layer is in the tree — costs **62–70ms**.
+Keeping both pages mounted so they can dissolve is roughly a third of the bill. Each authored
+widget expands to ~5 DOM nodes, most of them animated `motion` components.
+
+That leaves three honest options, none free: keep the dissolve and the cost, go back to
+`exitBlocking: true` (out-then-in, one layer at a time, no cross-fade), or make widgets cheaper to
+mount. Tuning the prepaint gate further buys nothing — it is already down to one frame.
 
 **The controls were static props, not state.** The theme baked "selected" into `All text` and
 `On` as flat props, so the pair read as a label. All six selectable buttons (`Text`/`Sound`,
@@ -243,13 +276,15 @@ title and the menu still read over it.
 
 ### 3.5 In-game overlays cover the stage completely
 
-Surfaces opened over a running game now composite their background at 50%
-(`GAME_OVERLAY_BACKGROUND_ALPHA`, applied only when the nav entry's presentation is
-`gameOverlay`). Needed three changes, not one: the animation layer's colour, the design-size layer
-underneath it (which repainted the authored colour opaque), and the pages' own full-bleed
-containers — whose `appearance` model overrode the flat `fillVisible: false` and put the sheet
-back. **Trade-off worth a decision:** at 50% the config labels sit on a busy scene and contrast
-drops. The constant is one edit away if you want 0.65.
+Surfaces opened over a running game now composite their background at
+`GAME_OVERLAY_BACKGROUND_ALPHA`, applied only when the nav entry's presentation is `gameOverlay`.
+Needed three changes, not one: the animation layer's colour, the design-size layer underneath it
+(which repainted the authored colour opaque), and the pages' own full-bleed containers — whose
+`appearance` model overrode the flat `fillVisible: false` and put the sheet back.
+
+Shipped at **0.85**. 0.5 was tried first and the owner rejected it: the stage competed with the
+page's own labels and the screens became hard to read. At 0.85 the scene is a reminder that it is
+still there, not a view of it.
 
 ### 3.6 Subtle motion on key buttons
 
