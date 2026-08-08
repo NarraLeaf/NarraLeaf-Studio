@@ -90,7 +90,7 @@ export function SigningSection({
         () => platforms.map(platform => signing[platform]).filter((id): id is string => Boolean(id)),
         [platforms, signing],
     );
-    const { credentials, certificates, reload } = useSigningVault(selectedIds);
+    const { credentials, certificates, loaded, reload } = useSigningVault(selectedIds);
     const [importing, setImporting] = useState<SigningPlatform | null>(null);
 
     if (importing) {
@@ -129,6 +129,7 @@ export function SigningSection({
                         selectedId={selectedId}
                         credential={credential}
                         certificate={selectedId ? certificates[selectedId] : undefined}
+                        loaded={loaded}
                         frozen={frozen}
                         onSelect={id => onChange(platform, id)}
                         onImport={() => setImporting(platform)}
@@ -153,6 +154,7 @@ function SigningRow({
     selectedId,
     credential,
     certificate,
+    loaded,
     frozen,
     onSelect,
     onImport,
@@ -163,6 +165,8 @@ function SigningRow({
     selectedId: string | undefined;
     credential: SigningCredential | null;
     certificate: SigningInspectResult | undefined;
+    /** Whether the vault has answered yet; until it has, nothing is missing, it is merely unread. */
+    loaded: boolean;
     /** From `FreezeGuard.writes` - the reason goes on the row, because a disabled select has no hover. */
     frozen: { disabled: boolean; title: string | undefined };
     onSelect: (credentialId: string | undefined) => void;
@@ -179,11 +183,16 @@ function SigningRow({
         // A project opened on another machine points at an id that is not here.
         // Without a matching option the picker would silently read as "unsigned"
         // while preflight said otherwise; this keeps the two telling one story.
-        if (selectedId && !mine.some(candidate => candidate.id === selectedId)) {
+        //
+        // Only once the vault has answered, though. `credentials` starts empty, and this option
+        // carries `selectedId` as its value, so it would be the *selected* one - every configured
+        // row would open reading "missing on this machine" and then correct itself, which is the
+        // one thing about a signing credential an author must be able to believe on sight.
+        if (loaded && selectedId && !mine.some(candidate => candidate.id === selectedId)) {
             list.push({ value: selectedId, label: t("build.signing.missing") });
         }
         return list;
-    }, [credentials, platform, selectedId, t]);
+    }, [credentials, loaded, platform, selectedId, t]);
 
     return (
         // The same frame every project setting row uses (`settingRows.SettingShell`), because this now
@@ -218,7 +227,7 @@ function SigningRow({
                         portalMenu
                         disabled={frozen.disabled}
                         value={selectedId ?? ""}
-                        aria-label={signingRowLabel(platform, t)}
+                        ariaLabel={signingRowLabel(platform, t)}
                         onChange={value => onSelect(String(value) || undefined)}
                         options={options}
                     />
@@ -528,11 +537,17 @@ function SigningImportForm({
     );
 }
 
+/**
+ * Label above the control, not beside it - the shape `settingRows.SettingStack` uses, and for the
+ * same reason: this form is only ever hosted by the project panel, which the author may drag down
+ * to 240px. A fixed-width label there left the certificate field about 90px wide, so a chosen file
+ * read as "未..." - no overflow, just a filename nobody can check before typing its password.
+ */
 function ImportRow({ label, children }: { label: string; children: React.ReactNode }) {
     return (
-        <div className="flex items-center gap-3">
-            <span className="w-28 shrink-0 text-xs text-fg-muted">{label}</span>
-            <div className="min-w-0 flex-1">{children}</div>
+        <div className="grid min-w-0 gap-1.5 [&>*]:min-w-0">
+            <span className="text-xs text-fg-muted">{label}</span>
+            {children}
         </div>
     );
 }
