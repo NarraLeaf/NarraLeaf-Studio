@@ -113,7 +113,7 @@ function buildVariableMap(sources) {
  * symbolic form keeps the snapshot diff pointing at the cause instead of at a
  * magic constant.
  */
-function normaliseType(expression, variables, context) {
+function normalizeType(expression, variables, context) {
     const text = expression.trim();
 
     const literal = /^"([^"]+)"$/.exec(text);
@@ -148,7 +148,7 @@ function parseFields(body, variables, owner) {
         if (!/^[A-Za-z0-9_]+$/.test(name)) {
             throw new Error(`Unparsed field name in ${owner}: ${JSON.stringify(raw)}`);
         }
-        fields[name] = normaliseType(raw.slice(separator + 1), variables, `${owner}.${name}`);
+        fields[name] = normalizeType(raw.slice(separator + 1), variables, `${owner}.${name}`);
     }
     return fields;
 }
@@ -175,7 +175,7 @@ function extract() {
         for (const [, , name, returns, argList] of source.matchAll(PROTO_RE)) {
             prototypes[name] = {
                 returns,
-                args: splitTopLevel(argList).map((arg) => normaliseType(arg, variables, `proto ${name}`)),
+                args: splitTopLevel(argList).map((arg) => normalizeType(arg, variables, `proto ${name}`)),
             };
         }
     }
@@ -185,7 +185,7 @@ function extract() {
     for (const [, symbol, returns, argList] of funcSource.matchAll(FUNC_RE)) {
         functions[symbol] = {
             returns,
-            args: splitTopLevel(argList).map((arg) => normaliseType(arg, variables, `func ${symbol}`)),
+            args: splitTopLevel(argList).map((arg) => normalizeType(arg, variables, `func ${symbol}`)),
         };
     }
 

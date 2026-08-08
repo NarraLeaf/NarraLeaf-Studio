@@ -227,9 +227,9 @@ export function computeUiEditorDistributedStarts(
         if (byStart !== 0) {
             return byStart;
         }
-        const byCentre = start(a) + size(a) / 2 - (start(b) + size(b) / 2);
-        if (byCentre !== 0) {
-            return byCentre;
+        const byCenter = start(a) + size(a) / 2 - (start(b) + size(b) / 2);
+        if (byCenter !== 0) {
+            return byCenter;
         }
         return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });

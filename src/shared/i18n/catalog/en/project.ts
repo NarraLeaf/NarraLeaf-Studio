@@ -216,7 +216,7 @@ export const project = {
     settings: {
         allowHttpTitle: "Allow HTTP",
         allowHttpDescription: "When off, the game is confined to the app protocol and all HTTP/HTTPS requests are blocked.",
-        allowHttpWebHint: "Does not apply to the Web export, only to desktop builds.",
+        allowHttpWebHint: "Not enforced in the Web export, which is itself served over HTTP. Network nodes still run there.",
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
         encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",

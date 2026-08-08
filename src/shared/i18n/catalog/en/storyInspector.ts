@@ -154,7 +154,7 @@ export const storyInspector = {
         dots: "A grid of dots grows until the cells flood together.",
         slide: "The new image slides in from one edge as the old one slides out.",
         darkness: "Swaps images at the starting darkness, then animates to the ending one. 1 → 0 emerges out of black, 0 → 1 dims into it.",
-        throughColor: "Covers the frame with a colour, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
+        throughColor: "Covers the frame with a color, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
     },
 
     wipeDirection: {
