@@ -31,5 +31,6 @@ export const placeholders = {
         history: "History",
         notifications: "Notifications",
         plugins: "Plugins",
+        variables: "Variables",
     },
 } as const;

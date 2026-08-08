@@ -7,6 +7,9 @@ export const devMode = {
     waitingPayload: "正在等待开发模式数据…",
     surfaceNotFound: "未找到界面：{surfaceId}",
     issues: {
+        title: "问题",
+        empty: "没有出错的地方",
+        sessionFailure: "会话启动失败",
         atLine: "第 {line} 行 · {scene}",
         inScene: "位于 {scene}",
         noLocation: "无法定位到具体的行",
@@ -26,6 +29,7 @@ export const devMode = {
         panelsAria: "界面面板",
         skipToNextChoice: "跳到下一个选项",
         skipToNextChoiceBusy: "跳转中…",
+        hide: "隐藏此按钮",
     },
     tabs: {
         blueprints: "蓝图",

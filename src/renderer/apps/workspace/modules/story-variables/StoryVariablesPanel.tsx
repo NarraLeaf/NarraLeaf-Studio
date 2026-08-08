@@ -1,5 +1,5 @@
 /**
- * Story Variables panel (right sidebar). Active while a Story scene editor is focused.
+ * Variables panel (right sidebar). Always present, whether or not a story is open.
  *
  * The sections are split by OWNERSHIP, not by lifetime. The story document owns scene variables and
  * nothing else; the two project-level scopes - saved and global - live in the project variable
@@ -7,17 +7,30 @@
  * panel authors come first, and the scene scope - a read-only reflection of declaration rows the
  * author writes in the story with `/local` - comes last.
  *
+ * That ownership split is also why the panel has two shapes. Saved and global are project resources
+ * and render from the registry with no payload at all; the scene section needs a focused story, so
+ * it appears only when a scene editor has published one (see `StorySceneEditorTab`), and is omitted
+ * outright otherwise. Not an empty section, and not a line explaining its absence - a section that
+ * cannot have content is not content.
+ *
  * A project-level section can still list rows a STORY declares (`/save`, `/global`): a project whose
- * rows were never migrated into the registry, or one that was frozen when the migration ran. Those
- * are listed but not edited here, because their source of truth is a line in a scene - clicking one
- * goes to that line, exactly as a scene row does. Nothing labels them; an editable row and a
- * non-editable row already look different, and a badge saying so would only name what is visible.
+ * rows were never migrated into the registry, which in practice means one that was frozen when the
+ * migration ran. Those are listed but not edited here, because their source of truth is a line in a
+ * scene - clicking one goes to that line, exactly as a scene row does. Nothing labels them; an
+ * editable row and a non-editable row already look different, and a badge saying so would only name
+ * what is visible.
+ *
+ * ⚠ Those legacy rows can only be merged in while their story is focused, because they live in the
+ * story document and nothing else here reads one. So on a frozen, unmigrated project the saved and
+ * global sections list MORE rows with a story open than without. The asymmetry is not a bug and not
+ * worth a fix: post-migration there are no such rows, and the alternative - loading every story in
+ * the project to fill a side panel - costs far more than the case is worth.
  *
  * Comments in English per convention.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { HelpCircle, Plus, Trash2, Variable } from "lucide-react";
+import { HelpCircle, Plus, Trash2 } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -354,15 +367,6 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
         });
     }, [blueprintService]);
 
-    if (!storyId || !sceneId) {
-        return (
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-fg-subtle">
-                <Variable className="h-5 w-5" />
-                {t("storyVars.empty")}
-            </div>
-        );
-    }
-
     /** One project-level row: editable when this panel owns it, a jump when the story does. */
     const renderProjectRow = (
         entry: MergedPersistentEntry,
@@ -444,21 +448,27 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
                 </div>
             </div>
 
-            {/* No `+`: a scene variable is declared with `/local` in the scene itself, which is also
-                the only place it can be edited - so every row here is a way back to that line. */}
-            <div className="flex flex-col gap-2">
-                <SectionHeader title={t("storyVars.scene.title")} hint={t("storyVars.scene.hint")} />
-                <div className="flex flex-col gap-1.5">
-                    {sceneRows.map(row => (
-                        <VariableJumpRow
-                            key={row.id}
-                            name={row.name}
-                            valueType={row.valueType}
-                            onJump={() => jumpToDeclaration(row.id)}
-                        />
-                    ))}
+            {/* Present only while a scene editor is focused: with no scene there is no scope, so the
+                section has nothing to be empty ABOUT and is dropped rather than shown blank.
+
+                No `+` even then: a scene variable is declared with `/local` in the scene itself,
+                which is also the only place it can be edited - so every row here is a way back to
+                that line. */}
+            {storyId && sceneId ? (
+                <div className="flex flex-col gap-2">
+                    <SectionHeader title={t("storyVars.scene.title")} hint={t("storyVars.scene.hint")} />
+                    <div className="flex flex-col gap-1.5">
+                        {sceneRows.map(row => (
+                            <VariableJumpRow
+                                key={row.id}
+                                name={row.name}
+                                valueType={row.valueType}
+                                onJump={() => jumpToDeclaration(row.id)}
+                            />
+                        ))}
+                    </div>
                 </div>
-            </div>
+            ) : null}
         </div>
     );
 }

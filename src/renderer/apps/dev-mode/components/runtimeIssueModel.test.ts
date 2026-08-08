@@ -6,6 +6,7 @@ import {
     RUNTIME_ISSUE_LIMIT,
     appendRuntimeIssue,
     buildStoryRowLookups,
+    countRuntimeIssues,
     locateRuntimeIssue,
     locateStoryBlock,
     type LocatedRuntimeIssue,
@@ -251,5 +252,28 @@ describe("appendRuntimeIssue", () => {
         }
         expect(list).toHaveLength(RUNTIME_ISSUE_LIMIT);
         expect(list[0]?.id).toBe(`${RUNTIME_ISSUE_LIMIT + 4}`);
+    });
+});
+
+describe("countRuntimeIssues", () => {
+    function at(level: LocatedRuntimeIssue["level"], id: string): LocatedRuntimeIssue {
+        return { id, level, message: id, origin: "session", location: null };
+    }
+
+    it("splits the list by level, which is what decides the strip's colour", () => {
+        // A warning-only list must count zero errors: the strip is painted in the error colour when
+        // and only when there is a real error in it.
+        expect(countRuntimeIssues([at("warning", "a"), at("warning", "b")])).toEqual({
+            errors: 0,
+            warnings: 2,
+        });
+        expect(countRuntimeIssues([at("error", "a"), at("warning", "b"), at("error", "c")])).toEqual({
+            errors: 2,
+            warnings: 1,
+        });
+    });
+
+    it("counts nothing in an empty list", () => {
+        expect(countRuntimeIssues([])).toEqual({ errors: 0, warnings: 0 });
     });
 });
