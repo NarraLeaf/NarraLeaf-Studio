@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, DragEvent, useMemo, useState, useEffect, useLayoutEffect, useCallback } from "react";
+import { Dispatch, SetStateAction, DragEvent, useMemo, useRef, useState, useEffect, useLayoutEffect, useCallback } from "react";
 import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
@@ -115,20 +115,34 @@ export function AssetsIconView({
         onGroupPathChange(groupPathIds.slice(0, -1));
     }, [groupPathIds, onGroupPathChange]);
 
+    // The compact toolbar draws the breadcrumb, so this handler leaves the component and is held in
+    // the panel's state. It goes out through a constant identity on purpose: published directly,
+    // `handleBack` changes whenever the caller re-creates `onGroupPathChange` - which callers written
+    // inline do on every render - and the effect below would re-publish, re-render, and never settle.
+    const backRef = useRef(handleBack);
+    useLayoutEffect(() => {
+        backRef.current = handleBack;
+    }, [handleBack]);
+    const publishedBack = useCallback(() => backRef.current(), []);
+
     useLayoutEffect(() => {
         if (!compactToolbar) {
             setAssetsIconToolbarCenter(null);
             return;
         }
         if (activeGroup && !isNarrowed) {
-            setAssetsIconToolbarCenter({
-                title: activeGroup.group.name,
-                onBack: handleBack,
-            });
+            const title = activeGroup.group.name;
+            // Same folder, same breadcrumb: keep the object React already has rather than writing an
+            // equal-but-new one, which would count as a change and schedule another render.
+            setAssetsIconToolbarCenter(prev => (
+                prev && prev.title === title && prev.onBack === publishedBack
+                    ? prev
+                    : { title, onBack: publishedBack }
+            ));
         } else {
             setAssetsIconToolbarCenter(null);
         }
-    }, [compactToolbar, activeGroup, isNarrowed, handleBack, setAssetsIconToolbarCenter]);
+    }, [compactToolbar, activeGroup, isNarrowed, publishedBack, setAssetsIconToolbarCenter]);
 
     useEffect(() => {
         return () => setAssetsIconToolbarCenter(null);
