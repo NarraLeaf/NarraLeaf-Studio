@@ -204,6 +204,9 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
         setValue: (key, value) => ipcRenderer.invoke("runtime:persistence:setValue", key, value),
         removeValue: key => ipcRenderer.invoke("runtime:persistence:removeValue", key),
     },
+    network: {
+        fetch: request => ipcRenderer.invoke("runtime:network:fetch", request),
+    },
     sidecar,
 };
 

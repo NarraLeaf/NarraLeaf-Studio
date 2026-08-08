@@ -28,6 +28,7 @@ export type LintRuleSeverity = LintSeverity | "off";
 export type LintCategory =
     | "assets"
     | "portability"
+    | "network"
     | "story"
     | "variables"
     | "text"
@@ -38,6 +39,7 @@ export type LintCategory =
 export const LINT_CATEGORY_ORDER: readonly LintCategory[] = [
     "assets",
     "portability",
+    "network",
     "story",
     "variables",
     "text",
@@ -65,6 +67,7 @@ export type LintRuleId =
     | "portability/asset-name"
     | "portability/case-collision"
     | "portability/media-format"
+    | "network/fetch-disallowed"
     | "story/invalid-command"
     | "story/goto-missing"
     | "story/label-duplicate"

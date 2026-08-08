@@ -12,7 +12,7 @@ import { createAvatarRenderer, planAvatarEncode } from "./avatarRenderer";
 
 describe("planAvatarEncode", () => {
     /** A square-in-pixels crop of `size` px, centred — the shape both crop producers emit. */
-    function centredCrop(source: { width: number; height: number }, size: number) {
+    function centeredCrop(source: { width: number; height: number }, size: number) {
         return {
             x: (source.width - size) / 2 / source.width,
             y: (source.height - size) / 2 / source.height,
@@ -24,7 +24,7 @@ describe("planAvatarEncode", () => {
     it("bakes a real sprite's head crop at the sprite's own resolution", () => {
         // The measured case: a 1088×1984 sprite crops to roughly 478px of head.
         const source = { width: 1088, height: 1984 };
-        const plan = planAvatarEncode(source, centredCrop(source, 478), 1024);
+        const plan = planAvatarEncode(source, centeredCrop(source, 478), 1024);
 
         expect(plan.size).toBe(478);
         expect([plan.dw, plan.dh]).toEqual([plan.sw, plan.sh]);
@@ -35,7 +35,7 @@ describe("planAvatarEncode", () => {
     it("never scales a crop up to reach the ceiling", () => {
         // Interpolating a 96px crop up to 1024 would invent nothing but blur and 40× the bytes.
         const source = { width: 200, height: 400 };
-        const plan = planAvatarEncode(source, centredCrop(source, 96), 1024);
+        const plan = planAvatarEncode(source, centeredCrop(source, 96), 1024);
 
         expect(plan.size).toBe(96);
         expect(plan.dw).toBe(plan.sw);
@@ -44,14 +44,14 @@ describe("planAvatarEncode", () => {
     it("copies the crop 1:1 for anything at or under the ceiling", () => {
         for (const size of [16, 100, 255, 256, 257, 478, 1023, 1024]) {
             const source = { width: 4096, height: 4096 };
-            const plan = planAvatarEncode(source, centredCrop(source, size), 1024);
+            const plan = planAvatarEncode(source, centeredCrop(source, size), 1024);
             expect({ size, dw: plan.dw, dh: plan.dh }).toEqual({ size, dw: plan.sw, dh: plan.sh });
         }
     });
 
     it("caps a pathological sprite, because the PNG is version-controlled project content", () => {
         const source = { width: 4000, height: 6000 };
-        const plan = planAvatarEncode(source, centredCrop(source, 3800), 1024);
+        const plan = planAvatarEncode(source, centeredCrop(source, 3800), 1024);
 
         expect(plan.size).toBe(1024);
         expect(plan.dw).toBeLessThan(plan.sw);

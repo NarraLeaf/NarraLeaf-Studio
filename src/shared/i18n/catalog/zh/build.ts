@@ -226,6 +226,11 @@ export const build = {
         one: "构建已中止：有 {count} 个素材无法播放，详见控制台",
         other: "构建已中止：有 {count} 个素材无法播放，详见控制台",
     },
+    networkNodeDisallowed: "{blueprint} 发起了网络请求，本工程不允许",
+    networkSummary: {
+        one: "构建已中止：有 {count} 个网络节点无法运行。请在工程设置中开启「允许 HTTP」，或删除该节点",
+        other: "构建已中止：有 {count} 个网络节点无法运行。请在工程设置中开启「允许 HTTP」，或删除这些节点",
+    },
     mediaUnchecked: {
         one: "有 {count} 个媒体文件未经检查，本机没有可用的转换工具",
         other: "有 {count} 个媒体文件未经检查，本机没有可用的转换工具",

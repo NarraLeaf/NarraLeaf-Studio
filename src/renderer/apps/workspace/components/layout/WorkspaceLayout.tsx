@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { TitleBar } from "@/lib/components/layout";
+import { TitleBar, windowRootProps } from "@/lib/components/layout";
 import { LeftSidebarSelector } from "./LeftSidebarSelector";
 import { BottomPanelSelector } from "./BottomPanelSelector";
 import { RightSidebarSelector } from "./RightSidebarSelector";
@@ -735,6 +735,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     return (
         <div
+            {...windowRootProps}
             className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
         >
             {backgroundUrl && (

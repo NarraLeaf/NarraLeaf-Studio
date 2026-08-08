@@ -12,6 +12,7 @@ export const BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE = "ImageAsset|null" as co
 export const BLUEPRINT_VALUE_TYPE_TIMER = "Timer" as const;
 export const BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN = "AnimationToken" as const;
 export const BLUEPRINT_VALUE_TYPE_SOUND_HANDLE = "SoundHandle" as const;
+export const BLUEPRINT_VALUE_TYPE_RESPONSE_BODY = "ResponseBody" as const;
 
 export type BlueprintElementRef = {
     surfaceId: string;
@@ -54,6 +55,28 @@ export type BlueprintAnimationToken = {
  */
 export type BlueprintSoundHandle = {
     kind: "soundHandle";
+    id: string;
+};
+
+/**
+ * A handle on one fetched response body, returned by Fetch and accepted by the reader nodes.
+ *
+ * Opaque for the same reason as {@link BlueprintSoundHandle}, plus one of its own: the body may be
+ * megabytes, and a graph that fetches inside a loop would otherwise put every one of them on a data
+ * pin and into the node output store, where they are copied around and held for the rest of the
+ * execution. The id addresses a buffer the host holds, so what travels between nodes is this.
+ *
+ * What the handle defers is *parsing*, not transfer - the body has already crossed into the host by
+ * the time Fetch continues, bounded by the response cap. Deferring the parse is what lets a failed
+ * `JSON.parse` have an execution branch instead of being reported as a `null` that a body of `null`
+ * is indistinguishable from.
+ *
+ * The host releases every body when the execution that fetched it ends, so a handle is reachable
+ * only from its own execution chain. Nothing carries a response across events: an author who needs
+ * the data later reads it and stores what they want.
+ */
+export type BlueprintResponseBody = {
+    kind: "responseBody";
     id: string;
 };
 
@@ -168,6 +191,26 @@ export function normalizeBlueprintSoundHandle(value: unknown): BlueprintSoundHan
         return null;
     }
     return toBlueprintSoundHandle(typeof record.id === "string" ? record.id : null);
+}
+
+export function isBlueprintResponseBodyValueType(valueType: string | undefined): boolean {
+    return valueType === BLUEPRINT_VALUE_TYPE_RESPONSE_BODY;
+}
+
+export function toBlueprintResponseBody(id: string | null | undefined): BlueprintResponseBody | null {
+    const safe = typeof id === "string" ? id.trim() : "";
+    return safe ? { kind: "responseBody", id: safe } : null;
+}
+
+export function normalizeBlueprintResponseBody(value: unknown): BlueprintResponseBody | null {
+    if (typeof value === "string") {
+        return toBlueprintResponseBody(value);
+    }
+    const record = readRecord(value);
+    if (!record || record.kind !== "responseBody") {
+        return null;
+    }
+    return toBlueprintResponseBody(typeof record.id === "string" ? record.id : null);
 }
 
 export function toBlueprintAnimationToken(id: string | null | undefined): BlueprintAnimationToken | null {

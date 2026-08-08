@@ -251,7 +251,7 @@ export const help = {
         characters: {
             title: "Characters",
             body:
-                "A character has a name, a colour and a set of appearances. An appearance is the character's "
+                "A character has a name, a color and a set of appearances. An appearance is the character's "
                 + "form on stage, and story rows switch between appearances by name.\n"
                 + "\n"
                 + "- The portrait beside dialogue is generated from an appearance.\n"
@@ -372,6 +372,20 @@ export const help = {
                 + "widget shows.\n"
                 + "- A binding whose field no longer exists is reported as broken, on the surface and in the "
                 + "blueprint.",
+        },
+        networkNodes: {
+            title: "Reading data from the internet",
+            body:
+                "The Fetch node makes an HTTP request while the game runs, for an online notice board or a "
+                + "leaderboard. It leaves by one of four paths: the request succeeded, the server answered with an "
+                + "error, the network failed, or it took too long.\n"
+                + "\n"
+                + "- Fetch produces a Response. Read Response Text or Read Response JSON turns it into a value.\n"
+                + "- A Response is only readable during the run that fetched it. To keep the data, read it and "
+                + "store it in a variable.\n"
+                + "- Allow HTTP in project settings decides whether these nodes work at all. With it off, the "
+                + "project reports an error and the build is refused.\n"
+                + "- Only http and https addresses can be fetched.",
         },
         lint: {
             title: "Project checks",
@@ -507,7 +521,7 @@ export const help = {
                 + "own.\n"
                 + "\n"
                 + "- Generated icons are stored in the project, so a build on another machine uses the same set.\n"
-                + "- An iOS icon cannot contain transparency. It is drawn on a background colour, white by "
+                + "- An iOS icon cannot contain transparency. It is drawn on a background color, white by "
                 + "default.\n"
                 + "- A platform with no generated icons builds with the NarraLeaf icon.",
         },
