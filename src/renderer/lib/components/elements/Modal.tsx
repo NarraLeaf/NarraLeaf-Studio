@@ -1,6 +1,8 @@
 import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { HelpTrigger, type HelpTopicId } from "@/lib/help";
+import { useWindowOverlayHost } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { CONTROL_HEIGHT_CLASS } from "./controlSize";
 import { cn } from "../../utils/cn";
@@ -103,6 +105,7 @@ export function Modal({
     helpTopic,
 }: ModalProps) {
     const { t } = useTranslation();
+    const overlayHost = useWindowOverlayHost();
     useEscapeToClose(isOpen && closeOnEscape, onClose);
     useEffect(() => {
         if (isOpen) {
@@ -121,7 +124,14 @@ export function Modal({
         }
     };
 
-    return (
+    /*
+     * Raised into the window's overlay layer rather than left where the caller sits: `z-50` is only
+     * a rank within the nearest stacking context, and callers live inside panels. The project
+     * panel's slide-in sub-page is `absolute inset-0 z-10`, so the Live2D / Spine installer raised
+     * from it had a ceiling of 10 and the dock seams (15) and editor split sash (10) painted across
+     * it. See `useWindowOverlayHost` for why the layer goes there and not to `document.body`.
+     */
+    return createPortal(
         <div className="nl-window-content-layer z-50 flex items-center justify-center p-4">
             {/* Backdrop. Full *window* (`fixed inset-0`), not just this layer: the layer starts
                 below the titlebar, and the launcher's titlebar covers only the right column, so an
@@ -177,7 +187,8 @@ export function Modal({
                     </div>
                 )}
             </div>
-        </div>
+        </div>,
+        overlayHost,
     );
 }
 
