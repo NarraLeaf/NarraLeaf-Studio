@@ -33,7 +33,7 @@ export const assets = {
         failed: "无法删除：{error}",
     },
     rename: {
-        failed: "无法重命名 {name}：{error}",
+        failed: "无法重命名 {name}",
     },
     createGroup: {
         failed: "无法创建分组",
