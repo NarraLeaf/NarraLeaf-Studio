@@ -284,7 +284,15 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             return next.length === prev.length ? prev : next;
         });
     }, [groups, hasLoaded]);
-    
+
+    // Stable across renders on purpose. The icon grid hangs its "back out of this folder" handler off
+    // this, and publishes that handler to the compact toolbar from an effect. A fresh arrow here made
+    // the handler new on every render, so the effect re-ran and re-published on every render - which
+    // rendered again. Entering a folder in the bottom dock looped until React gave up.
+    const handleIconGroupPathChange = useCallback((next: string[]) => {
+        setIconGroupPathIds(resolveAssetGroupPathIds(next, groups));
+    }, [groups]);
+
     const onActionComplete = useCallback(() => {
         loadAssets();
         handleClearSelection();
@@ -755,7 +763,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             iconSize={iconSize}
                             onIconSizeChange={setIconSize}
                             groupPathIds={iconGroupPathIds}
-                            onGroupPathChange={(next) => setIconGroupPathIds(resolveAssetGroupPathIds(next, groups))}
+                            onGroupPathChange={handleIconGroupPathChange}
                         />
                     )}
                 </div>
