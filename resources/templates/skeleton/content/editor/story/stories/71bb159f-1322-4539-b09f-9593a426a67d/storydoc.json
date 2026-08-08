@@ -47,8 +47,12 @@
             "action": "setBackground",
             "assetId": "93bad884-1f14-4ad2-85fb-c05d7b5ffef6",
             "transition": {
-              "kind": "dissolve",
-              "durationMs": 600
+              "kind": "throughColor",
+              "durationMs": 800,
+              "props": {
+                "color": "#000000",
+                "hold": 25
+              }
             }
           }
         },
@@ -109,7 +113,8 @@
               "preset": "center",
               "durationMs": 400,
               "props": {
-                "zoom": 0.52
+                "zoom": 0.52,
+                "yoffset": -50
               }
             },
             "transition": {
@@ -237,8 +242,12 @@
             "action": "setBackground",
             "assetId": "64ce569f-7104-4c57-9baf-20d14d1e0ddb",
             "transition": {
-              "kind": "dissolve",
-              "durationMs": 600
+              "kind": "throughColor",
+              "durationMs": 800,
+              "props": {
+                "color": "#000000",
+                "hold": 25
+              }
             }
           }
         },
@@ -285,7 +294,8 @@
               "preset": "center",
               "durationMs": 400,
               "props": {
-                "zoom": 0.52
+                "zoom": 0.52,
+                "yoffset": -50
               }
             },
             "transition": {
@@ -597,8 +607,12 @@
             "action": "setBackground",
             "assetId": "5322b0e3-f48d-4b77-bfcd-7406613191ce",
             "transition": {
-              "kind": "dissolve",
-              "durationMs": 600
+              "kind": "throughColor",
+              "durationMs": 800,
+              "props": {
+                "color": "#000000",
+                "hold": 25
+              }
             }
           }
         },
@@ -630,7 +644,8 @@
               "preset": "center",
               "durationMs": 400,
               "props": {
-                "zoom": 0.52
+                "zoom": 0.52,
+                "yoffset": -50
               }
             },
             "transition": {
@@ -795,6 +810,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T04:03:28.336Z",
-    "updatedAt": "2026-08-07T07:16:28.264Z"
+    "updatedAt": "2026-08-07T21:56:37.464Z"
   }
 }

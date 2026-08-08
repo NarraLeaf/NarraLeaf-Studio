@@ -10,7 +10,7 @@ export const welcome = {
     quickActions: {
         newScene: {
             label: "新建场景",
-            description: "加一个场景，开始写",
+            description: "新增场景并开始编写",
         },
         openAssets: {
             label: "打开资源",
@@ -22,7 +22,7 @@ export const welcome = {
         },
     },
     reopenHint: {
-        menu: "在 帮助 → 打开欢迎页 可以回到这里",
-        palette: "在命令面板搜索「打开欢迎页」可以回到这里",
+        menu: "在「帮助 → 打开欢迎页」中重新打开本页",
+        palette: "在命令面板中搜索「打开欢迎页」重新打开本页",
     },
 } satisfies LocaleNamespace<"welcome">;

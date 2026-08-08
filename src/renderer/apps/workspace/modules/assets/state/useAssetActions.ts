@@ -676,13 +676,22 @@ export function useAssetActions({
 
         await withAssetsService(async (assetsService) => {
             const result = await assetsService.createGroup(category, groupName, parentGroupId);
-            if (!result.success) {
-                // TODO: Show error
+            if (result.success) {
+                return;
             }
+            // Names the action and nothing else. The write that failed here raises the workspace's
+            // own save failure too, which is already on screen with the file and a retry, so the
+            // reason is covered; what it cannot say is which action was lost. The row is drawn from
+            // memory whether or not the write landed, so without this the author is looking at a
+            // group that is not on disk.
+            contextRef.current?.services.get<UIService>(Services.UI).showNotification(
+                t("assets.createGroup.failed"),
+                "error",
+            );
         });
         onActionComplete();
         notifyLoading(false);
-    }, [inputDialog, withAssetsService, onActionComplete, notifyLoading]);
+    }, [inputDialog, withAssetsService, onActionComplete, notifyLoading, t]);
 
     /**
      * Create an empty text file under Other and open it.
@@ -804,33 +813,72 @@ export function useAssetActions({
             }
         }
 
+        // Named per row rather than counted: a paste of a dozen rows where three did not arrive is
+        // read by looking for the three, and the list re-renders looking almost right either way.
+        const pasteFailures: string[] = [];
+        let pastedCount = 0;
+        const noteFailure = (name: string, error?: string) => {
+            pasteFailures.push(`${name}: ${error || t("assets.unknownError")}`);
+        };
+
         await withAssetsService(async (assetsService) => {
             await assetsService.transaction(async (svc) => {
                 if (clipboard.type === 'cut') {
                     // Move assets
                     for (const a of clipboard.assets) {
-                        await svc.moveAssetToGroup(a, targetGroupId);
+                        const moveResult = await svc.moveAssetToGroup(a, targetGroupId);
+                        if (moveResult.success) {
+                            pastedCount += 1;
+                        } else {
+                            noteFailure(a.name, moveResult.error);
+                        }
                     }
                     // Move groups
                     for (const g of clipboard.groups) {
-                        await svc.moveGroupToParent(g.category, g.id, targetGroupId);
+                        const moveResult = await svc.moveGroupToParent(g.category, g.id, targetGroupId);
+                        if (moveResult.success) {
+                            pastedCount += 1;
+                        } else {
+                            noteFailure(g.name, moveResult.error);
+                        }
                     }
                     setClipboard(null);
                 } else if (clipboard.type === 'copy') {
                     // Duplicate assets
                     for (const a of clipboard.assets) {
                         const dupResult = await svc.duplicateAsset(a);
-                        if (dupResult.success && dupResult.data) {
-                            await svc.moveAssetToGroup(dupResult.data, targetGroupId);
+                        if (!dupResult.success || !dupResult.data) {
+                            noteFailure(a.name, dupResult.error);
+                            continue;
+                        }
+                        // A copy that was made but not moved is still a row the author cannot find
+                        // where they pasted, so it is named too.
+                        const moveResult = await svc.moveAssetToGroup(dupResult.data, targetGroupId);
+                        if (moveResult.success) {
+                            pastedCount += 1;
+                        } else {
+                            noteFailure(a.name, moveResult.error);
                         }
                     }
                     // Duplicate groups (recursively copies all assets and child groups)
                     for (const g of clipboard.groups) {
-                        await svc.duplicateGroup(g.category, g.id, targetGroupId);
+                        const dupResult = await svc.duplicateGroup(g.category, g.id, targetGroupId);
+                        if (dupResult.success) {
+                            pastedCount += 1;
+                        } else {
+                            noteFailure(g.name, dupResult.error);
+                        }
                     }
                 }
             });
         });
+
+        if (pasteFailures.length > 0) {
+            context.services.get<UIService>(Services.UI).showAlert(
+                pastedCount > 0 ? t("assets.paste.someFailedTitle") : t("assets.paste.failedTitle"),
+                pasteFailures.join("\n"),
+            );
+        }
 
         // Expand the target group if pasting into a group
         if (targetGroupId && expandGroup) {
@@ -839,7 +887,7 @@ export function useAssetActions({
 
         onActionComplete();
         notifyLoading(false);
-    }, [clipboard, context, contextMenuTarget, focusedItemId, assets, onActionComplete, withAssetsService, setClipboard, notifyLoading, expandGroup]);
+    }, [clipboard, context, contextMenuTarget, focusedItemId, assets, onActionComplete, withAssetsService, setClipboard, notifyLoading, expandGroup, t]);
     
     const handleRename = useCallback(async () => {
         if (!context || !inputDialog) return;
@@ -858,15 +906,22 @@ export function useAssetActions({
         if (!newName) return;
 
         await withAssetsService(async (assetsService) => {
-            if (target.isGroup) {
-                await assetsService.renameGroup(target.category, (target.item as AssetGroup).id, newName);
-            } else {
-                await assetsService.renameAsset(target.item as Asset, newName);
+            const result = target.isGroup
+                ? await assetsService.renameGroup(target.category, (target.item as AssetGroup).id, newName)
+                : await assetsService.renameAsset(target.item as Asset, newName);
+            if (result.success) {
+                return;
             }
+            // One row, one reason. Reported by the name the author started from, because that is the
+            // name still on the row after the list redraws, and the one they can look for.
+            context.services.get<UIService>(Services.UI).showNotification(
+                t("assets.rename.failed", { name: initialName, error: result.error || t("assets.unknownError") }),
+                "error",
+            );
         });
 
         onActionComplete();
-    }, [context, resolveTargets, focusedItemId, inputDialog, onActionComplete, withAssetsService]);
+    }, [context, resolveTargets, focusedItemId, inputDialog, onActionComplete, withAssetsService, t]);
 
     /**
      * The one asset the single-subject actions act on, in the same priority order rename uses:
@@ -1038,6 +1093,12 @@ export function useAssetActions({
             onActionComplete();
         } catch (error) {
             console.error("Failed to delete asset", error);
+            // The whole run fell over, so there is no per-row list to read and one line is the
+            // answer. Resolved again here because the service handle above is inside the `try`.
+            contextRef.current?.services.get<UIService>(Services.UI).showNotification(
+                t("assets.delete.failed", { error: error instanceof Error ? error.message : t("assets.unknownError") }),
+                "error",
+            );
         } finally {
             notifyLoading(false);
         }

@@ -102,6 +102,9 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING,
+    BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
+    BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
+    BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
@@ -2568,6 +2571,17 @@ function resolveSelfOutput(
     // Play Sound hands its handle to the transport nodes that follow, so the handle has to survive
     // the hop through the node output store the same way an animation token does.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY && portId === "handle") {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // The network family, kept out of the cross-product list above on purpose: `response`, `text`
+    // and `status` are new port names there, and joining that list would hand them to every node
+    // type it covers while handing these three every port name in it.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_NETWORK_FETCH ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON) &&
+        (portId === "response" || portId === "status" || portId === "error" || portId === "text" || portId === "value")
+    ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     // Animate Property hands the token it minted to a later Stop Animation, so the

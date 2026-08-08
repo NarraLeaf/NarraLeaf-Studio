@@ -121,7 +121,7 @@ export const motion = {
         previewBackgroundTitle: "预览背景图片（仅编辑器）",
         selectOrCreate: "选择或创建一个故事动画",
         deleteConfirm: "删除动画“{name}”？",
-        deleteDetail: "此操作将移除该动画素材并关闭相关编辑器",
+        deleteDetail: "该动画素材会被移除，相关编辑器会被关闭",
         clearAria: "清除{name}",
     },
     editor: {

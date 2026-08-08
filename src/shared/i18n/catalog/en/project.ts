@@ -78,12 +78,12 @@ export const project = {
     },
     game: {
         autoSaveTitle: "Automatic saving",
-        autoSaveDescription: "Save the playthrough on a timer, so a crash costs a moment instead of a session.",
+        autoSaveDescription: "Save the playthrough on a timer, so a crash loses at most one interval.",
         autoSaveIntervalTitle: "Save every",
-        autoSaveIntervalDescription: "How often to check. Nothing is written unless the story moved on.",
+        autoSaveIntervalDescription: "How often to check. Nothing is written unless the story advanced.",
         autoSaveIntervalUnit: "s",
         autoSaveSlotsTitle: "Autosaves kept",
-        autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They stay out of the player's own save slots.",
+        autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They are separate from the player's own save slots.",
     },
     // The Player defaults group: the value each player setting starts at. Every one of these is
     // still the player's to change while they play, and what they change is kept, so the wording
@@ -91,7 +91,7 @@ export const project = {
     preferences: {
         // One line on the group heading, not a paragraph in the page. Everything else it used to
         // say is either visible in the rows or of no use to the author reading them.
-        intro: "Where each setting starts for a player who has not changed it. Players can change all of them, and what they choose is kept.",
+        intro: "The starting value of each setting for a player who has not changed it. Players can change all of them, and their choices are kept.",
         group: {
             dialogue: "Dialogue",
             skipping: "Skipping",
@@ -118,7 +118,7 @@ export const project = {
         },
         showDialog: {
             title: "Show the dialogue box",
-            description: "Off starts the game with the box hidden, as the player's hide-UI toggle leaves it.",
+            description: "When off, the game starts with the dialogue box hidden, in the state the player's hide-UI toggle produces.",
         },
         skip: {
             title: "Allow skipping",
@@ -154,7 +154,7 @@ export const project = {
         },
         voiceEndMode: {
             title: "When a voiced line ends",
-            description: "What happens to the clip when its sentence is done. Whatever you pick, two voices never play at once.",
+            description: "What happens to the clip when its line ends. Two voice clips never play at once, whichever option is selected.",
             option: {
                 stop: "Stop the clip",
                 fade: "Fade the clip out",
@@ -216,7 +216,7 @@ export const project = {
     settings: {
         allowHttpTitle: "Allow HTTP",
         allowHttpDescription: "When off, the game is confined to the app protocol and all HTTP/HTTPS requests are blocked.",
-        allowHttpWebHint: "Does not apply to the Web export, only to desktop builds.",
+        allowHttpWebHint: "Not enforced in the Web export, which is itself served over HTTP. Network nodes still run there.",
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
         encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",

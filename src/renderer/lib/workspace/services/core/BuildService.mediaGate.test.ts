@@ -130,7 +130,16 @@ function mount(options: {
             get: (id: Services) => {
                 switch (id) {
                     case Services.Project:
-                        return { getLintingConfiguration: () => linting };
+                        return {
+                            getLintingConfiguration: () => linting,
+                            // This file is about the media gate; a project that allows HTTP keeps
+                            // the network gate ahead of it out of the way.
+                            getNetworkConfiguration: () => ({
+                                allowHttp: true,
+                                allowRemoteResource: false,
+                                allowRemoteScript: false,
+                            }),
+                        };
                     case Services.Lint:
                         return { run: lintRun };
                     case Services.Console:
