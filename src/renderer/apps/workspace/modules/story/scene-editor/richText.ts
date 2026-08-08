@@ -18,7 +18,8 @@ const INTERP_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="non
  * model counts characters in text nodes, so an `<rt>` would add units the runs never had and every
  * offset past the first annotation — caret, selection, mark application — would land in the wrong
  * place. A pseudo-element carries no text node and is invisible to `Selection`, so the reading can
- * be visible and weightless at once.
+ * be visible and weightless at once — and, taken out of flow, it leaves the row's height alone,
+ * which is a requirement rather than a side effect (see the rule in styles.css).
  */
 const RUBY_CLASS = "story-rt-ruby";
 
