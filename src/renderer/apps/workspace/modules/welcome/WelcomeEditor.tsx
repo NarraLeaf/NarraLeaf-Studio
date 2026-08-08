@@ -27,8 +27,8 @@ const FIRST_TOPICS: readonly HelpTopicId[] = ["workspaceLayout", "storyScene", "
 /**
  * Welcome editor: the two things a new project needs doing, and the way into the documentation.
  *
- * Deliberately quiet. It carried a 4xl title, a sparkle, a tagline and a numbered guide, which is a
- * lot of surface for a tab whose job is to be left within a minute.
+ * A greeting, then the work. Deliberately quiet below that: it once carried a 4xl title, a sparkle
+ * and a numbered guide, which is a lot of surface for a tab whose job is to be left within a minute.
  */
 export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
     const { t } = useTranslation();
@@ -81,6 +81,16 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
     return (
         <div className="h-full overflow-auto bg-surface">
             <div className="mx-auto max-w-2xl px-6 py-10">
+                {/*
+                    Same heading pair as the launcher's empty projects tab and the dashboard:
+                    `text-xl font-medium` over `text-sm text-fg-muted`. A page opened once per
+                    project does not get its own type scale.
+                */}
+                <div className="mb-8">
+                    <h1 className="text-xl font-medium text-fg">{t("welcome.title")}</h1>
+                    <p className="mt-2 text-sm text-fg-muted">{t("welcome.subtitle")}</p>
+                </div>
+
                 <div className="grid gap-3 sm:grid-cols-3">
                     <QuickAction
                         icon={SquarePlus}
