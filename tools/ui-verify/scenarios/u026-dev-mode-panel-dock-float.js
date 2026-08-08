@@ -77,7 +77,7 @@ const READ_LAYOUT = function () {
             position: cs.position,
             label: panel.getAttribute('aria-label'),
             surfaceBg: getComputedStyle(surface).backgroundColor,
-            coversStageCentre: covering,
+            coversStageCenter: covering,
         };
     }
     return out;
@@ -304,8 +304,8 @@ async function toggleMode(d, want) {
         }
 
         run.check('D-7', 'floating: the panel does not cover the centre of the stage it is debugging',
-            floating.panel.coversStageCentre === false,
-            `coversStageCentre=${floating.panel.coversStageCentre}; panel=${JSON.stringify(round(floating.panel))} stage=${JSON.stringify(round(floating.stage))}`);
+            floating.panel.coversStageCenter === false,
+            `coversStageCenter=${floating.panel.coversStageCenter}; panel=${JSON.stringify(round(floating.panel))} stage=${JSON.stringify(round(floating.stage))}`);
         run.check('D-8b', 'floating: the panel is still an opaque reading surface',
             A.alphaOf(floating.panel.surfaceBg) === 1, `background=${floating.panel.surfaceBg}`);
 

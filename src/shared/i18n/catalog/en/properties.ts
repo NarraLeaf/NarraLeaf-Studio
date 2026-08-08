@@ -132,7 +132,7 @@ export const properties = {
             other: "{count} references",
         },
         dormant: "inactive",
-        dormantHint: "Stored on the widget but not drawn, because the fill is set to a colour. Deleting this asset would clear it.",
+        dormantHint: "Stored on the widget but not drawn, because the fill is set to a color. Deleting this asset would clear it.",
         kind: {
             story: "Story",
             blueprint: "Blueprint",

@@ -251,7 +251,7 @@ export const help = {
         characters: {
             title: "Characters",
             body:
-                "A character has a name, a colour and a set of appearances. An appearance is the character's "
+                "A character has a name, a color and a set of appearances. An appearance is the character's "
                 + "form on stage, and story rows switch between appearances by name.\n"
                 + "\n"
                 + "- The portrait beside dialogue is generated from an appearance.\n"
@@ -507,7 +507,7 @@ export const help = {
                 + "own.\n"
                 + "\n"
                 + "- Generated icons are stored in the project, so a build on another machine uses the same set.\n"
-                + "- An iOS icon cannot contain transparency. It is drawn on a background colour, white by "
+                + "- An iOS icon cannot contain transparency. It is drawn on a background color, white by "
                 + "default.\n"
                 + "- A platform with no generated icons builds with the NarraLeaf icon.",
         },
