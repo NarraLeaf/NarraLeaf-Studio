@@ -6,7 +6,7 @@ import type { ContextMenuDef } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { AlertTriangle, FolderOpen, MoreVertical, Plus, Search, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { collapseHomePath, normalizeProjectPath } from "@shared/utils/recentProject";
 import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
 import { useMissingRecentProjects, useRecentProjects, useRemoveRecentProject } from "@/lib/app/hooks/useRecentProjects";
@@ -168,6 +168,22 @@ export function ProjectsTab() {
         }
     };
 
+    // Before the first project the tab is the welcome pane and nothing else. The header goes with
+    // it: a search field over an empty list can only ever return the same emptiness, and its two
+    // icons are the same two actions the pane offers at a size an eye lands on.
+    if (recentProjects.length === 0) {
+        return (
+            <div className="h-full w-full flex flex-col pt-4 px-6 pb-6 text-fg">
+                {operationError && <OperationError message={operationError} />}
+                <WelcomePane
+                    isBusy={isBusy}
+                    onAddProject={handleAddProject}
+                    onOpenFolder={handleOpenFolder}
+                />
+            </div>
+        );
+    }
+
     return (
         <div className="h-full w-full flex flex-col pt-4 px-6 pb-6 text-fg">
             <div className="flex items-center gap-2 mb-3">
@@ -227,40 +243,10 @@ export function ProjectsTab() {
                 </IconButton>
             </div>
 
-            {operationError && (
-                <div className="mb-3 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
-                    {operationError}
-                </div>
-            )}
+            {operationError && <OperationError message={operationError} />}
 
             <div className="flex-1 min-h-0 overflow-y-auto">
-                {/* First run: the empty list offers the two ways to fill it rather than a sentence
-                    reporting that it is empty. The header carries the same two actions as icons,
-                    which at 24px across an otherwise blank pane is not where an eye lands. */}
-                {recentProjects.length === 0 && (
-                    <div className="flex flex-col items-center gap-2 px-3 py-10">
-                        <button
-                            type="button"
-                            onClick={handleAddProject}
-                            disabled={isBusy}
-                            className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
-                        >
-                            <Plus className="h-4 w-4" />
-                            {t("launcher.projects.addProject")}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleOpenFolder}
-                            disabled={isBusy}
-                            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-fg-muted transition-colors hover:bg-fill hover:text-fg disabled:opacity-50"
-                        >
-                            <FolderOpen className="h-4 w-4" />
-                            {t("launcher.projects.openFolder")}
-                        </button>
-                    </div>
-                )}
-
-                {recentProjects.length > 0 && visibleProjects.length === 0 && (
+                {visibleProjects.length === 0 && (
                     <div className="px-3 py-10 text-center text-sm text-fg-muted">
                         {t("launcher.projects.search.empty", { query: searchQuery.trim() })}
                     </div>
@@ -358,6 +344,105 @@ export function ProjectsTab() {
                 />
             )}
         </div>
+    );
+}
+
+function OperationError({ message }: { message: string }) {
+    return (
+        <div className="mb-3 rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
+            {message}
+        </div>
+    );
+}
+
+/**
+ * What the Projects tab is before there is a project.
+ *
+ * The whole pane is the two ways in, drawn at the size of the decision they carry: this is the
+ * first screen of the product, and the previous version answered it with two 28px rows floating
+ * near the top of an otherwise blank pane, under a search field for a list with nothing in it.
+ *
+ * Only two tiles, because there are only two questions - is the project already on this disk, or
+ * does it have to be brought in? The three ways of bringing one in (blank, package, server) are
+ * the wizard's first page, where each is written out; splitting them across tiles here would make
+ * the first screen of the product a five-way choice between things most authors meet once.
+ */
+function WelcomePane({
+    isBusy,
+    onAddProject,
+    onOpenFolder,
+}: {
+    isBusy: boolean;
+    onAddProject: () => void;
+    onOpenFolder: () => void;
+}) {
+    const { t } = useTranslation();
+
+    return (
+        <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-8 pb-10 text-center">
+            <div>
+                <h1 className="text-xl font-medium text-fg">NarraLeaf Studio</h1>
+                <p className="mt-2 text-sm text-fg-muted">{t("launcher.projects.empty.subtitle")}</p>
+            </div>
+            <div className="flex items-start justify-center gap-4">
+                <WelcomeAction
+                    icon={<Plus className="h-6 w-6" />}
+                    label={t("launcher.projects.addProject")}
+                    onClick={onAddProject}
+                    disabled={isBusy}
+                />
+                <WelcomeAction
+                    icon={<FolderOpen className="h-6 w-6" />}
+                    label={t("launcher.projects.openFolder")}
+                    onClick={onOpenFolder}
+                    disabled={isBusy}
+                />
+            </div>
+        </div>
+    );
+}
+
+/**
+ * One tile: a square that carries the icon, and the label under it.
+ *
+ * The focus indicator is a border colour on the square rather than a ring, because a ring is a
+ * box-shadow and `styles.css` clears box-shadow on every focused `<button>` - see the warning in
+ * docs/design-system.md §5.
+ */
+function WelcomeAction({
+    icon,
+    label,
+    onClick,
+    disabled,
+}: {
+    icon: ReactNode;
+    label: string;
+    onClick: () => void;
+    disabled: boolean;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            className={cn(
+                "group flex w-24 flex-col items-center gap-2 cursor-default",
+                "text-fg-muted hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed",
+                "focus-visible:outline-none",
+            )}
+        >
+            <span className={cn(
+                "flex h-16 w-16 items-center justify-center rounded-md",
+                // Filled rather than outlined: on the dark theme a `fill-subtle` square inside an
+                // `edge` border is a shape you have to look for, and this is the one thing on the
+                // screen that has to be found.
+                "border border-edge bg-fill transition-colors duration-150",
+                "group-hover:bg-fill-strong group-focus-visible:border-primary",
+            )}>
+                {icon}
+            </span>
+            <span className="text-sm">{label}</span>
+        </button>
     );
 }
 
