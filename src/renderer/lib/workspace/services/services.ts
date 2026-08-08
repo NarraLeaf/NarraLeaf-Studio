@@ -722,6 +722,10 @@ interface UIEditorStateEvents {
     smartSnapDetailSettingsChanged: SmartSnapDetailSettings;
     /** Ephemeral snap guide lines in surface space (viewport overlay). */
     snapGuidesChanged: ActiveSnapGuides | null;
+    /** Screen-ratio preview frame preset id, `null` = off (pure view state, global settings). */
+    previewAspectChanged: string | null;
+    /** Safe-area preview frame device preset id, `null` = off (pure view state, global settings). */
+    previewSafeAreaChanged: string | null;
 }
 
 interface IUIEditorFontFaceService extends IService {
@@ -782,6 +786,15 @@ interface IUIEditorStateService extends IService {
     /** Which guide categories participate when smart snap is on (persisted). */
     getSmartSnapDetailSettings(): SmartSnapDetailSettings;
     patchSmartSnapDetailSettings(patch: Partial<SmartSnapDetailSettings>): void;
+    /**
+     * Screen-ratio preview frame preset id (`null` = off). Pure view state: persisted in global
+     * settings, never in the UIDocument, so toggling it cannot dirty the project.
+     */
+    getPreviewAspectId(): string | null;
+    setPreviewAspectId(aspectId: string | null): void;
+    /** Safe-area preview frame device preset id (`null` = off). Pure view state, see above. */
+    getPreviewSafeAreaId(): string | null;
+    setPreviewSafeAreaId(safeAreaId: string | null): void;
     /** Active snap guides for the current interaction (null clears overlay). */
     getSnapGuides(): ActiveSnapGuides | null;
     setSnapGuides(guides: ActiveSnapGuides | null): void;

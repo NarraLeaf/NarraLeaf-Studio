@@ -233,7 +233,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      */
     const namesSpeaker = isDialogue && !continuationRow && !containerInfo;
     /** Where a nesting connector that ends on this row stops, and where one that opens a block leaves from. */
-    const rowTextCentre = ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].rowBox / 2;
+    const rowTextCenter = ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].rowBox / 2;
     const rowMarkBottom = ROW_CONTENT_PAD_PX + STORY_MARK_PX;
     /**
      * Whether the pointer is on this row, kept local so a hover re-renders one row and nothing else.
@@ -416,7 +416,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     depth={row.depth}
                     nextDepth={row.nextRowDepth ?? 0}
                     opensBlock={Boolean(containerInfo) && !collapsed && block.childrenIds.length > 0}
-                    stopAt={rowTextCentre}
+                    stopAt={rowTextCenter}
                     markBottom={rowMarkBottom}
                     highlight={selected || active}
                 />
@@ -1891,7 +1891,7 @@ export function InsertRow(props: {
     const [composing, setComposing] = useState(false);
     // Coloured only while the line IS a command: `insertChooserType` answers that from the text, and
     // `chooserDismissed` (Escape) must not change it — the line is still a command, the menu is just shut.
-    const colourLine = !composing && isActionCommandLine(value, props.slashAtAlias);
+    const colorLine = !composing && isActionCommandLine(value, props.slashAtAlias);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuFrame = useAnchoredMenuFrame(menuAnchorRef, chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
@@ -2067,7 +2067,7 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
-                {colourLine ? <CommandLineHighlight source={source} trigger={trigger} textStyle={textStyle} /> : null}
+                {colorLine ? <CommandLineHighlight source={source} trigger={trigger} textStyle={textStyle} /> : null}
                 <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} />
                 <textarea
                     ref={props.inputRef}
@@ -2079,7 +2079,7 @@ export function InsertRow(props: {
                         // Transparent glyphs, opaque caret: the colours come from the mirror behind.
                         // Prose keeps its own text — there is nothing to colour, and a line the mirror
                         // would not draw must never be invisible.
-                        colourLine ? "text-transparent caret-[rgb(var(--nl-fg))]" : "text-fg",
+                        colorLine ? "text-transparent caret-[rgb(var(--nl-fg))]" : "text-fg",
                     ].join(" ")}
                     style={textStyle}
                     onCompositionStart={() => setComposing(true)}

@@ -888,15 +888,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * history entry per row, so undoing a replacement across forty lines would take forty presses.
      * One `recordHistory` in front of the batch makes the whole sweep a single step, which is what an
      * author means by "undo that".
+     *
+     * One `updateBlocks` rather than a loop of `updateBlock` for the same reason on the render side:
+     * the service emits `documentChanged` per mutation and the editor repaints its rows per event.
      */
     const updateBlockPayloads = useCallback((edits: readonly { blockId: StoryBlockId; payload: StoryBlock["payload"] }[]) => {
         if (!storyService || !storyId || !sceneId || edits.length === 0) {
             return;
         }
         recordHistory();
-        for (const edit of edits) {
-            storyService.updateBlock(storyId, sceneId, edit.blockId, edit.payload);
-        }
+        storyService.updateBlocks(
+            storyId,
+            edits.map(edit => ({ sceneId, blockId: edit.blockId, payload: edit.payload })),
+        );
     }, [recordHistory, sceneId, storyId, storyService]);
 
     const updateSceneMetadata = useCallback((patch: StorySceneUpdate): boolean => {

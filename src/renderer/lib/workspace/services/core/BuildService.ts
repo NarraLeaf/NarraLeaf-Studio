@@ -11,6 +11,8 @@ import type {
     GameBuildStatus,
 } from "@shared/types/gameBuild";
 import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import { collectBlueprintNetworkNodes } from "@/lib/lint/rules";
 // One spelling of "where is this finding", shared with the report tab - see locationText.ts.
 import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
 export { nonRedundantLintLocation };
@@ -222,9 +224,16 @@ export class BuildService extends Service<BuildService> {
                 startedAt,
                 finishedAt: Date.now(),
                 platforms,
-                error: translate("build.invalidCommandSummary", { count: invalid.length }),
+                error: translateN("build.invalidCommandSummary", invalid.length, { count: invalid.length }),
             });
             return this.state;
+        }
+        // Third of the unconditional correctness gates, and placed here for the same reason the
+        // invalid-command gate is first: it is free. It walks the blueprint document already in
+        // memory, so a build that will be refused anyway does not first pay for a media probe.
+        const networkRefusal = this.runNetworkGate(startedAt, platforms);
+        if (networkRefusal) {
+            return networkRefusal;
         }
         // Second of the two unconditional correctness gates, and placed *between* them on purpose.
         //
@@ -292,6 +301,83 @@ export class BuildService extends Service<BuildService> {
             }
         }
         return found;
+    }
+
+    /**
+     * The network gate: no build ships a blueprint that asks for a network the project forbids.
+     *
+     * ## Why this is not left to the lint rule
+     *
+     * `network/fetch-disallowed` reports the same thing and defaults to `error`, which already
+     * refuses the build - through the lint gate below. But that gate is switchable in two ways an
+     * author can reach without knowing what they are giving up: `runOnBuild` turns the whole sweep
+     * off, and the rule's severity can be set to `warning` or `off` in project settings. Either one
+     * would let a build ship graphs that provably cannot run.
+     *
+     * "Provably" is what puts this in the unconditional class rather than the opinion class. With
+     * Allow HTTP off, the shipped game confines the renderer to its own protocol and cancels every
+     * HTTP request, and the host refuses the request before it is issued. This is not a judgement
+     * about code style that an author may reasonably overrule - it is the same kind of fact as a
+     * video the engine cannot decode, and the reasoning in the comment above applies unchanged.
+     *
+     * ## Every target, including the web export
+     *
+     * The setting is not enforceable on the web (no CSP, no `webRequest`, and the pack carries no
+     * network block at all), so a web build could technically run these nodes. It is still refused:
+     * a project that says it does not allow HTTP means that about the game, and letting it through
+     * on the one target where the mechanism happens to be missing would ship the opposite of what
+     * the setting says. The settings panel states the web caveat so the asymmetry is not a surprise.
+     *
+     * Synchronous, unlike the two gates around it: the blueprint document is already in memory.
+     */
+    private runNetworkGate(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+    ): GameBuildStateSnapshot | null {
+        const services = this.getContext().services;
+        const projectService = services.get<ProjectService>(Services.Project);
+        if (projectService.getNetworkConfiguration().allowHttp) {
+            return null;
+        }
+        let document: BlueprintDocument | null;
+        try {
+            document = services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+        } catch (error) {
+            // A document that will not load is the packer's problem to report, not this gate's to
+            // guess at. Letting the build go on matches how the invalid-command scan treats a story
+            // it cannot read.
+            console.error("[Build] could not read the blueprint document for the network check", error);
+            return null;
+        }
+        // The same sweep the lint rule runs, imported rather than reimplemented: two answers to
+        // "does this project use the network" would be two chances to disagree, and this is the one
+        // that decides whether a build ships.
+        const sites = collectBlueprintNetworkNodes(document);
+        if (sites.length === 0) {
+            return null;
+        }
+
+        const consoleService = this.tryGetConsole();
+        for (const site of sites) {
+            consoleService?.log(
+                BUILD_CONSOLE_CHANNEL,
+                "error",
+                translate("build.networkNodeDisallowed", { blueprint: site.blueprintName }),
+                { source: BUILD_CONSOLE_SOURCE },
+            );
+        }
+        const refusal = translateN("build.networkSummary", sites.length, { count: sites.length });
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+        // `startedAt` and `platforms` carried through for the reason the gates either side carry
+        // them: the dashboard archives a refused run as a finished build.
+        this.updateState({
+            status: "error",
+            startedAt,
+            finishedAt: Date.now(),
+            platforms,
+            error: refusal,
+        });
+        return this.state;
     }
 
     /**

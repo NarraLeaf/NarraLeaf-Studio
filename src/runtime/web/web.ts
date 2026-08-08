@@ -3,6 +3,7 @@ import {
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
 } from "@shared/types/gameRuntime";
+import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { WebGameStorage } from "./webStorage";
 
 /**
@@ -139,6 +140,28 @@ const bridge: GameRuntimePreloadBridge = {
         getValue: async key => (await getStorage()).getPersistenceValue(key),
         setValue: async (key, value) => (await getStorage()).setPersistenceValue(key, value),
         removeValue: async key => (await getStorage()).removePersistenceValue(key),
+    },
+    /**
+     * The Fetch node, on a page.
+     *
+     * Present rather than stubbed, unlike `sidecar` below: a browser can make an HTTP request, so
+     * refusing would deny something this shell can genuinely do.
+     *
+     * Two differences from the desktop shells are inherent to being a page, not gaps to be closed
+     * later, and both are documented for authors:
+     *
+     *  - **CORS applies.** The request carries this page's origin, so an endpoint that sends no
+     *    `Access-Control-Allow-Origin` fails here and succeeds on desktop. Reported as a
+     *    `networkError`, which is what it is.
+     *  - **The project's Allow HTTP setting does not.** It is enforced by a CSP and a `webRequest`
+     *    hook that only a desktop shell has, and a web export's pack carries no `network` block at
+     *    all (see `gameRuntimeArtifactCompiler`). A game served over HTTP(S) is already on the
+     *    network by construction. The build gate still refuses to produce a web build from a project
+     *    that has network nodes with the setting off, so reaching this code in that state is not
+     *    possible through a build.
+     */
+    network: {
+        fetch: async request => executeBlueprintNetworkFetch(request, { allowHttp: true }),
     },
     // `sidecar` is deliberately absent, not stubbed. A browser has no child
     // processes and never will, so there is no honest no-op: a stub would let a

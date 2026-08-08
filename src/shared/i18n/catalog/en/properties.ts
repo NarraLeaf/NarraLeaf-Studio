@@ -89,7 +89,7 @@ export const properties = {
         fallbackName: "Font",
         none: "No font",
         choose: "Choose font",
-        loadError: "Font could not be loaded ({error}). Preview may fall back until the asset is valid.",
+        loadError: "The font could not be loaded ({error}). The preview uses a fallback until the asset is valid.",
         select: "Select Font",
     },
     imageFill: {
@@ -104,7 +104,7 @@ export const properties = {
         selectHint: "Asset browser opens on click",
         changeImage: "Change image",
         openEditor: "Click to open editor",
-        resolveError: "Image asset could not be resolved ({error}). The preview may be wrong until it exists.",
+        resolveError: "The image asset could not be resolved ({error}). The preview is inaccurate until it exists.",
         selectFillImage: "Select Fill Image",
         mode: {
             cover: "Cover",
@@ -132,7 +132,7 @@ export const properties = {
             other: "{count} references",
         },
         dormant: "inactive",
-        dormantHint: "Stored on the widget but not drawn: the fill is set to a colour. Deleting this asset would empty it.",
+        dormantHint: "Stored on the widget but not drawn, because the fill is set to a color. Deleting this asset would clear it.",
         kind: {
             story: "Story",
             blueprint: "Blueprint",

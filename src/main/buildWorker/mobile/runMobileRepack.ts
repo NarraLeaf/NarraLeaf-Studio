@@ -4,6 +4,8 @@ import { createReadStream } from "fs";
 import path from "path";
 import { encryptBuffer } from "@narraleaf/encryption";
 import { readKeystore } from "./keystoreReader";
+import { buildAab } from "./buildAab";
+import { signJar } from "./jarSigning";
 import { repackApk } from "./repackApk";
 import { repackIpa } from "./repackIpa";
 import { signIpa } from "./signIpa";
@@ -135,7 +137,7 @@ function assertPayloadFits(files: SiteFile[], platform: string): void {
 
 
 /**
- * Pick the identity the APK is signed with, and say so.
+ * Pick the identity the Android packages are signed with, and say so.
  *
  * This is not a quiet detail. Android identifies an installed app by package
  * name *and* signing certificate: the first build signed with a different
@@ -143,6 +145,10 @@ function assertPayloadFits(files: SiteFile[], platform: string): void {
  * only "App not installed", which is unguessable if nobody said the identity
  * changed. So both branches log which certificate signed, and switching to a
  * release key is a warning rather than a note.
+ *
+ * One identity covers both packages. The APK carries it as an APK Signature
+ * Scheme v2 block and the AAB as a JAR signature - different encodings of the
+ * same key, which is why an author configures one keystore rather than two.
  */
 async function resolveAndroidIdentity(
     signing: GameBuildWorkerAndroidSigning | undefined,
@@ -153,7 +159,7 @@ async function resolveAndroidIdentity(
         const { subject } = describeSigningCertificate(
             Buffer.from(debugIdentity.certificateChainDerBase64[0], "base64"),
         );
-        log("info", `signing the APK with this machine's sideload identity (${subject})`);
+        log("info", `signing the Android build with this machine's sideload identity (${subject})`);
         return debugIdentity;
     }
 
@@ -166,7 +172,7 @@ async function resolveAndroidIdentity(
         Buffer.from(identity.certificateDerBase64, "base64"),
     );
     log("warning",
-        `signing the APK with the release key "${identity.alias}" (${subject}) instead of this machine's `
+        `signing the Android build with the release key "${identity.alias}" (${subject}) instead of this machine's `
         + "sideload identity. Android identifies an app by package name and signature together, so a device "
         + "that already has a build signed with the other identity must uninstall it before this one will "
         + "install - it fails with \"App not installed\" otherwise.");
@@ -196,13 +202,17 @@ export async function runMobileRepack(
     if (job.android) {
         const { android } = job;
         assertPayloadFits(files, "Android");
-        log("info", `repacking the Android shell (${files.length} site file(s))...`);
+        log("info", `repacking the Android shell (${describeSiteFiles(files.length)})...`);
         const signingIdentity = await resolveAndroidIdentity(
             android.signing,
             toApkSigningIdentity(android.signingIdentity),
             log,
         );
-        const apk = await repackApk({
+        // Both packages are built from one description: same template, same
+        // payload, same identity. Only the container and the signature scheme
+        // differ, which is the whole reason the AAB is a format of the Android
+        // target rather than a target of its own.
+        const shell = {
             templateApk: await fs.readFile(android.templateApkPath),
             android: job.templateManifest.android,
             applicationId: android.applicationId,
@@ -212,19 +222,37 @@ export async function runMobileRepack(
             www,
             shellConfigJson: job.shellConfigJson,
             iconPngBySlot: await readIconSlots(android.iconPngBySlot),
-            signingIdentity,
             mtime,
-        });
-        const outputPath = path.join(outputDir, android.outputName);
-        await fs.writeFile(outputPath, apk);
-        log("info", `signed ${android.outputName} (${formatSize(apk.length)})`);
-        artifacts.push(outputPath);
+        };
+
+        // One at a time, written out before the next begins: each package is
+        // assembled whole in memory (see MAX_PAYLOAD_BYTES), so holding both
+        // would double the peak for no gain.
+        if (android.outputs.apk) {
+            const apk = await repackApk({ ...shell, signingIdentity });
+            const outputPath = path.join(outputDir, android.outputs.apk);
+            await fs.writeFile(outputPath, apk);
+            log("info", `signed ${android.outputs.apk} (${formatSize(apk.length)})`);
+            artifacts.push(outputPath);
+        }
+
+        if (android.outputs.aab) {
+            // The bundle is JAR-signed rather than v2-signed: that is the
+            // signature Google Play reads to identify the upload key, and it
+            // lives in entries rather than in a block, so it is applied to the
+            // finished zip instead of during assembly.
+            const aab = signJar(await buildAab(shell), signingIdentity);
+            const outputPath = path.join(outputDir, android.outputs.aab);
+            await fs.writeFile(outputPath, aab);
+            log("info", `signed ${android.outputs.aab} (${formatSize(aab.length)})`);
+            artifacts.push(outputPath);
+        }
     }
 
     if (job.ios) {
         const { ios } = job;
         assertPayloadFits(files, "iOS");
-        log("info", `repacking the iOS shell (${files.length} site file(s))...`);
+        log("info", `repacking the iOS shell (${describeSiteFiles(files.length)})...`);
         const ipa = await repackIpa({
             templateAppZip: await fs.readFile(ios.templateAppZipPath),
             ios: job.templateManifest.ios,
@@ -294,4 +322,9 @@ async function readIconSlots(slots: Record<string, string> | undefined): Promise
 
 function formatSize(bytes: number): string {
     return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+}
+
+/** Spelled out rather than "file(s)": the console is prose an author reads. */
+function describeSiteFiles(count: number): string {
+    return count === 1 ? "1 site file" : `${count} site files`;
 }

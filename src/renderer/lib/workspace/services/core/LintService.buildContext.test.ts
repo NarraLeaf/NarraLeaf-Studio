@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AssetType } from "../assets/assetTypes";
 import { buildReferenceIndex, type AssetReference } from "../references/referenceModel";
 import { ReferenceService } from "../references/ReferenceService";
-import { DEFAULT_LINTING_CONFIGURATION } from "../../project/configuration";
+import { DEFAULT_LINTING_CONFIGURATION, DEFAULT_NETWORK_CONFIGURATION } from "../../project/configuration";
 import { Services, type WorkspaceContext } from "../services";
 import { LintService } from "./LintService";
 
@@ -59,6 +59,7 @@ function mount(options: { assetIds: string[]; references: AssetReference[] }): L
                     case Services.Project:
                         return {
                             getLintingConfiguration: () => ({ ...DEFAULT_LINTING_CONFIGURATION }),
+                            getNetworkConfiguration: () => ({ ...DEFAULT_NETWORK_CONFIGURATION }),
                             getProjectConfig: () => ({}),
                         };
                     case Services.Story:

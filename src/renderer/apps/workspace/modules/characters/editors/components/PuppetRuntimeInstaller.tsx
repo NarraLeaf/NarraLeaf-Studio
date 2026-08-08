@@ -74,24 +74,45 @@ export function PuppetRuntimeInstaller(props: {
         : null;
 
     // A custom runtime has no terms of ours to show, so it starts at the picker.
-    const [phase, setPhase] = useState<Phase>(runtime ? { step: "notice" } : { step: "pick" });
+    const firstStep = useCallback((): Phase => (runtime ? { step: "notice" } : { step: "pick" }), [runtime]);
+
+    const [phase, setPhase] = useState<Phase>(firstStep);
     const [agreed, setAgreed] = useState(false);
     const [customName, setCustomName] = useState(
         props.target.kind === "custom" ? props.target.suggestedName ?? "" : "",
     );
 
+    // Both hosts keep this dialog mounted for their own lifetime and merely toggle `visible`, passing a
+    // placeholder custom target while nothing is being installed. So the opening step cannot be settled at
+    // mount — the placeholder would settle it, which is what let a click on Live2D or Spine land straight
+    // on the picker with the licence notice never shown. It has to be settled when the dialog opens, and
+    // per target, because the previous open may have been for a different one.
+    const openFor = props.visible ? (props.target.kind === "known" ? props.target.id : "custom") : null;
+    const [session, setSession] = useState<string | null>(openFor);
+    if (session !== openFor) {
+        // Adjusted during render rather than from an effect, so the notice is the dialog's first frame
+        // instead of a picker that is swapped out a frame later.
+        setSession(openFor);
+        if (openFor !== null) {
+            setPhase(firstStep());
+            setAgreed(false);
+            setCustomName(props.target.kind === "custom" ? props.target.suggestedName ?? "" : "");
+        }
+    }
+
     const productName = runtime?.productName ?? t("characters.editor.kind.puppet");
     const canBuildFromSdk = runtime?.methods.includes("sdk-zip") ?? false;
 
     const reset = useCallback(() => {
-        setPhase(runtime ? { step: "notice" } : { step: "pick" });
+        setPhase(firstStep());
         setAgreed(false);
-    }, [runtime]);
+    }, [firstStep]);
 
+    // Deliberately not resetting on the way out: the step is decided on the way *in* now, and a reset here
+    // would be reading the target the host is about to swap back to the placeholder.
     const close = useCallback(() => {
-        reset();
         props.onClose();
-    }, [props, reset]);
+    }, [props]);
 
     const run = useCallback(async (label: TranslationKey, work: () => Promise<{ backend: string; summary: string; note?: string }>) => {
         setPhase({ step: "working", label });
@@ -180,7 +201,7 @@ export function PuppetRuntimeInstaller(props: {
             return (
                 <div className="space-y-3 py-1">
                     <p className="text-2xs font-medium tracking-wide text-fg-muted">
-                        {t("characters.editor.runtime.licenceTitle")}
+                        {t("characters.editor.runtime.licenseTitle")}
                     </p>
                     <p className="text-xs leading-relaxed text-fg-muted">{t(TERMS_KEY[runtime.id])}</p>
                     <p className="text-2xs leading-relaxed text-fg-subtle">
@@ -208,7 +229,7 @@ export function PuppetRuntimeInstaller(props: {
                     </div>
                     <label className="flex items-center gap-2 pt-1 text-xs text-fg">
                         <input type="checkbox" checked={agreed} onChange={event => setAgreed(event.target.checked)} />
-                        {t("characters.editor.runtime.licenceAgree")}
+                        {t("characters.editor.runtime.licenseAgree")}
                     </label>
                 </div>
             );

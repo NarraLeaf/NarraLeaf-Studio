@@ -77,17 +77,17 @@ export const project = {
     },
     game: {
         autoSaveTitle: "自动保存",
-        autoSaveDescription: "按间隔自动保存进度，崩溃时只损失片刻，而不是一整段游玩",
+        autoSaveDescription: "按间隔自动保存进度，崩溃时最多损失一个间隔内的进度",
         autoSaveIntervalTitle: "保存间隔",
         autoSaveIntervalDescription: "多久检查一次。剧情没有推进就不会写入",
         autoSaveIntervalUnit: "秒",
         autoSaveSlotsTitle: "保留数量",
-        autoSaveSlotsDescription: "自动存档在这么多个槽位间轮转，最旧的先被覆盖，不会混进玩家自己的存档槽",
+        autoSaveSlotsDescription: "自动存档在指定数量的槽位间轮转，最旧的先被覆盖，与玩家自己的存档槽相互独立",
     },
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
         // 要么对正在看这些行的作者没有用处。
-        intro: "玩家没有改过时，各项设置从这里的值开始。玩家仍然可以改，改完的值会被保留。",
+        intro: "玩家未修改时，各项设置从这里的值开始。玩家可以修改全部设置，修改结果会被保留。",
         group: {
             dialogue: "对话",
             skipping: "跳过",
@@ -114,7 +114,7 @@ export const project = {
         },
         showDialog: {
             title: "显示对话框",
-            description: "关闭后游戏以隐藏对话框的状态开始，与玩家自己按下隐藏界面时一样",
+            description: "关闭后游戏以隐藏对话框的状态启动，与玩家按下隐藏界面时的状态相同",
         },
         skip: {
             title: "允许跳过",
@@ -150,7 +150,7 @@ export const project = {
         },
         voiceEndMode: {
             title: "语音随句子结束时",
-            description: "一句话说完之后，这条语音怎么处理。无论选哪个，都不会有两条语音同时响",
+            description: "台词结束后如何处理该语音。无论选择哪一项，都不会有两条语音同时播放",
             option: {
                 stop: "立即停止",
                 fade: "淡出",
@@ -175,7 +175,7 @@ export const project = {
         volumeTitle: "音量",
         volumeUnit: "%",
         loopTitle: "默认循环",
-        loopDescription: "在这条轨道上播放的片段默认循环，除非播放它的动作另有指定",
+        loopDescription: "在该轨道上播放的片段默认循环，除非播放它的动作另有指定",
         duplicate: "复制",
         delete: "删除",
         // 展开后紧挨着「删除」：确认框接下来要说的就是这个数字。
@@ -204,7 +204,7 @@ export const project = {
     settings: {
         allowHttpTitle: "允许 HTTP",
         allowHttpDescription: "关闭时，游戏将被限制在应用协议内，所有 HTTP/HTTPS 请求均会被阻止",
-        allowHttpWebHint: "对 Web 导出不适用，此设置仅影响桌面构建",
+        allowHttpWebHint: "Web 导出不受此项限制，该构建本身通过 HTTP 提供。网络节点在 Web 导出中仍会运行",
         encryptAssetsTitle: "加密资源",
         encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
