@@ -22,6 +22,7 @@ import { uiEditorSurfacesModule } from "./ui-editor";
 import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
+import { storyVariablesPanelModule } from "./story-variables";
 import { localizationPanelModule } from "./localization";
 import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
@@ -47,6 +48,7 @@ export const builtInPanels: PanelModule[] = [
     storyMotionPanelModule,
     assetsBottomModule,
     propertiesModule,
+    storyVariablesPanelModule,
     notificationsPanelModule,
     pluginsPanelModule,
     consoleModule,
@@ -95,6 +97,7 @@ export { uiEditorSurfacesModule } from "./ui-editor";
 export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
 export { storyMotionPanelModule } from "./story-motion";
+export { storyVariablesPanelModule } from "./story-variables";
 export { localizationPanelModule } from "./localization";
 export { voicePanelModule } from "./voice";
 export { dashboardPanelModule } from "./dashboard";

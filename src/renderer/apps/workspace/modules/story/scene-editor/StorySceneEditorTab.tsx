@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2, Variable } from "lucide-react";
+import { BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -28,7 +28,7 @@ import {
     type StoryActionCreateRequestDetail,
 } from "./storyActionCreatorEvents";
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
-import { StoryVariablesPanel, STORY_VARIABLES_PANEL_ID } from "../../story-variables";
+import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../../story-variables";
 import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
@@ -667,31 +667,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
 
-    useEffect(() => {
-        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
-            return;
-        }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        const unregister = uiService.panels.register({
-            id: STORY_VARIABLES_PANEL_ID,
-            title: t("story.sceneEditor.variablesPanel"),
-            icon: <Variable className="w-4 h-4" />,
-            position: PanelPosition.Right,
-            component: StoryVariablesPanel,
-            defaultVisible: false,
-            order: 11,
-            payload: {
-                tabId,
-                storyId: payload.storyId,
-                sceneId: payload.sceneId,
-            },
-        });
-        return () => {
-            uiService.panels.hide(STORY_VARIABLES_PANEL_ID);
-            unregister();
-        };
-    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
-
+    /**
+     * The Variables panel is a static module (see `modules/story-variables`) - it exists whether or
+     * not a story is open, because saved and global variables are project resources. All this tab
+     * owns is the SCENE section, which the panel renders from this payload.
+     *
+     * The cleanup is conditional on purpose. Two scene tabs can be open, and when the author
+     * switches from A to B, React may run B's effect before A's cleanup - so an unconditional clear
+     * would wipe the payload B has just published and silently empty the scene section. The payload
+     * carries `tabId` precisely so a tab can ask "is this still mine?" before clearing it. Do not
+     * "simplify" this back to `updatePayload(id, undefined)`.
+     */
     useEffect(() => {
         if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
             return;
@@ -704,6 +690,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             storyName: editor.document?.name,
             sceneName: editor.scene?.name,
         });
+        return () => {
+            const current = uiService.panels.getPayload<StoryVariablesPanelPayload>(STORY_VARIABLES_PANEL_ID);
+            if (current?.tabId === tabId) {
+                uiService.panels.updatePayload(STORY_VARIABLES_PANEL_ID, undefined);
+            }
+        };
     }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
 
     useEffect(() => {

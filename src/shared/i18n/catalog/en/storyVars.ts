@@ -1,13 +1,17 @@
 /**
- * `storyVars` - the Story Variables side panel.
+ * `storyVars` - the Variables side panel.
  *
  * The section titles carry the ownership split the panel is built on: the two project scopes are
  * defined in the project (this panel writes them), the scene scope is declared in the story and only
  * mirrored here. `persistent` keeps its key - it is the scope's name everywhere in the code - but
  * reads as "global", which is what the story's own `/global` row and its badge already call it.
+ *
+ * There is no empty-state string, and there was one until the panel stopped being story-scoped: the
+ * two project scopes always render, and the scene section is omitted rather than explained when no
+ * scene is focused. The panel's title is `placeholders.moduleTitles.variables`, with the other
+ * static modules', not here.
  */
 export const storyVars = {
-    empty: "Open a story scene to manage its variables.",
     valueType: {
         boolean: "Boolean",
         number: "Number",
