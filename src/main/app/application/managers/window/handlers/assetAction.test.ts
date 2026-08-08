@@ -20,6 +20,9 @@ let exportDir: string;
 /**
  * A window as this handler uses one: a storage manager that grants the project and nothing else,
  * which is the shape the real one has for a workspace window.
+ *
+ * `isPathAllowed` answers for the project only - there is deliberately no write branch for the
+ * export folder, because the handler must not need one. The copying happens in main.
  */
 function makeWindow(overrides: { protectedPath?: boolean } = {}) {
     return {
@@ -28,16 +31,21 @@ function makeWindow(overrides: { protectedPath?: boolean } = {}) {
             storageManager: {
                 isPathProtected: vi.fn(async () => overrides.protectedPath ?? false),
                 grantFileSystemAccess: vi.fn(),
-                isPathAllowed: vi.fn(async (_window: unknown, fsPath: string, mode: string) => {
+                startSecurityScopedAccess: vi.fn(),
+                isPathAllowed: vi.fn(async (_window: unknown, fsPath: string) => {
                     const target = path.resolve(fsPath);
-                    if (mode === "write") {
-                        return target === exportDir || target.startsWith(`${exportDir}${path.sep}`);
-                    }
                     return target === project || target.startsWith(`${project}${path.sep}`);
                 }),
             },
         },
     } as unknown as AppWindowLike;
+}
+
+/** The mocked storage manager off a window built by {@link makeWindow}. */
+function storageOf(window: AppWindowLike) {
+    return (window as unknown as {
+        app: { storageManager: { grantFileSystemAccess: ReturnType<typeof vi.fn>; startSecurityScopedAccess: ReturnType<typeof vi.fn> } };
+    }).app.storageManager;
 }
 
 beforeEach(async () => {
@@ -79,6 +87,24 @@ describe("AssetExportToFolderHandler", () => {
         await expect(fs.readFile(path.join(exportDir, "room.png"), "utf8")).resolves.toBe("room-bytes");
         await expect(fs.readFile(path.join(exportDir, "backdrops", "night", "alley.png"), "utf8"))
             .resolves.toBe("alley-bytes");
+    });
+
+    it("opens the security scope without granting the renderer the chosen folder", async () => {
+        // The picker hands back a READ grant on purpose (`selectDirectory` in permissions.ts). Main
+        // does the copying, so it needs the macOS scope open and nothing else; issuing a grant here
+        // would leave the renderer able to write anywhere under the author's folder for the session.
+        const window = makeWindow();
+        await handler.handle(window, {
+            entries: [{ sourcePath: await shard("a1", "room-bytes"), relativePath: "room.png" }],
+        });
+
+        expect(storageOf(window).grantFileSystemAccess).not.toHaveBeenCalled();
+        expect(storageOf(window).startSecurityScopedAccess).toHaveBeenCalledWith(
+            window,
+            exportDir,
+            undefined,
+            "session",
+        );
     });
 
     it("reports the dismissed dialog as a cancel rather than a failure", async () => {

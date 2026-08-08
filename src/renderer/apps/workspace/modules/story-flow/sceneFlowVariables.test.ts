@@ -652,4 +652,32 @@ describe("listNumericStoryVariables", () => {
 
         expect(listNumericStoryVariables(story).map(variable => variable.name)).toEqual(["A", "B"]);
     });
+
+    /**
+     * A saved variable declared only in the project registry - which is where every saved variable
+     * lives once the declaration migration has run. Without it the focus picker offered nothing at
+     * all on a migrated project, so the whole 好感度分歧线 layer had no variable to draw.
+     */
+    it("lists registry saved variables, keyed the same way a row would be", () => {
+        const story = document([scene("a", "Opening", [])], "a");
+
+        expect(listNumericStoryVariables(story, [
+            { id: AFFECTION, name: "好感", scope: "saved", valueType: "number", storageKey: AFFECTION, defaultValue: 0 },
+            { id: "reg_name", name: "名前", scope: "saved", valueType: "string", storageKey: "reg_name" },
+        ])).toEqual([
+            { key: AFFECTION_KEY, scope: "saved", variableId: AFFECTION, name: "好感", defaultValue: 0 },
+        ]);
+    });
+
+    it("seeds a range from a registry saved variable's default", () => {
+        const story = document([
+            scene("a", "Opening", [setLiteralBlock("w1", 9)]),
+        ], "a");
+
+        const ranges = computeVariableRanges(buildSceneFlowGraph(story), story, AFFECTION_KEY, [
+            { id: AFFECTION, name: "好感", scope: "saved", valueType: "number", storageKey: AFFECTION, defaultValue: 5 },
+        ]);
+
+        expect(ranges.get("a")).toEqual({ kind: "known", min: 5, max: 5 });
+    });
 });

@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import type { ProjectTemplateDescriptor } from "@shared/types/projectTemplate";
+import { isStageSizeUsable, stageSizesEqual, type StageSize } from "@shared/types/stageSize";
 import { PROJECT_TEMPLATE_CONTENT_DIR, PROJECT_TEMPLATE_MANIFEST } from "@shared/constants/projectTemplate";
 
 /**
@@ -69,19 +70,44 @@ async function readManifest(templatesDir: string, id: string): Promise<ProjectTe
             }
         }
     }
-    const size = record.designSize && typeof record.designSize === "object"
-        ? record.designSize as Record<string, unknown>
-        : null;
+    const designSizes = asStageSizes(record.designSizes);
     return {
         id,
         name,
         description: asString(record.description),
         version: asString(record.version),
         locales,
-        designSize: size && typeof size.width === "number" && typeof size.height === "number"
-            ? { width: size.width, height: size.height }
-            : undefined,
+        designSize: asStageSize(record.designSize),
+        designSizes: designSizes.length > 0 ? designSizes : undefined,
     };
+}
+
+function asStageSize(value: unknown): StageSize | undefined {
+    if (!value || typeof value !== "object") {
+        return undefined;
+    }
+    const record = value as Record<string, unknown>;
+    if (typeof record.width !== "number" || typeof record.height !== "number") {
+        return undefined;
+    }
+    const size = { width: record.width, height: record.height };
+    // A size outside the bounds is dropped rather than offered: the wizard would show it as the
+    // only choice a template allows, and creating at it produces a stage nothing can lay out in.
+    return isStageSizeUsable(size) ? size : undefined;
+}
+
+function asStageSizes(value: unknown): StageSize[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const sizes: StageSize[] = [];
+    for (const entry of value) {
+        const size = asStageSize(entry);
+        if (size && !sizes.some(existing => stageSizesEqual(existing, size))) {
+            sizes.push(size);
+        }
+    }
+    return sizes;
 }
 
 /** Every template bundled with this build, in directory order. */

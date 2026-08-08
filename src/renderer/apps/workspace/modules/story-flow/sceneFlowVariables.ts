@@ -41,6 +41,7 @@ import {
     storyPersistentDefs,
     storyVariableRefKey,
 } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { SceneFlowBranchNodeModel, SceneFlowGraph } from "./sceneFlowModel";
 
 /**
@@ -262,6 +263,23 @@ function documentIndex(document: StoryDocument): SceneFlowDocumentIndex {
     return index;
 }
 
+/**
+ * The declaration a variable key names, document rows plus the project registry.
+ *
+ * The registry is NOT folded into {@link documentIndex}: that cache is keyed on document identity,
+ * and the registry can change while the document object does not - a stale entry there would seed a
+ * range from a default the author has already edited. The registry list is small (it is the whole
+ * project's project-scoped variables) so scanning it per lookup costs nothing worth caching.
+ */
+function findNumericDeclaration(
+    document: StoryDocument,
+    variableKey: string,
+    registry: readonly VariableRegistryEntry[],
+): SceneFlowNumericVariable | undefined {
+    return documentIndex(document).numericVariables.find(variable => variable.key === variableKey)
+        ?? registryNumericVariables(registry).find(variable => variable.key === variableKey);
+}
+
 function effectOf(write: SceneFlowWrite, certain: boolean): SceneFlowVariableEffect {
     return { variableKey: write.variableKey, delta: write.delta, certain };
 }
@@ -371,30 +389,33 @@ export function branchDeltaFor(
  *
  * A `persistent` row is addressed by its storage key — v9 made a persistent variable's `variableId`
  * equal to it, and `storyCommandContext` builds its refs the same way, so a key minted here matches
- * the key a `/set` row stores. Blueprint-declared persistent variables are not listed: they live in
- * the blueprint document, which this module never sees.
+ * the key a `/set` row stores.
+ *
+ * `registry` carries the project's own declarations, BOTH project scopes. Omitting it narrows the
+ * list to the variables some story happens to declare as a row, which after the declaration
+ * migration is close to none of them — a picker about counters with the counters missing.
  */
-export function listNumericStoryVariables(document: StoryDocument): SceneFlowNumericVariable[] {
+export function listNumericStoryVariables(
+    document: StoryDocument,
+    registry: readonly VariableRegistryEntry[] = [],
+): SceneFlowNumericVariable[] {
     const variables: SceneFlowNumericVariable[] = [];
     const take = (
         scope: StoryVariableScope,
         variableId: string,
         def: { name: string; valueType: string; defaultValue?: unknown },
     ): void => {
-        if (def.valueType !== "number") {
-            return;
+        const projected = numericVariableOf(scope, variableId, def);
+        if (projected) {
+            variables.push(projected);
         }
-        variables.push({
-            // The three arms of `StoryVariableRef` differ only in the literal type of `scope`, so the
-            // cast asserts nothing about the shape - it only tells TypeScript which arm this is.
-            key: storyVariableRefKey({ scope, variableId } as StoryVariableRef),
-            scope,
-            variableId,
-            name: def.name,
-            defaultValue: numericLiteral(def.defaultValue),
-        });
     };
 
+    // Registry entries first: after the declaration migration the registry is the ONLY place a saved
+    // or persistent variable is declared. A `saved` entry is addressed by its id, which the migration
+    // seeds from the row's block id, so a `/set` written before the registry existed still produces
+    // the same `storyVariableRefKey` this list is matched on.
+    variables.push(...registryNumericVariables(registry));
     for (const def of Object.values(savedVariableDefs(document))) {
         take("saved", def.id, def);
     }
@@ -404,6 +425,48 @@ export function listNumericStoryVariables(document: StoryDocument): SceneFlowNum
     for (const scene of listScenesInDocumentOrder(document)) {
         for (const def of Object.values(sceneVariableDefs(scene))) {
             take("scene", def.id, def);
+        }
+    }
+    return variables;
+}
+
+/** One declaration projected onto the map's row shape, or `undefined` when it is not a number. */
+function numericVariableOf(
+    scope: StoryVariableScope,
+    variableId: string,
+    def: { name: string; valueType: string; defaultValue?: unknown },
+): SceneFlowNumericVariable | undefined {
+    if (def.valueType !== "number") {
+        return undefined;
+    }
+    return {
+        // The three arms of `StoryVariableRef` differ only in the literal type of `scope`, so the
+        // cast asserts nothing about the shape - it only tells TypeScript which arm this is.
+        key: storyVariableRefKey({ scope, variableId } as StoryVariableRef),
+        scope,
+        variableId,
+        name: def.name,
+        defaultValue: numericLiteral(def.defaultValue),
+    };
+}
+
+/**
+ * The registry's numeric entries, in the order the registry hands them over (by name).
+ *
+ * Each entry is keyed by the identity ITS OWN scope addresses by - a `saved` ref carries the entry
+ * id, a `persistent` one the storage key - which is what lets one list cover both project scopes
+ * rather than the caller pre-splitting it and the two halves drifting.
+ */
+function registryNumericVariables(registry: readonly VariableRegistryEntry[]): SceneFlowNumericVariable[] {
+    const variables: SceneFlowNumericVariable[] = [];
+    for (const entry of registry) {
+        const projected = numericVariableOf(
+            entry.scope,
+            entry.scope === "persistent" ? entry.storageKey : entry.id,
+            entry,
+        );
+        if (projected) {
+            variables.push(projected);
         }
     }
     return variables;
@@ -621,11 +684,12 @@ export function computeVariableRanges(
     graph: SceneFlowGraph,
     document: StoryDocument,
     variableKey: string,
+    registry: readonly VariableRegistryEntry[] = [],
 ): Map<StorySceneId, SceneFlowRange> {
     const sceneIds = graph.nodes.map(node => node.sceneId);
     const ranges = new Map<StorySceneId, SceneFlowRange>(sceneIds.map(id => [id, UNKNOWN_RANGE]));
 
-    const declaration = documentIndex(document).numericVariables.find(variable => variable.key === variableKey);
+    const declaration = findNumericDeclaration(document, variableKey, registry);
     if (!declaration || declaration.defaultValue === null) {
         // Either the key names nothing numeric in this document (a deleted row, a blueprint-declared
         // persistent) or the row states no starting number. Both leave the walk with nothing to seed.
@@ -775,9 +839,10 @@ export function foldRouteVariableValue(
     document: StoryDocument,
     variableKey: string,
     route: { sceneIds: readonly StorySceneId[]; branchIds: readonly string[] },
+    registry: readonly VariableRegistryEntry[] = [],
 ): SceneFlowRange {
-    const { writesByScene, numericVariables } = documentIndex(document);
-    const declaration = numericVariables.find(variable => variable.key === variableKey);
+    const { writesByScene } = documentIndex(document);
+    const declaration = findNumericDeclaration(document, variableKey, registry);
     if (!declaration || declaration.defaultValue === null) {
         return UNKNOWN_RANGE;
     }

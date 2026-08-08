@@ -1,0 +1,25 @@
+{
+  "entries": {
+    "6987a20b-6086-4aee-b49a-04397af993f6": {
+      "defaultValue": false,
+      "id": "6987a20b-6086-4aee-b49a-04397af993f6",
+      "name": "Honest",
+      "scope": "saved",
+      "storageKey": "6987a20b-6086-4aee-b49a-04397af993f6",
+      "valueType": "boolean"
+    },
+    "a1bbd280-c1a5-4828-8734-cd6c3a4761d5": {
+      "defaultValue": "",
+      "id": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5",
+      "name": "Location",
+      "scope": "persistent",
+      "storageKey": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5",
+      "valueType": "string"
+    }
+  },
+  "meta": {
+    "createdAt": "2026-08-07T03:54:29.282Z",
+    "updatedAt": "2026-08-08T02:18:11.555Z"
+  },
+  "schemaVersion": 2
+}

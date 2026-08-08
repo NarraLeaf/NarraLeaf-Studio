@@ -42,6 +42,26 @@ In this order, stopping as soon as there is nothing true left to add:
 - Bracketed plurals (`file(s)`). Use `detailOne` / `detailMany` keys.
 - Internal vocabulary: store, document, node id, revision object, HEAD, working tree, dirty.
 
+## 3a. Register: state it, do not narrate it
+
+Every sentence is a statement of fact about the product. It is not a remark made to the author.
+Three failure modes, all of which have shipped and all of which read as machine-written:
+
+- **Rhetorical shape.** Parallelism, negation-first framing and epigram: *"Nothing leaves this
+  machine and nothing arrives until you ask for it."*, *"Nothing is looked at until you ask."*,
+  *"What you time is what plays."* Say the fact once: *"Nothing is sent or fetched except by an
+  explicit action."*
+- **Colloquialism.** Casual verbs and metaphors, in either language: 「叫回来」「搅在一起」「跑一遍」
+  「读不出来」「换了图」「出厂时的值」「值能活多久」, "take it back", "eats your work", "on its own",
+  "at a glance", "try again", "all caught up". Use the plain verb: 「重新打开」「互不影响」「运行一次」
+  「无法读取」「更换了图片」「默认值」「值保留多久」.
+- **Second person as narrator.** `you` / 「你」 is for an instruction the author is about to carry out
+  ("Press F1"), not for describing what the product does to their data. *"Your project files are left
+  untouched until you unfreeze it"* → *"Project files are not written until the project is unfrozen."*
+
+Chinese carries two extra rules: no 「这个/那个」 where 「该/本」 is meant, and no sentence-final
+particles (「了」「吧」「呢」) doing tone work.
+
 ## 4. Naming a control
 
 Name a control by **the state it produces**, and check that the name cannot be read as an action on
@@ -136,5 +156,8 @@ Before committing author-facing text, read it back and ask:
 
 - Can this be cut to half the words without losing an expectation? Then cut it.
 - Does it explain a mechanism? Delete that clause.
+- Read it aloud. Does it sound like a sentence someone wrote to be admired? Rewrite it as the fact.
+- Would this line survive in a reference manual? If it only works as conversation, it is the wrong
+  register (§3a).
 - Could a nervous author read this as "my work is about to be overwritten"? Rename.
 - Does the icon agree with the label?

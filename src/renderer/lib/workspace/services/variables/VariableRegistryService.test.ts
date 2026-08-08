@@ -91,7 +91,7 @@ describe("VariableRegistryService document adoption", () => {
     it("saves a variable that has no default", async () => {
         const { service, files } = await createHarness();
 
-        const entry = service.createEntry({ name: "Gold", valueType: "number" });
+        const entry = service.createEntry("persistent", { name: "Gold", valueType: "number" });
         await service.flushPendingChanges();
 
         expect("defaultValue" in entry).toBe(false);
@@ -102,7 +102,7 @@ describe("VariableRegistryService document adoption", () => {
     it("saves a variable whose default was explicitly cleared", async () => {
         const { service, files } = await createHarness();
 
-        const entry = service.createEntry({ name: "Gold", valueType: "number", defaultValue: 100 });
+        const entry = service.createEntry("persistent", { name: "Gold", valueType: "number", defaultValue: 100 });
         await service.flushPendingChanges();
         expect(files.get(DOCUMENT)).toContain("\"defaultValue\": 100");
 
@@ -116,15 +116,49 @@ describe("VariableRegistryService document adoption", () => {
     it("writes keys in code-unit order rather than in the order the entry was built", async () => {
         const { service, files } = await createHarness();
 
-        service.createEntry({ name: "Gold", valueType: "number" });
+        service.createEntry("persistent", { name: "Gold", valueType: "number" });
         await service.flushPendingChanges();
 
-        // The literal is assembled `{id, storageKey, name, valueType}`; the bytes have to read
-        // `id, name, storageKey, valueType`, or a document rebuilt through a different code path
-        // would land as a whole-file diff.
+        // The literal is assembled `{id, storageKey, name, scope, valueType}`; the bytes have to read
+        // `id, name, scope, storageKey, valueType`, or a document rebuilt through a different code
+        // path would land as a whole-file diff.
         const text = files.get(DOCUMENT) ?? "";
-        expect(text.indexOf("\"name\"")).toBeLessThan(text.indexOf("\"storageKey\""));
+        expect(text.indexOf("\"name\"")).toBeLessThan(text.indexOf("\"scope\""));
+        expect(text.indexOf("\"scope\"")).toBeLessThan(text.indexOf("\"storageKey\""));
         expect(text.indexOf("\"storageKey\"")).toBeLessThan(text.indexOf("\"valueType\""));
+    });
+
+    /**
+     * The registry holds both project scopes, and they are backed by different stores. A caller that
+     * asks for one must never be handed the other's entries.
+     */
+    describe("scope", () => {
+        it("keeps the two scopes apart when listing, and leaves the unscoped listing whole", async () => {
+            const { service } = await createHarness();
+
+            const persistent = service.createEntry("persistent", { name: "Gold" });
+            const saved = service.createEntry("saved", { name: "Route Flag" });
+
+            expect(service.listEntries().map(entry => entry.id).sort()).toEqual([persistent.id, saved.id].sort());
+            expect(service.listEntriesInScope("persistent").map(entry => entry.id)).toEqual([persistent.id]);
+            expect(service.listEntriesInScope("saved").map(entry => entry.id)).toEqual([saved.id]);
+        });
+
+        it("names an unnamed variable after its scope, so the two are told apart on sight", async () => {
+            const { service } = await createHarness();
+
+            expect(service.createEntry("persistent").name).toMatch(/^persist_/);
+            expect(service.createEntry("saved").name).toMatch(/^saved_/);
+        });
+
+        it("writes the scope to disk", async () => {
+            const { service, files } = await createHarness();
+
+            service.createEntry("saved", { name: "Route Flag" });
+            await service.flushPendingChanges();
+
+            expect(files.get(DOCUMENT)).toContain("\"scope\": \"saved\"");
+        });
     });
 
     describe("when the file on disk cannot be read", () => {
@@ -166,7 +200,7 @@ describe("VariableRegistryService document adoption", () => {
             const healthy = await createHarness(undefined, broken.service);
 
             expect(healthy.files.get(DOCUMENT)).toContain("\"entries\"");
-            healthy.service.createEntry({ name: "Gold" });
+            healthy.service.createEntry("persistent", { name: "Gold" });
             await expect(healthy.service.flushPendingChanges()).resolves.toBeUndefined();
         });
     });

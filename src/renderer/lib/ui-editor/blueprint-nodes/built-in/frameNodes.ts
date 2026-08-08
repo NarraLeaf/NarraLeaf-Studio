@@ -9,6 +9,7 @@ import {
     BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
+    BLUEPRINT_NODE_TYPE_PAGE_BACK,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
@@ -81,6 +82,29 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             },
         ],
         execute: ctx => goToSurface(ctx, String(ctx.params.surfaceId ?? "")),
+    },
+    {
+        // The way back out of a page. Pages are a stack, so the alternative an author reaches for -
+        // Go Page, back to where they came from - pushes another layer instead of removing one: the
+        // config screen opened over a running story stays over it forever, and a second Go Page
+        // leaves three layers deep. `navigation.closeLayer` has always existed on the host; this is
+        // the node that lets a blueprint call it.
+        //
+        // Closing the last remaining layer is a no-op rather than an error: a page reached from the
+        // title screen is the bottom of the stack, and a Back button that throws there would make
+        // the same button unusable on the same screen depending on how the player got to it.
+        type: BLUEPRINT_NODE_TYPE_PAGE_BACK,
+        displayName: "Go back",
+        category: "App",
+        keywords: ["page", "back", "close", "return", "dismiss", "pop", "layer", "overlay"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).navigation.closeLayer();
+            return { nextPort: "next" };
+        },
     },
     {
         type: BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,

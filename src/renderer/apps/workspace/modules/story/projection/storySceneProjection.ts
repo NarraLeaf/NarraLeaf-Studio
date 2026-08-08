@@ -14,6 +14,7 @@ import {
     resolveStoryLayerRef,
     savedVariableDefs,
     sceneVariableDefs,
+    storyPersistentDefs,
     storyVariableRefKey,
 } from "@shared/types/story";
 import { formatStoryExpr } from "@shared/utils/storyExpressionParser";
@@ -51,7 +52,27 @@ export type StoryLineTextChange =
           lineNumber?: number;
       };
 
-export function buildStorySceneTextProjection(scene: StoryScene, document?: StoryDocument): StorySceneTextProjection {
+/**
+ * Display names for project-level variables the story document does not declare, keyed by
+ * {@link storyVariableRefKey}.
+ *
+ * Both `saved` and `persistent` are project-level: a variable may live only in the project registry,
+ * with no row in this document or any other. Without this lookup such a reference renders as the
+ * literal word "variable" - the fallback meant for a ref whose declaration was DELETED - so a
+ * perfectly valid line reads to the author like a broken one.
+ *
+ * Keyed by the ref key rather than by a bare id because the two scopes address entries differently
+ * (`saved` by entry id, `persistent` by storage key) and one map with two key spaces in it is a map
+ * that will one day answer the wrong scope's question. Optional because the read-only projections
+ * with no project services to read it from are still allowed to ask for a line of text.
+ */
+export type ProjectVariableNames = ReadonlyMap<string, string>;
+
+export function buildStorySceneTextProjection(
+    scene: StoryScene,
+    document?: StoryDocument,
+    variableNames?: ProjectVariableNames,
+): StorySceneTextProjection {
     const lines: StorySceneProjectionLine[] = [];
     const textLines: string[] = [];
 
@@ -60,7 +81,7 @@ export function buildStorySceneTextProjection(scene: StoryScene, document?: Stor
         if (!block) {
             return;
         }
-        const projected = projectBlockLine(block, depth, scene, document);
+        const projected = projectBlockLine(block, depth, scene, document, variableNames);
         const lineNumber = textLines.length + 1;
         textLines.push(projected.text);
         lines.push({
@@ -167,17 +188,18 @@ function projectBlockLine(
     depth: number,
     scene: StoryScene,
     document?: StoryDocument,
+    variableNames?: ProjectVariableNames,
 ): { text: string; editable: boolean; editableKind?: EditableStoryLineKind; prefix: string } {
     const indent = "  ".repeat(depth);
     if (block.kind === "nodeAction") {
         return projectNodeActionLine(block.payload, indent);
     }
     if (block.kind === "action") {
-        return { text: `${indent}${formatAction(block.payload, scene, document)}`, editable: false, prefix: "" };
+        return { text: `${indent}${formatAction(block.payload, scene, document, variableNames)}`, editable: false, prefix: "" };
     }
     if (block.kind === "control") {
         if (block.payload.control === "conditionBranch") {
-            const label = block.payload.branch === "else" ? "else" : `${block.payload.branch} ${formatCondition(block.payload.condition, scene, document)}`;
+            const label = block.payload.branch === "else" ? "else" : `${block.payload.branch} ${formatCondition(block.payload.condition, scene, document, variableNames)}`;
             return { text: `${indent}/${label}`, editable: false, prefix: "" };
         }
         if (block.payload.control === "label") {
@@ -194,7 +216,7 @@ function projectBlockLine(
         // quotes, so this is both shorter and the spelling an author would actually type.
         if (block.payload.control === "repeat") {
             return block.payload.until
-                ? { text: `${indent}/until ${formatCondition(block.payload.until, scene, document)}`, editable: false, prefix: "" }
+                ? { text: `${indent}/until ${formatCondition(block.payload.until, scene, document, variableNames)}`, editable: false, prefix: "" }
                 : { text: `${indent}/repeat ${block.payload.times ?? 1}`, editable: false, prefix: "" };
         }
         return { text: `${indent}/condition`, editable: false, prefix: "" };
@@ -256,7 +278,12 @@ function projectNodeActionLine(
     };
 }
 
-function formatAction(payload: StoryActionPayload, scene: StoryScene, document?: StoryDocument): string {
+function formatAction(
+    payload: StoryActionPayload,
+    scene: StoryScene,
+    document?: StoryDocument,
+    variableNames?: ProjectVariableNames,
+): string {
     if (payload.action === "setBackground") {
         return `/background ${payload.assetId ?? payload.color ?? ""}`.trimEnd();
     }
@@ -276,7 +303,7 @@ function formatAction(payload: StoryActionPayload, scene: StoryScene, document?:
         return `/audio ${payload.operation}${payload.objectName ? ` ${payload.objectName}` : payload.assetId ? ` ${payload.assetId}` : ""}`;
     }
     if (payload.action === "setVariable") {
-        return describeAssignment(payload, scene, document);
+        return describeAssignment(payload, scene, document, variableNames);
     }
     if (payload.action === "wait") {
         return payload.mode === "duration" ? `/wait ${formatStorySecondsLabel(payload.durationMs ?? 0)}` : "/wait click";
@@ -329,11 +356,17 @@ export function formatStoryConditionSummary(
     condition: StoryConditionRef | undefined,
     scene: StoryScene,
     document?: StoryDocument,
+    variableNames?: ProjectVariableNames,
 ): string {
-    return formatCondition(condition, scene, document);
+    return formatCondition(condition, scene, document, variableNames);
 }
 
-function formatCondition(condition: StoryConditionRef | undefined, scene: StoryScene, document?: StoryDocument): string {
+function formatCondition(
+    condition: StoryConditionRef | undefined,
+    scene: StoryScene,
+    document?: StoryDocument,
+    variableNames?: ProjectVariableNames,
+): string {
     if (!condition) {
         return "<condition>";
     }
@@ -343,7 +376,7 @@ function formatCondition(condition: StoryConditionRef | undefined, scene: StoryS
     if (condition.kind === "blueprint") {
         return "<graph condition>";
     }
-    return `${describeVariableRef(condition.target, scene, document)} ${condition.operator}${condition.value !== undefined ? ` ${String(condition.value)}` : ""}`;
+    return `${describeVariableRef(condition.target, scene, document, variableNames)} ${condition.operator}${condition.value !== undefined ? ` ${String(condition.value)}` : ""}`;
 }
 
 /**
@@ -361,8 +394,9 @@ function describeAssignment(
     payload: Extract<StoryActionPayload, { action: "setVariable" }>,
     scene: StoryScene,
     document?: StoryDocument,
+    variableNames?: ProjectVariableNames,
 ): string {
-    const name = describeVariableRef(payload.target, scene, document);
+    const name = describeVariableRef(payload.target, scene, document, variableNames);
     const ast = payload.expression?.ast;
     if (!ast) {
         return `/set ${name} ${String(payload.value)}`;
@@ -394,14 +428,28 @@ function describeAssignment(
 const formatExpr = formatStoryExpr;
 
 /** Compact, user-safe label for a variable reference (never exposes internal ids). */
-function describeVariableRef(ref: StoryVariableRef, scene: StoryScene, document?: StoryDocument): string {
+function describeVariableRef(
+    ref: StoryVariableRef,
+    scene: StoryScene,
+    document?: StoryDocument,
+    variableNames?: ProjectVariableNames,
+): string {
     if (ref.scope === "scene") {
         return sceneVariableDefs(scene)[ref.variableId]?.name ?? "variable";
     }
+    // Document row first, then the project registry - the same two surfaces, in the same order, the
+    // command line and the compiler resolve a project-scoped name through.
     if (ref.scope === "saved") {
-        return (document ? savedVariableDefs(document) : {})[ref.variableId]?.name ?? "variable";
+        return (document ? savedVariableDefs(document) : {})[ref.variableId]?.name
+            ?? variableNames?.get(storyVariableRefKey(ref))
+            ?? "variable";
     }
-    return "persistent";
+    // A persistent ref carries the STORAGE key, while the row table is keyed by block id, so the rows
+    // are searched by the field the ref actually holds.
+    const row = document
+        ? Object.values(storyPersistentDefs(document)).find(def => def.storageKey === ref.variableId)
+        : undefined;
+    return row?.name ?? variableNames?.get(storyVariableRefKey(ref)) ?? "persistent";
 }
 
 function splitEditorText(value: string): string[] {

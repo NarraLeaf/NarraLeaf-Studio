@@ -5,6 +5,7 @@ import type { BlueprintGraphEdge, BlueprintGraphIr } from "@shared/types/bluepri
 import { readNodeEditorLayout } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
+import { blueprintEdgeStyle } from "@/lib/ui-editor/blueprint-graph-edge-style";
 import type { BlueprintFlowNodeData, BlueprintFlowNodeDiagnostic } from "./components/BlueprintFlowNode";
 import {
     withInferredBlueprintVariableValueTypeParam,
@@ -206,7 +207,7 @@ export function blueprintIrToFlowEdges(
             selectable: true,
             focusable: true,
             interactionWidth: 24,
-            style: data ? { stroke: "#f59e0b", strokeWidth: 1.5 } : { stroke: "#22d3ee", strokeWidth: 1.5 },
+            style: blueprintEdgeStyle(data),
         };
     });
 }

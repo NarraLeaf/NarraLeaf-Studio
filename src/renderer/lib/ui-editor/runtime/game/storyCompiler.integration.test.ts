@@ -2267,13 +2267,155 @@ describe("compileStudioStoryToNlr voice", () => {
             sceneId: "scene-1",
             characters: [],
             persistentVariables: {
-                bp_score: { id: "bp_score", name: "Score", valueType: "number", storageKey: "bp_score" },
+                bp_score: { id: "bp_score", name: "Score", scope: "persistent", valueType: "number", storageKey: "bp_score" },
             },
         });
         expect(compiled.diagnostics).toContainEqual({
             level: "warning",
             blockId: undefined,
             message: 'Persistent variable "Score" is declared in both the variable registry and a story row; references are ambiguous.',
+        });
+    });
+
+    it("falls back to a REGISTRY-declared persistent variable's default while the host has stored nothing", async () => {
+        // The registry is where persistent variables are declared after the migration, but the
+        // compiler collected its default-value table from the document's `/persis` rows alone. So a
+        // flag the author gave a starting value reached the runtime with no default at all and read as
+        // empty until something wrote it - while Dev Mode's variables panel, which reads the merged
+        // view, showed the default and disagreed with the running game.
+        const say: StoryBlock = {
+            id: "say",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "narration",
+                text: {
+                    textId: "text-persist",
+                    value: "Chapter ",
+                    role: "narration",
+                    rich: [
+                        { text: "Chapter " },
+                        { interpolation: { kind: "variable", target: { scope: "persistent", variableId: "key_chapter" } } },
+                    ],
+                },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say }, ["say"]),
+            sceneId: "scene-1",
+            // The host has never written this key, which is the whole state under test.
+            persistence: { get: () => undefined, set: () => undefined },
+            persistentVariables: {
+                "reg-chapter": {
+                    id: "reg-chapter",
+                    name: "Chapter",
+                    scope: "persistent",
+                    valueType: "number",
+                    defaultValue: 3,
+                    storageKey: "key_chapter",
+                },
+            },
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const words = getSaySentence(compiled, "say").text as any[];
+        const rendered = words
+            .map(word => (typeof word?.text === "function" ? word.text({}) : (word?.text ?? word)))
+            .join("");
+        expect(rendered).toBe("Chapter 3");
+    });
+
+    /** A `/save`-scope declaration row, i.e. the story-document half of the saved population. */
+    function savedDeclarationRow(id: string, name: string, storageKey: string, defaultValue: number): StoryBlock {
+        return {
+            id,
+            kind: "declaration",
+            parentId: null,
+            childrenIds: [],
+            payload: { scope: "saved", name, valueType: "number", defaultValue, storageKey },
+        };
+    }
+
+    /** `/set <saved var> <literal>`, addressing a saved variable by its id whichever surface declared it. */
+    function setSavedRow(id: string, variableId: string, value: number): StoryBlock {
+        return {
+            id,
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "setVariable", target: { scope: "saved", variableId }, value },
+        };
+    }
+
+    it("seeds registry-backed saved variables into the saved namespace beside story-declared ones (M-VAR)", async () => {
+        // `saved` is a project-registry scope as well as a story-row one. Both surfaces have to land in
+        // the SAME Storable namespace, each under its own storage key, and a `/set` on either has to
+        // resolve - the registry entry id and the declaration block id are both uuids, so one flat
+        // id-keyed table can carry them together.
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(
+                {
+                    "gold-save-decl": savedDeclarationRow("gold-save-decl", "Gold", "story_gold", 5),
+                    "set-story-gold": setSavedRow("set-story-gold", "gold-save-decl", 12),
+                    "set-registry-affection": setSavedRow("set-registry-affection", "reg-affection", 3),
+                },
+                ["gold-save-decl", "set-story-gold", "set-registry-affection"],
+            ),
+            sceneId: "scene-1",
+            savedVariables: {
+                "reg-affection": {
+                    id: "reg-affection",
+                    name: "Affection",
+                    scope: "saved",
+                    valueType: "number",
+                    defaultValue: 2,
+                    storageKey: "reg_affection",
+                },
+            },
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        // The seed record, read off the Persistent the compiler registered on the story. That record is
+        // where the defaults live until a game boots and initializes the namespace from it, so it is the
+        // only place a compile-level test can observe the seeding at all.
+        const savedPersistent = ((compiled.story as unknown as { persistent: unknown[] }).persistent)
+            .find(entry => DevTools.getNamespaceName(entry as never) === compiled.savedNamespaceName) as
+            { defaultContent: Record<string, unknown> } | undefined;
+        expect(savedPersistent?.defaultContent).toEqual({ story_gold: 5, reg_affection: 2 });
+
+        // ...and both rows write into that one namespace under their own keys.
+        const setsOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story))
+            .filter((action: any) => action?.type === "persistent:set")
+            .map((action: any) => ({
+                namespace: DevTools.getNamespaceName(action.callee),
+                content: action.contentNode?.getContent?.(),
+            }));
+        expect(setsOf("set-story-gold")).toEqual([
+            { namespace: compiled.savedNamespaceName, content: ["story_gold", 12] },
+        ]);
+        expect(setsOf("set-registry-affection")).toEqual([
+            { namespace: compiled.savedNamespaceName, content: ["reg_affection", 3] },
+        ]);
+    });
+
+    it("warns when a saved name is declared in both the registry and a story row (M-VAR merged view)", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(
+                { "gold-save-decl": savedDeclarationRow("gold-save-decl", "Gold", "story_gold", 5) },
+                ["gold-save-decl"],
+            ),
+            sceneId: "scene-1",
+            savedVariables: {
+                "reg-gold": { id: "reg-gold", name: "Gold", scope: "saved", valueType: "number", storageKey: "reg_gold" },
+            },
+        });
+        expect(compiled.diagnostics).toContainEqual({
+            level: "warning",
+            blockId: undefined,
+            message: 'Saved variable "Gold" is declared in both the variable registry and a story row; references are ambiguous.',
         });
     });
 });

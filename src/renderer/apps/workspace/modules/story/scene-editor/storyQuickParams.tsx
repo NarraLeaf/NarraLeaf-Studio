@@ -21,7 +21,7 @@ import {
 import { StoryLineValueToken } from "./StoryLineValueToken";
 import { StoryLineCharacterFace } from "./storyCharacterFace";
 import type { StoryCommandLineProjection } from "./storyCommandLine";
-import { storyActionRowFragments, type StoryRowFragment } from "@/lib/story/storyRowProjection";
+import { storyActionRowFragments, type StoryRowFragment, type StoryRowLookups } from "@/lib/story/storyRowProjection";
 import type { Character } from "@/lib/workspace/services/character/Character";
 
 /**
@@ -61,8 +61,13 @@ export function blockOverview(
     scenes: Record<StorySceneId, StoryScene> | undefined,
     label: (key: "story.quickParam.jumpLabel" | "story.quickParam.waitLabel") => string,
     motionName?: (animationId: string) => string | null,
+    projectVariableName?: StoryRowLookups["projectVariableName"],
 ): OverviewFragment[] {
-    return storyActionRowFragments(block, { character: characterRowLookup(characters), scene, scenes, motionName }, label);
+    return storyActionRowFragments(
+        block,
+        { character: characterRowLookup(characters), scene, scenes, motionName, projectVariableName },
+        label,
+    );
 }
 
 /**
@@ -87,6 +92,9 @@ export function BlockOverview(props: {
     // Resolved here rather than threaded from the rows host: the projection stays pure and the React
     // layer, which has the service, supplies the lookup (the rule `describeBlockSubject` documents).
     const motionName = useStoryMotionNames();
+    // Same source the command line reads its variable names from, so the two readings of one row
+    // cannot name the same variable differently.
+    const { projectVariableName } = useStoryCommandLineContext();
     const line = useStoryCommandLine(props.block, props.characters, props.scene, props.scenes);
 
     if (line) {
@@ -102,7 +110,7 @@ export function BlockOverview(props: {
         );
     }
 
-    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName);
+    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName, projectVariableName);
     return (
         // The rows no command owns keep the old reading: italic, and no fragment brighter than
         // `fg-muted`. A stage direction that cannot be typed as a line has no skeleton to echo, so it

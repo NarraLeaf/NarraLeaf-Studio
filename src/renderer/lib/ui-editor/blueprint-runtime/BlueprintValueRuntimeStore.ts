@@ -184,6 +184,11 @@ export class BlueprintValueRuntimeStore {
 
     public constructor(private readonly onChange: () => void) {}
 
+    /**
+     * Terminal. A disposed store answers `sync` / `ensureElementValue` / `refreshAll` with an early
+     * return forever, so whoever owns the instance has to build a new one to start resolving again
+     * (see `SurfaceValueRuntimeBoundary`, which is why the store lives in state and not a memo).
+     */
     public dispose(): void {
         this.disposed = true;
         this.entries.clear();

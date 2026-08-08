@@ -10,17 +10,20 @@ import {
     type BuildDialogInfo,
     type BuildPluginEntry,
 } from "./BuildDialog";
-import { initialDialogState, togglePlatform } from "./buildDialogState";
-import { SigningSection } from "./BuildSigningSection";
+import { build as enBuild } from "@shared/i18n/catalog/en/build";
+import { initialDialogState, OFFERED_FORMATS, togglePlatform } from "./buildDialogState";
+import { SigningSection, SigningSummary } from "./BuildSigningSection";
 
 /**
- * Guards the two things about the Signing section that cannot be seen from its
- * own file: that the dialog's rail actually shows it, and that a row appears for
- * each signable target the selection includes.
+ * Guards the things about the Signing section that cannot be seen from its own
+ * file: that the dialog's rail actually shows it, that the editable rows the
+ * project panel hosts appear one per signable platform, and that the dialog's
+ * read-only mirror reports the same selection without claiming anything the
+ * vault has not answered for yet.
  *
  * Rendered with `renderToStaticMarkup`, so effects never run - what is being
- * checked is the shape the section takes before it has heard from the vault,
- * which is also the first thing an author sees.
+ * checked is the shape each takes before it has heard from the vault, which is
+ * also the first thing an author sees.
  */
 
 /**
@@ -47,6 +50,37 @@ describe("the build dialog's rail", () => {
 
     it("keeps Output last, so the footer's Build button is the end of the walk", () => {
         expect(SECTIONS[SECTIONS.length - 1]).toBe("output");
+    });
+});
+
+/**
+ * The targets section renders one pill per offered format, straight off
+ * OFFERED_FORMATS and labelled by `build.format.<format>`. That indirection is
+ * what makes a new format cheap and also what makes it silent: a format added
+ * to the table with no label renders an untranslated key in the dialog, and
+ * nothing else in the suite would notice.
+ */
+describe("the targets section's format pills", () => {
+    it("offers Android both of its packages, with the APK first", () => {
+        // Two formats of one platform, not two platforms: same payload, same
+        // signing credential, different container.
+        expect(OFFERED_FORMATS.android).toEqual(["apk", "aab"]);
+    });
+
+    it("has a label for every format any platform offers", () => {
+        for (const [platform, formats] of Object.entries(OFFERED_FORMATS)) {
+            for (const format of formats) {
+                expect(enBuild.format[format], `build.format.${format} is missing (offered by ${platform})`)
+                    .toBeTruthy();
+            }
+        }
+    });
+
+    it("starts Android on the APK alone, so the AAB is a deliberate choice", () => {
+        // Both formats mean a second container built from the same payload; the
+        // preflight warning is what points a publishing author at the AAB.
+        const state = togglePlatform(initialDialogState(null, "windows", "x64"), "android", true);
+        expect([...state.formats.android]).toEqual(["apk"]);
     });
 });
 
@@ -83,6 +117,60 @@ describe("SigningSection", () => {
             <SigningSection platforms={["linux"]} signing={{}} onChange={noop} onRemove={neverRemoves}>
                 <p>a finding</p>
             </SigningSection>,
+        );
+
+        expect(markup).toContain("a finding");
+    });
+});
+
+/**
+ * The dialog's half: a last look, not a second place to change things.
+ *
+ * The picker and the import form live in Project ▸ Settings now, so what a regression could take
+ * away here is the reporting - and one specific lie. `signing.list()` has not answered during a
+ * static render, so an id that IS on this machine still resolves to nothing; saying "Missing on this
+ * machine" at that moment would be a warning that appears on every open and then withdraws itself.
+ */
+describe("SigningSummary", () => {
+    it("names what signs each target, and says so where nothing is chosen", () => {
+        const markup = renderToStaticMarkup(
+            <SigningSummary platforms={["windows", "android"]} signing={{}} />,
+        );
+
+        expect(markup).toContain("Windows");
+        expect(markup).toContain("Android");
+        expect(markup).toContain("Not signed");
+        expect(markup).not.toContain("macOS");
+    });
+
+    it("offers no control: choosing and importing are the panel's, not the dialog's", () => {
+        const markup = renderToStaticMarkup(
+            <SigningSummary platforms={["windows"]} signing={{ windows: "cred-1" }} />,
+        );
+
+        expect(markup).not.toContain("<select");
+        expect(markup).not.toContain("Import");
+    });
+
+    it("does not call a credential missing before the vault has answered", () => {
+        const markup = renderToStaticMarkup(
+            <SigningSummary platforms={["windows"]} signing={{ windows: "cred-1" }} />,
+        );
+
+        expect(markup).not.toContain("Missing on this machine");
+    });
+
+    it("says so when nothing selected can be signed", () => {
+        const markup = renderToStaticMarkup(<SigningSummary platforms={[]} signing={{}} />);
+
+        expect(markup).toContain("Select a target that can be signed.");
+    });
+
+    it("renders the findings and the jump back to the panel underneath the rows", () => {
+        const markup = renderToStaticMarkup(
+            <SigningSummary platforms={["linux"]} signing={{}}>
+                <p>a finding</p>
+            </SigningSummary>,
         );
 
         expect(markup).toContain("a finding");

@@ -45,6 +45,7 @@ function createPack(): GameRuntimePackV1 {
                 },
                 sharedBlueprints: [],
                 persistentVariables: {},
+                savedVariables: {},
             },
             blueprintCompiledScripts: {},
             blueprintScriptsCompileOk: true,

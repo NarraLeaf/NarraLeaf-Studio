@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronsDownUp, ChevronsUpDown, LayoutGrid, Route } from "lucide-react";
 import type { StoryDocument, StorySceneId } from "@shared/types/story";
+import { storyVariableRefKey } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
 import { Services } from "@/lib/workspace/services/services";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
@@ -72,9 +75,46 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
         }
         return context.services.get<StoryService>(Services.Story);
     }, [context, isInitialized]);
+    const blueprintService = useMemo(() => {
+        if (!context || !isInitialized) {
+            return null;
+        }
+        return context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+    }, [context, isInitialized]);
 
     const [document, setDocument] = useState<StoryDocument | null>(null);
     const [error, setError] = useState<string | null>(null);
+    /**
+     * The project's registry variables, BOTH project scopes. After the declaration migration this is
+     * where they live, so a map built without them labels every registry-declared counter "variable"
+     * and offers none of them in the focus picker — a map about numbers with the numbers' names
+     * missing.
+     */
+    const [registryVariables, setRegistryVariables] = useState<readonly VariableRegistryEntry[]>([]);
+
+    useEffect(() => {
+        if (!blueprintService) {
+            return undefined;
+        }
+        const read = () => setRegistryVariables([
+            ...blueprintService.listSavedVariables(),
+            ...blueprintService.listPersistentVariables(),
+        ]);
+        read();
+        return blueprintService.onBlueprintHistoryChanged(read);
+    }, [blueprintService]);
+
+    // Names only, keyed by the ref key each scope produces, for the branch labels.
+    const variableNames = useMemo(
+        () => new Map(registryVariables.map(entry => [
+            storyVariableRefKey({
+                scope: entry.scope,
+                variableId: entry.scope === "persistent" ? entry.storageKey : entry.id,
+            }),
+            entry.name,
+        ])),
+        [registryVariables],
+    );
 
     useEffect(() => {
         if (!storyService || !storyId) {
@@ -128,8 +168,8 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
     // The SAME set reaches the model and the canvas. Handing the layout one set and the renderer
     // another packs every box against a height it is not drawn at, and the nodes overlap.
     const graph = useMemo(
-        () => (document ? buildSceneFlowGraph(document, { expandedSceneIds }) : null),
-        [document, expandedSceneIds],
+        () => (document ? buildSceneFlowGraph(document, { expandedSceneIds, variableNames }) : null),
+        [document, expandedSceneIds, variableNames],
     );
     const routeMap = useMemo(
         () => (graph && document ? buildSceneFlowRouteMap(graph, document) : null),
@@ -137,8 +177,8 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
     );
 
     const numericVariables = useMemo(
-        () => (document ? listNumericStoryVariables(document) : []),
-        [document],
+        () => (document ? listNumericStoryVariables(document, registryVariables) : []),
+        [document, registryVariables],
     );
     const focusedVariable = useMemo(
         () => numericVariables.find(variable => variable.key === focusedKey) ?? null,
@@ -152,9 +192,10 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
             variable: focusedVariable,
             branchEffects: collectBranchEffects(graph, document),
             sceneEffects: collectSceneEffects(document),
-            ranges: computeVariableRanges(graph, document, focusedVariable.key),
+            ranges: computeVariableRanges(graph, document, focusedVariable.key, registryVariables),
+            registryVariables,
         };
-    }, [document, graph, focusedVariable]);
+    }, [document, graph, focusedVariable, registryVariables]);
 
     // A reload can delete the variable the focus names; the picker must not keep showing it.
     useEffect(() => {

@@ -5,7 +5,7 @@ export const build = {
         title: "构建发行版本",
         start: "开始构建",
         runningTitle: "构建进行中",
-        runningBody: "该项目已有一个构建在运行，请在控制台查看进度",
+        runningBody: "该项目已有构建正在运行，进度显示在控制台",
         viewConsole: "查看控制台",
         cancelBuild: "取消构建",
     },
@@ -32,16 +32,11 @@ export const build = {
         appimage: "AppImage",
         dir: "文件夹",
         apk: "APK",
+        aab: "AAB",
         ipa: "IPA",
     },
     outputDir: "输出目录",
     chooseFolder: "选择文件夹…",
-    info: {
-        version: "版本",
-        protection: "资源保护",
-        protectionOn: "已开启",
-        protectionOff: "未开启",
-    },
     section: {
         targets: "目标",
         identity: "标识",
@@ -57,7 +52,6 @@ export const build = {
     },
     identity: {
         version: "版本",
-        versionHint: "三段数字，例如 1.0.0",
         productName: "产品名",
         productNameSource: "源自项目名",
         appId: "应用 ID",
@@ -65,6 +59,10 @@ export const build = {
         icons: "图标",
         iconsHint: "点击图标可在项目设置中修改",
         iconUnset: "未设置",
+        // 版本或版权为空时显示什么。这一段现在只回读，空字段得说明自己是空的，
+        // 而不是看起来像一个等着输入的控件。
+        notSet: "未设置",
+        editInProject: "在「项目 ▸ 应用」中编辑",
     },
     content: {
         protection: "资源保护",
@@ -88,6 +86,8 @@ export const build = {
         none: "不签名",
         missing: "本机没有这份凭据",
         import: "导入…",
+        // 对话框只报告选择，挑选与导入都在面板里完成。
+        editInProject: "在「项目 ▸ 设置」中管理",
         remove: "从本机移除",
         removeConfirm: "从本机移除 {label}？",
         removeConfirmDetail: "它的密钥材料会在本机删除。使用它的工程在重新导入之前都会以未签名方式构建",
@@ -168,7 +168,7 @@ export const build = {
         "icon-missing": "未设置应用图标，将使用 NarraLeaf 图标",
         "icon-unusable": "{platform} 图标无法读取，将使用 NarraLeaf 图标",
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
-        "icon-stale": "{platform} 图标尚未烘焙，请打开 项目 ▸ 图标 生成",
+        "icon-stale": "{platform} 图标尚未烘焙，请打开 项目 ▸ 应用 生成",
         "plugins-invalid": "插件校验失败：\n{errors}",
         "build-dependency-unavailable":
             "{plugin} 在 {platform} 上需要构建依赖 {dependency}，本机没有缓存，也无法从 {url} 获取（{reason}）。"
@@ -188,11 +188,11 @@ export const build = {
         // 不再点名 Gatekeeper / SmartScreen：那是厂商的词，不是作者的，而且两边的预期一样。
         // 更长的说法在 `build` 帮助主题里。
         unsigned: "未做代码签名。玩家首次打开时可能看到安全提示",
-        "unsigned-android": "使用本地调试签名，仅供旁加载安装。选择你自己的 release keystore 即可用你的身份签名",
+        "unsigned-android": "使用本地调试签名，仅供旁加载安装，这样签出的 AAB 也不能用作 Google Play 的上传密钥。选择你自己的 release keystore 即可用你的身份签名",
         "unsigned-ios": "这份 .ipa 未签名，而 iOS 不允许安装任何未签名应用。请选择一份 Apple 签名凭据。从钥匙串导出 .p12 时要连同签发链一起导出，否则签名会失败",
         "signing-credential-missing": "本机没有本工程为 {platform} 指定的签名凭据，密钥材料不会随工程流转。请在此导入，或清除该选择以未签名方式构建 {platform}",
         "signing-credential-expired": "{platform} 签名证书不在有效期内（{notBefore} 至 {notAfter}），签名会失败。请向签发方续期并导入新证书",
-        "signing-credential-expiring": "{platform} 签名证书将于 {notAfter} 到期，还有 {days} 天。此前签出的产物之后仍然有效，新的构建需要续期后的证书",
+        "signing-credential-expiring": "{platform} 签名证书将于 {notAfter} 到期。在此之前签出的产物仍然有效，之后的构建需要续期后的证书",
         "signing-secret-unavailable": "本机无法读取 {platform} 签名凭据的密码。重新导入一次即可重新保存密码",
         "signing-tool-missing": "为 {platform} 签名需要 {tool}，本机没有安装。请安装并确保它在 PATH 中，然后重新打开本对话框",
         "signing-host-unsupported": "本机是 {host}，无法用所选凭据为 {platform} 签名：它的私钥由只存在于对应平台的系统服务保管。请在 {platform} 机器上构建这个目标",
@@ -200,30 +200,36 @@ export const build = {
         "signing-macos-identity-missing": "本机钥匙串里没有名为 {identity} 的证书。请在「钥匙串访问」中安装它，或在此改选其他证书",
         "signing-macos-identity-unusable": "证书 {identity} 无法用于签名：它已过期、私钥不在、或签发链不完整。请在「钥匙串访问」中打开它确认原因",
         "signing-macos-not-developer-id": "{identity} 不是「Developer ID Application」证书。产物能在本机运行，但在别人的 Mac 上会被 Gatekeeper 拒绝，Apple 也不会为它公证",
-        "signing-android-not-play": "签名后的 APK 适用于旁加载安装，以及 itch.io 等接受 APK 的平台。Google Play 只收 AAB 包，本管线不产出 AAB",
+        "signing-android-not-play": "签名后的 APK 适用于旁加载安装，以及 itch.io 等接受 APK 的平台。Google Play 只接受 AAB 包，在 Android 目标下打开 AAB 格式即可产出",
         "signing-ios-profile-mismatch": "应用 ID {bundleId} 不在描述文件的覆盖范围内，该描述文件签发给的是 {profileAppId}。请修改工程标识符，或导入与之匹配的描述文件",
         "cross-build-download": "跨平台构建 {platforms} 需要下载 Electron（首次下载，之后会缓存）",
         "output-not-writable": "无法写入 {outputDir}",
         "output-not-empty": "输出目录已有文件，同名产物会被覆盖",
     },
     webStaticNotice: "Web 构建是可部署到任意网页服务器的静态站点；资源加密与 HTTP 限制对它不生效",
-    unsignedNotice: "未做代码签名。玩家首次打开时可能看到安全提示",
-    selectAtLeastOne: "请至少选择一个平台和格式",
     toast: {
-        submitted: "构建任务已提交，请查看控制台",
+        submitted: "构建已开始，进度显示在控制台",
         done: "构建完成",
         failed: "构建失败",
     },
     invalidCommand: "{story} / {scene} 中有无效指令：{source}",
-    invalidCommandSummary: "构建已中止：有 {count} 条无效指令，详见控制台",
-    mediaNeedsConverting: "{asset} 放不出来，请在素材面板里转换它",
-    mediaNotPlayable: "{asset} 里没有声音，也没有画面，请替换或删除这个文件",
+    invalidCommandSummary: {
+        one: "构建已中止：有 {count} 条无效指令，详见控制台",
+        other: "构建已中止：有 {count} 条无效指令，详见控制台",
+    },
+    mediaNeedsConverting: "{asset} 无法播放，请在素材面板中转换",
+    mediaNotPlayable: "{asset} 不含音频也不含视频，请替换或删除该文件",
     mediaSummary: {
-        one: "构建已中止：有 {count} 个素材放不出来，详见控制台",
-        other: "构建已中止：有 {count} 个素材放不出来，详见控制台",
+        one: "构建已中止：有 {count} 个素材无法播放，详见控制台",
+        other: "构建已中止：有 {count} 个素材无法播放，详见控制台",
+    },
+    networkNodeDisallowed: "{blueprint} 发起了网络请求，本工程不允许",
+    networkSummary: {
+        one: "构建已中止：有 {count} 个网络节点无法运行。请在工程设置中开启「允许 HTTP」，或删除该节点",
+        other: "构建已中止：有 {count} 个网络节点无法运行。请在工程设置中开启「允许 HTTP」，或删除这些节点",
     },
     mediaUnchecked: {
-        one: "有 {count} 个媒体文件没有检查，这台电脑上没有可用的转换工具",
-        other: "有 {count} 个媒体文件没有检查，这台电脑上没有可用的转换工具",
+        one: "有 {count} 个媒体文件未经检查，本机没有可用的转换工具",
+        other: "有 {count} 个媒体文件未经检查，本机没有可用的转换工具",
     },
 } satisfies LocaleNamespace<"build">;

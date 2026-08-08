@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+/**
+ * Interface: the running UI, as the host sees it — the blueprints this surface is made of, what
+ * they logged, and the host state they read and write.
+ *
+ * Not the debugger: nothing here stops the game. The one thing in this panel that changes what the
+ * session records — the verbose log level — is therefore not owned here either; see the
+ * `outputLogLevels` prop.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
     getBlueprintDebugEventLogLevel,
@@ -13,14 +22,26 @@ import { useTranslation } from "@/lib/i18n";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
-import { listBlueprintsForDevTools } from "./blueprintDebugPanelModel";
+import { listDevModeBlueprints } from "./blueprintDebugPanelModel";
+import { formatDebugValue } from "./debugValueFormat";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
 
-type DebugTabId = "blueprints" | "output" | "scope";
+/**
+ * `uiState` was called `scope`, which the debugger also calls a tab — and meant something else by
+ * it. The debugger's is one paused frame's variables; this one is the host's own runtime state
+ * (surface store, globals, persistence, widget interaction), which no frame owns.
+ */
+type DebugTabId = "blueprints" | "output" | "uiState";
 export type BlueprintOutputLogLevel = BlueprintDebugEventLogLevel;
 
 const OUTPUT_LOG_LEVELS: BlueprintOutputLogLevel[] = ["error", "warning", "log", "verbose"];
-const DEFAULT_OUTPUT_LOG_LEVELS = new Set<BlueprintOutputLogLevel>(["error", "warning", "log"]);
+/** Verbose is off by default — see the DebugBridge for what capturing it costs. Read-only: the
+ *  owner (DevModeContent) seeds its state from this and must not be able to edit the default. */
+export const DEFAULT_OUTPUT_LOG_LEVELS: ReadonlySet<BlueprintOutputLogLevel> = new Set<BlueprintOutputLogLevel>([
+    "error",
+    "warning",
+    "log",
+]);
 
 type BlueprintRuntimeDebugPanelProps = {
     debug: DebugBridge;
@@ -30,6 +51,13 @@ type BlueprintRuntimeDebugPanelProps = {
     scopeBridge: ScopeStoreBridge;
     widgetRuntimeStore: WidgetRuntimeStateStore;
     projectPath: string | null;
+    /**
+     * Which log levels the Output list shows. Owned by DevModeContent, not by this panel: `verbose`
+     * also arms capture at the DebugBridge, so it outlives the drawer being closed and the session
+     * being replaced by a timeline jump.
+     */
+    outputLogLevels: ReadonlySet<BlueprintOutputLogLevel>;
+    setOutputLogLevels: Dispatch<SetStateAction<ReadonlySet<BlueprintOutputLogLevel>>>;
     className?: string;
     /** Dock/float mode toggle + title-bar drag, owned by DevModeContent. */
     chrome?: DevModePanelChrome;
@@ -44,15 +72,14 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         scopeBridge,
         widgetRuntimeStore,
         projectPath,
+        outputLogLevels,
+        setOutputLogLevels,
         className,
         chrome,
     } = props;
     const { t } = useTranslation();
     const [tab, setTab] = useState<DebugTabId>("output");
     const [events, setEvents] = useState<BlueprintDebugEvent[]>(() => debug.snapshot());
-    const [outputLogLevels, setOutputLogLevels] = useState<Set<BlueprintOutputLogLevel>>(
-        () => new Set(DEFAULT_OUTPUT_LOG_LEVELS),
-    );
     const [logLevelMenuOpen, setLogLevelMenuOpen] = useState(false);
     const [expandedBp, setExpandedBp] = useState<Set<string>>(() => new Set());
     const [studioHint, setStudioHint] = useState<string | null>(null);
@@ -63,7 +90,6 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         scopeBridge.getSurfaceStore(activeSurfaceId).getSnapshot(),
     );
     const [globalSnap, setGlobalSnap] = useState(() => scopeBridge.getGlobalSnapshot());
-    const [persistSnap, setPersistSnap] = useState(() => scopeBridge.getPersistenceSnapshot());
     const [widgetSnap, setWidgetSnap] = useState(() => widgetRuntimeStore.getSnapshot());
 
     useEffect(() => {
@@ -72,14 +98,6 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
             setEvents(debug.snapshot());
         });
     }, [debug]);
-
-    // Verbose tracing is dropped at the bridge unless something asks for it, so the filter
-    // checkbox has to drive capture rather than just hide rows. Only events emitted while it is
-    // on are recorded.
-    useEffect(() => {
-        debug.setVerboseCaptureEnabled(outputLogLevels.has("verbose"));
-        return () => debug.setVerboseCaptureEnabled(false);
-    }, [debug, outputLogLevels]);
 
     useEffect(() => {
         const store = scopeBridge.getSurfaceStore(activeSurfaceId);
@@ -93,13 +111,6 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         setGlobalSnap(scopeBridge.getGlobalSnapshot());
         return scopeBridge.subscribeGlobals(() => {
             setGlobalSnap(scopeBridge.getGlobalSnapshot());
-        });
-    }, [scopeBridge]);
-
-    useEffect(() => {
-        setPersistSnap(scopeBridge.getPersistenceSnapshot());
-        return scopeBridge.subscribePersistence(() => {
-            setPersistSnap(scopeBridge.getPersistenceSnapshot());
         });
     }, [scopeBridge]);
 
@@ -135,10 +146,12 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         return () => window.removeEventListener("pointerdown", onPointerDown);
     }, [logLevelMenuOpen]);
 
+    // "What can I open in the workspace", scoped to the surface on screen — as opposed to the
+    // debugger's "what can I set a breakpoint in". Both questions live in one switch; see the model.
     const blueprintsList = useMemo(() => {
-        return listBlueprintsForDevTools(blueprintDocument.blueprints, {
-            document: uiDocument,
-            activeSurfaceId,
+        return listDevModeBlueprints(blueprintDocument.blueprints, {
+            purpose: "workspace",
+            scope: { document: uiDocument, activeSurfaceId },
         });
     }, [activeSurfaceId, blueprintDocument.blueprints, uiDocument]);
 
@@ -222,7 +235,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                     [
                         ["blueprints", t("devMode.tabs.blueprints")],
                         ["output", t("devMode.tabs.output")],
-                        ["scope", t("devMode.tabs.scope")],
+                        ["uiState", t("devMode.tabs.uiState")],
                     ] as const
                 ).map(([id, label]) => {
                     const active = tab === id;
@@ -375,24 +388,27 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                     </div>
                 ) : null}
 
-                {tab === "scope" ? (
+                {tab === "uiState" ? (
                     <div className="min-h-0 flex-1 space-y-3 overflow-auto p-2">
-                        <KeyValueBlock title={t("devMode.scope.surface")} entries={surfaceSnap} surfaceId={activeSurfaceId} />
-                        <KeyValueBlock title={t("devMode.scope.global")} entries={globalSnap} />
-                        <KeyValueBlock title={t("devMode.scope.persistence")} entries={persistSnap} />
+                        <KeyValueBlock title={t("devMode.uiState.surface")} entries={surfaceSnap} surfaceId={activeSurfaceId} />
+                        <KeyValueBlock title={t("devMode.uiState.global")} entries={globalSnap} />
+                        {/* No Persistence block. It used to sit here as a raw storageKey → value dump,
+                            which is the same data the Saves panel now shows BY NAME, plus a named
+                            "other keys" list for what no declaration claims. Two readouts of one store
+                            is how a reader ends up trusting the one that says less. */}
                         <div>
-                            <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{t("devMode.scope.widget")}</p>
+                            <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("devMode.uiState.widget")}</h3>
                             <ul className="space-y-0.5 text-2xs text-fg-muted">
                                 <li>
-                                    {t("devMode.scope.hover")} ·{" "}
+                                    {t("devMode.uiState.hover")} ·{" "}
                                     {widgetSnap.hoverTargetIds.size === 0
                                         ? "-"
                                         : [...widgetSnap.hoverTargetIds].map(id => `${id.slice(0, 6)}…`).join(", ")}
                                 </li>
-                                <li>{t("devMode.scope.active")} · {widgetSnap.activePointerId ?? "-"}</li>
-                                <li>{t("devMode.scope.focus")} · {widgetSnap.focusedId ?? "-"}</li>
+                                <li>{t("devMode.uiState.active")} · {widgetSnap.activePointerId ?? "-"}</li>
+                                <li>{t("devMode.uiState.focus")} · {widgetSnap.focusedId ?? "-"}</li>
                                 <li className="break-all">
-                                    {t("devMode.scope.variants")} ·{" "}
+                                    {t("devMode.uiState.variants")} ·{" "}
                                     {widgetSnap.variantOverrides.size === 0
                                         ? "-"
                                         : [...widgetSnap.variantOverrides.entries()]
@@ -470,10 +486,12 @@ function KeyValueBlock(props: {
     const keys = [...entries.keys()].sort();
     return (
         <div>
-            <p className="mb-1 text-2xs tracking-wide text-fg-subtle">
+            {/* The drawer's section-heading style (see BlueprintDebuggerPanel's `Section`): an <h3>
+                carrying FieldLabel's eyebrow typography, and not uppercased. */}
+            <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">
                 {title}
                 {surfaceId ? <span className="text-fg-subtle"> · {surfaceId.slice(0, 8)}…</span> : null}
-            </p>
+            </h3>
             {keys.length === 0 ? (
                 <p className="text-2xs text-fg-subtle">{t("common.none")}</p>
             ) : (
@@ -488,24 +506,6 @@ function KeyValueBlock(props: {
             )}
         </div>
     );
-}
-
-function formatDebugValue(value: unknown, maxLen = 180): string {
-    if (value === undefined) {
-        return "undefined";
-    }
-    if (value === null) {
-        return "null";
-    }
-    if (typeof value === "string") {
-        return value.length > maxLen ? `${value.slice(0, maxLen)}…` : value;
-    }
-    try {
-        const s = JSON.stringify(value);
-        return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s;
-    } catch {
-        return "[unserializable]";
-    }
 }
 
 function formatExecutionError(ev: Extract<BlueprintDebugEvent, { type: "execution.error" }>): string {

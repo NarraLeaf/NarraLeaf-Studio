@@ -1,17 +1,14 @@
-import type { StoryDocument } from "@shared/types/story";
-import { isStoryDeclarationBlock, listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
-import type { VariableRegistryEntry } from "@shared/types/variables/registry";
-import type { LocalizationKeysDocument } from "@shared/types/localization";
-import { getTextSegment } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
-import { richRunsToPlain, segmentToRuns } from "@/apps/workspace/modules/story/scene-editor/richText";
+import type { SearchJumpTarget } from "./searchJumpTarget";
+import type { CompiledMatcher } from "./textMatcher";
 
 /**
- * Global project search - the pure model.
+ * Global project search - the pure query model.
  *
- * Extraction turns each searchable document into flat {@link SearchIndexEntry} lists; the service
- * owns *when* slices rebuild (change events), this file owns *what* is searchable and how a query
- * ranks against it.
+ * This file owns *what an entry is* and *how a query ranks against it*, and nothing else. Where the
+ * entries come from is a source's business (`sources/*.ts`, declared in `searchSources.ts`) and *when*
+ * they are rebuilt is the service's (`SearchService.ts`). Nothing here imports a workspace service, a
+ * document type, or an extractor - which is what lets the scorer be read, reasoned about and profiled
+ * on its own.
  *
  * Two deliberate departures from the other matchers in the codebase:
  *
@@ -68,24 +65,11 @@ export const SEARCH_GROUP_ORDER: readonly SearchGroup[] = [
 
 const GROUP_SET: ReadonlySet<string> = new Set(SEARCH_GROUP_ORDER);
 
-export type SearchJumpTarget =
-    | { kind: "storyBlock"; storyId: string; sceneId: string; blockId: string; storyName: string; sceneName: string }
-    | { kind: "storyScene"; storyId: string; sceneId: string; storyName: string; sceneName: string }
-    /** A whole story: its flow map is the view of a story rather than of one scene. */
-    | { kind: "storyFlow"; storyId: string; storyName: string }
-    | { kind: "character"; characterId: string }
-    | { kind: "uiSurface"; surfaceId: string }
-    | { kind: "asset"; assetId: string; assetType: string }
-    | {
-          kind: "blueprint";
-          blueprintId: string;
-          /** Owner slot key (e.g. `surfaceMain:<id>`); parsed into an editor open target at jump time. */
-          ownerKey: string;
-          focusEventId?: string;
-          focusFunctionId?: string;
-          focusNodeId?: string;
-      }
-    | { kind: "localizationKey"; keyName: string };
+/**
+ * Re-exported so the four consumers outside search (`@/plugin`, lint, testing, references) keep their
+ * import path. The declaration itself lives in `./searchJumpTarget` - see the note there.
+ */
+export type { SearchJumpTarget };
 
 /**
  * Structured facets carried alongside the free text. These exist so narrowing never has to be
@@ -109,7 +93,7 @@ export interface SearchEntryFields {
     textId?: string;
 }
 
-/** An entry as authored by an extractor. */
+/** An entry as authored by a source's extractor. */
 export interface SearchIndexEntry {
     /** Stable unique id (used as the React key of the result row). */
     id: string;
@@ -127,11 +111,11 @@ export interface SearchIndexEntry {
     /**
      * How many indistinguishable things this row stands for (absent or 1 = just itself).
      *
-     * Set by extractors that collapse duplicates. A graph holding eight `Set Image Asset` nodes with
-     * nothing to tell them apart produced eight identical rows; one row that says there are eight is
-     * the honest rendering of the same fact, and the only one the author can act on. The jump goes to
-     * the first of them - which is also all a picker could have offered, since the eight were
-     * indistinguishable in the list by construction.
+     * Set by the framework's dedup pass, from the `dedupKey` a source declares. A graph holding eight
+     * `Set Image Asset` nodes with nothing to tell them apart produced eight identical rows; one row
+     * that says there are eight is the honest rendering of the same fact, and the only one the author
+     * can act on. The jump goes to the first of them - which is also all a picker could have offered,
+     * since the eight were indistinguishable in the list by construction.
      */
     count?: number;
     target: SearchJumpTarget;
@@ -168,418 +152,6 @@ export function indexEntries(entries: readonly SearchIndexEntry[]): IndexedSearc
 }
 
 // ---------------------------------------------------------------------------
-// Extraction
-// ---------------------------------------------------------------------------
-
-/**
- * Story slice: the story and its scenes as navigable entities, every block's prose
- * (dialogue/narration/choice/note text), and the story's variable declarations. Scenes land in
- * "scene" and the story itself in "story"; blocks land in "storyText"; declaration rows land in
- * "variable" (v6: the row IS the variable, whatever its scope, so every entry jumps straight to its
- * declaring row).
- *
- * The scene entry is what makes typing a scene name go to that scene instead of listing its lines:
- * it is a `scene`-group entry, and that group sorts above `storyText`.
- */
-export function extractStoryEntries(document: StoryDocument): SearchIndexEntry[] {
-    const entries: SearchIndexEntry[] = [];
-    const storyName = document.name;
-
-    if (storyName) {
-        entries.push({
-            id: `storydoc:${document.id}`,
-            group: "story",
-            text: storyName,
-            fields: { storyId: document.id, storyName },
-            target: { kind: "storyFlow", storyId: document.id, storyName },
-        });
-    }
-
-    // Ranking only reorders matches; everything that ties keeps index order, which is why both loops
-    // walk the authored order rather than the records.
-    for (const scene of listScenesInDocumentOrder(document)) {
-        const context = `${storyName} › ${scene.name}`;
-        const sceneFields: SearchEntryFields = {
-            storyId: document.id,
-            storyName,
-            sceneId: scene.id,
-            sceneName: scene.name,
-        };
-
-        if (scene.name) {
-            entries.push({
-                id: `sceneref:${document.id}:${scene.id}`,
-                group: "scene",
-                text: scene.name,
-                detail: storyName,
-                // The runtime name is what a `/jump` writes, so authors do search for it.
-                aux: scene.runtimeName && scene.runtimeName !== scene.name ? scene.runtimeName : undefined,
-                fields: sceneFields,
-                target: {
-                    kind: "storyScene",
-                    storyId: document.id,
-                    sceneId: scene.id,
-                    storyName,
-                    sceneName: scene.name,
-                },
-            });
-        }
-
-        for (const block of listSceneBlocksInDocumentOrder(scene)) {
-            if (isStoryDeclarationBlock(block)) {
-                if (!block.payload.name) {
-                    continue;
-                }
-                entries.push({
-                    id: `storyvar:${document.id}:${scene.id}:${block.id}`,
-                    group: "variable",
-                    text: block.payload.name,
-                    detail: context,
-                    fields: sceneFields,
-                    target: {
-                        kind: "storyBlock",
-                        storyId: document.id,
-                        sceneId: scene.id,
-                        blockId: block.id,
-                        storyName,
-                        sceneName: scene.name,
-                    },
-                });
-                continue;
-            }
-            const segment = getTextSegment(block);
-            if (!segment) {
-                continue;
-            }
-            const text = richRunsToPlain(segmentToRuns(segment)).trim();
-            if (!text) {
-                continue;
-            }
-            entries.push({
-                id: `story:${document.id}:${scene.id}:${block.id}`,
-                group: "storyText",
-                text,
-                detail: context,
-                fields: { ...sceneFields, ...(segment.textId ? { textId: segment.textId } : {}) },
-                target: {
-                    kind: "storyBlock",
-                    storyId: document.id,
-                    sceneId: scene.id,
-                    blockId: block.id,
-                    storyName,
-                    sceneName: scene.name,
-                },
-            });
-        }
-    }
-
-    return entries;
-}
-
-/** Longest literal kept from a node's params; anything longer is a payload, not a name. */
-const MAX_NODE_LITERAL_LENGTH = 80;
-/** How many literals one node contributes before the walker gives up on it. */
-const MAX_NODE_LITERALS = 6;
-/** Depth the walker descends into nested param objects/arrays. */
-const MAX_NODE_LITERAL_DEPTH = 2;
-
-const UUID_SHAPED = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * The authored strings inside a node's params, in declaration order - a comment's text, a variable
- * name, a literal line of dialogue.
- *
- * Deliberately narrow: numbers and booleans carry no identity, and ids (UUID-shaped strings) are
- * the thing the author never types. What is left is what one `Set Image Asset` node has that the
- * seven beside it do not, which is the entire point of collecting them.
- */
-function collectNodeLiterals(params: Record<string, unknown> | undefined): string[] {
-    const out: string[] = [];
-    const visit = (value: unknown, depth: number): void => {
-        if (out.length >= MAX_NODE_LITERALS) {
-            return;
-        }
-        if (typeof value === "string") {
-            const trimmed = value.trim();
-            if (trimmed && trimmed.length <= MAX_NODE_LITERAL_LENGTH && !UUID_SHAPED.test(trimmed)) {
-                out.push(trimmed);
-            }
-            return;
-        }
-        if (depth >= MAX_NODE_LITERAL_DEPTH || !value || typeof value !== "object") {
-            return;
-        }
-        for (const child of Array.isArray(value) ? value : Object.values(value)) {
-            visit(child, depth + 1);
-        }
-    };
-    visit(params, 0);
-    return out;
-}
-
-/** Localized names for the parts of a blueprint the index cannot name for itself. */
-export interface BlueprintEntryLabels {
-    /** Shown for an event graph the author never named. */
-    unnamedEvent: string;
-    /** Shown for a function graph the author never named. */
-    unnamedFunction: string;
-}
-
-export interface BlueprintExtractionOptions {
-    /** Catalog display name for a node type (`Set Image Asset`), falling back to the raw type. */
-    resolveNodeLabel: (nodeType: string) => string | undefined;
-    /**
-     * Human name for an owner slot key - the surface or element the blueprint hangs on. Without it a
-     * node hit says only which blueprint it is in, and blueprints are named after their element
-     * ("Image"), which is exactly as much provenance as no provenance.
-     */
-    resolveOwnerLabel?: (ownerKey: string) => string | undefined;
-    persistentVariables?: VariableRegistryEntry[];
-    labels: BlueprintEntryLabels;
-}
-
-/**
- * Blueprint slice: the blueprints themselves ("blueprint"), member + persistent variable names
- * ("variable"), and graph nodes ("blueprintNode"). Only blueprints reachable through an owner record
- * are indexed - an unowned blueprint has no editor surface to jump to.
- *
- * **Node rows carry where they are and what they say.** Indexing bare node *type* names produced a
- * result list of clones - eight `Set Image Asset` rows, identical down to the detail line, none of
- * them telling the author which one to pick. So a node's detail line is now its own literal params
- * followed by `owner › graph`, and nodes that still come out identical after that are collapsed to
- * one row carrying {@link SearchIndexEntry.count}. Type names stay searchable (they are still the
- * row title), because "where do I set image assets" is a real question - it just needs an answer
- * the author can read.
- */
-export function extractBlueprintEntries(
-    document: BlueprintDocument,
-    options: BlueprintExtractionOptions,
-): SearchIndexEntry[] {
-    const { resolveNodeLabel, resolveOwnerLabel, persistentVariables = [], labels } = options;
-    const entries: SearchIndexEntry[] = [];
-
-    // blueprintId → ownerKey (active blueprint first so it wins over historical siblings).
-    const ownerKeyByBlueprintId = new Map<string, string>();
-    for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
-        for (const blueprintId of [record.activeBlueprintId, ...record.privateBlueprintIds]) {
-            if (blueprintId && !ownerKeyByBlueprintId.has(blueprintId)) {
-                ownerKeyByBlueprintId.set(blueprintId, ownerKey);
-            }
-        }
-    }
-
-    // Persistent variables are project-level (M-VAR registry), surfaced against the global blueprint when one exists.
-    const globalRecord = document.ownerRecords["globalMain"];
-    if (globalRecord) {
-        for (const definition of persistentVariables) {
-            if (!definition.name) {
-                continue;
-            }
-            entries.push({
-                id: `bpvar:persistent:${definition.id}`,
-                group: "variable",
-                text: definition.name,
-                target: {
-                    kind: "blueprint",
-                    blueprintId: globalRecord.activeBlueprintId,
-                    ownerKey: "globalMain",
-                },
-            });
-        }
-    }
-
-    /**
-     * Node rows keyed by exactly what the row shows, across the WHOLE document.
-     *
-     * Document-wide rather than per-graph on purpose. Sibling event layers are commonly all called
-     * "Layer 1", and sibling widgets all called "Image", so a per-graph map still let four rows
-     * through that were identical on screen — which is the complaint, not the data model. Two rows
-     * survive as two exactly when a person could tell them apart.
-     */
-    const nodeRows = new Map<string, SearchIndexEntry>();
-
-    for (const blueprint of Object.values(document.blueprints)) {
-        const ownerKey = ownerKeyByBlueprintId.get(blueprint.id);
-        if (!ownerKey) {
-            continue;
-        }
-        const ownerLabel = resolveOwnerLabel?.(ownerKey);
-
-        if (blueprint.name) {
-            entries.push({
-                id: `bp:${blueprint.id}`,
-                group: "blueprint",
-                text: blueprint.name,
-                detail: ownerLabel,
-                target: { kind: "blueprint", blueprintId: blueprint.id, ownerKey },
-            });
-        }
-
-        for (const variable of Object.values(blueprint.members?.variables ?? {})) {
-            if (!variable.name) {
-                continue;
-            }
-            entries.push({
-                id: `bpvar:${blueprint.id}:${variable.id}`,
-                group: "variable",
-                text: variable.name,
-                detail: ownerLabel ? `${blueprint.name} › ${ownerLabel}` : blueprint.name,
-                target: { kind: "blueprint", blueprintId: blueprint.id, ownerKey },
-            });
-        }
-
-        if (blueprint.program.kind !== "graph") {
-            continue;
-        }
-        type GraphSlot = {
-            focus: "event" | "function";
-            graphId: string;
-            name: string;
-            ir: { nodes?: Record<string, { id: string; type: string; params?: Record<string, unknown> }> } | undefined;
-        };
-        const graphSlots: GraphSlot[] = [
-            ...Object.entries(blueprint.program.graphs.events).map(([graphId, slot]) => ({
-                focus: "event" as const,
-                graphId,
-                name: slot.name || labels.unnamedEvent,
-                ir: slot.graph,
-            })),
-            ...Object.entries(blueprint.program.graphs.functions).map(([graphId, slot]) => ({
-                focus: "function" as const,
-                graphId,
-                name: slot.name || labels.unnamedFunction,
-                ir: slot.graph,
-            })),
-        ];
-
-        for (const { focus, graphId, name: graphName, ir } of graphSlots) {
-            const where = ownerLabel ? `${ownerLabel} › ${graphName}` : `${blueprint.name} › ${graphName}`;
-            for (const node of Object.values(ir?.nodes ?? {})) {
-                const label = resolveNodeLabel(node.type) ?? node.type;
-                if (!label) {
-                    continue;
-                }
-                const literals = collectNodeLiterals(node.params);
-                const [distinguishing, ...rest] = literals;
-                const detail = distinguishing ? `${distinguishing} · ${where}` : where;
-                const key = `${label}\u0000${detail}`;
-                const existing = nodeRows.get(key);
-                if (existing) {
-                    existing.count = (existing.count ?? 1) + 1;
-                    continue;
-                }
-                nodeRows.set(key, {
-                    id: `bpnode:${blueprint.id}:${graphId}:${node.id}`,
-                    group: "blueprintNode",
-                    text: label,
-                    detail,
-                    aux: rest.length > 0 ? rest.join(" ") : undefined,
-                    target: {
-                        kind: "blueprint",
-                        blueprintId: blueprint.id,
-                        ownerKey,
-                        focusNodeId: node.id,
-                        ...(focus === "event" ? { focusEventId: graphId } : { focusFunctionId: graphId }),
-                    },
-                });
-            }
-        }
-    }
-
-    entries.push(...nodeRows.values());
-    return entries;
-}
-
-/** The slice of an asset the index needs; matches `Asset` structurally without importing it. */
-export interface SearchableAsset {
-    id: string;
-    type: string;
-    name: string;
-    tags?: readonly string[];
-    description?: string;
-}
-
-/**
- * Asset slice: every imported asset (images, audio, video, fonts…) searchable by name (title) and
- * by tags/description (detail). The type rides on the target so the jump can pick the right
- * affordance (preview tab vs. panel selection).
- */
-export function extractAssetEntries(assets: readonly SearchableAsset[]): SearchIndexEntry[] {
-    return assets
-        .filter(asset => asset.name)
-        .map(asset => {
-            const detailParts = [...(asset.tags ?? [])];
-            if (asset.description) {
-                detailParts.push(asset.description);
-            }
-            return {
-                id: `asset:${asset.id}`,
-                group: "asset" as const,
-                text: asset.name,
-                detail: detailParts.length > 0 ? detailParts.join(", ") : undefined,
-                fields: { assetType: asset.type },
-                target: { kind: "asset" as const, assetId: asset.id, assetType: asset.type },
-            };
-        });
-}
-
-/** The slice of a character the index needs; matches the character profile structurally. */
-export interface SearchableCharacter {
-    id: string;
-    name: string;
-    /** Group the character was filed under, shown as its context line. */
-    groupName?: string;
-    /** Cast/voice-actor note and any alias, searchable but not shown. */
-    aux?: string;
-}
-
-/** Character slice: the cast, by name. Jumping reveals them selected in the characters panel. */
-export function extractCharacterEntries(characters: readonly SearchableCharacter[]): SearchIndexEntry[] {
-    return characters
-        .filter(character => character.name)
-        .map(character => ({
-            id: `character:${character.id}`,
-            group: "character" as const,
-            text: character.name,
-            detail: character.groupName || undefined,
-            aux: character.aux || undefined,
-            target: { kind: "character" as const, characterId: character.id },
-        }));
-}
-
-/** The slice of a UI surface the index needs. */
-export interface SearchableSurface {
-    id: string;
-    name: string;
-    /** `appSurface` / `stageSurface`, shown as the context line once localized by the caller. */
-    kindLabel?: string;
-}
-
-/** UI surface slice: every screen/layer by name, opening its editor tab. */
-export function extractSurfaceEntries(surfaces: readonly SearchableSurface[]): SearchIndexEntry[] {
-    return surfaces
-        .filter(surface => surface.name)
-        .map(surface => ({
-            id: `surface:${surface.id}`,
-            group: "uiSurface" as const,
-            text: surface.name,
-            detail: surface.kindLabel || undefined,
-            target: { kind: "uiSurface" as const, surfaceId: surface.id },
-        }));
-}
-
-/** Named UI text keys: searchable by key name (title) and by source text (detail). */
-export function extractLocalizationKeyEntries(document: LocalizationKeysDocument): SearchIndexEntry[] {
-    return Object.entries(document.keys).map(([name, definition]) => ({
-        id: `uikey:${name}`,
-        group: "uiTextKey" as const,
-        text: name,
-        detail: definition.sourceText || undefined,
-        target: { kind: "localizationKey" as const, keyName: name },
-    }));
-}
-
-// ---------------------------------------------------------------------------
 // Query parsing
 // ---------------------------------------------------------------------------
 
@@ -605,6 +177,15 @@ export interface ParsedSearchQuery {
     terms: string[];
     /** Facets parsed out of `key:value` pairs. */
     filters: SearchFilters;
+    /**
+     * The same free text, minus the facets, **as the author typed it** - the form a matcher needs.
+     *
+     * `terms` is case-folded and split, which is exactly right for the index and exactly wrong for
+     * `Aa` and `.*`: one loses the case the author is asking to match, the other loses the pattern.
+     * Tokens rejoin with a single space, so `find me` reads as the phrase a find bar would look for
+     * rather than as two independent terms.
+     */
+    text: string;
 }
 
 /** `key:value` prefixes recognised in the query. Anything else stays literal text (so URLs survive). */
@@ -631,6 +212,8 @@ function tokenizeQuery(raw: string): string[] {
  */
 export function parseSearchQuery(raw: string): ParsedSearchQuery {
     const terms: string[] = [];
+    // Every token that stayed literal, in the case it was typed - see `ParsedSearchQuery.text`.
+    const literals: string[] = [];
     const groups: SearchGroup[] = [];
     const assetTypes: string[] = [];
     const filters: SearchFilters = {};
@@ -641,6 +224,7 @@ export function parseSearchQuery(raw: string): ParsedSearchQuery {
         const value = separator > 0 ? token.slice(separator + 1) : "";
         if (!key || !value || !FILTER_KEYS.has(key)) {
             terms.push(token.toLowerCase());
+            literals.push(token);
             continue;
         }
         switch (key) {
@@ -652,6 +236,7 @@ export function parseSearchQuery(raw: string): ParsedSearchQuery {
                     groups.push(group);
                 } else {
                     terms.push(token.toLowerCase());
+                    literals.push(token);
                 }
                 break;
             }
@@ -676,7 +261,7 @@ export function parseSearchQuery(raw: string): ParsedSearchQuery {
     if (assetTypes.length > 0) {
         filters.assetTypes = assetTypes;
     }
-    return { terms, filters };
+    return { terms, filters, text: literals.join(" ") };
 }
 
 /** Merge query-syntax facets with UI-supplied ones; both must hold (intersection semantics). */
@@ -697,7 +282,12 @@ function mergeFilters(parsed: SearchFilters, supplied?: SearchFilters): SearchFi
     };
 }
 
-function passesFilters(entry: IndexedSearchEntry, filters: SearchFilters): boolean {
+/**
+ * Whether an entry survives a facet narrowing. Exported so a caller that walks the index itself -
+ * project replace enumerates its own candidates, uncapped - narrows by exactly the rule the query
+ * path narrows by, rather than by a second reading of what `scene:` means.
+ */
+export function passesFilters(entry: IndexedSearchEntry, filters: SearchFilters): boolean {
     if (filters.groups && !filters.groups.includes(entry.group)) {
         return false;
     }
@@ -751,6 +341,20 @@ export interface SearchQueryOptions {
     /** Groups the user expanded - capped far higher, but still capped (the list is rendered eagerly). */
     expandedGroups?: readonly SearchGroup[];
     filters?: SearchFilters;
+    /**
+     * Refined matching for the whole query - case, whole word, regular expression - replacing the
+     * term path for as long as it is present.
+     *
+     * **Opt-in, and absent by default.** With none of the three options switched on, this is
+     * `undefined` and every line below runs exactly as it did before the option existed: the folded
+     * haystacks are what make a keystroke cheap over tens of thousands of entries, and a matcher
+     * cannot use them (it reads the original text, so its offsets stay valid for a replacement).
+     * Paying that per keystroke for a feature nobody switched on is the one thing this must not do.
+     *
+     * A matcher is compiled once per (query, options) change by whoever owns the input; passing a
+     * freshly compiled one per query would put a `RegExp` construction on the keystroke path.
+     */
+    matcher?: CompiledMatcher;
 }
 
 const DEFAULT_MAX_PER_GROUP = 20;
@@ -847,6 +451,42 @@ function matchEntry(entry: IndexedSearchEntry, terms: readonly string[]): Search
 }
 
 /**
+ * Match one entry with a compiled matcher instead of the term path.
+ *
+ * Scored on the same three fields at the same weights, but from one pattern rather than an AND of
+ * terms, so `.*` and `Aa` mean the same thing here that they mean in the scene find bar. Ranges come
+ * straight from the matcher: it read the original `text`, so its offsets highlight and splice
+ * correctly with no foldability question to ask.
+ */
+function matchEntryWith(entry: IndexedSearchEntry, matcher: CompiledMatcher): SearchHit | null {
+    const hits = matcher.findRanges(entry.text);
+    if (hits.length > 0) {
+        const first = hits[0].start;
+        let score = 100;
+        if (first === 0) {
+            score += 20;
+        } else if (isWordBoundary(entry.text, first)) {
+            score += 10;
+        }
+        score -= Math.min(first, 20);
+        score -= Math.min(Math.floor(entry.text.length / 40), 10);
+        return {
+            entry,
+            score,
+            titleRanges: normalizeRanges(hits.map(range => [range.start, range.end] as [number, number])),
+            matchReason: "text",
+        };
+    }
+    if (entry.detail && matcher.test(entry.detail)) {
+        return { entry, score: 100 * DETAIL_WEIGHT, titleRanges: [], matchReason: "detail" };
+    }
+    if (entry.aux && matcher.test(entry.aux)) {
+        return { entry, score: 100 * AUX_WEIGHT, titleRanges: [], matchReason: "aux" };
+    }
+    return null;
+}
+
+/**
  * Query the index. Terms are ANDed across `text`/`detail`/`aux`; facets narrow before scoring.
  * Results come back grouped in {@link SEARCH_GROUP_ORDER}, best-first within each group, capped per
  * group (with the uncapped `total` reported so the UI can offer "show all").
@@ -866,13 +506,14 @@ export function querySearchIndex(
 
     const maxPerGroup = options?.maxPerGroup ?? DEFAULT_MAX_PER_GROUP;
     const expanded = options?.expandedGroups;
+    const matcher = options?.matcher;
 
     const byGroup = new Map<SearchGroup, SearchHit[]>();
     for (const entry of entries) {
         if (!passesFilters(entry, filters)) {
             continue;
         }
-        const hit = matchEntry(entry, parsed.terms);
+        const hit = matcher ? matchEntryWith(entry, matcher) : matchEntry(entry, parsed.terms);
         if (!hit) {
             continue;
         }

@@ -147,38 +147,58 @@ async function resolveDevModeAssetUrl(
             if (!workspaceResult.success) {
                 return { success: false, error: workspaceResult.error ?? "Failed to resolve asset" };
             }
-            promoteDevModeAssetGrant(window, workspaceResult.data.url);
-            return { success: true, data: workspaceResult.data };
+            return { success: true, data: { url: await promoteDevModeAssetGrant(window, workspaceResult.data.url) } };
         } catch (error) {
             return { success: false, error: error instanceof Error ? error.message : String(error) };
         }
 }
 
 /**
- * Local assets resolve to one-shot app://fs/{hash} grants (the workspace-side
- * resolver requests a single read). The game engine, however, re-fetches the
- * same URL whenever its per-scene cache evicts an entry, so a one-shot grant
- * 404s on scene revisit. Promote the grant to a session-lived repeatable read
- * owned by the Dev Mode window: it survives re-fetches and is revoked when the
- * window closes (Dev Mode stop/relaunch always closes the window).
+ * Turn the workspace's one-shot `app://fs/{hash}` grant into the URL Dev Mode actually serves.
+ *
+ * Two things happen, and the second is the reason this returns a URL rather than mutating in place.
+ *
+ * 1. The grant becomes session-lived and owned by the Dev Mode window. The game engine re-fetches
+ *    the same URL whenever its per-scene cache evicts an entry, so a one-shot grant 404s on scene
+ *    revisit. It is revoked when the window closes (Dev Mode stop/relaunch always closes it).
+ *
+ * 2. The token is re-derived from the file it points at, so the SAME asset yields the SAME URL in
+ *    every run. This is what makes a save loadable. The engine writes resolved URLs into the
+ *    SavedGame (`Image.state.currentSrc`) and `deserialize` puts them back over the fresh compile's
+ *    - with a random per-read token, every stage image in a save written before the last restart
+ *    404s and the stage comes up empty. See {@link StorageManager.stabilizeSessionRead}.
+ *
+ * Falls back to the original URL whenever the grant cannot be stabilized (a remote/opaque URL, an
+ * unreadable target): repeatable reads still work, only the cross-restart property is lost.
  */
-function promoteDevModeAssetGrant(window: AppWindow<WindowAppType.DevMode>, url: string): void {
+async function promoteDevModeAssetGrant(window: AppWindow<WindowAppType.DevMode>, url: string): Promise<string> {
     let parsed: URL;
     try {
         parsed = new URL(url);
     } catch {
-        return; // Remote/opaque URLs are not hash grants
+        return url; // Remote/opaque URLs are not hash grants
     }
     if (parsed.protocol !== `${AppProtocol}:` || parsed.hostname !== AppHost.Fs) {
-        return;
+        return url;
     }
     // Only the first segment is the grant - a model bundle resolves to
     // `app://fs/{hash}/{entry}`, whose trailing path is a file *inside* the grant.
-    const hash = parsed.pathname.replace(/^\/+/, "").split("/")[0];
+    const pathname = parsed.pathname.replace(/^\/+/, "");
+    const separator = pathname.indexOf("/");
+    const hash = separator === -1 ? pathname : pathname.slice(0, separator);
     if (!hash) {
-        return;
+        return url;
     }
-    window.app.storageManager.promoteToSessionRead(hash, window.getWebContents().id);
+    const webContentsId = window.getWebContents().id;
+    const stable = await window.app.storageManager.stabilizeSessionRead(hash, webContentsId);
+    if (!stable) {
+        window.app.storageManager.promoteToSessionRead(hash, webContentsId);
+        return url;
+    }
+    // The remainder is a path *inside* a directory grant and belongs to the bundle, not the token,
+    // so it is carried across verbatim - this is the sibling arithmetic a model's manifest relies on.
+    const remainder = separator === -1 ? "" : pathname.slice(separator);
+    return `${AppProtocol}://${AppHost.Fs}/${stable}${remainder}`;
 }
 
 export class DevModeOpenBlueprintInWorkspaceHandler extends IPCHandler<IPCEventType.devModeOpenBlueprintInWorkspace> {

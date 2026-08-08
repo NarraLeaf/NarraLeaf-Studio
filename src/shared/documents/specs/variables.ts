@@ -4,7 +4,8 @@ import {defineDocumentSpec} from "../registry";
 import {rejectNewerSchema, requireDocumentObject, requireOptionalMap} from "./parseHelpers";
 
 /**
- * `editor/variables.json` - the project-level persistent variable registry (M-VAR).
+ * `editor/variables.json` - the project-level variable registry (M-VAR): the `saved` and
+ * `persistent` scopes. Scene variables are not here; they live in their scene's story document.
  *
  * Owned by `VariableRegistryService`. The path is `ProjectNameConvention.EditorVariableRegistry`
  * spelled as a pattern; the two are kept in step by the renderer's

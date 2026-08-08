@@ -181,8 +181,16 @@ export class BlueprintDebugSession implements BlueprintExecutionDebugController 
                 ? { kind: "frame", frameId: frame.parentFrameId, threadId: frame.threadId }
                 : { kind: "thread", threadId: frame.threadId };
         }
+        // The frame that was stopped is leaving, which only happens when its execution was
+        // cancelled out from under the gate (unmounting a surface, ending the session). Releasing
+        // is not a nicety: the gate is what every OTHER execution is parked on, and clearing only
+        // `pausedFrameId` would leave it held by a frame that no longer exists - the snapshot would
+        // read "running" while nothing could run, and the toolbar would offer Pause (refused,
+        // because a gate is open) with the steps greyed out (refused, because nothing is paused).
+        // Nothing short of disposing the session could have reopened it.
         if (this.pausedFrameId === token.frameId) {
-            this.pausedFrameId = null;
+            this.release();
+            return;
         }
         this.publish();
     }

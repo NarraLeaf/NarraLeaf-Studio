@@ -15,6 +15,8 @@ import { createWorkspaceBlobUrlResolver, type WorkspaceBlobUrlResolver } from "@
 import { collectAudioClipRegions } from "@/lib/workspace/assets/audioClipRegions";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
+import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
@@ -204,6 +206,27 @@ export function useStoryScenePreviewController(input: {
         () => (context && open ? context.services.get<AudioTrackService>(Services.AudioTracks).listTracks() : undefined),
         [context, open],
     );
+
+    /**
+     * The project variable registry, as the two tables the snapshot walk and the compiler take.
+     *
+     * Neither was being passed here at all, so the preview stage resolved only the story's own
+     * `/save` and `/global` declaration rows: a registry-backed variable had no default, and every
+     * row that read or wrote one previewed differently from the way it plays. Read on the same
+     * schedule as the clip regions and tracks above, and in ONE `getRegistry()` call for both
+     * projections - two reads could observe a write landing between them and hand one compile two
+     * mismatched halves of the same file.
+     */
+    const variableTables = useMemo(() => {
+        if (!context || !open) {
+            return null;
+        }
+        const registry = context.services.get<VariableRegistryService>(Services.VariableRegistry).getRegistry();
+        return {
+            saved: buildSavedRuntimeTable(registry),
+            persistent: buildPersistentRuntimeTable(registry),
+        };
+    }, [context, open]);
 
     const resolvedTargetId = useMemo(
         () => (scene ? resolvePreviewTargetBlockId(scene, activeBlockId) : null),
@@ -395,6 +418,7 @@ export function useStoryScenePreviewController(input: {
                 sceneId,
                 targetBlockId,
                 animations,
+                savedVariables: variableTables?.saved,
             });
             if (runId !== runIdRef.current) {
                 return;
@@ -414,6 +438,8 @@ export function useStoryScenePreviewController(input: {
                 audioClips,
                 audioTracks,
                 blueprintDocument: host.blueprintDocument,
+                savedVariables: variableTables?.saved,
+                persistentVariables: variableTables?.persistent,
                 persistence: host.persistence,
                 onStagePosed: () => handleStagePosed(runId),
                 revealGate,
@@ -504,6 +530,7 @@ export function useStoryScenePreviewController(input: {
         scene,
         sceneId,
         setPhase,
+        variableTables,
     ]);
 
     const startRunRef = useRef(startRun);

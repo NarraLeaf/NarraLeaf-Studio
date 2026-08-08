@@ -1,4 +1,5 @@
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryTextSegment } from "@shared/types/story";
+import { compileMatcher, type TextMatchOptions, type TextRange } from "@/lib/workspace/services/search/textMatcher";
 import { isTextRun, plainToRichRuns, richIfMeaningful, richRunsToPlain, segmentToRuns, spliceRuns } from "./richText";
 
 /**
@@ -14,13 +15,18 @@ import { isTextRun, plainToRichRuns, richIfMeaningful, richRunsToPlain, segmentT
 
 export type StoryFindOptions = {
     caseSensitive: boolean;
+    /** Both defaulted off, so a caller that only ever wanted case folding keeps its call site. */
+    wholeWord?: boolean;
+    regex?: boolean;
 };
 
-/** One hit, as offsets into a segment's plain-text projection. */
-export type StoryTextRange = {
-    start: number;
-    end: number;
-};
+/**
+ * One hit, as offsets into a segment's plain-text projection.
+ *
+ * The declaration moved to `services/search/textMatcher` when the scene bar and the project panel
+ * started sharing a matcher; the alias stays so the scene editor's imports read in its own terms.
+ */
+export type StoryTextRange = TextRange;
 
 export type StoryFindMatch = StoryTextRange & {
     blockId: StoryBlockId;
@@ -28,24 +34,23 @@ export type StoryFindMatch = StoryTextRange & {
     rowIndex: number;
 };
 
-/** Every non-overlapping hit for `query` in `value`. An empty query matches nothing. */
+function toTextMatchOptions(options: StoryFindOptions): TextMatchOptions {
+    return {
+        caseSensitive: options.caseSensitive,
+        wholeWord: options.wholeWord ?? false,
+        regex: options.regex ?? false,
+    };
+}
+
+/**
+ * Every non-overlapping hit for `query` in `value`. An empty query matches nothing.
+ *
+ * Compiles a matcher per call, which is right for a one-off and wrong for a sweep: a caller looking
+ * at many strings under one query compiles once with `compileMatcher` and calls `findRanges`
+ * directly, or it pays for a fresh `RegExp` per row per keystroke.
+ */
 export function findRangesInText(value: string, query: string, options: StoryFindOptions): StoryTextRange[] {
-    if (!query) {
-        return [];
-    }
-    const haystack = options.caseSensitive ? value : value.toLowerCase();
-    const needle = options.caseSensitive ? query : query.toLowerCase();
-    const ranges: StoryTextRange[] = [];
-    let from = 0;
-    for (;;) {
-        const index = haystack.indexOf(needle, from);
-        if (index < 0) {
-            return ranges;
-        }
-        ranges.push({ start: index, end: index + needle.length });
-        // Non-overlapping: a search for "aa" in "aaaa" is two hits, not three.
-        from = index + needle.length;
-    }
+    return compileMatcher(query, toTextMatchOptions(options)).findRanges(value);
 }
 
 /**
@@ -100,17 +105,34 @@ export function replaceInSegment(segment: StoryTextSegment, range: StoryTextRang
     return rich ? { ...segment, value, rich } : { ...segment, value, rich: undefined };
 }
 
-/** Replace every hit in a segment, back to front so earlier offsets stay valid. */
+/**
+ * Replace every hit in a segment, back to front so earlier offsets stay valid, letting each hit
+ * carry its own replacement text.
+ *
+ * The per-hit form exists for regex mode: `$1` expands against the hit it was found in, so a sweep
+ * over one line can write a different string at every position. `replacementFor` is called with
+ * offsets into the ORIGINAL projection, which is why it takes the range rather than reading the
+ * segment as it stands part-way through the sweep.
+ */
+export function replaceRangesInSegment(
+    segment: StoryTextSegment,
+    ranges: readonly StoryTextRange[],
+    replacementFor: (range: StoryTextRange, index: number) => string,
+): StoryTextSegment {
+    let next = segment;
+    for (let index = ranges.length - 1; index >= 0; index -= 1) {
+        next = replaceInSegment(next, ranges[index], replacementFor(ranges[index], index));
+    }
+    return next;
+}
+
+/** Replace every hit in a segment with the same text. */
 export function replaceAllInSegment(
     segment: StoryTextSegment,
     ranges: readonly StoryTextRange[],
     replacement: string,
 ): StoryTextSegment {
-    let next = segment;
-    for (let index = ranges.length - 1; index >= 0; index -= 1) {
-        next = replaceInSegment(next, ranges[index], replacement);
-    }
-    return next;
+    return replaceRangesInSegment(segment, ranges, () => replacement);
 }
 
 /** The marks carried at a unit position, so a replacement does not lose the styling around it. */

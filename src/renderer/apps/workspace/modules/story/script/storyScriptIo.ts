@@ -7,8 +7,9 @@ import type {
     StoryScriptSpeakerLabeller,
     StoryScriptSpeakerResolver,
 } from "@/lib/story/script/storyScriptTypes";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import { characterRowLookup } from "../scene-editor/storySceneBlockUtils";
+import { characterRowLookup, projectVariableNameLookup } from "../scene-editor/storySceneBlockUtils";
 
 /**
  * What the Story Script codec needs from the project, and nothing else.
@@ -31,8 +32,15 @@ export function createStoryScriptLabeller(
     characters: Character[],
     assetName: (assetId: string) => string | null,
     motionName: (animationId: string) => string | null,
+    /**
+     * The project registry, both scopes. Not optional in spirit: this label is WRITTEN TO A FILE the
+     * writer edits on another machine, so a saved or persistent variable named "variable" there is a
+     * wrong name that outlives the session that produced it.
+     */
+    variableRegistry: readonly VariableRegistryEntry[] = [],
 ): StoryScriptLabeller {
     const character = characterRowLookup(characters);
+    const projectVariableName = projectVariableNameLookup(variableRegistry);
     return (scene, blockId) => {
         const block = scene.blocks[blockId];
         if (!block) {
@@ -42,6 +50,7 @@ export function createStoryScriptLabeller(
             character,
             assetName,
             motionName,
+            projectVariableName,
             scene,
             scenes: document.scenes,
             document,
