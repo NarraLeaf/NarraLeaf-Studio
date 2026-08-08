@@ -1751,6 +1751,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsSoundPlaying: soundTransport.isPlaying,
             onGetTrackVolume: soundTransport.getTrackVolume,
             onSetTrackVolume: soundTransport.setTrackVolume,
+            onNetworkFetch: host.networkFetch,
             audioTracks: bundle.audio?.tracks,
             onSubscribeGamePreferences: subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {
@@ -2009,6 +2010,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onIsSoundPlaying: soundTransport.isPlaying,
                     onGetTrackVolume: soundTransport.getTrackVolume,
                     onSetTrackVolume: soundTransport.setTrackVolume,
+                    onNetworkFetch: host.networkFetch,
                     audioTracks: bundle.audio?.tracks,
                     onSubscribeGamePreferences: subscribeGamePreferences,
                     onWidgetPatch: (elementId, patch) => {
