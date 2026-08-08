@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useWorkspace } from "@/apps/workspace/context";
+import { useOptionalWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -33,15 +33,8 @@ export type AssetObjectUrlPool = AssetType | `${AssetType}`;
  * packaged game addresses assets by id alone.
  */
 export function useAssetObjectUrl(assetId?: string | null, assetType: AssetObjectUrlPool = AssetType.Image) {
-    let workspaceValue: ReturnType<typeof useWorkspace> | null = null;
-    let context: WorkspaceContext | null = null;
-    try {
-        workspaceValue = useWorkspace();
-        context = workspaceValue.context;
-    } catch {
-        workspaceValue = null;
-        context = null;
-    }
+    const workspaceValue = useOptionalWorkspace();
+    const context: WorkspaceContext | null = workspaceValue?.context ?? null;
     const assetsService = context ? context.services.get<AssetsService>(Services.Assets) : null;
     const [state, setState] = useState<AssetObjectUrlState>({
         url: null,
