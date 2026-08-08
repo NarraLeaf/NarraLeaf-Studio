@@ -315,6 +315,49 @@
 
 Slider/List 的 Element 派生条目只负责创建菜单分类和标签，不自动连线；放置后需要手动连接 Element Literal 或 Element Flush 的 `element` 输出到目标输入。
 
+## Switch
+
+开关的节点分三组：**Switch** 分类下的 self 节点作用于图所在的那个 `nl.switch` 元素（目标取自
+`executionOwner.elementId`，只在控件私有蓝图里可用）；**Element** 分类下的 element 节点多一个
+`Switch` 输入引脚，作用于同一 Surface 上任意一个被引用的 `nl.switch`；事件头则是控件私有蓝图的入口。
+
+事件头 3 个：
+
+| 节点 | 类型 ID | 说明 |
+| --- | --- | --- |
+| Changed | `blueprint.event.head.switchChanged` | **已实现**。每次状态改变都派发。输出 `Checked` 与 `Previous Checked` 两个 boolean 引脚——滑块那对同名引脚是 float，开关另开了一对，不要混用。 |
+| Turned On | `blueprint.event.head.switchTurnedOn` | **已实现**。只在关→开的方向派发，是 `Changed` 的糖：省掉设置页里那张只关心一个方向的图上的一个 Branch。派发顺序在 `Changed` 之后。 |
+| Turned Off | `blueprint.event.head.switchTurnedOff` | **已实现**。只在开→关的方向派发，同上。 |
+
+Self 节点 5 个（分类 `Switch`）：
+
+| 节点 | 类型 ID | 说明 |
+| --- | --- | --- |
+| Get Checked | `blueprint.switch.getChecked` | **已实现**。pure。读取本控件当前运行时状态（玩家改过的值优先于作者值）。 |
+| Set Checked | `blueprint.switch.setChecked` | **已实现**。写入本控件状态；`Checked` 输入引脚允许内联字面量。 |
+| Toggle | `blueprint.switch.toggle` | **已实现**。先读当前值再写反值，并把**切换后的新值**发布到 `Checked` 输出引脚，省掉后面再接一个 Get Checked。 |
+| Turn On | `blueprint.switch.turnOn` | **已实现**。无条件写 `true`，没有数据引脚。 |
+| Turn Off | `blueprint.switch.turnOff` | **已实现**。无条件写 `false`，没有数据引脚。 |
+
+Element 节点 5 个（分类 `Element`，多一个 `Switch` 输入引脚）：
+
+| 节点 | 类型 ID | 说明 |
+| --- | --- | --- |
+| Get Switch Checked | `blueprint.element.switch.getChecked` | **已实现**。pure。读取 `Switch` 引脚所指元素的状态；引脚为空或类型不是 `nl.switch` 时返回空值而不是报错。 |
+| Set Switch Checked | `blueprint.element.switch.setChecked` | **已实现**。写入 `Switch` 引脚所指元素的状态。 |
+| Toggle Switch | `blueprint.element.switch.toggle` | **已实现**。与 self 版同语义，同样在 `Checked` 输出引脚上给出切换后的新值。 |
+| Turn Switch On | `blueprint.element.switch.turnOn` | **已实现**。 |
+| Turn Switch Off | `blueprint.element.switch.turnOff` | **已实现**。 |
+
+通用属性节点 8 个由 `widgetPropertyNodes.ts` 的 `WIDGET_TARGETS` 一行生成，不单独手写：
+`Get/Set Visible`、`Get/Set Enabled` 各 self（`blueprint.switch.*`）与 element
+（`blueprint.element.switch.*`）两套。开关**不给** `supportsVariant`——控件本体是个壳，外观变体
+在 track / thumb 两个子元素上，用容器自己的变体节点改。
+
+Element 版节点与 Slider/List 一样，放置后需要手动把 Element Literal 或 Element Flush 的
+`element` 输出连到 `Switch` 输入。element 节点只接受**同一个 Surface** 上的元素，跨 Surface 会在
+执行期报错。
+
 ## Image
 
 | 节点 | 类型 ID 建议 | 说明 |
