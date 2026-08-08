@@ -78,6 +78,8 @@ describe("reading a size back", () => {
         expect(formatStageAspectRatio({ width: 1920, height: 1080 })).toBe("16:9");
         expect(formatStageAspectRatio({ width: 1080, height: 1920 })).toBe("9:16");
         expect(formatStageAspectRatio({ width: 1024, height: 768 })).toBe("4:3");
+        // Lowest terms would be 8:5, which is correct and which nobody writes.
+        expect(formatStageAspectRatio({ width: 1920, height: 1200 })).toBe("16:10");
         // Reduces to nothing sayable, so it is said as a decimal instead.
         expect(formatStageAspectRatio({ width: 1000, height: 777 })).toBe("1.29:1");
     });
