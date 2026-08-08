@@ -358,7 +358,6 @@ function countAssets(ctx: WorkspaceContext): { total: number; byType: Record<str
  */
 function countBlueprints(ctx: WorkspaceContext): {
     nodes: number;
-    persistentVariables: number;
 } {
     const document = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint).getBlueprintDocument();
     let nodes = 0;
@@ -374,10 +373,21 @@ function countBlueprints(ctx: WorkspaceContext): {
             }
         }
     }
+    return { nodes };
+}
+
+/**
+ * The project registry's variables, per scope.
+ *
+ * Per scope and never `listEntries().length`: the registry holds BOTH project scopes now, so the flat
+ * count reported every saved variable in the project as a persistent one - and the headline the
+ * dashboard draws from it would have said an author has twice the game-level state they wrote.
+ */
+function countRegistryVariables(ctx: WorkspaceContext): { saved: number; persistent: number } {
+    const registry = ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
     return {
-        nodes,
-        // M-VAR: persistent variables live in the project-level registry now, not the blueprint document.
-        persistentVariables: ctx.services.get<VariableRegistryService>(Services.VariableRegistry).listEntries().length,
+        saved: registry.listEntriesInScope("saved").length,
+        persistent: registry.listEntriesInScope("persistent").length,
     };
 }
 
@@ -465,11 +475,18 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
         assets = { total: 0, byType: {} };
     }
 
-    let blueprints = { nodes: 0, persistentVariables: 0 };
+    let blueprints = { nodes: 0 };
     try {
         blueprints = countBlueprints(ctx);
     } catch {
-        blueprints = { nodes: 0, persistentVariables: 0 };
+        blueprints = { nodes: 0 };
+    }
+
+    let registryVariables = { saved: 0, persistent: 0 };
+    try {
+        registryVariables = countRegistryVariables(ctx);
+    } catch {
+        registryVariables = { saved: 0, persistent: 0 };
     }
 
     let uiSurfaces = 0;
@@ -513,8 +530,12 @@ export async function computeProjectStatsSnapshot(ctx: WorkspaceContext): Promis
             uiSurfaces,
             variables: {
                 scene: stories.sceneVariables,
-                saved: stories.savedVariables,
-                persistent: blueprints.persistentVariables,
+                // Both declaration surfaces, exactly as the merged view unions them: a saved variable
+                // may be a story row, a registry entry, or (mid-migration) have been one and become
+                // the other. Counting only the documents reported zero saved variables for a project
+                // whose saved state had simply moved to the registry.
+                saved: stories.savedVariables + registryVariables.saved,
+                persistent: registryVariables.persistent,
             },
         },
         cast: rankSpeakers(stories.speakers, cast.nameOf),

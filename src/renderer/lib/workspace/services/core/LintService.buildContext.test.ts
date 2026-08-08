@@ -70,7 +70,7 @@ function mount(options: { assetIds: string[]; references: AssetReference[] }): L
                     case Services.Character:
                         return { listCharacter: () => [] };
                     case Services.VariableRegistry:
-                        return { listEntries: () => [] };
+                        return { listEntries: () => [], listEntriesInScope: () => [] };
                     case Services.Localization:
                         return { getConfiguration: () => ({ sourceLocale: "en", locales: [] }) };
                     case Services.Voice:

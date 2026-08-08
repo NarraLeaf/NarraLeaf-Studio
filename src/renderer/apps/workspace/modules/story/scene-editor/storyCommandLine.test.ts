@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { StoryBlock, StoryScene } from "@shared/types/story";
+import type { StoryBlock, StoryDeclarationPayload, StoryScene } from "@shared/types/story";
 import { commandI18nStore, i18nStore } from "@/lib/i18n";
 import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOptions";
 import { parseCommandLine } from "./storyCommandParser";
@@ -109,6 +109,14 @@ function project(source: string): string {
         throw new Error(`no command line for: ${source}`);
     }
     return line.source;
+}
+
+/**
+ * A declaration row assembled from its payload, for the rows no command line can build any more — the
+ * two retired project scopes — and for the shapes an author reaches by editing rather than by typing.
+ */
+function declarationRow(payload: Omit<StoryDeclarationPayload, "storageKey">): StoryBlock {
+    return { id: "d1", parentId: null, childrenIds: [], kind: "declaration", payload: { ...payload, storageKey: "d1" } };
 }
 
 afterEach(() => {
@@ -276,28 +284,84 @@ describe("projectStoryCommandLine", () => {
         // the row printing it is the row saying what the editor decided.
         expect(project("/local hp 100")).toBe("/local hp default=100 type=number");
         expect(project("/local met")).toBe("/local met type=boolean");
-        expect(project("/save chapter 1 type=number")).toBe("/save chapter default=1 type=number");
-        expect(project("/global seenIntro false")).toBe("/global seenIntro default=false type=boolean");
         // A description with a space in it comes back quoted — `desc=` is not greedy.
         expect(project("/local hp 100 desc='Player health'")).toBe("/local hp default=100 type=number desc='Player health'");
         // The whole vocabulary, in the author's own language: the verb carries the scope, the keys and
         // the type word are spellings their parser accepts back.
         i18nStore.setLocale("zh");
         expect(project("/local 早到分钟 7 desc=测试")).toBe("/场景变量 早到分钟 初始值=7 类型=数字 说明=测试");
-        expect(project("/global seenIntro false")).toBe("/全局变量 seenIntro 初始值=false 类型=布尔");
         // `初始值=` is a key the parser takes back, because it comes out of the same table the parse pass
         // reads — the default is the one arg written with its key despite filling a positional slot,
         // so this is the join that would break silently if the word were ever authored by hand.
         expect(comparable(build("/场景变量 早到分钟 初始值=7"))).toEqual(comparable(build("/local 早到分钟 7")));
     });
 
+    /**
+     * The two retired declaration scopes have no command left, and their rows still have to read as
+     * lines.
+     *
+     * `/save` and `/global` were deleted outright: a saved or persistent variable is a PROJECT-level
+     * definition, authored in the variable registry, and the migration rewrites every existing row
+     * into a registry entry when the project opens. It cannot rewrite one in a FROZEN project, where
+     * writes silently no-op, so those rows survive — and `DECLARATION_COMMANDS` keeps pointing at
+     * their command ids precisely so they keep rendering as the declarations they are.
+     *
+     * The defect pinned here: those ids resolve to no spec, so the verb fell through to the id and the
+     * row read `/declareVar chapter type=number`. `declareVar` is a name from inside the command
+     * module, and this text is also what the script export writes to disk.
+     */
+    it("prints a retired scope's row with the verb that would have declared it, never its command id", () => {
+        const saved = declarationRow({ scope: "saved", name: "chapter", valueType: "number", defaultValue: 1 });
+        const global = declarationRow({ scope: "persistent", name: "seenIntro", valueType: "boolean", defaultValue: false });
+        expect(projectStoryCommandLine(saved, LOOKUPS)!.source).toBe("/save chapter default=1 type=number");
+        expect(projectStoryCommandLine(global, LOOKUPS)!.source).toBe("/global seenIntro default=false type=boolean");
+
+        // In Chinese the line stays in the source vocabulary, all of it. Localized spellings — the
+        // verb, the keys, the type word — are derived from a command's catalog entry, and a retired
+        // command has none; inventing one would put a word in front of the author that no menu offers
+        // and no parser takes. The verb an English author would have typed is the honest answer in
+        // both languages, and it is the same answer the script export needs.
+        i18nStore.setLocale("zh");
+        expect(projectStoryCommandLine(saved, LOOKUPS)!.source).toBe("/save chapter default=1 type=number");
+        expect(projectStoryCommandLine(global, LOOKUPS)!.source).toBe("/global seenIntro default=false type=boolean");
+    });
+
+    /**
+     * A `/set` row on a project-scoped variable names it.
+     *
+     * The defect pinned here: the row's variable slot resolved the ref by scanning DECLARATION ROWS
+     * only. After the declaration migration a saved or persistent variable has no row anywhere - the
+     * project registry is its one declaration site - so every such row read `/set variable 5`, and a
+     * scene of them told the author nothing about what their story does.
+     */
+    it("names a registry-declared saved or persistent variable on a /set row", () => {
+        const setSaved: StoryBlock = {
+            id: "b1", parentId: null, childrenIds: [], kind: "action",
+            payload: { action: "setVariable", target: { scope: "saved", variableId: "reg-affection" }, value: 5 },
+        };
+        const setPersistent: StoryBlock = {
+            id: "b2", parentId: null, childrenIds: [], kind: "action",
+            payload: { action: "setVariable", target: { scope: "persistent", variableId: "key_seen" }, value: true },
+        };
+        const withRegistry: StoryCommandLineLookups = {
+            ...LOOKUPS,
+            projectVariableName: (scope, variableId) =>
+                (scope === "saved" && variableId === "reg-affection" ? "Affection"
+                    : scope === "persistent" && variableId === "key_seen" ? "Seen Intro"
+                        : null),
+        };
+        expect(projectStoryCommandLine(setSaved, withRegistry)!.source).toBe("/set Affection 5");
+        expect(projectStoryCommandLine(setPersistent, withRegistry)!.source).toBe("/set 'Seen Intro' true");
+
+        // The regression itself: with no registry in hand the row falls back to the word reserved for
+        // a declaration that was DELETED, which is what every one of these rows printed.
+        expect(projectStoryCommandLine(setSaved, LOOKUPS)!.source).toBe("/set variable 5");
+    });
+
     it("says an empty default rather than dropping it", () => {
         // An absent default and an empty one are different variables — the first is never seeded — and
         // `""` is what a retype to `string` leaves behind, so it has to be sayable.
-        const empty: StoryBlock = {
-            id: "d1", parentId: null, childrenIds: [], kind: "declaration",
-            payload: { scope: "scene", name: "title", valueType: "string", defaultValue: "", description: undefined, storageKey: "d1" },
-        };
+        const empty = declarationRow({ scope: "scene", name: "title", valueType: "string", defaultValue: "", description: undefined });
         const line = projectStoryCommandLine(empty, LOOKUPS)!;
         expect(line.source).toBe("/local title default='' type=string");
         expect(comparable(build(line.source))).toEqual(comparable(empty));
@@ -378,6 +442,12 @@ describe("projectStoryCommandLine", () => {
      * The contract: every line below survives block → line → block. A projection that drifts from what
      * the parser accepts fails here rather than in a scene, on an author who cannot see why their row
      * says something they cannot type.
+     *
+     * The two retired declaration scopes are the one documented exception and are deliberately absent:
+     * `/save` and `/global` are gone from the parser on purpose (their tokens are burned in
+     * `RESERVED_TOKENS`), so a surviving row of either prints a line that cannot come back. Re-reading
+     * it MUST fail — it would otherwise recreate a project-scope declaration inside a story document,
+     * the exact shape the retirement removes. What such a row prints is pinned above instead.
      */
     it("round-trips: what the row prints rebuilds the row", () => {
         for (const source of [
@@ -442,8 +512,6 @@ describe("projectStoryCommandLine", () => {
             "/local inv \"[1, 2]\" type=json",
             "/local blank '' type=string",
             "/local shape {} type=json",
-            "/save chapter 1 type=number",
-            "/global seenIntro false type=boolean",
         ]) {
             const first = build(source);
             const line = projectStoryCommandLine(first, LOOKUPS);

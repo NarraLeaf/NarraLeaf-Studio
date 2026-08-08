@@ -1094,6 +1094,7 @@ describe("built-in blueprint nodes", () => {
             volume: {
                 id: "volume",
                 name: "Volume",
+                scope: "persistent",
                 valueType: "number",
                 defaultValue: 7,
                 storageKey: "settings.volume",

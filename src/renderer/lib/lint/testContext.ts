@@ -21,6 +21,7 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         characters: [],
         variableRegistry: [],
         persistentNameCollisions: [],
+        savedNameCollisions: [],
         localization: null,
         voice: null,
         buildPlatforms: [],

@@ -42,7 +42,7 @@ export type LintAssetEntry = {
 
 export type LintCharacterEntry = { id: string; name: string; assetIds: readonly string[] };
 
-/** A display name declared in both the project registry and a story `/persis` row. */
+/** A display name declared in both the project registry and a story declaration row. */
 export type PersistentNameCollision = MergedPersistentNameCollision;
 
 export type LintImageProbe =
@@ -85,8 +85,18 @@ export type LintContext = {
     referencedAssetIds: ReadonlySet<string>;
     assetReferences: ReadonlyMap<string, readonly AssetReference[]>;
     characters: readonly LintCharacterEntry[];
+    /**
+     * The project variable registry, BOTH scopes, exactly as the service holds it.
+     *
+     * One list rather than two because an entry carries its own `scope`, and a rule that needs one
+     * scope must say so at the point it reads (`entry.scope === "persistent"`). Splitting it here
+     * would only move the same decision somewhere a rule author never looks - and the display-name
+     * index genuinely wants every entry regardless of scope.
+     */
     variableRegistry: readonly VariableRegistryEntry[];
     persistentNameCollisions: readonly PersistentNameCollision[];
+    /** The same cross-surface ambiguity for the `saved` scope, which is now project-level too. */
+    savedNameCollisions: readonly PersistentNameCollision[];
     localization: LintLocalizationContext | null;
     voice: LintVoiceContext | null;
     buildPlatforms: readonly GameBuildPlatform[];

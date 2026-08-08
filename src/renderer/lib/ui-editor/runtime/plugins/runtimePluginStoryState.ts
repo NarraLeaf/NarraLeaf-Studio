@@ -80,9 +80,10 @@ function indexDefs(
 }
 
 /**
- * Build the lookup tables for one running story. `persistent` merges the story's
- * own `/persis` declaration rows with the project-level variable registry baked
- * into the bundle — the same merged view the editors show.
+ * Build the lookup tables for one running story. `persistent` and `saved` each merge the story's own
+ * declaration rows (`/persis`, `/save`) with the project-level variable registry baked into the
+ * bundle — the same merged view the editors show. A plugin asking for `"gold"` must find it whichever
+ * surface the author declared it on.
  */
 export function buildRuntimePluginVariableTables(
     bundle: DevModeBundle,
@@ -100,7 +101,10 @@ export function buildRuntimePluginVariableTables(
     }
     return {
         scene,
-        saved: document ? indexDefs(savedVariableDefs(document)) : new Map(),
+        saved: indexDefs({
+            ...(document ? savedVariableDefs(document) : {}),
+            ...bundle.ui.savedVariables,
+        }),
         persistent: indexDefs({
             ...(document ? storyPersistentDefs(document) : {}),
             ...bundle.ui.persistentVariables,

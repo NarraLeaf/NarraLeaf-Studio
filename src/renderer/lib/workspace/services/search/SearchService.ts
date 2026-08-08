@@ -8,6 +8,7 @@ import { BlueprintNodeCatalogService } from "../ui-editor/BlueprintNodeCatalogSe
 import { LocalizationService } from "../localization/LocalizationService";
 import { AssetsService } from "../core/AssetsService";
 import { CharacterService } from "../core/CharacterService";
+import { VariableRegistryService } from "../variables/VariableRegistryService";
 import { translate } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { parseBlueprintOwnerKey } from "./blueprintOwnerKey";
@@ -210,6 +211,7 @@ export class SearchService extends Service<SearchService> {
         const storyService = ctx.services.get<StoryService>(Services.Story);
         const graphService = ctx.services.get<UIGraphService>(Services.UIGraph);
         const localizationService = ctx.services.get<LocalizationService>(Services.Localization);
+        const registryService = ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
 
         this.unsubs.push(
             storyService.onDocumentChanged(({ storyId }) => {
@@ -221,6 +223,15 @@ export class SearchService extends Service<SearchService> {
                 this.scheduleRebuild("story-library", () => this.resyncStoryLibrary());
             }),
             graphService.onGraphsChanged(() => {
+                this.scheduleRebuild("blueprint", () => {
+                    this.rebuildBlueprintSlice();
+                    this.emitChanged();
+                });
+            }),
+            // The registry is a separate document from the blueprint graphs, so a rename made in the
+            // variables panel changes nothing a graph event would report - and the index went on
+            // offering the old name until the author happened to edit a graph.
+            registryService.onRegistryChanged(() => {
                 this.scheduleRebuild("blueprint", () => {
                     this.rebuildBlueprintSlice();
                     this.emitChanged();
@@ -318,6 +329,7 @@ export class SearchService extends Service<SearchService> {
         const ctx = this.getContext();
         const blueprintService = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const catalog = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
+        const registryService = ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
 
         try {
             const document = blueprintService.getBlueprintDocument();
@@ -331,7 +343,11 @@ export class SearchService extends Service<SearchService> {
                         }
                     },
                     resolveOwnerLabel: ownerKey => this.resolveBlueprintOwnerLabel(ownerKey),
-                    persistentVariables: blueprintService.listPersistentVariables(),
+                    // Both scopes: `listPersistentVariables()` left every registry-declared SAVED
+                    // variable out of the index, so an author could not find one by name anywhere in
+                    // Studio. See `BlueprintExtractionOptions.registryVariables` for why story
+                    // declaration rows are not merged in here.
+                    registryVariables: registryService.listEntries(),
                     labels: {
                         unnamedEvent: translate("blueprint.memberTree.unnamedEvent" as TranslationKey),
                         unnamedFunction: translate("blueprint.memberTree.unnamedFunction" as TranslationKey),

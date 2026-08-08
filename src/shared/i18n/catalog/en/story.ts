@@ -845,8 +845,6 @@ export const story = {
         toggle: { label: "Toggle", detail: "Flip a true/false variable" },
         reset: { label: "Reset", detail: "Restore a variable to its default" },
         declareLocal: { label: "Local variable", detail: "Declare a scene variable" },
-        declareVar: { label: "Save variable", detail: "Declare a variable that rides the save file" },
-        declarePersis: { label: "Global variable", detail: "Declare an app-level variable blueprints can read" },
         if: { label: "If", detail: "Branch on a condition" },
         menu: { label: "Menu", detail: "Let the player choose" },
         repeat: { label: "Repeat", detail: "Run the enclosed actions a set number of times — for a condition instead, use /until" },

@@ -13,10 +13,10 @@ import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { getBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { resolveBlueprintNodeTitle } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "../DevModePanelChrome";
+import { formatDebugValue } from "../debugValueFormat";
 import { BlueprintDebuggerToolbar } from "./BlueprintDebuggerToolbar";
 import { useBlueprintDebuggerContext } from "./BlueprintDebuggerContext";
 import {
-    formatDebugValue,
     groupBreakpointsByBlueprint,
     resolveBlueprintGraphIr,
     resolveBlueprintGraphName,
