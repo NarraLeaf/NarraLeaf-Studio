@@ -1,11 +1,14 @@
 /**
  * `welcome` - the Welcome editor tab.
  *
- * It used to carry a tagline and a four-step "Getting Started" guide. Both were help text living in
- * a surface (docs/help-system.md §1): the four steps are now the `workspaceLayout`, `assets`,
- * `storyScene` and `runModes` topics, which the tab links to instead of restating.
+ * The title and subtitle greet; they do not explain. The four-step "Getting Started" guide that used
+ * to sit under them was help text living in a surface (docs/help-system.md §1): those steps are the
+ * `workspaceLayout`, `assets`, `storyScene` and `runModes` topics, which the tab links to instead of
+ * restating.
  */
 export const welcome = {
+    title: "Nice to meet you",
+    subtitle: "Welcome to NarraLeaf Studio. Ready to begin?",
     quickActions: {
         newScene: {
             label: "New Scene",
