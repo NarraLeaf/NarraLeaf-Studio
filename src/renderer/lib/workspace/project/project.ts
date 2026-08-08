@@ -14,9 +14,28 @@ export type ProjectMetadata = {
     author: string;
     email: string;
     website: string;
+    /**
+     * Legacy: an SPDX id the wizard used to collect.
+     *
+     * Nothing reads it and nothing writes it any more - a licence chosen at creation could not be
+     * corrected anywhere in Studio afterwards, which made it the one piece of metadata that
+     * required editing the `.nlproj` by hand. Declared so projects that carry one still decode.
+     */
     license: string;
+    /** Legacy companion to {@link license}, for its "Other" case. */
     licenseString?: string;
+    /** One line, embedded in the packaged binaries' file properties. */
     copyright: string;
+    /**
+     * The full copyright and attribution notice, shipped beside the game as `COPYRIGHT.txt`.
+     *
+     * Separate from {@link copyright} rather than replacing it, because the two go to different
+     * readers through different channels: `copyright` is a single line electron-builder writes
+     * into Windows file properties and macOS's `NSHumanReadableCopyright`, where a multi-paragraph
+     * notice would be unreadable, while this is the text a player opens - fonts, music, assets and
+     * whoever else has to be credited.
+     */
+    copyrightText: string;
     resolution: Resolution;
     /**
      * The app-icon set: one master plus a per-target recipe. Stored raw, so

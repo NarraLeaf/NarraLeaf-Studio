@@ -25,16 +25,13 @@ export function ImportStep({ importStatus, importFailure }: ImportStepProps) {
     const busy = importStatus === "picking";
 
     return (
-        <div className="p-6">
-            <div className="space-y-6">
-                <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-fg">{t("wizard.import.title")}</h2>
-                    <p className="text-sm text-fg-muted">
-                        {t("wizard.import.subtitle")}
-                    </p>
-                </div>
+        <div className="h-full overflow-y-auto p-5">
+            <div className="space-y-4">
+                {/* No heading: the rail already names this page, and a second copy of its name is
+                    the chrome this window had too much of. */}
+                <p className="text-sm text-fg-muted">{t("wizard.import.subtitle")}</p>
 
-                <div className="grid gap-6 max-w-2xl">
+                <div className="grid max-w-xl gap-4">
                     <Card>
                         <CardHeader>
                             <CardTitle>{t("wizard.import.steps.title")}</CardTitle>
