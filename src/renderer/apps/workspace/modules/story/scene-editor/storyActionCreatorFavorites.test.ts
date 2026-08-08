@@ -25,8 +25,12 @@ const LEGACY_STARRABLE_IDS = [
     "soundRate", "muteSound", "note",
 ] as const;
 
-/** The only two allowed to vanish: a duplicate entry (D3) and a command that is no longer a command. */
-const DROPPED = ["conditionIf", "narration"];
+/**
+ * The four allowed to vanish: a duplicate entry (D3), a command that is no longer a command, and the
+ * two project-scope declarations retired with `/save` and `/global` - those variables live in the
+ * project variable registry now, and no story row declares them.
+ */
+const DROPPED = ["conditionIf", "narration", "declareSavedVariable", "declarePersistentVariable"];
 
 describe("starred favourites migration", () => {
     it("covers the whole legacy catalogue - no stored favourite falls through unmapped", () => {

@@ -39,7 +39,12 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import { choiceOptionRefs, valueBlueprintRefs } from "./storyCommandContext";
-import { collectStoryVariableOptions, type PersistentVariableOption, type StoryVariableOption } from "./storyInterpolation";
+import {
+    collectStoryVariableOptions,
+    type PersistentVariableOption,
+    type SavedVariableOption,
+    type StoryVariableOption,
+} from "./storyInterpolation";
 
 type ConditionKind = "expression" | "variable" | "blueprint";
 
@@ -85,25 +90,41 @@ export function conditionKindOf(value: StoryConditionRef | undefined): Condition
     }
 }
 
-/** Read persistent variables (shared blueprint store) and keep them live. */
-function usePersistentVariables(): PersistentVariableOption[] {
+/**
+ * Read the project registry's variables - BOTH project scopes - and keep them live.
+ *
+ * Saved variables belong here for exactly the reason persistent ones do: the registry is a first-class
+ * declaration site with no story row behind it, so a picker that reads only the document offers a
+ * strictly smaller list than the command line accepts, and the author cannot select a variable a
+ * typed `/if` resolves happily.
+ */
+function useProjectVariables(): { saved: SavedVariableOption[]; persistent: PersistentVariableOption[] } {
     const { context, isInitialized } = useWorkspace();
-    const [persistent, setPersistent] = useState<PersistentVariableOption[]>([]);
+    const [variables, setVariables] = useState<{ saved: SavedVariableOption[]; persistent: PersistentVariableOption[] }>(
+        { saved: [], persistent: [] },
+    );
     useEffect(() => {
         if (!context || !isInitialized) return;
         const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        // One state object, so a re-read cannot briefly pair the new saved list with the old
+        // persistent one and re-render the picker against a list that never existed.
         const read = () =>
-            setPersistent(
-                service.listPersistentVariables().map(variable => ({
+            setVariables({
+                saved: service.listSavedVariables().map(variable => ({
+                    id: variable.id,
+                    name: variable.name,
+                    valueType: (variable.valueType as StoryVariableValueType) ?? "string",
+                })),
+                persistent: service.listPersistentVariables().map(variable => ({
                     storageKey: variable.storageKey,
                     name: variable.name,
                     valueType: (variable.valueType as StoryVariableValueType) ?? "string",
                 })),
-            );
+            });
         read();
         return service.onBlueprintHistoryChanged(read);
     }, [context, isInitialized]);
-    return persistent;
+    return variables;
 }
 
 function flattenVariables(options: {
@@ -158,10 +179,15 @@ export function ConditionEditor(props: {
         () => (context && isInitialized ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null),
         [context, isInitialized],
     );
-    const persistent = usePersistentVariables();
+    const projectVariables = useProjectVariables();
     const variableOptions = useMemo(
-        () => collectStoryVariableOptions(props.document, props.sceneId, persistent),
-        [props.document, props.sceneId, persistent],
+        () => collectStoryVariableOptions(
+            props.document,
+            props.sceneId,
+            projectVariables.persistent,
+            projectVariables.saved,
+        ),
+        [props.document, props.sceneId, projectVariables],
     );
     const allVariables = useMemo(() => flattenVariables(variableOptions), [variableOptions]);
 

@@ -39,7 +39,7 @@ import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocument
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
-import { buildPersistentRuntimeTable } from "@shared/variables/variableRegistryModel";
+import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
 
 const PREVIEW_BUNDLE_ID = "workspace-story-preview";
 
@@ -151,6 +151,9 @@ export function useStoryPreviewGameUi(input: {
         const uiDocumentService = context.services.get<UIDocumentService>(Services.UIDocument);
         const uiGraphService = context.services.get<UIGraphService>(Services.UIGraph);
         const localBlueprintService = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        // One registry read, both projections - a second `getRegistry()` could observe a write landing
+        // between the two and hand the synthetic bundle two mismatched halves of one file.
+        const registry = context.services.get<VariableRegistryService>(Services.VariableRegistry).getRegistry();
         return {
             bundleId: PREVIEW_BUNDLE_ID,
             revision: 1,
@@ -160,9 +163,8 @@ export function useStoryPreviewGameUi(input: {
                 uigraphs: uiGraphService.getDocument(),
                 localBlueprints: localBlueprintService.getBlueprintDocument(),
                 sharedBlueprints: [],
-                persistentVariables: buildPersistentRuntimeTable(
-                    context.services.get<VariableRegistryService>(Services.VariableRegistry).getRegistry(),
-                ),
+                persistentVariables: buildPersistentRuntimeTable(registry),
+                savedVariables: buildSavedRuntimeTable(registry),
             },
         };
     }, [context, enabled]);

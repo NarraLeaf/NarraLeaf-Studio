@@ -174,6 +174,7 @@ describe("createDevModeBlueprintHostAdapter", () => {
                 localBlueprints: blueprintDocument,
                 sharedBlueprints: [],
                 persistentVariables: {},
+                savedVariables: {},
             },
         };
         const debug = new DebugBridge();

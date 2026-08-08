@@ -25,6 +25,8 @@ import {
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_SAVED_SET,
 } from "@shared/types/blueprint/graph";
 import {
     captureBlueprintEventOrder,
@@ -35,6 +37,7 @@ import {
 import type { UIDocument, UIElement, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
+import type { StoryVariableValueType } from "@shared/types/story/document";
 import type { TranslationKey } from "@shared/i18n";
 import { RendererError } from "@shared/utils/error";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -86,6 +89,23 @@ import {
 
 const DEFAULT_BLUEPRINT_HISTORY_LIMIT = 100;
 const DEFAULT_BLUEPRINT_MERGE_WINDOW_MS = 800;
+
+/**
+ * The `historyBlueprintId` a caller passes when it edits registry variables with no blueprint open -
+ * the variables panel, which is a project-level surface and has no blueprint of its own.
+ *
+ * The registry CRUD below rides the blueprint history channel, so it needs *an* id even when there
+ * is no blueprint involved. An unknown id is harmless by construction:
+ * `captureBlueprintHistorySnapshot` returns `blueprint: null` for it, and
+ * `restoreBlueprintHistorySnapshot` then runs `delete bpDoc.blueprints[<that id>]`, which is a no-op
+ * for an id no blueprint ever had. The registry half of the snapshot still captures and restores
+ * normally, which is the part these edits need.
+ *
+ * That safety rests entirely on the id NOT naming a real blueprint - if it did, an undo of a
+ * variable edit would delete that blueprint. Hence one exported constant with a namespaced,
+ * non-uuid spelling rather than a string each call site invents.
+ */
+export const VARIABLE_PANEL_HISTORY_SCOPE_ID = "nls:variable-panel";
 
 export type BlueprintHistoryRecordOptions = {
     mergeKey?: string;
@@ -735,9 +755,21 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return getActiveBlueprintId(this.getBlueprintDocument(), storyActionOwnerKey(blueprintId));
     }
 
-    /** All project-level persistent variable definitions (shared with the Story editor); M-VAR registry. */
+    /**
+     * All project-level PERSISTENT variable definitions (shared with the Story editor); M-VAR registry.
+     *
+     * Scoped, not the whole registry: the registry also holds `saved` entries now, and the callers of
+     * this - the blueprint member tree, the persistent node picker, the persistent merged view - all
+     * mean persistent specifically. Handing them a saved variable would offer the persistent channel
+     * a key belonging to the save file.
+     */
     public listPersistentVariables(): VariableRegistryEntry[] {
-        return this.getVariableRegistryService().listEntries();
+        return this.getVariableRegistryService().listEntriesInScope("persistent");
+    }
+
+    /** All project-level SAVED variable definitions; the `saved` half of the same registry. */
+    public listSavedVariables(): VariableRegistryEntry[] {
+        return this.getVariableRegistryService().listEntriesInScope("saved");
     }
 
     public getSurfaceMainBlueprintId(surfaceId: string): string | undefined {
@@ -1078,17 +1110,22 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     /**
-     * Persistent-variable CRUD is a thin history-wrapping delegation to the M-VAR registry service
+     * Registry-variable CRUD is a thin history-wrapping delegation to the M-VAR registry service
      * (the data lives in `variables.json`, no longer in the blueprint document). Wrapping each edit in
-     * a blueprint history transaction is what keeps a persistent-variable change on the same undo stack
+     * a blueprint history transaction is what keeps a registry-variable change on the same undo stack
      * as the blueprint edit an author is making when they touch it - the snapshot captures the registry.
+     *
+     * The `saved` and `persistent` families are spelled out separately rather than parameterized by
+     * scope: they differ where it matters (which node params a delete has to clear, which merge key an
+     * edit coalesces under), and a single scope-taking method would have to branch on all of it anyway
+     * while letting a call site pass the wrong scope by typo.
      */
     public createPersistentVariable(
         historyBlueprintId: string,
         input?: { name?: string; valueType?: string; defaultValue?: LiteralValue },
     ): VariableRegistryEntry {
         return this.runBlueprintHistoryTransaction(historyBlueprintId, () =>
-            this.getVariableRegistryService().createEntry(input),
+            this.getVariableRegistryService().createEntry("persistent", input),
         );
     }
 
@@ -1112,11 +1149,89 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         );
     }
 
+    /**
+     * Retype a persistent variable. No merge key: unlike a name or a default, a value type is picked
+     * from a closed set in one gesture, so two consecutive retypes are two decisions and each deserves
+     * its own undo step.
+     */
+    public setPersistentVariableValueType(
+        historyBlueprintId: string,
+        variableId: string,
+        valueType: StoryVariableValueType,
+    ): void {
+        this.runBlueprintHistoryTransaction(historyBlueprintId, () =>
+            this.getVariableRegistryService().setEntryValueType(variableId, valueType),
+        );
+    }
+
     public deletePersistentVariable(historyBlueprintId: string, variableId: string): void {
         this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
             // Node-ref cleanup mutates the blueprint document; the variable itself leaves the registry.
             this.applyBlueprintMutation(doc => {
-                this.clearPersistentVariableNodeRefs(doc, variableId);
+                this.clearVariableNodeRefs(doc, {
+                    paramKey: "persistentVariableId",
+                    nodeTypes: [BLUEPRINT_NODE_TYPE_PERSISTENT_GET, BLUEPRINT_NODE_TYPE_PERSISTENT_SET],
+                    variableId,
+                });
+            });
+            this.getVariableRegistryService().deleteEntry(variableId);
+        });
+    }
+
+    public createSavedRegistryVariable(
+        historyBlueprintId: string,
+        input?: { name?: string; valueType?: string; defaultValue?: LiteralValue },
+    ): VariableRegistryEntry {
+        return this.runBlueprintHistoryTransaction(historyBlueprintId, () =>
+            this.getVariableRegistryService().createEntry("saved", input),
+        );
+    }
+
+    public renameSavedRegistryVariable(historyBlueprintId: string, variableId: string, name: string): void {
+        this.runBlueprintHistoryTransaction(
+            historyBlueprintId,
+            () => this.getVariableRegistryService().renameEntry(variableId, name),
+            { mergeKey: `saved-variable-name:${variableId}` },
+        );
+    }
+
+    public setSavedRegistryVariableDefault(
+        historyBlueprintId: string,
+        variableId: string,
+        defaultValue: LiteralValue | undefined,
+    ): void {
+        this.runBlueprintHistoryTransaction(
+            historyBlueprintId,
+            () => this.getVariableRegistryService().setEntryDefault(variableId, defaultValue),
+            { mergeKey: `saved-variable-default:${variableId}` },
+        );
+    }
+
+    public setSavedRegistryVariableValueType(
+        historyBlueprintId: string,
+        variableId: string,
+        valueType: StoryVariableValueType,
+    ): void {
+        this.runBlueprintHistoryTransaction(historyBlueprintId, () =>
+            this.getVariableRegistryService().setEntryValueType(variableId, valueType),
+        );
+    }
+
+    /**
+     * Deleting a saved registry variable clears the node refs too, for the same reason the persistent
+     * delete does: `Get Saved Var` / `Set Saved Var` address their variable by id through the
+     * `savedVariableId` node param, so leaving one behind gives the author a node that fails at
+     * runtime ("Pick a Saved variable") with nothing on screen saying why. Different param, different
+     * node types, same failure - hence the shared, parameterized helper rather than a second copy.
+     */
+    public deleteSavedRegistryVariable(historyBlueprintId: string, variableId: string): void {
+        this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
+            this.applyBlueprintMutation(doc => {
+                this.clearVariableNodeRefs(doc, {
+                    paramKey: "savedVariableId",
+                    nodeTypes: [BLUEPRINT_NODE_TYPE_SAVED_GET, BLUEPRINT_NODE_TYPE_SAVED_SET],
+                    variableId,
+                });
             });
             this.getVariableRegistryService().deleteEntry(variableId);
         });
@@ -1197,7 +1312,19 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         });
     }
 
-    private clearPersistentVariableNodeRefs(doc: BlueprintDocument, variableId: string): void {
+    /**
+     * Strip every graph node that named the deleted registry variable, project-wide.
+     *
+     * Scoped by node type as well as param key: the param key alone is not a safe filter, because a
+     * plugin node is free to use a key of the same spelling for something else entirely.
+     * `__variableValueType` goes with it - it is the picker's cached copy of the variable's type, and
+     * a cached type for a variable that no longer exists is what would keep the node's pin looking
+     * connectable after its identity was cleared.
+     */
+    private clearVariableNodeRefs(
+        doc: BlueprintDocument,
+        target: { paramKey: string; nodeTypes: readonly string[]; variableId: string },
+    ): void {
         for (const bp of Object.values(doc.blueprints)) {
             if (bp.program.kind !== "graph") {
                 continue;
@@ -1214,12 +1341,11 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 const ir = ensureBlueprintGraphIr(slot.graph);
                 for (const node of Object.values(ir.nodes ?? {})) {
                     if (
-                        (node.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET ||
-                            node.type === BLUEPRINT_NODE_TYPE_PERSISTENT_SET) &&
-                        node.params?.persistentVariableId === variableId
+                        target.nodeTypes.includes(node.type) &&
+                        node.params?.[target.paramKey] === target.variableId
                     ) {
                         const next = { ...(node.params ?? {}) };
-                        delete next.persistentVariableId;
+                        delete next[target.paramKey];
                         delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
                         node.params = next;
                     }

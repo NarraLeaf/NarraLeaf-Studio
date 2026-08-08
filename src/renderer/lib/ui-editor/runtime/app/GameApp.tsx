@@ -83,9 +83,13 @@ import {
     STORY_VISITED_SCENES_KEY,
     type StoryVisitedKey,
 } from "@/lib/ui-editor/runtime/game/storyVisited";
-import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
+import {
+    collectSavedVariableView,
+    computeStoryStageSnapshot,
+    savedVariableDefsFromView,
+} from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
-import { sceneVariableDefs, savedVariableDefs } from "@shared/types/story";
+import { sceneVariableDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
@@ -134,6 +138,7 @@ import type {
     GameAppFrameContext,
     GameAppHost,
     GameAppOverlayContext,
+    GameAppSaveBridge,
     GameAppSaveRecord,
     GameAppStoryRuntimeBridge,
 } from "./GameAppHost";
@@ -975,6 +980,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getActionIdBindings: () => nlrCompiledRef.current?.actionIdBindings ?? [],
         getVariableNamespaces: () => ({
             saved: nlrCompiledRef.current?.savedNamespaceName || null,
+            visited: nlrCompiledRef.current?.visitedNamespaceName || null,
             sceneLocal: nlrCompiledRef.current?.sceneLocalNamespaceNames ?? {},
         }),
         getCurrentActionId: () => currentActionIdRef.current,
@@ -1184,6 +1190,21 @@ export function GameApp(props: GameAppProps): ReactNode {
         return ids.filter(id => !isAutoSaveId(id));
     }, [host.saveStore]);
 
+    /**
+     * The save slots, published for host debug overlays.
+     *
+     * Assembled from the very callbacks the Save/Load nodes are wired to rather than from
+     * `host.saveStore` directly, so the Saves panel's "load this slot" is the same operation a
+     * player's Load button performs - including `listSaveIds`' autosave filter, which is what makes
+     * the panel's list the list an authored save screen would show.
+     */
+    const savesBridge = useMemo<GameAppSaveBridge>(() => ({
+        listIds: listSaveIds,
+        read: id => host.saveStore.read(id),
+        load: loadSave,
+        remove: deleteSave,
+    }), [deleteSave, host.saveStore, listSaveIds, loadSave]);
+
     const autoSaveConfig = useMemo(
         () => normalizeAutoSaveConfiguration(bundle.autoSave),
         [bundle.autoSave],
@@ -1294,6 +1315,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     sceneId,
                     targetBlockId: startBlockId,
                     animations: bundle.storyLibrary?.animations,
+                    // Without the registry table the walk only knows story-declared `/save` rows, so a
+                    // "play from here" launch would enter with every registry-backed saved variable at
+                    // nothing and every `/set` on one silently dropped.
+                    savedVariables: bundle.ui.savedVariables,
                 }),
             }
             : undefined;
@@ -1305,7 +1330,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             const overrides = scene?.sceneSnapshots?.find(entry => entry.id === snapshotId)?.values;
             if (overrides) {
                 const sceneDefs = scene ? sceneVariableDefs(scene) : {};
-                const savedDefs = savedVariableDefs(storyDocument);
+                // Merged, not `savedVariableDefs` alone: an override key is `saved:<variableId>`, and
+                // since `saved` became a registry scope that id may belong to a registry entry rather
+                // than to a `/save` row - reading only the document would drop those overrides.
+                const savedDefs = savedVariableDefsFromView(
+                    collectSavedVariableView(storyDocument, bundle.ui.savedVariables),
+                );
                 for (const [refKey, value] of Object.entries(overrides)) {
                     if (refKey.startsWith("scene:")) {
                         const def = sceneDefs[refKey.slice("scene:".length)];
@@ -1333,6 +1363,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             resolveAssetUrl: host.resolveStoryAssetUrl,
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
+            // The saved half of the same registry. This is the call both shipping runtimes go through
+            // — Dev Mode and the packaged game — so leaving it out meant a project-level saved variable
+            // existed in the editor and nowhere else.
+            savedVariables: bundle.ui.savedVariables,
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),
@@ -2528,7 +2562,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return (
             <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
                 {renderFrame({ activeSurface, gameViewport, children: null })}
-                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime })}
+                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime, saves: savesBridge })}
             </GameLocalizationContext.Provider>
         );
     }
@@ -2749,7 +2783,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
             {renderFrame({ activeSurface, gameViewport, children: content })}
-            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime })}
+            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime, saves: savesBridge })}
         </GameLocalizationContext.Provider>
     );
 }

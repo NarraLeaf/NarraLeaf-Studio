@@ -31,14 +31,34 @@ import type { StoryBlockId, StoryDocument, StoryId, StoryScene, StorySceneId } f
  * `StoryRowCharacter.color` is documented as "when the surface has one and *it is readable*", and
  * this is the one place that knows the surface is Studio chrome.
  */
+/**
+ * The slice of a Dev Mode bundle a row's words come out of: the story library (character names,
+ * asset names) and the project variable registry tables.
+ *
+ * `ui` is optional so a fixture can still hand over a library alone; a real caller always has the
+ * whole bundle, and omitting `ui` costs exactly the names of the registry-declared variables.
+ */
+export type StoryRowBundle = Pick<DevModeBundle, "storyLibrary"> & {
+    ui?: Pick<DevModeBundle["ui"], "savedVariables" | "persistentVariables">;
+};
+
 export function buildStoryRowLookups(
-    bundle: Pick<DevModeBundle, "storyLibrary">,
+    bundle: StoryRowBundle,
     document: StoryDocument,
     scene: StoryScene | undefined,
 ): StoryRowLookups {
     const charactersById = new Map((bundle.storyLibrary?.characters ?? []).map(character => [character.id, character]));
     const assetNames = bundle.storyLibrary?.assetNames;
+    // Keyed the way each scope's ref addresses its entry: `saved` by entry id, `persistent` by
+    // storage key. Both tables are baked into the bundle precisely because Dev Mode is its own window
+    // with no workspace services to read `editor/variables.json` through.
+    const savedNames = new Map(Object.values(bundle.ui?.savedVariables ?? {}).map(entry => [entry.id, entry.name]));
+    const persistentNames = new Map(
+        Object.values(bundle.ui?.persistentVariables ?? {}).map(entry => [entry.storageKey, entry.name]),
+    );
     return {
+        projectVariableName: (scope, variableId) =>
+            (scope === "saved" ? savedNames.get(variableId) : persistentNames.get(variableId)) ?? null,
         character: characterId => {
             const character = charactersById.get(characterId);
             if (!character) {
@@ -81,7 +101,7 @@ export type StoryBlockLocation = {
  * — a stale session against an edited document — rather than inventing a line number for it.
  */
 export function locateStoryBlock(
-    bundle: Pick<DevModeBundle, "storyLibrary">,
+    bundle: StoryRowBundle,
     blockId: string | undefined,
 ): StoryBlockLocation | null {
     if (!blockId) {
@@ -182,7 +202,7 @@ export function appendRuntimeIssue(
  * reaches for a clock or a random number is a function that cannot be tested twice.
  */
 export function locateRuntimeIssue(
-    bundle: Pick<DevModeBundle, "storyLibrary">,
+    bundle: StoryRowBundle,
     issue: GameAppRuntimeIssue,
     id: string,
 ): LocatedRuntimeIssue {

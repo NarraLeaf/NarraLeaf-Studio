@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import type { NlrActionIdBinding } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { storyRowSentence } from "@/lib/story/storyRowProjection";
 import {
@@ -9,9 +10,11 @@ import {
     buildStorySceneBlockIndex,
     formatStoryVariableDeltaChip,
     formatStoryVariableRangeChip,
+    listDeclaredStoryVariables,
     projectExecutionContext,
     projectSceneTimeline,
     projectStoryTrailHighlight,
+    resolveSceneIdForBlock,
     seedStoryRunTrail,
     type StackViewLike,
 } from "./storyRuntimeDebugModel";
@@ -145,6 +148,28 @@ describe("action id ↔ block bindings", () => {
         expect(blockIdForActionId(bindings, "s-b-0")).toBe("b");
         expect(blockIdForActionId(bindings, "missing")).toBeNull();
         expect(blockIdForActionId(bindings, null)).toBeNull();
+    });
+});
+
+describe("resolveSceneIdForBlock", () => {
+    const document = {
+        scenes: {
+            entry: { blocks: { a: narration("a", "A") } },
+            elsewhere: { blocks: { b: narration("b", "B") } },
+        },
+    } as unknown as StoryDocument;
+
+    it("follows the play head into whichever scene owns the block", () => {
+        // The point of the helper: a run launched into `entry` is in `elsewhere` after a jump, and
+        // "which scene is running" must not keep answering with the scene it was launched into.
+        expect(resolveSceneIdForBlock(document, "b", "entry")).toBe("elsewhere");
+        expect(resolveSceneIdForBlock(document, "a", "entry")).toBe("entry");
+    });
+
+    it("falls back when there is no block to look up", () => {
+        // Before the first action, and for an engine action bound to no Studio row.
+        expect(resolveSceneIdForBlock(document, null, "entry")).toBe("entry");
+        expect(resolveSceneIdForBlock(document, "gone", "entry")).toBe("entry");
     });
 });
 
@@ -401,6 +426,64 @@ describe("projectStoryTrailHighlight", () => {
         expect(highlight.edgeIds.has("br:opt3->c")).toBe(false);
         expect(highlight.edgeIds.has("br:opt1->b")).toBe(false);
         expect(highlight.edgeIds.has("e:a->b")).toBe(true);
+    });
+});
+
+describe("listDeclaredStoryVariables", () => {
+    const document = {
+        scenes: {
+            "scene-1": {
+                id: "scene-1",
+                name: "Opening",
+                rootBlockIds: ["a"],
+                blocks: { a: narration("a", "A") },
+            },
+        },
+    } as unknown as StoryDocument;
+
+    function entry(overrides: Partial<VariableRegistryEntry> & Pick<VariableRegistryEntry, "id" | "name" | "scope">): VariableRegistryEntry {
+        return { valueType: "boolean", storageKey: overrides.id, ...overrides };
+    }
+
+    /**
+     * The whole point of the round: an author creates a game-level flag in the variables panel, plays,
+     * and watches its value here.
+     *
+     * The defect pinned: the persistent arm read `storyPersistentDefs(document)` alone, so a variable
+     * declared where they are now ALL declared - the project registry - was missing from this list
+     * entirely. The panel showed a shorter list than the running game had, which reads as the engine
+     * having lost the variable.
+     */
+    it("lists a registry-declared persistent variable, defaults and storage key intact", () => {
+        const declared = listDeclaredStoryVariables(document, "scene-1", [], [
+            entry({ id: "reg-seen", name: "Seen Intro", scope: "persistent", storageKey: "key_seen", defaultValue: false }),
+        ]);
+        expect(declared).toEqual([{
+            scope: "persistent",
+            // A persistent ref addresses by storage key, so that is the row's id here too.
+            id: "key_seen",
+            name: "Seen Intro",
+            valueType: "boolean",
+            defaultValue: false,
+            storageKey: "key_seen",
+        }]);
+    });
+
+    it("lists a registry-declared saved variable beside it", () => {
+        const declared = listDeclaredStoryVariables(
+            document,
+            "scene-1",
+            [entry({ id: "reg-gold", name: "Gold", scope: "saved", valueType: "number", defaultValue: 10 })],
+            [entry({ id: "reg-seen", name: "Seen Intro", scope: "persistent", storageKey: "key_seen" })],
+        );
+        expect(declared.map(variable => [variable.scope, variable.name]))
+            .toEqual([["saved", "Gold"], ["persistent", "Seen Intro"]]);
+    });
+
+    it("is empty when neither registry nor document declares anything", () => {
+        // The regression's shape: this is what the panel showed for a project whose variables all
+        // live in the registry.
+        expect(listDeclaredStoryVariables(document, "scene-1")).toEqual([]);
     });
 });
 

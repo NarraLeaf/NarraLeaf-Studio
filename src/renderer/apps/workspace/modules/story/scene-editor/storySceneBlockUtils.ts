@@ -1,5 +1,7 @@
 import { Aperture, Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
+import { storyVariableRefKey } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { richIfMeaningful } from "./richText";
 import { paragraphActionCharacterId } from "./storyCharacterActions";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -657,8 +659,35 @@ export function characterRowLookup(characters: Character[]): StoryRowLookups["ch
     };
 }
 
-export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene, scenes?: Record<StorySceneId, StoryScene>): string {
-    return describeStoryBlock(block, { character: characterRowLookup(characters), scene, scenes });
+/**
+ * The project-variable name lookup the shared row projection takes, backed by the variable registry.
+ *
+ * The second coupling `characterRowLookup` breaks, for the same reason: the registry is a workspace
+ * service and the projection is pure. Keyed the way each scope's ref addresses its entry - `saved` by
+ * entry id, `persistent` by storage key - so one table answers for both scopes and no call site has
+ * to remember which is which.
+ */
+export function projectVariableNameLookup(
+    entries: readonly VariableRegistryEntry[],
+): NonNullable<StoryRowLookups["projectVariableName"]> {
+    const names = new Map(entries.map(entry => [
+        storyVariableRefKey({
+            scope: entry.scope,
+            variableId: entry.scope === "persistent" ? entry.storageKey : entry.id,
+        }),
+        entry.name,
+    ]));
+    return (scope, variableId) => names.get(storyVariableRefKey({ scope, variableId })) ?? null;
+}
+
+export function describeBlock(
+    block: StoryBlock,
+    characters: Character[],
+    scene?: StoryScene,
+    scenes?: Record<StorySceneId, StoryScene>,
+    projectVariableName?: StoryRowLookups["projectVariableName"],
+): string {
+    return describeStoryBlock(block, { character: characterRowLookup(characters), scene, scenes, projectVariableName });
 }
 
 /**
@@ -678,6 +707,7 @@ export function describeBlockSubject(
     scene?: StoryScene,
     scenes?: Record<StorySceneId, StoryScene>,
     resolveMotionName?: (animationId: string) => string | null,
+    projectVariableName?: StoryRowLookups["projectVariableName"],
 ): string {
     return describeStoryBlock(block, {
         character: characterRowLookup(characters),
@@ -685,6 +715,7 @@ export function describeBlockSubject(
         scene,
         scenes,
         motionName: resolveMotionName,
+        projectVariableName,
     });
 }
 

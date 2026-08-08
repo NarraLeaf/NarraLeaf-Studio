@@ -21,8 +21,11 @@ describe("getCommandGhost", () => {
     it("names the first slot once the command token is complete", () => {
         // The case the whole feature exists for: `/local ` used to be a blank line with an empty menu.
         expect(ghostAt("/local |")).toBe("variableName");
-        expect(ghostAt("/var |")).toBe("variableName");
-        expect(ghostAt("/persis |")).toBe("variableName");
+        // An alias names the same slot: the hint reads the resolved def, never the typed word. This
+        // used to be `/var` and `/persis` — two more declarations sharing one param set — and it is
+        // still worth an assertion with the one declaration left, because the alias path is the half
+        // that could break on its own.
+        expect(ghostAt("/scenevar |")).toBe("variableName");
         expect(ghostAt("/set |")).toBe("variable");
         expect(ghostAt("/if |")).toBe("condition");
         expect(ghostAt("/bg |")).toBe("imageOrColor");

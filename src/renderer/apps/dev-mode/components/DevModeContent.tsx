@@ -22,8 +22,13 @@ import { AppHost, AppProtocol } from "@shared/types/constants";
 import { useTranslation } from "@/lib/i18n";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
-import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
+import {
+    BlueprintRuntimeDebugPanel,
+    DEFAULT_OUTPUT_LOG_LEVELS,
+    type BlueprintOutputLogLevel,
+} from "./BlueprintRuntimeDebugPanel";
 import { StoryRuntimeDebugPanel } from "./StoryRuntimeDebugPanel";
+import { SavesDebugPanel } from "./SavesDebugPanel";
 import { BlueprintDebuggerProvider } from "./debugger/BlueprintDebuggerContext";
 import { BlueprintDebuggerOverlay } from "./debugger/BlueprintDebuggerOverlay";
 import { BlueprintDebuggerPanel } from "./debugger/BlueprintDebuggerPanel";
@@ -34,11 +39,12 @@ import type {
     GameAppFrameContext,
     GameAppHost,
     GameAppOverlayContext,
+    GameAppSaveBridge,
     GameAppSaveStore,
     GameAppStoryRuntimeBridge,
 } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
-import { blockIdForActionId } from "./storyRuntimeDebugModel";
+import { blockIdForActionId, resolveSceneIdForBlock } from "./storyRuntimeDebugModel";
 import { SessionErrorBanner } from "./SessionErrorBanner";
 import { appendRuntimeIssue, locateRuntimeIssue, type LocatedRuntimeIssue } from "./runtimeIssueModel";
 import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
@@ -59,7 +65,13 @@ type DevModeContentProps = {
     onDismissSessionError: () => void;
 };
 
-type DevModeDebugPanelId = "none" | "blueprint" | "story" | "debugger";
+/**
+ * One panel per SUBJECT. `story` is the running story, `interface` the running UI, `saves` what is
+ * on disk and the project-wide persistent store, `debugger` stopped execution — the last one is
+ * separate because a thing that halts the game and decides what gets recorded is an instrument, not
+ * a subject.
+ */
+type DevModeDebugPanelId = "none" | "interface" | "story" | "saves" | "debugger";
 
 /** Width the debug drawer takes off the stage while it is open. */
 const DEBUG_PANEL_WIDTH = 380;
@@ -122,6 +134,8 @@ function DevModeDebugOverlay(props: {
     projectPath: string | null;
     fastForwardToNextChoice: () => Promise<void>;
     storyRuntime: GameAppStoryRuntimeBridge;
+    /** Save slots for the Saves panel, on the game's own Save/Load paths. */
+    saves: GameAppSaveBridge;
     /** Owned by DevModeContent so the drawer survives a game-session remount (every timeline jump). */
     activePanel: DevModeDebugPanelId;
     setActivePanel: (update: (previous: DevModeDebugPanelId) => DevModeDebugPanelId) => void;
@@ -130,11 +144,16 @@ function DevModeDebugOverlay(props: {
     setPanelFloating: Dispatch<SetStateAction<boolean>>;
     floatPosition: FloatPanelPosition;
     setFloatPosition: Dispatch<SetStateAction<FloatPanelPosition>>;
+    /** Which log levels the Output list shows AND records; owned above for the reason below. */
+    outputLogLevels: ReadonlySet<BlueprintOutputLogLevel>;
+    setOutputLogLevels: Dispatch<SetStateAction<ReadonlySet<BlueprintOutputLogLevel>>>;
 }) {
     const {
         core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath, fastForwardToNextChoice, storyRuntime,
+        saves,
         activePanel, setActivePanel,
         panelFloating, setPanelFloating, floatPosition, setFloatPosition,
+        outputLogLevels, setOutputLogLevels,
     } = props;
     const { t } = useTranslation();
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
@@ -148,6 +167,28 @@ function DevModeDebugOverlay(props: {
     const endDragRef = useRef<(() => void) | null>(null);
     useEffect(() => () => endDragRef.current?.(), []);
     const activeFloatPosition = dragPosition ?? floatPosition;
+
+    /**
+     * Arm verbose capture from the author's log-level choice.
+     *
+     * Verbose tracing is dropped at the DebugBridge unless something asks for it (it fires at least
+     * twice per executed node), so the level selection has to drive what is RECORDED and not just
+     * what the Output list shows.
+     *
+     * That is why this lives out here beside the stage rather than in the panel that owns the
+     * checkbox. The panel is unmounted the moment the drawer is closed, and it used to turn capture
+     * off on the way out: closing the drawer silently stopped recording, and every verbose event
+     * emitted while it was closed was gone for good — a view deciding what the session records.
+     *
+     * There is deliberately no cleanup that turns it off. Each GameApp session builds its own
+     * DebugBridge (`useBlueprintRuntimeCore`) and the old one is discarded with the session, so the
+     * only thing an off-on-unmount could do is reintroduce the same bug one level up. Re-running on
+     * `core.debug` is what re-arms the NEW bridge after a timeline jump, which is the same reason
+     * `activePanel` is hoisted (see its declaration).
+     */
+    useEffect(() => {
+        core.debug.setVerboseCaptureEnabled(outputLogLevels.has("verbose"));
+    }, [core.debug, outputLogLevels]);
 
     // Mirror the play head to the workspace story editor (row highlight) whenever a story runs, even
     // with the debug panels closed. Coalesced to one forward per frame; the workspace reveals the row
@@ -171,16 +212,10 @@ function DevModeDebugOverlay(props: {
             lastBlockId = blockId;
             // The play head can be in a scene reached by a jump, not the launched one, so forward the
             // scene that actually owns the block — otherwise the workspace editor could not match it.
-            let sceneId = context.sceneId;
             const document = bundle.storyLibrary?.documents[context.storyId];
-            if (document) {
-                for (const [id, scene] of Object.entries(document.scenes)) {
-                    if (blockId in scene.blocks) {
-                        sceneId = id;
-                        break;
-                    }
-                }
-            }
+            const sceneId = document
+                ? resolveSceneIdForBlock(document, blockId, context.sceneId)
+                : context.sceneId;
             try {
                 getInterface().devMode.forwardStoryRow({
                     projectPath,
@@ -368,6 +403,24 @@ function DevModeDebugOverlay(props: {
         onTitleBarPointerDown: handleTitleBarPointerDown,
     }), [panelFloating, setPanelFloating, handleTitleBarPointerDown]);
 
+    /**
+     * The drawer's subjects, in menu order.
+     *
+     * One list rather than a menu tuple beside an aria-label switch: the panel's accessible name IS
+     * the name the author picked it by, and two places deriving it separately is how one of them
+     * ends up naming a panel the drawer is no longer showing.
+     */
+    const panels = useMemo(
+        () => ([
+            ["story", t("devMode.runtime.title")],
+            ["interface", t("devMode.devtools.title")],
+            ["saves", t("devMode.saves.title")],
+            ["debugger", t("devMode.debugger.title")],
+        ] as [Exclude<DevModeDebugPanelId, "none">, string][]),
+        [t],
+    );
+    const activePanelLabel = panels.find(([id]) => id === activePanel)?.[1] ?? "";
+
     return (
         <BlueprintDebuggerProvider
             session={core.debugSession}
@@ -389,13 +442,7 @@ function DevModeDebugOverlay(props: {
                         key={activePanel}
                         ref={panelRef}
                         role="complementary"
-                        aria-label={
-                            activePanel === "story"
-                                ? t("devMode.runtime.title")
-                                : activePanel === "debugger"
-                                  ? t("devMode.debugger.title")
-                                  : t("devMode.devtools.title")
-                        }
+                        aria-label={activePanelLabel}
                         className={
                             panelFloating
                                 // A plain border rather than a `ring`: the game window has
@@ -437,6 +484,15 @@ function DevModeDebugOverlay(props: {
                                     className="h-full min-h-0 w-full"
                                     chrome={panelChrome}
                                 />
+                            ) : activePanel === "saves" ? (
+                                <SavesDebugPanel
+                                    saves={saves}
+                                    storyRuntime={storyRuntime}
+                                    scopeBridge={core.scopeBridge}
+                                    bundle={bundle}
+                                    className="h-full min-h-0 w-full"
+                                    chrome={panelChrome}
+                                />
                             ) : (
                                 <BlueprintRuntimeDebugPanel
                                     debug={core.debug}
@@ -446,6 +502,8 @@ function DevModeDebugOverlay(props: {
                                     scopeBridge={core.scopeBridge}
                                     widgetRuntimeStore={widgetRuntimeStore}
                                     projectPath={projectPath}
+                                    outputLogLevels={outputLogLevels}
+                                    setOutputLogLevels={setOutputLogLevels}
                                     className="h-full min-h-0 w-full"
                                     chrome={panelChrome}
                                 />
@@ -488,13 +546,7 @@ function DevModeDebugOverlay(props: {
                                             : t("devMode.devtools.skipToNextChoice")}
                                     </span>
                                 </button>
-                                {(
-                                    [
-                                        ["story", t("devMode.runtime.title")],
-                                        ["blueprint", t("devMode.devtools.title")],
-                                        ["debugger", t("devMode.debugger.title")],
-                                    ] as const
-                                ).map(([id, label]) => {
+                                {panels.map(([id, label]) => {
                                     const open = activePanel === id;
                                     return (
                                         <button
@@ -1020,6 +1072,19 @@ export function DevModeContent(props: DevModeContentProps) {
     // card scopes it there.
     const [panelFloating, setPanelFloating] = useState(false);
     const [floatPosition, setFloatPosition] = useState<FloatPanelPosition>(null);
+    /**
+     * Which log levels the Output list shows — and, for `verbose`, what the session RECORDS.
+     *
+     * Owned here rather than in the panel that draws the checkboxes, because it is not a view
+     * setting: turning verbose on arms capture at the DebugBridge, and a choice that decides what
+     * gets recorded cannot belong to a view that is unmounted every time the drawer is closed. See
+     * the effect in `DevModeDebugOverlay` for what closing it used to cost. Hoisted to the same
+     * owner as `activePanel` and for the same second reason: a timeline jump replaces the whole
+     * session, and a selection that reset there would silently stop recording mid-investigation.
+     */
+    const [outputLogLevels, setOutputLogLevels] = useState<ReadonlySet<BlueprintOutputLogLevel>>(
+        () => new Set(DEFAULT_OUTPUT_LOG_LEVELS),
+    );
 
     const renderOverlays = useCallback((ctx: GameAppOverlayContext) => {
         if (!ctx.core || !ctx.activeSurface || !bundle) {
@@ -1035,15 +1100,18 @@ export function DevModeContent(props: DevModeContentProps) {
                 projectPath={projectPath}
                 fastForwardToNextChoice={ctx.fastForwardToNextChoice}
                 storyRuntime={ctx.storyRuntime}
+                saves={ctx.saves}
                 activePanel={activePanel}
                 setActivePanel={setActivePanel}
                 panelFloating={panelFloating}
                 setPanelFloating={setPanelFloating}
                 floatPosition={floatPosition}
                 setFloatPosition={setFloatPosition}
+                outputLogLevels={outputLogLevels}
+                setOutputLogLevels={setOutputLogLevels}
             />
         );
-    }, [bundle, projectPath, activePanel, panelFloating, floatPosition]);
+    }, [bundle, projectPath, activePanel, panelFloating, floatPosition, outputLogLevels]);
 
     if (!bundle || !host) {
         return (
