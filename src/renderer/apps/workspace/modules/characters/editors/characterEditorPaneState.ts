@@ -7,11 +7,11 @@ import type { CharacterTagSelection } from "@/lib/workspace/services/character/t
  *
  * Two different lifetimes, so two keys. How the workbench is laid out — the inspector's width, how
  * tall a puppet is previewed — is the same for every character, the way the story editor's preview
- * pane works. What the
- * author was *looking at* (which pose, which tags, what was selected) is per character, and it is
- * the thing that used to be thrown away every time the tab was closed: reopening a character with
- * eight poses put you back on the default pose with the tag selection reset, which on a layered
- * character means re-picking one tag per axis before the picture is the one you were working on.
+ * pane works. What the author was *looking at* (which pose, which tags, what was selected) is per
+ * character, and it is the thing that used to be thrown away every time the tab was closed:
+ * reopening a character with eight poses put you back on the default pose with the tag selection
+ * reset, which on a layered character means re-picking one tag per axis before the picture is the
+ * one you were working on.
  *
  * Deliberately NOT stored: which layers are hidden and which are locked. Those are a way of looking
  * at a stack in the moment, not a state of the work — the same reason they are kept off the
