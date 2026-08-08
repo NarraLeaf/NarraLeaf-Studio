@@ -33,7 +33,24 @@ export const launcher = {
             subtitle: "Projects you open appear here.",
             openFolder: "Open…",
         },
-        removeFromRecent: "Remove from recent",
+        // Named after the OS that will answer, because that is what the author is about to see.
+        // Three of them rather than one "Show in file manager": Finder and File Explorer are what
+        // those two systems call themselves, and a menu that invents its own word for them reads
+        // like it opens something else. The generic wording is only the fallback for the systems
+        // with no one name.
+        revealInFinder: "Show in Finder",
+        revealInExplorer: "Show in File Explorer",
+        revealInFileManager: "Show in File Manager",
+        errorReveal: "Failed to open the project folder.",
+        // "From the recent list", not "from recent": the sentence has to be readable next to a
+        // project the author may believe this deletes. The dialog behind it says outright that it
+        // does not.
+        removeFromRecent: "Remove from Recent List",
+        removeConfirm: {
+            title: "Remove from Recent List",
+            message: "{name} will no longer appear in this list. Nothing on disk is deleted.",
+            confirm: "Remove",
+        },
         moreActions: "More actions",
         moreActionsNamed: "More actions for {name}",
         removeNamedFromRecent: "Remove {name} from recent projects",
