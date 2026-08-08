@@ -51,6 +51,16 @@ export interface SelectProps {
      */
     ariaLabel?: string;
     /**
+     * Not a prop: the spelling that silently did nothing, declared so it fails to compile.
+     *
+     * This component destructures a fixed prop list and has no rest spread, so `aria-label` was
+     * dropped at the boundary - and TypeScript could not say so, because JSX skips excess-property
+     * checks on hyphenated attribute names. Five call sites reached assistive tech announcing only
+     * their current value before anyone noticed. `never` turns the next one into a compile error
+     * that names the right prop.
+     */
+    "aria-label"?: never;
+    /**
      * This select changes what is SHOWN and writes nothing.
      *
      * The trigger and the option rows are then rendered through {@link InspectOnlyButton}, so an
