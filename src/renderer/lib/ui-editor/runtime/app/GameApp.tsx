@@ -519,13 +519,34 @@ export function GameApp(props: GameAppProps): ReactNode {
         studioPageHiddenForGameRef.current = false;
         setStudioPageHiddenForGame(false);
         setGameStageVisible(false);
-        // Reset the NLR boot preload for this session. This runs on mount and on every
-        // bundle/entry-surface change, and its deps are stable per session, so it does NOT
-        // thrash on ordinary re-renders. Crucially it re-runs on the React.StrictMode
-        // mount/unmount/mount cycle (the dev host mounts under StrictMode): the first boot is
-        // cancelled by the unmount, this reset clears nlrBootStartedRef, and the second mount's
-        // boot effect re-runs to completion. Without it the boot guard would stick and
-        // nlrPreloadDone would never flip true, leaving the surface stack blank.
+        // Navigation only. Everything here has to re-run on every bundle, hot reload included: nav
+        // entries carry `host.sessionKey`, the visible-entry filter compares that against the
+        // current one, and Dev Mode puts the revision in it - so entries stamped by the previous
+        // revision are all filtered out, and re-stamping them is what keeps the stage drawn.
+        //
+        // Tearing down the NLR environment used to live here too. It does not any more: see the
+        // effect directly below.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bundle, createNavEntry, host.entrySurfaceId, navigation]);
+
+    /**
+     * Tear the NLR environment down when the SESSION changes - and deliberately not when a hot
+     * reload merely bumps the revision.
+     *
+     * Split out of the navigation reset above, because sharing that effect's `bundle` dependency is
+     * what blanked a running Dev Mode on the author's first save. The sequence: a save bumps the
+     * revision, the shared effect set `nlrPreloadDone` back to false, and nothing raised it again -
+     * the boot effect is keyed on the session id, so it does not re-run for a reload, and the hot
+     * reload path further down restarts the environment without touching that flag. The entire
+     * surface stack renders behind it, so the game went blank and stayed blank until Dev Mode was
+     * restarted, with no error raised anywhere. MEASURED: 6 saves out of 6 before this split, 0
+     * after.
+     *
+     * Deps are the session, not a ref-compared signature, so this still re-runs on the
+     * React.StrictMode mount/unmount/mount cycle the dev host uses: the throwaway mount's boot is
+     * cancelled, this clears `nlrBootStartedRef`, and the real mount's boot runs to completion.
+     */
+    useEffect(() => {
         nlrBootStartedRef.current = null;
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
@@ -538,8 +559,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameEnteredRef.current = false;
         setNlrPreloadDone(false);
         setNlrSession(null);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bundle, createNavEntry, host.entrySurfaceId, navigation]);
+    }, [bundle.bundleId, host.entrySurfaceId]);
 
     const activeEntry = navStack[navStack.length - 1] ?? null;
     const activeSurface = activeEntry ? findSurface(bundle, activeEntry.surfaceId) : null;
@@ -1909,11 +1929,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
     };
 
-    // Requires hostAdapterBundle so NlrStageLayer mounts and can drive onLiveGameReady. The deps
-    // are intentionally only the readiness signal and the bundle id: the boot mutates nlrSession
-    // (and therefore hostAdapterBundle), and re-running on that churn would cancel the in-flight
-    // boot before nlrPreloadDone is set. StrictMode re-boot safety comes from the per-session
-    // nav-reset effect clearing nlrBootStartedRef, not from this effect's deps.
+    // Requires hostAdapterBundle so NlrStageLayer mounts and can drive onLiveGameReady. The deps are
+    // intentionally narrow - the readiness signal and the session key, nothing else: the boot mutates
+    // nlrSession (and therefore hostAdapterBundle), and re-running on that churn would cancel the
+    // in-flight boot before nlrPreloadDone is set. StrictMode re-boot safety comes from the
+    // per-session nav-reset effect clearing nlrBootStartedRef, not from this effect's deps.
+    //
+    // Keyed on `bundle.bundleId` - the SESSION - and deliberately not on the revision. A hot reload
+    // is owned by the `bundle.revision` effect below, which restarts the NLR environment in place;
+    // booting again from here as well starts a second mount of the same session, and the loser's
+    // `environmentReady` (which has no deadline, unlike the stage warmup beside it) then never
+    // resolves. MEASURED: re-keying this on the session key left `runBoot` hanging on 7 reloads out
+    // of 8, and the stage came back only when the 45s preload timeout fired.
     const bootReady = Boolean(host.ready && core && activeSurface && hostAdapterBundle);
     useEffect(() => {
         if (!bootReady) {
