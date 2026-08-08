@@ -58,12 +58,20 @@ export function TitleBar({
     const reserveMacTrafficLights = usesInlineMacControls && !isFullscreen;
     const leftInset = reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0;
     const rightInset = usesInlineMacControls
-        ? (controlBar || iconSrc ? TITLEBAR_EDGE_GAP : (reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0))
+        ? (controlBar || iconSrc ? `${TITLEBAR_EDGE_GAP}px` : (reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0))
         : 0;
     const leftSafeAreaStyle = leftInset ? { paddingLeft: leftInset } : undefined;
     const rightSafeAreaStyle = rightInset ? { paddingRight: rightInset } : undefined;
-    const titleSafeAreaStyle = leftInset || rightInset
-        ? { paddingLeft: leftInset, paddingRight: rightInset }
+    // The title overlay spans the whole bar, so `justify-center` centres it on the *window*.
+    // Padding it by each side's own inset breaks that: the traffic lights reserve ~90px on the
+    // left while the right only asks for an edge gap, and the title drifts right by half the
+    // difference. Reserve the larger inset on both sides instead — the centre stays the window's
+    // centre, and the title still cannot slide under either cluster before it truncates.
+    const titleInset = leftInset && rightInset
+        ? (leftInset === rightInset ? leftInset : `max(${leftInset}, ${rightInset})`)
+        : (leftInset || rightInset);
+    const titleSafeAreaStyle = titleInset
+        ? { paddingLeft: titleInset, paddingRight: titleInset }
         : undefined;
 
     return (
