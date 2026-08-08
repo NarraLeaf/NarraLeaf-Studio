@@ -22,7 +22,7 @@ export const project = {
         },
         settings: {
             title: "Settings",
-            description: "Security, optimization, and mobile orientation",
+            description: "Security, signing, optimization, and mobile",
         },
     },
     // The headings that tell one part of a sub-page from the next. A heading is a noun, never a
@@ -35,6 +35,7 @@ export const project = {
         playerDefaults: "Player defaults",
         audioTracks: "Audio tracks",
         security: "Security",
+        signing: "Signing",
         optimization: "Optimization",
         mobile: "Mobile",
     },
@@ -54,6 +55,10 @@ export const project = {
         authorLabel: "Author",
         authorPlaceholder: "Author, organization, or email",
         websiteLabel: "Website",
+        // Shown in the packaged app's file properties and About box. Editable here rather than only
+        // in the build dialog, which now reads it back instead of asking for it.
+        copyrightLabel: "Copyright",
+        copyrightPlaceholder: "© Your Studio",
         descriptionPlaceholder: "Describe your project…",
         required: "Required",
     },
@@ -220,6 +225,10 @@ export const project = {
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
         encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",
+        // The whole Signing group in one line. Every signable platform gets a row, whether or not this
+        // machine can build it: a certificate is obtained days before the build that uses it, and
+        // preparing one is why this sits in the panel rather than in the build dialog.
+        signingDescription: "Which credential signs each platform. Certificates and passwords stay on this machine; the project stores only which one to use.",
         webLosslessImagesTitle: "Convert images to WebP",
         webLosslessImagesDescription: "Re-encode exported images as lossless WebP where that is smaller.",
         webLosslessImagesHint: "Each conversion is compared with the original pixel by pixel and discarded unless it decodes identically. Android and iOS builds serve the same exported site, so this applies to them too.",

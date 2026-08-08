@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, RefreshCw } from "lucide-react";
-import { Button, Input, Select, Switch } from "@/lib/components/elements";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, ChevronRight, RefreshCw } from "lucide-react";
+import { Button, Select, Switch } from "@/lib/components/elements";
 import { HelpTrigger, type HelpTopicId } from "@/lib/help";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { cn } from "@/lib/utils/cn";
@@ -23,7 +23,6 @@ import {
     type GameBuildRequest,
 } from "@shared/types/gameBuild";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
-import type { SigningCredential } from "@shared/types/signing";
 import {
     BUILD_COMPRESSIONS,
     SIGNING_PLATFORMS,
@@ -61,7 +60,7 @@ import {
     type BuildDialogState,
 } from "./buildDialogState";
 import { BuildIconRow } from "./BuildIconRow";
-import { SigningSection } from "./BuildSigningSection";
+import { SigningSummary } from "./BuildSigningSection";
 import { PROJECT_ICON_TARGETS } from "@shared/types/projectIcons";
 
 /**
@@ -163,18 +162,16 @@ export function BuildDialogContent({
     info,
     initialState,
     initialSection,
-    initialVersion,
-    initialCopyright,
-    initialSigning,
+    version,
+    copyright,
+    signing,
     initialContent,
     initialPlugins,
     onChange,
-    onPersistIdentity,
-    onPersistSigning,
     onPersistContent,
     onRescanPlugins,
-    onRemoveCredential,
-    onEditIcons,
+    onEditIdentity,
+    onEditSigning,
     onCommit,
     onCancel,
     runPreflight,
@@ -182,20 +179,27 @@ export function BuildDialogContent({
     info: BuildDialogInfo;
     initialState: BuildDialogState;
     initialSection: BuildPreflightSection;
-    initialVersion: string;
-    initialCopyright: string;
-    initialSigning: SigningConfiguration;
+    /**
+     * Identity and signing as the project currently records them.
+     *
+     * Not `initial*` and not state: this dialog reports them and the project panel writes them, so
+     * nothing here can change them. `openBuildDialog` re-reads the manifest before building the
+     * element, so an edit made in the panel is what the next open shows.
+     */
+    version: string;
+    copyright: string;
+    signing: SigningConfiguration;
     initialContent: BuildContentSettings;
     initialPlugins: BuildPluginEntry[];
     onChange: (request: GameBuildRequest, section: BuildPreflightSection) => void;
-    onPersistIdentity: (identity: { version: string; copyright: string }) => Promise<void>;
-    onPersistSigning: (signing: SigningConfiguration) => Promise<void>;
     /** Writes one Content setting through. Rejects when it did not land, so the switch can go back. */
     onPersistContent: (patch: Partial<BuildContentSettings>) => Promise<void>;
     /** Re-derives the dependency table from current usage and persists it. */
     onRescanPlugins: () => Promise<BuildPluginEntry[]>;
-    onRemoveCredential: (credential: SigningCredential) => Promise<boolean>;
-    onEditIcons: () => void;
+    /** Closes the dialog and opens the panel page that owns version, copyright and the icons. */
+    onEditIdentity: () => void;
+    /** Closes the dialog and opens the panel page that owns the signing credentials. */
+    onEditSigning: () => void;
     onCommit: (request: GameBuildRequest) => void;
     onCancel: () => void;
     runPreflight: (request: GameBuildRequest) => Promise<BuildPreflightFinding[]>;
@@ -204,11 +208,6 @@ export function BuildDialogContent({
     const [state, setState] = useState<BuildDialogState>(initialState);
     const [section, setSection] = useState<BuildPreflightSection>(initialSection);
     const [findings, setFindings] = useState<BuildPreflightFinding[]>([]);
-    // Owned here, not read from a prop: the dialog element is built once by
-    // openBuildDialog, so a prop-driven input could never change.
-    const [version, setVersion] = useState(initialVersion);
-    const [copyright, setCopyright] = useState(initialCopyright);
-    const [signing, setSigning] = useState<SigningConfiguration>(initialSigning);
     const [content, setContent] = useState<BuildContentSettings>(initialContent);
     const [plugins, setPlugins] = useState<BuildPluginEntry[]>(initialPlugins);
     // Which Content write is in flight, so its own switch spins and the other one waits.
@@ -217,8 +216,6 @@ export function BuildDialogContent({
     // Bumped only once a Content write has landed on disk. Preflight reads the project from the
     // file, so re-checking on the optimistic state would judge the previous one.
     const [contentRevision, setContentRevision] = useState(0);
-    const persisted = useRef({ version: initialVersion, copyright: initialCopyright });
-    const persistedSigning = useRef(initialSigning);
 
     const request = useMemo(() => stateToRequest(state), [state]);
 
@@ -277,31 +274,21 @@ export function BuildDialogContent({
         onChange(request, section);
     }, [onChange, request, section]);
 
-    // Persist identity and signing edits and re-check, debounced together.
-    // Preflight reads the project from disk, so the writes have to land first or
-    // it would judge the previous version - and, for signing, would report the
-    // credential the author just cleared. `cancelled` keeps a slow reply from
-    // overwriting a newer one.
+    // Re-check, debounced.
     //
-    // The Content section writes on its own (a switch cannot wait 250ms to admit it moved) and
-    // joins here through `contentRevision`, which it bumps only after its write has landed - so the
-    // same "disk first, then judge" order holds for `encryption-key-unavailable` and
-    // `web-unprotected` as for the rest.
+    // This used to persist the identity and signing edits first and then run preflight, because
+    // preflight reads the project from disk and would otherwise have judged the previous version.
+    // Both are read-only here now - the panel owns those writes - so the ordering problem is gone
+    // and only the check is left. `cancelled` keeps a slow reply from overwriting a newer one.
+    //
+    // The Content section still writes, on its own (a switch cannot wait 250ms to admit it moved),
+    // and joins here through `contentRevision`, which it bumps only after its write has landed - so
+    // the same "disk first, then judge" order holds for `encryption-key-unavailable` and
+    // `web-unprotected`.
     useEffect(() => {
         let cancelled = false;
         const timer = setTimeout(() => {
             void (async () => {
-                if (persisted.current.version !== version || persisted.current.copyright !== copyright) {
-                    await onPersistIdentity({ version, copyright });
-                    persisted.current = { version, copyright };
-                }
-                if (persistedSigning.current !== signing) {
-                    await onPersistSigning(signing);
-                    persistedSigning.current = signing;
-                }
-                if (cancelled) {
-                    return;
-                }
                 const result = await runPreflight(request);
                 if (!cancelled) {
                     setFindings(result);
@@ -312,7 +299,7 @@ export function BuildDialogContent({
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [request, runPreflight, onPersistIdentity, onPersistSigning, version, copyright, signing, contentRevision]);
+    }, [request, runPreflight, contentRevision]);
 
     // Only the platforms this build actually produces: a credential row for a
     // target nobody selected is a question the author has no reason to answer.
@@ -388,9 +375,7 @@ export function BuildDialogContent({
                             version={version}
                             copyright={copyright}
                             findings={findings}
-                            onVersionChange={setVersion}
-                            onCopyrightChange={setCopyright}
-                            onEditIcons={onEditIcons}
+                            onEdit={onEditIdentity}
                         />
                     )}
                     {section === "content" && (
@@ -407,17 +392,10 @@ export function BuildDialogContent({
                         />
                     )}
                     {section === "signing" && (
-                        <SigningSection
-                            platforms={signablePlatforms}
-                            signing={signing}
-                            onChange={(platform, credentialId) => setSigning(current => ({
-                                ...current,
-                                [platform]: credentialId,
-                            }))}
-                            onRemove={onRemoveCredential}
-                        >
+                        <SigningSummary platforms={signablePlatforms} signing={signing}>
                             <Findings findings={findings} section="signing" />
-                        </SigningSection>
+                            <EditInProject label={t("build.signing.editInProject")} onClick={onEditSigning} />
+                        </SigningSummary>
                     )}
                     {section === "output" && (
                         <OutputSection info={info} state={state} version={version} findings={findings} onChange={update} />
@@ -647,36 +625,40 @@ function CrossBuildNote({ info, state }: { info: BuildDialogInfo; state: BuildDi
     );
 }
 
+/**
+ * Who the package says it came from, reported rather than asked for.
+ *
+ * Every field here is read-only. Two of them always were - the product name is the project name and
+ * the app id is derived from the identifier - and version and copyright have joined them, because
+ * one setting written from two surfaces is a setting that eventually disagrees with itself. They are
+ * edited in Project ▸ App now, and the jump at the bottom is how an author gets there without
+ * losing the build selection.
+ *
+ * The section stays in the rail regardless: preflight files `version-invalid`, `version-missing`,
+ * `identifier-missing` and every icon finding here, and a finding with no section to render it in is
+ * a blocked build with nothing on screen to say why.
+ */
 function IdentitySection({
     info,
     version,
     copyright,
     findings,
-    onVersionChange,
-    onCopyrightChange,
-    onEditIcons,
+    onEdit,
 }: {
     info: BuildDialogInfo;
     version: string;
     copyright: string;
     findings: BuildPreflightFinding[];
-    onVersionChange: (value: string) => void;
-    onCopyrightChange: (value: string) => void;
-    onEditIcons: () => void;
+    onEdit: () => void;
 }) {
     const { t } = useTranslation();
     const versionInvalid = findings.some(finding => finding.code === "version-invalid");
     return (
         <div className="grid gap-3">
             <Field label={t("build.identity.version")}>
-                <Input
-                    size="sm"
-                    value={version}
-                    variant={versionInvalid ? "error" : "default"}
-                    placeholder="1.0.0"
-                    onChange={event => onVersionChange(event.target.value)}
-                    className="w-36 font-mono"
-                />
+                {/* The error colour is what the `error` input variant used to carry. The sentence
+                    itself is in the findings below; this is the pointer to which field it is about. */}
+                <ReadValue value={version} className={cn("font-mono", versionInvalid && "text-danger")} />
             </Field>
             <Field label={t("build.identity.productName")}>
                 <span className="text-fg">{info.productName}</span>
@@ -686,25 +668,46 @@ function IdentitySection({
                 <span className="font-mono text-2xs text-fg-muted">{info.appId}</span>
             </Field>
             <Field label={t("build.identity.copyright")}>
-                <Input
-                    size="sm"
-                    value={copyright}
-                    onChange={event => onCopyrightChange(event.target.value)}
-                    className="w-60"
-                />
+                <ReadValue value={copyright} />
             </Field>
             <Field label={t("build.identity.icons")} align="start">
                 <div>
                     <div className="flex gap-2">
                         {PROJECT_ICON_TARGETS.map(target => (
-                            <BuildIconRow key={target} target={target} onClick={onEditIcons} />
+                            <BuildIconRow key={target} target={target} onClick={onEdit} />
                         ))}
                     </div>
                     <p className="mt-1.5 text-2xs text-fg-subtle">{t("build.identity.iconsHint")}</p>
                 </div>
             </Field>
             <Findings findings={findings} section="identity" />
+            <EditInProject label={t("build.identity.editInProject")} onClick={onEdit} />
         </div>
+    );
+}
+
+/** A value the dialog only reports, saying so when the project has not set one. */
+function ReadValue({ value, className }: { value: string; className?: string }) {
+    const { t } = useTranslation();
+    if (!value.trim()) {
+        return <span className="text-2xs text-fg-subtle">{t("build.identity.notSet")}</span>;
+    }
+    return <span className={cn("text-fg", className)}>{value}</span>;
+}
+
+/**
+ * The way out of a read-only segment.
+ *
+ * Follows the icon rows' precedent (see `onEditIdentity` in `openBuildDialog`): the draft is parked
+ * on the build service by then, so closing the dialog costs nothing and the next open restores
+ * exactly this selection.
+ */
+function EditInProject({ label, onClick }: { label: string; onClick: () => void }) {
+    return (
+        <Button variant="ghost" size="sm" className="justify-self-start gap-1 px-1.5" onClick={onClick}>
+            {label}
+            <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
     );
 }
 
@@ -1120,9 +1123,9 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                 info={info}
                 initialState={initialState}
                 initialSection={section}
-                initialVersion={typeof projectConfig.metadata?.version === "string" ? projectConfig.metadata.version : ""}
-                initialCopyright={typeof projectConfig.metadata?.copyright === "string" ? projectConfig.metadata.copyright : ""}
-                initialSigning={projectService.getSigningConfiguration()}
+                version={typeof projectConfig.metadata?.version === "string" ? projectConfig.metadata.version : ""}
+                copyright={typeof projectConfig.metadata?.copyright === "string" ? projectConfig.metadata.copyright : ""}
+                signing={projectService.getSigningConfiguration()}
                 initialContent={{
                     encryptAssets: projectService.getSecurityConfiguration().encryptAssets,
                     allowHttp: projectService.getNetworkConfiguration().allowHttp,
@@ -1133,32 +1136,11 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                     section = nextSection;
                     buildService.setDraft({ request: nextRequest, section: nextSection });
                 }}
-                onPersistIdentity={async ({ version, copyright }) => {
-                    // Best-effort: a failed write must not wedge the dialog, and
-                    // preflight re-reads from disk either way.
-                    await projectService.updateProjectMetadata({ version, copyright }).catch(() => undefined);
-                }}
-                onPersistSigning={async nextSigning => {
-                    // Same discipline as the identity write above. What lands in
-                    // the project is credential ids and nothing else - the key
-                    // material stays in the machine's vault.
-                    //
-                    // Passed whole rather than field by field. This used to name
-                    // the four platforms it knew about, which meant adding a
-                    // fifth compiled cleanly and dropped that platform's
-                    // credential on the way to disk: the row showed the author's
-                    // choice, and preflight - which reads the project back -
-                    // went on calling the build unsigned. `updateSigningConfiguration`
-                    // normalizes against SIGNING_PLATFORMS, so the filtering
-                    // that belongs here already happens there, keyed by a table
-                    // a new platform has to be added to.
-                    await projectService.updateSigningConfiguration(nextSigning).catch(() => undefined);
-                }}
                 onPersistContent={async patch => {
-                    // Not best-effort, unlike the two above. A silently dropped copyright is a
-                    // wrong string in an About box; a silently dropped `encryptAssets` is a switch
-                    // that says the assets are protected and a package where they are not. So this
-                    // says what went wrong and rethrows, and the switch goes back.
+                    // The dialog's only write, and not a best-effort one. A silently dropped
+                    // `encryptAssets` is a switch that says the assets are protected and a package
+                    // where they are not. So this says what went wrong and rethrows, and the switch
+                    // goes back.
                     //
                     // One field per call - both patches are never sent together (see
                     // `commitContent`), so the two writes never race for the manifest.
@@ -1187,23 +1169,18 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                         throw error;
                     }
                 }}
-                onRemoveCredential={async credential => {
-                    const confirmed = await uiService.dialogs.confirmDestructive(
-                        translate("build.signing.removeConfirm", { label: credential.label }),
-                        translate("build.signing.removeConfirmDetail"),
-                        translate("build.signing.removeAction"),
-                    );
-                    if (!confirmed) {
-                        return false;
-                    }
-                    const result = await getInterface().signing.remove(credential.id);
-                    return result.success && result.data.removed;
-                }}
-                onEditIcons={() => {
+                onEditIdentity={() => {
                     // The draft is already parked, so closing here is safe: the
                     // next open restores exactly this selection.
                     uiService.dialogs.close(dialogId);
                     openProjectPanel(context, { section: "app" });
+                }}
+                onEditSigning={() => {
+                    // Same bargain as the identity jump. Settings, not App: the credential picker and
+                    // the import form live beside the network policy and asset protection, which are
+                    // the other two decisions about what leaves this machine.
+                    uiService.dialogs.close(dialogId);
+                    openProjectPanel(context, { section: "settings" });
                 }}
                 onCancel={() => {
                     buildService.clearDraft();
