@@ -36,12 +36,6 @@ export const build = {
     },
     outputDir: "Output folder",
     chooseFolder: "Choose folder…",
-    info: {
-        version: "Version",
-        protection: "Asset protection",
-        protectionOn: "On",
-        protectionOff: "Off",
-    },
     section: {
         targets: "Targets",
         identity: "Identity",
@@ -58,7 +52,6 @@ export const build = {
     },
     identity: {
         version: "Version",
-        versionHint: "Three numbers, like 1.0.0",
         productName: "Product name",
         productNameSource: "From the project name",
         appId: "App ID",
@@ -177,7 +170,7 @@ export const build = {
         "icon-missing": "No app icon set; the NarraLeaf icon ships instead.",
         "icon-unusable": "The {platform} icon could not be read; the NarraLeaf icon ships instead.",
         "icon-low-resolution": "The {platform} icon is smaller than {minimum}×{minimum} and ships upscaled.",
-        "icon-stale": "The {platform} icon has not been prepared; open Project ▸ Assets to bake it.",
+        "icon-stale": "The {platform} icon has not been prepared; open Project ▸ App to bake it.",
         "plugins-invalid": "Plugin validation failed:\n{errors}",
         // Carries the cache path so an author on an offline machine still has a
         // way through: download the file elsewhere and save it there.
@@ -225,8 +218,6 @@ export const build = {
         "output-not-empty": "The output folder is not empty. This build overwrites files with matching names.",
     },
     webStaticNotice: "The Web build is a static site for any web server. Asset encryption and the HTTP restriction do not apply to it.",
-    unsignedNotice: "Not code-signed. Players may see a security prompt the first time they open it.",
-    selectAtLeastOne: "Select at least one platform and format.",
     toast: {
         submitted: "Build started. Progress is in the console.",
         done: "Build finished.",
