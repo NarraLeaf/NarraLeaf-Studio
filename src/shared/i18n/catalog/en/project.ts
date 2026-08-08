@@ -59,6 +59,11 @@ export const project = {
         // in the build dialog, which now reads it back instead of asking for it.
         copyrightLabel: "Copyright",
         copyrightPlaceholder: "© Your Studio",
+        // The long form, kept apart from the line above because they reach different readers: one
+        // line goes into the binary's file properties, this goes into a file players can open.
+        copyrightTextLabel: "Copyright Notice",
+        copyrightTextPlaceholder: "Fonts, music and assets used, and who they belong to…",
+        copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. Left empty, no file is shipped.",
         descriptionPlaceholder: "Describe your project…",
         required: "Required",
     },

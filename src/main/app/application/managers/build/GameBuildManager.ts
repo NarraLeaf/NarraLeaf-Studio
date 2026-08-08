@@ -119,6 +119,13 @@ type BuildSession = {
 };
 
 const DEFAULT_OUTPUT_DIR_NAME = "dist";
+/**
+ * The player-facing copyright notice, as it is named in a shipped game.
+ *
+ * The all-caps stem is the convention every other project on a player's disk uses for this file
+ * (COPYING, LICENSE, COPYRIGHT), and it is the whole reason such a file is findable at all.
+ */
+const COPYRIGHT_NOTICE_FILENAME = "COPYRIGHT.txt";
 /** Reverse-domain identifiers usable as a bundle/app id verbatim. */
 const APP_ID_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
 
@@ -932,6 +939,16 @@ export class GameBuildManager {
             await this.optimizeCompiledSite(session, webArtifact.appDir, projectConfig);
             this.ensureNotCancelled(session);
         }
+        // The player-facing notice, written once and shipped by every target that has a place to
+        // put it. Into the web site's root directly, since that root IS what gets served; for the
+        // desktop packages it is handed to electron-builder as an extra file, which is what puts
+        // it beside the executable rather than inside the asar where nobody could open it.
+        const copyrightFile = await this.writeCopyrightNotice(projectPath, projectConfig);
+        if (copyrightFile && webArtifact) {
+            await fs.copyFile(copyrightFile, path.join(webArtifact.appDir, COPYRIGHT_NOTICE_FILENAME));
+        }
+        this.ensureNotCancelled(session);
+
         this.emit(session, { level: "info", source: "Build", message: "packaging..." });
 
         // The output dir is an absolute path chosen through the native folder
@@ -970,6 +987,7 @@ export class GameBuildManager {
             artifactBaseName: identity.artifactBaseName,
             electronVersion: process.versions.electron,
             ...(identity.copyright ? { copyright: identity.copyright } : {}),
+            ...(copyrightFile ? { copyrightFile } : {}),
             ...(request.compression ? { compression: request.compression } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
@@ -1846,6 +1864,34 @@ export class GameBuildManager {
         return normalizeWebOptimizationConfiguration(
             (projectConfig?.app as { webOptimization?: unknown } | undefined)?.webOptimization,
         );
+    }
+
+    /**
+     * Stage the project's copyright notice, and answer with the path, or null when it has none.
+     *
+     * Written to a file rather than passed around as a string because both consumers want a file:
+     * the web export copies it into the site root, and electron-builder's `extraFiles` takes a
+     * source path. It lands under the project's own build scratch directory, which is already
+     * where every other intermediate goes.
+     *
+     * A project with nothing to say ships no file at all. An empty `COPYRIGHT.txt` beside a game
+     * is worse than none - it reads as a notice somebody forgot to fill in.
+     */
+    private async writeCopyrightNotice(
+        projectPath: string,
+        projectConfig: ProjectConfigData | null,
+    ): Promise<string | null> {
+        const raw = projectConfig?.metadata?.copyrightText;
+        const text = typeof raw === "string" ? raw.trim() : "";
+        if (!text) {
+            return null;
+        }
+        const target = path.join(projectPath, ".nlstudio", "build", COPYRIGHT_NOTICE_FILENAME);
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        // A trailing newline because this is a text file a player may open in anything, and the
+        // one thing every reader of one expects is that the last line ends.
+        await fs.writeFile(target, `${text}\n`, "utf-8");
+        return target;
     }
 
     /**
