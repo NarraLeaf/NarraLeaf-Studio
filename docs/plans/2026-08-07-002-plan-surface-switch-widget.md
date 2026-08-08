@@ -7,6 +7,21 @@ date: 2026-08-07
 
 # plan: Surface 开关控件 `nl.switch`
 
+> **进度（2026-08-07）：M1 + M2 已完成并验收。** M3（boolean 值绑定）与 M4（打磨）未开工。
+> 实机验收 28 条断言全绿，脚本在 `tools/ui-verify/scenarios/switch-widget.js`
+> （**写在实现之前**）。验收里 thumb 实测从 `translateX(0)` 走到 `translateX(24px)`、
+> track 从 `rgb(100,116,139)` 变到 `rgb(59,130,246)`，两个开关互不影响，禁用交互的那个点不动。
+>
+> 验收过程中**三条红是断言自己错**，产品是对的，都已修进脚本并写明原因：
+> ①调色板按钮叫「插入开关」而不是「开关」，锚定正则找不到；
+> ②`data-ui-element-id` 那个节点是 `EditorNodeWrapper`，它**什么都不画**——
+> `transformOffsetX` / `backgroundColor` 在它下面两到四层的 `motion.div` 上；
+> ③`[role="switch"]` 会同时命中 Studio 自己的 `Switch` 控件，要用 `[data-ui-switch-checked]` 收窄。
+>
+> 另外发现一条**先于本卡存在**的缺陷（已另开卡，不在本卡范围）：
+> `uiDocumentTreeMove.ts` 挡住了「往滑块/开关里拖」，但没挡住「把部件拖出来」。
+> 开关的部件带着 `on` 变体，拖出去等于把行程和过渡一起带走，作者只会看到「开关不动画了」。
+
 > 界面编辑器今天有滑块（`nl.slider`）、文本框（`nl.textInput`）和列表（`nl.list`），
 > 唯独没有**布尔开关**。设置页里「全屏 / 跳过已读 / 自动前进」这类项，作者现在只能拿按钮
 > 加一张私有蓝图自己拼，每做一个都要重写一遍状态与外观的对应关系。

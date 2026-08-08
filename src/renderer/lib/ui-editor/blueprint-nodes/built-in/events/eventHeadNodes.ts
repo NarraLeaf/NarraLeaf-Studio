@@ -47,6 +47,9 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
@@ -181,6 +184,23 @@ const PIN_PREVIOUS_TEXT_VALUE: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "string",
     label: "Previous Value",
+};
+// A switch carries a boolean, so it needs its own pair too: reusing the float
+// pins above would hand the author a `Value` pin typed `float` for a state that
+// is only ever true or false.
+const PIN_CHECKED: BlueprintNodePinDef = {
+    id: "checked",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Checked",
+};
+const PIN_PREVIOUS_CHECKED: BlueprintNodePinDef = {
+    id: "previousChecked",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Previous Checked",
 };
 const PIN_ELEMENT: BlueprintNodePinDef = {
     id: "element",
@@ -636,6 +656,24 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         displayName: "Drag End",
         keywords: ["slider", "drag", "end", "value"],
         pins: [THEN_PIN, PIN_VALUE],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED,
+        displayName: "Changed",
+        keywords: ["switch", "toggle", "checked", "change", "state"],
+        pins: [THEN_PIN, PIN_CHECKED, PIN_PREVIOUS_CHECKED],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON,
+        displayName: "Turned On",
+        keywords: ["switch", "toggle", "on", "enable", "checked"],
+        pins: [THEN_PIN],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF,
+        displayName: "Turned Off",
+        keywords: ["switch", "toggle", "off", "disable", "unchecked"],
+        pins: [THEN_PIN],
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,

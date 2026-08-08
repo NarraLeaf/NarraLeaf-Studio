@@ -626,6 +626,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         // "Persistent variable not found" the moment it executes, which is the one case the
         // diagnostic exists for.
         persistentVariables: localBp.listPersistentVariables(),
+        // Same reasoning, other scope: a saved id is resolved against the `saved` half of the registry,
+        // so the picker's options and the diagnostic's accepted set have to be the one same list.
+        savedVariables: localBp.listSavedVariables(),
     });
     const openBlueprint = useOpenBlueprintTarget();
     const dragConnectCreate = useBlueprintDragConnectSettings();
@@ -1468,6 +1471,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }));
     }, [localBp, registryRevision]);
 
+    /** The `Get/Set Saved Var` picker; the saved half of the same registry, offered on the same terms. */
+    const blueprintSavedVariables = useMemo(() => {
+        return localBp.listSavedVariables()
+            .map(variable => ({
+                id: variable.id,
+                name: variable.name,
+                value: variable.id,
+                valueType: variable.valueType,
+            }));
+    }, [localBp, registryRevision]);
+
     const blueprintMembersSig = useMemo(
         () =>
             [
@@ -1477,8 +1491,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 blueprintPersistentVariables
                     .map(v => `${v.value}:${v.name}:${v.valueType ?? ""}`)
                     .join("|"),
+                blueprintSavedVariables
+                    .map(v => `${v.value}:${v.name}:${v.valueType ?? ""}`)
+                    .join("|"),
             ].join("||"),
-        [blueprintMemberVariables, blueprintPersistentVariables],
+        [blueprintMemberVariables, blueprintPersistentVariables, blueprintSavedVariables],
     );
 
     const dynamicSelectOptions = useMemo<Record<string, BlueprintInspectorParamSelectOption[]>>(() => {
@@ -1792,6 +1809,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         blueprintMembersSig={blueprintMembersSig}
                         blueprintMemberVariables={blueprintMemberVariables}
                         blueprintPersistentVariables={blueprintPersistentVariables}
+                        blueprintSavedVariables={blueprintSavedVariables}
                         selectedNodeIds={editor.selectedNodeIds}
                         onSelectNodeIds={editor.setSelectedNodeIds}
                         onCommitIr={commitIr}

@@ -627,7 +627,6 @@ export const story = {
         /** 场景里有行、但筛选把它们全挡住了——和「场景是空的」是两回事，不能共用一句提示。 */
         filteredEmpty: "没有匹配当前筛选条件的行",
         filteredEmptyClear: "显示全部",
-        variablesPanel: "故事变量",
         snapshotsPanel: "场景快照",
     },
     preview: {

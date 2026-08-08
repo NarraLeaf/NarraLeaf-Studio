@@ -64,6 +64,9 @@ const WIDGET_TARGETS: WidgetTarget[] = [
     { key: "image", elementType: "nl.image", label: "Image" },
     { key: "button", elementType: "nl.button", label: "Button", supportsVariant: true },
     { key: "slider", elementType: "nl.slider", label: "Slider" },
+    // No `supportsVariant`: the switch itself is a shell, its appearance variants live on the
+    // two child elements (track and thumb).
+    { key: "switch", elementType: "nl.switch", label: "Switch" },
     { key: "list", elementType: "nl.list", label: "List" },
     { key: "frame", elementType: "nl.frame", label: "Frame" },
 ];
