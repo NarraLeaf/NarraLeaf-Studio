@@ -199,12 +199,22 @@ export class GroupAssetsManager {
         this.dirtyGroupCategories.add(category);
 
         // Save changes
-        await this.writeAssetsGroupsMetadata(category);
+        const writeResult = await this.writeAssetsGroupsMetadata(category);
         for (const type of ASSET_CATEGORY_TYPES[category]) {
             this.assetsService.markDirty(type);
         }
 
         this.assetsService.getEvents().emit("groupsUpdated", { category, groupId });
+
+        // Reported after the redraw rather than instead of it. There is nothing to put back here -
+        // the files are already off the disk - so the panel has to stop drawing the folder either
+        // way, and only the write of the folder list is what failed.
+        if (!writeResult.ok) {
+            return {
+                success: false,
+                error: `Failed to save group: ${writeResult.error.code} ${writeResult.error.message}`,
+            };
+        }
 
         return {
             success: true,
@@ -227,11 +237,24 @@ export class GroupAssetsManager {
             };
         }
 
+        const previousName = group.name;
+        const previousUpdatedAt = group.updatedAt;
+
         group.name = newName;
         group.updatedAt = Date.now();
-
-        await this.writeAssetsGroupsMetadata(category);
         this.dirtyGroupCategories.add(category);
+
+        const writeResult = await this.writeAssetsGroupsMetadata(category);
+        if (!writeResult.ok) {
+            // The old name goes back, unlike `createGroup`: the row is drawn from this record, and
+            // the caller's message names the name the author started from as the one still on screen.
+            group.name = previousName;
+            group.updatedAt = previousUpdatedAt;
+            return {
+                success: false,
+                error: `Failed to save group: ${writeResult.error.code} ${writeResult.error.message}`,
+            };
+        }
 
         this.assetsService.getEvents().emit("groupsUpdated", { category, groupId });
 
@@ -264,11 +287,24 @@ export class GroupAssetsManager {
             };
         }
 
+        const previousParentGroupId = group.parentGroupId;
+        const previousUpdatedAt = group.updatedAt;
+
         group.parentGroupId = newParentGroupId;
         group.updatedAt = Date.now();
-
-        await this.writeAssetsGroupsMetadata(category);
         this.dirtyGroupCategories.add(category);
+
+        const writeResult = await this.writeAssetsGroupsMetadata(category);
+        if (!writeResult.ok) {
+            // Put back for the reason `renameGroup` restores its name: the tree is drawn from this
+            // record, and a folder left hanging under a parent it is not filed under reopens elsewhere.
+            group.parentGroupId = previousParentGroupId;
+            group.updatedAt = previousUpdatedAt;
+            return {
+                success: false,
+                error: `Failed to save group: ${writeResult.error.code} ${writeResult.error.message}`,
+            };
+        }
 
         this.assetsService.getEvents().emit("groupsUpdated", { category, groupId });
 

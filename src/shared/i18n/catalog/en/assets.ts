@@ -40,11 +40,15 @@ export const assets = {
         failed: "Could not delete: {error}",
     },
     /**
-     * Renaming one row. One name, one reason, so a toast carries it: the row is still on screen
-     * under its old name, which is the other half of the message.
+     * Renaming one row. Names the row and stops, for the reason `createGroup.failed` below carries
+     * no reason either: a rename is only refused when the write fails, which already puts the
+     * workspace's own save failure on screen with the file and a retry.
+     *
+     * The old name is the right one to say. The record is put back when the write fails, so that is
+     * the name still on the row, and the one the author can look for.
      */
     rename: {
-        failed: "Could not rename {name}: {error}",
+        failed: "Could not rename {name}",
     },
     /**
      * A new group that was not kept. Names are not checked against each other, so the only way here
