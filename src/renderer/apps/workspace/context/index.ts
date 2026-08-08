@@ -1,3 +1,3 @@
 // Context exports
-export { WorkspaceProvider, useWorkspace } from "./WorkspaceContext";
+export { WorkspaceProvider, useWorkspace, useOptionalWorkspace } from "./WorkspaceContext";
 

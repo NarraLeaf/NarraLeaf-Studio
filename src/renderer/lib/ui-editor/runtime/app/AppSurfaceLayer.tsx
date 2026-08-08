@@ -35,6 +35,14 @@ import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
 import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
 import type { HostAdapterBundle, PageProps } from "./types";
 
+/**
+ * One shared empty table rather than a fresh `{}` per read.
+ *
+ * The element tree is memoised on its inputs, and a literal here would hand it a new object on every
+ * render - which is every page that has never patched a widget, i.e. most of them.
+ */
+const NO_WIDGET_RUNTIME_PATCHES: WidgetPatchesByScope[string] = {};
+
 /** The slice of a navigation entry the surface layer needs. */
 export type AppSurfaceLayerNavEntry = SurfaceNavigationEntry<PageProps, SurfaceNavigationPresentation> & {
     runtimeScopeId: string;
@@ -107,6 +115,21 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
     const handleRuntimeSubscriptionsReady = useCallback(() => {
         setSurfaceRuntimeSubscriptionsReadyKey(entry.key);
     }, [entry.key]);
+
+    // The ref is the live copy (a blueprint can patch a widget between renders); the state copy is
+    // what makes a patch re-render. Reading both, in that order, is the existing contract - the only
+    // change here is that "nothing to report" is one shared object instead of a fresh literal.
+    const widgetRuntimePatches =
+        widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
+        widgetPatchesByScope[entry.runtimeScopeId] ??
+        NO_WIDGET_RUNTIME_PATCHES;
+    const getWidgetRuntimePatches = useCallback(
+        () =>
+            widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
+            widgetPatchesByScope[entry.runtimeScopeId] ??
+            NO_WIDGET_RUNTIME_PATCHES,
+        [entry.runtimeScopeId, widgetPatchesByScope, widgetPatchesByScopeRef],
+    );
 
     useEffect(() => {
         if (hostAdapterBundle.hostAdapter.blueprintRuntime) {
@@ -271,22 +294,16 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
                         backgroundColor="transparent"
                         hostAdapter={hostAdapterBundle.hostAdapter}
                         blueprintBindingContext={hostAdapterBundle.bindingContext}
-                        widgetRuntimePatches={
-                            widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
-                            widgetPatchesByScope[entry.runtimeScopeId] ??
-                            {}
-                        }
-                        getWidgetRuntimePatches={() =>
-                            widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
-                            widgetPatchesByScope[entry.runtimeScopeId] ??
-                            {}
-                        }
+                        widgetRuntimePatches={widgetRuntimePatches}
+                        getWidgetRuntimePatches={getWidgetRuntimePatches}
                         nestedSurfaceRuntime={nestedSurfaceRuntime}
                         surfaceLifecycleSignals={surfaceLifecycleSignals}
                         blueprintLifecycleReady={widgetBlueprintLifecycleReady}
                         interactive={effectiveInteractive}
                         keyboardInteractive={effectiveKeyboardInteractive}
                         onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
+                        // The uidoc here is the compiled bundle's; nothing edits it in place.
+                        staticDocument
                     />
                 </WidgetRuntimeStateProvider>
             </SurfaceLifecycleBoundary>
