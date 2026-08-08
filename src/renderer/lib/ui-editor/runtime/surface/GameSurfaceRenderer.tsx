@@ -51,6 +51,13 @@ export type GameSurfaceRendererProps = {
      * colour here would put an opaque sheet back over it one level down.
      */
     backgroundColor?: string;
+    /**
+     * Passed straight through to {@link SurfaceElementTree}: the caller promises this `document` is a
+     * snapshot nothing mutates in place, which is what lets the element tree be memoised. Both
+     * runtime hosts (the app surface stack and the stage slots) render out of a compiled bundle and
+     * do promise it; anything rendering over a live editor document must leave it unset.
+     */
+    staticDocument?: boolean;
 };
 
 export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
@@ -72,9 +79,12 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         surfacePointerEvents,
         passive = false,
         backgroundColor,
+        staticDocument,
     } = props;
-    const [, setBindingRenderTick] = useState(0);
-    const [, setRuntimePatchRenderTick] = useState(0);
+    // Kept as values, not write-only tick setters: the element tree is memoised on its inputs, and
+    // "a store I subscribed to fired" is an input that does not show up in any prop.
+    const [bindingRenderTick, setBindingRenderTick] = useState(0);
+    const [runtimePatchRenderTick, setRuntimePatchRenderTick] = useState(0);
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
 
     useEffect(() => {
@@ -190,6 +200,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
                     blueprintLifecycleReady={blueprintLifecycleReady}
                     interactive={interactive}
                     keyboardInteractive={keyboardInteractive}
+                    staticDocument={staticDocument}
+                    hostRenderTick={bindingRenderTick + runtimePatchRenderTick}
                 />
             </div>
         </div>
