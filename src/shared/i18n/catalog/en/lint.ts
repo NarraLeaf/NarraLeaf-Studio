@@ -49,6 +49,11 @@ export const lint = {
             description: "A codec some selected build targets cannot play",
             message: "{asset} does not play on {platform}",
         },
+        networkFetchDisallowed: {
+            title: "Network node without network access",
+            description: "A network node in a project that does not allow HTTP",
+            message: "{blueprint} makes a network request, which this project does not allow",
+        },
         storyInvalidCommand: {
             title: "Invalid command",
             description: "A row the compiler refuses",
@@ -165,6 +170,7 @@ export const lint = {
     category: {
         assets: "Assets",
         portability: "Portability",
+        network: "Network",
         story: "Story",
         variables: "Variables",
         text: "Text",

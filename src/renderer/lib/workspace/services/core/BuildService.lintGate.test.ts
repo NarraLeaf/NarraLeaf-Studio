@@ -111,6 +111,9 @@ function mount(options: {
     linting?: Partial<LintingConfiguration>;
     run?: () => Promise<LintReport>;
     storyHasInvalidBlock?: boolean;
+    /** Defaults to allowing HTTP, so the network gate stays out of the way of this file's subject. */
+    allowHttp?: boolean;
+    blueprintDocument?: unknown;
 } = {}) {
     const lines: ConsoleLine[] = [];
     const run = vi.fn(options.run ?? (async () => report([])));
@@ -152,7 +155,14 @@ function mount(options: {
             get: (id: Services) => {
                 switch (id) {
                     case Services.Project:
-                        return { getLintingConfiguration: () => linting };
+                        return {
+                            getLintingConfiguration: () => linting,
+                            getNetworkConfiguration: () => ({
+                                allowHttp: options.allowHttp ?? true,
+                                allowRemoteResource: false,
+                                allowRemoteScript: false,
+                            }),
+                        };
                     case Services.Lint:
                         return { run };
                     case Services.Console:
@@ -161,9 +171,13 @@ function mount(options: {
                         return story;
                     case Services.MediaSupport:
                         return media;
+                    case Services.UIGraph:
+                        return {
+                            ...clean,
+                            getDocument: () => ({ blueprintDocument: options.blueprintDocument ?? null }),
+                        };
                     case Services.Character:
                     case Services.UIDocument:
-                    case Services.UIGraph:
                         return clean;
                     default:
                         throw new Error(`Unexpected service lookup: ${id}`);
@@ -375,6 +389,93 @@ describe("BuildService invalid-block gate (ruling R4)", () => {
         expect(gameBuild.start).not.toHaveBeenCalled();
         expect(state.status).toBe("error");
         expect(state.error).toContain("build.invalidCommandSummary");
+    });
+});
+
+describe("BuildService network gate", () => {
+    /** One Fetch on one event of one blueprint. */
+    const DOCUMENT_WITH_FETCH = {
+        ownerRecords: { "surface:main": { activeBlueprintId: "bp1", privateBlueprintIds: [] } },
+        blueprints: {
+            bp1: {
+                id: "bp1",
+                name: "Title Screen",
+                program: {
+                    kind: "graph",
+                    graphs: {
+                        events: { ev1: { graph: { nodes: { n1: { id: "n1", type: "blueprint.network.fetch" } } } } },
+                        functions: {},
+                        macros: {},
+                    },
+                },
+            },
+        },
+    };
+
+    it("refuses ahead of lint, before the sweep is even asked to run", async () => {
+        const { service, run } = mount({ allowHttp: false, blueprintDocument: DOCUMENT_WITH_FETCH });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(state.status).toBe("error");
+        expect(state.error).toContain("build.networkSummary");
+        expect(run).not.toHaveBeenCalled();
+    });
+
+    it("still refuses when the project has the lint gate switched off", async () => {
+        // The reason this gate exists at all. `network/fetch-disallowed` is an error and would stop
+        // the build through the lint gate - but `runOnBuild: false` switches that off, and a graph
+        // that provably cannot run must not ship because an author changed a lint preference.
+        const { service } = mount({
+            allowHttp: false,
+            blueprintDocument: DOCUMENT_WITH_FETCH,
+            linting: { runOnBuild: false },
+        });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(state.error).toContain("build.networkSummary");
+    });
+
+    it("names the blueprint on the console so the author knows where to look", async () => {
+        const { service, lines } = mount({ allowHttp: false, blueprintDocument: DOCUMENT_WITH_FETCH });
+
+        await service.start(REQUEST);
+
+        expect(lines.some(line =>
+            line.channel === BUILD_CONSOLE_CHANNEL
+            && line.level === "error"
+            && line.message.includes("build.networkNodeDisallowed")
+            && line.message.includes("Title Screen"))).toBe(true);
+    });
+
+    it("builds when the project allows HTTP", async () => {
+        const { service } = mount({ allowHttp: true, blueprintDocument: DOCUMENT_WITH_FETCH });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).toHaveBeenCalledTimes(1);
+        expect(state.status).toBe("done");
+    });
+
+    it("builds when the project has no network nodes, HTTP off or not", async () => {
+        const { service } = mount({ allowHttp: false });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).toHaveBeenCalledTimes(1);
+        expect(state.status).toBe("done");
+    });
+
+    it("stamps startedAt and platforms on the refusal, so the dashboard can archive it", async () => {
+        const { service } = mount({ allowHttp: false, blueprintDocument: DOCUMENT_WITH_FETCH });
+
+        const state = await service.start(REQUEST);
+
+        expect(state.startedAt).toBeGreaterThan(0);
+        expect(state.platforms).toEqual(["windows", "web"]);
     });
 });
 

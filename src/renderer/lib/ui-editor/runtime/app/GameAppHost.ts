@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -148,6 +149,17 @@ export type GameAppHost = {
      * the close. Returns an unsubscribe function. Hosts without a real window (story preview) omit it.
      */
     subscribeCloseRequested?: (listener: () => Promise<boolean> | boolean) => () => void;
+    /**
+     * Issue one Fetch node request. Where it goes is the host's business, and the three shells
+     * differ: Dev Mode and the packaged desktop game hand it to their main process, which is the
+     * only origin not subject to CORS and the only place the project's Allow HTTP setting can be
+     * enforced; the web export has no main process and uses the browser's own `fetch`.
+     *
+     * Omitted by hosts with nowhere to send it (the workspace story preview). The node then reports
+     * a `networkError` saying so, which is the same degradation the sound family takes when there is
+     * no running game to play through.
+     */
+    networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
 };
 
 /** A read-only view of the current execution stacks (root + in-flight async branches). */
