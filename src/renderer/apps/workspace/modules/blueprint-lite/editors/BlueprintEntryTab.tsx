@@ -617,6 +617,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         widgetSurfaceId: payload.surfaceId,
         widgetBlueprintEvents: widgetLogicEvents,
         isComponentDefinitionGraph,
+        // REGISTRY ONLY, and deliberately not the merged persistent view the story surfaces read.
+        //
+        // A blueprint `persistentVariableId` is resolved at runtime against the table the bundle
+        // carries (`bundle.ui.persistentVariables`), which `loadPersistentVariableTable` builds from
+        // `editor/variables.json` alone - a story `/persis` row is not in it. Accepting a story row's
+        // id here would silence the "unknown persistent variable" warning on a node that throws
+        // "Persistent variable not found" the moment it executes, which is the one case the
+        // diagnostic exists for.
         persistentVariables: localBp.listPersistentVariables(),
     });
     const openBlueprint = useOpenBlueprintTarget();
@@ -1448,6 +1456,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         [bp, revision],
     );
 
+    // The node-param picker, and registry-only for the same reason the diagnostic above is: this list
+    // is what an author may PICK, and every option in it has to be one the runtime table can resolve.
     const blueprintPersistentVariables = useMemo(() => {
         return localBp.listPersistentVariables()
             .map(variable => ({

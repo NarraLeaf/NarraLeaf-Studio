@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
+import { storyVariableRefKey } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useHideParamNames } from "@/apps/workspace/hooks/useHideParamNames";
 import { useCommandTranslation } from "@/lib/i18n";
@@ -14,6 +15,7 @@ import type { StoryCommandContext } from "./storyCommandValues";
 import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
 import { characterRowLookup } from "./storySceneBlockUtils";
 import { useStoryMotionNames } from "./useStoryMotionNames";
+import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 
 /**
  * A command line, coloured by role — the one renderer for both halves of the editor's life: the line
@@ -70,6 +72,15 @@ export type StoryCommandLineContextValue = {
     assetName?: (assetId: string) => string | null;
     appearanceName?: (characterId: string, refId: string) => string | null;
     appearanceOptions?: (characterId: string) => readonly { id: string; name: string; axisId?: string }[];
+    /**
+     * The name of a project-level (`saved` / `persistent`) variable — the scopes whose declarations
+     * live in the project registry rather than in the story document.
+     *
+     * Derived from {@link commandContext} rather than from a registry subscription per row, exactly
+     * like the appearance table below it: the context IS the view a typed line resolves against, so a
+     * committed `/set` row names its variable with the very word the line would have used.
+     */
+    projectVariableName?: StoryRowLookups["projectVariableName"];
     /** What a name on a line could refer to — the picker lists for every subject a row names. */
     commandContext?: StoryCommandContext;
 };
@@ -96,9 +107,21 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         () => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null),
         [context, isInitialized],
     );
+    // Built once per context rather than scanned per row: a project can hold hundreds of variables and
+    // a scene hundreds of rows, and this is read while the author types.
+    const projectVariableNames = useMemo(() => {
+        const names = new Map<string, string>();
+        for (const entry of commandContext?.variables ?? []) {
+            if (entry.ref.scope !== "scene") {
+                names.set(storyVariableRefKey(entry.ref), entry.name);
+            }
+        }
+        return names;
+    }, [commandContext]);
     const value = useMemo<StoryCommandLineContextValue>(() => ({
         trigger: slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER,
         hideParamNames,
+        projectVariableName: (scope, variableId) => projectVariableNames.get(storyVariableRefKey({ scope, variableId })) ?? null,
         audioTrackName: trackId => tracks.find(track => track.id === trackId)?.name ?? null,
         // Read through the service on every call rather than off a snapshot: an asset rename does not
         // touch the story document, so nothing here would be told to rebuild a captured table.
@@ -298,7 +321,7 @@ export function useStoryCommandLine(
     // Read for its subscription only — see the note above.
     useCommandTranslation();
     const motionName = useStoryMotionNames();
-    const { audioTrackName, assetName, appearanceName, appearanceOptions, commandContext } = useStoryCommandLineContext();
+    const { audioTrackName, assetName, appearanceName, appearanceOptions, commandContext, projectVariableName } = useStoryCommandLineContext();
     // Deliberately not memoized: this is string building, and every input that could invalidate a memo
     // (an asset rename, a character rename) lives outside the story document, so a dependency array
     // would be a promise this cannot keep. The parse it feeds IS memoized, on the string it produces.
@@ -312,6 +335,7 @@ export function useStoryCommandLine(
         appearanceName,
         appearanceOptions,
         commandContext,
+        projectVariableName,
     });
 }
 

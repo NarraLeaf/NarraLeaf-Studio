@@ -17,11 +17,11 @@ import {
  */
 
 /** A translator with a fixed catalogue, so a test asserts on WHICH key was asked for. */
-function translatorFor(catalogue: Record<string, string>): LabelTranslator {
+function translatorFor(catalog: Record<string, string>): LabelTranslator {
     return {
-        has: (key: string) => key in catalogue,
+        has: (key: string) => key in catalog,
         t: ((key: string, params?: Record<string, string | number>) => {
-            const template = catalogue[key];
+            const template = catalog[key];
             if (template === undefined) {
                 return key;
             }
@@ -113,7 +113,7 @@ describe("buildDocumentChangeRows", () => {
 });
 
 describe("resolveDocumentChangeLabel", () => {
-    const catalogue = {
+    const catalog = {
         "documentDiff.structural.property": "{name}",
         "documentDiff.summary.count": "{name}",
         "documentDiff.summary.title": "Name",
@@ -129,14 +129,14 @@ describe("resolveDocumentChangeLabel", () => {
                 label: { key: "documentDiff.structural.property", params: { name: "volume", from: 0.8, to: 0.9 } },
                 subject: "volume",
             },
-            translatorFor(catalogue),
+            translatorFor(catalog),
         );
 
         expect(view).toEqual({ primary: "volume", from: "0.8", to: "0.9" });
     });
 
     it("does not print the author's own word twice", () => {
-        const translator = translatorFor(catalogue);
+        const translator = translatorFor(catalog);
 
         // The subject IS the label's `name` parameter at the structural tier.
         expect(resolveDocumentChangeLabel(
@@ -159,7 +159,7 @@ describe("resolveDocumentChangeLabel", () => {
                 label: { key: "documentDiff.document.added", params: { bytes: 2048 } },
                 subject: "Chapter One",
             },
-            translatorFor(catalogue),
+            translatorFor(catalog),
         );
 
         expect(view.primary).toBe("Chapter One");
@@ -167,7 +167,7 @@ describe("resolveDocumentChangeLabel", () => {
     });
 
     it("translates a summary count's name, and falls back to the raw identifier", () => {
-        const translator = translatorFor(catalogue);
+        const translator = translatorFor(catalog);
 
         expect(resolveDocumentChangeLabel(
             { path: ["counts", "audioTracks"], kind: "changed", label: { key: "documentDiff.summary.count", params: { name: "audioTracks", from: 3, to: 4 } } },
@@ -184,7 +184,7 @@ describe("resolveDocumentChangeLabel", () => {
     it("renders an unknown producer key as itself rather than as nothing", () => {
         const view = resolveDocumentChangeLabel(
             { path: [], kind: "changed", label: { key: "documentDiff.someone.renamed.this" } },
-            translatorFor(catalogue),
+            translatorFor(catalog),
         );
 
         expect(view.primary).toBe("documentDiff.someone.renamed.this");

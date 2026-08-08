@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "stories": [
+    {
+      "id": "71bb159f-1322-4539-b09f-9593a426a67d",
+      "name": "Skeleton",
+      "documentPath": "editor/story/stories/71bb159f-1322-4539-b09f-9593a426a67d/storydoc.json",
+      "createdAt": "2026-08-07T04:03:28.336Z",
+      "updatedAt": "2026-08-08T02:18:20.879Z"
+    }
+  ],
+  "meta": {
+    "createdAt": "2026-08-07T03:54:29.444Z",
+    "updatedAt": "2026-08-07T04:04:23.558Z"
+  },
+  "defaultStoryId": "71bb159f-1322-4539-b09f-9593a426a67d"
+}

@@ -102,6 +102,16 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("ui-editor.backspace", "backspace", "workspace.shell.keybindings.catalog.uiEditor.delete", CATEGORY.uiEditor),
     entry("ui-editor.f2", "f2", "workspace.shell.keybindings.catalog.uiEditor.rename", CATEGORY.uiEditor),
     entry("ui-editor.escape", "escape", "workspace.shell.keybindings.catalog.uiEditor.escape", CATEGORY.uiEditor),
+    // Alignment follows Figma's Alt row, with WASD standing in for the four edges so the two
+    // centring chords keep their mnemonic letters (H and V).
+    entry("ui-editor.align-left", "alt+a", "workspace.shell.keybindings.catalog.uiEditor.alignLeft", CATEGORY.uiEditor),
+    entry("ui-editor.align-horizontal-center", "alt+h", "workspace.shell.keybindings.catalog.uiEditor.alignHorizontalCenter", CATEGORY.uiEditor),
+    entry("ui-editor.align-right", "alt+d", "workspace.shell.keybindings.catalog.uiEditor.alignRight", CATEGORY.uiEditor),
+    entry("ui-editor.align-top", "alt+w", "workspace.shell.keybindings.catalog.uiEditor.alignTop", CATEGORY.uiEditor),
+    entry("ui-editor.align-vertical-center", "alt+v", "workspace.shell.keybindings.catalog.uiEditor.alignVerticalCenter", CATEGORY.uiEditor),
+    entry("ui-editor.align-bottom", "alt+s", "workspace.shell.keybindings.catalog.uiEditor.alignBottom", CATEGORY.uiEditor),
+    entry("ui-editor.distribute-horizontal", "alt+shift+h", "workspace.shell.keybindings.catalog.uiEditor.distributeHorizontal", CATEGORY.uiEditor),
+    entry("ui-editor.distribute-vertical", "alt+shift+v", "workspace.shell.keybindings.catalog.uiEditor.distributeVertical", CATEGORY.uiEditor),
 
     // --- Blueprint editor ----------------------------------------------------
     entry("blueprint.undo", "mod+z", "workspace.shell.keybindings.catalog.blueprint.undo", CATEGORY.blueprint),

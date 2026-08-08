@@ -2,9 +2,15 @@ import path from "path";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type { BlueprintPersistentVariable, SharedBlueprintAsset } from "@shared/types/blueprint/document";
-import type { PersistentVariableRuntimeTable, VariableRegistry } from "@shared/types/variables/registry";
+import {
+    VARIABLE_REGISTRY_SCHEMA_VERSION,
+    type PersistentVariableRuntimeTable,
+    type SavedVariableRuntimeTable,
+    type VariableRegistry,
+} from "@shared/types/variables/registry";
 import {
     buildPersistentRuntimeTable,
+    buildSavedRuntimeTable,
     migrateVariableRegistryToLatest,
     seedRegistryEntriesFromBlueprintPersistent,
 } from "@shared/variables/variableRegistryModel";
@@ -48,7 +54,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         blueprintDocument: migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
     };
     const localBlueprints = uigraphs.blueprintDocument;
-    const persistentVariables = await loadPersistentVariableTable(context.projectPath, uigraphsRaw.blueprintDocument);
+    const variableTables = await loadVariableRuntimeTables(context.projectPath, uigraphsRaw.blueprintDocument);
     const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
     const storyLibrary = await loadStoryLibrary(context.projectPath);
@@ -66,7 +72,8 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
             uigraphs,
             localBlueprints,
             sharedBlueprints,
-            persistentVariables,
+            persistentVariables: variableTables.persistent,
+            savedVariables: variableTables.saved,
         },
         storyLibrary,
         localization,
@@ -112,24 +119,36 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
  * Load blueprint-type assets from metadata shard + content shards (same layout as renderer Assets pipeline).
  */
 /**
- * Load the project-level persistent variable registry (M-VAR) and project it to the runtime table the
+ * Load the project-level variable registry (M-VAR) once and project it to BOTH runtime tables the
  * bundle carries. Prefers `editor/variables.json`; if that file is absent (a project opened only in a
  * pre-M-VAR Studio, or a Dev Mode start before the renderer migrated), it seeds from the legacy
  * `persistentVariables` still on the raw blueprint document, so Dev Mode never loses persistent vars.
+ *
+ * One read, two projections - not two loaders: the file is a single registry holding both scopes, and
+ * reading it twice would let a write landing between the reads hand the bundle a saved table and a
+ * persistent table from different revisions of the same file.
+ *
+ * The legacy branch contributes nothing to the saved table on purpose: the old blueprint field held
+ * persistent variables and only persistent variables, so a project that never wrote a registry has no
+ * registry-backed saved variables at all - its saved ones are the story's `/save` rows.
  */
-async function loadPersistentVariableTable(
+async function loadVariableRuntimeTables(
     projectPath: string,
     rawBlueprintDocument: unknown,
-): Promise<PersistentVariableRuntimeTable> {
+): Promise<{ persistent: PersistentVariableRuntimeTable; saved: SavedVariableRuntimeTable }> {
     const registryPath = path.join(projectPath, "editor", "variables.json");
     const raw = await readOptionalJsonFile<unknown>(registryPath);
     if (raw) {
-        return buildPersistentRuntimeTable(migrateVariableRegistryToLatest(raw));
+        const registry = migrateVariableRegistryToLatest(raw);
+        return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
     }
     const legacy = readRawPersistentVariables(rawBlueprintDocument);
     const { entries } = seedRegistryEntriesFromBlueprintPersistent(legacy);
-    const registry: VariableRegistry = { schemaVersion: 1, entries };
-    return buildPersistentRuntimeTable(registry);
+    // Stamped at the current version, not at the version the legacy field belonged to: `entries` was
+    // just built by the seeder, so it already has the current shape (scope included) and claiming an
+    // older version would only mislead anything that reads it.
+    const registry: VariableRegistry = { schemaVersion: VARIABLE_REGISTRY_SCHEMA_VERSION, entries };
+    return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
 }
 
 function readRawPersistentVariables(blueprintDocument: unknown): Record<string, BlueprintPersistentVariable> | undefined {

@@ -26,6 +26,23 @@ export function isValidLocaleCode(code: unknown): code is LocaleCode {
     return typeof code === "string" && LOCALE_CODE_PATTERN.test(code);
 }
 
+/**
+ * A language's name in itself ("ja" → "日本語"), falling back to the code.
+ *
+ * The autonym and not the translated name, because this is what players see in the language
+ * picker: somebody looking for their own language is looking for the word they call it by, not for
+ * whatever the author's language calls it. Shared rather than copied per panel - three surfaces
+ * offer languages (localization, voice, the new-project wizard) and they must agree.
+ */
+export function localeAutonym(code: LocaleCode): string {
+    try {
+        const name = new Intl.DisplayNames([code], { type: "language" }).of(code);
+        return name && name !== code ? name : code;
+    } catch {
+        return code;
+    }
+}
+
 export type LocalizationLocaleEntry = {
     code: LocaleCode;
     /** Author-facing autonym shown to players (e.g. "日本語", never "Japanese"). */
@@ -304,4 +321,60 @@ export function resolveLocaleChain(config: Pick<GameLocalizationBundle, "sourceL
         current = config.locales.find(entry => entry.code === current)?.fallback;
     }
     return chain;
+}
+
+/**
+ * Why a proposed `fallback` for `code` cannot be stored, or null when it can.
+ *
+ * - `self` - a language cannot fall back to itself.
+ * - `unknown` - the fallback names a language the project does not have.
+ * - `cycle` - following the fallback leads back to `code`.
+ */
+export type LocaleFallbackConflict = "self" | "unknown" | "cycle";
+
+/**
+ * Validate a fallback edit before it is written.
+ *
+ * {@link resolveLocaleChain} is already cycle-safe, so a cycle on disk does not break playback - it
+ * just means the second language in the loop is never consulted, which buys the author nothing and
+ * reads as "the fallback I set is being ignored". This is the write-side half: refuse to store the
+ * edge that closes the loop, so the configuration says what it does.
+ *
+ * The walk starts at `fallback` and follows the CURRENT configuration, which is the same thing as
+ * walking the would-be one: the only edge this patch changes is `code -> fallback`, and the walk is
+ * already past it. Should the walk reach `code`, it reports the cycle before it would have needed
+ * that entry's (stale) fallback.
+ *
+ * Reaching the source language ends the walk exactly as it ends a read: the source text is the
+ * compiled default, never a table lookup, so nothing beyond it is consulted.
+ *
+ * An empty `fallback` clears the field and is always allowed.
+ */
+export function findLocaleFallbackConflict(
+    config: Pick<LocalizationConfiguration, "sourceLocale" | "locales">,
+    code: LocaleCode,
+    fallback: LocaleCode,
+): LocaleFallbackConflict | null {
+    if (!fallback) {
+        return null;
+    }
+    if (fallback === code) {
+        return "self";
+    }
+    if (!config.locales.some(entry => entry.code === fallback)) {
+        return "unknown";
+    }
+    const visited = new Set<LocaleCode>();
+    let current: LocaleCode | undefined = fallback;
+    while (current !== undefined && !visited.has(current)) {
+        if (current === code) {
+            return "cycle";
+        }
+        if (current === config.sourceLocale) {
+            return null;
+        }
+        visited.add(current);
+        current = config.locales.find(entry => entry.code === current)?.fallback;
+    }
+    return null;
 }

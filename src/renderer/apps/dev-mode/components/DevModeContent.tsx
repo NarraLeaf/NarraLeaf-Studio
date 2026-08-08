@@ -9,7 +9,7 @@ import {
     type SetStateAction,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Bug, Check, ChevronsRight } from "lucide-react";
+import { Bug, Check, ChevronsRight, EyeOff } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
@@ -22,8 +22,13 @@ import { AppHost, AppProtocol } from "@shared/types/constants";
 import { useTranslation } from "@/lib/i18n";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
-import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
+import {
+    BlueprintRuntimeDebugPanel,
+    DEFAULT_OUTPUT_LOG_LEVELS,
+    type BlueprintOutputLogLevel,
+} from "./BlueprintRuntimeDebugPanel";
 import { StoryRuntimeDebugPanel } from "./StoryRuntimeDebugPanel";
+import { SavesDebugPanel } from "./SavesDebugPanel";
 import { BlueprintDebuggerProvider } from "./debugger/BlueprintDebuggerContext";
 import { BlueprintDebuggerOverlay } from "./debugger/BlueprintDebuggerOverlay";
 import { BlueprintDebuggerPanel } from "./debugger/BlueprintDebuggerPanel";
@@ -34,13 +39,17 @@ import type {
     GameAppFrameContext,
     GameAppHost,
     GameAppOverlayContext,
+    GameAppSaveBridge,
     GameAppSaveStore,
     GameAppStoryRuntimeBridge,
 } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
-import { blockIdForActionId } from "./storyRuntimeDebugModel";
-import { SessionErrorBanner } from "./SessionErrorBanner";
+import { blockIdForActionId, resolveSceneIdForBlock } from "./storyRuntimeDebugModel";
+import { RuntimeIssueStrip } from "./RuntimeIssueStrip";
+import { RuntimeIssuesPanel } from "./RuntimeIssuesPanel";
 import { appendRuntimeIssue, locateRuntimeIssue, type LocatedRuntimeIssue } from "./runtimeIssueModel";
+import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
+import { isMacPlatform } from "@/lib/app/platform";
 import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
 import { resolveDevModeViewportSize } from "./devModeViewport";
 import { createDevModePuppetHost, listDevModePuppetBackendModules } from "../devModePuppetHost";
@@ -59,7 +68,25 @@ type DevModeContentProps = {
     onDismissSessionError: () => void;
 };
 
-type DevModeDebugPanelId = "none" | "blueprint" | "story" | "debugger";
+/**
+ * One panel per SUBJECT. `issues` is what has gone wrong, `story` the running story, `interface` the
+ * running UI, `saves` what is on disk and the project-wide persistent store, `debugger` stopped
+ * execution — the last one is separate because a thing that halts the game and decides what gets
+ * recorded is an instrument, not a subject.
+ */
+type DevModeDebugPanelId = "none" | "issues" | "interface" | "story" | "saves" | "debugger";
+
+/**
+ * Toggles the debug FAB back after it has been hidden.
+ *
+ * The menu item that hides it shows this chord beside itself, which is the whole reason hiding is
+ * safe to offer: the author reads the way back at the moment they take the button away. `mod+` is
+ * the shape the run area's other binding already uses (fast-forward is `mod+arrowright`).
+ */
+const DEBUG_FAB_TOGGLE_BINDING = "mod+shift+d";
+
+/** Fast-forward to the next choice — shown beside its menu item for the same reason. */
+const FAST_FORWARD_BINDING = "mod+arrowright";
 
 /** Width the debug drawer takes off the stage while it is open. */
 const DEBUG_PANEL_WIDTH = 380;
@@ -122,6 +149,8 @@ function DevModeDebugOverlay(props: {
     projectPath: string | null;
     fastForwardToNextChoice: () => Promise<void>;
     storyRuntime: GameAppStoryRuntimeBridge;
+    /** Save slots for the Saves panel, on the game's own Save/Load paths. */
+    saves: GameAppSaveBridge;
     /** Owned by DevModeContent so the drawer survives a game-session remount (every timeline jump). */
     activePanel: DevModeDebugPanelId;
     setActivePanel: (update: (previous: DevModeDebugPanelId) => DevModeDebugPanelId) => void;
@@ -130,11 +159,27 @@ function DevModeDebugOverlay(props: {
     setPanelFloating: Dispatch<SetStateAction<boolean>>;
     floatPosition: FloatPanelPosition;
     setFloatPosition: Dispatch<SetStateAction<FloatPanelPosition>>;
+    /** Which log levels the Output list shows AND records; owned above for the reason below. */
+    outputLogLevels: ReadonlySet<BlueprintOutputLogLevel>;
+    setOutputLogLevels: Dispatch<SetStateAction<ReadonlySet<BlueprintOutputLogLevel>>>;
+    /** Everything that has gone wrong, for the Issues panel. Owned above, and cleared on reload. */
+    sessionError: string | null;
+    onDismissSessionError: () => void;
+    issues: readonly LocatedRuntimeIssue[];
+    onDismissIssue: (id: string) => void;
+    onDismissAllIssues: () => void;
+    /** Whether the debug FAB is hidden for this window; same owner and reason as `activePanel`. */
+    fabHidden: boolean;
+    setFabHidden: Dispatch<SetStateAction<boolean>>;
 }) {
     const {
         core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath, fastForwardToNextChoice, storyRuntime,
+        saves,
         activePanel, setActivePanel,
         panelFloating, setPanelFloating, floatPosition, setFloatPosition,
+        outputLogLevels, setOutputLogLevels,
+        sessionError, onDismissSessionError, issues, onDismissIssue, onDismissAllIssues,
+        fabHidden, setFabHidden,
     } = props;
     const { t } = useTranslation();
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
@@ -148,6 +193,28 @@ function DevModeDebugOverlay(props: {
     const endDragRef = useRef<(() => void) | null>(null);
     useEffect(() => () => endDragRef.current?.(), []);
     const activeFloatPosition = dragPosition ?? floatPosition;
+
+    /**
+     * Arm verbose capture from the author's log-level choice.
+     *
+     * Verbose tracing is dropped at the DebugBridge unless something asks for it (it fires at least
+     * twice per executed node), so the level selection has to drive what is RECORDED and not just
+     * what the Output list shows.
+     *
+     * That is why this lives out here beside the stage rather than in the panel that owns the
+     * checkbox. The panel is unmounted the moment the drawer is closed, and it used to turn capture
+     * off on the way out: closing the drawer silently stopped recording, and every verbose event
+     * emitted while it was closed was gone for good — a view deciding what the session records.
+     *
+     * There is deliberately no cleanup that turns it off. Each GameApp session builds its own
+     * DebugBridge (`useBlueprintRuntimeCore`) and the old one is discarded with the session, so the
+     * only thing an off-on-unmount could do is reintroduce the same bug one level up. Re-running on
+     * `core.debug` is what re-arms the NEW bridge after a timeline jump, which is the same reason
+     * `activePanel` is hoisted (see its declaration).
+     */
+    useEffect(() => {
+        core.debug.setVerboseCaptureEnabled(outputLogLevels.has("verbose"));
+    }, [core.debug, outputLogLevels]);
 
     // Mirror the play head to the workspace story editor (row highlight) whenever a story runs, even
     // with the debug panels closed. Coalesced to one forward per frame; the workspace reveals the row
@@ -171,16 +238,10 @@ function DevModeDebugOverlay(props: {
             lastBlockId = blockId;
             // The play head can be in a scene reached by a jump, not the launched one, so forward the
             // scene that actually owns the block — otherwise the workspace editor could not match it.
-            let sceneId = context.sceneId;
             const document = bundle.storyLibrary?.documents[context.storyId];
-            if (document) {
-                for (const [id, scene] of Object.entries(document.scenes)) {
-                    if (blockId in scene.blocks) {
-                        sceneId = id;
-                        break;
-                    }
-                }
-            }
+            const sceneId = document
+                ? resolveSceneIdForBlock(document, blockId, context.sceneId)
+                : context.sceneId;
             try {
                 getInterface().devMode.forwardStoryRow({
                     projectPath,
@@ -227,10 +288,17 @@ function DevModeDebugOverlay(props: {
                 e.preventDefault();
                 void handleFastForward();
             }
+            // Ctrl/Cmd + Shift + D : show or hide the debug button. Listened for whether or not it
+            // is currently hidden, because getting it BACK is the only thing this binding is for.
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "d") {
+                e.preventDefault();
+                setDevtoolsMenuOpen(false);
+                setFabHidden(previous => !previous);
+            }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [handleFastForward]);
+    }, [handleFastForward, setFabHidden]);
 
     useEffect(() => {
         if (!devtoolsMenuOpen) {
@@ -368,6 +436,37 @@ function DevModeDebugOverlay(props: {
         onTitleBarPointerDown: handleTitleBarPointerDown,
     }), [panelFloating, setPanelFloating, handleTitleBarPointerDown]);
 
+    /**
+     * The drawer's subjects, in menu order.
+     *
+     * One list rather than a menu tuple beside an aria-label switch: the panel's accessible name IS
+     * the name the author picked it by, and two places deriving it separately is how one of them
+     * ends up naming a panel the drawer is no longer showing.
+     */
+    const panels = useMemo(
+        () => ([
+            // First because it is the one an author is sent to rather than one they go looking for:
+            // the strip at the top of the window opens it.
+            ["issues", t("devMode.issues.title")],
+            ["story", t("devMode.runtime.title")],
+            ["interface", t("devMode.devtools.title")],
+            ["saves", t("devMode.saves.title")],
+            ["debugger", t("devMode.debugger.title")],
+        ] as [Exclude<DevModeDebugPanelId, "none">, string][]),
+        [t],
+    );
+    const activePanelLabel = panels.find(([id]) => id === activePanel)?.[1] ?? "";
+
+    // Rendered once for the platform rather than per item: the chord a menu shows has to be the one
+    // the key handler above actually listens for, and `mod` is not what either of them is called.
+    const shortcuts = useMemo(() => {
+        const mac = isMacPlatform();
+        return {
+            fastForward: formatKeybinding(FAST_FORWARD_BINDING, mac),
+            hideFab: formatKeybinding(DEBUG_FAB_TOGGLE_BINDING, mac),
+        };
+    }, []);
+
     return (
         <BlueprintDebuggerProvider
             session={core.debugSession}
@@ -389,13 +488,7 @@ function DevModeDebugOverlay(props: {
                         key={activePanel}
                         ref={panelRef}
                         role="complementary"
-                        aria-label={
-                            activePanel === "story"
-                                ? t("devMode.runtime.title")
-                                : activePanel === "debugger"
-                                  ? t("devMode.debugger.title")
-                                  : t("devMode.devtools.title")
-                        }
+                        aria-label={activePanelLabel}
                         className={
                             panelFloating
                                 // A plain border rather than a `ring`: the game window has
@@ -427,10 +520,30 @@ function DevModeDebugOverlay(props: {
                         transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                     >
                         <div className="absolute inset-y-0 right-0" style={{ width: DEBUG_PANEL_WIDTH }}>
-                            {activePanel === "debugger" ? (
+                            {activePanel === "issues" ? (
+                                <RuntimeIssuesPanel
+                                    sessionError={sessionError}
+                                    onDismissSessionError={onDismissSessionError}
+                                    issues={issues}
+                                    onDismissIssue={onDismissIssue}
+                                    onDismissAllIssues={onDismissAllIssues}
+                                    projectPath={projectPath}
+                                    className="h-full min-h-0 w-full"
+                                    chrome={panelChrome}
+                                />
+                            ) : activePanel === "debugger" ? (
                                 <BlueprintDebuggerPanel className="h-full min-h-0 w-full" chrome={panelChrome} />
                             ) : activePanel === "story" ? (
                                 <StoryRuntimeDebugPanel
+                                    storyRuntime={storyRuntime}
+                                    scopeBridge={core.scopeBridge}
+                                    bundle={bundle}
+                                    className="h-full min-h-0 w-full"
+                                    chrome={panelChrome}
+                                />
+                            ) : activePanel === "saves" ? (
+                                <SavesDebugPanel
+                                    saves={saves}
                                     storyRuntime={storyRuntime}
                                     scopeBridge={core.scopeBridge}
                                     bundle={bundle}
@@ -446,6 +559,8 @@ function DevModeDebugOverlay(props: {
                                     scopeBridge={core.scopeBridge}
                                     widgetRuntimeStore={widgetRuntimeStore}
                                     projectPath={projectPath}
+                                    outputLogLevels={outputLogLevels}
+                                    setOutputLogLevels={setOutputLogLevels}
                                     className="h-full min-h-0 w-full"
                                     chrome={panelChrome}
                                 />
@@ -455,7 +570,10 @@ function DevModeDebugOverlay(props: {
                 ) : null}
             </AnimatePresence>
 
-            <div className="pointer-events-none absolute inset-0 z-40">
+            {/* Hidden means gone, not faded: a ghost circle still sits on top of the game, which is
+                the complaint. The chord in the menu item is the way back, and it is listened for
+                above whether the button is on screen or not. */}
+            <div className={`pointer-events-none absolute inset-0 z-40 ${fabHidden ? "hidden" : ""}`}>
                 <div className="pointer-events-auto absolute bottom-3 left-3">
                     <div className="relative flex w-11 flex-col items-start">
                         {devtoolsMenuOpen ? (
@@ -487,14 +605,9 @@ function DevModeDebugOverlay(props: {
                                             ? t("devMode.devtools.skipToNextChoiceBusy")
                                             : t("devMode.devtools.skipToNextChoice")}
                                     </span>
+                                    <span className="shrink-0 text-2xs text-fg-subtle">{shortcuts.fastForward}</span>
                                 </button>
-                                {(
-                                    [
-                                        ["story", t("devMode.runtime.title")],
-                                        ["blueprint", t("devMode.devtools.title")],
-                                        ["debugger", t("devMode.debugger.title")],
-                                    ] as const
-                                ).map(([id, label]) => {
+                                {panels.map(([id, label]) => {
                                     const open = activePanel === id;
                                     return (
                                         <button
@@ -522,6 +635,27 @@ function DevModeDebugOverlay(props: {
                                         </button>
                                     );
                                 })}
+                                {/* Below the rule because it is not another view of the game: it
+                                    takes the button itself away. */}
+                                <div className="my-1 h-px bg-edge" aria-hidden />
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                                    onClick={() => {
+                                        setDevtoolsMenuOpen(false);
+                                        setFabHidden(true);
+                                    }}
+                                >
+                                    <span
+                                        className="flex h-3.5 w-3.5 shrink-0 items-center justify-center"
+                                        aria-hidden
+                                    >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate">{t("devMode.devtools.hide")}</span>
+                                    <span className="shrink-0 text-2xs text-fg-subtle">{shortcuts.hideFab}</span>
+                                </button>
                             </div>
                         ) : null}
                         <button
@@ -714,6 +848,36 @@ export function DevModeContent(props: DevModeContentProps) {
         }
         return projectRef;
     }, [projectRef]);
+
+    /**
+     * The Fetch node's request, handed to the main process.
+     *
+     * The project path travels with it because the handler reads the project's own Allow HTTP
+     * setting off disk rather than trusting anything sent from here - this window is the one the
+     * setting is meant to constrain.
+     */
+    const networkFetch = useCallback<NonNullable<GameAppHost["networkFetch"]>>(async request => {
+        if (!projectPath) {
+            return {
+                outcome: "networkError",
+                status: 0,
+                body: null,
+                error: "Fetch: no project is open",
+            };
+        }
+        const result = await getInterface().blueprintNetwork.fetch(projectPath, request);
+        if (!result.success) {
+            // The channel itself failed, which is Studio malfunctioning rather than the request
+            // failing. Reported on the node's error branch anyway: the graph has to go somewhere.
+            return {
+                outcome: "networkError",
+                status: 0,
+                body: null,
+                error: result.error ?? "Fetch failed",
+            };
+        }
+        return result.data.result;
+    }, [projectPath]);
 
     const saveStore = useMemo<GameAppSaveStore>(() => ({
         write: async (id, savedGame, capture, metadata) => {
@@ -962,12 +1126,14 @@ export function DevModeContent(props: DevModeContentProps) {
             setFullscreen,
             subscribeFullscreenChanged,
             subscribeCloseRequested,
+            networkFetch,
         };
     }, [
         bootAction,
         bundle,
         getFullscreen,
         log,
+        networkFetch,
         onDebugEvent,
         persistenceAdapter,
         quitApplication,
@@ -1020,6 +1186,35 @@ export function DevModeContent(props: DevModeContentProps) {
     // card scopes it there.
     const [panelFloating, setPanelFloating] = useState(false);
     const [floatPosition, setFloatPosition] = useState<FloatPanelPosition>(null);
+    /**
+     * Which log levels the Output list shows — and, for `verbose`, what the session RECORDS.
+     *
+     * Owned here rather than in the panel that draws the checkboxes, because it is not a view
+     * setting: turning verbose on arms capture at the DebugBridge, and a choice that decides what
+     * gets recorded cannot belong to a view that is unmounted every time the drawer is closed. See
+     * the effect in `DevModeDebugOverlay` for what closing it used to cost. Hoisted to the same
+     * owner as `activePanel` and for the same second reason: a timeline jump replaces the whole
+     * session, and a selection that reset there would silently stop recording mid-investigation.
+     */
+    const [outputLogLevels, setOutputLogLevels] = useState<ReadonlySet<BlueprintOutputLogLevel>>(
+        () => new Set(DEFAULT_OUTPUT_LOG_LEVELS),
+    );
+    /**
+     * Whether the debug button is hidden, for this window and no longer.
+     *
+     * Same owner as `activePanel` so a timeline jump does not put it back under an author who just
+     * took it away, and deliberately not persisted: a Dev Mode window that opens with no visible way
+     * into the debug tools is a window whose only affordance is a chord nobody has been shown yet.
+     */
+    const [fabHidden, setFabHidden] = useState(false);
+
+    /**
+     * The strip's way in.
+     *
+     * Deliberately does not put a hidden debug button back: hiding it was a decision about what may
+     * cover the game, and the drawer this opens closes on Escape like every other panel here.
+     */
+    const openIssues = useCallback(() => setActivePanel("issues"), []);
 
     const renderOverlays = useCallback((ctx: GameAppOverlayContext) => {
         if (!ctx.core || !ctx.activeSurface || !bundle) {
@@ -1035,26 +1230,49 @@ export function DevModeContent(props: DevModeContentProps) {
                 projectPath={projectPath}
                 fastForwardToNextChoice={ctx.fastForwardToNextChoice}
                 storyRuntime={ctx.storyRuntime}
+                saves={ctx.saves}
                 activePanel={activePanel}
                 setActivePanel={setActivePanel}
                 panelFloating={panelFloating}
                 setPanelFloating={setPanelFloating}
                 floatPosition={floatPosition}
                 setFloatPosition={setFloatPosition}
+                outputLogLevels={outputLogLevels}
+                setOutputLogLevels={setOutputLogLevels}
+                sessionError={sessionError}
+                onDismissSessionError={onDismissSessionError}
+                issues={runtimeIssues}
+                onDismissIssue={dismissIssue}
+                onDismissAllIssues={dismissAllIssues}
+                fabHidden={fabHidden}
+                setFabHidden={setFabHidden}
             />
         );
-    }, [bundle, projectPath, activePanel, panelFloating, floatPosition]);
+    }, [
+        bundle,
+        projectPath,
+        activePanel,
+        panelFloating,
+        floatPosition,
+        outputLogLevels,
+        sessionError,
+        onDismissSessionError,
+        runtimeIssues,
+        dismissIssue,
+        dismissAllIssues,
+        fabHidden,
+    ]);
 
     if (!bundle || !host) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
-                <SessionErrorBanner
+                {/* No session, so no drawer: the strip carries the failure itself here. */}
+                <RuntimeIssueStrip
                     sessionError={sessionError}
                     onDismissSessionError={onDismissSessionError}
                     issues={runtimeIssues}
-                    onDismissIssue={dismissIssue}
                     onDismissAllIssues={dismissAllIssues}
-                    projectPath={projectPath}
+                    onOpenIssues={null}
                 />
                 <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
                     {t("devMode.waitingPayload")}
@@ -1066,13 +1284,12 @@ export function DevModeContent(props: DevModeContentProps) {
     if (!surface) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
-                <SessionErrorBanner
+                <RuntimeIssueStrip
                     sessionError={sessionError}
                     onDismissSessionError={onDismissSessionError}
                     issues={runtimeIssues}
-                    onDismissIssue={dismissIssue}
                     onDismissAllIssues={dismissAllIssues}
-                    projectPath={projectPath}
+                    onOpenIssues={null}
                 />
                 <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
                     {t("devMode.surfaceNotFound", { surfaceId })}
@@ -1083,13 +1300,14 @@ export function DevModeContent(props: DevModeContentProps) {
 
     return (
         <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
-            <SessionErrorBanner
+            {/* One line, never more: what went wrong is read in the Issues panel this opens, which
+                takes width from the stage instead of height off the top of it. */}
+            <RuntimeIssueStrip
                 sessionError={sessionError}
                 onDismissSessionError={onDismissSessionError}
                 issues={runtimeIssues}
-                onDismissIssue={dismissIssue}
                 onDismissAllIssues={dismissAllIssues}
-                projectPath={projectPath}
+                onOpenIssues={openIssues}
             />
             {/* Stage and debug drawer are siblings in one row: GameApp renders the frame and the
                 overlays next to each other, so the drawer takes width from the stage instead of

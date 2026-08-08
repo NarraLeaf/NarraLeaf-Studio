@@ -9,12 +9,14 @@ import {
     isPausableBlueprintRunGraphKind,
     parseBlueprintRunGraphId,
 } from "@shared/blueprint/blueprintRunGraphId";
-import {
-    formatDebugValue,
-    groupBreakpointsByBlueprint,
-    listDebuggableBlueprints,
-    resolveBlueprintGraphIr,
-} from "./blueprintDebuggerModel";
+import { listDevModeBlueprints } from "../blueprintDebugPanelModel";
+import { MAX_DEBUG_VALUE_CHARS, formatDebugValue } from "../debugValueFormat";
+import { groupBreakpointsByBlueprint, resolveBlueprintGraphIr } from "./blueprintDebuggerModel";
+
+/** The debugger's half of the one listing function: "what can I set a breakpoint in". */
+function listDebuggable(document: BlueprintDocument) {
+    return listDevModeBlueprints(document.blueprints, { purpose: "breakpoints" });
+}
 
 function graphBlueprint(overrides: Partial<Blueprint> & Pick<Blueprint, "id" | "name" | "owner">): Blueprint {
     return {
@@ -157,7 +159,7 @@ describe("debuggable blueprints", () => {
     } as never);
 
     it("lists only graph blueprints that have nodes to stop in", () => {
-        const listed = listDebuggableBlueprints(documentOf(withGraphs, emptyGraphs, scriptModule));
+        const listed = listDebuggable(documentOf(withGraphs, emptyGraphs, scriptModule));
         expect(listed.map(entry => entry.id)).toEqual(["bp-a"]);
         expect(listed[0].graphs.map(graph => [graph.name, graph.kind])).toEqual([
             ["Helper", "function"],
@@ -172,7 +174,7 @@ describe("debuggable blueprints", () => {
             owner: { kind: "storyAction", blueprintId: "bp-v", mode: "value" },
             program: { kind: "graph", graphs: { events: { e1: withNodes("e1", "On Call", ["n1"]) }, functions: {}, macros: {} } },
         } as never);
-        expect(listDebuggableBlueprints(documentOf(inlineValue))[0].syncOnly).toBe(true);
+        expect(listDebuggable(documentOf(inlineValue))[0].syncOnly).toBe(true);
     });
 
     it("resolves a graph's IR from either table", () => {
@@ -205,7 +207,16 @@ describe("scope values", () => {
         expect(formatDebugValue(7)).toBe("7");
         expect(formatDebugValue({ a: 1 })).toBe('{"a":1}');
         expect(formatDebugValue(() => undefined)).toBe("ƒ()");
-        expect(formatDebugValue("x".repeat(400)).length).toBeLessThan(200);
+        // Pinned to the shared limit, not to a loose upper bound: this used to be one of two
+        // truncation lengths, and "under 200" passed for both of them.
+        expect(formatDebugValue("x".repeat(400))).toHaveLength(MAX_DEBUG_VALUE_CHARS + 1);
+    });
+
+    it("quotes a string so an empty one and a trailing space are visible", () => {
+        expect(formatDebugValue("")).toBe('""');
+        expect(formatDebugValue("done ")).toBe('"done "');
+        // A number-shaped string is not a number - the one distinction a raw passthrough erased.
+        expect(formatDebugValue("5")).toBe('"5"');
     });
 
     it("survives a value that cannot be serialized", () => {

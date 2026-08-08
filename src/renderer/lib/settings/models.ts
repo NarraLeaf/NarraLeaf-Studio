@@ -151,6 +151,7 @@ export type AppSettingCategoryKey =
     | "appearance"
     | "editor"
     | "workspace"
+    | "shortcuts"
     | "versionControl"
     | "network"
     | "data";

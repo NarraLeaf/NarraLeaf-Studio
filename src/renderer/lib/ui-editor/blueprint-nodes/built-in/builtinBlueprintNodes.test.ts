@@ -312,6 +312,11 @@ const SILENT_SOUND_HOST: BlueprintHostApiRuntime["sound"] = {
     setTrackVolume: async () => undefined,
 };
 
+/** No host in these tests reaches a network; every request reports the same refusal. */
+const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
+    fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
+};
+
 function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAdapter {
     return {
         host: "player",
@@ -399,6 +404,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     setPreference: async () => undefined,
                 },
                 sound: SILENT_SOUND_HOST,
+                network: OFFLINE_NETWORK_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -534,6 +540,7 @@ function createPageNavigationHostAdapter(
                     setPreference: async () => undefined,
                 },
                 sound: SILENT_SOUND_HOST,
+                network: OFFLINE_NETWORK_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -692,6 +699,7 @@ function createGameSaveHostAdapter(options: {
                     },
                 },
                 sound: SILENT_SOUND_HOST,
+                network: OFFLINE_NETWORK_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -1094,6 +1102,7 @@ describe("built-in blueprint nodes", () => {
             volume: {
                 id: "volume",
                 name: "Volume",
+                scope: "persistent",
                 valueType: "number",
                 defaultValue: 7,
                 storageKey: "settings.volume",

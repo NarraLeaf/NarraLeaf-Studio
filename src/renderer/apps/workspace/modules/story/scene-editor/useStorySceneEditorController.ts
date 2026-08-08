@@ -470,6 +470,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             document,
             sceneId,
             scene,
+            // Both project scopes come off the same registry and refresh on the same revision. Saved is
+            // not optional trimming: after the declaration migration a saved variable exists ONLY as a
+            // registry entry, so leaving it out makes `/set` report every one of them as unknown.
+            savedVariables: blueprintService?.listSavedVariables() ?? [],
             persistentVariables: blueprintService?.listPersistentVariables() ?? [],
             // For the `mode:"value"` blueprints an expression may call by name. Rebuilt with the rest
             // of the context on `blueprintRevision`, so renaming one in the blueprint editor changes
@@ -884,15 +888,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * history entry per row, so undoing a replacement across forty lines would take forty presses.
      * One `recordHistory` in front of the batch makes the whole sweep a single step, which is what an
      * author means by "undo that".
+     *
+     * One `updateBlocks` rather than a loop of `updateBlock` for the same reason on the render side:
+     * the service emits `documentChanged` per mutation and the editor repaints its rows per event.
      */
     const updateBlockPayloads = useCallback((edits: readonly { blockId: StoryBlockId; payload: StoryBlock["payload"] }[]) => {
         if (!storyService || !storyId || !sceneId || edits.length === 0) {
             return;
         }
         recordHistory();
-        for (const edit of edits) {
-            storyService.updateBlock(storyId, sceneId, edit.blockId, edit.payload);
-        }
+        storyService.updateBlocks(
+            storyId,
+            edits.map(edit => ({ sceneId, blockId: edit.blockId, payload: edit.payload })),
+        );
     }, [recordHistory, sceneId, storyId, storyService]);
 
     const updateSceneMetadata = useCallback((patch: StorySceneUpdate): boolean => {

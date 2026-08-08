@@ -212,7 +212,7 @@ describe("WorkspaceReloadService", () => {
         const harness = await createHarness();
 
         harness.setFrozen(true);
-        harness.variables.createEntry({ name: "ghost" });
+        harness.variables.createEntry("persistent", { name: "ghost" });
         await harness.variables.flushPendingChanges();
 
         // The defect, staged: refused, so nothing reached the disk - and kept, so the next successful

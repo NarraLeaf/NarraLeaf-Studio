@@ -80,7 +80,7 @@ import type {
     BlueprintPrivateOwnerRecord,
     Blueprint,
 } from "@shared/types/blueprint/document";
-import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
+import type { VariableRegistry, VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
 import type { AudioTrackChannel, ProjectAudioTrack, ProjectAudioTrackDocument } from "@shared/types/audioTrack";
 import type {
     ReadonlyBlueprintSurfaceSummary,
@@ -462,13 +462,17 @@ interface IVariableRegistryService extends IService {
     save(registry: VariableRegistry): Promise<void>;
     getRegistry(): VariableRegistry;
     listEntries(): VariableRegistryEntry[];
+    listEntriesInScope(scope: VariableRegistryScope): VariableRegistryEntry[];
     getEntry(id: string): VariableRegistryEntry | undefined;
     onRegistryChanged(handler: (registry: VariableRegistry) => void): () => void;
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
     applyRegistryMutation(mutator: (registry: VariableRegistry) => void): void;
-    createEntry(input?: { name?: string; valueType?: string; defaultValue?: StoryLiteralValue; description?: string }): VariableRegistryEntry;
+    createEntry(
+        scope: VariableRegistryScope,
+        input?: { name?: string; valueType?: string; defaultValue?: StoryLiteralValue; description?: string },
+    ): VariableRegistryEntry;
     renameEntry(id: string, name: string): void;
     setEntryValueType(id: string, valueType: StoryVariableValueType): void;
     setEntryDefault(id: string, defaultValue: StoryLiteralValue | undefined): void;
@@ -598,7 +602,34 @@ interface ILocalBlueprintService extends IService {
         variableId: string,
         defaultValue: import("@shared/types/blueprint/document").LiteralValue | undefined,
     ): void;
+    setPersistentVariableValueType(
+        historyBlueprintId: string,
+        variableId: string,
+        valueType: StoryVariableValueType,
+    ): void;
     deletePersistentVariable(historyBlueprintId: string, variableId: string): void;
+    listPersistentVariables(): VariableRegistryEntry[];
+    listSavedVariables(): VariableRegistryEntry[];
+    createSavedRegistryVariable(
+        historyBlueprintId: string,
+        input?: {
+            name?: string;
+            valueType?: string;
+            defaultValue?: import("@shared/types/blueprint/document").LiteralValue;
+        },
+    ): VariableRegistryEntry;
+    renameSavedRegistryVariable(historyBlueprintId: string, variableId: string, name: string): void;
+    setSavedRegistryVariableDefault(
+        historyBlueprintId: string,
+        variableId: string,
+        defaultValue: import("@shared/types/blueprint/document").LiteralValue | undefined,
+    ): void;
+    setSavedRegistryVariableValueType(
+        historyBlueprintId: string,
+        variableId: string,
+        valueType: StoryVariableValueType,
+    ): void;
+    deleteSavedRegistryVariable(historyBlueprintId: string, variableId: string): void;
     renameBlueprintVariable(blueprintId: string, variableId: string, name: string): void;
     setBlueprintVariableDefault(
         blueprintId: string,
@@ -691,6 +722,10 @@ interface UIEditorStateEvents {
     smartSnapDetailSettingsChanged: SmartSnapDetailSettings;
     /** Ephemeral snap guide lines in surface space (viewport overlay). */
     snapGuidesChanged: ActiveSnapGuides | null;
+    /** Screen-ratio preview frame preset id, `null` = off (pure view state, global settings). */
+    previewAspectChanged: string | null;
+    /** Safe-area preview frame device preset id, `null` = off (pure view state, global settings). */
+    previewSafeAreaChanged: string | null;
 }
 
 interface IUIEditorFontFaceService extends IService {
@@ -751,6 +786,15 @@ interface IUIEditorStateService extends IService {
     /** Which guide categories participate when smart snap is on (persisted). */
     getSmartSnapDetailSettings(): SmartSnapDetailSettings;
     patchSmartSnapDetailSettings(patch: Partial<SmartSnapDetailSettings>): void;
+    /**
+     * Screen-ratio preview frame preset id (`null` = off). Pure view state: persisted in global
+     * settings, never in the UIDocument, so toggling it cannot dirty the project.
+     */
+    getPreviewAspectId(): string | null;
+    setPreviewAspectId(aspectId: string | null): void;
+    /** Safe-area preview frame device preset id (`null` = off). Pure view state, see above. */
+    getPreviewSafeAreaId(): string | null;
+    setPreviewSafeAreaId(safeAreaId: string | null): void;
     /** Active snap guides for the current interaction (null clears overlay). */
     getSnapGuides(): ActiveSnapGuides | null;
     setSnapGuides(guides: ActiveSnapGuides | null): void;
@@ -1083,6 +1127,11 @@ interface ILocalizationService extends IService {
     addLocale(entry: LocalizationLocaleEntry): Promise<LocalizationConfiguration>;
     removeLocale(code: string): Promise<LocalizationConfiguration>;
     setSourceLocale(code: string): Promise<LocalizationConfiguration>;
+    /** Edit a language's display name and fallback. Rejects a fallback that would never be read. */
+    updateLocaleEntry(
+        code: string,
+        patch: Partial<Pick<LocalizationLocaleEntry, "displayName" | "fallback">>,
+    ): Promise<LocalizationConfiguration>;
     loadDocument(locale: string): Promise<LocalizationDocument>;
     getDocumentIfLoaded(locale: string): LocalizationDocument | undefined;
     onDocumentChanged(handler: (event: { locale: string; document: LocalizationDocument }) => void): () => void;

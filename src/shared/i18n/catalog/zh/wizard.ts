@@ -2,39 +2,14 @@ import type { LocaleNamespace } from "../types";
 
 export const wizard = {
     appTitle: "添加项目",
-    header: {
-        title: "添加项目",
-        stepIndicator: "第 {current} 步，共 {total} 步",
-    },
     steps: {
-        template: {
-            label: "模板",
-            description: "选择项目模板",
-        },
-        details: {
-            label: "详情",
-            description: "项目信息",
-        },
-        settings: {
-            label: "设置",
-            description: "项目配置",
-        },
-        review: {
-            label: "确认",
-            description: "确认并创建",
-        },
-        source: {
-            label: "来源",
-            description: "服务器与存放位置",
-        },
-        clone: {
-            label: "获取项目",
-            description: "复制到本机",
-        },
-        import: {
-            label: "导入",
-            description: "解包到本机",
-        },
+        origin: "来源",
+        project: "工程",
+        stage: "舞台",
+        review: "确认",
+        source: "地址",
+        clone: "获取项目",
+        import: "导入",
     },
     nav: {
         createProject: "创建项目",
@@ -45,93 +20,70 @@ export const wizard = {
         importing: "正在导入…",
     },
     error: {
-        createFailedTitle: "创建项目失败",
         closeError: "关闭错误提示",
     },
     fields: {
-        author: "作者",
-        license: "许可证",
-        location: "位置",
-        versionControl: "版本控制",
-        resolution: "舞台尺寸",
         appId: "应用 ID",
+        author: "作者",
+        location: "位置",
+        scriptLocale: "剧本语言",
+        stageSize: "舞台尺寸",
+        version: "版本",
+        versionControl: "版本控制",
+        website: "主页",
+    },
+    origin: {
+        create: {
+            label: "新建工程",
+            description: "在这里从模板做一个",
+        },
+        import: {
+            label: "从安装包",
+            description: "别人导出的 .nlspkg",
+            next: "点「选择安装包」之后会依次弹出两个对话框：先选要解包的文件，再选解包到哪个文件夹",
+        },
+        clone: {
+            label: "从服务器",
+            description: "版本控制服务器上的工程",
+            next: "下一页填写项目地址，并选择本机副本的存放位置",
+        },
     },
     template: {
-        title: "这个项目从哪里来？",
-        subtitle: "新建一个，或者把已经存在的项目拿进来",
-        options: {
-            empty: {
-                name: "空白",
-                description: "从空白项目开始，从零构建",
-                category: "自定义",
-            },
-            import: {
-                name: "来自安装包",
-                description: "解包别人导出的 .nlspkg 文件",
-                category: "已有项目",
-            },
-            clone: {
-                name: "来自服务器",
-                description: "复制一个已存在于版本控制服务器上的项目",
-                category: "已有项目",
-            },
+        blank: {
+            name: "空白",
+            description: "只有工程结构，没有内容",
         },
     },
-    details: {
-        title: "项目详情",
-        subtitle: "填写项目的基本信息",
-        basicInfo: {
-            title: "基本信息",
-            description: "项目的基本信息与元数据",
-        },
-        application: {
-            title: "应用",
-            description: "多数项在项目创建后无法更改",
-        },
-        projectName: "项目名称",
-        projectNamePlaceholder: "输入项目名称…",
+    project: {
+        name: "项目名称",
+        namePlaceholder: "输入项目名称…",
         appIdPlaceholder: "输入应用标识符…",
-        appIdHelper: "只能包含小写字母、数字和连字符",
+        appIdHelper: "只能包含小写字母、数字和连字符，建成后不可更改",
         appIdRequired: "应用 ID 为必填项",
         appIdInvalid: "应用 ID 只能包含小写字母、数字和连字符",
-        authorPlaceholder: "作者邮箱 / 组织 / 项目",
-        licensePlaceholder: "选择许可证…",
-        customLicense: "自定义许可证",
-        customLicensePlaceholder: "输入自定义许可证…",
-        licenseOther: "其他",
-        descriptionPlaceholder: "描述你的项目…",
-        resolutionPlaceholder: "选择舞台尺寸…",
-        requiredFieldsTitle: "必填项",
-        requiredFieldsMessage: "请填写必填项：项目名称、应用 ID 和舞台尺寸",
-    },
-    settings: {
-        title: "项目设置",
-        subtitle: "配置项目位置、备份和版本控制设置",
-        location: {
-            description: "选择项目的保存位置",
-        },
-        versionControl: {
-            description: "为项目设置版本控制",
-            loreHint: "会在项目文件夹内建立版本历史，并把此刻记为第一个版本",
-            unavailablePlatform: "本机不支持版本控制，项目将不带版本控制创建",
-            unavailableInstallation: "当前安装的 Studio 不含版本控制，项目将不带版本控制创建",
-        },
-        projectLocation: "项目位置",
-        projectLocationPlaceholder: "输入项目位置…",
+        locationPlaceholder: "输入项目位置…",
         browseLocation: "选择文件夹…",
-        validatingDirectory: "正在校验目录…",
-        directoryWillBeCreated: "创建项目时将自动创建该目录",
-        versionControlSystem: "版本控制系统",
-        versionControlPlaceholder: "选择版本控制…",
-        backup: {
-            none: "不备份",
-            hourly: "每小时",
-            daily: "每天",
-            weekly: "每周",
-        },
+        validatingDirectory: "正在检查文件夹…",
+        directoryWillBeCreated: "创建项目时将一并创建该文件夹",
+        versionControlLoreHint: "会在项目文件夹内建立版本历史，并把此刻记为第一个版本",
+        versionControlUnavailablePlatform: "本机不支持版本控制，项目将不带版本控制创建",
+        versionControlUnavailableInstallation: "当前安装的 Studio 不含版本控制，项目将不带版本控制创建",
+        moreDetails: "更多信息",
+        versionHelper: "没有版本号的工程无法开始构建",
+        authorPlaceholder: "作者邮箱 / 组织 / 项目",
+        descriptionPlaceholder: "描述你的项目…",
+    },
+    stage: {
+        sizePlaceholder: "选择舞台尺寸…",
+        custom: "自定义…",
+        customInvalid: "宽和高必须是 {min} 到 {max} 之间的整数",
+        width: "宽",
+        height: "高",
+        orientationLandscape: "移动端构建将锁定横屏",
+        orientationPortrait: "移动端构建将锁定竖屏",
+        scriptLocaleHelper: "剧本撰写所用的语言。译文在本地化面板里添加",
     },
     import: {
-        title: "导入项目安装包",
         subtitle: "把一个 .nlspkg 文件解包到本机的文件夹里",
         steps: {
             title: "接下来会发生什么",
@@ -139,16 +91,15 @@ export const wizard = {
             pickPackage: "第一步：选择要解包的 .nlspkg 文件",
             pickFolder: "第二步：选择解包到哪个文件夹",
         },
-        working: "等待你选择安装包和目标文件夹，两个都选好之后才开始解包",
+        working: "等待选择安装包和目标文件夹。两项都选择后开始解包",
         error: {
             failedTitle: "无法导入项目",
             generic: "无法导入该项目安装包",
             notAProjectTitle: "这不是 NarraLeaf Studio 项目",
-            notAProject: "安装包已解包，但其中没有 Studio 项目文件。已解包的内容位于 {path}。请确认拿到的文件是否正确，然后重试",
+            notAProject: "安装包已解包，但其中没有 Studio 项目文件。已解包的内容位于 {path}。请确认该文件是否正确，然后重试",
         },
     },
     source: {
-        title: "项目在哪里",
         subtitle: "指向存放该项目的服务器，并选择本机副本的存放位置",
         server: {
             title: "服务器",
@@ -168,7 +119,6 @@ export const wizard = {
         destinationWillBeCreated: "复制项目时将创建该文件夹",
     },
     clone: {
-        title: "获取项目",
         subtitle: "尚未开始下载。此操作会把整个项目复制到本机",
         summary: {
             title: "将要复制的内容",
@@ -183,27 +133,15 @@ export const wizard = {
         },
     },
     review: {
-        title: "确认项目",
-        subtitle: "创建前请确认你的项目设置",
-        summary: {
-            title: "项目概要",
-            description: "项目配置一览",
-        },
-        selectedTemplate: {
-            title: "已选模板",
-            description: "将要使用的项目模板",
-        },
-        settings: {
-            description: "将应用到项目的配置",
-        },
+        template: "模板",
         notSpecified: "未指定",
-        custom: "自定义",
     },
     validation: {
         templateFailed: "无法将模板内容复制到工程中",
         nameRequired: "项目名称为必填项",
         locationRequired: "项目位置为必填项",
         templateRequired: "项目模板为必填项",
+        stageSizeRequired: "舞台尺寸为必填项",
         invalidPath: "无效路径",
         notADirectory: "该路径已存在，但不是目录。换一个目录，或新建一个",
         cannotWrite: "无法写入该目录。检查权限，或换一个位置",

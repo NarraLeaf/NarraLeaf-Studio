@@ -11,6 +11,7 @@ import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
@@ -223,6 +224,7 @@ export enum IPCEventType {
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
     blueprintPersistenceSetValue = "blueprintPersistence.setValue",
     blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
+    blueprintNetworkFetch = "blueprintNetwork.fetch",
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -2016,6 +2018,27 @@ export type IPCBlueprintPersistenceEvents = {
             key: string;
         },
         response: void;
+    };
+    /**
+     * One Fetch node request, issued from the main process on the Dev Mode preview's behalf.
+     *
+     * The renderer sends the request and never the decision: the handler reads the project's own
+     * Allow HTTP setting off disk and refuses when it is off. Trusting a flag the renderer passed
+     * would make this channel a way around the setting rather than a way to honour it.
+     *
+     * The project path, not a window handle, is what identifies whose setting applies - the same
+     * shape `devModeNetworkPolicy` already uses.
+     */
+    [IPCEventType.blueprintNetworkFetch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            request: BlueprintNetworkFetchRequest;
+        },
+        response: {
+            result: BlueprintNetworkFetchResult;
+        };
     };
 };
 

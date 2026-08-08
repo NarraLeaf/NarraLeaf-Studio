@@ -7,6 +7,8 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_SAVED_SET,
 } from "@shared/types/blueprint/graph";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
@@ -120,7 +122,16 @@ function uiDocument(): UIDocument {
     };
 }
 
-type MockRegistryEntry = { id: string; name: string; valueType: string; defaultValue?: unknown; storageKey: string; description?: string };
+type MockRegistryScope = "saved" | "persistent";
+type MockRegistryEntry = {
+    id: string;
+    name: string;
+    scope: MockRegistryScope;
+    valueType: string;
+    defaultValue?: unknown;
+    storageKey: string;
+    description?: string;
+};
 
 function createHarness() {
     const graphDocument = { blueprintDocument: blueprintDocument() };
@@ -140,12 +151,16 @@ function createHarness() {
         listEntries() {
             return Object.values(registry.entries).sort((a, b) => a.name.localeCompare(b.name));
         },
-        createEntry(input?: { name?: string; valueType?: string; defaultValue?: unknown }) {
-            const id = `persist-${++nextId}`;
+        listEntriesInScope(scope: MockRegistryScope) {
+            return this.listEntries().filter(entry => entry.scope === scope);
+        },
+        createEntry(scope: MockRegistryScope, input?: { name?: string; valueType?: string; defaultValue?: unknown }) {
+            const id = `${scope === "saved" ? "saved" : "persist"}-${++nextId}`;
             const entry: MockRegistryEntry = {
                 id,
                 storageKey: id,
-                name: input?.name ?? `persist_${id}`,
+                name: input?.name ?? `${scope}_${id}`,
+                scope,
                 valueType: input?.valueType ?? "json",
                 defaultValue: input?.defaultValue,
             };
@@ -155,6 +170,11 @@ function createHarness() {
         renameEntry(id: string, name: string) {
             if (registry.entries[id]) {
                 registry.entries[id].name = name;
+            }
+        },
+        setEntryValueType(id: string, valueType: string) {
+            if (registry.entries[id]) {
+                registry.entries[id].valueType = valueType;
             }
         },
         setEntryDefault(id: string, defaultValue: unknown) {
@@ -256,6 +276,105 @@ describe("LocalBlueprintService persistent variables (M-VAR registry)", () => {
         expect(registryService.listEntries()).toEqual([]);
         service.undoBlueprint("bp-main");
         expect(registryService.listEntries().map(e => e.name)).toEqual(["Gold"]);
+    });
+
+    it("retypes through the registry, on the same undo stack", () => {
+        const { service, registryService } = createHarness();
+
+        const created = service.createPersistentVariable("bp-main", { name: "Gold", valueType: "number" });
+        service.setPersistentVariableValueType("bp-main", created.id, "string");
+        expect(registryService.getRegistry().entries[created.id].valueType).toBe("string");
+
+        service.undoBlueprint("bp-main");
+        expect(registryService.getRegistry().entries[created.id].valueType).toBe("number");
+    });
+});
+
+describe("LocalBlueprintService saved variables (M-VAR registry)", () => {
+    /**
+     * The two scopes share one registry, so the listings are the only thing keeping them apart -
+     * and the persistent listing feeds the blueprint member tree and the persistent node picker.
+     */
+    it("lists each scope separately", () => {
+        const { service } = createHarness();
+
+        const persistent = service.createPersistentVariable("bp-main", { name: "Gold" });
+        const saved = service.createSavedRegistryVariable("bp-main", { name: "Route Flag" });
+
+        expect(service.listPersistentVariables().map(e => e.id)).toEqual([persistent.id]);
+        expect(service.listSavedVariables().map(e => e.id)).toEqual([saved.id]);
+    });
+
+    it("delegates saved CRUD to the registry and undoes it through blueprint history", () => {
+        const { service, registryService } = createHarness();
+
+        const created = service.createSavedRegistryVariable("bp-main", { name: "Route Flag", valueType: "boolean" });
+        expect(registryService.getRegistry().entries[created.id]).toMatchObject({
+            name: "Route Flag",
+            scope: "saved",
+            valueType: "boolean",
+        });
+
+        service.renameSavedRegistryVariable("bp-main", created.id, "Route");
+        service.setSavedRegistryVariableDefault("bp-main", created.id, true);
+        service.setSavedRegistryVariableValueType("bp-main", created.id, "string");
+        expect(registryService.getRegistry().entries[created.id]).toMatchObject({
+            name: "Route",
+            defaultValue: true,
+            valueType: "string",
+        });
+
+        service.undoBlueprint("bp-main");
+        expect(registryService.getRegistry().entries[created.id].valueType).toBe("boolean");
+    });
+
+    /**
+     * The saved twin of the persistent node-ref cleanup: `Get/Set Saved Var` address their variable
+     * through `savedVariableId`, so a delete that left the param behind would leave a node that only
+     * fails once the story runs it.
+     */
+    it("clears saved node refs on delete, and leaves other scopes' params alone", () => {
+        const { service, graphDocument } = createHarness();
+
+        const saved = service.createSavedRegistryVariable("bp-main", { name: "Route Flag" });
+        const persistent = service.createPersistentVariable("bp-main", { name: "Gold" });
+
+        const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
+        if (bp.program.kind !== "graph") {
+            throw new Error("Expected graph blueprint");
+        }
+        bp.program.graphs.events.onClick = {
+            id: "onClick",
+            graph: {
+                nodes: {
+                    getSaved: {
+                        id: "getSaved",
+                        type: BLUEPRINT_NODE_TYPE_SAVED_GET,
+                        params: { savedVariableId: saved.id },
+                    },
+                    setSaved: {
+                        id: "setSaved",
+                        type: BLUEPRINT_NODE_TYPE_SAVED_SET,
+                        params: { savedVariableId: saved.id, [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "boolean" },
+                    },
+                    getPersistent: {
+                        id: "getPersistent",
+                        type: BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+                        params: { persistentVariableId: persistent.id },
+                    },
+                },
+                edges: [],
+            },
+        };
+
+        service.deleteSavedRegistryVariable("bp-main", saved.id);
+
+        const nodes = bp.program.graphs.events.onClick?.graph?.nodes;
+        expect(nodes?.getSaved?.params?.savedVariableId).toBeUndefined();
+        expect(nodes?.setSaved?.params?.savedVariableId).toBeUndefined();
+        expect(nodes?.setSaved?.params?.[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]).toBeUndefined();
+        // A different scope's node param is a different identity space; it must not be touched.
+        expect(nodes?.getPersistent?.params?.persistentVariableId).toBe(persistent.id);
     });
 });
 

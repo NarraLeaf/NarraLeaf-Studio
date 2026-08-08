@@ -1,6 +1,6 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
-import type { PersistentVariableRuntimeTable } from "./variables/registry";
+import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle } from "./localization";
 import type { PlayerPreferences } from "./preference";
 import type { AutoSaveConfiguration } from "./saves";
@@ -234,6 +234,19 @@ export type DevModeBundle = {
          * `persistentVariableId`).
          */
         persistentVariables: PersistentVariableRuntimeTable;
+        /**
+         * Project-level SAVED variables (M-VAR registry), baked from the same
+         * `editor/variables.json`. Keyed by variable id, exactly like `persistentVariables`.
+         *
+         * A separate field rather than a scope filter over one table: the two scopes are backed by
+         * different stores - saved values ride the playthrough's save file, persistent values live in
+         * app-level host persistence - so a consumer that could reach the wrong one would write player
+         * progress into the wrong lifetime.
+         *
+         * These are only half of "every saved variable": the story's own `/save` declaration rows are
+         * the other authoring surface, and the compiler unions the two.
+         */
+        savedVariables: SavedVariableRuntimeTable;
     };
     story?: StoryDocument;
     storyLibrary?: DevModeStoryLibrary;

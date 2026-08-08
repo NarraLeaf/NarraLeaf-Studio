@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { Button, IconButton, Input, Select } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { getInterface } from "@/lib/app/bridge";
 import { basename } from "@shared/utils/path";
 import {
@@ -26,9 +27,21 @@ import {
 } from "./buildSigningImport";
 
 /**
- * The build dialog's Signing section: one row per signable target the current
- * selection includes, each pointing that platform at a credential from the
- * machine's vault (or at nothing, which builds it unsigned).
+ * The signing credential UI, in the two shapes its two hosts need.
+ *
+ * {@link SigningSection} is the editable one - a row per signable platform, each
+ * pointing that platform at a credential from the machine's vault (or at
+ * nothing, which builds it unsigned), plus the form that puts a credential on
+ * this machine. It is hosted by Project ▸ Settings, because obtaining a
+ * certificate is preparation: it happens days before the build that uses it, and
+ * a wizard nobody can reach without opening the build dialog is a wizard nobody
+ * runs early.
+ *
+ * {@link SigningSummary} is the read-only one, hosted by the build dialog as the
+ * last look before building. It is a second *view*, not a second implementation:
+ * both read the vault through {@link useSigningVault} and describe a credential
+ * through {@link CredentialSummary}, so the two cannot come to disagree about
+ * what a certificate says.
  *
  * The project stores only the credential id. Everything shown here - subject,
  * expiry, key id - is read back through `signing.inspect`, which is the only
@@ -51,13 +64,16 @@ function signingRowLabel(platform: SigningPlatform, t: ReturnType<typeof useTran
 export function SigningSection({
     platforms,
     signing,
+    busy = false,
     onChange,
     onRemove,
     children,
 }: {
-    /** Signable platforms the current target selection includes, in display order. */
+    /** Signable platforms to offer a row for, in display order. */
     platforms: SigningPlatform[];
     signing: SigningConfiguration;
+    /** A write of the host's is in flight; the controls wait rather than queue a second one. */
+    busy?: boolean;
     onChange: (platform: SigningPlatform, credentialId: string | undefined) => void;
     /** Asks the author first, then deletes from the vault. True when it went through. */
     onRemove: (credential: SigningCredential) => Promise<boolean>;
@@ -65,11 +81,16 @@ export function SigningSection({
     children?: React.ReactNode;
 }) {
     const { t } = useTranslation();
+    // Every control here ends in a write of `project.json` - the Import button included, because the
+    // form finishes by pointing the project at what it imported. A frozen workspace refuses that at
+    // the boundary, so the whole set greys out rather than offering a choice that cannot land.
+    const freeze = useFreezeGuard();
+    const frozen = freeze.writes(busy);
     const selectedIds = useMemo(
         () => platforms.map(platform => signing[platform]).filter((id): id is string => Boolean(id)),
         [platforms, signing],
     );
-    const { credentials, certificates, reload } = useSigningVault(selectedIds);
+    const { credentials, certificates, loaded, reload } = useSigningVault(selectedIds);
     const [importing, setImporting] = useState<SigningPlatform | null>(null);
 
     if (importing) {
@@ -108,6 +129,8 @@ export function SigningSection({
                         selectedId={selectedId}
                         credential={credential}
                         certificate={selectedId ? certificates[selectedId] : undefined}
+                        loaded={loaded}
+                        frozen={frozen}
                         onSelect={id => onChange(platform, id)}
                         onImport={() => setImporting(platform)}
                         onRemove={async () => {
@@ -131,6 +154,8 @@ function SigningRow({
     selectedId,
     credential,
     certificate,
+    loaded,
+    frozen,
     onSelect,
     onImport,
     onRemove,
@@ -140,6 +165,10 @@ function SigningRow({
     selectedId: string | undefined;
     credential: SigningCredential | null;
     certificate: SigningInspectResult | undefined;
+    /** Whether the vault has answered yet; until it has, nothing is missing, it is merely unread. */
+    loaded: boolean;
+    /** From `FreezeGuard.writes` - the reason goes on the row, because a disabled select has no hover. */
+    frozen: { disabled: boolean; title: string | undefined };
     onSelect: (credentialId: string | undefined) => void;
     onImport: () => void;
     onRemove: () => void;
@@ -154,53 +183,155 @@ function SigningRow({
         // A project opened on another machine points at an id that is not here.
         // Without a matching option the picker would silently read as "unsigned"
         // while preflight said otherwise; this keeps the two telling one story.
-        if (selectedId && !mine.some(candidate => candidate.id === selectedId)) {
+        //
+        // Only once the vault has answered, though. `credentials` starts empty, and this option
+        // carries `selectedId` as its value, so it would be the *selected* one - every configured
+        // row would open reading "missing on this machine" and then correct itself, which is the
+        // one thing about a signing credential an author must be able to believe on sight.
+        if (loaded && selectedId && !mine.some(candidate => candidate.id === selectedId)) {
             list.push({ value: selectedId, label: t("build.signing.missing") });
         }
         return list;
-    }, [credentials, platform, selectedId, t]);
+    }, [credentials, loaded, platform, selectedId, t]);
 
     return (
-        // min-w-0: a grid item's default `min-width: auto` refuses to shrink
-        // below its content, and the fixed-width picker plus the Import button
-        // put that floor above the dialog's width - which showed up as a
-        // horizontal scrollbar across the whole section and a preflight message
-        // clipped mid-word.
-        <div className="group min-w-0 rounded-md border border-edge-subtle px-3 py-2.5">
-            <div className="flex min-w-0 items-center justify-between gap-3">
-                <span className="text-fg">{signingRowLabel(platform, t)}</span>
-                <div className="flex items-center gap-1.5">
-                    {/* Fixed width so the rows line up and the menu matches the
-                        trigger; a credential name longer than this truncates. */}
-                    <div className="w-44">
-                        <Select
-                            size="sm"
-                            fullWidth
-                            value={selectedId ?? ""}
-                            onChange={value => onSelect(String(value) || undefined)}
-                            options={options}
-                        />
-                    </div>
-                    {credential && (
-                        <IconButton
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                            aria-label={t("build.signing.remove")}
-                            title={t("build.signing.remove")}
-                            onClick={onRemove}
-                        >
-                            <Trash2 className="h-3.5 w-3.5" />
-                        </IconButton>
-                    )}
-                    <Button variant="secondary" size="sm" onClick={onImport}>
-                        {t("build.signing.import")}
-                    </Button>
+        // The same frame every project setting row uses (`settingRows.SettingShell`), because this now
+        // sits among them in a 318px panel.
+        //
+        // Stacked rather than label-beside-control: the picker and the Import button together have a
+        // min-content floor well above that width, and `min-width: auto` on a grid item refuses to
+        // shrink below it - which showed up once as a horizontal scrollbar across the whole section
+        // and a preflight message clipped mid-word. On its own line the picker flexes instead.
+        <div className="group min-w-0 rounded-md border border-edge bg-fill-subtle p-3" title={frozen.title}>
+            <div className="flex min-w-0 items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-sm font-medium text-fg">{signingRowLabel(platform, t)}</span>
+                {credential && (
+                    <IconButton
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                        aria-label={t("build.signing.remove")}
+                        title={t("build.signing.remove")}
+                        disabled={frozen.disabled}
+                        onClick={onRemove}
+                    >
+                        <Trash2 className="h-3.5 w-3.5" />
+                    </IconButton>
+                )}
+            </div>
+            <div className="mt-2 flex min-w-0 items-center gap-1.5">
+                <div className="min-w-0 flex-1">
+                    <Select
+                        size="sm"
+                        fullWidth
+                        portalMenu
+                        disabled={frozen.disabled}
+                        value={selectedId ?? ""}
+                        ariaLabel={signingRowLabel(platform, t)}
+                        onChange={value => onSelect(String(value) || undefined)}
+                        options={options}
+                    />
                 </div>
+                <Button variant="secondary" size="sm" className="shrink-0" disabled={frozen.disabled} onClick={onImport}>
+                    {t("build.signing.import")}
+                </Button>
             </div>
             {credential && <CredentialSummary credential={credential} certificate={certificate} />}
         </div>
     );
+}
+
+/**
+ * The same selection, reported rather than offered: what signs each target of
+ * this build, and whether this machine can honour it.
+ *
+ * The build dialog's half. The picker and the import form both moved to the
+ * project panel - a certificate is prepared before a build, not during one - and
+ * what is left here is the last look, plus the one state worth crossing the
+ * workspace for: a project that names a credential this machine does not hold.
+ */
+export function SigningSummary({
+    platforms,
+    signing,
+    children,
+}: {
+    /** Signable platforms the current target selection includes, in display order. */
+    platforms: SigningPlatform[];
+    signing: SigningConfiguration;
+    /** Preflight findings and the jump back to the panel, rendered under the rows. */
+    children?: React.ReactNode;
+}) {
+    const { t } = useTranslation();
+    const selectedIds = useMemo(
+        () => platforms.map(platform => signing[platform]).filter((id): id is string => Boolean(id)),
+        [platforms, signing],
+    );
+    const { credentials, certificates, loaded } = useSigningVault(selectedIds);
+
+    return (
+        <div className="grid gap-2">
+            {platforms.length === 0 ? (
+                <span className="text-2xs text-fg-subtle">{t("build.signing.empty")}</span>
+            ) : platforms.map(platform => {
+                const selectedId = signing[platform];
+                const credential = credentials.find(candidate => candidate.id === selectedId) ?? null;
+                return (
+                    <div key={platform} className="min-w-0 rounded-md border border-edge-subtle px-3 py-2.5">
+                        <div className="flex min-w-0 items-baseline justify-between gap-3">
+                            <span className="shrink-0 text-fg">{signingRowLabel(platform, t)}</span>
+                            <SelectedCredential
+                                selectedId={selectedId}
+                                credential={credential}
+                                loaded={loaded}
+                            />
+                        </div>
+                        {credential && (
+                            <CredentialSummary
+                                credential={credential}
+                                certificate={selectedId ? certificates[selectedId] : undefined}
+                            />
+                        )}
+                    </div>
+                );
+            })}
+            {children}
+        </div>
+    );
+}
+
+/**
+ * What the project points this platform at, in one phrase.
+ *
+ * The missing case is the reason this section is still in the dialog at all: key
+ * material never travels with a project, so an id that resolves to nothing here
+ * means the build ships unsigned. It is only claimed once the vault has actually
+ * answered - before that every id looks missing, and a warning that appears and
+ * then withdraws itself teaches the author to ignore it.
+ */
+function SelectedCredential({
+    selectedId,
+    credential,
+    loaded,
+}: {
+    selectedId: string | undefined;
+    credential: SigningCredential | null;
+    loaded: boolean;
+}) {
+    const { t } = useTranslation();
+    if (!selectedId) {
+        return <span className="min-w-0 truncate text-2xs text-fg-subtle">{t("build.signing.none")}</span>;
+    }
+    if (credential) {
+        return (
+            <span className="min-w-0 truncate text-2xs text-fg-muted" title={credential.label}>
+                {credential.label}
+            </span>
+        );
+    }
+    if (!loaded) {
+        return null;
+    }
+    return <span className="min-w-0 truncate text-2xs text-warning">{t("build.signing.missing")}</span>;
 }
 
 /**
@@ -406,11 +537,17 @@ function SigningImportForm({
     );
 }
 
+/**
+ * Label above the control, not beside it - the shape `settingRows.SettingStack` uses, and for the
+ * same reason: this form is only ever hosted by the project panel, which the author may drag down
+ * to 240px. A fixed-width label there left the certificate field about 90px wide, so a chosen file
+ * read as "未..." - no overflow, just a filename nobody can check before typing its password.
+ */
 function ImportRow({ label, children }: { label: string; children: React.ReactNode }) {
     return (
-        <div className="flex items-center gap-3">
-            <span className="w-28 shrink-0 text-xs text-fg-muted">{label}</span>
-            <div className="min-w-0 flex-1">{children}</div>
+        <div className="grid min-w-0 gap-1.5 [&>*]:min-w-0">
+            <span className="text-xs text-fg-muted">{label}</span>
+            {children}
         </div>
     );
 }
@@ -631,6 +768,9 @@ function MacIdentityField({
 function useSigningVault(selectedIds: string[]) {
     const [credentials, setCredentials] = useState<SigningCredential[]>([]);
     const [certificates, setCertificates] = useState<Record<string, SigningInspectResult>>({});
+    // Whether the vault has answered at all. An empty list and a list not yet fetched are the same
+    // value and opposite facts: the first means "this id is not here", the second means "ask later".
+    const [loaded, setLoaded] = useState(false);
     const inspected = useRef<Record<string, SigningInspectResult>>({});
 
     const reload = useCallback(async () => {
@@ -640,6 +780,9 @@ function useSigningVault(selectedIds: string[]) {
         setCertificates({});
         const result = await getInterface().signing.list();
         setCredentials(result.success ? result.data.credentials : []);
+        // Never goes back to false: a reload replaces a list that was already answered for, and
+        // withdrawing the answer mid-flight would flicker every row it had already described.
+        setLoaded(true);
     }, []);
 
     useEffect(() => {
@@ -671,7 +814,7 @@ function useSigningVault(selectedIds: string[]) {
         };
     }, [wanted, credentials]);
 
-    return { credentials, certificates, reload };
+    return { credentials, certificates, loaded, reload };
 }
 
 /** Where `notAfter` sits relative to now. Mirrors the main process's own reading. */

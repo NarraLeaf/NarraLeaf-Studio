@@ -25,6 +25,8 @@ import type {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
+import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import type { StorySnapshotPanelPayload } from "./storySnapshotPanelId";
 
 const INPUT_CLASS =
@@ -145,7 +147,10 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
     );
 
     const [document, setDocument] = useState<StoryDocument | null>(null);
-    const [blueprintPersistent, setBlueprintPersistent] = useState<SnapshotVarEntry[]>([]);
+    const [registryVariables, setRegistryVariables] = useState<{
+        saved: VariableRegistryEntry[];
+        persistent: VariableRegistryEntry[];
+    }>({ saved: [], persistent: [] });
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -169,14 +174,10 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
     useEffect(() => {
         if (!blueprintService) return;
         const read = () =>
-            setBlueprintPersistent(
-                blueprintService.listPersistentVariables().map(variable => ({
-                    refKey: `persistent:${variable.storageKey}`,
-                    name: variable.name,
-                    valueType: asStoryValueType(variable.valueType),
-                    defaultValue: variable.defaultValue as StoryLiteralValue | undefined,
-                })),
-            );
+            setRegistryVariables({
+                saved: blueprintService.listSavedVariables(),
+                persistent: blueprintService.listPersistentVariables(),
+            });
         read();
         return blueprintService.onBlueprintHistoryChanged(read);
     }, [blueprintService]);
@@ -208,7 +209,21 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
 
     const selected = useMemo(() => snapshots.find(snapshot => snapshot.id === selectedId) ?? null, [snapshots, selectedId]);
 
-    // Every variable the current scene can address, in scope-chain order (scene → saved → persistent).
+    /**
+     * Every variable the current scene can address, in scope-chain order (scene → saved → persistent).
+     *
+     * The two project scopes come from `buildMergedVariableView`, the same union the compiler and the
+     * command line resolve against, rather than a merge written out here. This panel used to roll its
+     * own, and it disagreed with the shared one in a way nothing could see: it silently dropped a
+     * registry entry whose storage key matched a story row, so a genuine cross-surface name clash
+     * showed the author ONE row and a value that would be written to whichever variable the compiler
+     * picked. Diverging again is the failure mode to guard against, not duplicated code.
+     *
+     * `refKey` is PERSISTED into `StorySceneSnapshot.values` and read back when a snapshot launches,
+     * so the two key formats are fixed: `saved:<entry id>` and `persistent:<storage key>`. The
+     * declaration migration mints a registry entry's id from the row's block id precisely so the saved
+     * form keeps addressing the same variable; do not "unify" them onto one field.
+     */
     const entries = useMemo<SnapshotVarEntry[]>(() => {
         if (!document || !sceneId) return [];
         const scene = document.scenes[sceneId];
@@ -217,21 +232,29 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
         for (const def of Object.values(sceneVariableDefs(scene))) {
             list.push({ refKey: `scene:${def.id}`, name: def.name, valueType: def.valueType, defaultValue: def.defaultValue });
         }
-        for (const def of Object.values(savedVariableDefs(document))) {
-            list.push({ refKey: `saved:${def.id}`, name: def.name, valueType: def.valueType, defaultValue: def.defaultValue });
+        const saved = buildMergedVariableView(registryVariables.saved, Object.values(savedVariableDefs(document)));
+        for (const entry of saved.entries) {
+            list.push({
+                refKey: `saved:${entry.id}`,
+                name: entry.name,
+                valueType: asStoryValueType(entry.valueType),
+                defaultValue: entry.defaultValue,
+            });
         }
-        const seen = new Set<string>();
-        for (const def of Object.values(storyPersistentDefs(document))) {
-            const refKey = `persistent:${def.storageKey}`;
-            seen.add(refKey);
-            list.push({ refKey, name: def.name, valueType: def.valueType, defaultValue: def.defaultValue });
-        }
-        for (const entry of blueprintPersistent) {
-            if (seen.has(entry.refKey)) continue;
-            list.push(entry);
+        const persistent = buildMergedVariableView(
+            registryVariables.persistent,
+            Object.values(storyPersistentDefs(document)),
+        );
+        for (const entry of persistent.entries) {
+            list.push({
+                refKey: `persistent:${entry.storageKey}`,
+                name: entry.name,
+                valueType: asStoryValueType(entry.valueType),
+                defaultValue: entry.defaultValue,
+            });
         }
         return list;
-    }, [document, sceneId, blueprintPersistent]);
+    }, [document, sceneId, registryVariables]);
 
     const booleanOptions: SelectOption[] = useMemo(
         () => [

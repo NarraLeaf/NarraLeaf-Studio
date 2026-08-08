@@ -1,6 +1,6 @@
 import React from "react";
 import { isMacPlatform } from "@/lib/app/platform";
-import { TitleBar } from "@/lib/components/layout";
+import { TitleBar, windowRootProps } from "@/lib/components/layout";
 import { WindowControlPolicy } from "@shared/types/window";
 
 export interface NavigationLayoutProps {
@@ -28,7 +28,7 @@ export function NavigationLayout({
     const windowControlPolicy = WindowControlPolicy.MacNativeOutsideTitleBar;
 
     return (
-        <div className={`fixed inset-0 h-[100vh] w-[100vw] overflow-hidden text-fg bg-surface ${className}`}>
+        <div {...windowRootProps} className={`fixed inset-0 h-[100vh] w-[100vw] overflow-hidden text-fg bg-surface ${className}`}>
             <div
                 className="grid h-full min-h-0 min-w-0 overflow-hidden"
                 style={{
