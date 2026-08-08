@@ -93,8 +93,8 @@ export const characters = {
         runtime: {
             title: "安装 {product}",
             installed: "{product} 已安装",
-            licenceTitle: "安装之前",
-            licenceAgree: "我已阅读以上条款",
+            licenseTitle: "安装之前",
+            licenseAgree: "我已阅读以上条款",
             vendorLink: "打开 {product} 下载页",
             docsLink: "阅读 {product} 指南",
             customDocsLink: "阅读如何编写运行时",
