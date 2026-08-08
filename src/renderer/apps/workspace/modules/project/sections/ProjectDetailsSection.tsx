@@ -8,7 +8,7 @@ import type { ProjectMetadata } from "@/lib/workspace/project/project";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
-type MetadataTextKey = "version" | "author" | "website" | "description";
+type MetadataTextKey = "version" | "author" | "website" | "copyright" | "description";
 
 export function ProjectDetailsSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
     const { t } = useTranslation();
@@ -71,6 +71,17 @@ export function ProjectDetailsSection({ projectService, uiService, config, onCon
                     initialValue={metadata.website ?? ""}
                     placeholder="https://example.com"
                     onCommit={value => commitMetadata("website", value)}
+                    onError={message => uiService?.showNotification(message, "error")}
+                />
+
+                {/* Was only ever editable inside the build dialog, which meant the one line that ends
+                    up in the packaged app's file properties could not be written without opening a
+                    dialog about producing a build. Same service, same field, same file. */}
+                <DetailField
+                    label={t("project.details.copyrightLabel")}
+                    initialValue={metadata.copyright ?? ""}
+                    placeholder={t("project.details.copyrightPlaceholder")}
+                    onCommit={value => commitMetadata("copyright", value)}
                     onError={message => uiService?.showNotification(message, "error")}
                 />
 
