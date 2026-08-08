@@ -1,4 +1,5 @@
 import { resolveLocalizedText } from "./localizedText";
+import { isStageSizeUsable, type StageSize } from "./stageSize";
 
 /**
  * A project template that ships inside Studio (`resources/templates/<id>/`).
@@ -23,8 +24,31 @@ export type ProjectTemplateDescriptor = {
      */
     locales: Record<string, { name?: string; description?: string }>;
     /** The stage size the template's interface and scenes were authored against. */
-    designSize?: { width: number; height: number };
+    designSize?: StageSize;
+    /**
+     * Every stage size this template's content is laid out for, when it has more than one.
+     *
+     * A template's surfaces are positioned in absolute coordinates, so the size is not the
+     * author's to choose freely - picking one the template was not drawn for produces a project
+     * whose interface is off the edge of its own stage, silently. The wizard therefore offers
+     * exactly what is listed here and nothing else.
+     */
+    designSizes?: StageSize[];
 };
+
+/**
+ * The stage sizes a template may be created at, in offer order.
+ *
+ * Empty means the template says nothing about it, and the author picks freely - which is what
+ * every template did before this field existed, and what a metadata-only template still means.
+ */
+export function projectTemplateStageSizes(template: ProjectTemplateDescriptor): StageSize[] {
+    const declared = template.designSizes?.filter(isStageSizeUsable) ?? [];
+    if (declared.length > 0) {
+        return declared;
+    }
+    return template.designSize && isStageSizeUsable(template.designSize) ? [template.designSize] : [];
+}
 
 /**
  * Pick the best name/description for a locale.
