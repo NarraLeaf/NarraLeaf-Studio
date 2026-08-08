@@ -42,6 +42,7 @@ import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { DEFAULT_VOICE_NAMING_PATTERN, isValidLocaleCode, type VoiceConfiguration } from "@shared/types/voice";
+import { localeAutonym as autonymFor } from "@shared/types/localization";
 import { parseVoiceCsv, serializeVoiceCsv } from "@shared/utils/voiceCsv";
 import { matchKeyForFilename, VOICE_NAME_TOKENS } from "@shared/utils/voiceNaming";
 import { readAudioDuration } from "@/lib/workspace/services/voice/audioDuration";
@@ -71,16 +72,6 @@ const GHOST_ROW_CLASS =
 
 /** The pattern tokens, spelled the way an author types them. */
 const NAMING_TOKEN_HINT = VOICE_NAME_TOKENS.filter(token => token !== "unitId").map(token => `{${token}}`).join(" ");
-
-/** Autonym for a language code via Intl (e.g. "ja" → "日本語"); falls back to the code. */
-function autonymFor(code: string): string {
-    try {
-        const name = new Intl.DisplayNames([code], { type: "language" }).of(code);
-        return name && name !== code ? name : code;
-    } catch {
-        return code;
-    }
-}
 
 export function VoicePanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();

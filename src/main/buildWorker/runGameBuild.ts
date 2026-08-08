@@ -77,6 +77,11 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
         ...(target.electronDist ? { electronDist: target.electronDist } : {}),
         ...(target.iconPath ? { icon: target.iconPath } : {}),
         ...(config.copyright ? { copyright: config.copyright } : {}),
+        // `to` is the app's content root, which is next to the executable on Windows and Linux and
+        // `Contents/` inside the bundle on macOS - in all three, the folder a player lands in.
+        ...(config.copyrightFile
+            ? { extraFiles: [{ from: config.copyrightFile, to: "COPYRIGHT.txt" }] }
+            : {}),
         ...(config.compression ? { compression: config.compression } : {}),
         ...(config.electronMirror
             ? { electronDownload: { mirror: config.electronMirror } }
