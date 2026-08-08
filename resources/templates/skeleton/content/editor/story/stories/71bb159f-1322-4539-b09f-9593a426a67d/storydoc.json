@@ -189,7 +189,15 @@
           "childrenIds": [],
           "kind": "jump",
           "payload": {
-            "targetSceneId": "5143dcd8-bebc-4468-b4e2-00f6d5781af6"
+            "targetSceneId": "5143dcd8-bebc-4468-b4e2-00f6d5781af6",
+            "transition": {
+              "kind": "throughColor",
+              "durationMs": 800,
+              "props": {
+                "color": "#000000",
+                "hold": 25
+              }
+            }
           }
         },
         "4ed7e788-e36a-4615-9d03-75b6c4432d58": {
@@ -242,12 +250,8 @@
             "action": "setBackground",
             "assetId": "64ce569f-7104-4c57-9baf-20d14d1e0ddb",
             "transition": {
-              "kind": "throughColor",
-              "durationMs": 800,
-              "props": {
-                "color": "#000000",
-                "hold": 25
-              }
+              "kind": "dissolve",
+              "durationMs": 600
             }
           }
         },
@@ -401,7 +405,15 @@
           "childrenIds": [],
           "kind": "jump",
           "payload": {
-            "targetSceneId": "c083e0f3-8665-451a-800a-6d2cd5650d33"
+            "targetSceneId": "c083e0f3-8665-451a-800a-6d2cd5650d33",
+            "transition": {
+              "kind": "throughColor",
+              "durationMs": 800,
+              "props": {
+                "color": "#000000",
+                "hold": 25
+              }
+            }
           }
         },
         "50e43bce-a764-470b-842f-8374e35fbcbc": {
@@ -607,12 +619,8 @@
             "action": "setBackground",
             "assetId": "5322b0e3-f48d-4b77-bfcd-7406613191ce",
             "transition": {
-              "kind": "throughColor",
-              "durationMs": 800,
-              "props": {
-                "color": "#000000",
-                "hold": 25
-              }
+              "kind": "dissolve",
+              "durationMs": 600
             }
           }
         },
@@ -810,6 +818,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T04:03:28.336Z",
-    "updatedAt": "2026-08-07T21:56:37.464Z"
+    "updatedAt": "2026-08-08T02:18:20.879Z"
   }
 }
