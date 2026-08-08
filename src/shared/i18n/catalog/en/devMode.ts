@@ -6,6 +6,12 @@ export const devMode = {
     waitingPayload: "Waiting for Dev Mode payload…",
     surfaceNotFound: "Surface not found: {surfaceId}",
     issues: {
+        // One word, like every other panel in the drawer.
+        title: "Issues",
+        empty: "Nothing has failed",
+        // The heading over a launch/reload failure, which happened before there was a story to point
+        // into. It says what the message is about, since unlike every other entry it has no location.
+        sessionFailure: "Session failed to start",
         atLine: "Line {line} · {scene}",
         inScene: "In {scene}",
         noLocation: "Could not be traced to a line",
@@ -28,6 +34,9 @@ export const devMode = {
         panelsAria: "Interface panels",
         skipToNextChoice: "Skip to next choice",
         skipToNextChoiceBusy: "Skipping…",
+        // Takes the debug button off the game for this window. The item shows its own chord, which
+        // is what makes it safe to offer - it is the only way back.
+        hide: "Hide this button",
     },
     tabs: {
         blueprints: "Blueprints",
