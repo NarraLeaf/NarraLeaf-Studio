@@ -19,8 +19,10 @@ import {
     LocalizationUnitStatus,
     createEmptyLocalizationDocument,
     createEmptyLocalizationKeysDocument,
+    findLocaleFallbackConflict,
     isValidLocaleCode,
     isValidLocalizationKeyName,
+    type LocaleFallbackConflict,
 } from "@shared/types/localization";
 import { hashSourceText } from "@shared/utils/localizationText";
 import { normalizeExchangeStatus, type TranslationExchangeRow } from "@shared/utils/localizationExchange";
@@ -52,6 +54,22 @@ export type LocalizationUnitPatch = {
     note?: string;
     status?: LocalizationUnitStatus;
 };
+
+/**
+ * The service's own last-resort wording for a refused fallback, in English like every other error
+ * thrown here. The dialog that owns this edit keeps the author away from all three cases in the
+ * first place, so this is what reaches a caller that did not.
+ */
+function describeFallbackConflict(conflict: LocaleFallbackConflict, code: string, fallback: string): string {
+    switch (conflict) {
+        case "self":
+            return `A language cannot fall back to itself: ${code}`;
+        case "unknown":
+            return `Unknown language: ${fallback}`;
+        case "cycle":
+            return `${fallback} already falls back to ${code}, so this would never be used`;
+    }
+}
 
 export type TranslationImportSummary = {
     /** Units written (created or changed). */
@@ -167,30 +185,52 @@ export class LocalizationService extends Service<LocalizationService> implements
         });
     }
 
+    /**
+     * Edit one language's author-facing fields: its display name and its fallback language.
+     *
+     * The fallback is checked before it is stored (see findLocaleFallbackConflict). Read-side
+     * resolution is cycle-safe already, so a loop never crashes - it silently makes the fallback
+     * do nothing, which is the failure worth refusing at the point the author asks for it.
+     */
     public async updateLocaleEntry(
         code: string,
         patch: Partial<Pick<LocalizationLocaleEntry, "displayName" | "fallback">>,
     ): Promise<LocalizationConfiguration> {
-        return this.updateConfiguration(config => ({
-            ...config,
-            locales: config.locales.map(locale => {
-                if (locale.code !== code) {
-                    return locale;
+        return this.updateConfiguration(config => {
+            const entry = config.locales.find(locale => locale.code === code);
+            if (!entry) {
+                throw new RendererError(`Unknown language: ${code}`);
+            }
+            // Only a fallback the patch actually changes is checked. An author who hand-edited a loop
+            // into the project file must still be able to rename the language and pick their way out
+            // of it, rather than be held there by the very field they came to fix.
+            if (patch.fallback !== undefined && patch.fallback !== (entry.fallback ?? "")) {
+                const conflict = findLocaleFallbackConflict(config, code, patch.fallback);
+                if (conflict) {
+                    throw new RendererError(describeFallbackConflict(conflict, code, patch.fallback));
                 }
-                const next: LocalizationLocaleEntry = { ...locale };
-                if (patch.displayName !== undefined) {
-                    next.displayName = patch.displayName.trim() || locale.code;
-                }
-                if (patch.fallback !== undefined) {
-                    if (patch.fallback && patch.fallback !== code) {
-                        next.fallback = patch.fallback;
-                    } else {
-                        delete next.fallback;
+            }
+            return {
+                ...config,
+                locales: config.locales.map(locale => {
+                    if (locale.code !== code) {
+                        return locale;
                     }
-                }
-                return next;
-            }),
-        }));
+                    const next: LocalizationLocaleEntry = { ...locale };
+                    if (patch.displayName !== undefined) {
+                        next.displayName = patch.displayName.trim() || locale.code;
+                    }
+                    if (patch.fallback !== undefined) {
+                        if (patch.fallback && patch.fallback !== code) {
+                            next.fallback = patch.fallback;
+                        } else {
+                            delete next.fallback;
+                        }
+                    }
+                    return next;
+                }),
+            };
+        });
     }
 
     // --- Translation documents (one per locale) ---

@@ -21,6 +21,14 @@ export const workspace = {
             staleCount: "{count} 条待校对",
             importSummary: "已导入 {applied} 条翻译（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
         },
+        settings: {
+            menu: "语言设置…",
+            title: "{name}的语言设置",
+            displayNameLabel: "显示名称",
+            fallbackLabel: "回退语言",
+            fallbackHint: "这里缺少译文的条目改用该语言，该语言也没有时使用源语言",
+            fallbackLoops: "会绕回本语言",
+        },
         exchange: {
             exportMenu: "导出翻译…",
             importMenu: "导入翻译…",

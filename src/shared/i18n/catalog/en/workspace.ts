@@ -24,6 +24,14 @@ export const workspace = {
             staleCount: "{count} to review",
             importSummary: "Imported {applied} translations ({unchanged} unchanged, {unknown} unknown, {skippedEmpty} empty skipped)",
         },
+        settings: {
+            menu: "Language settings…",
+            title: "{name} language settings",
+            displayNameLabel: "Display name",
+            fallbackLabel: "Fallback language",
+            fallbackHint: "An entry with no translation here uses this language, then the source language.",
+            fallbackLoops: "leads back here",
+        },
         exchange: {
             exportMenu: "Export translations…",
             importMenu: "Import translations…",
