@@ -109,6 +109,7 @@ import {
     BlueprintPersistenceRemoveValueHandler,
     BlueprintPersistenceSetValueHandler,
 } from "./handlers/blueprintPersistenceAction";
+import { BlueprintNetworkFetchHandler } from "./handlers/blueprintNetworkAction";
 import {
     PrivilegedBashExecuteHandler,
     PrivilegedFsCallHandler,
@@ -231,6 +232,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new BlueprintPersistenceGetValueHandler(),
         new BlueprintPersistenceSetValueHandler(),
         new BlueprintPersistenceRemoveValueHandler(),
+
+        // Blueprint network handler (the Fetch node)
+        new BlueprintNetworkFetchHandler(),
 
         // Plugin permission handlers
         new PluginPermissionPromptLaunchHandler(),
