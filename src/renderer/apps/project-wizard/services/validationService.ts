@@ -221,10 +221,10 @@ export class ValidationService {
             // rather than keeping the last good one, so this is what stops them walking on.
             case "stage":
                 return projectData.resolution !== "";
-            // Nothing to validate: the import page collects nothing, because both of its choices
-            // are made in native dialogs after the button is pressed.
+            // Both answers are picked on the page now, so both gate the button that unpacks.
             case "import":
-                return true;
+                return projectData.packagePath.trim() !== "" &&
+                       projectData.location.trim() !== "";
             case "source":
             // The clone page asks for nothing of its own - it acts on what Source collected - so
             // it is valid under exactly the same conditions. Falls through rather than repeating
