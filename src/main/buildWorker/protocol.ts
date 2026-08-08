@@ -365,6 +365,13 @@ export type GameBuildWorkerConfig = {
     electronVersion: string;
     /** Copyright line embedded in the binaries; unset leaves it to electron-builder. */
     copyright?: string;
+    /**
+     * Absolute path to the project's `COPYRIGHT.txt`, shipped beside the executable.
+     *
+     * An extra file rather than part of the app dir: the app dir becomes `app.asar`, and a notice
+     * a player is meant to read cannot live inside an archive. Unset when the project has none.
+     */
+    copyrightFile?: string;
     /** Payload compression; unset uses electron-builder's default ("maximum"). */
     compression?: GameBuildCompression;
     /** Download mirror for Electron dists (cross builds); empty = official. */

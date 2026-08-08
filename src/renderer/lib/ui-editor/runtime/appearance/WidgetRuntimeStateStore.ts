@@ -5,6 +5,11 @@ import {
     type UISliderWidgetProps,
 } from "@shared/types/ui-editor/slider";
 import {
+    resolveSwitchRuntimeValue,
+    type UISwitchRuntimeValue,
+    type UISwitchWidgetProps,
+} from "@shared/types/ui-editor/switch";
+import {
     resolveTextInputRuntimeValue,
     type UITextInputRuntimeValue,
     type UITextInputWidgetProps,
@@ -94,6 +99,8 @@ export type WidgetRuntimeSnapshot = {
     /** Copy for external readers; treat as immutable after getSnapshot. */
     sliderProperties: ReadonlyMap<string, UISliderRuntimeValue>;
     /** Copy for external readers; treat as immutable after getSnapshot. */
+    switchProperties: ReadonlyMap<string, UISwitchRuntimeValue>;
+    /** Copy for external readers; treat as immutable after getSnapshot. */
     textInputProperties: ReadonlyMap<string, UITextInputRuntimeValue>;
     /** Runtime List content overrides keyed by runtime-scope element key. */
     listItems: ReadonlyMap<string, readonly unknown[]>;
@@ -111,6 +118,7 @@ export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.free
     focusedId: null,
     variantOverrides: new Map<string, string>(),
     sliderProperties: new Map<string, UISliderRuntimeValue>(),
+    switchProperties: new Map<string, UISwitchRuntimeValue>(),
     textInputProperties: new Map<string, UITextInputRuntimeValue>(),
     listItems: new Map<string, readonly unknown[]>(),
     listSelectedIndexes: new Map<string, number>(),
@@ -129,6 +137,7 @@ export class WidgetRuntimeStateStore {
     private focusedId: string | null = null;
     private readonly variantOverrides = new Map<string, string>();
     private readonly sliderProperties = new Map<string, UISliderRuntimeValue>();
+    private readonly switchProperties = new Map<string, UISwitchRuntimeValue>();
     private readonly textInputProperties = new Map<string, UITextInputRuntimeValue>();
     private readonly listItems = new Map<string, unknown[]>();
     private readonly listSelectedIndexes = new Map<string, number>();
@@ -165,6 +174,7 @@ export class WidgetRuntimeStateStore {
             focusedId: this.focusedId,
             variantOverrides: new Map(this.variantOverrides),
             sliderProperties: new Map(this.sliderProperties),
+            switchProperties: new Map(this.switchProperties),
             textInputProperties: new Map(this.textInputProperties),
             listItems: new Map(this.listItems),
             listSelectedIndexes: new Map(this.listSelectedIndexes),
@@ -307,6 +317,29 @@ export class WidgetRuntimeStateStore {
             return current;
         }
         this.sliderProperties.set(elementId, next);
+        this.emit();
+        return next;
+    }
+
+    getSwitchProperties(elementId: string): UISwitchRuntimeValue | undefined {
+        return this.switchProperties.get(elementId);
+    }
+
+    setSwitchProperties(
+        elementId: string,
+        currentProps: Partial<UISwitchWidgetProps>,
+        patch: Partial<UISwitchWidgetProps>,
+    ): UISwitchRuntimeValue {
+        const current = this.switchProperties.get(elementId) ?? resolveSwitchRuntimeValue(currentProps);
+        const next = resolveSwitchRuntimeValue({
+            ...currentProps,
+            ...current,
+            ...patch,
+        });
+        if (current.checked === next.checked) {
+            return current;
+        }
+        this.switchProperties.set(elementId, next);
         this.emit();
         return next;
     }

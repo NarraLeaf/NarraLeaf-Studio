@@ -1,2 +1,2 @@
-export { WizardHeader } from "./WizardHeader";
+export { WizardSteps } from "./WizardSteps";
 export { WizardNavigation } from "./WizardNavigation";

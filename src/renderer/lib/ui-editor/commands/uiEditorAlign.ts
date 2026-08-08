@@ -1,6 +1,7 @@
 import type { UIDocument, UIElement, UILayout } from "@shared/types/ui-editor/document";
 import { isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
 import { getUISliderChildSlot } from "@shared/types/ui-editor/slider";
+import { UI_SWITCH_ELEMENT_TYPE, getUISwitchChildSlot } from "@shared/types/ui-editor/switch";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
@@ -9,6 +10,7 @@ import { filterSelectionToTopLevelMovers } from "./uiEditorSelection";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 const SLIDER_WIDGET_TYPE = "nl.slider";
+const SWITCH_WIDGET_TYPE = UI_SWITCH_ELEMENT_TYPE;
 
 /** The document persists geometry at 2 decimals (`roundUILayoutGeometryFields`). */
 const GEOMETRY_ROUND_FACTOR = 100;
@@ -71,6 +73,10 @@ function roundsToSameGeometry(next: number, current: number): boolean {
  * them is a lie: flow-layout children (a stack/scroll container's or a list's direct children) have
  * their offsets zeroed on every write by `normalizeFlowChildLayout`, and a slider's track and handle
  * are laid out from the slider's value at render time.
+ *
+ * A switch's track and thumb are dropped for the same reason as the slider's, one step removed: the
+ * widget owns where its parts sit, and the on-state travel is the `on` variant's transform offset,
+ * so aligning them against unrelated siblings moves the off state only and silently desyncs the two.
  */
 function getAlignMovers(document: UIDocument, selection: UIElementSelection): string[] {
     return filterSelectionToTopLevelMovers(document, selection).filter(id => {
@@ -86,6 +92,9 @@ function getAlignMovers(document: UIDocument, selection: UIElementSelection): st
         }
         const parent = document.elements[element.parentId];
         if (parent?.type === SLIDER_WIDGET_TYPE && getUISliderChildSlot(element.extra) != null) {
+            return false;
+        }
+        if (parent?.type === SWITCH_WIDGET_TYPE && getUISwitchChildSlot(element.extra) != null) {
             return false;
         }
         return true;

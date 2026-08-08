@@ -227,6 +227,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: { elementId: "", patch: {} },
             output: null,
         },
+        getSwitchProperties: {
+            capabilityId: "widget.getSwitchProperties",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { elementId: "" },
+            output: {},
+        },
+        setSwitchProperties: {
+            capabilityId: "widget.setSwitchProperties",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { elementId: "", patch: {} },
+            output: null,
+        },
         getTextInputProperties: {
             capabilityId: "widget.getTextInputProperties",
             purity: "pure",
