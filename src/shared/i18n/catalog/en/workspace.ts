@@ -874,8 +874,8 @@ export const workspace = {
             invalidPattern: "Invalid pattern",
             // Project-wide replace of story prose. The trailing number on the button is occurrences,
             // not rows and not the capped visible count.
-            // The chevron that brings the replace row in; searching is the common errand, so the
-            // panel opens without it.
+            // The switch at the end of the option row that brings the replace row in; searching is
+            // the common errand, so the panel opens without it.
             toggleReplace: "Replace",
             replacePlaceholder: "Replace with",
             replaceAll: "Replace all",
