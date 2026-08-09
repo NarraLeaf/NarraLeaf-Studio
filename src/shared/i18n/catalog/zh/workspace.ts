@@ -801,6 +801,8 @@ export const workspace = {
             regex: "使用正则表达式",
             invalidPattern: "表达式无效",
             // 全工程替换剧情正文。按钮上的数字是匹配次数，不是行数，也不是列表里显示的条数。
+            // 展开替换行的箭头。搜索是常事，所以面板默认只有搜索框。
+            toggleReplace: "替换",
             replacePlaceholder: "替换为",
             replaceAll: "替换全部",
             replaceRow: "替换这一行",
