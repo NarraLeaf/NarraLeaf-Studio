@@ -486,6 +486,7 @@ export const workspace = {
                 voice: "语音库",
                 variables: "变量注册表",
                 audioTracks: "音频轨道",
+                brand: "配色方案",
                 characters: "角色",
                 project: "项目设置",
                 assets: "资产库",

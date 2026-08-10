@@ -48,6 +48,8 @@ export const documentDiff = {
     count: {
         assets: "Assets",
         audioTracks: "Audio tracks",
+        /** The author's own colors. The seeded palette is always there and is not counted. */
+        brandColors: "Brand colors",
         characterGroups: "Character groups",
         characters: "Characters",
         localizationKeys: "Localization keys",

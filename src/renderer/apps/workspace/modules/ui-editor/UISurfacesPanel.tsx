@@ -50,6 +50,7 @@ import {
 import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_OPTIONS, STAGE_SLOT_LABELS, SURFACE_KIND_OPTIONS } from "./panel/constants";
 import type { EditorLayout, EditorTabDefinition } from "../../registry/types";
 import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -245,6 +246,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         focusSceneProperties(surface);
     }, [focusSceneProperties, handleOpenSurface]);
 
+    // Same reason as the canvas: a palette edit changes what a `nlbrand:` colour paints without
+    // touching the document, so the thumbnails need their own reason to be rebuilt.
+    const brandRevision = useBrandPaletteRevision();
     const renderSurfacePreview = useCallback((surface: UISurface) => {
         if (!runtimeBridge) {
             return null;
@@ -256,7 +260,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             className: "relative",
             style: backgroundColor ? { backgroundColor } : undefined,
         });
-    }, [runtimeBridge]);
+    }, [runtimeBridge, brandRevision]);
 
     // Each card asks only about itself, so an edit to one page leaves the other cards' element trees
     // alone. Without this the panel rebuilds every preview in the project on every keystroke.

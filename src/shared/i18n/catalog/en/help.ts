@@ -327,6 +327,18 @@ export const help = {
                 + "back. The import reports how many lines it applied and how many it could not match.\n"
                 + "- Export and import are in the language row's menu.",
         },
+        brand: {
+            title: "Brand colors",
+            body:
+                "A color decided here can be used anywhere in the project. A field set to a project color "
+                + "follows it, so changing the color here changes every place that uses it.\n"
+                + "\n"
+                + "- The colors at the top belong to the project. The groups under them are the parts each "
+                + "control is painted with, and every part starts out following one of the colors above.\n"
+                + "- A part can be pointed at a different color, or given a color of its own.\n"
+                + "- Deleting a color does not rewrite the places that used it. Those places fall back to "
+                + "their own default color, and project check reports them.",
+        },
         uiSurfaces: {
             title: "Game screens",
             body:
