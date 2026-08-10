@@ -1,9 +1,11 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useKeybindings } from "@/apps/workspace/hooks";
 import { useWorkspace } from "../../context";
 import { useFreezeGuard } from "../ui/freezeGuard";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import { projectHistoryScope } from "@/lib/workspace/services/history/historyScopes";
+import { resolveWorkspaceUndoScope } from "@/lib/workspace/services/history/workspaceUndoTarget";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types";
 
@@ -21,9 +23,14 @@ import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types"
  * "nothing happened" is worse than it sounds, because if focus had still been in a story tab the
  * keypress would have undone *a story edit* instead, which reads as undo doing the wrong thing.
  *
- * Deliberately routed to the project scope rather than to `getActiveScopeId()`. The active scope is
- * an editor's, and reaching into it from outside that editor is the same mistake in the other
- * direction: pressing Ctrl+Z in the assets panel must not rewrite a scene the author cannot see.
+ * Which stack it acts on is `resolveWorkspaceUndoScope`'s answer, shared with the Edit menu so the
+ * menu cannot name a different step from the one the keystroke would take. Usually that is the
+ * project's - pressing Ctrl+Z in the assets panel must not rewrite a scene the author cannot see -
+ * but not in the property inspector, whose edits go into the active editor's stack and belong to it.
+ *
+ * This used to call `projectHistoryScope()` directly, which is how the two answers drifted apart
+ * without anyone noticing: the menu offered "Undo change background colour" while the keystroke
+ * beside it reached an empty stack and did nothing.
  */
 export function WorkspaceUndoKeybindings() {
     const { context } = useWorkspace();
@@ -32,9 +39,24 @@ export function WorkspaceUndoKeybindings() {
         () => (context ? context.services.get<HistoryService>(Services.History) : null),
         [context],
     );
+    const [focus, setFocus] = useState<FocusContext | null>(null);
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const uiService = context.services.get<UIService>(Services.UI);
+        setFocus(uiService.focus.getFocus());
+        return uiService.focus.onFocusChange(setFocus);
+    }, [context]);
+
+    const scopeId = useMemo(
+        () => (history && focus ? resolveWorkspaceUndoScope(history, focus) : projectHistoryScope()),
+        [focus, history],
+    );
 
     const outsideAnEditor = useCallback(
-        (focus: FocusContext) => focus.area !== FocusArea.Editor,
+        (next: FocusContext) => next.area !== FocusArea.Editor,
         [],
     );
 
@@ -46,7 +68,7 @@ export function WorkspaceUndoKeybindings() {
                 description: "Undo the last project-level change",
                 when: outsideAnEditor,
                 handler: freeze.run(() => {
-                    history?.undo(projectHistoryScope());
+                    history?.undo(scopeId);
                 }),
             },
             {
@@ -55,11 +77,11 @@ export function WorkspaceUndoKeybindings() {
                 description: "Redo the last project-level change",
                 when: outsideAnEditor,
                 handler: freeze.run(() => {
-                    history?.redo(projectHistoryScope());
+                    history?.redo(scopeId);
                 }),
             },
         ],
-        [freeze, history, outsideAnEditor],
+        [freeze, history, outsideAnEditor, scopeId],
     );
 
     useKeybindings({ keybindings, idPrefix: "workspace-history", catalogPrefix: "workspace." });
