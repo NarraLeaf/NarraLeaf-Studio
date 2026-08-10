@@ -6,7 +6,7 @@ import { puppetChannelNames, type StoryPuppetChannel } from "./storyCommandValue
  * Row-level lint: the mistakes that produce a *silently wrong game* rather than a build error.
  *
  * Deliberately a mark on the row and not a problems panel. A panel is a second place to look and a
- * shape nobody has agreed on yet (overhaul plan §9); a mark is where the mistake is, and costs the
+ * shape nobody has agreed on yet; a mark is where the mistake is, and costs the
  * author nothing when there is none. Anything that already fails the build, or already has its own
  * chrome (an invalid row, a stale voice take), is not repeated here.
  *

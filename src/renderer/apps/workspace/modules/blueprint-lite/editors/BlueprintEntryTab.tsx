@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
 import { EditorComponentProps } from "../../types";
@@ -20,6 +21,7 @@ import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
+import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/componentNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
@@ -28,6 +30,7 @@ import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/docume
 import type { StoryDocument } from "@shared/types/story";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import { getUIComponentParams } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { getUIListChildSlot, isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import {
@@ -50,6 +53,7 @@ import {
     type BlueprintEventLayerDialogValue,
 } from "../components/BlueprintEventLayerDialogContent";
 import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
+import { BlueprintBreakpointScope } from "../components/BlueprintBreakpointScope";
 import {
     BlueprintFlowCanvas,
     cloneBlueprintIr,
@@ -108,7 +112,10 @@ import {
     createComponentDocumentServiceAdapter,
     getComponentTabId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
-import { buildAccessibleBlueprintVariableOptions } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
+import {
+    buildAccessibleBlueprintVariableOptions,
+    listEffectiveBlueprintVariables,
+} from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
 import {
     buildBlueprintGraphClipboardPayload,
@@ -426,7 +433,12 @@ function ElementLiteralSurfacePreview({
                 style={{
                     width: frameWidth,
                     height: frameHeight,
-                    backgroundColor: surface.settings?.backgroundColor ?? "#ffffff",
+                    // Resolved rather than used as stored: a surface background can be a brand link,
+                    // and an `nlbrand:` token in a CSS declaration paints nothing at all. The white
+                    // default stays this thumbnail's own - `getSurfaceBackgroundColor` answers
+                    // `transparent` for an unset stage surface, which is right on the canvas and
+                    // would leave a hole here.
+                    backgroundColor: getActiveBrandPalette().resolveValueCss(surface.settings?.backgroundColor ?? "") ?? "#ffffff",
                 }}
             >
                 <div
@@ -613,7 +625,18 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         widgetSurfaceId: payload.surfaceId,
         widgetBlueprintEvents: widgetLogicEvents,
         isComponentDefinitionGraph,
+        // REGISTRY ONLY, and deliberately not the merged persistent view the story surfaces read.
+        //
+        // A blueprint `persistentVariableId` is resolved at runtime against the table the bundle
+        // carries (`bundle.ui.persistentVariables`), which `loadPersistentVariableTable` builds from
+        // `editor/variables.json` alone - a story `/persis` row is not in it. Accepting a story row's
+        // id here would silence the "unknown persistent variable" warning on a node that throws
+        // "Persistent variable not found" the moment it executes, which is the one case the
+        // diagnostic exists for.
         persistentVariables: localBp.listPersistentVariables(),
+        // Same reasoning, other scope: a saved id is resolved against the `saved` half of the registry,
+        // so the picker's options and the diagnostic's accepted set have to be the one same list.
+        savedVariables: localBp.listSavedVariables(),
     });
     const openBlueprint = useOpenBlueprintTarget();
     const dragConnectCreate = useBlueprintDragConnectSettings();
@@ -1153,6 +1176,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         editor.setSelectedNodeIds([]);
     }, [commitIr, editor, ir]);
 
+    /** The node the diagnostics list last asked the canvas to reveal; see {@link onDiagnosticPick}. */
+    const [diagnosticNodeFocus, setDiagnosticNodeFocus] = useState<{ nodeId: string; nonce: number } | null>(null);
+
     const onDiagnosticPick = useCallback(
         (d: BlueprintGraphEditorDiagnostic) => {
             const t = d.target;
@@ -1174,7 +1200,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     selectFunctionGraph(t.graphId);
                 }
                 if (t.kind === "node" && t.nodeId) {
-                    editor.setSelectedNodeIds([t.nodeId]);
+                    const nodeId = t.nodeId;
+                    editor.setSelectedNodeIds([nodeId]);
+                    // Selecting a node off screen selects something the author cannot see. The nonce
+                    // is what makes clicking the same row twice bring it back after a pan.
+                    setDiagnosticNodeFocus(previous => ({ nodeId, nonce: (previous?.nonce ?? 0) + 1 }));
                 }
                 return;
             }
@@ -1432,8 +1462,33 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }));
     }, [doc, revision, payload.blueprintId, payload.surfaceId]);
 
+    // A breakpoint condition may only test the blueprint's OWN variables: the debugger reads them
+    // off the paused frame's locals by bare id, and a variable belonging to another blueprint is
+    // reachable there only under its explicit `bp:` ref.
+    const breakpointConditionVariables = useMemo(
+        () =>
+            listEffectiveBlueprintVariables(bp).map(variable => ({
+                id: variable.id,
+                name: variable.name || variable.id,
+            })),
+        [bp, revision],
+    );
+
+    // The node-param picker, and registry-only for the same reason the diagnostic above is: this list
+    // is what an author may PICK, and every option in it has to be one the runtime table can resolve.
     const blueprintPersistentVariables = useMemo(() => {
         return localBp.listPersistentVariables()
+            .map(variable => ({
+                id: variable.id,
+                name: variable.name,
+                value: variable.id,
+                valueType: variable.valueType,
+            }));
+    }, [localBp, registryRevision]);
+
+    /** The `Get/Set Saved Var` picker; the saved half of the same registry, offered on the same terms. */
+    const blueprintSavedVariables = useMemo(() => {
+        return localBp.listSavedVariables()
             .map(variable => ({
                 id: variable.id,
                 name: variable.name,
@@ -1451,8 +1506,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 blueprintPersistentVariables
                     .map(v => `${v.value}:${v.name}:${v.valueType ?? ""}`)
                     .join("|"),
+                blueprintSavedVariables
+                    .map(v => `${v.value}:${v.name}:${v.valueType ?? ""}`)
+                    .join("|"),
             ].join("||"),
-        [blueprintMemberVariables, blueprintPersistentVariables],
+        [blueprintMemberVariables, blueprintPersistentVariables, blueprintSavedVariables],
     );
 
     const dynamicSelectOptions = useMemo<Record<string, BlueprintInspectorParamSelectOption[]>>(() => {
@@ -1545,6 +1603,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }),
             ...nodeCatalog.getDynamicSelectOptions(),
         };
+        // The params of the component this blueprint belongs to, for `Get Component Param`. Ids, not
+        // names: the id is what the node stores, so renaming a param must not unpoint a graph.
+        if (payload.ownerKind === "componentWidgetMain" && payload.componentId) {
+            const component = uiDocument.components?.find(item => item.id === payload.componentId);
+            opts[BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE] = getUIComponentParams(component).map(param => ({
+                value: param.id,
+                label: param.name.trim() || param.id,
+            }));
+        }
         if (
             (payload.ownerKind === "widgetMain" || payload.ownerKind === "componentWidgetMain") &&
             payload.surfaceId
@@ -1573,6 +1640,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         revision,
         payload.ownerKind,
         payload.surfaceId,
+        payload.componentId,
         storyService,
         storyDocumentsById,
         storyLibraryRevision,
@@ -1744,6 +1812,13 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
 
     const canvas =
         editor.graphView && ir ? (
+            <BlueprintBreakpointScope
+                projectPath={context.project.getConfig().projectPath}
+                blueprintId={payload.blueprintId}
+                graphId={editor.graphView.graphId}
+                ir={ir}
+                variables={breakpointConditionVariables}
+            >
             <div className="flex h-full min-h-0 flex-col">
                 <BlueprintGraphToolbar
                     graphLabel={getGraphToolbarLabel(bp, editor.graphView)}
@@ -1759,8 +1834,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         blueprintMembersSig={blueprintMembersSig}
                         blueprintMemberVariables={blueprintMemberVariables}
                         blueprintPersistentVariables={blueprintPersistentVariables}
+                        blueprintSavedVariables={blueprintSavedVariables}
                         selectedNodeIds={editor.selectedNodeIds}
                         onSelectNodeIds={editor.setSelectedNodeIds}
+                        focusNodeId={diagnosticNodeFocus?.nodeId ?? null}
+                        focusNonce={diagnosticNodeFocus?.nonce}
                         onCommitIr={commitIr}
                         onAddNodeAtFlowPosition={onAddGraphNodeAtFlowPosition}
                         dragConnectCreate={dragConnectCreate}
@@ -1780,6 +1858,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     />
                 </div>
             </div>
+            </BlueprintBreakpointScope>
         ) : !hasAnyGraph ? (
             <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-4 py-8">
                 <button

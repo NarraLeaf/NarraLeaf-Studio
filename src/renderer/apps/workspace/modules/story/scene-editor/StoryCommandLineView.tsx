@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
+import { storyVariableRefKey } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useHideParamNames } from "@/apps/workspace/hooks/useHideParamNames";
 import { useCommandTranslation } from "@/lib/i18n";
@@ -8,12 +9,13 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
-import { ACTION_TRIGGER, ALT_ACTION_TRIGGER } from "./commandTrigger";
+import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, toDisplayedCommandLine } from "./commandTrigger";
 import { getCommandSegments, type StoryCommandRole } from "./storyCommandHighlight";
 import type { StoryCommandContext } from "./storyCommandValues";
 import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
 import { characterRowLookup } from "./storySceneBlockUtils";
 import { useStoryMotionNames } from "./useStoryMotionNames";
+import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 
 /**
  * A command line, coloured by role — the one renderer for both halves of the editor's life: the line
@@ -70,6 +72,15 @@ export type StoryCommandLineContextValue = {
     assetName?: (assetId: string) => string | null;
     appearanceName?: (characterId: string, refId: string) => string | null;
     appearanceOptions?: (characterId: string) => readonly { id: string; name: string; axisId?: string }[];
+    /**
+     * The name of a project-level (`saved` / `persistent`) variable — the scopes whose declarations
+     * live in the project registry rather than in the story document.
+     *
+     * Derived from {@link commandContext} rather than from a registry subscription per row, exactly
+     * like the appearance table below it: the context IS the view a typed line resolves against, so a
+     * committed `/set` row names its variable with the very word the line would have used.
+     */
+    projectVariableName?: StoryRowLookups["projectVariableName"];
     /** What a name on a line could refer to — the picker lists for every subject a row names. */
     commandContext?: StoryCommandContext;
 };
@@ -96,9 +107,21 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         () => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null),
         [context, isInitialized],
     );
+    // Built once per context rather than scanned per row: a project can hold hundreds of variables and
+    // a scene hundreds of rows, and this is read while the author types.
+    const projectVariableNames = useMemo(() => {
+        const names = new Map<string, string>();
+        for (const entry of commandContext?.variables ?? []) {
+            if (entry.ref.scope !== "scene") {
+                names.set(storyVariableRefKey(entry.ref), entry.name);
+            }
+        }
+        return names;
+    }, [commandContext]);
     const value = useMemo<StoryCommandLineContextValue>(() => ({
         trigger: slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER,
         hideParamNames,
+        projectVariableName: (scope, variableId) => projectVariableNames.get(storyVariableRefKey({ scope, variableId })) ?? null,
         audioTrackName: trackId => tracks.find(track => track.id === trackId)?.name ?? null,
         // Read through the service on every call rather than off a snapshot: an asset rename does not
         // touch the story document, so nothing here would be told to rebuild a captured table.
@@ -127,16 +150,15 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
 const ASSET_NAME_TYPES = [AssetType.Image, AssetType.Audio, AssetType.Video] as const;
 
 /**
- * Swap the canonical leading "/" for the trigger the author actually types.
+ * Swap the canonical leading "/" for the trigger the author actually types — {@link
+ * toDisplayedCommandLine}, applied to the one piece that can hold it.
  *
  * Only the first character can change (the same rule the insert slot lives by), so every span the
  * projection recorded stays valid against the displayed text — and, crucially, the PARSE still has to
  * run on the canonical form: `@隐藏 …` is not a command line to the parser, and colouring the
  * displayed string directly leaves every token scaffold-grey.
  */
-function displayed(source: string, trigger: "/" | "@"): string {
-    return source.startsWith(ACTION_TRIGGER) ? trigger + source.slice(1) : source;
-}
+const displayed = toDisplayedCommandLine;
 
 /** One coloured stretch of the line, with the offsets it occupies so a caller can find a span in it. */
 export type StoryCommandLinePiece = {
@@ -299,7 +321,7 @@ export function useStoryCommandLine(
     // Read for its subscription only — see the note above.
     useCommandTranslation();
     const motionName = useStoryMotionNames();
-    const { audioTrackName, assetName, appearanceName, appearanceOptions, commandContext } = useStoryCommandLineContext();
+    const { audioTrackName, assetName, appearanceName, appearanceOptions, commandContext, projectVariableName } = useStoryCommandLineContext();
     // Deliberately not memoized: this is string building, and every input that could invalidate a memo
     // (an asset rename, a character rename) lives outside the story document, so a dependency array
     // would be a promise this cannot keep. The parse it feeds IS memoized, on the string it produces.
@@ -313,6 +335,7 @@ export function useStoryCommandLine(
         appearanceName,
         appearanceOptions,
         commandContext,
+        projectVariableName,
     });
 }
 

@@ -1,12 +1,13 @@
-import { Dispatch, SetStateAction, DragEvent, useMemo, useState, useEffect, useLayoutEffect, useCallback } from "react";
+import { Dispatch, SetStateAction, DragEvent, useMemo, useRef, useState, useEffect, useLayoutEffect, useCallback } from "react";
 import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
+import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { AssetThumbnail } from "../components/AssetThumbnail";
+import { AssetSupportBadge } from "../components/AssetSupportBadge";
 
 interface AssetsIconViewProps {
     dropTargetId: string | null;
@@ -45,7 +46,7 @@ function subtreeGroupIds(groups: readonly AssetGroup[], rootId: string): Set<str
  * Every asset a group holds, however deep.
  *
  * The header used to print only the assets sitting loose at this level, which reads `0 assets` for a
- * category whose every file is filed in a group — the count that sent this card into existence.
+ * category whose every file is filed in a group.
  */
 function assetsInSubtree(
     assets: readonly Asset[],
@@ -114,20 +115,34 @@ export function AssetsIconView({
         onGroupPathChange(groupPathIds.slice(0, -1));
     }, [groupPathIds, onGroupPathChange]);
 
+    // The compact toolbar draws the breadcrumb, so this handler leaves the component and is held in
+    // the panel's state. It goes out through a constant identity on purpose: published directly,
+    // `handleBack` changes whenever the caller re-creates `onGroupPathChange` - which callers written
+    // inline do on every render - and the effect below would re-publish, re-render, and never settle.
+    const backRef = useRef(handleBack);
+    useLayoutEffect(() => {
+        backRef.current = handleBack;
+    }, [handleBack]);
+    const publishedBack = useCallback(() => backRef.current(), []);
+
     useLayoutEffect(() => {
         if (!compactToolbar) {
             setAssetsIconToolbarCenter(null);
             return;
         }
         if (activeGroup && !isNarrowed) {
-            setAssetsIconToolbarCenter({
-                title: activeGroup.group.name,
-                onBack: handleBack,
-            });
+            const title = activeGroup.group.name;
+            // Same folder, same breadcrumb: keep the object React already has rather than writing an
+            // equal-but-new one, which would count as a change and schedule another render.
+            setAssetsIconToolbarCenter(prev => (
+                prev && prev.title === title && prev.onBack === publishedBack
+                    ? prev
+                    : { title, onBack: publishedBack }
+            ));
         } else {
             setAssetsIconToolbarCenter(null);
         }
-    }, [compactToolbar, activeGroup, isNarrowed, handleBack, setAssetsIconToolbarCenter]);
+    }, [compactToolbar, activeGroup, isNarrowed, publishedBack, setAssetsIconToolbarCenter]);
 
     useEffect(() => {
         return () => setAssetsIconToolbarCenter(null);
@@ -257,7 +272,7 @@ export function AssetsIconView({
 
                             {/* An empty category prints nothing under its header. The header's own import
                                 buttons are the way in; a sentence saying there is nothing here is the
-                                thing this card removes. */}
+                                thing this deliberately omits. */}
                             {hasItems && (
                                 <div
                                     className="mt-3 grid gap-3"
@@ -430,11 +445,14 @@ function AssetIconTile({ asset, category }: { asset: Asset; category: AssetCateg
         handleDragEnd,
         clipboard,
         draggedItem,
+        mediaSupport,
+        handleConvertMedia,
     } = useAssetsPanelContext();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isImage = asset.type === AssetType.Image;
     const isSelected = selectedItems.has("asset:" + asset.id);
     const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
+    const support = mediaSupport.get(asset.id);
 
     return (
         <div
@@ -453,17 +471,28 @@ function AssetIconTile({ asset, category }: { asset: Asset; category: AssetCateg
             onDragStart={(e) => handleDragStart?.(e, category, asset, false)}
             onDragEnd={() => handleDragEnd?.()}
         >
-            {isImage ? (
-                <div className="aspect-square w-full overflow-hidden rounded-md bg-surface-sunken">
-                    <AssetThumbnail asset={asset} className="h-full w-full" />
-                </div>
-            ) : (
-                // Not a thumbnail pretending to be one: no picture frame, just the category mark. A
-                // waveform / first frame replaces this per type, not a generic file glyph in a photo box.
-                <div className="flex aspect-square w-full items-center justify-center rounded-md bg-fill">
-                    <Icon className="h-1/4 w-1/4 text-fg-muted" />
-                </div>
-            )}
+            {/* The mark sits over the square rather than in the name row: at 120px that row is a
+                name and nothing else fits beside it without truncating the one thing it is for. */}
+            <div className="relative">
+                {isImage ? (
+                    <div className="aspect-square w-full overflow-hidden rounded-md bg-surface-sunken">
+                        <AssetThumbnail asset={asset} className="h-full w-full" />
+                    </div>
+                ) : (
+                    // Not a thumbnail pretending to be one: no picture frame, just the category mark. A
+                    // waveform / first frame replaces this per type, not a generic file glyph in a photo box.
+                    <div className="flex aspect-square w-full items-center justify-center rounded-md bg-fill">
+                        <Icon className="h-1/4 w-1/4 text-fg-muted" />
+                    </div>
+                )}
+                {support && (
+                    <AssetSupportBadge
+                        record={support}
+                        onConvert={asset.source === AssetSource.Local ? () => handleConvertMedia(asset) : undefined}
+                        className="absolute left-1 top-1"
+                    />
+                )}
+            </div>
             <div className="flex min-w-0 items-center gap-1.5">
                 <span className="truncate text-xs font-medium" title={asset.name}>{asset.name}</span>
                 {asset.tags.length > 0 && (

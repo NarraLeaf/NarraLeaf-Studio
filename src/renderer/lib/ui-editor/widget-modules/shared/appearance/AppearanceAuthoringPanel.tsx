@@ -308,7 +308,9 @@ export function AppearanceAuthoringPanel({
             return;
         }
         const id = newVariantId();
-        const nextName = t("widgetAppearance.variant.defaultName", { index: model.variants.length + 1 });
+        // English on purpose - see DEFAULT_APPEARANCE_VARIANT_NAME. The name is written to the
+        // document, so translating it would ship one author's UI language to every other author.
+        const nextName = `Variant ${model.variants.length + 1}`;
         const variant = cloneVariantShallow(base, id, nextName);
         onReplace(addVariant(model, variant));
         setSelectedVariantId(id);

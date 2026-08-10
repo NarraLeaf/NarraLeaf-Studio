@@ -4,13 +4,15 @@ import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
-import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "@shared/types/devMode";
+import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
+import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 import type {
     MacSigningIdentity,
     SigningCredential,
@@ -23,6 +25,8 @@ import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStu
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
+import type { AssetExportEntry } from "@shared/types/assetExport";
+import type { UpdateState } from "@shared/constants/update";
 import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
@@ -188,11 +192,21 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         getPathForFile: (file: File) => getPathForFile(file),
     },
     selectProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardSelectDirectory, {}),
+    selectProjectPackage: () => ipcClient.invoke(IPCEventType.projectWizardSelectPackage, {}),
     
     // Workspace
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
     openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
+    probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
+    mediaConvert: {
+        start: (request: MediaConvertRequest) =>
+            ipcClient.invoke(IPCEventType.mediaConvertStart, { request }) as Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>,
+        cancel: (jobId: string) =>
+            ipcClient.invoke(IPCEventType.mediaConvertCancel, { jobId }) as Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>,
+        getStatus: (jobId: string) =>
+            ipcClient.invoke(IPCEventType.mediaConvertGetStatus, { jobId }) as Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>,
+    },
     workspace: {
         getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
@@ -202,8 +216,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
         exportProjectPackage: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportProjectPackage, { projectPath }),
-        importProjectPackage: () =>
-            ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, {}),
+        importProjectPackage: (packagePath: string, targetDir: string) =>
+            ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, { packagePath, targetDir }),
         exportConsoleLogs: (defaultFileName: string, content: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
         setRecoveryMode: (enabled: boolean, reason?: string) =>
@@ -258,6 +272,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appAddRecentProject, { name, path }) as Promise<RequestStatus<void>>,
         removeRecentProject: (path: string) =>
             ipcClient.invoke(IPCEventType.appRemoveRecentProject, { path }) as Promise<RequestStatus<void>>,
+        revealRecentProject: (path: string) =>
+            ipcClient.invoke(IPCEventType.appRevealRecentProject, { path }) as Promise<RequestStatus<void>>,
         checkRecentProjects: () =>
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
         getSystemPath: (name: "desktop" | "home") =>
@@ -274,6 +290,14 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appExportSettings, { defaultFileName, content }),
         importSettings: () =>
             ipcClient.invoke(IPCEventType.appImportSettings, {}),
+        update: {
+            getState: () => ipcClient.invoke(IPCEventType.appUpdateGetState, {}),
+            check: () => ipcClient.invoke(IPCEventType.appUpdateCheck, {}),
+            download: () => ipcClient.invoke(IPCEventType.appUpdateDownload, {}),
+            install: () => ipcClient.invoke(IPCEventType.appUpdateInstall, {}),
+            onStateChanged: (handler: (state: UpdateState) => void) =>
+                ipcClient.onMessage(IPCEventType.appUpdateStateChanged, (data) => handler(data.state)),
+        },
     },
 
     devMode: {
@@ -309,6 +333,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.devModeForwardStoryRow, payload),
         onStoryRowHighlight: (handler: (payload: DevModeStoryRowHighlight) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceStoryRowHighlight, handler),
+        openStoryRowInWorkspace: (payload: DevModeStoryRowOpenPayload) =>
+            ipcClient.invoke(IPCEventType.devModeOpenStoryRowInWorkspace, payload) as Promise<RequestStatus<void>>,
+        onStoryRowOpen: (handler: (payload: DevModeStoryRowOpenRequest) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceStoryRowOpen, handler),
         resolveAssetUrl: (assetId: string, assetType?: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>
@@ -524,6 +552,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.blueprintPersistenceRemoveValue, { projectRef, key }) as Promise<RequestStatus<void>>,
     },
 
+    blueprintNetwork: {
+        fetch: (projectPath: string, request: BlueprintNetworkFetchRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintNetworkFetch, { projectPath, request }) as Promise<
+                RequestStatus<{ result: BlueprintNetworkFetchResult }>
+            >,
+    },
+
     pluginPermissions: {
         request: (request: PluginPermissionRequest) =>
             ipcClient.invoke(IPCEventType.pluginPermissionPromptLaunch, { props: { request } }),
@@ -565,11 +600,24 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.uiTemplateRegistryFetch, {}),
         fetchBundle: (templateId: string) =>
             ipcClient.invoke(IPCEventType.uiTemplateFetchBundle, { templateId }),
+        fetchPreviews: (templateIds: string[]) =>
+            ipcClient.invoke(IPCEventType.uiTemplateFetchPreviews, { templateIds }),
+        fetchThemePreviews: (themeIds: string[]) =>
+            ipcClient.invoke(IPCEventType.uiTemplateFetchThemePreviews, { themeIds }),
+    },
+
+    projectTemplates: {
+        list: () =>
+            ipcClient.invoke(IPCEventType.projectTemplateList, {}),
+        scaffold: (templateId: string, projectPath: string) =>
+            ipcClient.invoke(IPCEventType.projectTemplateScaffold, { templateId, projectPath }),
     },
 
     assets: {
         fetchRemote: (url: string, validators?: RemoteAssetValidators) =>
             ipcClient.invoke(IPCEventType.assetFetchRemote, { url, validators }),
+        exportToFolder: (entries: AssetExportEntry[]) =>
+            ipcClient.invoke(IPCEventType.assetExportToFolder, { entries }),
     },
 
     puppetRuntimes: {

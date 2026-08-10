@@ -19,9 +19,30 @@ export const launcher = {
         search: {
             placeholder: "搜索项目",
             clear: "清除搜索",
-            empty: "没有匹配“{query}”的项目。",
+            empty: "没有匹配“{query}”的项目",
         },
-        removeFromRecent: "从最近移除",
+        // 第一个项目出现之前的整个标签页，见 WelcomePane。
+        // 第二块磁贴不复用 openFolder：那条在标题栏里要单独当 tooltip 用，
+        // 这里两块并排是同一个选择，「打开…」的省略号才说明下一步会弹出文件对话框。
+        // 第一块仍用 addProject，向导做的事不止「新建」。
+        empty: {
+            title: "欢迎使用NarraLeaf Studio",
+            subtitle: "打开过的项目会显示在此处",
+            openFolder: "打开…",
+        },
+        // 按将要响应的系统命名：作者接下来看到的就是那个窗口。
+        // 分成三条而不是一条「在文件管理器中打开」：访达和资源管理器是这两个系统自己的叫法，
+        // 菜单另造一个词会让人以为打开的是别的东西。通用说法只留给没有统一名字的系统。
+        revealInFinder: "在访达中打开",
+        revealInExplorer: "在资源管理器中打开",
+        revealInFileManager: "在文件管理器中打开",
+        errorReveal: "打开项目文件夹失败",
+        removeFromRecent: "从最近列表中移除",
+        removeConfirm: {
+            title: "从最近列表中移除",
+            message: "{name} 将不再出现在此列表中，磁盘上的文件不会被删除",
+            confirm: "移除",
+        },
         moreActions: "更多操作",
         moreActionsNamed: "{name} 的更多操作",
         removeNamedFromRecent: "将 {name} 从最近项目中移除",
@@ -40,72 +61,5 @@ export const launcher = {
     // 中文只有一种复数形式，只需给出 other。
     recentCount: {
         other: "{count} 个最近项目",
-    },
-    plugins: {
-        installLocal: "从文件夹安装",
-        search: {
-            placeholder: "搜索插件",
-            clear: "清除搜索",
-        },
-        tab: {
-            installed: "已安装",
-            store: "商店",
-        },
-        emptyList: "尚未安装插件",
-        emptyFiltered: "没有匹配“{query}”的插件",
-        authorize: "授权",
-        uninstall: "卸载",
-        builtIn: "内置",
-        permissions: "权限",
-        noPermissions: "无特殊权限",
-        updateAvailable: "有可用更新",
-        requiresStudio: "此插件需要 Studio {range}，当前版本为 {version}",
-        openReleasePage: "查看发行说明",
-        homepage: "主页",
-        field: {
-            status: "状态",
-            version: "版本",
-            publisher: "发布者",
-            entries: "入口",
-            categories: "分类",
-            installed: "安装时间",
-            updated: "更新时间",
-        },
-        status: {
-            enabled: "已启用",
-            disabled: "已禁用",
-            needsAuthorization: "待授权",
-        },
-        store: {
-            install: "安装",
-            installed: "已安装",
-            update: "更新",
-            needsStudio: "需要 Studio {range}",
-            emptyList: "注册表中暂无可用插件",
-            offline: "无法连接到插件注册表",
-            retry: "重试",
-        },
-        task: {
-            installing: "正在安装插件…",
-            downloading: "正在下载插件…",
-            installed: "插件已安装",
-            authorizing: "等待授权…",
-            authorized: "插件已授权",
-            enabling: "正在启用插件…",
-            disabling: "正在禁用插件…",
-            enabled: "插件已启用",
-            disabled: "插件已禁用",
-            uninstalling: "正在卸载插件…",
-            uninstalled: "插件已卸载",
-        },
-        error: {
-            load: "加载插件失败",
-            install: "安装插件失败",
-            approve: "授权插件失败",
-            update: "更新插件失败",
-            uninstall: "卸载插件失败",
-            registry: "无法连接到插件注册表",
-            download: "下载插件失败",
-        },
     },
 } satisfies LocaleNamespace<"launcher">;

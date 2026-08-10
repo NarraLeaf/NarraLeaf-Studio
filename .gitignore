@@ -160,9 +160,20 @@ package-lock.json
 # script.
 /resources/codesign/
 
+# Vendored FFmpeg tools (fetched at Studio build time by
+# project/build/prepare-ffmpeg.js). Same reasoning as above, with more weight
+# behind it: the staged pair is roughly 217 MB per platform.
+/resources/ffmpeg/
+
 # Generated plugin API declarations (regenerate with: yarn build:plugin-types)
 packages/plugin-types/dist/
 packages/plugin-types/.gen/
 
-# D0 spike output, kept out of the repository: the conclusions live in docs/version-control.md
+# Spike output, kept out of the repository: the conclusions live in docs/version-control.md
 spike*.out
+
+# Working notes for in-progress features: planning cards, acceptance reports and
+# their screenshots. They are scratch material for whoever is building a feature,
+# they go stale the moment it ships, and the screenshots alone ran to tens of
+# megabytes. Anything worth keeping belongs in docs/ proper or in the code.
+/docs/plans/

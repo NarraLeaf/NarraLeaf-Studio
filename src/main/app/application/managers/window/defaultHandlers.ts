@@ -1,7 +1,8 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler } from "./handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
+import { AppUpdateCheckHandler, AppUpdateDownloadHandler, AppUpdateGetStateHandler, AppUpdateInstallHandler } from "./handlers/updateAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsDirectorySizeHandler, FsRequestReadHandler, FsRequestReadDirHandler, FsRequestWriteHandler,
     FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsRecoverCorruptedJsonFileHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
@@ -20,8 +21,18 @@ import {
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
-import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./handlers/projectPackageAction";
+import {
+    ProjectWizardSelectPackageHandler,
+    WorkspaceExportProjectPackageHandler,
+    WorkspaceImportProjectPackageHandler,
+} from "./handlers/projectPackageAction";
 import { PsdBakeHandler, PsdOpenHandler } from "./handlers/psdImport";
+import {
+    MediaConvertCancelHandler,
+    MediaConvertGetStatusHandler,
+    MediaConvertStartHandler,
+    MediaProbeHandler,
+} from "./handlers/mediaAction";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
@@ -36,6 +47,7 @@ import {
     DevModeResolveImageAssetUrlHandler,
     DevModeForwardBlueprintDebugEventHandler,
     DevModeForwardStoryRowHandler,
+    DevModeOpenStoryRowInWorkspaceHandler,
 } from "./handlers/devModeAction";
 import {
     DevModeSaveDeleteHandler,
@@ -86,9 +98,15 @@ import {
 } from "./handlers/pluginManagerAction";
 import {
     UITemplateFetchBundleHandler,
+    UITemplateFetchPreviewsHandler,
+    UITemplateFetchThemePreviewsHandler,
     UITemplateRegistryFetchHandler,
 } from "./handlers/uiTemplateAction";
-import { AssetFetchRemoteHandler } from "./handlers/assetAction";
+import {
+    ProjectTemplateListHandler,
+    ProjectTemplateScaffoldHandler,
+} from "./handlers/projectTemplateAction";
+import { AssetExportToFolderHandler, AssetFetchRemoteHandler } from "./handlers/assetAction";
 import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
     BlueprintPersistenceGetAllHandler,
@@ -96,6 +114,7 @@ import {
     BlueprintPersistenceRemoveValueHandler,
     BlueprintPersistenceSetValueHandler,
 } from "./handlers/blueprintPersistenceAction";
+import { BlueprintNetworkFetchHandler } from "./handlers/blueprintNetworkAction";
 import {
     PrivilegedBashExecuteHandler,
     PrivilegedFsCallHandler,
@@ -128,6 +147,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppGlobalStateGetAllHandler(),
         new AppAddRecentProjectHandler(),
         new AppRemoveRecentProjectHandler(),
+        new AppRevealRecentProjectHandler(),
         new AppCheckRecentProjectsHandler(),
         new AppSystemPathHandler(),
         new AppExportDiagnosticsHandler(),
@@ -137,6 +157,11 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppGlobalStateDeleteHandler(),
         new AppExportSettingsHandler(),
         new AppImportSettingsHandler(),
+
+        new AppUpdateGetStateHandler(),
+        new AppUpdateCheckHandler(),
+        new AppUpdateDownloadHandler(),
+        new AppUpdateInstallHandler(),
 
         new AppSettingsWindowLaunchHandler(),
         new AppCountWorkspaceWindowsHandler(),
@@ -148,6 +173,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         // Project wizard handlers
         new ProjectWizardLaunchHandler(),
         new ProjectWizardSelectDirectoryHandler(),
+        new ProjectWizardSelectPackageHandler(),
         new ProjectWizardGetDefaultDirectoryHandler(),
 
         // Workspace handlers
@@ -156,6 +182,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceSelectFolderHandler(),
         new PsdOpenHandler(),
         new PsdBakeHandler(),
+        new MediaProbeHandler(),
+        new MediaConvertStartHandler(),
+        new MediaConvertCancelHandler(),
+        new MediaConvertGetStatusHandler(),
         new WorkspaceCloseHandler(),
         new WorkspaceExportProjectPackageHandler(),
         new WorkspaceImportProjectPackageHandler(),
@@ -176,6 +206,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeOpenBlueprintInWorkspaceHandler(),
         new DevModeForwardBlueprintDebugEventHandler(),
         new DevModeForwardStoryRowHandler(),
+        new DevModeOpenStoryRowInWorkspaceHandler(),
         new DevModeResolveAssetUrlHandler(),
         new DevModeResolveImageAssetUrlHandler(),
         new DevModeSaveWriteHandler(),
@@ -214,6 +245,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new BlueprintPersistenceSetValueHandler(),
         new BlueprintPersistenceRemoveValueHandler(),
 
+        // Blueprint network handler (the Fetch node)
+        new BlueprintNetworkFetchHandler(),
+
         // Plugin permission handlers
         new PluginPermissionPromptLaunchHandler(),
         new PluginPermissionGrantHandler(),
@@ -232,7 +266,12 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PluginInstallFromRegistryHandler(),
         new UITemplateRegistryFetchHandler(),
         new UITemplateFetchBundleHandler(),
+        new UITemplateFetchPreviewsHandler(),
+        new UITemplateFetchThemePreviewsHandler(),
+        new ProjectTemplateListHandler(),
+        new ProjectTemplateScaffoldHandler(),
         new AssetFetchRemoteHandler(),
+        new AssetExportToFolderHandler(),
         new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers

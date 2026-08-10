@@ -22,7 +22,7 @@ import { blobAt, listFilesAt } from "./revisionReader";
 import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote";
 
 /**
- * D0 follow-up, round three: is the sync poisoning (§4.29) curable inside one process?
+ * Measurement follow-up, round three: is the sync poisoning (§4.29) curable inside one process?
  *
  * `mergeSpike2`'s R2 established the defect and `mergeSpike3`'s R3 established that it is
  * the PROCESS that is poisoned, not the repository - a second process reads the same

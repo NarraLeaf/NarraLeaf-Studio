@@ -4,12 +4,15 @@ import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UiEditorArrangeOp } from "@/lib/ui-editor/commands/uiEditorArrange";
+import type { UiEditorAlignOp } from "@/lib/ui-editor/commands/uiEditorAlign";
 
 /** User-triggered actions; callers wire to uiEditorCommands + UI state. */
 export type UiEditorContextMenuActions = {
     hideMenu: () => void;
     /** Z-order / sibling index within parent (`childrenIds`). */
     arrange: (op: UiEditorArrangeOp) => void;
+    /** Geometric alignment and distribution, computed in surface space. */
+    align: (op: UiEditorAlignOp) => void;
     insertType: (type: string) => void;
     paste: () => void;
     copy: () => void;
@@ -21,6 +24,8 @@ export type UiEditorContextMenuActions = {
     /** Multi or single: set layout.visible */
     setSelectedVisible: (visible: boolean) => void;
     addSelectionToLeaderGroup: () => void;
+    /** Dissolve the selected groups; their children take their place. */
+    ungroupSelection: () => void;
     addSelectionToComponentLibrary: () => void;
 };
 
@@ -35,6 +40,8 @@ export type BuildCanvasContextMenuInput = {
     actions: UiEditorContextMenuActions;
     /** Leader is first id and is nl.container, multi-select */
     canAddToGroup: boolean;
+    /** At least one selected element is a group that can be dissolved */
+    canUngroup: boolean;
     allowAddToComponentLibrary?: boolean;
 };
 
@@ -49,7 +56,6 @@ export type BuildOutlineContextMenuInput = {
     widgetModules: UIWidgetModule[];
     documentService: UIDocumentService;
     actions: UiEditorContextMenuActions & {
-        copyElementId: (elementId: string) => void;
         pasteIntoParent: (parentId: string) => void;
         expandAllBranches: () => void;
         collapseAllBranches: () => void;
@@ -57,6 +63,8 @@ export type BuildOutlineContextMenuInput = {
         insertChildInOutline: (type: string) => void;
     };
     canAddToGroup: boolean;
+    /** At least one selected element is a group that can be dissolved */
+    canUngroup: boolean;
     allowAddToComponentLibrary?: boolean;
     /** For insert-child submenu on a row */
     insertParentIdForRow: string | null;

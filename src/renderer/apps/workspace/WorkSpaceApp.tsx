@@ -11,10 +11,12 @@ import { useMenuActionHandler } from "./hooks/useMenuActionHandler";
 import { useNativeMenuSync } from "./hooks/useNativeMenuSync";
 import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
 import { useRecoveryOffer } from "./hooks/useRecoveryOffer";
+import { useUpdateOffer } from "./hooks/useUpdateOffer";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
 import { StoryRowHighlightBridge } from "./modules/story/scene-editor/StoryRowHighlightBridge";
+import { DevModeStoryRowOpenBridge } from "./modules/story/scene-editor/DevModeStoryRowOpenBridge";
 import { isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
 
 /**
@@ -28,6 +30,7 @@ function WorkspaceContent() {
     useModuleLoader();
     useWorkspacePlugins();
     useRecoveryOffer();
+    useUpdateOffer();
     // Tabs are not restored into a recovery window. The session on disk names scenes, surfaces and
     // characters, and in this mode most of those services have not started - so restoring would
     // reopen a screenful of tabs that can only report that their subject is missing, over the one
@@ -41,6 +44,7 @@ function WorkspaceContent() {
         <>
             <PreviewBlueprintNavigateBridge />
             <StoryRowHighlightBridge />
+            <DevModeStoryRowOpenBridge />
             <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />
         </>
     );

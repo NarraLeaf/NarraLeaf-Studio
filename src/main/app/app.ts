@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import { screen } from "electron";
 import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
@@ -7,10 +10,17 @@ import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
 import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
+import { MediaConvertManager } from "./application/managers/media/MediaConvertManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
+import { TRAY_RESIDENCY_NOTICE_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
+import { getMainTranslator } from "./application/i18n";
+import { TrayManager } from "./application/managers/trayManager";
+import { UpdateManager } from "./application/managers/updateManager";
+import { resolveStartupProject } from "./application/startupProject";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -26,6 +36,29 @@ export interface AppConfig extends BaseAppConfig {
  */
 const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
 
+/**
+ * How far a workspace opening beside another one is stepped from it, so the new window is visibly
+ * a second window rather than the same frame with different contents.
+ */
+const WINDOW_CASCADE_STEP = 32;
+
+/**
+ * `candidate` as an absolute path if it names a directory, otherwise null.
+ *
+ * Relative paths resolve against the working directory, which is what a `--project .` typed in a
+ * project folder means. A path that cannot be looked at (a disconnected drive, a permission error)
+ * is "not a directory" here: the point is only to tell a path apart from a project *name*, and a
+ * string that looks like a path is not a name either way.
+ */
+function resolveExistingDirectory(candidate: string): string | null {
+    try {
+        const absolute = path.resolve(candidate);
+        return fs.statSync(absolute).isDirectory() ? absolute : null;
+    } catch {
+        return null;
+    }
+}
+
 export class App extends BaseApp {
     public static create(config: AppConfig): App {
         return new App(config);
@@ -37,6 +70,7 @@ export class App extends BaseApp {
         this.previewManager = new PreviewManager(this);
         this.gameTestManager = new GameTestManager(this);
         this.gameBuildManager = new GameBuildManager(this);
+        this.mediaConvertManager = new MediaConvertManager(this);
         // The commit pipeline has to settle the renderer's auto-save debt before it
         // stages, and only the window layer can ask a window to do that. Handed in as a
         // function because VcsManager holds a BaseApp: without it a commit would still
@@ -47,13 +81,35 @@ export class App extends BaseApp {
                 await this.flushWorkspacePendingSaves(workspace);
             }
         });
+
+        this.updateManager = new UpdateManager(this);
+
+        // Built as soon as there is an Electron app to attach it to, because from here on it is
+        // the only handle a windowless Studio has - see handleLastWindowClosed, which reads
+        // `isActive()` and refuses to go resident without it. macOS is excluded inside
+        // TrayManager and keeps the Dock instead.
+        //
+        // The tray comes first: the updater rebuilds the tray menu on every state change, and
+        // its launch check is scheduled by `initialize()`.
+        this.onReady(() => {
+            const tray = new TrayManager(this, {
+                openLauncher: () => this.revealLauncher(),
+                openUpdateSettings: () => this.revealSettings({ highlight: UPDATE_PANEL_SETTING_KEY }),
+            });
+            tray.initialize();
+            this.trayManager = tray;
+
+            this.updateManager.initialize();
+        });
     }
 
     private readonly devModeManager: DevModeManager;
     private readonly previewManager: PreviewManager;
     private readonly gameTestManager: GameTestManager;
     private readonly gameBuildManager: GameBuildManager;
+    private readonly mediaConvertManager: MediaConvertManager;
     private readonly vcsManager: VcsManager;
+    private readonly updateManager: UpdateManager;
 
     public getDevModeManager(): DevModeManager {
         return this.devModeManager;
@@ -72,8 +128,18 @@ export class App extends BaseApp {
         return this.gameBuildManager;
     }
 
+    /** ffmpeg conversions in flight. Polled by job id, in the same shape as a production build. */
+    public getMediaConvertManager(): MediaConvertManager {
+        return this.mediaConvertManager;
+    }
+
     public getVcsManager(): VcsManager {
         return this.vcsManager;
+    }
+
+    /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */
+    public getUpdateManager(): UpdateManager {
+        return this.updateManager;
     }
 
     private applyWindowIcon(window: AppWindow): void {
@@ -83,6 +149,29 @@ export class App extends BaseApp {
         }
 
         window.setIcon(iconPath);
+    }
+
+    /**
+     * Whether the launcher about to be built should open in first-run setup.
+     *
+     * Answered here, in the main process, because the answer is available synchronously - one
+     * `globalState.get` - and can therefore travel with the window instead of being fetched by a
+     * renderer that has already painted something else.
+     *
+     * The marker is written when the flow is deliberately finished or skipped, never on the way
+     * in. So quitting mid-setup replays it next time, and a workspace closing back to the launcher
+     * (`ensureLauncher`) does not re-offer setup to someone who already answered.
+     */
+    private shouldRunOnboarding(): boolean {
+        if (this.wantsOnboardingRerun()) {
+            return true;
+        }
+        // Skipping records nothing, so this is only ever "not on this launch" - the profile still
+        // owes the setup flow, and the next launch without the flag will ask for it.
+        if (this.wantsOnboardingSkipped()) {
+            return false;
+        }
+        return needsOnboarding(this.globalState.get(ONBOARDING_STATE_KEY));
     }
 
     async launchLauncher(options: Partial<Electron.BrowserWindowConstructorOptions>): Promise<AppWindow<WindowAppType.Launcher>> {
@@ -107,7 +196,9 @@ export class App extends BaseApp {
                 ...options,
             },
         };
-        const window = new AppWindow<WindowAppType.Launcher>(this, config, {});
+        const window = new AppWindow<WindowAppType.Launcher>(this, config, {
+            onboarding: this.shouldRunOnboarding(),
+        });
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);
         window.showWhenReady();
@@ -126,11 +217,16 @@ export class App extends BaseApp {
         return window;
     }
 
+    /** The open launcher window, if the user still has a home to fall back to. */
+    private findLauncher(): AppWindow<WindowAppType.Launcher> | undefined {
+        return this.windowManager.getWindows().find(window =>
+            !window.isClosed() && window.getWindowType() === WindowAppType.Launcher
+        ) as AppWindow<WindowAppType.Launcher> | undefined;
+    }
+
     /** True while a launcher window is open, i.e. the user still has a home to fall back to. */
     hasAliveLauncher(): boolean {
-        return this.windowManager.getWindows().some(window =>
-            !window.isClosed() && window.getWindowType() === WindowAppType.Launcher
-        );
+        return this.findLauncher() !== undefined;
     }
 
     /** In-flight launcher startup, shared by concurrent callers. See {@link ensureLauncher}. */
@@ -161,6 +257,175 @@ export class App extends BaseApp {
         });
 
         return this.launcherStartup;
+    }
+
+    /**
+     * Bring the home screen in front of the user, opening it if they closed everything.
+     *
+     * The entry point for every "get me back into Studio" gesture now that closing the last
+     * window no longer ends the session: the tray item and its Open Launcher row, macOS's dock
+     * `activate`, and a second launch handing its intent to the running instance.
+     *
+     * Restores before focusing because a minimized window is the common case for the tray - and
+     * `focus()` alone leaves a minimized window minimized.
+     */
+    public async revealLauncher(): Promise<void> {
+        const existing = this.findLauncher();
+        if (existing) {
+            if (existing.win.isMinimized()) {
+                existing.win.restore();
+            }
+            existing.focus();
+            return;
+        }
+        await this.ensureLauncher();
+        this.findLauncher()?.focus();
+    }
+
+    /**
+     * Open Settings on a particular entry - or move the open Settings window to it.
+     *
+     * One implementation for both callers (the IPC handler renderers use, and the tray's Check
+     * for Updates row), because "open settings at X" has to be idempotent from either: launching
+     * unconditionally would leave two Settings windows disagreeing about what is selected.
+     *
+     * `opener` is who asked, and becomes the new window's parent. The tray has no window to offer,
+     * so the launcher is brought back first - which is also the right thing to look at behind a
+     * Settings window that was opened from an empty desktop.
+     */
+    public async revealSettings(
+        props: WindowProps[WindowAppType.Settings],
+        opener?: AppWindow,
+    ): Promise<void> {
+        const existing = this.windowManager.getWindows()
+            .find(candidate => !candidate.isClosed() && candidate.getWindowType() === WindowAppType.Settings);
+        if (existing) {
+            if (props?.highlight) {
+                existing.sendIpcEvent(IPCEventType.settingsHighlight, { highlight: props.highlight });
+            }
+            if (existing.win.isMinimized()) {
+                existing.win.restore();
+            }
+            existing.focus();
+            return;
+        }
+
+        let parent = opener;
+        if (!parent || parent.isClosed()) {
+            await this.revealLauncher();
+            parent = this.findLauncher();
+        }
+        if (!parent) {
+            this.logger.warn("[Settings] No window to open Settings from.");
+            return;
+        }
+
+        await this.launchSettings(parent as AppWindow<WindowAppType.Launcher>, props, {
+            parent: parent.win,
+            minWidth: 800,
+            minHeight: 500,
+            width: 1200,
+            height: 800,
+            center: true,
+            x: undefined,
+            y: undefined,
+        });
+    }
+
+    /**
+     * What happens when the user closes the last window.
+     *
+     * Studio used to quit here. It now stays resident, because an update that is still
+     * downloading has to be allowed to finish, and because closing a project is not the same
+     * gesture as quitting the editor.
+     *
+     * The exception is the one that matters: on Windows and Linux, residency without a status-bar
+     * item leaves a process with no handle at all - not in the taskbar, not in the tray, ending
+     * only from Task Manager. A tray that failed to appear (no StatusNotifier host on Linux, a
+     * missing icon resource) therefore falls back to the old behaviour rather than stranding it.
+     * macOS always has the Dock, so it never needs the fallback.
+     */
+    public handleLastWindowClosed(): void {
+        if (process.platform === "darwin") {
+            return;
+        }
+        if (this.trayManager?.isActive()) {
+            this.announceResidencyOnce();
+            return;
+        }
+        this.logger.warn("[App] No window and no status-bar item; quitting rather than going headless.");
+        this.quit();
+    }
+
+    /**
+     * Tell the user where Studio went, the first time it goes resident on this machine.
+     *
+     * Once per profile, because it is an explanation rather than a status: after the first time,
+     * the tray item is somewhere they have already been shown. Recorded before the balloon is
+     * shown - a balloon that failed to appear is not worth repeating the notice forever over, and
+     * `displayBalloon` reports nothing either way.
+     */
+    private announceResidencyOnce(): void {
+        if (this.globalState.get(TRAY_RESIDENCY_NOTICE_KEY) === true) {
+            return;
+        }
+        this.setGlobalStateAndBroadcast(TRAY_RESIDENCY_NOTICE_KEY, true);
+        const { t } = getMainTranslator(this);
+        this.trayManager?.announceResidency(
+            t("menu.tray.residencyNotice.title"),
+            t("menu.tray.residencyNotice.body"),
+        );
+    }
+
+    /**
+     * The window this session starts on: the project `--project` named, or the launcher.
+     *
+     * The launcher is opened either way, and the project is then opened *from* it - the same call
+     * a click on the recent list makes, so a scripted launch inherits the whole of it: the
+     * one-project-one-window lookup, the macOS bookmark re-authorization, the recents entry the
+     * workspace writes once it has actually loaded, and the launcher retiring itself only after
+     * the workspace reports a working project. Every way this can fail therefore lands on the home
+     * screen with a line in the log, rather than on a windowless app or a dead end.
+     *
+     * Dev-only, and deliberately not a general "open this file" entry point (see
+     * {@link MainCommandLineOptions.project}).
+     */
+    public async openStartupWindow(): Promise<void> {
+        const selectorError = this.getStartupProjectError();
+        if (selectorError) {
+            this.logger.warn(`[Startup] ${selectorError}`);
+        }
+
+        await this.ensureLauncher();
+
+        const selector = this.getStartupProjectSelector();
+        if (!selector) {
+            return;
+        }
+
+        const resolution = resolveStartupProject(selector, {
+            resolveDirectory: candidate => resolveExistingDirectory(candidate),
+            recentProjects: () => this.globalState.recentlyOpened.list(),
+        });
+        if (!resolution.ok) {
+            this.logger.warn(`[Startup] ${resolution.reason}. Opening the launcher instead.`);
+            return;
+        }
+
+        const launcher = this.findLauncher();
+        if (!launcher) {
+            this.logger.warn("[Startup] The launcher is gone; not opening the requested project.");
+            return;
+        }
+
+        this.logger.info(
+            `[Startup] Opening project "${resolution.projectPath}" (matched by ${resolution.source})`,
+        );
+        try {
+            await this.openProject(launcher, resolution.projectPath);
+        } catch (error) {
+            this.logger.error(`[Startup] Could not open "${resolution.projectPath}":`, error);
+        }
     }
 
     /**
@@ -593,10 +858,11 @@ export class App extends BaseApp {
 
         const key = normalizeProjectPath(projectPath);
         const pending = this.projectOpenings.get(key);
-        const bounds = replaceOpener ? opener.win.getBounds() : undefined;
-        const launch = pending ?? this.launchWorkspace(opener, { projectPath }, bounds
-            ? { minWidth: 800, minHeight: 600, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, center: false }
-            : { minWidth: 800, minHeight: 600, width: 1400, height: 900 });
+        const launch = pending ?? this.launchWorkspace(
+            opener,
+            { projectPath },
+            { minWidth: 800, minHeight: 600, ...this.workspacePlacement(opener, replaceOpener) },
+        );
 
         if (!pending) {
             this.projectOpenings.set(key, launch);
@@ -615,6 +881,50 @@ export class App extends BaseApp {
             });
         }
         return workspaceWindow;
+    }
+
+    /**
+     * Where a workspace window being launched should come up.
+     *
+     * A window replacing the one it was opened from takes over its frame exactly, so the switch
+     * reads as the same window changing project rather than as one window closing and another
+     * appearing somewhere else.
+     *
+     * A window opening *alongside* a workspace is stepped down and to the right of it instead, at
+     * the same size. Same-sized and same-placed would put the new project exactly over the old one,
+     * which is what a replacement looks like - the author would have no way to tell from the screen
+     * that the window they came from is still there. The offset is dropped rather than pushing the
+     * window off the display when there is no room for it (a maximized opener, most often), and the
+     * default centred frame is used instead, which is distinct enough on its own.
+     *
+     * Everything else - the launcher above all, whose frame is nothing like a workspace's - gets
+     * the default.
+     */
+    private workspacePlacement(
+        opener: AppWindow,
+        replaceOpener: boolean,
+    ): Partial<Electron.BrowserWindowConstructorOptions> {
+        const fallback = { width: 1400, height: 900, center: true };
+        if (opener.getWindowType() !== WindowAppType.Workspace || opener.isClosed()) {
+            return fallback;
+        }
+
+        const bounds = opener.win.getBounds();
+        if (replaceOpener) {
+            return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, center: false };
+        }
+
+        const { workArea } = screen.getDisplayMatching(bounds);
+        const x = bounds.x + WINDOW_CASCADE_STEP;
+        const y = bounds.y + WINDOW_CASCADE_STEP;
+        const fits = x >= workArea.x
+            && y >= workArea.y
+            && x + bounds.width <= workArea.x + workArea.width
+            && y + bounds.height <= workArea.y + workArea.height;
+
+        return fits
+            ? { x, y, width: bounds.width, height: bounds.height, center: false }
+            : fallback;
     }
 
     async launchProjectWizard(

@@ -1,7 +1,6 @@
 /*
- * U4 acceptance — the Dev Mode console: one row projection shared with the editor, an execution
+ * Acceptance — the Dev Mode console: one row projection shared with the editor, an execution
  * context in plain language, a readable scene graph.
- * Card: docs/plans/2026-07-26-019-task-ui-u4-dev-mode-console.md
  *
  *   NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<electron pid> \
  *     node tools/ui-verify/scenarios/u4-dev-mode-console.js [--phase editor|timeline|context|scenes|jump|fixture|all]
@@ -29,7 +28,7 @@ const READ_EDITOR = function () {
     const rows = nodes.map((el) => {
         const r = el.getBoundingClientRect();
         const sentence = (el.innerText || '').replace(/\s+/g, ' ').trim().replace(/^\d+\s*/, '').trim();
-        // The CATEGORY bar specifically: 3px wide, opacity < 1. U1's dialogue attribution rail is
+        // The CATEGORY bar specifically: 3px wide, opacity < 1. The dialogue attribution rail is
         // 2px at opacity 1 and says "same speaker", not "this kind of action" — counting it as a
         // category hue makes rows look barred that the editor deliberately leaves plain.
         const categoryHues = Array.from(el.querySelectorAll('*')).map((n) => {
@@ -90,8 +89,8 @@ const READ_PLAYHEAD = function () {
     return current ? Number(current.raw.match(/^(\d+)\s/)[1]) : null;
 };
 
-/** The execution-context tab is "the one that is not Variables / Timeline / Scenes" — the card does
- *  not dictate its name, and a /context/i matcher would miss "Execution" or a localised label. */
+/** The execution-context tab is "the one that is not Variables / Timeline / Scenes" — its name is
+ *  not fixed, and a /context/i matcher would miss "Execution" or a localised label. */
 const CONTEXT_TAB = function () {
     const tabs = document.querySelector('[role="tablist"]');
     if (!tabs) return null;
@@ -326,8 +325,8 @@ async function phaseFixture() {
         const parallel = await readContext('inside the parallel');
         await d.screenshot('u4-context-parallel');
         // The pill words come from the CATALOGUE, not the payload enum: parallel is "Run at the same
-        // time" and sequence is "In order". Matching /Parallel/ demanded the enum names the card
-        // asked NOT to be shown.
+        // time" and sequence is "In order". Matching /Parallel/ demanded the enum names that are
+        // deliberately not shown.
         run.check('A-8', 'context lists the parallel -> sequence chain in plain language',
             Boolean(parallel.text) && /Run at the same time/i.test(parallel.text) && /In order/i.test(parallel.text),
             parallel.text || parallel.why);

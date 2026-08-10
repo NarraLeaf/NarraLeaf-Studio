@@ -8,6 +8,7 @@ import {
     serializeSegmentSourceText,
 } from "./localizationText";
 import {
+    findLocaleFallbackConflict,
     matchSystemLocale,
     normalizeLocalizationConfiguration,
     normalizeLocalizationDocument,
@@ -180,5 +181,89 @@ describe("resolveLocaleChain", () => {
 
     it("returns empty for the source locale itself", () => {
         expect(resolveLocaleChain(config, "zh-CN")).toEqual([]);
+    });
+});
+
+describe("findLocaleFallbackConflict", () => {
+    // en is the source language. zh-TW -> zh-CN is the legitimate chain the guard must not touch.
+    const config = {
+        sourceLocale: "en",
+        locales: [
+            { code: "en", displayName: "English" },
+            { code: "zh-CN", displayName: "简体中文" },
+            { code: "zh-TW", displayName: "繁體中文", fallback: "zh-CN" },
+            { code: "ja", displayName: "日本語" },
+            { code: "ko", displayName: "한국어" },
+        ],
+    };
+
+    it("allows clearing the fallback", () => {
+        expect(findLocaleFallbackConflict(config, "ja", "")).toBeNull();
+    });
+
+    it("allows a fallback that ends at the source language", () => {
+        expect(findLocaleFallbackConflict(config, "ja", "en")).toBeNull();
+    });
+
+    it("allows extending a legitimate chain (zh-TW -> zh-CN -> source)", () => {
+        // zh-CN has no fallback of its own, so this is the chain the panel is meant to build.
+        expect(findLocaleFallbackConflict(config, "zh-TW", "zh-CN")).toBeNull();
+        // And one more hop onto it stays legitimate.
+        expect(findLocaleFallbackConflict(config, "ja", "zh-TW")).toBeNull();
+    });
+
+    it("rejects self-reference", () => {
+        expect(findLocaleFallbackConflict(config, "ja", "ja")).toBe("self");
+    });
+
+    it("rejects a language the project does not have", () => {
+        expect(findLocaleFallbackConflict(config, "ja", "fr")).toBe("unknown");
+    });
+
+    it("rejects the edge that closes a 2-cycle", () => {
+        // zh-TW already falls back to zh-CN, so zh-CN -> zh-TW would loop.
+        expect(findLocaleFallbackConflict(config, "zh-CN", "zh-TW")).toBe("cycle");
+    });
+
+    it("rejects the edge that closes a 3-cycle", () => {
+        const chained = {
+            sourceLocale: "en",
+            locales: [
+                { code: "en", displayName: "English" },
+                { code: "a", displayName: "a", fallback: "b" },
+                { code: "b", displayName: "b", fallback: "c" },
+                { code: "c", displayName: "c" },
+            ],
+        };
+        expect(findLocaleFallbackConflict(chained, "c", "a")).toBe("cycle");
+        expect(findLocaleFallbackConflict(chained, "c", "b")).toBe("cycle");
+    });
+
+    it("terminates on a cycle that does not involve the edited language", () => {
+        // A loop hand-edited into the file elsewhere must not hang the walk, and must not be
+        // reported against a language that is not part of it.
+        const corrupt = {
+            sourceLocale: "en",
+            locales: [
+                { code: "en", displayName: "English" },
+                { code: "a", displayName: "a", fallback: "b" },
+                { code: "b", displayName: "b", fallback: "a" },
+                { code: "ja", displayName: "日本語" },
+            ],
+        };
+        expect(findLocaleFallbackConflict(corrupt, "ja", "a")).toBeNull();
+    });
+
+    it("stops at the source language instead of following its fallback", () => {
+        // The source text is the compiled default, so nothing past it is ever read - a fallback
+        // stored on the source language cannot make a chain loop.
+        const sourceWithFallback = {
+            sourceLocale: "en",
+            locales: [
+                { code: "en", displayName: "English", fallback: "ja" },
+                { code: "ja", displayName: "日本語" },
+            ],
+        };
+        expect(findLocaleFallbackConflict(sourceWithFallback, "ja", "en")).toBeNull();
     });
 });

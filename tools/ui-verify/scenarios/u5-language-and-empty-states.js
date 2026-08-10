@@ -1,6 +1,5 @@
 /*
- * U5 acceptance — language, empty states, number tiles, reading surfaces, accessible names.
- * Card: docs/plans/2026-07-26-021-task-ui-u5-language-and-empty-states.md
+ * Acceptance — language, empty states, number tiles, reading surfaces, accessible names.
  *
  *   NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<electron pid> \
  *     node tools/ui-verify/scenarios/u5-language-and-empty-states.js [--phase catalogue|inspector|dashboard|surface|names|timeline|all]
@@ -19,13 +18,13 @@ const D = require('./_drive');
 const REPO = path.join(__dirname, '..', '..', '..');
 const run = A.createRun();
 
-/** The two sentences the card deliberately keeps: a destructive-action warning, and a diagnostic. */
+/** The two sentences deliberately kept: a destructive-action warning, and a diagnostic. */
 const KEEP = [
     'Removing only updates this list. Nothing on disk is deleted.',
     'Nothing on stage is named',
 ];
 
-function phaseCatalogue() {
+function phaseCatalog() {
     const dir = path.join(REPO, 'src/shared/i18n/catalog/en');
     const hits = [];
     for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
@@ -170,7 +169,7 @@ async function phaseTimeline() {
 
 (async () => {
     const phase = (process.argv.find((a) => a.startsWith('--phase=')) || '--phase=all').split('=')[1];
-    if (phase === 'all' || phase === 'catalogue') phaseCatalogue();
+    if (phase === 'all' || phase === 'catalog') phaseCatalog();
     if (phase === 'all' || phase === 'inspector') await phaseInspector();
     if (phase === 'all' || phase === 'dashboard') await phaseDashboard();
     if (phase === 'all' || phase === 'surface') await phaseSurface();

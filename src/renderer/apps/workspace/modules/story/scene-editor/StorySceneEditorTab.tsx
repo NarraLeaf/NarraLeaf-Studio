@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { AlignLeft, BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2, Variable } from "lucide-react";
-import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -28,7 +28,7 @@ import {
     type StoryActionCreateRequestDetail,
 } from "./storyActionCreatorEvents";
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
-import { StoryVariablesPanel, STORY_VARIABLES_PANEL_ID } from "../../story-variables";
+import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../../story-variables";
 import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
@@ -47,17 +47,20 @@ import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
 import { toReadOnlyStoryKeybindings, toReadOnlyStoryRowActions } from "./storySceneReadOnly";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
-import { getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
+import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
 import { StoryFindBar } from "./StoryFindBar";
+import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
+import { appendDeveloperIdSection } from "@/lib/developer";
+import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider } from "./StoryCommandLineView";
 import {
-    findRangesInText,
     getSegmentSlot,
-    replaceAllInSegment,
     replaceInSegment,
+    replaceRangesInSegment,
     segmentPlainText,
     type StoryFindMatch,
 } from "./storyFindReplace";
+import { compileMatcher } from "@/lib/workspace/services/search/textMatcher";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import {
@@ -159,6 +162,9 @@ function describeScrollContext(
 
 /** A row's `py-1`, the part of its height the density's box does not cover. */
 const ROW_VERTICAL_PADDING_PX = 8;
+
+/** "No drag in progress", as one shared value — a fresh `new Set()` would re-render every row. */
+const EMPTY_DRAG_GROUP: Set<StoryBlockId> = new Set();
 
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
 const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
@@ -410,15 +416,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // the old vocabulary after a language change until something else re-renders the tab.
     useCommandTranslation();
     // Adding, duplicating, reordering and deleting rows write the scene. Reading it, playing from a row,
-    // opening the inspector, changing the row density and using Find all stay live while frozen -
-    // density is editor state, not project data, and Find without Replace only navigates.
+    // opening the inspector, changing the row density and *finding* all stay live while frozen -
+    // density is editor state, not project data, and find on its own only navigates. Replace does
+    // write, and is gated on the guard in both the bar and the callbacks (`replaceCurrentMatch`).
     const freeze = useFreezeGuard();
     const editor = useStorySceneEditorController(tabId, payload);
-    // The command reference overlay (WI-2), opened from the header. Local state, not a panel — it is a
+    // The command reference overlay, opened from the header. Local state, not a panel — it is a
     // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
     const sensors = useSensors(
         useSensor(PointerSensor),
     );
+    /** The rows currently in the air. Empty except during a drag; see {@link handleDragStart}. */
+    const [draggingGroup, setDraggingGroup] = useState<Set<StoryBlockId>>(EMPTY_DRAG_GROUP);
     // The find bar's opener lives with the rest of the find state, further down; the binding table is
     // built before it exists, so it reaches the current one through a ref.
     const openFindRef = useRef<() => void>(() => {});
@@ -658,31 +667,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
 
-    useEffect(() => {
-        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
-            return;
-        }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        const unregister = uiService.panels.register({
-            id: STORY_VARIABLES_PANEL_ID,
-            title: t("story.sceneEditor.variablesPanel"),
-            icon: <Variable className="w-4 h-4" />,
-            position: PanelPosition.Right,
-            component: StoryVariablesPanel,
-            defaultVisible: false,
-            order: 11,
-            payload: {
-                tabId,
-                storyId: payload.storyId,
-                sceneId: payload.sceneId,
-            },
-        });
-        return () => {
-            uiService.panels.hide(STORY_VARIABLES_PANEL_ID);
-            unregister();
-        };
-    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
-
+    /**
+     * The Variables panel is a static module (see `modules/story-variables`) - it exists whether or
+     * not a story is open, because saved and global variables are project resources. All this tab
+     * owns is the SCENE section, which the panel renders from this payload.
+     *
+     * The cleanup is conditional on purpose. Two scene tabs can be open, and when the author
+     * switches from A to B, React may run B's effect before A's cleanup - so an unconditional clear
+     * would wipe the payload B has just published and silently empty the scene section. The payload
+     * carries `tabId` precisely so a tab can ask "is this still mine?" before clearing it. Do not
+     * "simplify" this back to `updatePayload(id, undefined)`.
+     */
     useEffect(() => {
         if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
             return;
@@ -695,6 +690,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             storyName: editor.document?.name,
             sceneName: editor.scene?.name,
         });
+        return () => {
+            const current = uiService.panels.getPayload<StoryVariablesPanelPayload>(STORY_VARIABLES_PANEL_ID);
+            if (current?.tabId === tabId) {
+                uiService.panels.updatePayload(STORY_VARIABLES_PANEL_ID, undefined);
+            }
+        };
     }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
 
     useEffect(() => {
@@ -763,7 +764,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // stale scene snapshot. The republish gate below fires only when the inspected block changes, so
     // between republishes an untracked scene change (a quickParam click or a drag on another row) would
     // otherwise leave the panel's callbacks closed over the pre-change scene — the next panel edit would
-    // then record that stale scene as its undo snapshot, so one Ctrl+Z silently reverts two edits (WI-0).
+    // then record that stale scene as its undo snapshot, so one Ctrl+Z silently reverts two edits.
     const editorRef = useRef(editor);
     editorRef.current = editor;
 
@@ -772,6 +773,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // `useStorySceneEditorController`. Nothing to register here any more.
 
     const sortableRowIds = useMemo(() => editor.visibleRows.map(row => row.block.id), [editor.visibleRows]);
+
+    /**
+     * How many rows a grip on a SELECTED row would pick up — the selection, deduped to roots the way
+     * every other selection-scoped action dedupes it. Resolved once for the whole list because the row
+     * needs only the number, which keeps it a primitive at the `memo` boundary.
+     */
+    const selectionDragSize = useMemo(() => {
+        const scene = editor.scene;
+        if (!scene || editor.selectedBlockIds.size < 2) {
+            return 1;
+        }
+        return filterOutSelectedDescendants(scene, [...editor.selectedBlockIds]).length;
+    }, [editor.scene, editor.selectedBlockIds]);
 
     /**
      * The row list is windowed: only the rows on screen (plus a little overscan) exist in the DOM.
@@ -907,6 +921,34 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }, [editor.visibleRows, rowVirtualizer]);
 
     /**
+     * A filter change is a different page, so the scroll position from the old one does not survive it.
+     *
+     * Not a nicety: the list shrinks under a scroller whose tail spacer keeps the range long, so the
+     * retained `scrollTop` can sit entirely BELOW the surviving rows — measured at 266 with the whole
+     * 200px list ending above the viewport. The editor then shows an empty page with a working filter
+     * on it, which is the one thing a filter must never look like. (Ticking 仅对话 on a 24-row scene
+     * did exactly that.)
+     *
+     * The anchor is the active row when it survived the filter, and the top when it did not: there is
+     * nothing left holding the author's place, and the top of the new page is where reading it starts.
+     *
+     * Deliberately keyed on the filter alone. `scrollRowIntoView` and `visibleRows` change identity on
+     * every keystroke, and listing them would turn this into "yank the scroll on every edit"; the
+     * effect body reads them from the closure of the render the filter change produced, which is the
+     * one set of values it wants.
+     */
+    useEffect(() => {
+        if (!active) {
+            return;
+        }
+        if (editor.activeBlockId && scrollRowIntoView(editor.activeBlockId, "center")) {
+            return;
+        }
+        editor.scrollContainerRef.current?.scrollTo({ top: 0 });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [active, editor.rowFilter]);
+
+    /**
      * Keep the active row on screen. Arrow-navigating a long scene used to walk the selection off the
      * viewport and leave it there — survivable while every row was in the DOM, fatal once they are
      * not, because Enter would open an editor on a row that does not exist.
@@ -932,7 +974,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }, [active, editor.activeBlockId, editor.editorMode.kind, editor.scrollContainerRef, scrollRowIntoView]);
 
     /**
-     * The right rail follows the selected row (U2 WI-1).
+     * The right rail follows the selected row.
      *
      * Two things are published from here, and the split matters:
      *
@@ -1103,6 +1145,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const sceneId = editor.scene?.id;
     const rowCount = editor.visibleRows.length;
     const deepLinkBlockId = payload?.activeBlockId ?? null;
+    const draftJump = payload?.draftJump;
     const panelStateService = useMemo(
         () => (editor.context && editor.isInitialized ? editor.context.services.get<PanelStateService>(Services.PanelState) : null),
         [editor.context, editor.isInitialized],
@@ -1128,9 +1171,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     useLayoutEffect(() => {
         const el = scrollContainerRef.current;
-        // Skip the saved-anchor restore when opening via a deep link — the deep-link effect below
-        // positions the view on the target block instead.
-        if (!el || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId || deepLinkBlockId) {
+        // Skip the saved-anchor restore when opening via a deep link or a drafted jump — those
+        // effects below position the view on the target block / the open slot instead.
+        if (!el || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId || deepLinkBlockId || draftJump) {
             return;
         }
         didRestoreRef.current = sceneId;
@@ -1160,7 +1203,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         };
         attempt();
         return () => window.cancelAnimationFrame(rafId);
-    }, [scrollContainerRef, sceneId, rowCount, panelStateService, deepLinkBlockId]);
+    }, [scrollContainerRef, sceneId, rowCount, panelStateService, deepLinkBlockId, draftJump]);
 
     // Capture the scroll anchor at most once per frame while scrolling (querying row geometry on every
     // raw scroll event would thrash layout on long scenes). The live scrollTop is recorded eagerly so
@@ -1272,7 +1315,34 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         editor.focusRoot();
     }, [active, deepLinkBlockId, rowCount, scrollContainerRef, scrollRowIntoView, editor.revealBlock, editor.focusRoot]);
 
-    // Dev Mode play head (WI-2): follow the running row in place when this editor owns the scene.
+    // The scene flow map's connect gesture: open a slot with the `/jump` typed into it and the caret
+    // on the end, and leave the committing to the author's Enter (see `StorySceneEditorDraftJump`).
+    //
+    // Gated on the scene actually being loaded (`rowCount` is the effect's re-run signal, exactly as
+    // above): the map opens this tab and hands it the draft in the same breath, so on a cold open the
+    // first pass runs before the document has arrived and there is no scene to seed a slot in. The
+    // token, not the target, is what marks the gesture handled — two drags to the same scene are two
+    // requests.
+    const handledDraftJumpRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (!active || !draftJump || handledDraftJumpRef.current === draftJump.token || !editor.scene) {
+            return;
+        }
+        handledDraftJumpRef.current = draftJump.token;
+        if (!editor.startJumpDraft(draftJump)) {
+            return;
+        }
+        // The slot lands at the end of the scene (or inside an arm), and the author may well be
+        // reading the top of a long chapter — a caret they cannot see is indistinguishable from the
+        // map having done nothing. Waits a frame for the slot to mount before looking for it.
+        window.requestAnimationFrame(() => {
+            scrollContainerRef.current
+                ?.querySelector<HTMLElement>("[data-story-insert-slot]")
+                ?.scrollIntoView({ block: "center" });
+        });
+    }, [active, draftJump, rowCount, scrollContainerRef, editor.scene, editor.startJumpDraft]);
+
+    // Dev Mode play head: follow the running row in place when this editor owns the scene.
     // Uses the plain row-select visual — never `revealBlock` (which would flip the author's
     // "narrative only" filter) and never `focusRoot` — so watching the game neither reshapes the
     // author's view nor pulls keyboard focus. Only rows the author is currently showing react: a row
@@ -1439,11 +1509,28 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, [editor.context, payload?.storyId, payload?.sceneId, panelStateService, t]);
 
-    // Row context menu (WI-3). Right-clicking a row outside the current selection selects just it first,
+    // Row context menu. Right-clicking a row outside the current selection selects just it first,
     // so the menu's selection-scoped actions act on exactly what the author pointed at; inside the
     // selection, the whole selection is kept.
     const rowMenu = useContextMenu();
     const densityMenu = useContextMenu();
+    /**
+     * The row filter's panel, anchored to its toolbar button rather than to the pointer: it is a set of
+     * switches an author reopens to adjust, and a panel that lands wherever the click did would put the
+     * same tick under a different pixel each time.
+     */
+    const filterButtonRef = useRef<HTMLButtonElement | null>(null);
+    const [filterMenuAnchor, setFilterMenuAnchor] = useState<{ left: number; right: number; bottom: number } | null>(null);
+    const rowFilterSize = storyRowFilterSize(editor.rowFilter);
+    const toggleFilterMenu = useCallback(() => {
+        setFilterMenuAnchor(current => {
+            if (current) {
+                return null;
+            }
+            const rect = filterButtonRef.current?.getBoundingClientRect();
+            return rect ? { left: rect.left, right: rect.right, bottom: rect.bottom } : null;
+        });
+    }, []);
     const [menuTargetId, setMenuTargetId] = useState<StoryBlockId | null>(null);
     const openRowContextMenu = useCallback((event: ReactMouseEvent, blockId: StoryBlockId) => {
         if (!editor.selectedBlockIds.has(blockId)) {
@@ -1465,8 +1552,22 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const [findQuery, setFindQuery] = useState("");
     const [findReplacement, setFindReplacement] = useState("");
     const [findCaseSensitive, setFindCaseSensitive] = useState(false);
+    const [findWholeWord, setFindWholeWord] = useState(false);
+    const [findRegex, setFindRegex] = useState(false);
     const [findCursor, setFindCursor] = useState(0);
     const [findFocusToken, setFindFocusToken] = useState(0);
+
+    /**
+     * One compiled matcher for the whole sweep.
+     *
+     * Compiling builds three `RegExp`s, and the sweep below runs over every visible row on every
+     * keystroke - so compiling inside the loop would be three constructions per row per character
+     * typed. This is the same matcher the project search panel replaces through.
+     */
+    const findMatcher = useMemo(
+        () => compileMatcher(findQuery, { caseSensitive: findCaseSensitive, wholeWord: findWholeWord, regex: findRegex }),
+        [findQuery, findCaseSensitive, findWholeWord, findRegex],
+    );
 
     const findMatches = useMemo<StoryFindMatch[]>(() => {
         if (!findOpen || !findQuery) {
@@ -1478,12 +1579,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             if (!slot) {
                 return;
             }
-            for (const range of findRangesInText(segmentPlainText(slot.segment), findQuery, { caseSensitive: findCaseSensitive })) {
+            for (const range of findMatcher.findRanges(segmentPlainText(slot.segment))) {
                 matches.push({ ...range, blockId: row.block.id, rowIndex });
             }
         });
         return matches;
-    }, [editor.visibleRows, findCaseSensitive, findOpen, findQuery]);
+    }, [editor.visibleRows, findMatcher, findOpen, findQuery]);
 
     // A shrinking result set must not leave the cursor pointing past the end.
     const activeFindIndex = findMatches.length === 0 ? 0 : findCursor % findMatches.length;
@@ -1505,21 +1606,33 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         goToMatch((activeFindIndex + delta + findMatches.length) % findMatches.length);
     }, [activeFindIndex, findMatches.length, goToMatch]);
 
+    /**
+     * Replace is a write, and a frozen workspace refuses writes.
+     *
+     * Find stays live while frozen - navigating a past revision's prose is the point of browsing one -
+     * but until this check existed the two replace buttons went straight through to the story service
+     * on a project the author was only meant to be reading. The bar greys them too; this is the half
+     * that holds when something else reaches these callbacks.
+     */
     const replaceCurrentMatch = useCallback(() => {
+        if (freeze.frozen) {
+            return;
+        }
         const match = findMatches[activeFindIndex];
         const block = match ? editor.scene?.blocks[match.blockId] : null;
         const slot = block ? getSegmentSlot(block) : null;
         if (!match || !block || !slot) {
             return;
         }
-        const next = replaceInSegment(slot.segment, match, findReplacement);
+        const plain = segmentPlainText(slot.segment);
+        const next = replaceInSegment(slot.segment, match, findMatcher.expand(plain, match, findReplacement));
         editor.updateBlockPayloads([{ blockId: match.blockId, payload: slot.withSegment(next).payload }]);
         // Stay put: the list re-derives and the cursor lands on whatever now occupies this position,
         // which is the next hit when the replacement no longer matches.
-    }, [activeFindIndex, editor, findMatches, findReplacement]);
+    }, [activeFindIndex, editor, findMatcher, findMatches, findReplacement, freeze.frozen]);
 
     const replaceAllMatches = useCallback(() => {
-        if (findMatches.length === 0) {
+        if (freeze.frozen || findMatches.length === 0) {
             return;
         }
         const byBlock = new Map<StoryBlockId, StoryFindMatch[]>();
@@ -1534,13 +1647,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             if (!block || !slot) {
                 continue;
             }
-            const next = replaceAllInSegment(slot.segment, ranges, findReplacement);
+            // Per hit, not per block: in regex mode `$1` expands against the hit it was found in, so
+            // one line can take a different replacement at every position.
+            const plain = segmentPlainText(slot.segment);
+            const next = replaceRangesInSegment(slot.segment, ranges, range =>
+                findMatcher.expand(plain, range, findReplacement),
+            );
             edits.push({ blockId, payload: slot.withSegment(next).payload });
         }
         // One history entry for the sweep, not one per row.
         editor.updateBlockPayloads(edits);
         setFindCursor(0);
-    }, [editor, findMatches, findReplacement]);
+    }, [editor, findMatcher, findMatches, findReplacement, freeze.frozen]);
 
     const openFind = useCallback(() => {
         setFindOpen(true);
@@ -1596,14 +1714,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 const { editor: current } = latest();
                 // The trigger typed into an empty dialogue row is not text the row keeps: it is the
                 // author asking for this speaker's own actions, and the scoped insert slot takes over
-                // the line in place. Every other keystroke falls straight through.
+                // the line in place. Every other keystroke falls straight through. Asked BEFORE the
+                // draft is updated, because "was the line empty" is a question about the keystroke
+                // before this one.
                 if (current.startCharacterActionSlot(blockId, value)) {
                     return;
                 }
                 current.resetGoalColumn();
-                current.setEditorMode(mode => mode.kind === "text" && mode.blockId === blockId
-                    ? { ...mode, value, rich }
-                    : mode);
+                // A ref write, not a state write. This used to publish `{ ...mode, value, rich }` —
+                // a new object on every character, so a keystroke re-rendered the controller, this
+                // tab and every row in the window to show one letter landing in a field that renders
+                // itself. Nothing reads the draft on a render path; see `textDraftRef`. This is the
+                // same bail-out the insert slot has always had in `handleInsertValueChange`.
+                current.updateTextDraft(blockId, value, rich);
             },
             pasteIntoRowText: (_blockId, event) => latest().editor.handleRowTextPaste(event),
             commitTextEdit: () => latest().editor.commitTextEdit(),
@@ -1712,16 +1835,30 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const backgroundAsset = scene.defaultBackgroundAssetId
         ? assetsService.getAssets()[AssetType.Image]?.[scene.defaultBackgroundAssetId] ?? null
         : null;
+    // Dragging a row that is part of the selection drags the whole selection: the rows the author
+    // picked up are settled here, at pick-up, and dimmed together while the drag runs so it is visible
+    // that more than one line is in the air.
+    const handleDragStart = (event: DragStartEvent) => {
+        setDraggingGroup(new Set(editor.beginBlockDrag(String(event.active.id))));
+    };
     const handleDragEnd = (event: DragEndEvent) => {
+        setDraggingGroup(EMPTY_DRAG_GROUP);
         const activeId = String(event.active.id);
         const overId = event.over ? String(event.over.id) : null;
         if (!overId || activeId === overId) {
+            editor.endBlockDrag();
             return;
         }
-        editor.moveDraggedBlockToSortablePosition(activeId, overId);
+        editor.moveDraggedBlocksToSortablePosition(activeId, overId);
     };
+    const handleDragCancel = () => {
+        setDraggingGroup(EMPTY_DRAG_GROUP);
+        editor.endBlockDrag();
+    };
+    /** What this row's grip says it will move: the selection it belongs to, or just itself. */
+    const dragGroupSizeFor = (blockId: StoryBlockId) => (editor.selectedBlockIds.has(blockId) ? selectionDragSize : 1);
 
-    // Row context-menu items (WI-3). Insert / play / inspector act on the pointed-at row; duplicate /
+    // Row context-menu items. Insert / play / inspector act on the pointed-at row; duplicate /
     // disable / delete act on the whole selection (which the right-click already normalized). The
     // disable rung reads "Enable" when every targeted root is already disabled, so one action toggles.
     const densityMenuItems: ContextMenuDef = STORY_EDITOR_DENSITIES.map(density => ({
@@ -1746,6 +1883,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         { id: "sep-del", separator: true },
         { id: "delete", label: t("story.rowMenu.delete"), ...freeze.menuRow(), onClick: () => void editor.deleteRows(editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget]) },
     ] : [];
+    const rowMenuItemsWithDeveloperRows = menuTarget
+        ? appendDeveloperIdSection(
+            rowMenuItems,
+            [{ kind: "storyRow", value: menuTarget }, { kind: "scene", value: scene.id }],
+            {
+                hideMenu: rowMenu.hideMenu,
+                // Resolved when the row is clicked rather than on every render of the editor.
+                notify: (message, type) =>
+                    editor.context?.services.get<UIService>(Services.UI).showNotification(message, type),
+            },
+        )
+        : rowMenuItems;
 
     return (
         <StoryEditorTextStyleProvider density={editor.density}>
@@ -1780,15 +1929,27 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     </div>
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {/* One control for the whole of "what is on this page".
+                        A separate "narrative only" toggle used to sit to its left, and it was a
+                        mistake twice over: it was one point inside this button's own space, and its
+                        `AlignLeft` glyph — three tapered rules — was near enough to `ListFilter` that
+                        the pair read as one control drawn twice. The preset it offered is the first
+                        thing in the panel; the funnel is the one glyph nothing else here can be.
+                        The count is there because a filter silently removes lines — a tinted glyph
+                        says "something is on", the number says how much. */}
                     <button
+                        ref={filterButtonRef}
                         type="button"
-                        onClick={() => editor.setNarrativeOnly(!editor.narrativeOnly)}
-                        title={t("story.view.narrativeOnly")}
-                        aria-label={t("story.view.narrativeOnly")}
-                        aria-pressed={editor.narrativeOnly}
-                        className={["rounded-md p-1.5 transition-colors", editor.narrativeOnly ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        onClick={toggleFilterMenu}
+                        title={t("story.view.filter.title")}
+                        aria-label={t("story.view.filter.title")}
+                        aria-haspopup="menu"
+                        aria-expanded={filterMenuAnchor !== null}
+                        aria-pressed={rowFilterSize > 0}
+                        className={["flex items-center gap-1 rounded-md p-1.5 transition-colors", rowFilterSize > 0 ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >
-                        <AlignLeft className="h-4 w-4" />
+                        <Filter className="h-4 w-4" />
+                        {rowFilterSize > 0 ? <span className="text-2xs tabular-nums">{rowFilterSize}</span> : null}
                     </button>
                     {/* Three densities, so a two-state toggle can no longer say which one is on. The
                         menu names them and ticks the current one; the button still reads as "not the
@@ -1845,6 +2006,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     onReplacementChange={setFindReplacement}
                     caseSensitive={findCaseSensitive}
                     onToggleCaseSensitive={() => setFindCaseSensitive(value => !value)}
+                    wholeWord={findWholeWord}
+                    onToggleWholeWord={() => setFindWholeWord(value => !value)}
+                    regex={findRegex}
+                    onToggleRegex={() => setFindRegex(value => !value)}
+                    invalidPattern={findMatcher.error !== undefined}
+                    freeze={freeze}
                     matchCount={findMatches.length}
                     activeMatch={findMatches.length === 0 ? 0 : activeFindIndex + 1}
                     onNext={() => stepMatch(1)}
@@ -1875,7 +2042,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     onUpdateScene={editor.updateSceneMetadata}
                     panelStateService={panelStateService}
                 />
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
                     {/* `items` stays the WHOLE list, not the window. dnd-kit tolerates a rect it has
                         not measured (its strategy and gap helpers both guard on it), and telling it
                         only about the rows currently on screen would make "which index is this" mean
@@ -1897,7 +2064,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                 // pushes every row down by the height of the scene overview above it.
                                 style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start - rowListMargin}px)` }}
                             >
-                                {/* "Insert above" (WI-3): a before-target slot renders in front of this row at
+                                {/* "Insert above": a before-target slot renders in front of this row at
                                     its own depth, so the new line lands above it whether or not it has a
                                     previous sibling. */}
                                 {editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === null && editor.editorMode.slot.target?.beforeBlockId === row.block.id ? (
@@ -1961,6 +2128,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                     tempSpeakers={editor.tempSpeakers}
                                     density={editor.density}
                                     rowHighlight={rowHighlight}
+                                    dragGroupSize={dragGroupSizeFor(row.block.id)}
+                                    coDragging={draggingGroup.size > 1 && draggingGroup.has(row.block.id)}
                                 />
                                 )}
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === row.block.id ? (
@@ -2037,11 +2206,29 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         {t("story.sceneEditor.addRow")}
                     </button>
                 )}
+                {/* A page with nothing on it, and the two very different reasons it can be that way.
+                    A filter that hides every row leaves the scene exactly as full as it was, so the
+                    "this scene is empty, here is how to start one" primer would be false — and it is
+                    aimed at a new author, which is the last person who should be told to write their
+                    first line when what they actually did was tick one box too many. The way out is
+                    right here rather than back up in the menu they would have to reopen to find it. */}
+                {editor.visibleRows.length === 0 && editor.editorMode.kind !== "insert" && editor.unfilteredRowCount > 0 ? (
+                    <div className="mx-auto mt-6 flex max-w-md flex-col items-start gap-2 px-6 text-xs text-fg-subtle">
+                        <p>{t("story.sceneEditor.filteredEmpty")}</p>
+                        <button
+                            type="button"
+                            className="rounded-md px-0 py-0.5 text-2xs text-primary underline-offset-2 hover:underline"
+                            onClick={() => editor.setRowFilter(EMPTY_STORY_ROW_FILTER)}
+                        >
+                            {t("story.sceneEditor.filteredEmptyClear")}
+                        </button>
+                    </div>
+                ) : null}
                 {/* A scene with nothing in it is the one place a new author is guaranteed to look, and
                     all it used to say was "click or type to add a row" — true, and no help at all with
                     the question actually being asked, which is "what can I write here". Three lines and
                     the way in. It disappears the moment there is anything to read. */}
-                {editor.visibleRows.length === 0 && editor.editorMode.kind !== "insert" ? (
+                {editor.visibleRows.length === 0 && editor.editorMode.kind !== "insert" && editor.unfilteredRowCount === 0 ? (
                     <div className="mx-auto mt-6 flex max-w-md flex-col gap-2 px-6 text-xs text-fg-subtle">
                         <p>{t("story.sceneEditor.emptyHint", { trigger: editor.slashAtAlias ? "@" : "/" })}</p>
                         <ul className="flex flex-col gap-1">
@@ -2079,7 +2266,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 </div>
             ) : null}
             <ContextMenu
-                items={rowMenuItems}
+                items={rowMenuItemsWithDeveloperRows}
                 position={rowMenu.menuState.position}
                 visible={rowMenu.menuState.visible}
                 onClose={rowMenu.hideMenu}
@@ -2093,6 +2280,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 onClose={densityMenu.hideMenu}
                 iconsEnabled
             />
+            {filterMenuAnchor ? (
+                <StoryRowFilterMenu
+                    anchor={filterMenuAnchor}
+                    anchorEl={filterButtonRef.current}
+                    filter={editor.rowFilter}
+                    tallies={editor.rowFilterTallies}
+                    characters={editor.characters}
+                    onChange={editor.setRowFilter}
+                    onClose={() => setFilterMenuAnchor(null)}
+                />
+            ) : null}
             </div>
             {previewOpen && previewMode === "dock" ? (
                 <>

@@ -19,6 +19,7 @@ import { safeExecuteFn } from "@shared/utils/os";
 import { StringKeyOf } from "@shared/utils/types";
 import path from "path";
 import { MenuManager } from "./managers/menuManager";
+import { TrayManager } from "./managers/trayManager";
 import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
@@ -28,6 +29,7 @@ import { sweepPsdTempDirectories } from "./managers/storage/cacheInventory";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
+import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
 import { isMainDevMode, parseMainCommandLine } from "./commandLine";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
@@ -69,6 +71,16 @@ export class BaseApp {
     public readonly pluginPermissionManager: PluginPermissionManager;
     public readonly pluginManager: PluginManager;
     public readonly pluginIconCache: PluginIconCache;
+    public readonly uiTemplatePosterCache: UITemplatePosterCache;
+    /**
+     * The status-bar item, once `App` has built it. Null on macOS, which deliberately has none,
+     * and null until the app is ready.
+     *
+     * Assigned by the subclass rather than constructed here because its menu drives the launcher
+     * and the Settings window, neither of which this class knows about. What this class does own
+     * is the language, so it is the one that has to ask for a rebuild.
+     */
+    public trayManager: TrayManager | null = null;
 
     private initialized: boolean = false;
     private readyError: Error | null = null;
@@ -82,6 +94,15 @@ export class BaseApp {
         this.electronApp = app;
         this.electronApp.on("before-quit", () => {
             this.quitting = true;
+        });
+        // Studio outlives its windows: closing the last one leaves it in the status bar (Windows,
+        // Linux) or the Dock (macOS), which is what makes "finish this update in the background"
+        // possible at all. Electron's built-in behaviour is the opposite - with no listener at
+        // all it quits the app on non-darwin platforms - so this empty listener is the whole
+        // mechanism, not a placeholder. What actually brings a surface back is
+        // `App.handleLastWindowClosed`.
+        this.electronApp.on("window-all-closed", () => {
+            this.logger.info("[App] Last window closed; staying resident.");
         });
         this.electronApp.setName(APP_DISPLAY_NAME);
         this.electronApp.setAboutPanelOptions({
@@ -110,6 +131,7 @@ export class BaseApp {
             builtInPluginsDir: this.getBuiltInPluginsDir(),
         });
         this.pluginIconCache = new PluginIconCache(this.getUserDataDir());
+        this.uiTemplatePosterCache = new UITemplatePosterCache(this.getUserDataDir());
 
         this.protocolManager = new ProtocolManager(this);
         this.windowManager = new WindowManager(this);
@@ -197,6 +219,10 @@ export class BaseApp {
         // the main process and must be rebuilt here.
         if (key === "app.language") {
             this.menuManager.updateMenu();
+            // Same reasoning as the native menu, and the same blind spot: the tray menu is built
+            // in the main process from a translator snapshot, so nothing about the renderer-side
+            // language broadcast reaches it.
+            this.trayManager?.rebuildMenu();
         }
 
         // The "Open Recent" submenu is built from this list, so a change here - most
@@ -401,11 +427,45 @@ export class BaseApp {
     }
 
     /**
+     * Claim this profile for this process, or report that another Studio already owns it.
+     *
+     * Matters now that Studio outlives its windows: without it, launching from the Start menu
+     * while a windowless instance sits in the tray would start a *second* Studio - two tray
+     * items, two update checks, and two processes writing the same `globalState.json`.
+     *
+     * Must be called after {@link setupUserDataDir}: Electron keys the lock on the userData
+     * directory, and development redirects that path.
+     *
+     * Development is exempt. `dev-electron.js` restarts this process on every rebuild, and a new
+     * instance starting before the old one has finished exiting would lose the lock and quit -
+     * a dev loop that dies at random, in exchange for behaviour that only an installed app has
+     * any use for.
+     */
+    public acquireSingleInstanceLock(): boolean {
+        if (!this.electronApp.isPackaged) {
+            return true;
+        }
+        return this.electronApp.requestSingleInstanceLock();
+    }
+
+    /**
      * True once the whole app is on its way out (Quit menu item, Cmd+Q, session logout).
      * Window close guards must stand aside in that case, or they would cancel the quit.
      */
     public isQuitting(): boolean {
         return this.quitting;
+    }
+
+    /**
+     * Take back the "we are quitting" flag after a `before-quit` listener cancelled the quit.
+     *
+     * The flag is set by this class's own `before-quit` listener, which has already run by the
+     * time anyone downstream calls `event.preventDefault()`. Leaving it set would be silent and
+     * lasting: `isQuitting()` is what every window close guard checks in order to stand aside, so
+     * an app that stayed open after a cancelled quit would never again ask to save anything.
+     */
+    public cancelQuit(): void {
+        this.quitting = false;
     }
 
     public crash(error: string | Error): void {
@@ -424,6 +484,47 @@ export class BaseApp {
 
     public isDevMode(): boolean {
         return isMainDevMode(this.commandLine, this.electronApp.isPackaged);
+    }
+
+    /**
+     * Whether this launch asked for first-run setup regardless of what the profile has been
+     * through - `--onboarding`, which only development honors.
+     *
+     * The dev gate lives here rather than at the call site so there is one place that decides it:
+     * a second reader that forgot the gate would let a packaged build be talked into the setup
+     * flow by an argument on a shortcut.
+     */
+    public wantsOnboardingRerun(): boolean {
+        return this.isDevMode() && this.commandLine.onboarding;
+    }
+
+    /**
+     * Whether this launch asked *not* to be shown first-run setup - `--skip-onboarding`, or
+     * `--project`, which says where the session is going and therefore is not going to sit on the
+     * home screen answering questions.
+     *
+     * Same dev gate and same single-reader rule as {@link wantsOnboardingRerun}; `--onboarding`
+     * beats both, which is settled in `App.shouldRunOnboarding` rather than here.
+     */
+    public wantsOnboardingSkipped(): boolean {
+        if (!this.isDevMode()) {
+            return false;
+        }
+        return this.commandLine.skipOnboarding || this.commandLine.project.selector !== null;
+    }
+
+    /**
+     * The project this launch asked to open, exactly as it was written on the command line - a
+     * path, or a name to look for in the recent list. Null when nothing was asked for, which is
+     * also what a packaged build always sees.
+     */
+    public getStartupProjectSelector(): string | null {
+        return this.isDevMode() ? this.commandLine.project.selector : null;
+    }
+
+    /** What was wrong with `--project`, for the one place that reports it. Dev-gated as above. */
+    public getStartupProjectError(): string | null {
+        return this.isDevMode() ? this.commandLine.project.error : null;
     }
 
     public getAppEntry(type: WindowAppType): string {

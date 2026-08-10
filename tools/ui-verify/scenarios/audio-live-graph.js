@@ -1,5 +1,5 @@
 /*
- * Card 2026-07-31-001 — read the LIVE Web Audio graph of the running game.
+ * Read the LIVE Web Audio graph of the running game.
  *
  * Wrapping AudioContext.prototype.createBufferSource only sees clips created after the wrap, and
  * the dev-mode window reloads on every launch, so the wrap is either too late or wiped. Reading the

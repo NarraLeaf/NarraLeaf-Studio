@@ -2,11 +2,60 @@ appId: com.narraleaf.studio
 productName: NarraLeaf Studio
 directories:
   output: build
+  # Must be set explicitly. It defaults to `build`, which is also `output` above and is
+  # gitignored - so the conventional home for `installer.nsh` and the installer bitmaps would be
+  # inside the build output, deleted by the next pack and never committed. (It also explains the
+  # two identical `!build{,/**/*}` entries that show up in builder-debug.yml.)
+  buildResources: project/installer
 files:
   - dist/**/*
   - package.json
   - '!**/*.map'
   - '!**/{CHANGELOG,README,README.md,docs,CHANGELOG.md}/**'
+  # Everything below trims the runtime dependency closure that `asarUnpack` below
+  # copies out wholesale. They must live *here* rather than in the per-platform
+  # blocks: a `files` key under `win:`/`mac:`/`linux:` makes these global patterns
+  # disappear from the app matcher entirely (verified twice against 26.9.0 — the
+  # matcher ends up holding only the platform patterns, all of which start with
+  # `!`, so electron-builder decides it "contains only ignores" and prepends
+  # `**/*`; the packaged asar then gains the whole repo, docs/ and src/ included,
+  # while nothing fails). The node_modules copier unions the two correctly, which
+  # is what makes the breakage silent: the trimming works and the asar is wrong.
+  # `${os}` (win|mac|linux) and `${arch}` are expanded per target, so one global
+  # list still says something different on each platform.
+  #
+  # Monaco is bundled, never require()d from disk: the text editor imports
+  # `monaco-editor/esm/**` and esbuild inlines it (with its CSS and codicon font)
+  # into dist/windows, and @monaco-editor/react is handed that instance via
+  # `loader.config({ monaco })` so its own AMD/CDN loader never runs. The 68 MB on
+  # disk — dev/ + esm/ + min/ side by side — is a second copy nobody reads.
+  # @monaco-editor/react itself stays.
+  - '!node_modules/monaco-editor{,/**/*}'
+  # app-builder-bin (207 MB) and 7zip-bin (12 MB) each ship one build per platform
+  # and arch they could ever run on, and each picks exactly one from
+  # process.platform + process.arch (see their index.js). They are in the closure
+  # because electron-builder is a runtime dependency for the in-app game build; an
+  # installer is only ever one host, so the rest never executes. The `/*` is
+  # load-bearing: both keep loose files (index.js, LICENSE, package.json) beside
+  # their platform dirs, and a bare `!(${os})` matches those too. It leaves the
+  # foreign platform dirs behind as empty shells, which is the cheaper mistake.
+  - '!node_modules/app-builder-bin/!(${os})/*{,/**/*}'
+  - '!node_modules/7zip-bin/!(${os})/*{,/**/*}'
+  # Arch-level pruning, Windows only. `win/<arch>/` matches `${arch}` exactly
+  # (x64|arm64|ia32), so this follows whatever is being packaged instead of
+  # pinning x64; on mac and linux the whole win/ tree is already gone, so it is a
+  # no-op there. Deliberately not generalised: mac names its two binaries
+  # app-builder_amd64/_arm64 (and `--mac --universal` expands ${arch} to
+  # "universal"), linux says `arm` where electron-builder says `armv7l` — both
+  # would empty the keep-set silently, and only the in-app game build would
+  # notice, long after packaging succeeded.
+  - '!node_modules/app-builder-bin/win/!(${arch}){,/**/*}'
+  # koffi (the FFI @lore-vcs/sdk loads through) ships 18 prebuilds and loads one
+  # by `${process.platform}_${arch}`. The keep-list is the set of hosts Studio is
+  # actually built for (see .github/workflows/release.yml) plus musl for glibc-less
+  # Linux; an explicit list rather than a macro because koffi's triplets agree with
+  # neither ${os} (win32, not win) nor ${arch} (armhf, riscv64d).
+  - '!node_modules/koffi/build/koffi/!(win32_x64|darwin_arm64|linux_x64|musl_x64){,/**/*}'
   - from: src/renderer/public
     to: public
     filter:
@@ -43,7 +92,23 @@ electronFuses:
   enableEmbeddedAsarIntegrityValidation: false
   onlyLoadAppFromAsar: true
   resetAdHocDarwinSignature: true
-publish: null
+# Configuring this is what makes electron-builder emit the update metadata: `latest.yml` (the feed
+# electron-updater reads) and a `.blockmap` beside each installer (which is how a 270 MB update
+# downloads as a delta rather than in full). It also writes `app-update.yml` into the packaged
+# resources, which is where the running app learns which repository to ask.
+#
+# It does NOT make packaging upload anything: `release.yml` passes `--publish never` and attaches
+# the artifacts itself, so no token is ever handed to electron-builder. The metadata is still
+# produced - `createUpdateInfoTasks` is gated on the publish config existing, not on publishing
+# (app-builder-lib/out/publish/PublishManager.js).
+#
+# The half that is easy to forget is on the other side: release.yml has to *attach* `*.yml` and
+# `*.blockmap`. Without them the release looks complete and every installed Studio checks forever
+# against a 404.
+publish:
+  provider: github
+  owner: NarraLeaf
+  repo: NarraLeaf-Studio
 extraResources:
   - from: ./resources
     to: resources
@@ -58,24 +123,206 @@ extraResources:
       # substituted for them (app-builder-lib/out/fileMatcher.js:getFileMatchers),
       # so the two blocks compose.
       - '!codesign{,/**/*}'
+      # The vendored FFmpeg tools are excluded for exactly the reason the
+      # code-signing ones are, and more urgently: project/build/prepare-ffmpeg.js
+      # stages ~217 MB of native binaries per host under resources/ffmpeg/<platform>/,
+      # so copying the whole tree would both put a Mach-O binary inside the Windows
+      # installer and multiply that size by the number of platforms staged.
+      - '!ffmpeg{,/**/*}'
 mac:
   target: dmg
   icon: resources/app-icon.icns
-  # Apple Silicon only: zsign publishes no macOS x64 asset, so nothing is staged
-  # on an Intel mac and this mapping copies nothing there (electron-builder logs
-  # "file source doesn't exist" and carries on).
+  # Studio is never code-signed, on any host. Left unset, `identity` makes
+  # electron-builder search the login keychain and sign with whatever Apple
+  # certificate it finds there — on a maintainer's own Mac that is their
+  # personal "Apple Development" identity, which is neither a distribution
+  # certificate nor a choice anyone made for this build. It also fails: the
+  # embedded preview runner is a second Electron.app under Resources, and
+  # codesign rejects its framework ("unsealed contents present in the root
+  # directory of an embedded framework") because it was never laid out to be
+  # re-signed as a nested bundle.
+  #
+  # CSC_IDENTITY_AUTO_DISCOVERY=false in .github/workflows/release.yml said this
+  # for CI only, where no identity exists anyway. Here it holds for everyone,
+  # including a plain `yarn pack-electron --mac` on a machine that does have
+  # certificates.
+  #
+  # `notarize: false` is the other half of the pair. Notarization is configured
+  # entirely through environment variables, so a maintainer with APPLE_ID
+  # exported for their own tooling would otherwise have every build reach
+  # Apple's service uninvited. Unreachable while `identity` is null — signing
+  # returns before it — but stating one without the other invites the next
+  # person to change one without the other. src/main/buildWorker/desktopSigning.ts
+  # carries the same pair, for the games Studio builds.
+  #
+  # The ad-hoc signature an arm64 binary needs in order to launch at all is a
+  # different thing and stays: electronFuses.resetAdHocDarwinSignature above
+  # re-applies it after the fuses are flipped, with no identity involved.
+  identity: null
+  notarize: false
+  # macOS means Apple Silicon here. Studio is not shipped for Intel Macs at all
+  # (see .github/workflows/release.yml for the decision), so `--mac --x64` is not
+  # a target anyone packages, and both mappings below are arm64-only as a
+  # consequence rather than as a gap waiting to be filled.
+  #
+  # This is the *host* platform. Games built with Studio still target Intel Macs;
+  # GAME_BUILD_ARCHS_BY_PLATFORM in src/shared/types/gameBuild.ts is the list that
+  # governs that, and it is a different question from this file.
+  #
+  # On a mac with no Xcode Command Line Tools nothing is staged and these mappings
+  # copy nothing (electron-builder logs "file source doesn't exist" and carries
+  # on); the resulting Studio reports iOS signing and media conversion as
+  # unavailable rather than failing to build.
+  #
+  # Note the macOS FFmpeg is LGPL v2.1 where the Windows and Linux ones are v3 —
+  # the licence text staged next to each binary and the licenseId in its
+  # manifest.json differ accordingly.
   extraResources:
     - from: ./resources/codesign/darwin
       to: resources/codesign/darwin
+    - from: ./resources/ffmpeg/darwin
+      to: resources/ffmpeg/darwin
+# The DMG window *is* the background image: dmg-builder measures the file with
+# `sips` and hands that size to dmgbuild as the window size, which also means
+# `dmg.window` is silently ignored whenever `background` is set (dmg-builder's
+# customizeDmg only populates the window key in the backgroundColor branch). So
+# the 560x326 the images carry is load-bearing — resizing them moves the window
+# without moving the icon coordinates below, and vice versa. (The artboard is
+# 560x380; project/dmg holds it cropped, for the reason spelled out further
+# down.)
+#
+# background@2x.png (1120x652) sits next to background.png and is never named
+# here: electron-builder finds it by that suffix, runs `tiffutil -cathidpicheck`
+# on the pair, and ships a multi-representation tiff so the window is crisp on
+# Retina. That pairing is checked, not merely conventional: the @2x file must be
+# exactly twice the @1x or tiffutil fails the build outright. Delete it and the
+# DMG silently drops to 1x instead.
+#
+# The path is project-relative on purpose. `getResource` searches
+# `directories.buildResources` before the project dir, and that is
+# `project/installer` — the NSIS wizard's assets, which these are not. Naming
+# the file explicitly puts it in `project/dmg` and lets the project-dir fallback
+# find it, rather than filing macOS window art under the Windows installer or
+# reviving the bare `background.png` convention, which would resolve against
+# `project/installer` and quietly pick up nothing.
+#
+# Coordinates are icon *centres* in 1x pixels, with y measured downwards from
+# the top of the window's *icon view*. (Verified against the stock 540x380
+# template: its default (130,220)/(410,220) land exactly on the dashed arrow
+# drawn at x~265, y~225.) Centres, not corners — the art was laid out against
+# the Applications icon's top-left at (360, 94), which is why the value below is
+# that plus half of iconSize rather than the number the artboard carries.
+#
+# The character is mirrored to face right and her fingertip lands at (337, 138),
+# which is what aims her at the folder: 4px off its vertical centre, no arrow
+# drawn. Left-to-right drag order still holds — the app icon sits in her arms on
+# the left, /Applications on the right. Moving either icon without moving her
+# breaks the only thing connecting them.
+#
+# The height is *not* all usable: the size derived from the image is the whole
+# Finder window frame, and the title bar plus whatever bars the user has
+# enabled are subtracted from it before the icon view (and therefore the
+# background) gets any. Measured on macOS 14 at two image heights, so the
+# overhead is constant rather than proportional:
+#   title bar 27.5 + borders ~2.5              -> icon view = H - 30
+#   ...plus path bar 27 (View > Show Path Bar)  -> icon view = H - 57
+#   ...plus status bar 27                       -> icon view = H - 84
+# A one-line 12pt label's ink ends 69px below the icon centre, so keeping the
+# filename visible for a user with every bar switched on wants
+# `y <= H - 161`. Miss it and the labels are not clipped in an obvious way —
+# they render *underneath* the path bar and simply look absent, on that user's
+# machine only.
+#
+# Both rows clear that: the lower one (the app icon, y 200) ends its label at
+# 269 against an icon view of 296 in the worst case.
+#
+# That bound constrains where *icons* go. The background is the opposite case
+# and the two are easy to confuse: because the icon view's height varies by 54px
+# across those three configurations while the image does not, art that stops
+# short is not cropped on the roomier ones — the window reveals blank background
+# below it. The 560x380 artboard ends the character at row 296, which showed as
+# 54px of empty white for a user with no extra bars (the default), and 27px for
+# one with the path bar.
+#
+# Hence the crop to 326: 296 (where the art actually ends) + 30 (title bar and
+# borders, the smallest chrome any configuration can have). The default window
+# then reveals the art exactly to its last row and no further, and every other
+# configuration crops the character rather than running out of her. The app icon
+# moved to y 165 to fit under the shortened window — 326 - 84 - 69 - 8 — which
+# is why it sits at her chest rather than in her arms as the artboard intends.
+# Redrawing the character down to row 380 would undo both compromises: the image
+# could stay 380 tall and the icon could go back to 200.
+dmg:
+  title: ${productName}
+  background: project/dmg/background.png
+  iconSize: 96
+  iconTextSize: 12
+  # lzfse — smaller and faster to decompress than the default UDZO, and
+  # mountable by every macOS that can run Studio (10.11+).
+  format: ULFO
+  contents:
+    # `path` omitted: dmg-builder substitutes the packaged app (`c.path || appPath`).
+    # On her chest; its label lands on the white hoodie, which is the only patch
+    # of her light enough for 12pt dark text.
+    - x: 150
+      y: 165
+      type: file
+    # (360, 94) top-left + 48 = the centre dmgbuild actually wants.
+    - x: 408
+      y: 142
+      type: link
+      path: /Applications
+# The Windows installer. Every value here was a default until now, and the defaults add up to a
+# one-click installer: no wizard, no way to choose a location, and a window Windows stretches from
+# 96 DPI because NSIS is not DPI-aware unless asked (see project/installer/installer.nsh).
+#
+# Note this block is `nsis:`, not `files:` - a `files` key under a platform block silently drops
+# the global patterns and packs the whole repository into the asar. See the comment on `files`
+# above; it is worth re-reading builder-debug.yml's firstOrDefaultFilePatterns after any change
+# here, because that failure is silent.
+nsis:
+  # The wizard. `allowToChangeInstallationDirectory` has no effect without it.
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # Per-user by default, with the "anyone who uses this computer" option still on the install-mode
+  # page (allowElevation). This is the choice that decides what updating feels like: a per-user
+  # install updates silently, while an all-users one needs elevation on every update, which the
+  # template already handles by re-launching elevated (templates/nsis/installer.nsi).
+  perMachine: false
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: NarraLeaf Studio
+  runAfterFinish: true
+  # Studio's projects and settings live outside the install directory, and an uninstaller that
+  # took them would be taking the user's work. Explicit because it is worth being sure about.
+  deleteAppDataOnUninstall: false
+  # Studio itself ships in English and Chinese, so its installer does too rather than defaulting
+  # to whatever NSIS picks. The selector appears before the first page.
+  multiLanguageInstaller: true
+  displayLanguageSelector: true
+  installerLanguages:
+    - en_US
+    - zh_CN
+  # Resolved against directories.buildResources. Baked from the app icon by
+  # `node project/build/prepare-installer-bitmaps.js`; see that script for why they are 2x.
+  installerHeader: header.bmp
+  installerSidebar: sidebar.bmp
+  uninstallerSidebar: sidebar.bmp
+  include: installer.nsh
 win:
   target: nsis
   icon: resources/app-icon.ico
   extraResources:
     - from: ./resources/codesign/win32
       to: resources/codesign/win32
+    - from: ./resources/ffmpeg/win32
+      to: resources/ffmpeg/win32
 linux:
   target: AppImage
   icon: resources/app-icon.png
   extraResources:
     - from: ./resources/codesign/linux
       to: resources/codesign/linux
+    - from: ./resources/ffmpeg/linux
+      to: resources/ffmpeg/linux

@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import type { UISurfaceBackgroundImage } from "@shared/types/ui-editor/surfaceBackgroundImage";
 import {
+    GAME_OVERLAY_BACKGROUND_ALPHA,
     getCssBackgroundAlpha,
     getEditorSurfaceAreaBackgroundColor,
+    getSurfaceBackgroundImage,
+    getSurfaceLayerBackgroundImageOpacity,
     shouldShowEditorSurfaceLowOpacityOutline,
+    surfaceBackgroundImageStyle,
 } from "./surfaceBackground";
 
 function createSurface(backgroundColor?: string, kind: UISurface["kind"] = "appSurface"): UISurface {
@@ -52,5 +57,56 @@ describe("surfaceBackground", () => {
         expect(getEditorSurfaceAreaBackgroundColor(createSurface("transparent", "stageSurface"))).toBe("#ffffff");
         expect(getEditorSurfaceAreaBackgroundColor(createSurface("rgba(10, 20, 30, 0.1)", "stageSurface"))).toBeUndefined();
         expect(getEditorSurfaceAreaBackgroundColor(createSurface("transparent", "appSurface"))).toBeUndefined();
+    });
+});
+
+describe("surface background image", () => {
+    const withBackgroundImage = (backgroundImage: unknown): UISurface => {
+        const surface = createSurface("#ffffff");
+        return {
+            ...surface,
+            settings: {
+                ...surface.settings,
+                backgroundImage: backgroundImage as UISurfaceBackgroundImage,
+            },
+        };
+    };
+
+    it("reads a stored background image and defaults an unusable fill mode", () => {
+        expect(getSurfaceBackgroundImage(createSurface("#ffffff"))).toBeNull();
+        expect(getSurfaceBackgroundImage(withBackgroundImage({ assetId: "  ", fillMode: "tile" }))).toBeNull();
+        expect(getSurfaceBackgroundImage(withBackgroundImage({ assetId: "asset-1", fillMode: "crop" }))).toEqual({
+            assetId: "asset-1",
+            fillMode: "cover",
+        });
+        expect(getSurfaceBackgroundImage(withBackgroundImage({ assetId: "asset-1", fillMode: "tile" }))).toEqual({
+            assetId: "asset-1",
+            fillMode: "tile",
+        });
+    });
+
+    it("maps each fill mode onto the background CSS that draws it", () => {
+        expect(surfaceBackgroundImageStyle("blob:one", "cover")).toMatchObject({
+            backgroundSize: "cover",
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "center",
+        });
+        expect(surfaceBackgroundImageStyle("blob:one", "contain")).toMatchObject({ backgroundSize: "contain" });
+        expect(surfaceBackgroundImageStyle("blob:one", "stretch")).toMatchObject({ backgroundSize: "100% 100%" });
+        expect(surfaceBackgroundImageStyle("blob:one", "tile")).toMatchObject({
+            backgroundRepeat: "repeat",
+            backgroundSize: "auto",
+            backgroundPosition: "top left",
+        });
+    });
+
+    it("escapes the url so a quoted asset path cannot break out of the CSS value", () => {
+        expect(surfaceBackgroundImageStyle('blob:a"b\\c', "cover").backgroundImage)
+            .toBe('url("blob:a\\"b\\\\c")');
+    });
+
+    it("thins the picture for a page presented over a running game, by the same amount as its colour", () => {
+        expect(getSurfaceLayerBackgroundImageOpacity("appPage")).toBe(1);
+        expect(getSurfaceLayerBackgroundImageOpacity("gameOverlay")).toBe(GAME_OVERLAY_BACKGROUND_ALPHA);
     });
 });

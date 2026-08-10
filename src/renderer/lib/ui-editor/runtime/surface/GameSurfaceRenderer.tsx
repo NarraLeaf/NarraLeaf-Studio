@@ -8,7 +8,9 @@ import type {
     SurfaceBlueprintBindingContext,
     SurfaceLifecycleSignals,
 } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { SurfaceElementTree } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import { SurfacePassiveContext } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -36,6 +38,34 @@ export type GameSurfaceRendererProps = {
      * inline style can override.
      */
     surfacePointerEvents?: CSSProperties["pointerEvents"];
+    /**
+     * The surface is display-only: no widget inside it takes pointer events. Distinct from
+     * `surfacePointerEvents`, which only makes the shell click-through and is defeated by the first
+     * full-size container. See {@link SurfacePassiveContext}.
+     */
+    passive?: boolean;
+    /**
+     * Background the design-size layer paints, overriding the surface's authored colour.
+     *
+     * The app surface stack resolves the colour itself (an in-game overlay thins it, see
+     * `getSurfaceLayerBackgroundColor`) and paints it on the animation layer. Repainting the authored
+     * colour here would put an opaque sheet back over it one level down.
+     */
+    backgroundColor?: string;
+    /**
+     * Thins the Surface's background picture, for a page presented over a running game.
+     *
+     * Unlike `backgroundColor` this is a factor rather than a replacement: the picture is the
+     * author's, and the presentation only decides how much of the scene behind it shows through.
+     */
+    backgroundImageOpacity?: number;
+    /**
+     * Passed straight through to {@link SurfaceElementTree}: the caller promises this `document` is a
+     * snapshot nothing mutates in place, which is what lets the element tree be memoised. Both
+     * runtime hosts (the app surface stack and the stage slots) render out of a compiled bundle and
+     * do promise it; anything rendering over a live editor document must leave it unset.
+     */
+    staticDocument?: boolean;
 };
 
 export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
@@ -55,9 +85,15 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         keyboardInteractive = interactive,
         onRuntimeSubscriptionsReady,
         surfacePointerEvents,
+        passive = false,
+        backgroundColor,
+        backgroundImageOpacity,
+        staticDocument,
     } = props;
-    const [, setBindingRenderTick] = useState(0);
-    const [, setRuntimePatchRenderTick] = useState(0);
+    // Kept as values, not write-only tick setters: the element tree is memoised on its inputs, and
+    // "a store I subscribed to fired" is an input that does not show up in any prop.
+    const [bindingRenderTick, setBindingRenderTick] = useState(0);
+    const [runtimePatchRenderTick, setRuntimePatchRenderTick] = useState(0);
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
 
     useEffect(() => {
@@ -143,13 +179,14 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         width: surface.designSize.width,
         height: surface.designSize.height,
         overflow: "hidden",
-        backgroundColor: getSurfaceBackgroundColor(surface),
+        backgroundColor: backgroundColor ?? getSurfaceBackgroundColor(surface),
         transform: `scale(${safeScale})`,
         transformOrigin: "top left",
         ...(surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
     };
 
     return (
+        <SurfacePassiveContext.Provider value={passive}>
         <div
             className="ui-editor-surface"
             data-ui-surface-id={surface.id}
@@ -159,6 +196,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             onContextMenu={interactive ? handleSurfaceRightClick : undefined}
         >
             <div style={surfaceStyle}>
+                <SurfaceBackgroundImageLayer surface={surface} opacity={backgroundImageOpacity} />
                 <SurfaceElementTree
                     document={document}
                     surface={surface}
@@ -172,8 +210,11 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
                     blueprintLifecycleReady={blueprintLifecycleReady}
                     interactive={interactive}
                     keyboardInteractive={keyboardInteractive}
+                    staticDocument={staticDocument}
+                    hostRenderTick={bindingRenderTick + runtimePatchRenderTick}
                 />
             </div>
         </div>
+        </SurfacePassiveContext.Provider>
     );
 }

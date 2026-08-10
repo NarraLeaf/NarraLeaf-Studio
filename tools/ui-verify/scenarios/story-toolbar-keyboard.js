@@ -35,7 +35,7 @@ function record(name, ok, detail) {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 }
 
-/** Where focus is, in the only terms this card cares about. */
+/** Where focus is, in the only terms this scenario cares about. */
 const FOCUS = function () {
     const el = document.activeElement;
     if (!el) return { where: 'none' };
@@ -84,7 +84,7 @@ const ROW_STATE = function (blockId) {
 /**
  * Every row's text AND its indent.
  *
- * The indent is not padding on the check — it is what catches the failure this card is most exposed
+ * The indent is not padding on the check — it is what catches the failure this scenario is most exposed
  * to. `Tab` / `Shift+Tab` are bound globally to indent / outdent the selected rows, on a `window`
  * listener that skips *editable* targets. The moment focus moves to a toolbar BUTTON the row stops
  * looking editable to it, so every Tab pressed inside the strip would also silently re-nest the
@@ -178,7 +178,7 @@ async function leaveEdit(d) {
     return false;
 }
 
-/** Drive the strip to `want`, using the pointer — the path this card is NOT testing. */
+/** Drive the strip to `want`, using the pointer — the path this scenario is NOT testing. */
 async function setStripExpanded(d, want) {
     const strip = await A.call(d, STRIP);
     if (!strip.present || strip.expanded === want) return strip.present;

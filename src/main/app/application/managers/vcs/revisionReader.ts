@@ -282,7 +282,7 @@ export function graphCoversAncestry(
  * mis-merged all of them - measured in `mergeSpike2.integration.test.ts` (L0).
  *
  * The LCA is recomputed rather than read off the `~base` sidecar §4.23 found on disk, and the
- * choice is deliberate. The sidecar is the better source for D6's write-back, which runs
+ * choice is deliberate. The sidecar is the better source for the merge write-back, which runs
  * inside an open merge and already knows the conflicted path; this function is addressed by
  * two REVISIONS and answers for any pair - a comparison between two arbitrary points in
  * history, a merge that has not been started, a path Lore automerged and wrote no sidecar for.

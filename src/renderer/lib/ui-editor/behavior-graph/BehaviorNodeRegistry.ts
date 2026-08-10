@@ -65,6 +65,15 @@ export type BehaviorNodeExecutionContext = {
         elementId?: string;
         blueprintId?: string;
         componentId?: string;
+        /**
+         * Resolved params of the component instance this execution belongs to, by param id.
+         *
+         * Sits beside `componentId` rather than at the top of the context because owner identity and
+         * the instance's own values are one answer to "which placement is running" - and because
+         * every data-pin resolver already forwards this object as a unit, which is what lets a pure
+         * node read it without thirty-odd call sites learning a new field.
+         */
+        componentParams?: Record<string, string>;
     };
     persistentVariables?: PersistentVariableRuntimeTable;
     valueExecution?: BehaviorGraphValueExecution;

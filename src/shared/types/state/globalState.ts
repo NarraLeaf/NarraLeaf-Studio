@@ -6,7 +6,50 @@ import { RecentlyOpenedProject } from "./appStateTypes";
 
 export interface GlobalStateType extends Record<string, any> {
     "app.recentProjects": RecentlyOpenedProject[];
+    /**
+     * Interface language, as a locale code; absent until someone chooses one.
+     *
+     * Deliberately absent from `GLOBAL_STATE_DEFAULTS` (like `editor.slashAtAlias` and the
+     * `ui.background*` keys): the right answer for an unset value depends on the machine, which a
+     * static default cannot know. Both processes resolve absence through `resolvePreferredLocale`
+     * against their own view of the system languages - the renderer's `deviceDefaultLocale`, the
+     * main process's `getMainLocale`. A stored value always wins.
+     */
     "app.language": string;
+    /**
+     * Which revision of first-run setup this installation has completed; absent until it has.
+     *
+     * Installation state rather than a preference, which is why it has no settings row and no
+     * entry in `GLOBAL_STATE_DEFAULTS` - see `@shared/constants/onboarding` for what both of
+     * those absences buy.
+     */
+    "app.onboardingVersion": number;
+    /**
+     * Developer options: context menus grow a section that copies the identifier of whatever was
+     * right-clicked (a page, an element, an asset, a character, a scene, a row).
+     *
+     * Not a mode the app runs in, despite the name an author would reach for - nothing about how a
+     * project loads, saves, builds or plays changes. It only decides whether identifiers, which are
+     * the app's own bookkeeping rather than anything an author writes, are offered for copying. Kept
+     * distinct in the interface from Dev Mode (`ui.runMode`), which runs the game.
+     */
+    "app.developerMode": boolean;
+    /**
+     * Whether Studio asks GitHub for a newer release shortly after launch.
+     *
+     * Deliberately *not* the old `app.autoCheckUpdates`, which is in `RETIRED_GLOBAL_STATE_KEYS`
+     * and swept from every profile on start-up: reusing that name would make the sweeper delete
+     * the author's answer on the next launch. See `@shared/constants/update`.
+     */
+    "app.updateCheckOnLaunch": boolean;
+    /**
+     * Whether this profile has been told that Studio keeps running after its last window closes.
+     *
+     * Installation state rather than a preference, like `app.onboardingVersion`: it has no
+     * settings row and deliberately no entry in `GLOBAL_STATE_DEFAULTS`, because absence is what
+     * makes the notice show. See `@shared/constants/update`.
+     */
+    "app.trayResidencyNoticeShown": boolean;
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /**
      * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the
@@ -230,7 +273,12 @@ export type GlobalState = PersistentState<GlobalStateType>;
  */
 export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.recentProjects": [],
-    "app.language": "en",
+    // `app.language` deliberately has no default here; see its declaration above. A static "en"
+    // is what made Studio open in English on a machine that had already said it speaks something
+    // else - while `editor.slashAtAlias`, two keys further down, was reading that same machine's
+    // languages to decide its own default.
+    "app.developerMode": false,
+    "app.updateCheckOnLaunch": true,
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,

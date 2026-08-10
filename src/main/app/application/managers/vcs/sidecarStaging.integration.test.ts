@@ -33,7 +33,7 @@ import { listFilesAt } from "./revisionReader";
  * files per conflicted document into the author's history, where they are indexed,
  * synced to collaborators, and read back by the document layer as corrupt.
  *
- * This is the question D6's write-back has to answer before it is written, which is why
+ * This is the question the merge write-back has to answer before it is written, which is why
  * it is measured here rather than discovered there.
  */
 
@@ -99,7 +99,7 @@ describe.skipIf(!supported)("merge sidecars and staging", () => {
 
         console.log(`\n### SIDECAR STAGING\n${JSON.stringify({ stagedSidecars, committed }, null, 2)}`);
 
-        // The claim D6 depends on: whatever staging reported, the author's history holds
+        // The claim the write-back depends on: whatever staging reported, the author's history holds
         // only their document.
         expect(committed.filter((file) => file.includes("~"))).toEqual([]);
         expect(committed).toContain(DOCUMENT);

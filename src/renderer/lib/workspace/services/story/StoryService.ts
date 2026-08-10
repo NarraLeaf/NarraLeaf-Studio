@@ -58,6 +58,7 @@ import {
     deleteBlockFromScene,
     insertBlockInScene,
     moveBlockInScene,
+    moveBlocksInScene,
     normalizeStoryAnimationAsset,
     normalizeStoryAnimationIndex,
     normalizeStoryDocument,
@@ -940,6 +941,23 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.deleteDeclaration(storyId, variableId);
     }
 
+    /**
+     * Delete a declaration row by id whatever scope it declares - the scope-agnostic name for what
+     * `deleteSceneVariable` / `deleteSavedVariable` already do.
+     *
+     * It exists for the `/save` + `/global` retirement pass (`storyDeclarationMigration`), which
+     * removes rows of both project scopes and has no business calling the *saved* method to delete a
+     * *persistent* row. The scope-named methods stay because the panels that call them are scoped,
+     * and a caller that knows the scope should say so.
+     *
+     * Rides the ordinary document dirty/autosave path and pushes nothing onto the undo history,
+     * which is what the migration needs: an undo step holding a pre-migration document would restore
+     * the row while its registry entry stayed, i.e. re-create the duplicate the pass just removed.
+     */
+    public deleteDeclarationRow(storyId: StoryId, variableId: string): boolean {
+        return this.deleteDeclaration(storyId, variableId);
+    }
+
     // -----------------------------------------------------------------------
     // Scene Snapshots (变量快照): named per-scene sets of variable override values, used to launch a
     // row-precise Dev Mode preview under conditions the editor cannot analyse statically. Stored on
@@ -1062,7 +1080,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (!found) return;
             // Reassign the payload rather than mutating it in place, so a fresh reference marks the edit:
             // `updateBlockPayload` (the other write path) already reassigns, and the inspector bridge's
-            // republish gate (WI-0) compares payload identity — an in-place mutation would slip past it,
+            // republish gate compares payload identity — an in-place mutation would slip past it,
             // leaving an open declaration inspector stale after a rename/retype from the Variables panel.
             const nextPayload = { ...found.block.payload };
             mutate(nextPayload);
@@ -1218,6 +1236,30 @@ export class StoryService extends Service<StoryService> implements IStoryService
         });
     }
 
+    /**
+     * Write many blocks' payloads, across any number of scenes, as ONE mutation.
+     *
+     * {@link mutateDocument} emits `documentChanged` every time it runs, and the story editor
+     * re-renders its visible rows on each emit. Looping {@link updateBlock} therefore costs a full
+     * editor repaint per row - fine for the two or three rows an editing gesture touches, and
+     * seconds of synchronous React for the two hundred a project-wide replace touches. One mutation
+     * means one event, one revision and one save for the whole sweep.
+     */
+    public updateBlocks(
+        storyId: StoryId,
+        edits: readonly { sceneId: StorySceneId; blockId: StoryBlockId; payload: StoryBlock["payload"] }[],
+    ): void {
+        if (edits.length === 0) {
+            return;
+        }
+        this.mutateDocument(storyId, document => {
+            for (const edit of edits) {
+                const scene = this.getSceneOrThrow(document, edit.sceneId);
+                updateBlockPayload(scene, edit.blockId, edit.payload);
+            }
+        });
+    }
+
     public deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void {
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
@@ -1252,6 +1294,18 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             moveBlockInScene(scene, blockId, target);
+        });
+    }
+
+    /**
+     * Move groups of blocks, each group to its own target — one mutation, one revision, one save.
+     * Looping over {@link moveBlock} instead would publish the scene once per row and let the editor
+     * repaint on a document where half the selection has landed.
+     */
+    public moveBlocks(storyId: StoryId, sceneId: StorySceneId, moves: { blockIds: StoryBlockId[]; target: BlockTarget }[]): void {
+        this.mutateDocument(storyId, document => {
+            const scene = this.getSceneOrThrow(document, sceneId);
+            moveBlocksInScene(scene, moves);
         });
     }
 

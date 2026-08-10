@@ -1,6 +1,7 @@
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
+import { appendAlignSubmenu } from "./appendAlignSubmenu";
 import type { BuildCanvasContextMenuInput } from "./types";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { translate } from "@/lib/i18n";
@@ -8,7 +9,7 @@ import { translate } from "@/lib/i18n";
 const ROOT = "nl.root";
 
 export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): ContextMenuDef {
-    const { menuSelection, hasClipboard, widgetModules, documentService, actions, canAddToGroup } = input;
+    const { menuSelection, hasClipboard, widgetModules, documentService, actions, canAddToGroup, canUngroup } = input;
     const items: ContextMenuDef = [];
 
     if (hasClipboard) {
@@ -106,6 +107,14 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         arrange: actions.arrange,
     });
 
+    appendAlignSubmenu(items, {
+        document: input.document,
+        surfaceId: input.surfaceId,
+        menuSelection,
+        hideMenu: actions.hideMenu,
+        align: actions.align,
+    });
+
     if (menuSelection.elementIds.length === 1) {
         const only = menuSelection.elementIds[0];
         const el = input.document.elements[only];
@@ -156,15 +165,26 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         },
     );
 
-    items.push({
-        id: "add-to-group",
-        label: translate("uiEditor.contextMenu.addToGroup"),
-        disabled: !canAddToGroup,
-        onClick: () => {
-            actions.hideMenu();
-            actions.addSelectionToLeaderGroup();
+    items.push(
+        {
+            id: "add-to-group",
+            label: translate("uiEditor.contextMenu.addToGroup"),
+            disabled: !canAddToGroup,
+            onClick: () => {
+                actions.hideMenu();
+                actions.addSelectionToLeaderGroup();
+            },
         },
-    });
+        {
+            id: "ungroup",
+            label: translate("uiEditor.contextMenu.ungroup"),
+            disabled: !canUngroup,
+            onClick: () => {
+                actions.hideMenu();
+                actions.ungroupSelection();
+            },
+        },
+    );
 
     if (menuSelection.elementIds.length === 1) {
         const el = input.document.elements[menuSelection.elementIds[0]];

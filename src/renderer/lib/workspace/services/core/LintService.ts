@@ -1,6 +1,6 @@
 import { isLocalizationEnabled, type LocalizationDocument } from "@shared/types/localization";
 import { isVoiceEnabled, type VoiceDocument } from "@shared/types/voice";
-import { buildMergedPersistentView } from "@shared/variables/mergedPersistentView";
+import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { runLintRules, type LintRunOptions } from "@/lib/lint/engine";
 import type {
     LintAssetEntry,
@@ -13,7 +13,7 @@ import type {
 import type { LintReport, LintReportEntry } from "@/lib/lint/types";
 import { AssetType } from "../assets/assetTypes";
 import type { Asset } from "../assets/types";
-import { storyPersistentDefs } from "@shared/types/story/declarations";
+import { savedVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import type { StoryLibraryIndex } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { normalizeBuildConfiguration } from "../../project/configuration";
@@ -152,9 +152,18 @@ export class LintService extends Service<LintService> implements ILintService {
 
         const characters = this.collectCharacters(characterService);
         const variableRegistry = registryService.listEntries();
-        const persistentNameCollisions = buildMergedPersistentView(
-            variableRegistry,
+        // Per scope, never over the whole registry. Both project scopes live in one file now, so a
+        // single merge would union `saved` entries with `/persis` rows and report "Gold" as
+        // ambiguous because a saved Gold and a persistent Gold exist - two variables that are not in
+        // the same namespace and cannot shadow each other. The rules read the same `scope` field to
+        // decide which identities a reference may resolve against.
+        const persistentNameCollisions = buildMergedVariableView(
+            registryService.listEntriesInScope("persistent"),
             stories.flatMap(story => Object.values(storyPersistentDefs(story.document))),
+        ).nameCollisions;
+        const savedNameCollisions = buildMergedVariableView(
+            registryService.listEntriesInScope("saved"),
+            stories.flatMap(story => Object.values(savedVariableDefs(story.document))),
         ).nameCollisions;
 
         const localization = await this.buildLocalizationContext(localizationService);
@@ -162,6 +171,7 @@ export class LintService extends Service<LintService> implements ILintService {
 
         return {
             config: projectService.getLintingConfiguration(),
+            network: projectService.getNetworkConfiguration(),
             stories,
             blueprintDocument: safely(() => uiGraphService.getDocument().blueprintDocument, null),
             uiDocument: safely(() => uiDocumentService.getDocument(), null),
@@ -171,6 +181,7 @@ export class LintService extends Service<LintService> implements ILintService {
             characters,
             variableRegistry,
             persistentNameCollisions,
+            savedNameCollisions,
             localization,
             voice,
             buildPlatforms: normalizeBuildConfiguration(projectService.getProjectConfig().app?.build)?.platforms ?? [],

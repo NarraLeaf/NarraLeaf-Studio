@@ -45,10 +45,27 @@ export const ProjectNameConvention = {
      * `@shared/vcs/serviceStores`.
      *
      * Under `.nlstudio/` because that is what `isVersioned` excludes, and the layout
-     * being versioned is what made freezing the workspace freeze the author's panels
-     * (plan 2026-07-28-002 §4.1).
+     * being versioned is what made freezing the workspace freeze the author's panels.
      */
     StudioServices: [".nlstudio", "services/"],
+    /**
+     * Scratch space for media that is on its way into the library and not in it yet: the file a
+     * conversion writes before the importer copies it in, and the copy of a downloaded file that
+     * `RemoteAssetsManager` probes before deciding whether to keep it.
+     *
+     * Inside the project because that is the only tree the workspace window is allowed to write to
+     * (`windowPermissionDeclarations`), and under `.nlstudio/` because the file is scaffolding: it
+     * exists for the few seconds between ffmpeg finishing and the asset being copied, and must not
+     * be versioned, packaged or backed up.
+     *
+     * One directory per file rather than one shared folder. The converted file has to keep the
+     * author's own name so the asset is called `intro` and not a hex string, and two folders on
+     * disk can each hold an `intro.avi`; a shared scratch folder would make the second one collide
+     * with the first, which the transcoder refuses (it never overwrites) rather than silently
+     * resolving.
+     */
+    MediaConvertScratch: [".nlstudio", "convert/"],
+    MediaConvertScratchDir: (id: string) => [".nlstudio", "convert", id],
 
     Assets: ["assets/"],
     ProjectResources: ["resources/"],
@@ -70,7 +87,7 @@ export const ProjectNameConvention = {
     Scripts: ["scripts/"],
     /**
      * Author-supplied drawing runtimes for the engine's puppet seam — one directory per backend,
-     * each with an `index.js`. Studio ships none and is not allowed to (card 2026-07-27-002), so
+     * each with an `index.js`. Studio ships none and is not allowed to, so
      * this is where the author puts theirs, the way Ren'Py and TyranoScript ask for an SDK.
      */
     PuppetRuntimes: ["runtimes", "puppet/"],
@@ -103,6 +120,21 @@ export const ProjectNameConvention = {
     EditorPuppetDescriptionCache: ["editor", "cache", "puppet/"],
     EditorPuppetDescriptionCacheShard: (key: string) =>
         ["editor", "cache", "puppet", `${encodePathSegmentId(key)}.json` as const],
+    /**
+     * What a probe said about each media asset's bytes: whether the engine can play them, and what
+     * to convert them into if not.
+     *
+     * Derived, like its neighbours here, and belongs under `editor/cache/` for the reason that
+     * directory exists: `@shared/vcs/workingSet` excludes it from version control, so this file is
+     * never committed, never in a change list, and never a merge conflict about a fact nobody
+     * decided. Every entry is reproducible by running ffprobe over the file again.
+     *
+     * One document rather than a shard per asset. The only reader is a sweep of the whole library,
+     * so N reads would buy nothing, and the entries are keyed by content hash - a few hundred short
+     * records at most.
+     */
+    EditorMediaSupportCache: ["editor", "cache", "media/"],
+    EditorMediaSupportCacheFile: ["editor", "cache", "media", "support.json"],
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
     EditorUIGraphs: ["editor", "ui", "uigraphs.json"],
@@ -112,6 +144,9 @@ export const ProjectNameConvention = {
     // The project's audio tracks (the authoring-time mix presets story rows, blueprint sound nodes
     // and widgets point at). Cross-cutting like the variable registry, so it sits at editor root.
     EditorAudioTracks: ["editor", "audio-tracks.json"],
+    // The project's brand palette (the colours widgets, scenes and characters link to instead of
+    // storing a hex literal). Cross-cutting like the two above, so it sits at editor root too.
+    EditorBrand: ["editor", "brand.json"],
     EditorStory: ["editor", "story/"],
     EditorStoryStories: ["editor", "story", "stories/"],
     EditorStoryIndex: ["editor", "story", "index.json"],

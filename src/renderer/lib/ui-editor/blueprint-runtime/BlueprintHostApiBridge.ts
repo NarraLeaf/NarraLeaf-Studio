@@ -1,4 +1,8 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type {
+    BlueprintNetworkFetchRequest,
+    BlueprintNetworkFetchResult,
+} from "@shared/types/blueprint/network";
 import {
     normalizeBlueprintImageAssetValue,
     normalizeBlueprintRGBAColor,
@@ -67,6 +71,8 @@ import type {
 } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
+import type { UISwitchRuntimeValue, UISwitchWidgetProps } from "@shared/types/ui-editor/switch";
+import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/ui-editor/switch";
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
@@ -128,6 +134,14 @@ export type BlueprintTextPropertiesPatch = Partial<BlueprintTextProperties>;
 export type BlueprintSliderProperties = UISliderRuntimeValue;
 
 export type BlueprintSliderPropertiesPatch = Partial<Pick<UISliderWidgetProps, "value" | "min" | "max" | "step">>;
+
+export type BlueprintSwitchProperties = UISwitchRuntimeValue;
+
+/**
+ * Only `checked`. `interactionDisabled` stays an authored prop - the runtime value carries nothing
+ * else, so patching it here would be silently dropped.
+ */
+export type BlueprintSwitchPropertiesPatch = Partial<Pick<UISwitchWidgetProps, "checked">>;
 
 export type BlueprintTextInputProperties = UITextInputRuntimeValue;
 
@@ -237,6 +251,8 @@ export type BlueprintHostApiRuntime = {
         openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
         getPageProps: () => Record<string, unknown>;
         closeLayer: () => Promise<void>;
+        clearPages: () => Promise<void>;
+        clearGameOverlay: () => Promise<void>;
         quitApplication: () => Promise<void>;
         getFullscreen: () => Promise<boolean>;
         setFullscreen: (fullscreen: boolean) => Promise<void>;
@@ -257,6 +273,8 @@ export type BlueprintHostApiRuntime = {
         setImageProperties: (elementId: string, patch: Partial<BlueprintImageProperties>) => Promise<void>;
         getSliderProperties: (elementId: string) => BlueprintSliderProperties;
         setSliderProperties: (elementId: string, patch: BlueprintSliderPropertiesPatch) => Promise<void>;
+        getSwitchProperties: (elementId: string) => BlueprintSwitchProperties;
+        setSwitchProperties: (elementId: string, patch: BlueprintSwitchPropertiesPatch) => Promise<void>;
         getTextInputProperties: (elementId: string) => BlueprintTextInputProperties;
         setTextInputProperties: (elementId: string, patch: BlueprintTextInputPropertiesPatch) => Promise<void>;
         getListProperties: (elementId: string) => BlueprintListProperties;
@@ -427,6 +445,16 @@ export type BlueprintHostApiRuntime = {
          */
         getTrackVolume: (trackId: string) => number;
         setTrackVolume: (trackId: string, volume: number) => Promise<void>;
+    };
+    /**
+     * HTTP, for the Fetch node.
+     *
+     * The host does not issue the request itself: it hands it to whatever the shell supplied, which
+     * on desktop and in Dev Mode is the main process (`onNetworkFetch`). Nothing here calls
+     * `fetch()` - see `@shared/utils/blueprintNetworkFetch` for why the renderer must not.
+     */
+    network: {
+        fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -601,6 +629,10 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
+    /** Empty the page stack down to its root. Hosts without a page stack leave it unset. */
+    onClearPages?: () => void | Promise<void>;
+    /** Dismiss pages opened over a running game; a no-op when no game is running. */
+    onClearGameOverlay?: () => void | Promise<void>;
     onQuitApplication?: () => void | Promise<void>;
     /** Hosts without a real application window (story preview) leave these unset. */
     onGetFullscreen?: () => boolean | Promise<boolean>;
@@ -616,6 +648,17 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     voiceConfig?: { voicedLocales: VoiceLocaleEntry[] } | null;
     /** Plays one voice unit in the current dub language; absent outside a game runtime. */
     onPlayVoice?: (unitId: string) => Promise<boolean>;
+    /**
+     * Issues one Fetch node request, in a main process.
+     *
+     * Absent in every environment with nowhere to send it - the editor preview, and the story
+     * preview. There the node reports a `networkError` saying so rather than throwing, matching how
+     * the sound family degrades: a Page previewed in Studio should still lay out.
+     *
+     * The web export supplies one backed by the browser's own `fetch`, which is the one shell where
+     * there is no main process to reach and no project network policy to enforce.
+     */
+    onNetworkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -818,6 +861,14 @@ function assertSliderElement(document: UIDocument, elementId: string) {
     return el;
 }
 
+function assertSwitchElement(document: UIDocument, elementId: string) {
+    const el = requireDocumentElement(document, elementId, "switch");
+    if (el.type !== "nl.switch") {
+        throw new Error(`switch: element is not a Switch widget: ${el.type}`);
+    }
+    return el;
+}
+
 function assertTextInputElement(document: UIDocument, elementId: string) {
     const el = requireDocumentElement(document, elementId, "textInput");
     if (el.type !== "nl.textInput") {
@@ -971,6 +1022,23 @@ function readSliderProperties(
     const authored = readAuthoredSliderProperties(document, elementId);
     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
     return widgetRuntimeStore.getSliderProperties(scopedKey) ?? resolveSliderRuntimeValue(authored);
+}
+
+function readAuthoredSwitchProperties(document: UIDocument, elementId: string): UISwitchWidgetProps {
+    const el = assertSwitchElement(document, elementId);
+    return normalizeSwitchProps(el.props);
+}
+
+function readSwitchProperties(
+    document: UIDocument,
+    widgetRuntimeStore: WidgetRuntimeStateStore,
+    runtimeScopeId: string | undefined,
+    activeSurfaceId: string,
+    elementId: string,
+): BlueprintSwitchProperties {
+    const authored = readAuthoredSwitchProperties(document, elementId);
+    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+    return widgetRuntimeStore.getSwitchProperties(scopedKey) ?? resolveSwitchRuntimeValue(authored);
 }
 
 function readDisplayableProperties(
@@ -1521,6 +1589,10 @@ function sliderPropertiesEqual(a: BlueprintSliderProperties, b: BlueprintSliderP
     );
 }
 
+function switchPropertiesEqual(a: BlueprintSwitchProperties, b: BlueprintSwitchProperties): boolean {
+    return a.checked === b.checked;
+}
+
 function emitHostCall(emit: (event: BlueprintDebugEvent) => void, capabilityId: string, phase: "call" | "return"): void {
     if (phase === "call") {
         emit({ type: "function.call", functionId: capabilityId });
@@ -1701,11 +1773,14 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsSoundPlaying,
         onGetTrackVolume,
         onSetTrackVolume,
+        onNetworkFetch,
         audioTracks,
         onSubscribeGamePreferences,
         emit,
         onOpenSurface,
         onCloseLayer,
+        onClearPages,
+        onClearGameOverlay,
         onQuitApplication,
         onGetFullscreen,
         onSetFullscreen,
@@ -1864,7 +1939,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 const targetSurfaceId = String(surfaceId ?? "").trim();
                 if (!targetSurfaceId) {
-                    await onCloseLayer();
+                    // "None" in the page dropdown means no page, not one page fewer. This used to
+                    // alias Go back, so an author who picked None to dismiss an overlay two layers
+                    // deep landed on the layer underneath and had no way to say what they meant.
+                    await (onClearPages ?? onCloseLayer)();
                     emitHostCall(emit, cap, "return");
                     return;
                 }
@@ -1887,6 +1965,20 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "navigation.closeLayer";
                 emitHostCall(emit, cap, "call");
                 await onCloseLayer();
+                emitHostCall(emit, cap, "return");
+            },
+            clearPages: async () => {
+                const cap = "navigation.clearPages";
+                emitHostCall(emit, cap, "call");
+                await (onClearPages ?? onCloseLayer)();
+                emitHostCall(emit, cap, "return");
+            },
+            clearGameOverlay: async () => {
+                const cap = "navigation.clearGameOverlay";
+                emitHostCall(emit, cap, "call");
+                // Hosts with no game behind their pages (the story preview) have nothing to clear,
+                // which is the same answer this gives when a game is running but nothing is over it.
+                await onClearGameOverlay?.();
                 emitHostCall(emit, cap, "return");
             },
             quitApplication: async () => {
@@ -2224,6 +2316,45 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         patch,
                     );
                     if (!sliderPropertiesEqual(before, after)) {
+                        scheduleElementFlush(elementId);
+                    }
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSwitchProperties: (elementId: string) => {
+                const cap = "widget.getSwitchProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readSwitchProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setSwitchProperties: async (elementId: string, patch: BlueprintSwitchPropertiesPatch) => {
+                const cap = "widget.setSwitchProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const before = readSwitchProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                    const authored = readAuthoredSwitchProperties(document, elementId);
+                    const after = widgetRuntimeStore.setSwitchProperties(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        authored,
+                        patch,
+                    );
+                    if (!switchPropertiesEqual(before, after)) {
                         scheduleElementFlush(elementId);
                     }
                 } finally {
@@ -3323,6 +3454,28 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // own bus gain clamps to 0..1 anyway.
                     const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
                     await onSetTrackVolume?.(String(trackId ?? "").trim(), safeVolume);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        network: {
+            fetch: async (request: BlueprintNetworkFetchRequest) => {
+                const cap = "network.fetch";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onNetworkFetch) {
+                        // No backend = nowhere to send it (editor preview, story preview). Reported as
+                        // a `networkError` rather than thrown, so a Page being previewed in Studio
+                        // still lays out and the author's own error branch is what runs.
+                        return {
+                            outcome: "networkError" as const,
+                            status: 0,
+                            body: null,
+                            error: "Network is not available here. Run the project in Dev Mode to make requests.",
+                        };
+                    }
+                    return await onNetworkFetch(request);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

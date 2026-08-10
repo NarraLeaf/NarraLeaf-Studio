@@ -10,6 +10,7 @@ import {
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
 import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, X } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import { useBlueprintBreakpointForNode } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
     BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
@@ -32,6 +33,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
     BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     formatBlueprintKeyboardBinding,
     formatBlueprintKeyboardBindingFromEvent,
@@ -102,6 +104,13 @@ export type BlueprintFlowNodeData = {
     }>;
     /** Project-level persistent variables for persistentVariableRef inspector controls. */
     persistentVariables?: Array<{
+        id: string;
+        name: string;
+        value: string;
+        valueType?: string;
+    }>;
+    /** Project-level saved variables for savedVariableRef inspector controls. */
+    savedVariables?: Array<{
         id: string;
         name: string;
         value: string;
@@ -1220,6 +1229,7 @@ function InspectorParamOnCard({
     onPatchNodeParam,
     memberVariables,
     persistentVariables,
+    savedVariables,
     dynamicSelectOptions,
 }: {
     spec: BlueprintInspectorParamDef;
@@ -1229,6 +1239,7 @@ function InspectorParamOnCard({
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
     memberVariables?: BlueprintFlowNodeData["memberVariables"];
     persistentVariables?: BlueprintFlowNodeData["persistentVariables"];
+    savedVariables?: BlueprintFlowNodeData["savedVariables"];
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
 }) {
     const { t } = useTranslation();
@@ -1242,6 +1253,12 @@ function InspectorParamOnCard({
     const persistentVariableSelectValue =
         spec.kind === "persistentVariableRef"
             ? typeof raw === "string" && persistentVariables?.some(v => v.value === raw)
+                ? raw
+                : ""
+            : undefined;
+    const savedVariableSelectValue =
+        spec.kind === "savedVariableRef"
+            ? typeof raw === "string" && savedVariables?.some(v => v.value === raw)
                 ? raw
                 : ""
             : undefined;
@@ -1273,6 +1290,13 @@ function InspectorParamOnCard({
     const persistentVariableComponentOptions: SelectOption[] = [
         { value: "", label: "-" },
         ...(persistentVariables ?? []).map(v => ({
+            value: v.value,
+            label: v.name,
+        })),
+    ];
+    const savedVariableComponentOptions: SelectOption[] = [
+        { value: "", label: "-" },
+        ...(savedVariables ?? []).map(v => ({
             value: v.value,
             label: v.name,
         })),
@@ -1325,6 +1349,19 @@ function InspectorParamOnCard({
                     size="sm"
                     options={persistentVariableComponentOptions}
                     value={persistentVariableSelectValue}
+                    onChange={value => {
+                        const v = String(value);
+                        onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
+                    }}
+                    portalMenu
+                    menuPlacement="below"
+                />
+            ) : spec.kind === "savedVariableRef" ? (
+                <Select
+                    fullWidth
+                    size="sm"
+                    options={savedVariableComponentOptions}
+                    value={savedVariableSelectValue}
                     onChange={value => {
                         const v = String(value);
                         onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
@@ -2340,13 +2377,43 @@ function BlueprintImageAssetLiteralNodeCard({
 export function BlueprintFlowNode(props: NodeProps) {
     const freeze = useFreezeGuard();
     const card = <BlueprintFlowNodeCard {...props} />;
-    if (!freeze.frozen) {
-        return card;
-    }
-    return (
+    const body = freeze.frozen ? (
         <fieldset disabled aria-readonly style={{ display: "contents" }}>
             {card}
         </fieldset>
+    ) : (
+        card
+    );
+    // The breakpoint marker rides on the OUTSIDE of whichever card this node turned out to be -
+    // there are six of them (comment, element literal, asset literal, …) and each has its own
+    // header. One marker here means every node type gets it and none of them had to know.
+    return <BlueprintFlowNodeBreakpointMarker nodeId={readNodeId(props)}>{body}</BlueprintFlowNodeBreakpointMarker>;
+}
+
+function readNodeId(props: NodeProps): string {
+    return (props.data as BlueprintFlowNodeData).nodeId ?? props.id;
+}
+
+function BlueprintFlowNodeBreakpointMarker(props: { nodeId: string; children: ReactNode }): ReactNode {
+    const breakpoint = useBlueprintBreakpointForNode(props.nodeId);
+    if (!breakpoint) {
+        return props.children;
+    }
+    // Hollow when it cannot fire, amber when it fires conditionally, solid when it always does -
+    // the three states DevTools distinguishes in its own gutter.
+    const dotClass = !breakpoint.enabled
+        ? "border border-fg-subtle bg-transparent"
+        : breakpoint.condition || breakpoint.hitCountTarget
+          ? "bg-warning"
+          : "bg-danger";
+    return (
+        <div className="relative">
+            <span
+                aria-hidden
+                className={`pointer-events-none absolute -left-1 -top-1 z-10 h-2.5 w-2.5 rounded-full ring-1 ring-surface ${dotClass}`}
+            />
+            {props.children}
+        </div>
     );
 }
 
@@ -2361,6 +2428,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
         onRemoveDynamicInputPin,
         memberVariables,
         persistentVariables,
+        savedVariables,
         wiredInputPortIds,
         dynamicSelectOptions,
         nodeDiagnostics,
@@ -2376,6 +2444,10 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
 
     const isEventHead = catalog.role === "eventHead" || catalog.role === "fnHead";
     const isVarDeclare = catalog.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR;
+    // Memo is the one node whose output may feed several consumers, so it does not read like the node
+    // next to it even though it is shaped like one. `binding` is the token for a value that came from
+    // somewhere else, which is exactly what reading a Memo is.
+    const isMemo = catalog.type === BLUEPRINT_NODE_TYPE_DATA_MEMO;
     const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
     const firstNodeError = nodeDiagnostics?.find(d => d.severity === "error");
     const showAddPinRow =
@@ -2550,11 +2622,13 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                 firstNodeError
                     ? "border-danger/85 ring-1 ring-danger/40"
                     : selected
-                      ? "border-primary/80 ring-1 ring-primary/40"
+                      ? isMemo
+                          ? "border-binding/80 ring-1 ring-binding/40"
+                          : "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
             } ${!firstNodeError && isEventHead ? "border-l-primary/70" : ""} ${
                 !firstNodeError && isVarDeclare ? "border-l-amber-500/80" : ""
-            } ${
+            } ${!firstNodeError && isMemo ? "border-l-2 border-l-binding/70" : ""} ${
                 !firstNodeError && isTerminalNode ? "border-r-primary/70" : ""
             }`}
             title={firstNodeError?.message}
@@ -2605,6 +2679,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                               onPatchNodeParam={onPatchNodeParam}
                               memberVariables={memberVariables}
                               persistentVariables={persistentVariables}
+                              savedVariables={savedVariables}
                               dynamicSelectOptions={dynamicSelectOptions}
                           />
                       ))

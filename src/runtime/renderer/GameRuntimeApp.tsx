@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { GameRuntimePackV1, GameRuntimePreloadBridge } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
@@ -54,10 +56,26 @@ function useRuntimePack(): {
         }
         void bridge.readPack()
             .then(nextPack => {
-                if (!disposed) {
-                    setPack(nextPack);
-                    setError(null);
+                if (disposed) {
+                    return;
                 }
+                /**
+                 * The pack's palette goes live BEFORE `setPack`, and an effect would be too late.
+                 *
+                 * Every surface resolves its `nlbrand:` colours while it renders, reading the
+                 * module-level active palette as it goes. Publishing from an effect means the whole
+                 * first frame is painted against the seeds and then jumps to the author's colours
+                 * one commit later - a visible flash on exactly the games that use the feature.
+                 * Here the pack is in hand and React has not re-rendered yet, so the first paint is
+                 * already correct.
+                 *
+                 * `sidecarBackend?.applyPack` below is the same "the pack arrived" work and it does
+                 * live in an effect; the difference is that nothing it does is visible in that first
+                 * frame, so a commit's delay costs nothing there.
+                 */
+                setActiveBrandPalette(nextPack.bundle.brand ?? BUILTIN_BRAND_COLORS);
+                setPack(nextPack);
+                setError(null);
             })
             .catch(err => {
                 if (!disposed) {
@@ -367,6 +385,18 @@ export function GameRuntimeApp() {
     }, [bridge]);
 
     /**
+     * The Fetch node's request. Every shell backs this - the desktop preload forwards it to the main
+     * process, the web shell runs it in the page - so unlike `sidecar` there is no absent case to
+     * branch on, only a bridge that has not been installed yet.
+     */
+    const networkFetch = useCallback<NonNullable<GameAppHost["networkFetch"]>>(async request => {
+        if (!bridge) {
+            return { outcome: "networkError", status: 0, body: null, error: "Runtime bridge unavailable" };
+        }
+        return bridge.network.fetch(request);
+    }, [bridge]);
+
+    /**
      * A model bundle resolves to the URL of its *entry file*, not of the asset id.
      *
      * The engine's `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against whatever
@@ -481,9 +511,11 @@ export function GameRuntimeApp() {
             subscribeFullscreenChanged,
             subscribeCloseRequested,
             listPuppetBackendModules,
+            networkFetch,
         };
     }, [
         entrySurfaceId,
+        networkFetch,
         getFullscreen,
         listPuppetBackendModules,
         log,

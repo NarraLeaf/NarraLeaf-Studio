@@ -9,13 +9,26 @@ import type { StoryVariableValueType } from "../types/story/document";
 import {
     VARIABLE_REGISTRY_SCHEMA_VERSION,
     type PersistentVariableRuntimeTable,
+    type SavedVariableRuntimeTable,
     type VariableRegistry,
     type VariableRegistryEntry,
+    type VariableRegistryScope,
 } from "../types/variables/registry";
 
 /** The 4-value closed set persistent variables converge to. */
 export function normalizePersistentValueType(valueType: string | undefined): StoryVariableValueType {
     return valueType === "boolean" || valueType === "number" || valueType === "string" ? valueType : "json";
+}
+
+/**
+ * The scope closed set, with `persistent` as the fallback.
+ *
+ * Not a neutral default: every entry written before schema v2 was a persistent variable, because
+ * that was the only kind the registry held. Reading a scope-less entry as anything else would move
+ * an author's existing variables to a different store on first load.
+ */
+export function normalizeVariableRegistryScope(scope: unknown): VariableRegistryScope {
+    return scope === "saved" ? "saved" : "persistent";
 }
 
 export function createEmptyVariableRegistry(now?: string): VariableRegistry {
@@ -35,7 +48,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  *
  * The entry `id` takes over the old `storageKey` (not the old blueprint `id`) so that the story
  * document's `StoryVariableRef` persistent arm - which addresses by `storageKey` - resolves to this
- * entry directly, and WI-4's later storageKey→variableId symmetrization is a no-op rename. In
+ * entry directly, and a later storageKey→variableId symmetrization would be a no-op rename. In
  * practice `id === storageKey` already (the blueprint factory sets `storageKey: id`), so this only
  * matters for hand-edited documents where they diverged.
  */
@@ -44,6 +57,8 @@ export function registryEntryFromBlueprintPersistent(v: BlueprintPersistentVaria
     return {
         id: storageKey,
         name: v.name,
+        // The legacy field held persistent variables and nothing else; there is no scope to read.
+        scope: "persistent",
         valueType: normalizePersistentValueType(v.valueType),
         ...withDefaultValue(v.defaultValue),
         storageKey,
@@ -85,7 +100,14 @@ export function seedRegistryEntriesFromBlueprintPersistent(
     return { entries, idRemap };
 }
 
-/** Load-time migration for the registry file. v1 is the first version; newer is refused by the caller. */
+/**
+ * Load-time migration for the registry file. Newer-than-latest is refused by the caller.
+ *
+ * One normalizing pass rather than a chain of per-version steps: every field is re-derived from the
+ * raw record and the current version is stamped unconditionally, so a v1 file and a hand-edited v2
+ * file converge on the same shape. The consequence is that anything NOT read here is dropped in
+ * silence - which is why `scope` must be read even though v1 files have none.
+ */
 export function migrateVariableRegistryToLatest(raw: unknown): VariableRegistry {
     if (!isRecord(raw)) {
         throw new Error("VariableRegistry: expected object");
@@ -99,6 +121,7 @@ export function migrateVariableRegistryToLatest(raw: unknown): VariableRegistry 
         entries[id] = {
             id,
             name: value.name,
+            scope: normalizeVariableRegistryScope(value.scope),
             valueType: normalizePersistentValueType(typeof value.valueType === "string" ? value.valueType : undefined),
             ...withDefaultValue(value.defaultValue),
             storageKey: value.storageKey,
@@ -112,12 +135,41 @@ export function migrateVariableRegistryToLatest(raw: unknown): VariableRegistry 
     };
 }
 
-/** Registry entries sorted by name (the order the member tree / variable panel present them in). */
-export function listRegistryEntries(registry: VariableRegistry): VariableRegistryEntry[] {
-    return Object.values(registry.entries).sort((a, b) => a.name.localeCompare(b.name));
+/**
+ * Registry entries sorted by name (the order the member tree / variable panel present them in),
+ * optionally narrowed to one scope. The sort is applied after the filter, so a scoped list reads
+ * identically to the full one minus the other scope's rows.
+ */
+export function listRegistryEntries(registry: VariableRegistry, scope?: VariableRegistryScope): VariableRegistryEntry[] {
+    const all = Object.values(registry.entries);
+    const selected = scope ? all.filter(entry => entry.scope === scope) : all;
+    return selected.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The runtime table baked into a bundle/pack; keyed by entry id (= the node `persistentVariableId`). */
+/**
+ * The persistent runtime table baked into a bundle/pack; keyed by entry id (= the node
+ * `persistentVariableId`). Filtered by scope, not a plain copy: saved entries share this registry
+ * but are backed by the save file, and letting one through here would hand the persistent channel a
+ * key it would then write to app-level storage.
+ */
 export function buildPersistentRuntimeTable(registry: VariableRegistry): PersistentVariableRuntimeTable {
-    return { ...registry.entries };
+    return runtimeTableForScope(registry, "persistent");
+}
+
+/** The saved runtime table; keyed by entry id (= the node `savedVariableId`). */
+export function buildSavedRuntimeTable(registry: VariableRegistry): SavedVariableRuntimeTable {
+    return runtimeTableForScope(registry, "saved");
+}
+
+function runtimeTableForScope(
+    registry: VariableRegistry,
+    scope: VariableRegistryScope,
+): Record<string, VariableRegistryEntry> {
+    const table: Record<string, VariableRegistryEntry> = {};
+    for (const [id, entry] of Object.entries(registry.entries)) {
+        if (entry.scope === scope) {
+            table[id] = entry;
+        }
+    }
+    return table;
 }

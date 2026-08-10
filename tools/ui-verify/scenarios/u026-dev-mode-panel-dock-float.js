@@ -1,7 +1,6 @@
 /*
- * Card -026 acceptance — the Dev Mode debug panel in two modes: docked (takes width off the stage,
+ * Acceptance — the Dev Mode debug panel in two modes: docked (takes width off the stage,
  * which re-fits) and floating (sits over the stage, which is whole again).
- * Card: docs/plans/2026-07-26-026-task-dev-mode-panel-dock-float.md
  *
  *   NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<electron pid> NLS_VERIFY_PROJECT=<project copy> \
  *     node tools/ui-verify/scenarios/u026-dev-mode-panel-dock-float.js
@@ -77,13 +76,13 @@ const READ_LAYOUT = function () {
             position: cs.position,
             label: panel.getAttribute('aria-label'),
             surfaceBg: getComputedStyle(surface).backgroundColor,
-            coversStageCentre: covering,
+            coversStageCenter: covering,
         };
     }
     return out;
 };
 
-/** The dock/float toggle, identified by the accessible-name contract the card fixes. */
+/** The dock/float toggle, identified by the accessible-name contract. */
 const READ_TOGGLE = function (dockedRe, floatingRe) {
     const panel = document.querySelector('[role="complementary"]');
     if (!panel) return { panelPresent: false };
@@ -167,7 +166,7 @@ function stageText(d) {
  * the first acceptance run measured the whole docked/floating geometry with the main menu still up,
  * and every number it produced was still perfectly plausible. Nothing was wrong with the app — the
  * guard was wrong, because "the stage box exists" is not "the thing worth looking at is on it".
- * A crop assertion measured against a menu is not measuring what U0-2 was about.
+ * A crop assertion measured against a menu is not measuring the stage crop.
  */
 async function waitForStoryOnStage(d, tries = 44) {
     let last = '';
@@ -233,7 +232,7 @@ async function toggleMode(d, want) {
 
         // --- docked ------------------------------------------------------------------------------
         // Measured with or WITHOUT the toggle. The docked half is the behaviour the app already has
-        // (U0-2), so these three have to be green on the pre-change tree — an assertion that has only
+        // already, so these three have to be green on the pre-change tree — an assertion that has only
         // ever been seen red, because everything downstream of a missing control short-circuited, has
         // not been shown to measure anything at all. Only the FLOAT half legitimately needs a toggle.
         let dockedToggle = toggle0;
@@ -304,8 +303,8 @@ async function toggleMode(d, want) {
         }
 
         run.check('D-7', 'floating: the panel does not cover the centre of the stage it is debugging',
-            floating.panel.coversStageCentre === false,
-            `coversStageCentre=${floating.panel.coversStageCentre}; panel=${JSON.stringify(round(floating.panel))} stage=${JSON.stringify(round(floating.stage))}`);
+            floating.panel.coversStageCenter === false,
+            `coversStageCenter=${floating.panel.coversStageCenter}; panel=${JSON.stringify(round(floating.panel))} stage=${JSON.stringify(round(floating.stage))}`);
         run.check('D-8b', 'floating: the panel is still an opaque reading surface',
             A.alphaOf(floating.panel.surfaceBg) === 1, `background=${floating.panel.surfaceBg}`);
 

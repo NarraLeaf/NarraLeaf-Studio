@@ -20,7 +20,37 @@ export const launcher = {
             clear: "Clear search",
             empty: "No projects match \"{query}\".",
         },
-        removeFromRecent: "Remove from recent",
+        // The whole tab before the first project - see WelcomePane. One line, and it is the tier-2
+        // "what will be here": the two tiles under it are the "how to put something here".
+        //
+        // The second tile has its own label instead of reusing `openFolder`. That one lives in the
+        // header, where a label has to survive on its own as a tooltip; here the tiles sit side by
+        // side as one choice, and the trailing ellipsis is what tells the author a file dialog
+        // opens next - it would say nothing as a header tooltip. The first tile keeps `addProject`,
+        // since the wizard behind it still does more than create.
+        empty: {
+            title: "Welcome to NarraLeaf Studio",
+            subtitle: "Projects you open appear here.",
+            openFolder: "Open…",
+        },
+        // Named after the OS that will answer, because that is what the author is about to see.
+        // Three of them rather than one "Show in file manager": Finder and File Explorer are what
+        // those two systems call themselves, and a menu that invents its own word for them reads
+        // like it opens something else. The generic wording is only the fallback for the systems
+        // with no one name.
+        revealInFinder: "Show in Finder",
+        revealInExplorer: "Show in File Explorer",
+        revealInFileManager: "Show in File Manager",
+        errorReveal: "Failed to open the project folder.",
+        // "From the recent list", not "from recent": the sentence has to be readable next to a
+        // project the author may believe this deletes. The dialog behind it says outright that it
+        // does not.
+        removeFromRecent: "Remove from Recent List",
+        removeConfirm: {
+            title: "Remove from Recent List",
+            message: "{name} will no longer appear in this list. Nothing on disk is deleted.",
+            confirm: "Remove",
+        },
         moreActions: "More actions",
         moreActionsNamed: "More actions for {name}",
         removeNamedFromRecent: "Remove {name} from recent projects",
@@ -41,75 +71,6 @@ export const launcher = {
     recentCount: {
         one: "{count} recent project",
         other: "{count} recent projects",
-    },
-    plugins: {
-        installLocal: "Install from folder",
-        search: {
-            placeholder: "Search plugins",
-            clear: "Clear search",
-        },
-        tab: {
-            installed: "Installed",
-            store: "Store",
-        },
-        emptyList: "No plugins installed",
-        emptyFiltered: "No plugins match “{query}”.",
-        authorize: "Authorize",
-        uninstall: "Uninstall",
-        builtIn: "Built-in",
-        permissions: "Permissions",
-        noPermissions: "No special permissions",
-        updateAvailable: "Update available",
-        // Shown when the entry's studioVersion range excludes this build, so the
-        // install/update button is withheld rather than failing in the main process.
-        requiresStudio: "This plugin requires Studio {range}. You are running {version}.",
-        openReleasePage: "View release notes",
-        homepage: "Homepage",
-        field: {
-            status: "Status",
-            version: "Version",
-            publisher: "Publisher",
-            entries: "Entries",
-            categories: "Categories",
-            installed: "Installed",
-            updated: "Updated",
-        },
-        status: {
-            enabled: "Enabled",
-            disabled: "Disabled",
-            needsAuthorization: "Needs authorization",
-        },
-        store: {
-            install: "Install",
-            installed: "Installed",
-            update: "Update",
-            needsStudio: "Needs Studio {range}",
-            emptyList: "No plugins available in the registry.",
-            offline: "Couldn't reach the plugin registry.",
-            retry: "Try again",
-        },
-        task: {
-            installing: "Installing plugin…",
-            downloading: "Downloading plugin…",
-            installed: "Plugin installed.",
-            authorizing: "Waiting for authorization…",
-            authorized: "Plugin authorized.",
-            enabling: "Enabling plugin…",
-            disabling: "Disabling plugin…",
-            enabled: "Plugin enabled.",
-            disabled: "Plugin disabled.",
-            uninstalling: "Uninstalling plugin…",
-            uninstalled: "Plugin uninstalled.",
-        },
-        error: {
-            load: "Failed to load plugins",
-            install: "Failed to install plugin",
-            approve: "Failed to approve plugin",
-            update: "Failed to update plugin",
-            uninstall: "Failed to uninstall plugin",
-            registry: "Failed to reach the plugin registry",
-            download: "Failed to download plugin",
-        },
     },
     // The Learning tab's own words all live in the `help` namespace now: it renders the topic
     // registry rather than a card wall, so it has no copy of its own beyond the sidebar entry above.

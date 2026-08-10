@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type {
     StoryBlock,
     StoryBlockId,
     StoryDocument,
     StoryExpression,
     StoryLiteralValue,
+    StoryRichRun,
     StoryScene,
     StorySceneUpdate,
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { describeDeclaration, listSceneIdsInDocumentOrder } from "@shared/types/story";
+import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
@@ -24,7 +25,8 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
-import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
+import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
+import { writeStoryJumpLine } from "./storyJumpLine";
 import { createBlockForCommand, type ActionCommandId } from "./storyActionCommands";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { buildStoryCommandContext } from "./storyCommandContext";
@@ -45,14 +47,13 @@ import {
     buildDialogueAppearances,
     buildVisibleRows,
     canAcceptChildren,
-    isNarrativeRow,
     filterOutSelectedDescendants,
     findPreviousSibling,
     nextSelectionAfterDelete,
+    planBlockGroupMove,
     planRowBackspaceReplacement,
+    planSelectionNudge,
     getInsertionTargetAfter,
-    getMoveTargetBefore,
-    getMoveTargetAfter,
     getTextSegment,
     hasInspector,
     isTextEditableBlock,
@@ -61,17 +62,27 @@ import {
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
 import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
+import {
+    EMPTY_STORY_ROW_FILTER,
+    isStoryRowFilterActive,
+    revealRowInStoryRowFilter,
+    storyRowPassesFilter,
+    tallyStoryRows,
+    type StoryRowFilter,
+} from "./storyRowFilter";
 import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
-import type { EditorMode, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
+import type { EditorMode, InsertSlot, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers, type StoryPasteWizardRequest } from "./useStorySceneClipboardHandlers";
 import { materializePastedRows } from "@/lib/story/paste/storyPasteModel";
 import type { PastePlan, PasteSeparatorChoice, SpeakerMappingTarget } from "@/lib/story/paste/storyPasteTypes";
 import { forgetStoryPasteSeparator, getStoryPasteMemory, rememberStoryPasteSpeakers, saveStoryPasteSeparator } from "./storyPasteMemory";
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
-import { isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
+import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
+import { projectStoryCommandLine } from "./storyCommandLine";
+import { noStoryRowCharacters } from "@/lib/story/storyRowProjection";
 import { dialogueActionCharacter } from "./storyCharacterActions";
 
 const STORY_EDITOR_HISTORY_LIMIT = 100;
@@ -128,7 +139,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const textSelectRef = useRef<{ blockId: StoryBlockId; textEl: HTMLElement } | null>(null);
     const dragSelectPointerRef = useRef<{ x: number; y: number } | null>(null);
     const dragSelectAutoScrollRef = useRef<number | null>(null);
-    const draggingBlockIdRef = useRef<StoryBlockId | null>(null);
+    /**
+     * The rows a drag in progress is carrying, settled at pick-up rather than at drop: a drag can be
+     * cancelled by anything the selection would have moved on with (Escape, a scroll, the pointer
+     * leaving), so the drop has to move what the author picked up, not what is selected by then.
+     */
+    const dragGroupRef = useRef<StoryBlockId[]>([]);
     /**
      * The x the caret is trying to hold while walking rows vertically. Seeded from the caret as it
      * leaves the first row and kept until something states a new column - a horizontal arrow, a
@@ -166,14 +182,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<StoryBlockId>>(() => new Set());
     /** Counts explicit select gestures — see {@link selectRow}. Read by the tab to re-claim the right rail. */
     const [selectionRevision, setSelectionRevision] = useState(0);
-    // Editor-wide view preferences (WI-6). PanelStateService loads from disk before the editor renders,
+    // Editor-wide view preferences. PanelStateService loads from disk before the editor renders,
     // so the synchronous read below sees the persisted value; the setters write it back.
-    const [narrativeOnly, setNarrativeOnlyState] = useState<boolean>(() => (panelStateService ? getStoryEditorViewPrefs(panelStateService).narrativeOnly : false));
+    const [rowFilter, setRowFilterState] = useState<StoryRowFilter>(() => {
+        const prefs = panelStateService ? getStoryEditorViewPrefs(panelStateService) : null;
+        return prefs ? { facets: new Set(prefs.selectedRowFacets), speakers: new Set(prefs.selectedRowSpeakers) } : EMPTY_STORY_ROW_FILTER;
+    });
     const [density, setDensityState] = useState<StoryEditorDensity>(() => (panelStateService ? getStoryEditorViewPrefs(panelStateService).density : "compact"));
-    const setNarrativeOnly = useCallback((value: boolean) => {
-        setNarrativeOnlyState(value);
+    const setRowFilter = useCallback((value: StoryRowFilter) => {
+        setRowFilterState(value);
         if (panelStateService) {
-            patchStoryEditorViewPrefs(panelStateService, { narrativeOnly: value });
+            patchStoryEditorViewPrefs(panelStateService, { selectedRowFacets: [...value.facets], selectedRowSpeakers: [...value.speakers] });
         }
     }, [panelStateService]);
     const setDensity = useCallback((value: StoryEditorDensity) => {
@@ -196,12 +215,31 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      */
     const insertDraftRef = useRef("");
     /**
+     * The words being typed into the open ROW, for exactly the same reason as {@link insertDraftRef}
+     * above — and it arrived late enough that the two typing surfaces disagreed about the cost of a
+     * keystroke.
+     *
+     * The slot learned this in `handleInsertValueChange`, which goes out of its way to return the SAME
+     * mode object so React bails out. The row did the opposite: every character published
+     * `{ ...mode, value, rich }`, a new object, so every keystroke re-rendered the controller, the tab
+     * and the whole visible window of rows — measured at 16.5ms of scripting per character on a
+     * 400-row scene, of which ~7ms was building row elements that were then thrown away by `memo`.
+     *
+     * Nothing renders this. The field is a `contentEditable` that owns its own DOM, and every commit
+     * path already prefers `textInputRef.current.getRuns()` — the live editor — over the draft. So the
+     * draft's whole job is to be the fallback for the paths that run when the editor is already gone,
+     * plus the "was this line empty before this keystroke" question `startCharacterActionSlot` asks.
+     * That is a ref's job, not state's.
+     *
+     * Kept in step with `editorMode` below, so it can never describe a row that is no longer open.
+     */
+    const textDraftRef = useRef<{ blockId: StoryBlockId; value: string; rich?: StoryRichRun[] } | null>(null);
+    /**
      * The keyboard cursor is on the "add a row" line that sits just past the last row, reached by
      * arrowing Down off the bottom. It is a position with no row behind it (activeBlockId is null
      * while it holds focus), so Enter there opens a fresh insert slot — the same as clicking it.
      */
     const [addRowFocused, setAddRowFocused] = useState(false);
-    const [draggingBlockId, setDraggingBlockId] = useState<StoryBlockId | null>(null);
     const [dragSelectActive, setDragSelectActive] = useState(false);
     const [characterRevision, setCharacterRevision] = useState(0);
     /**
@@ -218,6 +256,47 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [puppetRevision, setPuppetRevision] = useState(0);
     /** The project's audio tracks, so `/bgm theme track=Ambience` completes and resolves by name. */
     const audioTracks = useProjectAudioTracks();
+
+    /**
+     * Re-seed the row draft whenever the open row changes, so it always describes the row that is
+     * actually open — including the eight or so places that open one by writing `editorMode` directly.
+     *
+     * `useLayoutEffect`, not `useEffect`: a mode change and the keystroke that follows it can land in
+     * the same task (Enter opens the continuation row and the author is already typing into it), and a
+     * passive effect would run after the first character had already written the draft, wiping it back
+     * to the row's stored text.
+     */
+    useLayoutEffect(() => {
+        textDraftRef.current = editorMode.kind === "text"
+            ? { blockId: editorMode.blockId, value: editorMode.value, rich: editorMode.rich }
+            : null;
+        // `caret` moves without the words changing, and re-seeding on it would undo a draft mid-edit.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editorMode.kind, editorMode.kind === "text" ? editorMode.blockId : null]);
+
+    /**
+     * The words currently in the open row, or null when this is not that row.
+     *
+     * Every caller that has the live editor to hand should prefer `textInputRef.current.getRuns()` —
+     * a popover edit can be in the DOM before it reaches the draft. This is the answer for the paths
+     * that run when the field has already gone away.
+     */
+    const readTextDraft = useCallback((blockId: StoryBlockId) => {
+        const draft = textDraftRef.current;
+        return draft && draft.blockId === blockId ? draft : null;
+    }, []);
+
+    /**
+     * A character landed in the open row. Deliberately not a state write — see {@link textDraftRef}.
+     */
+    const updateTextDraft = useCallback((blockId: StoryBlockId, value: string, rich: StoryRichRun[]) => {
+        const draft = textDraftRef.current;
+        if (!draft || draft.blockId !== blockId) {
+            return;
+        }
+        draft.value = value;
+        draft.rich = rich;
+    }, []);
 
     /**
      * A freeze that lands while a row is open for editing closes the editor, discarding the draft.
@@ -391,6 +470,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             document,
             sceneId,
             scene,
+            // Both project scopes come off the same registry and refresh on the same revision. Saved is
+            // not optional trimming: after the declaration migration a saved variable exists ONLY as a
+            // registry entry, so leaving it out makes `/set` report every one of them as unknown.
+            savedVariables: blueprintService?.listSavedVariables() ?? [],
             persistentVariables: blueprintService?.listPersistentVariables() ?? [],
             // For the `mode:"value"` blueprints an expression may call by name. Rebuilt with the rest
             // of the context on `blueprintRevision`, so renaming one in the blueprint editor changes
@@ -401,23 +484,63 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }),
         [assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
-    // Each dialogue speaker's accumulated appearance (WI-3), so a dialogue row's avatar can follow the
+    // Each dialogue speaker's accumulated appearance, so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
     const dialogueAppearances = useMemo(() => (scene ? buildDialogueAppearances(scene) : null), [document, scene]);
+    /**
+     * A displayable's name resolved to the character it addresses — the one lookup the speaker axis of
+     * the filter needs, and the same one the rows themselves resolve through.
+     */
+    const characterIdByName = useCallback(
+        (name: string) => characters.find(character => character.profile.getName() === name)?.profile.getId() ?? null,
+        [characters],
+    );
+    /**
+     * Switch back on whichever ticks are hiding this row — the filter's one concession to an act by
+     * the author. Shared by navigation and by writing; see `revealRowInStoryRowFilter` for why.
+     */
+    const revealRowInFilter = useCallback((block: StoryBlock) => {
+        const next = revealRowInStoryRowFilter(block, rowFilter, characterIdByName);
+        if (next !== rowFilter) {
+            setRowFilter(next);
+        }
+    }, [characterIdByName, rowFilter, setRowFilter]);
+    /**
+     * The page before the filter touches it: the scene minus whatever is folded away.
+     *
+     * Its own memo rather than a local inside `visibleRows`, because the filter menu counts THIS list
+     * — what a tick would take away, including for the ticks already off — and re-walking the scene a
+     * second time to answer that would put the two answers a frame apart on every keystroke.
+     *
+     * **`document` is the dependency that makes this list live**, and `scene` on its own is not: the
+     * service edits blocks IN PLACE and re-emits the same `StoryScene` object, so `document.scenes[id]`
+     * keeps its identity for the whole life of the tab — only the document wrapper is re-created
+     * (`setDocument({ ...event.document })`). Keyed on `scene` alone this memo answers with the scene as
+     * it was when the tab opened: a row the author writes never reaches the page, and the follow-on
+     * insert slot anchors to a row that renders nowhere, so there is no caret to type the next line in.
+     * Which is the editor refusing to write anything at all. (`dialogueAppearances` above lists
+     * `document` for the same reason, and is where the rule was already written down.)
+     *
+     * The staging lens (M7) used to sit here, doing two things that outlived it once its bar timeline
+     * was removed: it dropped the collapse flag for any container it was on — so the fold chevron on a
+     * parallel block was silently dead for the rest of that project's life — and it replaced the
+     * container's whole SUBTREE with one track per direct child, which quietly hid grandchildren.
+     * Neither had any remaining visual effect to justify it.
+     */
+    const unfilteredRows = useMemo(() => (scene ? buildVisibleRows(scene, collapsedBlockIds) : []), [collapsedBlockIds, document, scene]);
+    const rowFilterTallies = useMemo(
+        () => tallyStoryRows(unfilteredRows.map(row => row.block), characterIdByName, [...rowFilter.speakers]),
+        [characterIdByName, rowFilter.speakers, unfilteredRows],
+    );
     const visibleRows = useMemo(() => {
         if (!scene) {
             return [];
         }
-        // The staging lens (M7) used to sit here, doing two things that outlived it once its bar
-        // timeline was removed: it dropped the collapse flag for any container it was on — so the fold
-        // chevron on a parallel block was silently dead for the rest of that project's life — and it
-        // replaced the container's whole SUBTREE with one track per direct child, which quietly hid
-        // grandchildren. Neither had any remaining visual effect to justify it.
-        let rows = buildVisibleRows(scene, collapsedBlockIds);
-        // "Narrative only" (WI-6) drops staging rows but leaves each survivor's line number as-is —
+        // The row filter drops whole kinds of line but leaves each survivor's line number as-is —
         // filtering after buildVisibleRows (which assigns them) is what keeps the numbers un-renumbered.
-        if (narrativeOnly) {
-            rows = rows.filter(row => isNarrativeRow(row.block));
+        let rows = unfilteredRows;
+        if (isStoryRowFilterActive(rowFilter)) {
+            rows = rows.filter(row => storyRowPassesFilter(row.block, rowFilter, characterIdByName));
         }
         if (dialogueAppearances) {
             rows = rows.map(row => {
@@ -425,22 +548,22 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 return appearance ? { ...row, appearance } : row;
             });
         }
-        // Grouping runs last, over the exact rows that will render (WI-5); the branch lookahead runs
+        // Grouping runs last, over the exact rows that will render; the branch lookahead runs
         // after it, over the same final list, so "the next row" means the next row on screen.
         return annotateNestingBranches(annotateDialogueGroups(rows, characters));
-    }, [characters, collapsedBlockIds, dialogueAppearances, narrativeOnly, scene]);
+    }, [characterIdByName, characters, dialogueAppearances, rowFilter, scene, unfilteredRows]);
     const rowIndexById = useMemo(() => {
         const result = new Map<StoryBlockId, number>();
         visibleRows.forEach((row, index) => result.set(row.block.id, index));
         return result;
     }, [visibleRows]);
-    // While the "narrative only" filter is on, keep the selection and active row inside the visible set.
-    // Enabling the filter (or editing under it) can leave selected staging rows hidden, and a Delete
-    // must never act on a row the author cannot see — so drop any selected id that is no longer visible.
-    // Off-filter editing is untouched; navigation that needs a hidden row turns the filter off first
+    // While the row filter is on, keep the selection and active row inside the visible set. Switching a
+    // facet off (or editing under the filter) can leave selected rows hidden, and a Delete must never
+    // act on a row the author cannot see — so drop any selected id that is no longer visible.
+    // Off-filter editing is untouched; navigation that needs a hidden row reveals its facet first
     // (see revealBlock).
     useEffect(() => {
-        if (!narrativeOnly) {
+        if (!isStoryRowFilterActive(rowFilter)) {
             return;
         }
         setSelectedBlockIds(prev => {
@@ -459,7 +582,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return changed ? next : prev;
         });
         setActiveBlockId(prev => (prev && !rowIndexById.has(prev) ? null : prev));
-    }, [narrativeOnly, rowIndexById]);
+    }, [rowFilter, rowIndexById]);
     const shouldRenderActiveInsertSlot = editorMode.kind === "insert" && editorMode.slot.afterBlockId !== null;
     const editorFocusKey = editorMode.kind === "insert"
         ? `insert:${editorMode.slot.focusToken}`
@@ -684,17 +807,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!block) {
             return false;
         }
-        // Jump wins over the filter: navigating (reveal / search) to a staging row that the "narrative
-        // only" filter would hide turns the filter off, so the target is actually visible and selected
-        // rather than an invisible selection on a hidden row.
-        if (narrativeOnly && !isNarrativeRow(block)) {
-            setNarrativeOnly(false);
-        }
+        // Jump wins over the filter: navigating (reveal / search) to a row the filter would hide
+        // switches the ticks holding it back on, so the target is actually visible and selected rather
+        // than an invisible selection on a hidden row.
+        revealRowInFilter(block);
         setActiveBlockId(blockId);
         setSelectedBlockIds(new Set([blockId]));
         selectionAnchorRef.current = blockId;
         return true;
-    }, [narrativeOnly, scene, setNarrativeOnly]);
+    }, [revealRowInFilter, scene]);
 
     const captureHistoryState = useCallback((): StorySceneHistoryState | null => {
         if (!scene) {
@@ -767,15 +888,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * history entry per row, so undoing a replacement across forty lines would take forty presses.
      * One `recordHistory` in front of the batch makes the whole sweep a single step, which is what an
      * author means by "undo that".
+     *
+     * One `updateBlocks` rather than a loop of `updateBlock` for the same reason on the render side:
+     * the service emits `documentChanged` per mutation and the editor repaints its rows per event.
      */
     const updateBlockPayloads = useCallback((edits: readonly { blockId: StoryBlockId; payload: StoryBlock["payload"] }[]) => {
         if (!storyService || !storyId || !sceneId || edits.length === 0) {
             return;
         }
         recordHistory();
-        for (const edit of edits) {
-            storyService.updateBlock(storyId, sceneId, edit.blockId, edit.payload);
-        }
+        storyService.updateBlocks(
+            storyId,
+            edits.map(edit => ({ sceneId, blockId: edit.blockId, payload: edit.payload })),
+        );
     }, [recordHistory, sceneId, storyId, storyService]);
 
     const updateSceneMetadata = useCallback((patch: StorySceneUpdate): boolean => {
@@ -824,8 +949,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Prefer the live editor DOM so a popover edit (e.g. binding an inline blueprint) that hasn't
         // flushed into the draft is still committed - otherwise it is lost when we navigate away.
         const liveRuns = textInputRef.current?.getRuns();
-        const value = liveRuns ? richRunsToPlain(liveRuns) : editorMode.value;
-        const rich = liveRuns ?? editorMode.rich;
+        const draft = readTextDraft(editorMode.blockId);
+        const value = liveRuns ? richRunsToPlain(liveRuns) : draft?.value ?? editorMode.value;
+        const rich = liveRuns ?? draft?.rich ?? editorMode.rich;
         const payload = block ? updateTextPayload(block, value, rich) : null;
         if (payload) {
             const changed = JSON.stringify(block.payload) !== JSON.stringify(payload);
@@ -837,7 +963,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             storyService.updateBlock(storyId, sceneId, editorMode.blockId, payload);
         }
         setEditorMode({ kind: "idle" });
-    }, [editorMode, recordHistory, scene, sceneId, storyId, storyService]);
+    }, [editorMode, readTextDraft, recordHistory, scene, sceneId, storyId, storyService]);
 
     const createBlock = useCallback((kind: ActionCommandId, initialText = "", characterId?: string): StoryBlock | null => {
         if (!uuidService) {
@@ -864,10 +990,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (options?.replaceBlockId) {
             storyService.deleteBlock(storyId, sceneId, options.replaceBlockId);
         }
+        // Writing a line beats a filter set earlier: without this, a row whose kind is switched off
+        // lands in the document and is gone in the same frame — and the caller's follow-on slot
+        // (`startInsertAfter(block.id)`) anchors to a row that renders nowhere, so its input never
+        // mounts and the author is left with no caret at all. Both symptoms read as "the editor
+        // refused to write my line", which is the one thing it did not do.
+        revealRowInFilter(block);
         setActiveBlockId(block.id);
         setSelectedBlockIds(new Set([block.id]));
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
-    }, [recordHistory, scene, sceneId, storyId, storyService]);
+    }, [recordHistory, revealRowInFilter, scene, sceneId, storyId, storyService]);
 
     // Insert a `layer` create block immediately before `beforeBlockId` at the same nesting level and
     // return its id, without stealing focus from the currently-open inspector. Used by the Layer
@@ -889,7 +1021,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return block.id;
     }, [recordHistory, scene, sceneId, storyId, storyService, uuidService]);
 
-    // `confirmation` is the just-declared line's ghost receipt (bible §3.5): the slot that opens after a
+    // `confirmation` is the just-declared line's ghost receipt: the slot that opens after a
     // declaration commits carries it so `✓ Var gold: number = 0` greets the caret, then the next edit
     // strips it. Every other caller opens a clean slot (no argument), so the receipt is scoped to exactly
     // the one slot that earned it — no separate state, and nothing to clear when the author moves on.
@@ -954,7 +1086,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 replaceBlockId: block.id,
             },
             initialValue: insertDraftRef.current,
-            // Reopening a draft row lands with its completion menu open (bible M3): the author is here
+            // Reopening a draft row lands with its completion menu open: the author is here
             // to fix the line, so the candidates it needs are what should greet them - not the suppressed
             // slot the old `chooserDismissed: true` left, which gave a returned-to line no menu at all.
         });
@@ -977,7 +1109,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const startCharacterActionSlot = useCallback((blockId: StoryBlockId, value: string): boolean => {
         // The row has to have been EMPTY: `@` is only a trigger where there is nothing else on the
         // line, so "@everyone, run!" stays the line of dialogue the author is typing.
-        if (editorMode.kind !== "text" || editorMode.blockId !== blockId || editorMode.value !== "" || !scene) {
+        //
+        // "Was" is the draft as of the PREVIOUS keystroke — `editRichChange` asks this before it
+        // records the current one, which is what lets an author clear a line and then reach for the
+        // trigger. Reading `editorMode.value` instead would answer with the row's text at the moment
+        // it opened, and a cleared line would never offer the actions again.
+        const draft = readTextDraft(blockId);
+        if (editorMode.kind !== "text" || editorMode.blockId !== blockId || !draft || draft.value !== "" || !scene) {
             return false;
         }
         if (value.length !== 1 || !isActionCommandLine(value, slashAtAlias)) {
@@ -1023,7 +1161,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             input.setSelectionRange(value.length, value.length);
         });
         return true;
-    }, [characters, editorMode, scene, slashAtAlias]);
+    }, [characters, editorMode, readTextDraft, scene, slashAtAlias]);
 
     /**
      * Give the line back to the dialogue row a character-scoped slot is standing in for.
@@ -1087,6 +1225,80 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setActiveBlockId(parentId);
         window.requestAnimationFrame(() => insertInputRef.current?.focus());
     }, [ensureExpanded, scene]);
+
+    /**
+     * Open a slot with a `/jump` already typed into it — the scene flow map's connect gesture landing
+     * here (see `StorySceneEditorDraftJump`).
+     *
+     * Nothing is written. The line is seeded, the caret sits at its end, and the author's Enter is what
+     * makes it a row — which is the whole point: the map draws a line between two boxes, but only the
+     * editor can show which fork the jump lands under and what guards it, so that is where the author
+     * confirms it. Escape leaves the document untouched.
+     *
+     * `chooserDismissed` because the line arrives complete: an open candidate menu over a finished
+     * command would take the Enter meant to commit it. It is one-shot — the first keystroke the author
+     * types brings completion straight back (see `handleInsertValueChange`), so editing the target or
+     * adding `t=fade` is offered exactly as it is on a hand-typed line.
+     *
+     * Returns whether the slot opened, so a caller can tell a refused draft (frozen workspace, a
+     * container that has since been deleted) from one the author simply escaped.
+     */
+    const startJumpDraft = useCallback((draft: StorySceneEditorDraftJump): boolean => {
+        if (frozen || !scene || !document) {
+            return false;
+        }
+        const line = writeStoryJumpLine(draft.targetSceneId, document.scenes, slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER);
+        if (!line) {
+            return false;
+        }
+        // Inside the arm the gesture started on, when it started on one. The container has to be on
+        // screen or the slot renders nowhere and the author gets no caret at all — the same two
+        // obstacles `startInsertInside` and `revealBlock` each handle one of.
+        const container = draft.insideBlockId ? scene.blocks[draft.insideBlockId] : null;
+        if (draft.insideBlockId && !container) {
+            return false;
+        }
+        let slot: InsertSlot;
+        if (container) {
+            ensureExpanded(container.id);
+            const lastChildId = container.childrenIds[container.childrenIds.length - 1] ?? null;
+            const anchor = lastChildId ? scene.blocks[lastChildId] : null;
+            // The ANCHOR, not just the container: the slot renders after the arm's last child, and a
+            // slot whose anchor row the filter is hiding is closed again the moment it opens (see the
+            // stranded-slot effect). Both are revealed because both have to be on the page — the arm
+            // to be read, its last line to hang the caret off.
+            revealRowInFilter(container);
+            if (anchor) {
+                revealRowInFilter(anchor);
+            }
+            slot = {
+                afterBlockId: lastChildId ?? container.id,
+                focusToken: Date.now(),
+                target: { parentId: container.id, beforeBlockId: null },
+            };
+        } else {
+            // The end of the scene. `afterBlockId: null` with no before-target is the trailing slot the
+            // "add a row" line opens, which is the one anchor no filter and no fold can take away.
+            slot = { afterBlockId: null, focusToken: Date.now() };
+        }
+        slotDiscardedRef.current = false;
+        insertDraftRef.current = line;
+        setEditorMode({ kind: "insert", slot, initialValue: line, chooserDismissed: true });
+        if (container) {
+            setActiveBlockId(container.id);
+        }
+        window.requestAnimationFrame(() => {
+            const input = insertInputRef.current;
+            if (!input) {
+                return;
+            }
+            input.focus();
+            // Past the line, not in front of it: Chromium drops the caret at offset 0 of a field it
+            // focuses for the first time, and a caret before the "/" makes the next keystroke prose.
+            input.setSelectionRange(line.length, line.length);
+        });
+        return true;
+    }, [document, ensureExpanded, frozen, revealRowInFilter, scene, slashAtAlias]);
 
     // Append a menu option to a choice container and open it for text entry.
     const addMenuOption = useCallback((choiceId: StoryBlockId) => {
@@ -1241,8 +1453,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         // Read the live editor DOM (captures marks/chips not yet flushed to draft) before anything commits.
         const liveRuns = textInputRef.current?.getRuns();
-        const value = liveRuns ? richRunsToPlain(liveRuns) : editorMode.value;
-        const rich = liveRuns ?? editorMode.rich;
+        const draft = readTextDraft(editorMode.blockId);
+        const value = liveRuns ? richRunsToPlain(liveRuns) : draft?.value ?? editorMode.value;
+        const rich = liveRuns ?? draft?.rich ?? editorMode.rich;
         // Enter on a still-empty continuation row means "stop continuing", the way Enter on an empty list
         // item ends the list in a prose editor. Stacking another blank row of the same kind is never what
         // the author meant, so take the Backspace rung instead: the empty dialogue becomes the blank slot
@@ -1265,7 +1478,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         insertBlock(block, currentBlock.id, false, { recordHistory: false });
         setEditorMode({ kind: "text", blockId: block.id, value: "", caret: "end" });
-    }, [commitTextEdit, createBlock, editorMode, handleBackspaceAtEmptyStart, insertBlock, recordHistory, scene, sceneId, startInsertAfter, storyId, storyService]);
+    }, [commitTextEdit, createBlock, editorMode, handleBackspaceAtEmptyStart, insertBlock, readTextDraft, recordHistory, scene, sceneId, startInsertAfter, storyId, storyService]);
 
     // Arrow navigation across the row boundary while editing text. The current line is committed first;
     // landing on a text row re-opens it for editing (caret at the near edge), landing on an action row
@@ -1453,7 +1666,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // Typing with nothing to strip must NOT produce a new mode object: returning `current`
             // is what makes React bail out, and that bail-out is the difference between a keystroke
             // costing one field's render and costing the whole document's. The declaration receipt
-            // (bible §3.5) is one-shot the same way `chooserDismissed` is.
+            // is one-shot the same way `chooserDismissed` is.
             if (current.chooserDismissed === undefined && current.confirmation === undefined) {
                 return current;
             }
@@ -1486,9 +1699,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // row leaves the visible set while the slot is open — the author toggled the "narrative only" filter
     // or collapsed the anchor's container — the slot has nowhere on screen to render and the editor is
     // stranded in an invisible insert state. Close it so the surface is never stuck where the author
-    // cannot see it (WI-0 #3). A replace slot (a re-opened draft row) renders in place of `replaceBlockId`,
+    // cannot see it. A replace slot (a re-opened draft row) renders in place of `replaceBlockId`,
     // so that row is its anchor and must be checked directly — its draft row is invalid, so the narrative
-    // filter hides it while the slot is open (WI-0 M3.1). A top-of-scene slot (no anchor row) is left alone.
+    // filter hides it while the slot is open. A top-of-scene slot (no anchor row) is left alone.
     useEffect(() => {
         if (editorMode.kind !== "insert") {
             return;
@@ -1616,7 +1829,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (line.kind !== "command" || !line.def) {
             return false;
         }
-        // One gate, one path: parser issues and an unfilled required core block here (bible B9), and
+        // One gate, one path: parser issues and an unfilled required core block here, and
         // every command - paramless containers included - commits through its spec. The old paramless
         // fall-through to the menu path is gone with the dual behaviour it carried.
         if (!canCommit(line)) {
@@ -1684,15 +1897,22 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             }
         }
         // A declaration's row IS its result, but the caret has already moved on to the fresh slot below,
-        // so the receipt travels with that slot: `✓ Var gold: number = 0`, scope word off the same badge
-        // label the row shows, fading on the next keystroke (bible §3.5). No toast — the ghost zone is the
-        // quietest place to say "it worked" without stealing the line the author is about to type.
+        // so the receipt travels with that slot: `✓ @local gold 0 type=number`, fading on the next
+        // keystroke. No toast — the ghost zone is the quietest place to say "it worked"
+        // without stealing the line the author is about to type.
+        //
+        // The receipt IS the row's own line, off the same projection, so the two cannot drift — and
+        // what it confirms is the reading rather than the typing: `/local gold 0` comes back carrying
+        // the `type=number` the editor inferred. No lookups: a declaration names nothing outside
+        // itself, which is also why this can run here rather than through the row's hook.
         const confirmation = block.kind === "declaration"
-            ? `✓ ${translate(`story.badge.declare.${block.payload.scope}` as Parameters<typeof translate>[0])} ${describeDeclaration(block)}`
-            : undefined;
-        startInsertAfter(block.id, true, confirmation);
+            ? projectStoryCommandLine(block, { character: noStoryRowCharacters })
+            : null;
+        startInsertAfter(block.id, true, confirmation
+            ? `✓ ${toDisplayedCommandLine(confirmation.source, slashAtAlias ? ALT_ACTION_TRIGGER : ACTION_TRIGGER)}`
+            : undefined);
         return true;
-    }, [commandContext, createBlock, editorMode, insertBlock, scaffoldContainer, scene, sceneId, startInsertAfter, storyId, storyService, uuidService]);
+    }, [commandContext, createBlock, editorMode, insertBlock, scaffoldContainer, scene, sceneId, slashAtAlias, startInsertAfter, storyId, storyService, uuidService]);
 
     /**
      * A pick from the slash menu. A spec command routes through the same commit path a typed line
@@ -1772,9 +1992,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [createBlock, editorMode, insertBlock]);
 
     /**
-     * A pick from the sidebar. Since A1 the sidebar lists SPECS, so this is the same build the typed
-     * line runs - only with no args at all: `build({})` returns the command's default block (the bible
-     * requires every spec to survive empty args), and whatever the line would have said, including the
+     * A pick from the sidebar. The sidebar lists SPECS, so this is the same build the typed
+     * line runs - only with no args at all: `build({})` returns the command's default block (every
+     * spec must survive empty args), and whatever the line would have said, including the
      * target, is bound in the inspector. That is what lets one `/show` entry stand under five subjects
      * instead of ten catalogue entries standing for one verb.
      */
@@ -1820,7 +2040,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [updateBlockPayloadFor]);
 
     /**
-     * Set where a dialogue group's speaker stands (WI-3, M3.1). The document always stays command lines
+     * Set where a dialogue group's speaker stands. The document always stays command lines
      * (P3): the dropdown is a declarative shell over `/show … at=` and `/move … at=`. Reading is the
      * appearance scan's job (`buildDialogueAppearances` tracks the placement + the block that set it);
      * writing rewrites that block's `at=` in place, or — when the character has no enter/move to edit —
@@ -1933,18 +2153,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setActiveBlockId(blockId);
         }
     }, [dragSelectActive, visibleRows]);
-
-    const startDraggingBlock = useCallback((blockId: StoryBlockId) => {
-        draggingBlockIdRef.current = blockId;
-        setDraggingBlockId(blockId);
-        setActiveBlockId(blockId);
-        setSelectedBlockIds(new Set([blockId]));
-    }, []);
-
-    const endDraggingBlock = useCallback(() => {
-        draggingBlockIdRef.current = null;
-        setDraggingBlockId(null);
-    }, []);
 
     const toggleCollapsed = useCallback((blockId: StoryBlockId) => {
         setCollapsedBlockIds(previous => {
@@ -2333,43 +2541,34 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [activeBlockId, rowIndexById, selectSingleRow, visibleRows]);
 
-    // Alt+Arrow - reorder the selected row among its siblings (keyboard equivalent of drag-to-reorder).
-    // Deliberately single-row for predictability; multi-row keyboard moves are surprising in outliners.
+    // Alt+Arrow - step the selected rows over their neighbour, each staying among its own siblings (the
+    // keyboard equivalent of drag-to-reorder). A selection moves whole, and only if all of it can: see
+    // {@link planSelectionNudge} for why the run, not the row, is the unit that steps.
     const moveSelectedRows = useCallback((direction: "up" | "down") => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
         }
         const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
         const roots = filterOutSelectedDescendants(scene, ids);
-        if (roots.length !== 1) {
+        const plan = planSelectionNudge(scene, roots, direction);
+        if (!plan) {
             return;
         }
-        const id = roots[0];
-        const block = scene.blocks[id];
-        if (!block) {
-            return;
-        }
-        const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
-        if (!siblings) {
-            return;
-        }
-        const siblingIndex = siblings.indexOf(id);
-        if (direction === "up") {
-            const previousId = siblings[siblingIndex - 1];
-            if (!previousId) {
-                return;
-            }
+        try {
             recordHistory();
-            storyService.moveBlock(storyId, sceneId, id, getMoveTargetBefore(scene, id, previousId));
+            storyService.moveBlocks(storyId, sceneId, plan);
+        } catch {
+            /* move failed; nothing to surface */
+            return;
+        }
+        // One row still becomes the whole selection, as it always did. A group stays selected, so
+        // holding the shortcut walks it up the scene rather than dropping every row but one after the
+        // first press.
+        if (roots.length === 1) {
+            selectSingleRow(roots[0]);
         } else {
-            const nextId = siblings[siblingIndex + 1];
-            if (!nextId) {
-                return;
-            }
-            recordHistory();
-            storyService.moveBlock(storyId, sceneId, id, getMoveTargetAfter(scene, id, nextId));
+            setSelectedBlockIds(new Set(roots));
         }
-        selectSingleRow(id);
     }, [activeBlockId, recordHistory, scene, sceneId, selectSingleRow, selectedBlockIds, storyId, storyService]);
 
     // Cmd/Ctrl+D - duplicate the selected rows (with their subtrees, new ids) directly below the block.
@@ -2448,60 +2647,63 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [isStoryEditorFocusActive]);
 
-    const moveDraggedBlockAfter = useCallback((draggedBlockId: StoryBlockId | null, targetBlockId: StoryBlockId) => {
-        const movingBlockId = draggedBlockId ?? draggingBlockIdRef.current ?? draggingBlockId;
-        if (!movingBlockId || movingBlockId === targetBlockId || !storyService || !storyId || !sceneId || !scene) {
-            draggingBlockIdRef.current = null;
-            setDraggingBlockId(null);
-            return;
-        }
-        try {
-            recordHistory();
-            storyService.moveBlock(storyId, sceneId, movingBlockId, getMoveTargetAfter(scene, movingBlockId, targetBlockId));
-            setActiveBlockId(movingBlockId);
-            setSelectedBlockIds(new Set([movingBlockId]));
-        } catch {
-            /* move failed; nothing to surface */
-        }
-        draggingBlockIdRef.current = null;
-        setDraggingBlockId(null);
-    }, [draggingBlockId, recordHistory, scene, sceneId, storyId, storyService]);
+    /**
+     * A drag has picked `blockId` up: report which rows are coming with it, and remember them.
+     *
+     * Grabbing a row that is part of the selection drags the whole selection — the same rows delete,
+     * duplicate and disable act on. Grabbing anything else drags that row alone and leaves the
+     * selection where it is; the drop will select what it moved.
+     */
+    const beginBlockDrag = useCallback((blockId: StoryBlockId): StoryBlockId[] => {
+        const group = selectedBlockIds.has(blockId) ? selectionRootIds() : [blockId];
+        dragGroupRef.current = group.length > 0 ? group : [blockId];
+        return dragGroupRef.current;
+    }, [selectedBlockIds, selectionRootIds]);
 
-    const moveDraggedBlockToSortablePosition = useCallback((draggedBlockId: StoryBlockId, targetBlockId: StoryBlockId) => {
+    const endBlockDrag = useCallback(() => {
+        dragGroupRef.current = [];
+    }, []);
+
+    /**
+     * Drop: move everything the drag picked up to where the pointer let go, as one undoable step, and
+     * leave it selected so the author can carry on moving it.
+     */
+    const moveDraggedBlocksToSortablePosition = useCallback((draggedBlockId: StoryBlockId, targetBlockId: StoryBlockId) => {
+        const movingIds = dragGroupRef.current.length > 0 ? dragGroupRef.current : [draggedBlockId];
+        dragGroupRef.current = [];
         if (draggedBlockId === targetBlockId || !storyService || !storyId || !sceneId || !scene) {
             return;
         }
-        const fromIndex = rowIndexById.get(draggedBlockId);
-        const toIndex = rowIndexById.get(targetBlockId);
-        if (fromIndex === undefined || toIndex === undefined || fromIndex === toIndex) {
+        const plan = planBlockGroupMove(scene, movingIds, draggedBlockId, targetBlockId);
+        if (!plan) {
             return;
         }
-        const target = fromIndex < toIndex
-            ? getMoveTargetAfter(scene, draggedBlockId, targetBlockId)
-            : getMoveTargetBefore(scene, draggedBlockId, targetBlockId);
         try {
             recordHistory();
-            storyService.moveBlock(storyId, sceneId, draggedBlockId, target);
+            storyService.moveBlocks(storyId, sceneId, [plan]);
             setActiveBlockId(draggedBlockId);
-            setSelectedBlockIds(new Set([draggedBlockId]));
+            setSelectedBlockIds(new Set(plan.blockIds));
         } catch {
             /* move failed; nothing to surface */
         }
-    }, [recordHistory, rowIndexById, scene, sceneId, storyId, storyService]);
+    }, [recordHistory, scene, sceneId, storyId, storyService]);
 
     return {
         context, isInitialized, document, scene, loading,
         activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused, selectionRevision,
         characters, commandContext, visibleRows, shouldRenderActiveInsertSlot,
-        density, setDensity, narrativeOnly, setNarrativeOnly,
+        density, setDensity, rowFilter, setRowFilter, rowFilterTallies,
+        // How many rows the page would hold with the filter off. The one thing that tells an empty
+        // editor apart from an entirely filtered-out one, which read identically before.
+        unfilteredRowCount: unfilteredRows.length,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         handleRowTextPaste,
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
-        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, selectRow, beginDragSelection,
+        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
-        setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange,
+        setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
         // Exposed for the writes that arrive from OUTSIDE this tab (a script import, driven from the
         // story panel or the palette) and must still land as one undo step here.
         recordHistory, undoEdit, redoEdit,
@@ -2512,7 +2714,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         navigateFromTextEdit, resetGoalColumn, handleBackspaceAtEmptyStart, startCharacterActionSlot, enterEditOrInspectorForActive,
         activateBlockForInspectorOrOp, closeInspector, revealInspectorPanel,
         extendRowSelection, moveSelectedRows, duplicateSelection, jumpRowSelection, pageRowSelection,
-        moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
+        beginBlockDrag, endBlockDrag, moveDraggedBlocksToSortablePosition,
         createLayerBeforeBlock, slashAtAlias,
     };
 }

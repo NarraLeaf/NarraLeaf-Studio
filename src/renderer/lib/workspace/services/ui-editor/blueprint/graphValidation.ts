@@ -6,6 +6,7 @@ import type {
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
 import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
+import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { translate } from "@/lib/i18n";
@@ -20,6 +21,8 @@ import {
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_SAVED_SET,
     isBlueprintEventDispatchHeadType,
     isStoryActionCallHeadType,
     readBlueprintFnSignatureSnapshot,
@@ -80,6 +83,8 @@ export type ValidateBlueprintDocumentGraphsOptions = {
     isComponentDefinitionGraph?: boolean;
     /** M-VAR: persistent variable definitions from the project-level registry (no longer on the blueprint doc). */
     persistentVariables?: readonly VariableRegistryEntry[];
+    /** M-VAR: saved variable definitions - the `saved` scope of the same project-level registry. */
+    savedVariables?: readonly VariableRegistryEntry[];
 };
 
 type BlueprintEventHook = {
@@ -467,6 +472,7 @@ export function validateBlueprintGraphIr(
         graphId: string;
         validVariableIds?: ReadonlySet<string>;
         validPersistentVariableIds?: ReadonlySet<string>;
+        validSavedVariableIds?: ReadonlySet<string>;
         variableValueTypes?: readonly BlueprintVariableTypeOption[];
         persistentVariableValueTypes?: readonly BlueprintVariableTypeOption[];
         /** Widget UI slots referencing this event layer (when known). */
@@ -542,7 +548,7 @@ export function validateBlueprintGraphIr(
         const fnEntryCount = Object.values(nodes).filter(n => n.type === BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY).length;
         if (fnEntryCount === 1) {
             try {
-                const graph = adaptBlueprintGraphIr(ir, `validate:${ctx.blueprintId}:${ctx.graphId}`);
+                const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("validate", ctx.blueprintId, ctx.graphId));
                 const entry = pickBehaviorGraphEntry(graph);
                 if (!nodeIds.has(entry.start.nodeId)) {
                     out.push({
@@ -739,6 +745,20 @@ export function validateBlueprintGraphIr(
                 });
             }
         }
+        if (
+            (n.type === BLUEPRINT_NODE_TYPE_SAVED_SET || n.type === BLUEPRINT_NODE_TYPE_SAVED_GET) &&
+            ctx.validSavedVariableIds
+        ) {
+            const vid = String(n.params?.savedVariableId ?? "").trim();
+            if (!vid || !ctx.validSavedVariableIds.has(vid)) {
+                out.push({
+                    severity: "warning",
+                    code: "node.saved_variable_id_invalid",
+                    message: translate("blueprint.diagnostics.node.savedVariableIdInvalid", { node: nid }),
+                    target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
+                });
+            }
+        }
     }
 
     validateBlueprintFnRules(ir, ctx, out);
@@ -881,6 +901,7 @@ export function validateBlueprintDocumentGraphs(
         value: variable.id,
         valueType: variable.valueType,
     }));
+    const validSavedVariableIds = new Set((options?.savedVariables ?? []).map(variable => variable.id));
     const out: BlueprintGraphEditorDiagnostic[] = [];
     for (const [eventId, eg] of Object.entries(bp.program.graphs.events ?? {})) {
         const layerUiSlots =
@@ -894,6 +915,7 @@ export function validateBlueprintDocumentGraphs(
                 graphId: eventId,
                 validVariableIds,
                 validPersistentVariableIds,
+                validSavedVariableIds,
                 variableValueTypes,
                 persistentVariableValueTypes,
                 layerUiSlots,
@@ -914,6 +936,7 @@ export function validateBlueprintDocumentGraphs(
                 graphId: fnId,
                 validVariableIds,
                 validPersistentVariableIds,
+                validSavedVariableIds,
                 variableValueTypes,
                 persistentVariableValueTypes,
                 widgetElementType: options?.widgetElement?.type,

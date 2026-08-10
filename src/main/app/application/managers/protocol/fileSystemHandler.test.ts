@@ -135,4 +135,40 @@ describe("FileSystemHashHandler grant lifetimes", () => {
         expect(storageManager.promoteToSessionRead(writeHash, 42)).toBe(false);
         expect(storageManager.promoteToSessionRead("missing-hash", 42)).toBe(false);
     });
+
+    // The property a Dev Mode save depends on: the engine writes resolved URLs into the SavedGame,
+    // so the same file has to produce the same URL in a later run or every stage image 404s.
+    it("re-keys a read grant to a token derived from the file, stable across allocations", async () => {
+        const first = await storageManager.stabilizeSessionRead(allocateReadyReadHash(), 42);
+        expect(first).toBeTruthy();
+        expect((await handler.handle(makeRequest(first!))).statusCode).toBe(200);
+
+        // A second run: fresh grant over the same untouched file, same token.
+        const second = await storageManager.stabilizeSessionRead(allocateReadyReadHash(), 42);
+        expect(second).toBe(first);
+    });
+
+    it("mints a different token once the file's bytes change, so a cached response cannot outlive them", async () => {
+        const before = await storageManager.stabilizeSessionRead(allocateReadyReadHash(), 42);
+        await fs.writeFile(filePath, Buffer.from("different-png-bytes-entirely"));
+        const after = await storageManager.stabilizeSessionRead(allocateReadyReadHash(), 42);
+
+        expect(after).toBeTruthy();
+        expect(after).not.toBe(before);
+    });
+
+    it("leaves the original token unusable and refuses grants it cannot stabilize", async () => {
+        const hash = allocateReadyReadHash();
+        const stable = await storageManager.stabilizeSessionRead(hash, 42);
+        expect(stable).not.toBe(hash);
+        expect((await handler.handle(makeRequest(hash))).statusCode).toBe(404);
+
+        const writeHash = storageManager.allocateHash(filePath, true, "write");
+        storageManager.updateStatus(writeHash, "ready");
+        await expect(storageManager.stabilizeSessionRead(writeHash, 42)).resolves.toBeNull();
+        await expect(storageManager.stabilizeSessionRead("missing-hash", 42)).resolves.toBeNull();
+
+        const goneHash = storageManager.allocateHash(path.join(tempDir, "not-here.png"), true, "read");
+        await expect(storageManager.stabilizeSessionRead(goneHash, 42)).resolves.toBeNull();
+    });
 });

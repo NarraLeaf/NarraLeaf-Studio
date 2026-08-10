@@ -25,7 +25,7 @@ import type { StoryCommandStageObjectKind, StoryCommandTargetKind, StoryPuppetCh
  * params.
  */
 
-/** An enum value the author may type. `aliases` are accepted on input; completion and storage use the canonical `value` (bible B6). */
+/** An enum value the author may type. `aliases` are accepted on input; completion and storage use the canonical `value`. */
 export type StoryCommandEnumOption = {
     /** The canonical value - what completion inserts and the payload mapping receives. */
     value: string;
@@ -110,7 +110,7 @@ export type StoryCommandParamType =
     /**
      * The subject of a generic verb (`/show poster`, `/hide Alice`, `/vol piano`): a character or a
      * named stage object, whichever `accepts` allows. Resolution dispatches on what the name turns
-     * out to be - which is what lets one verb serve every object type (bible B3) - and reports
+     * out to be - which is what lets one verb serve every object type - and reports
      * `ambiguousName` when a character and an object share the name.
      *
      * A name matching nothing is legal only when exactly one non-character kind is possible (the
@@ -213,14 +213,14 @@ export type StoryCommandParam = {
     /** Consumes the rest of the line verbatim, spaces included. At most one, must be last. */
     greedy?: boolean;
     /**
-     * Part of the command's required core (bible B9): Enter commits only when every core param is
+     * Part of the command's required core: Enter commits only when every core param is
      * filled and error-free; otherwise the line lands as a draft row. `/bg` declares its image core,
      * so a bare `/bg` no longer commits an empty block from the command line - the menu path, which
      * builds default blocks for inspector-first filling, is unaffected.
      */
     core?: boolean;
     /**
-     * An omissible leading positional (bible B4): when the token strictly matches the NEXT
+     * An omissible leading positional: when the token strictly matches the NEXT
      * positional's closed value set (a number, an enum word), this slot is skipped rather than
      * consumed. `/vol 0.5` fills the volume, `/vol piano 0.5` fills both.
      */
@@ -320,7 +320,7 @@ export function dependsOnParam(type: StoryCommandParamType): string | null {
     return null;
 }
 
-/** Whether a bare-flag token may fill this param: a named boolean (`loop` ≡ `loop=true`, bible B5). */
+/** Whether a bare-flag token may fill this param: a named boolean (`loop` ≡ `loop=true`). */
 export function isFlagParam(param: StoryCommandParam): boolean {
     return !param.positional && paramTypes(param).some(type => type.kind === "boolean");
 }

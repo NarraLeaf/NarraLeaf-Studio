@@ -10,6 +10,7 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { Select } from "@/lib/components/elements/Select";
 import { translate } from "@/lib/i18n";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
+import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type { ColorValue, InlineRowItemContext } from "@/apps/workspace/modules/properties/framework/types";
 import type { UIElement } from "@shared/types/ui-editor/document";
@@ -378,11 +379,21 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                     id: "props.fillColorPicker",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = resolveProps(data.element);
+                      // `backgroundColor` and `fillOpacity` are two props here, so the picker's alpha
+                      // is the *layer* opacity and never the colour's. The colour is read through
+                      // `parseColorValue` (the raw string used to go in as `hex`, which meant any
+                      // spelling but `#rrggbb` opened the panel on white) and written back through
+                      // `serializeColorValue` at full alpha, so a brand link round-trips as the link.
+                      const stored = parseColorValue(current.backgroundColor, { hex: "#FFFFFF", alpha: 1 });
                       const handleColor = (next: ColorValue) => {
                         onSaving(true);
                         try {
                           patchProps({
-                            backgroundColor: next.hex,
+                            backgroundColor: serializeColorValue({
+                              hex: next.hex,
+                              alpha: 1,
+                              ...(next.link ? { link: next.link } : {}),
+                            }),
                             fillOpacity: next.alpha ?? current.fillOpacity,
                           });
                         } finally {
@@ -393,10 +404,12 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                       return (
                         <ColorPickerTrigger
                           value={{
-                            hex: current.backgroundColor,
+                            hex: stored.hex,
                             alpha: current.fillOpacity,
+                            ...(stored.link ? { link: stored.link } : {}),
                           }}
                           displayMode="icon"
+                          brandPalette
                           allowOpacity={false}
                           onChange={handleColor}
                         />
@@ -661,11 +674,18 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = resolveProps(data.element);
                       const strokeVisible = current.strokeVisible;
+                      // Same split as the fill row above: `strokeOpacity` owns the alpha, this owns
+                      // the colour, and the link travels with the colour.
+                      const stored = parseColorValue(current.borderColor, { hex: "#FFFFFF", alpha: 1 });
                       const handleChange = (next: ColorValue) => {
                         onSaving(true);
                         try {
                           patchProps({
-                            borderColor: next.hex,
+                            borderColor: serializeColorValue({
+                              hex: next.hex,
+                              alpha: 1,
+                              ...(next.link ? { link: next.link } : {}),
+                            }),
                           });
                         } finally {
                           onSaving(false);
@@ -675,10 +695,12 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                       return (
                         <ColorPickerTrigger
                           value={{
-                            hex: current.borderColor,
+                            hex: stored.hex,
                             alpha: current.strokeOpacity,
+                            ...(stored.link ? { link: stored.link } : {}),
                           }}
                           displayMode="icon"
+                          brandPalette
                           allowOpacity={false}
                           disabled={!strokeVisible}
                           onChange={handleChange}

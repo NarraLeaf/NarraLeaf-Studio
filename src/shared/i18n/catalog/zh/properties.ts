@@ -10,6 +10,7 @@ export const properties = {
         motionKeyframe: "动效关键帧",
         storyMotion: "故事动效",
         scene: "场景",
+        component: "组件",
         character: "角色",
     },
     scene: {
@@ -20,13 +21,14 @@ export const properties = {
         typeGameUi: "游戏界面",
         typePage: "页面",
         backgroundColor: "背景颜色",
+        backgroundImage: "背景图片",
         animation: "动画",
         logic: "逻辑",
     },
     diagnostics: {
         title: "静态检查",
         selectOnCanvas: "→ 在画布中选中",
-        help: "图结构与绑定问题请打开蓝图编辑器。实时执行轨迹只在开发模式中显示",
+        help: "图结构与绑定问题请打开蓝图编辑器；实时执行轨迹只在开发模式中显示",
     },
     layout: {
         title: "布局",
@@ -45,7 +47,15 @@ export const properties = {
     },
     linkedComponent: {
         missing: "组件缺失",
-        info: "关联实例，解除关联前仅可修改位置、大小和旋转",
+        info: "关联实例，解除关联前仅可修改参数与位置、大小和旋转",
+    },
+    componentParams: {
+        title: "参数",
+        none: "暂无参数",
+        add: "添加参数",
+        remove: "移除参数",
+        namePlaceholder: "名称",
+        defaultPlaceholder: "默认值",
     },
     binding: {
         notReady: "该控件的蓝图尚未就绪",
@@ -90,7 +100,7 @@ export const properties = {
         fallbackName: "字体",
         none: "无字体",
         choose: "选择字体",
-        loadError: "字体无法加载（{error}），在素材有效之前预览可能会使用回退字体",
+        loadError: "字体无法加载（{error}）；在素材有效之前，预览使用回退字体",
         select: "选择字体",
     },
     imageFill: {
@@ -105,7 +115,7 @@ export const properties = {
         selectHint: "点击打开素材浏览器",
         changeImage: "更换图片",
         openEditor: "点击打开编辑器",
-        resolveError: "图片素材无法解析（{error}），在它存在之前预览可能不准确",
+        resolveError: "图片素材无法解析（{error}）；在该素材存在之前，预览不准确",
         selectFillImage: "选择填充图片",
         mode: {
             cover: "覆盖",
@@ -133,7 +143,7 @@ export const properties = {
             other: "{count} 处引用",
         },
         dormant: "未生效",
-        dormantHint: "已保存在控件上，但当前不会显示：填充方式被设为纯色。删除该素材会让它变空。",
+        dormantHint: "已保存在控件上，但当前不显示，因为填充方式设为纯色；删除该素材会清空该字段",
         kind: {
             story: "剧情",
             blueprint: "蓝图",
@@ -224,8 +234,8 @@ export const properties = {
             info: "模型信息",
             entry: "入口文件",
             entryAuto: "自动识别：{entry}",
-            entryUnresolvedNone: "未能识别入口文件，请手动选择。",
-            entryUnresolvedAmbiguous: "有多个文件可能是入口，请手动选择。",
+            entryUnresolvedNone: "未能识别入口文件，请手动选择",
+            entryUnresolvedAmbiguous: "有多个文件可能是入口，请手动选择",
             files: "文件",
             fileCount: {
                 one: "{count} 个文件",

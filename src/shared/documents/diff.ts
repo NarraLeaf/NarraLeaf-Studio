@@ -155,7 +155,7 @@ export interface DocumentMergeDecision {
  * A refusal is a **product** answer, not an implementation gap, and it exists because the failure it
  * prevents is silent and late: two rearrangements of one story interleaved into a third produce a
  * script nobody wrote which nevertheless compiles, so the author sees no error at all - until some
- * day when the plot has a hole in it. Plan 2026-07-31-004 §4.3 states the case, and §4.5 lists the
+ * day when the plot has a hole in it. There are six other cases like it, all of them
  * six others that are permanent rather than a backlog.
  *
  * It is carried here rather than thrown, and rather than left to look like an ordinary

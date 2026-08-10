@@ -1,8 +1,10 @@
 import { BookOpen, FolderOpen, Puzzle, Settings } from "lucide-react";
 import { Item } from "./Item";
 import { getInterface } from "@/lib/app/bridge";
+import { useUpdateState } from "@/lib/app/useUpdateState";
 import { getAppInfo } from "@/lib/renderApp";
 import { useTranslation } from "@/lib/i18n";
+import { UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 
 export type LauncherTabKey = "projects" | "plugins" | "learning";
 
@@ -29,10 +31,24 @@ function IconLearning() {
  */
 export function Sidebar({ active, onChange }: SidebarProps) {
     const { t } = useTranslation();
+    const update = useUpdateState();
 
     const openSettings = () => {
         getInterface().app.launchSettings({});
     };
+
+    /**
+     * The launcher's whole update surface: one line under the version number, and only when there
+     * is something to say. It opens the Settings panel - it does not start a download, which is a
+     * decision that belongs on the panel with the size and the progress in front of the reader.
+     *
+     * "ready" is included because an installer already on disk is still news: it needs a restart.
+     */
+    const updateOffer = update
+        && (update.status === "available" || update.status === "manual" || update.status === "ready")
+        && update.availableVersion
+        ? update.availableVersion
+        : null;
 
     const navigationItems = [
         {
@@ -65,7 +81,16 @@ export function Sidebar({ active, onChange }: SidebarProps) {
                 <img src="/favicon.ico" className="w-6 h-6" alt="app" />
                 <div className="flex flex-col leading-tight">
                     <span className="text-sm text-fg">NarraLeaf Studio</span>
-                    <span className="text-2xs text-fg-muted">v{getAppInfo().version}</span>
+                    {updateOffer ? (
+                        <button
+                            className="w-fit text-2xs text-primary hover:underline cursor-default"
+                            onClick={() => getInterface().app.launchSettings({ highlight: UPDATE_PANEL_SETTING_KEY })}
+                        >
+                            {t("update.launcher.available", { version: updateOffer })}
+                        </button>
+                    ) : (
+                        <span className="text-2xs text-fg-muted">v{getAppInfo().version}</span>
+                    )}
                 </div>
             </div>
             <div className="border-t border-edge" />

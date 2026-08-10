@@ -26,3 +26,19 @@ export const UI_TEMPLATE_MAX_ASSET_BYTES = 8 * 1024 * 1024;
 
 /** Refuse a template that declares more resources than this. */
 export const UI_TEMPLATE_MAX_ASSETS = 32;
+
+/**
+ * How long a fetched index may be reused by the calls that only need it to
+ * resolve a path.
+ *
+ * Short on purpose: the index is what tells Studio which files a template is
+ * made of, so a stale one means fetching yesterday's document. Long enough that
+ * one visit to the store — browse, enter a theme, add a screen — reads it once
+ * instead of four times; short enough that a template published while the store
+ * is open is one Refresh away. Refresh itself never reads the memo.
+ */
+export const UI_TEMPLATE_INDEX_MAX_AGE_MS = 60_000;
+
+/** How many card previews one request may ask for, so a single message cannot
+ * turn into an unbounded run of requests to the registry host. */
+export const UI_TEMPLATE_MAX_PREVIEWS_PER_REQUEST = 64;

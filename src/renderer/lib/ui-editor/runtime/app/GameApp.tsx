@@ -83,9 +83,13 @@ import {
     STORY_VISITED_SCENES_KEY,
     type StoryVisitedKey,
 } from "@/lib/ui-editor/runtime/game/storyVisited";
-import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
+import {
+    collectSavedVariableView,
+    computeStoryStageSnapshot,
+    savedVariableDefsFromView,
+} from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
-import { sceneVariableDefs, savedVariableDefs } from "@shared/types/story";
+import { sceneVariableDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
@@ -134,6 +138,7 @@ import type {
     GameAppFrameContext,
     GameAppHost,
     GameAppOverlayContext,
+    GameAppSaveBridge,
     GameAppSaveRecord,
     GameAppStoryRuntimeBridge,
 } from "./GameAppHost";
@@ -170,6 +175,21 @@ function normalizeError(error: unknown): string {
         return error.stack ?? error.message;
     }
     return String(error);
+}
+
+/**
+ * The sentence a failure states, without the stack.
+ *
+ * `normalizeError` prefers the stack, which is right for a console line and wrong for anything shown
+ * to an author: the first thing they should read is what went wrong, not which of our frames noticed.
+ * The stack still travels, next to it rather than instead of it (see {@link GameAppRuntimeIssue}).
+ */
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message || String(error) : String(error);
+}
+
+function errorStack(error: unknown): string | undefined {
+    return error instanceof Error ? error.stack ?? undefined : undefined;
 }
 
 function findSurface(bundle: GameAppHost["bundle"], surfaceId: string | null | undefined): UISurface | null {
@@ -216,6 +236,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     const core = useBlueprintRuntimeCore(bundle, {
         persistenceAdapter: host.persistenceAdapter,
         onDebugEvent: host.onDebugEvent,
+        debuggerEnabled: host.debuggerEnabled,
         disposeMessage: host.disposeMessage,
     });
     // Runtime plugins reach story variables and the player's language through the
@@ -395,6 +416,39 @@ export function GameApp(props: GameAppProps): ReactNode {
     const currentActionIdRef = useRef<string | null>(null);
     const currentActionListenersRef = useRef<Set<(actionId: string | null) => void>>(new Set());
     const nlrCompiledRef = useRef<CompiledNlrStory | null>(null);
+    /**
+     * The story row the engine was last executing, or undefined when nothing was.
+     *
+     * Reads the same action↔block table the Dev Mode timeline reads, so a failure lands on exactly
+     * the row the play head is showing rather than on a second, differently-derived answer.
+     */
+    const playHeadBlockId = useCallback((): string | undefined => {
+        const actionId = currentActionIdRef.current;
+        if (!actionId) {
+            return undefined;
+        }
+        return nlrCompiledRef.current?.actionIdBindings.find(binding => binding.staticId === actionId)?.blockId;
+    }, []);
+    /**
+     * Log a failure AND, for hosts that can point into the story, say where it came from.
+     *
+     * Both, always: the console line is what a packaged build has, and dropping it here would trade
+     * one blind spot for another.
+     */
+    const reportFailure = useCallback((error: unknown, options?: { prefix?: string }) => {
+        const prefix = options?.prefix ?? "";
+        host.log("error", `${prefix}${normalizeError(error)}`);
+        // Compile diagnostics report their own block and do not come through here; everything that
+        // does is a thrown failure, so the play head is the only attribution available.
+        const blockId = playHeadBlockId();
+        host.reportIssue?.({
+            level: "error",
+            message: `${prefix}${errorMessage(error)}`,
+            origin: blockId ? "playHead" : "session",
+            ...(blockId ? { blockId } : {}),
+            ...(errorStack(error) ? { stack: errorStack(error) } : {}),
+        });
+    }, [host, playHeadBlockId]);
     const textReadTrackerRef = useRef<TextReadTracker | null>(null);
     const preferenceSnapshotRef = useRef<Record<string, unknown>>({});
     const dispatchPreferenceChangeRef = useRef<
@@ -465,13 +519,34 @@ export function GameApp(props: GameAppProps): ReactNode {
         studioPageHiddenForGameRef.current = false;
         setStudioPageHiddenForGame(false);
         setGameStageVisible(false);
-        // Reset the NLR boot preload for this session. This runs on mount and on every
-        // bundle/entry-surface change, and its deps are stable per session, so it does NOT
-        // thrash on ordinary re-renders. Crucially it re-runs on the React.StrictMode
-        // mount/unmount/mount cycle (the dev host mounts under StrictMode): the first boot is
-        // cancelled by the unmount, this reset clears nlrBootStartedRef, and the second mount's
-        // boot effect re-runs to completion. Without it the boot guard would stick and
-        // nlrPreloadDone would never flip true, leaving the surface stack blank.
+        // Navigation only. Everything here has to re-run on every bundle, hot reload included: nav
+        // entries carry `host.sessionKey`, the visible-entry filter compares that against the
+        // current one, and Dev Mode puts the revision in it - so entries stamped by the previous
+        // revision are all filtered out, and re-stamping them is what keeps the stage drawn.
+        //
+        // Tearing down the NLR environment used to live here too. It does not any more: see the
+        // effect directly below.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bundle, createNavEntry, host.entrySurfaceId, navigation]);
+
+    /**
+     * Tear the NLR environment down when the SESSION changes - and deliberately not when a hot
+     * reload merely bumps the revision.
+     *
+     * Split out of the navigation reset above, because sharing that effect's `bundle` dependency is
+     * what blanked a running Dev Mode on the author's first save. The sequence: a save bumps the
+     * revision, the shared effect set `nlrPreloadDone` back to false, and nothing raised it again -
+     * the boot effect is keyed on the session id, so it does not re-run for a reload, and the hot
+     * reload path further down restarts the environment without touching that flag. The entire
+     * surface stack renders behind it, so the game went blank and stayed blank until Dev Mode was
+     * restarted, with no error raised anywhere. MEASURED: 6 saves out of 6 before this split, 0
+     * after.
+     *
+     * Deps are the session, not a ref-compared signature, so this still re-runs on the
+     * React.StrictMode mount/unmount/mount cycle the dev host uses: the throwaway mount's boot is
+     * cancelled, this clears `nlrBootStartedRef`, and the real mount's boot runs to completion.
+     */
+    useEffect(() => {
         nlrBootStartedRef.current = null;
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
@@ -484,8 +559,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameEnteredRef.current = false;
         setNlrPreloadDone(false);
         setNlrSession(null);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bundle, createNavEntry, host.entrySurfaceId, navigation]);
+    }, [bundle.bundleId, host.entrySurfaceId]);
 
     const activeEntry = navStack[navStack.length - 1] ?? null;
     const activeSurface = activeEntry ? findSurface(bundle, activeEntry.surfaceId) : null;
@@ -591,6 +665,66 @@ export function GameApp(props: GameAppProps): ReactNode {
         prefersReducedMotion,
         resetSurfaceInteractionReadiness,
     ]);
+
+    /**
+     * Close down to `targetIndex` in one transition. `closeLayer` is this with the default index;
+     * `clearPages` and `clearGameOverlay` name a lower one.
+     */
+    const closeToIndex = useCallback((targetIndex: number): Promise<void> => {
+        const currentStack = navigation.getState().navStack;
+        if (currentStack.length <= 1 || targetIndex >= currentStack.length - 1) {
+            return Promise.resolve();
+        }
+        const nextEntryBase = currentStack[targetIndex]!;
+        const currentEntry = currentStack[currentStack.length - 1]!;
+        const from = findSurface(bundle, currentEntry.surfaceId);
+        const target = findSurface(bundle, nextEntryBase.surfaceId);
+        const targetHiddenForGame = isGameHiddenEntry(nextEntryBase);
+        resetSurfaceInteractionReadiness();
+        return navigation.close({
+            fromSurface: from,
+            targetSurface: target,
+            targetHiddenForGame,
+            reducedMotion: prefersReducedMotion,
+            targetIndex,
+        });
+    }, [
+        bundle,
+        isGameHiddenEntry,
+        navigation,
+        prefersReducedMotion,
+        resetSurfaceInteractionReadiness,
+    ]);
+
+    /**
+     * Empty the page stack down to its root. This is what `Go Page` with no page selected means: the
+     * dropdown offers "None", and choosing to show no page has to mean no page, not one page fewer.
+     * The root itself stays - it is the title screen, or the entries the game hid when it started, and
+     * an empty stack would render nothing at all.
+     */
+    const clearPages = useCallback((): Promise<void> => closeToIndex(0), [closeToIndex]);
+
+    /**
+     * Dismiss everything the player opened over a running game, and do nothing at all when no game is
+     * running. The entries hidden when the game started are a prefix of the stack (they were the whole
+     * stack at that moment), so the landing spot is the last one of those.
+     */
+    const clearGameOverlay = useCallback((): Promise<void> => {
+        if (!studioPageHiddenForGameRef.current) {
+            return Promise.resolve();
+        }
+        const currentStack = navigation.getState().navStack;
+        let lastHidden = -1;
+        for (let i = 0; i < currentStack.length; i++) {
+            if (gameHiddenNavKeysRef.current.has(currentStack[i]!.key)) {
+                lastHidden = i;
+            }
+        }
+        if (lastHidden < 0) {
+            return Promise.resolve();
+        }
+        return closeToIndex(lastHidden);
+    }, [closeToIndex, navigation]);
 
     const closeLayer = useCallback((): Promise<void> => {
         const currentStack = navigation.getState().navStack;
@@ -926,6 +1060,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getActionIdBindings: () => nlrCompiledRef.current?.actionIdBindings ?? [],
         getVariableNamespaces: () => ({
             saved: nlrCompiledRef.current?.savedNamespaceName || null,
+            visited: nlrCompiledRef.current?.visitedNamespaceName || null,
             sceneLocal: nlrCompiledRef.current?.sceneLocalNamespaceNames ?? {},
         }),
         getCurrentActionId: () => currentActionIdRef.current,
@@ -1135,6 +1270,21 @@ export function GameApp(props: GameAppProps): ReactNode {
         return ids.filter(id => !isAutoSaveId(id));
     }, [host.saveStore]);
 
+    /**
+     * The save slots, published for host debug overlays.
+     *
+     * Assembled from the very callbacks the Save/Load nodes are wired to rather than from
+     * `host.saveStore` directly, so the Saves panel's "load this slot" is the same operation a
+     * player's Load button performs - including `listSaveIds`' autosave filter, which is what makes
+     * the panel's list the list an authored save screen would show.
+     */
+    const savesBridge = useMemo<GameAppSaveBridge>(() => ({
+        listIds: listSaveIds,
+        read: id => host.saveStore.read(id),
+        load: loadSave,
+        remove: deleteSave,
+    }), [deleteSave, host.saveStore, listSaveIds, loadSave]);
+
     const autoSaveConfig = useMemo(
         () => normalizeAutoSaveConfiguration(bundle.autoSave),
         [bundle.autoSave],
@@ -1245,6 +1395,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     sceneId,
                     targetBlockId: startBlockId,
                     animations: bundle.storyLibrary?.animations,
+                    // Without the registry table the walk only knows story-declared `/save` rows, so a
+                    // "play from here" launch would enter with every registry-backed saved variable at
+                    // nothing and every `/set` on one silently dropped.
+                    savedVariables: bundle.ui.savedVariables,
                 }),
             }
             : undefined;
@@ -1256,7 +1410,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             const overrides = scene?.sceneSnapshots?.find(entry => entry.id === snapshotId)?.values;
             if (overrides) {
                 const sceneDefs = scene ? sceneVariableDefs(scene) : {};
-                const savedDefs = savedVariableDefs(storyDocument);
+                // Merged, not `savedVariableDefs` alone: an override key is `saved:<variableId>`, and
+                // since `saved` became a registry scope that id may belong to a registry entry rather
+                // than to a `/save` row - reading only the document would drop those overrides.
+                const savedDefs = savedVariableDefsFromView(
+                    collectSavedVariableView(storyDocument, bundle.ui.savedVariables),
+                );
                 for (const [refKey, value] of Object.entries(overrides)) {
                     if (refKey.startsWith("scene:")) {
                         const def = sceneDefs[refKey.slice("scene:".length)];
@@ -1284,10 +1443,21 @@ export function GameApp(props: GameAppProps): ReactNode {
             resolveAssetUrl: host.resolveStoryAssetUrl,
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
+            // The saved half of the same registry. This is the call both shipping runtimes go through
+            // — Dev Mode and the packaged game — so leaving it out meant a project-level saved variable
+            // existed in the editor and nowhere else.
+            savedVariables: bundle.ui.savedVariables,
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),
-                      set: (key, value) => core.scopeBridge.persistenceSet(key, value),
+                      // Both halves of the write: the in-memory map so the very next story read
+                      // sees it, and the host store so it survives the session. Without the second
+                      // half a story-written persistent variable was invisible to every blueprint,
+                      // because `Get Persistent` reads through the adapter rather than the map.
+                      set: (key, value) => {
+                          core.scopeBridge.persistenceSet(key, value);
+                          return core.scopeBridge.persistenceSetAsync(key, value);
+                      },
                   }
                 : undefined,
             localization: bundle.localization && core
@@ -1314,7 +1484,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         const compiled = await compileStudioStoryToNlr(compileInput);
         if (compiled.diagnostics.length > 0) {
             for (const diagnostic of compiled.diagnostics) {
-                host.log(diagnostic.level === "error" ? "error" : "warning", diagnostic.message);
+                const level = diagnostic.level === "error" ? "error" : "warning";
+                host.log(level, diagnostic.message);
+                // The compiler already knows which block it was translating when it complained. That
+                // was being dropped on the floor here, which is why "Invalid command, skipped: /show
+                // …" arrived as prose with no way back to the row that wrote it.
+                host.reportIssue?.({
+                    level,
+                    message: diagnostic.message,
+                    origin: "compile",
+                    ...(diagnostic.blockId ? { blockId: diagnostic.blockId } : {}),
+                });
             }
         }
         return compiled;
@@ -1640,6 +1820,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             emit: event => core.debug.emit(event),
             onOpenSurface: openSurface,
             onCloseLayer: closeLayer,
+            onClearPages: clearPages,
+            onClearGameOverlay: clearGameOverlay,
             onQuitApplication: host.quitApplication,
             onGetFullscreen: host.getFullscreen,
             onSetFullscreen: host.setFullscreen,
@@ -1685,6 +1867,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsSoundPlaying: soundTransport.isPlaying,
             onGetTrackVolume: soundTransport.getTrackVolume,
             onSetTrackVolume: soundTransport.setTrackVolume,
+            onNetworkFetch: host.networkFetch,
             audioTracks: bundle.audio?.tracks,
             onSubscribeGamePreferences: subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {
@@ -1808,11 +1991,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
     };
 
-    // Requires hostAdapterBundle so NlrStageLayer mounts and can drive onLiveGameReady. The deps
-    // are intentionally only the readiness signal and the bundle id: the boot mutates nlrSession
-    // (and therefore hostAdapterBundle), and re-running on that churn would cancel the in-flight
-    // boot before nlrPreloadDone is set. StrictMode re-boot safety comes from the per-session
-    // nav-reset effect clearing nlrBootStartedRef, not from this effect's deps.
+    // Requires hostAdapterBundle so NlrStageLayer mounts and can drive onLiveGameReady. The deps are
+    // intentionally narrow - the readiness signal and the session key, nothing else: the boot mutates
+    // nlrSession (and therefore hostAdapterBundle), and re-running on that churn would cancel the
+    // in-flight boot before nlrPreloadDone is set. StrictMode re-boot safety comes from the
+    // per-session nav-reset effect clearing nlrBootStartedRef, not from this effect's deps.
+    //
+    // Keyed on `bundle.bundleId` - the SESSION - and deliberately not on the revision. A hot reload
+    // is owned by the `bundle.revision` effect below, which restarts the NLR environment in place;
+    // booting again from here as well starts a second mount of the same session, and the loser's
+    // `environmentReady` (which has no deadline, unlike the stage warmup beside it) then never
+    // resolves. MEASURED: re-keying this on the session key left `runBoot` hanging on 7 reloads out
+    // of 8, and the stage came back only when the 45s preload timeout fired.
     const bootReady = Boolean(host.ready && core && activeSurface && hostAdapterBundle);
     useEffect(() => {
         if (!bootReady) {
@@ -1847,7 +2037,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     host.log("info", `[${host.id}] NLR boot superseded: ${err.message}`);
                 } else {
                     nlrBootStartedRef.current = null;
-                    host.log("error", normalizeError(err));
+                    reportFailure(err);
                 }
             } finally {
                 clearTimeout(timeoutId);
@@ -1897,6 +2087,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     emit: event => core.debug.emit(event),
                     onOpenSurface: openSurface,
                     onCloseLayer: closeLayer,
+                    onClearPages: clearPages,
+                    onClearGameOverlay: clearGameOverlay,
                     onQuitApplication: host.quitApplication,
                     onGetFullscreen: host.getFullscreen,
                     onSetFullscreen: host.setFullscreen,
@@ -1943,6 +2135,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onIsSoundPlaying: soundTransport.isPlaying,
                     onGetTrackVolume: soundTransport.getTrackVolume,
                     onSetTrackVolume: soundTransport.setTrackVolume,
+                    onNetworkFetch: host.networkFetch,
                     audioTracks: bundle.audio?.tracks,
                     onSubscribeGamePreferences: subscribeGamePreferences,
                     onWidgetPatch: (elementId, patch) => {
@@ -2098,7 +2291,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     host.log("info", `[${host.id}] NLR hot reload restart superseded by a newer bundle revision`);
                     return;
                 }
-                host.log("error", `[${host.id}] NLR hot reload restart failed: ${normalizeError(err)}`);
+                reportFailure(err, { prefix: `[${host.id}] NLR hot reload restart failed: ` });
             }
         })();
     }, [bundle.revision, compileStoryRequest, enterMountedGame, host, mountNlrSession, startEmptyNlrEnvironment]);
@@ -2462,7 +2655,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return (
             <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
                 {renderFrame({ activeSurface, gameViewport, children: null })}
-                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime })}
+                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime, saves: savesBridge })}
             </GameLocalizationContext.Provider>
         );
     }
@@ -2600,7 +2793,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     return;
                 }
                 rejectPendingGameStarts(err);
-                host.log("error", normalizeError(err));
+                // The engine throws from inside whatever row it was running, and that row is the
+                // only part of this an author can fix. Read it before anything else touches the
+                // play head.
+                reportFailure(err);
             }}
         />
     );
@@ -2680,7 +2876,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
             {renderFrame({ activeSurface, gameViewport, children: content })}
-            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime })}
+            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime, saves: savesBridge })}
         </GameLocalizationContext.Provider>
     );
 }

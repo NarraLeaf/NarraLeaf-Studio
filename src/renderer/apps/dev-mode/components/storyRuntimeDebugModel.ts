@@ -4,11 +4,11 @@
  * React- and engine-free so the row projection, the action↔block reverse lookup, the declared variable
  * listing and the execution context stay unit-testable.
  *
- * The block summary is NOT re-derived here any more. It used to be — the M5 card authorised a
+ * The block summary is NOT re-derived here any more. It used to be — an earlier round allowed a
  * deliberately minimal re-projection because the editor's `describeBlock` was coupled to the workspace
  * `Character` service — and the two readings drifted exactly where it mattered (`Enter Nattou` against
  * `character enter · character`). That authorisation is withdrawn: the sentence now comes from
- * `@/lib/story/storyRowProjection`, the one projection both surfaces read (U4 WI-1).
+ * `@/lib/story/storyRowProjection`, the one projection both surfaces read.
  */
 
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
@@ -31,6 +31,8 @@ import type {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { sceneVariableDefs, savedVariableDefs, storyPersistentDefs } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
+import { buildMergedPersistentView } from "@shared/variables/mergedPersistentView";
 
 /** The action↔block fields the reverse lookups need (a structural subset of NlrActionIdBinding). */
 export type ActionIdBindingLike = { staticId: string; blockId: string };
@@ -128,6 +130,33 @@ export function blockIdForActionId(
         }
     }
     return null;
+}
+
+/**
+ * Which scene owns a block — the whole of "which scene is running".
+ *
+ * A launch compiles EVERY scene of the story, so the play head is free to leave the one the run
+ * started in (a `/goto`, a jump, a timeline restore into another scene). The answer therefore comes
+ * from looking the block up, never from remembering the entry scene; `fallbackSceneId` covers the
+ * two states with no block to look up — before the first action has run, and an engine action that
+ * belongs to no Studio row.
+ *
+ * One function because this loop had been copy-pasted five times across three components, and a
+ * panel that resolved it differently from its neighbour would show two scenes for one play head.
+ */
+export function resolveSceneIdForBlock(
+    document: StoryDocument,
+    blockId: StoryBlockId | null,
+    fallbackSceneId: StorySceneId,
+): StorySceneId {
+    if (blockId) {
+        for (const [id, scene] of Object.entries(document.scenes)) {
+            if (blockId in scene.blocks) {
+                return id;
+            }
+        }
+    }
+    return fallbackSceneId;
 }
 
 // --- Execution context ----------------------------------------------------------------------------
@@ -375,11 +404,20 @@ function findLastIndex<T>(items: readonly T[], predicate: (item: T) => boolean):
 
 /**
  * The declared variables of the running story, split by scope: scene variables of the entry scene,
- * document-wide saved and persistent. Live values are merged in by the panel from the runtime store.
+ * plus the project-level saved and persistent ones. Live values are merged in by the panel from the
+ * runtime store.
+ *
+ * The two registries are arguments rather than document reads because a saved or persistent variable
+ * no longer has to have a row in any story: the project registry is a declaration site of its own,
+ * and after the declaration migration it is the ONLY one. Left out, every registry-declared variable
+ * is missing from the debug list - the panel shows a shorter list than the running game actually has,
+ * which reads as "the engine lost my variable".
  */
 export function listDeclaredStoryVariables(
     document: StoryDocument,
     sceneId: StorySceneId,
+    savedRegistry: readonly VariableRegistryEntry[] = [],
+    persistentRegistry: readonly VariableRegistryEntry[] = [],
 ): DeclaredStoryVariable[] {
     const variables: DeclaredStoryVariable[] = [];
     const scene = document.scenes[sceneId];
@@ -395,6 +433,16 @@ export function listDeclaredStoryVariables(
             });
         }
     }
+    for (const entry of savedRegistry) {
+        variables.push({
+            scope: "saved",
+            id: entry.id,
+            name: entry.name,
+            valueType: entry.valueType,
+            defaultValue: entry.defaultValue,
+            storageKey: entry.storageKey,
+        });
+    }
     for (const def of Object.values(savedVariableDefs(document))) {
         variables.push({
             scope: "saved",
@@ -405,14 +453,20 @@ export function listDeclaredStoryVariables(
             storageKey: def.storageKey,
         });
     }
-    for (const def of Object.values(storyPersistentDefs(document))) {
+    // The merged view, not the document's own `/persis` rows: the two surfaces are one scope, and
+    // reading either alone shows the author half of what the game is holding.
+    for (const entry of buildMergedPersistentView(
+        persistentRegistry,
+        Object.values(storyPersistentDefs(document)),
+    ).entries) {
         variables.push({
+            // v9: a persistent ref addresses by storage key, so that is this row's id too.
             scope: "persistent",
-            id: def.storageKey,
-            name: def.name,
-            valueType: def.valueType,
-            defaultValue: def.defaultValue,
-            storageKey: def.storageKey,
+            id: entry.storageKey,
+            name: entry.name,
+            valueType: entry.valueType,
+            defaultValue: entry.defaultValue,
+            storageKey: entry.storageKey,
         });
     }
     return variables;
@@ -596,7 +650,7 @@ export function projectStoryTrailHighlight(
         if (taken) {
             edgeIds.add(taken.id);
             // The arm itself, so it stays bright even where its line is not drawn (a collapsed
-            // scene draws only the scene edge) — `isBranchEmphasised` accepts an arm's own id.
+            // scene draws only the scene edge) — `isBranchEmphasized` accepts an arm's own id.
             edgeIds.add(taken.sourceBranchId);
         }
         if (sceneEdge) {

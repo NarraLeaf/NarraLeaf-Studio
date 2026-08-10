@@ -3,8 +3,8 @@
  *
  * Studio never obtains this file — the author downloads it from live2d.com, which is where they accept
  * Live2D's licences, and hands Studio the path. Fetching it on their behalf would make Studio a
- * distributor of the SDK, which its own licence forbids for a source-available application (card
- * 2026-07-27-002). So the archive arrives as untrusted input, and this module's whole job is to answer
+ * distributor of the SDK, which its own licence forbids for a source-available application.
+ * So the archive arrives as untrusted input, and this module's whole job is to answer
  * "is this the thing, and where inside it are the parts" precisely enough that a wrong file produces a
  * sentence the author can act on rather than "invalid archive".
  *

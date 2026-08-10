@@ -28,7 +28,7 @@
  * `characterAvatarAssets.ts`. Unlike those two this one is subscribable, because Dev Mode installs its
  * resolver from an effect and a widget can easily mount first.
  *
- * Nothing here names a renderer and nothing here may — card 2026-07-27-002.
+ * Nothing here names a renderer and nothing here may.
  */
 
 import { useCallback, useMemo, useSyncExternalStore } from "react";

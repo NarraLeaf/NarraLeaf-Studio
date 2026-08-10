@@ -21,6 +21,7 @@ import {
     uiElementTypeAcceptsChildren,
     getUIComponentLink,
     isLinkedUIComponentElement,
+    type UIComponentParam,
 } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
@@ -35,17 +36,21 @@ import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver
 import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
+import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
 import {
     applyPlannedMove,
+    applyUngroupContainer,
+    canUngroupContainer,
     collectSubtreeElementIds,
     filterToTopLevelMovers,
     layoutPatchForReparent,
     normalizeFlowChildLayout,
     normalizeFlowChildLayouts,
+    normalizeListSlotsForMovedChildren,
     planMoveElementsInSurface,
     type MoveUiElementsResult,
 } from "./uiDocumentTreeMove";
@@ -107,6 +112,11 @@ import {
 } from "@shared/constants/ui-editor";
 import { isListLikeWidgetType, type UIListElementExtra } from "@shared/types/ui-editor/list";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
+import {
+    UI_SWITCH_ELEMENT_TYPE,
+    getUISwitchChildSlot,
+    type UISwitchElementExtra,
+} from "@shared/types/ui-editor/switch";
 import { normalizeUIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import {
     DEFAULT_UI_STAGE_SLOT_ID,
@@ -252,6 +262,26 @@ function createDuplicateName(baseName: string, existingNames: Set<string>): stri
     return `${base} ${i}`;
 }
 
+/**
+ * The name a thing arriving from a template keeps.
+ *
+ * Deliberately not {@link createDuplicateName}: that one renders "Dialogue Copy",
+ * which is the truth about a duplicate and a lie about an import — the author has
+ * no "Dialogue" to have copied. So the template's own name stands, and a numeric
+ * suffix appears only when it genuinely collides with something already here.
+ */
+function createImportedName(baseName: string, existingNames: Set<string>): string {
+    const base = baseName.trim() || translate("defaultDoc.pageName");
+    if (!existingNames.has(base)) {
+        return base;
+    }
+    let i = 2;
+    while (existingNames.has(`${base} ${i}`)) {
+        i += 1;
+    }
+    return `${base} ${i}`;
+}
+
 function isReferenceKey(key: string, suffix: string): boolean {
     return key === suffix || key.endsWith(suffix[0].toUpperCase() + suffix.slice(1));
 }
@@ -264,12 +294,32 @@ type SurfaceDuplicateRemapContext = {
     /** Optional source-assetId -> project-assetId map, set only when importing a
      * template that ships resources; absent (and inert) for in-document duplicate. */
     assetIdMap?: Record<string, string>;
+    /** Optional source-componentId -> project-componentId map, set only when importing
+     * a template that ships components. A duplicate within one document keeps pointing
+     * at the same library entry, so it leaves this absent. */
+    componentIdMap?: Record<string, string>;
+    /**
+     * Optional source-surfaceId -> project-surfaceId map covering *every* surface of a
+     * multi-surface template, set only on import.
+     *
+     * `oldSurfaceId`/`newSurfaceId` above describe the one surface currently being
+     * copied, which is all a duplicate needs. An import needs more: an `nl.frame`
+     * on one of a template's surfaces points at a *sibling* surface, and that
+     * reference is not the surface being copied — so without this it survived
+     * untouched and named an id no project holds.
+     */
+    surfaceIdMap?: Record<string, string>;
 };
 
 function remapSurfaceDuplicateReferenceValue<T>(value: T, ctx: SurfaceDuplicateRemapContext, key?: string): T {
     if (typeof value === "string") {
         if (key && isReferenceKey(key, "surfaceId") && value === ctx.oldSurfaceId) {
             return ctx.newSurfaceId as T;
+        }
+        // A reference to another surface of the same template (nl.frame's
+        // targetSurfaceId is the one that matters today).
+        if (key && ctx.surfaceIdMap && isReferenceKey(key, "surfaceId") && ctx.surfaceIdMap[value]) {
+            return ctx.surfaceIdMap[value] as T;
         }
         if (key && isReferenceKey(key, "elementId") && ctx.elementIdMap[value]) {
             return ctx.elementIdMap[value] as T;
@@ -279,6 +329,11 @@ function remapSurfaceDuplicateReferenceValue<T>(value: T, ctx: SurfaceDuplicateR
         }
         if (key && ctx.assetIdMap && isReferenceKey(key, "assetId") && ctx.assetIdMap[value]) {
             return ctx.assetIdMap[value] as T;
+        }
+        // Reaches `extra.componentLink.componentId`, which is how an element on an
+        // imported surface says "I am an instance of that library component".
+        if (key && ctx.componentIdMap && isReferenceKey(key, "componentId") && ctx.componentIdMap[value]) {
+            return ctx.componentIdMap[value] as T;
         }
         return value;
     }
@@ -411,13 +466,38 @@ function sanitizeComponentName(name: string | undefined, fallback: string): stri
     return trimmed.length > 0 ? trimmed : fallback;
 }
 
+/** Whether a blueprint holds anything an author wrote, as opposed to the empty shell selecting an element creates. */
+function blueprintHasAuthoredGraph(blueprint: Blueprint): boolean {
+    if (blueprint.program.kind !== "graph") {
+        return true;
+    }
+    const graphs = blueprint.program.graphs;
+    const collections = [graphs.events ?? {}, graphs.functions ?? {}];
+    return collections.some(collection =>
+        Object.values(collection).some(entry => Object.keys(entry?.graph?.nodes ?? {}).length > 0),
+    );
+}
+
+/**
+ * An element as it goes into a component definition.
+ *
+ * `behavior` survives, because it is what makes the component worth placing: an author who selects a
+ * working save slot and asks for a component should get a working save slot, not a picture of one.
+ * The blueprints those bindings name are cloned alongside (see `carryWidgetBlueprintsIntoComponent`),
+ * so they point at the copy rather than at the elements still sitting on the surface.
+ *
+ * `valueBindings` does not survive, and that is deliberate rather than an oversight. A value binding
+ * inside a component instance is cached without the instance in its key, so every placement would
+ * read one entry - twelve slots showing the same line of text, with nothing to suggest why. Dropping
+ * the binding leaves a visibly empty field instead, which an author can see and fix. Restore this
+ * once the value runtime is keyed per instance.
+ */
 function stripElementForComponentDefinition(element: UIElement): UIElement {
     const next = cloneJson(element);
     if (next.extra?.componentLink) {
         const { componentLink: _componentLink, ...rest } = next.extra;
         next.extra = Object.keys(rest).length > 0 ? rest : undefined;
     }
-    delete next.behavior;
     delete next.valueBindings;
     return next;
 }
@@ -467,11 +547,14 @@ function calculateElementsBounds(elements: UIElement[]): UISurfaceDesignSize & {
     };
 }
 
-/** What a template import touched: the surfaces added, and any stage slots that
- * were already occupied so their surface was skipped (surfaced to the user). */
+/** What a template import touched: the surfaces added, any library components it
+ * brought with them, and any stage slots that were already occupied so their
+ * surface was skipped (surfaced to the user). */
 export type ImportTemplateResult = {
     importedSurfaces: UISurface[];
     skippedSlots: UIStageSlotId[];
+    /** Components copied into the project's library; empty for surface-only templates. */
+    importedComponents: UIComponentDefinition[];
 };
 
 /** One template's fetched documents plus a resolved placement, ready to import.
@@ -498,6 +581,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     });
     private afterMutateHook: (() => void) | null = null;
     private historySuppressionDepth = 0;
+    private readonly contentRevisions = new UIDocumentContentRevisions();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -562,11 +646,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const needsSave = schemaChanged || normalizedChanged || mainSurfaceChanged || flowLayoutsChanged;
         if (needsSave) {
             await this.save(this.document);
+            this.contentRevisions.reset();
             this.revision = 0;
             this.lastSavedRevision = 0;
             this.setDirty(false);
             return this.document;
         }
+        this.contentRevisions.reset();
         this.revision = 0;
         this.lastSavedRevision = 0;
         this.setDirty(false);
@@ -662,6 +748,22 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     public getRevision(): number {
         return this.revision;
+    }
+
+    /**
+     * A counter for one surface, bumped only when that surface's own content changed.
+     *
+     * {@link getRevision} moves on every edit anywhere in the document, so anything keyed on it
+     * redraws for edits it does not show. The interface panel keeps a live element tree per surface,
+     * which is what makes that difference worth having.
+     */
+    public getSurfaceContentRevision(surfaceId: string): number {
+        return this.contentRevisions.getSurfaceContentRevision(this.getDocument(), this.revision, surfaceId);
+    }
+
+    /** The component-library counterpart of {@link getSurfaceContentRevision}. */
+    public getComponentContentRevision(componentId: string): number {
+        return this.contentRevisions.getComponentContentRevision(this.getDocument(), this.revision, componentId);
     }
 
     public updateElementLayout(
@@ -887,28 +989,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         this.mutateDocument(doc => {
             applyPlannedMove(doc, planned.plan);
-            const targetParent = doc.elements[targetParentId];
-            if (isListLikeWidgetType(targetParent?.type)) {
-                for (const elementId of elementIds) {
-                    const moved = doc.elements[elementId];
-                    const slot = moved?.extra?.listSlot;
-                    if (
-                        moved &&
-                        slot !== "itemTemplate" &&
-                        slot !== "scrollbarTrack" &&
-                        slot !== "scrollbarThumb"
-                    ) {
-                        moved.extra = {
-                            ...(moved.extra ?? {}),
-                            listSlot: "itemTemplate",
-                        };
-                    }
-                }
-            }
+            normalizeListSlotsForMovedChildren(doc, targetParentId, elementIds);
         }, {
             history: { surfaceId },
         });
         return { ok: true };
+    }
+
+    /**
+     * Dissolve each group: its children take its place among its siblings, then it is removed.
+     * Returns the ids that were lifted out, for the caller to select.
+     *
+     * One mutation, so several groups going at once are one undo step, and so is the pair of edits
+     * each dissolve is made of - lifting the children and removing the shell. Every id is
+     * re-checked against the live document as the loop runs, because dissolving an outer group
+     * reparents an inner one that may be in the same batch.
+     */
+    public ungroupContainers(surfaceId: string, containerIds: string[]): string[] {
+        const document = this.getDocument();
+        if (!containerIds.some(id => canUngroupContainer(document, surfaceId, id))) {
+            return [];
+        }
+        const lifted: string[] = [];
+        this.mutateDocument(doc => {
+            for (const containerId of containerIds) {
+                lifted.push(...(applyUngroupContainer(doc, surfaceId, containerId) ?? []));
+            }
+        }, {
+            history: { surfaceId },
+        });
+        return lifted;
     }
 
     public renameElement(elementId: string, name: string): void {
@@ -1264,6 +1374,30 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     };
                 }
             }
+            if (element.type === UI_SWITCH_ELEMENT_TYPE) {
+                const props = (element.props ?? {}) as Record<string, unknown>;
+                const trackElementId = typeof props.trackElementId === "string" ? props.trackElementId : null;
+                const thumbElementId = typeof props.thumbElementId === "string" ? props.thumbElementId : null;
+                for (const childId of element.childrenIds) {
+                    const child = document.elements[childId];
+                    if (!child || getUISwitchChildSlot(child.extra) != null) {
+                        continue;
+                    }
+                    const switchSlot =
+                        childId === thumbElementId
+                            ? "thumb"
+                            : childId === trackElementId
+                              ? "track"
+                              : null;
+                    if (!switchSlot) {
+                        continue;
+                    }
+                    child.extra = {
+                        ...(child.extra ?? {}),
+                        switchSlot,
+                    };
+                }
+            }
         }
         return document;
     }
@@ -1342,6 +1476,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 updatedAt: now,
             },
         };
+        this.contentRevisions.reset();
         this.revision = 0;
         this.lastSavedRevision = 0;
         this.setDirty(false);
@@ -1474,10 +1609,29 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return;
             }
             surface.name = nextName;
+        }, {
+            // Typed a character at a time, so one entry per name rather than per keystroke.
+            history: { surfaceId, mergeKey: `surface:${surfaceId}:name` },
         });
     }
 
-    public updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void {
+    /**
+     * Edit a surface's own record - its name, its background, its page animation, its slot.
+     *
+     * Recorded in the surface's undo stack like every other edit to that surface. It was not, for as
+     * long as this method existed: `mutateDocument` records only when a caller says which surface the
+     * edit belongs to, and this one never did - so changing a page's background colour was the one
+     * kind of edit in the interface editor that Ctrl+Z could not take back.
+     *
+     * `mergeKey` is the caller's, because only the caller knows which field its updater touched.
+     * Leaving it out is safe - it costs granularity (one entry per change instead of one per field
+     * the author was working on), never the entry itself.
+     */
+    public updateSurface(
+        surfaceId: string,
+        updater: (surface: UISurface) => void,
+        options: { mergeKey?: string } = {},
+    ): void {
         this.mutateDocument(document => {
             const surface = document.surfaces.find(next => next.id === surfaceId);
             if (!surface) {
@@ -1488,6 +1642,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (isMainSurface) {
                 surface.id = MAIN_APP_SURFACE_ID;
             }
+        }, {
+            history: { surfaceId, mergeKey: options.mergeKey },
         });
     }
 
@@ -1708,6 +1864,24 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const importedSurfaces: UISurface[] = [];
         const skippedSlots: UIStageSlotId[] = [];
 
+        // Components first: a surface element that is an instance of one carries the
+        // source component's id, so the map has to exist before any surface is walked.
+        const { componentIdMap, importedComponents } = this.importTemplateComponents(
+            sourceDocument,
+            sourceBlueprintDocument,
+            input.assetIdMap,
+        );
+
+        // Then every surface's new id, before any of them is copied. A template's
+        // surfaces reference each other (an nl.frame embeds a sibling), and the
+        // surface holding the reference is copied before the one it points at, so
+        // the target's id has to already exist when the first one is walked.
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const surfaceIdMap: Record<string, string> = {};
+        for (const sourceSurface of importable) {
+            surfaceIdMap[sourceSurface.id] = uuidService.generate();
+        }
+
         for (const sourceSurface of importable) {
             let placement = input.placement;
             if (placement.kind === "stageSurface") {
@@ -1725,13 +1899,197 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 sourceBlueprintDocument,
                 placement,
                 input.assetIdMap,
+                componentIdMap,
+                surfaceIdMap,
             );
             if (imported) {
                 importedSurfaces.push(imported);
             }
         }
 
-        return { importedSurfaces, skippedSlots };
+        return { importedSurfaces, skippedSlots, importedComponents };
+    }
+
+    /**
+     * Copy a template's component library into this project, under fresh ids.
+     *
+     * This is what makes a component-set template possible at all: a component is
+     * a self-contained `elements` record plus a root, living in `document.components`
+     * rather than on any surface, so the surface walk never reaches it. Each one is
+     * re-idded, its `componentWidgetMain` blueprints are cloned the way
+     * {@link duplicateComponent} clones them, and the returned map lets the surface
+     * walk repoint every instance at the copy.
+     *
+     * A template with no components returns an empty map and writes nothing.
+     */
+    private importTemplateComponents(
+        sourceDocument: UIDocument,
+        sourceBlueprintDocument: BlueprintDocument | null,
+        assetIdMap?: Record<string, string>,
+    ): { componentIdMap: Record<string, string>; importedComponents: UIComponentDefinition[] } {
+        const sourceComponents = sourceDocument.components ?? [];
+        if (sourceComponents.length === 0) {
+            return { componentIdMap: {}, importedComponents: [] };
+        }
+
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        let localBp: LocalBlueprintService | null = null;
+        try {
+            localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            localBp = null;
+        }
+
+        const now = new Date().toISOString();
+        const componentIdMap: Record<string, string> = {};
+        const importedComponents: UIComponentDefinition[] = [];
+        // Seeded from what is already here and grown as we go, so two components
+        // arriving under the same name in one template do not collide with each other.
+        const takenNames = new Set((this.getDocument().components ?? []).map(component => component.name));
+        // Blueprint clones are collected across all components and written in one
+        // mutation, because `applyBlueprintMutation` is a save point.
+        const blueprintClones: { ownerKey: string; blueprint: Blueprint }[] = [];
+
+        for (const source of sourceComponents) {
+            if (!source.elements?.[source.rootElementId]) {
+                // A component without its own root cannot be rendered or edited.
+                console.warn(`[UIDocumentService] template component "${source.name}" skipped (no root element)`);
+                continue;
+            }
+            const newComponentId = uuidService.generate();
+            const elementIdMap: Record<string, string> = {};
+            for (const elementId of Object.keys(source.elements)) {
+                elementIdMap[elementId] = uuidService.generate();
+            }
+
+            const blueprintIdMap: Record<string, string> = {};
+            if (sourceBlueprintDocument) {
+                for (const [blueprintId, blueprint] of Object.entries(sourceBlueprintDocument.blueprints)) {
+                    const owner = blueprint.owner;
+                    if (owner.kind === "componentWidgetMain" && owner.componentId === source.id) {
+                        blueprintIdMap[blueprintId] = uuidService.generate();
+                    }
+                }
+            }
+
+            // A component's elements live outside any surface, so the surface fields of
+            // the remap context are inert here — only the element/blueprint/asset maps
+            // and the component-instance map do work.
+            const remapContext: SurfaceDuplicateRemapContext = {
+                oldSurfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${source.id}`,
+                newSurfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${newComponentId}`,
+                elementIdMap,
+                blueprintIdMap,
+                assetIdMap,
+                componentIdMap,
+            };
+
+            const elements: Record<string, UIElement> = {};
+            for (const [oldElementId, sourceElement] of Object.entries(source.elements)) {
+                const copy = cloneJson(sourceElement);
+                copy.id = elementIdMap[oldElementId];
+                copy.parentId = sourceElement.parentId ? elementIdMap[sourceElement.parentId] ?? null : null;
+                copy.childrenIds = sourceElement.childrenIds
+                    .filter(childId => Boolean(elementIdMap[childId]))
+                    .map(childId => elementIdMap[childId]);
+                copy.props = copy.props ? remapSurfaceDuplicateReferenceValue(copy.props, remapContext) : undefined;
+                copy.style = copy.style ? remapSurfaceDuplicateReferenceValue(copy.style, remapContext) : undefined;
+                copy.extra = copy.extra ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext) : undefined;
+                if (copy.behavior?.events) {
+                    copy.behavior = {
+                        ...copy.behavior,
+                        events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
+                    };
+                }
+                if (copy.valueBindings) {
+                    copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
+                }
+                elements[copy.id] = copy;
+            }
+            const newRoot = elements[elementIdMap[source.rootElementId]];
+            if (newRoot) {
+                newRoot.parentId = null;
+            }
+
+            const name = createImportedName(source.name, takenNames);
+            takenNames.add(name);
+            const component: UIComponentDefinition = {
+                ...cloneJson(source),
+                id: newComponentId,
+                name,
+                rootElementId: elementIdMap[source.rootElementId],
+                elements,
+                createdAt: now,
+                updatedAt: now,
+            };
+            componentIdMap[source.id] = newComponentId;
+            importedComponents.push(component);
+
+            if (sourceBlueprintDocument) {
+                for (const [oldBlueprintId, newBlueprintId] of Object.entries(blueprintIdMap)) {
+                    const sourceBlueprint = sourceBlueprintDocument.blueprints[oldBlueprintId];
+                    const owner = sourceBlueprint?.owner;
+                    if (!sourceBlueprint || owner?.kind !== "componentWidgetMain") {
+                        continue;
+                    }
+                    const newElementId = elementIdMap[owner.elementId];
+                    if (!newElementId) {
+                        continue;
+                    }
+                    const cloned = remapSurfaceDuplicateReferenceValue(cloneJson(sourceBlueprint), remapContext);
+                    cloned.id = newBlueprintId;
+                    cloned.owner = {
+                        kind: "componentWidgetMain",
+                        componentId: newComponentId,
+                        elementId: newElementId,
+                    };
+                    blueprintClones.push({
+                        ownerKey: componentWidgetMainOwnerKey(newComponentId, newElementId),
+                        blueprint: cloned,
+                    });
+                }
+            }
+        }
+
+        if (importedComponents.length === 0) {
+            return { componentIdMap, importedComponents };
+        }
+
+        this.mutateDocument(document => {
+            document.components = [...(document.components ?? []), ...importedComponents];
+        }, { history: false });
+
+        if (blueprintClones.length > 0) {
+            localBp?.applyBlueprintMutation(bpDoc => {
+                for (const { ownerKey, blueprint } of blueprintClones) {
+                    bpDoc.blueprints[blueprint.id] = blueprint;
+                    registerPrivateBlueprintAsActive(bpDoc, ownerKey, blueprint.id, blueprint.frontend);
+                }
+            });
+        }
+
+        return { componentIdMap, importedComponents };
+    }
+
+    /**
+     * A store card's document: the registry's raw JSON, validated and brought up
+     * to the current schema, ready to hand to `renderDocumentSurface`.
+     *
+     * Nothing here touches the open project — `migrateIfNeeded` is pure and this
+     * never mutates. That is the whole point: the store draws what a template
+     * actually looks like *before* the author decides to import it, so the card is
+     * the template rather than a picture of it that can drift.
+     *
+     * Returns `null` for a document this Studio cannot read, so one bad template
+     * costs its own card and not the grid.
+     */
+    public prepareTemplateDocumentForPreview(raw: unknown): UIDocument | null {
+        try {
+            return this.migrateIfNeeded(this.coerceIncomingUIDocument(raw));
+        } catch (error) {
+            console.warn("[UIDocumentService] template preview document rejected", error);
+            return null;
+        }
     }
 
     private coerceIncomingUIDocument(raw: unknown): UIDocument {
@@ -1756,6 +2114,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         sourceBlueprintDocument: BlueprintDocument | null,
         placement: UITemplateSurfacePlacement,
         assetIdMap?: Record<string, string>,
+        componentIdMap?: Record<string, string>,
+        surfaceIdMap?: Record<string, string>,
     ): UISurface | null {
         const sourceRootId = sourceSurface.rootElementId;
         if (!sourceDocument.elements[sourceRootId]) {
@@ -1763,7 +2123,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
 
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const newSurfaceId = uuidService.generate();
+        // Reserved by the caller when this is one of several surfaces arriving
+        // together, so siblings pointing at it already carry the right id.
+        const newSurfaceId = surfaceIdMap?.[sourceSurface.id] ?? uuidService.generate();
         const sourceElementIds = Array.from(collectSubtreeElementIds(sourceDocument, sourceRootId))
             .filter(elementId => Boolean(sourceDocument.elements[elementId]));
         const elementIdMap: Record<string, string> = {};
@@ -1815,10 +2177,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             elementIdMap,
             blueprintIdMap,
             assetIdMap,
+            componentIdMap,
+            surfaceIdMap,
         };
 
         const existingNames = new Set(this.getDocument().surfaces.map(surface => surface.name));
-        const nextName = createDuplicateName(sourceSurface.name, existingNames);
+        const nextName = createImportedName(sourceSurface.name, existingNames);
         const designSize = sourceSurface.designSize ?? DEFAULT_UI_SURFACE_SIZE;
         const remappedSettings = sourceSurface.settings
             ? remapSurfaceDuplicateReferenceValue(cloneJson(sourceSurface.settings), remapContext)
@@ -2115,6 +2479,66 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (!root) {
             return null;
         }
+
+        // Carry the logic across with the layout. Template import already does exactly this in the
+        // other direction - a component arriving with its own blueprints - so the remap machinery is
+        // the same one, pointed at a real surface as the source instead of a component.
+        // Guarded like the surface-duplicate path: a context without the blueprint service still has
+        // to be able to extract layout, and the component is worth making either way.
+        let localBp: LocalBlueprintService | null = null;
+        try {
+            localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            localBp = null;
+        }
+        const blueprintDocument = localBp?.getBlueprintDocument();
+        const blueprintIdMap: Record<string, string> = {};
+        const carried: { ownerKey: string; blueprint: Blueprint }[] = [];
+        if (blueprintDocument) {
+            for (const oldElementId of Object.keys(elementIdMap)) {
+                const ownerKey = widgetMainOwnerKey(surfaceId, oldElementId);
+                const sourceBlueprintId = blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+                const sourceBlueprint = sourceBlueprintId ? blueprintDocument.blueprints[sourceBlueprintId] : undefined;
+                // Selecting an element is enough to give it a blueprint, so most elements own an empty
+                // one. Cloning those would put a shell in the library for every box in the selection -
+                // extracting one save slot carried eighteen blueprints, seventeen of them empty.
+                if (sourceBlueprintId && sourceBlueprint && blueprintHasAuthoredGraph(sourceBlueprint)) {
+                    blueprintIdMap[sourceBlueprintId] = uuidService.generate();
+                }
+            }
+        }
+        if (blueprintDocument && Object.keys(blueprintIdMap).length > 0) {
+            const remapContext: SurfaceDuplicateRemapContext = {
+                oldSurfaceId: surfaceId,
+                newSurfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${componentId}`,
+                elementIdMap,
+                blueprintIdMap,
+            };
+            for (const [oldBlueprintId, newBlueprintId] of Object.entries(blueprintIdMap)) {
+                const sourceBlueprint = blueprintDocument.blueprints[oldBlueprintId];
+                const owner = sourceBlueprint?.owner;
+                if (!sourceBlueprint || owner?.kind !== "widgetMain") {
+                    continue;
+                }
+                const newElementId = elementIdMap[owner.elementId];
+                if (!newElementId) {
+                    continue;
+                }
+                const cloned = remapSurfaceDuplicateReferenceValue(cloneJson(sourceBlueprint), remapContext) as Blueprint;
+                cloned.id = newBlueprintId;
+                cloned.owner = { kind: "componentWidgetMain", componentId, elementId: newElementId };
+                carried.push({ ownerKey: componentWidgetMainOwnerKey(componentId, newElementId), blueprint: cloned });
+            }
+            // Element bindings name the blueprint by id, so they have to follow the clone; a copy
+            // still pointing at the original would run the surface's blueprint from inside the
+            // instance and drive the elements that are still out there.
+            for (const element of Object.values(componentElements)) {
+                if (element.behavior) {
+                    element.behavior = remapSurfaceDuplicateReferenceValue(element.behavior, remapContext) as UIElement["behavior"];
+                }
+            }
+        }
+
         const component: UIComponentDefinition = {
             id: componentId,
             name: sanitizeComponentName(name, selectedTopElements.length === 1 ? (selectedTopElements[0].name ?? translate("defaultDoc.componentName")) : translate("defaultDoc.componentName")),
@@ -2131,6 +2555,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(doc => {
             doc.components = [...(doc.components ?? []), component];
         }, { history: false });
+        if (carried.length > 0) {
+            localBp?.applyBlueprintMutation(bpDoc => {
+                for (const { ownerKey, blueprint } of carried) {
+                    bpDoc.blueprints[blueprint.id] = blueprint;
+                    registerPrivateBlueprintAsActive(bpDoc, ownerKey, blueprint.id, blueprint.frontend);
+                }
+            });
+        }
         return component;
     }
 
@@ -2147,6 +2579,60 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             component.name = nextName;
             component.updatedAt = new Date().toISOString();
         }, { history: false });
+    }
+
+    /**
+     * Replace a component's declared params.
+     *
+     * Instances keep values for ids that survive: a param is identified by `id`, so renaming one in
+     * the inspector does not unset it anywhere. Values for ids that were removed are left on their
+     * instances rather than swept - re-adding a param by the same id is how an author undoes a
+     * deletion, and sweeping would make that a data loss with no warning.
+     */
+    public setComponentParams(componentId: string, params: UIComponentParam[]): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            if (!component) {
+                return;
+            }
+            const seen = new Set<string>();
+            component.params = params
+                .map(param => ({
+                    id: param.id.trim(),
+                    name: param.name.trim(),
+                    type: "string" as const,
+                    defaultValue: typeof param.defaultValue === "string" ? param.defaultValue : "",
+                }))
+                .filter(param => {
+                    if (!param.id || seen.has(param.id)) {
+                        return false;
+                    }
+                    seen.add(param.id);
+                    return true;
+                });
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    /** Set one param value on one instance. An empty string is a value, not a reset. */
+    public setComponentInstanceParam(elementId: string, paramId: string, value: string): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            const link = getUIComponentLink(element);
+            if (!element || !link) {
+                return;
+            }
+            element.extra = {
+                ...(element.extra ?? {}),
+                componentLink: {
+                    ...link,
+                    params: { ...(link.params ?? {}), [paramId]: value },
+                },
+            };
+        }, {
+            history: surfaceId ? { surfaceId, mergeKey: `component-param:${elementId}:${paramId}` } : false,
+        });
     }
 
     public deleteComponents(componentIds: string[]): void {
@@ -2919,6 +3405,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                             ...(defaultElement.extra ?? {}),
                             sliderSlot: getUISliderChildSlot(defaultElement.extra) ?? "track",
                         } satisfies UISliderElementExtra)
+                    : parent.type === UI_SWITCH_ELEMENT_TYPE
+                      ? ({
+                            ...(defaultElement.extra ?? {}),
+                            switchSlot: getUISwitchChildSlot(defaultElement.extra) ?? "track",
+                        } satisfies UISwitchElementExtra)
                     : defaultElement.extra,
         };
         const defaultChildrenResult = definition.createDefaultChildElements?.({

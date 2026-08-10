@@ -7,7 +7,7 @@
  * `GameApp` registers backends before the `Player` mounts, and a Surface `nl.puppet` widget, which
  * mounts a model of its own with no stage in sight.
  *
- * Studio ships no renderer and is not allowed to (card 2026-07-27-002). Everything here is the author's
+ * Studio ships no renderer and is not allowed to. Everything here is the author's
  * own file, published with their game by `copyPuppetRuntimes` in `gameRuntimeArtifactCompiler.ts`.
  */
 

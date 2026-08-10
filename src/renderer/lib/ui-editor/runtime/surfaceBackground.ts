@@ -1,12 +1,112 @@
+import type { CSSProperties } from "react";
+import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import {
+    normalizeUISurfaceBackgroundImage,
+    type UISurfaceBackgroundFillMode,
+    type UISurfaceBackgroundImage,
+} from "@shared/types/ui-editor/surfaceBackgroundImage";
 
 export const EDITOR_SURFACE_AREA_BACKGROUND = "#ffffff";
 export const EDITOR_SURFACE_LOW_OPACITY_THRESHOLD = 0.2;
 export const EDITOR_SURFACE_LOW_OPACITY_OUTLINE =
     "1px solid var(--narraleaf-accent-strong, rgba(64, 168, 196, 0.92))";
 
+/**
+ * The colour a surface paints behind everything on it, as CSS.
+ *
+ * Every reader in this module goes through here, which is why the brand link is resolved at this one
+ * point: the value ends up interpolated into a `color-mix()` and measured by `getCssBackgroundAlpha`,
+ * and neither of those can be handed an `nlbrand:` token. Resolved through the registry rather than
+ * the `colorUtils` pair because those two work in `{hex, alpha}` and would flatten `transparent` and
+ * every functional-notation colour an author may have typed; this keeps the stored spelling for
+ * anything that is not a link.
+ *
+ * A link that does not resolve falls through as itself, so a broken reference paints nothing and lint
+ * is the thing that explains why - rather than a colour appearing that no one chose.
+ */
 export function getSurfaceBackgroundColor(surface: UISurface): string {
-    return surface.settings?.backgroundColor ?? (surface.kind === "stageSurface" ? "transparent" : "#ffffff");
+    const stored = surface.settings?.backgroundColor ?? (surface.kind === "stageSurface" ? "transparent" : "#ffffff");
+    return getActiveBrandPalette().resolveValueCss(stored) ?? stored;
+}
+
+/**
+ * How much of a page's own background survives when that page is opened OVER a running game.
+ *
+ * A surface authored for the title menu is opaque, because behind it there is nothing to see. The
+ * same surface opened mid-game as an overlay - Config, Save, Log from the quick menu - has the stage
+ * behind it, and painting over it at full opacity throws away the one thing that tells the player
+ * they are still in the scene.
+ *
+ * 0.85 rather than something bolder: the point is a reminder that the scene is still there, not a
+ * view of it. At half opacity the stage competes with the page's own labels and the screen becomes
+ * hard to read against a busy background; this leaves the shape of the scene showing through and
+ * nothing else.
+ *
+ * Only the page's own background is thinned; its widgets keep their authored opacity, so labels and
+ * controls stay as legible as they are anywhere else.
+ */
+export const GAME_OVERLAY_BACKGROUND_ALPHA = 0.85;
+
+/**
+ * The background a surface layer paints, given how it is being presented.
+ *
+ * `color-mix` rather than parsing: the authored value can be any CSS colour the inspector produced
+ * (hex, `#rrggbbaa`, `rgb()`, `hsl()`), and mixing towards `transparent` scales whatever alpha it
+ * already carries without this file having to understand the syntax. `transparent` stays transparent
+ * either way, which is what a stage surface wants.
+ */
+export function getSurfaceLayerBackgroundColor(
+    surface: UISurface,
+    presentation: "appPage" | "gameOverlay",
+): string {
+    const color = getSurfaceBackgroundColor(surface);
+    if (presentation !== "gameOverlay" || getCssBackgroundAlpha(color) <= 0) {
+        return color;
+    }
+    return `color-mix(in srgb, ${color} ${GAME_OVERLAY_BACKGROUND_ALPHA * 100}%, transparent)`;
+}
+
+/**
+ * How much of a page's background picture survives when the page is opened over a running game.
+ *
+ * The same reasoning as {@link GAME_OVERLAY_BACKGROUND_ALPHA}, and deliberately the same number: a
+ * Config page reached from the quick menu has to keep the scene showing through, and an author who
+ * gave that page a full-bleed picture would otherwise defeat the thinning the colour already gets.
+ */
+export function getSurfaceLayerBackgroundImageOpacity(
+    presentation: "appPage" | "gameOverlay",
+): number {
+    return presentation === "gameOverlay" ? GAME_OVERLAY_BACKGROUND_ALPHA : 1;
+}
+
+export function getSurfaceBackgroundImage(surface: UISurface): UISurfaceBackgroundImage | null {
+    return normalizeUISurfaceBackgroundImage(surface.settings?.backgroundImage);
+}
+
+/**
+ * The CSS that draws a background picture at a given fill mode.
+ *
+ * A `background-image` rather than an `<img>`: `tile` is a repeat, which no single element can
+ * express, and the other three are one `background-size` each. Widget fills reach for `<img>`
+ * because crop mode animates its box; nothing here does.
+ */
+export function surfaceBackgroundImageStyle(
+    url: string,
+    fillMode: UISurfaceBackgroundFillMode,
+): CSSProperties {
+    const base: CSSProperties = {
+        backgroundImage: `url("${url.replace(/["\\]/g, "\\$&")}")`,
+        backgroundPosition: "center",
+    };
+    if (fillMode === "tile") {
+        return { ...base, backgroundRepeat: "repeat", backgroundSize: "auto", backgroundPosition: "top left" };
+    }
+    return {
+        ...base,
+        backgroundRepeat: "no-repeat",
+        backgroundSize: fillMode === "stretch" ? "100% 100%" : fillMode,
+    };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -76,7 +176,10 @@ export function getEditorSurfaceAreaBackgroundColor(surface: UISurface): string 
     if (surface.kind !== "stageSurface") {
         return undefined;
     }
-    return isTransparentBackground(surface.settings?.backgroundColor) ? EDITOR_SURFACE_AREA_BACKGROUND : undefined;
+    // Through `getSurfaceBackgroundColor` rather than off `settings` directly, so a linked colour is
+    // measured as the colour it resolves to. Reading the raw field would see an unparseable string,
+    // and `getCssBackgroundAlpha` calls that opaque - the checkerboard would vanish under a link.
+    return isTransparentBackground(getSurfaceBackgroundColor(surface)) ? EDITOR_SURFACE_AREA_BACKGROUND : undefined;
 }
 
 export function shouldShowEditorSurfaceLowOpacityOutline(surface: UISurface): boolean {

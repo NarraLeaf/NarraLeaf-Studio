@@ -5,6 +5,7 @@ import type { BlueprintGraphEdge, BlueprintGraphIr } from "@shared/types/bluepri
 import { readNodeEditorLayout } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
+import { blueprintEdgeStyle } from "@/lib/ui-editor/blueprint-graph-edge-style";
 import type { BlueprintFlowNodeData, BlueprintFlowNodeDiagnostic } from "./components/BlueprintFlowNode";
 import {
     withInferredBlueprintVariableValueTypeParam,
@@ -58,6 +59,7 @@ export function blueprintIrToFlowNodes(
     onPatchNodeParam?: BlueprintNodeParamPatch,
     memberVariables?: BlueprintFlowNodeData["memberVariables"],
     persistentVariables?: BlueprintFlowNodeData["persistentVariables"],
+    savedVariables?: BlueprintFlowNodeData["savedVariables"],
     onAddDynamicInputPin?: (nodeId: string) => void,
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void,
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
@@ -93,6 +95,7 @@ export function blueprintIrToFlowNodes(
                 onRemoveDynamicInputPin,
                 memberVariables,
                 persistentVariables,
+                savedVariables,
                 wiredInputPortIds: wiredIn.get(n.id) ?? new Set(),
                 dynamicSelectOptions: dynamicSelectOptionsByNodeId?.[n.id]
                     ? { ...dynamicSelectOptions, ...dynamicSelectOptionsByNodeId[n.id] }
@@ -206,7 +209,7 @@ export function blueprintIrToFlowEdges(
             selectable: true,
             focusable: true,
             interactionWidth: 24,
-            style: data ? { stroke: "#f59e0b", strokeWidth: 1.5 } : { stroke: "#22d3ee", strokeWidth: 1.5 },
+            style: blueprintEdgeStyle(data),
         };
     });
 }
@@ -218,6 +221,7 @@ export function useBlueprintFlowProjection(
     onPatchNodeParam?: BlueprintNodeParamPatch,
     memberVariables?: BlueprintFlowNodeData["memberVariables"],
     persistentVariables?: BlueprintFlowNodeData["persistentVariables"],
+    savedVariables?: BlueprintFlowNodeData["savedVariables"],
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
     dynamicSelectOptionsByNodeId?: BlueprintDynamicSelectOptionsByNodeId,
     nodeDiagnosticsByNodeId?: ReadonlyMap<string, readonly BlueprintFlowNodeDiagnostic[]>,
@@ -238,6 +242,7 @@ export function useBlueprintFlowProjection(
                         onPatchNodeParam,
                         memberVariables,
                         persistentVariables,
+                        savedVariables,
                         undefined,
                         undefined,
                         dynamicSelectOptions,
@@ -258,6 +263,7 @@ export function useBlueprintFlowProjection(
             onPatchNodeParam,
             memberVariables,
             persistentVariables,
+            savedVariables,
             selectedNodeIds,
             dynamicSelectOptions,
             dynamicSelectOptionsByNodeId,

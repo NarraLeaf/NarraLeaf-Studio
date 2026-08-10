@@ -13,8 +13,8 @@ import {
 import type { GameBuildWorkerFuses, GameBuildWorkerNotarization, GameBuildWorkerTarget } from "./protocol";
 
 /**
- * Pure option mapping: no signtool is executed here (see the probe scripts in
- * the plan for the machine-level sign/verify loop).
+ * Pure option mapping: no signtool is executed here. The machine-level sign/verify
+ * loop is exercised by hand against a real certificate.
  */
 
 const FUSES: GameBuildWorkerFuses = {

@@ -16,13 +16,13 @@ const ctx = { services: {}, project: {} } as unknown as WorkspaceContext;
 class TestService extends Service<any> {
     public initCount = 0;
     public constructor(
-        private readonly behaviour: (depend: (services: Service[]) => Promise<void>) => Promise<void>,
+        private readonly behavior: (depend: (services: Service[]) => Promise<void>) => Promise<void>,
     ) {
         super();
     }
     protected async init(_ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         this.initCount += 1;
-        await this.behaviour(depend);
+        await this.behavior(depend);
     }
 }
 

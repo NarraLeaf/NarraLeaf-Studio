@@ -63,8 +63,14 @@ export class RichTextHistory {
      * one deliberate act and undoes on its own.
      *
      * Takes ownership of `before`: pass a fresh snapshot, never a live reference.
+     *
+     * **Pass a function when the snapshot is expensive to take.** Coalescing means a burst of typing
+     * keeps only its first state, so the caller was reading the whole field out of the DOM on every
+     * keystroke to hand over a snapshot this method then dropped on the floor. A thunk is only called
+     * on the keystrokes that actually open a new undo entry - one in a burst, rather than all of them.
+     * A thunk that returns null (the field has gone away) records nothing.
      */
-    record(before: RichTextSnapshot, options: RichTextRecordOptions): void {
+    record(before: RichTextSnapshot | (() => RichTextSnapshot | null), options: RichTextRecordOptions): void {
         this.redoEntries = [];
         const contiguous =
             this.entries.length > 0 &&
@@ -73,9 +79,12 @@ export class RichTextHistory {
             !options.boundary &&
             options.now - this.lastAt < RICH_TEXT_COALESCE_IDLE_MS;
         if (!contiguous) {
-            this.entries.push(before);
-            if (this.entries.length > this.limit) {
-                this.entries.shift();
+            const snapshot = typeof before === "function" ? before() : before;
+            if (snapshot) {
+                this.entries.push(snapshot);
+                if (this.entries.length > this.limit) {
+                    this.entries.shift();
+                }
             }
         }
         this.lastKind = options.kind;

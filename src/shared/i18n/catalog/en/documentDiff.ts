@@ -48,6 +48,8 @@ export const documentDiff = {
     count: {
         assets: "Assets",
         audioTracks: "Audio tracks",
+        /** The author's own colors. The seeded palette is always there and is not counted. */
+        brandColors: "Brand colors",
         characterGroups: "Character groups",
         characters: "Characters",
         localizationKeys: "Localization keys",
@@ -217,10 +219,10 @@ export const documentDiff = {
         tab: "Merge",
         merging: "Two versions of this project are being merged",
         none: "This project is not in the middle of a merge.",
-        automerged: "Everything merged on its own. Finish to record it as a version.",
+        automerged: "Everything merged automatically. Finish to record it as a version.",
         count: {
-            one: "{count} file changed on both sides. Choose which one to keep.",
-            other: "{count} files changed on both sides. Choose which one to keep.",
+            one: "{count} file changed on both sides. Choose which side to keep.",
+            other: "{count} files changed on both sides. Choose which side to keep.",
         },
         takeMine: "Keep mine",
         takeTheirs: "Keep theirs",
@@ -232,11 +234,11 @@ export const documentDiff = {
             one: "{count} file still needs a side",
             other: "{count} files still need a side",
         },
-        notSaved: "These choices are only remembered while this window is open. Nothing is written until you finish.",
+        notSaved: "These choices are kept only while this window is open. Nothing is written until the merge is finished.",
         abandon: "Abandon",
         abandonConfirm: "Abandon this merge?",
         abandonConfirmDetail:
-            "Every file goes back to what it was before you got these versions from the server, including the ones that merged on their own. Nothing of yours is lost - you can get them again whenever you like.",
+            "Every file returns to its state before these versions were fetched from the server, including the files that merged automatically. Nothing is lost. The versions can be fetched again.",
         /**
          * Tier two: choosing change by change inside one file.
          *
@@ -252,7 +254,7 @@ export const documentDiff = {
             loading: "Reading both versions…",
             /** Said once above the list, so no row has to repeat it. */
             heading: "Merged automatically unless marked. Hover a merged row to take the other side.",
-            none: "Both versions of this file agree on everything inside it.",
+            none: "The two versions of this file have identical contents.",
             auto: "Merged",
             /** The one an author can flip on a merged row; only one of the two is ever offered. */
             useMine: "Use mine",
@@ -269,8 +271,8 @@ export const documentDiff = {
             blocked: {
                 title: "This file has to be kept whole from one side.",
                 noSpec: "Studio does not know this file's format, so it cannot merge parts of it.",
-                noMerge3: "Studio can read this format but cannot yet merge two versions of it change by change.",
-                readOnly: "Studio can merge this format but cannot write the result back yet, so the whole file has to come from one side.",
+                noMerge3: "Studio can read this format but cannot merge two versions of it change by change.",
+                readOnly: "Studio can merge this format but cannot write the result back, so the whole file has to come from one side.",
                 tooLarge: "This file is too large to merge change by change.",
                 tooMany: "There are too many changes in this file to decide one at a time.",
                 unreadable: "One of the two versions could not be read, so only the whole file can be taken.",

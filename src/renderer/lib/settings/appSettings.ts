@@ -2,7 +2,7 @@ import { AppSettingDefinition, SettingCategory, SettingScope } from "@/lib/setti
 import { SettingValueType } from "@/lib/settings/types";
 import {
     EDITOR_FONT_FAMILY_DEFAULT,
-    EDITOR_FONT_FAMILY_OPTIONS,
+    EDITOR_FONT_FAMILY_PRESETS,
     EDITOR_FONT_SIZE_DEFAULT,
     EDITOR_FONT_SIZE_MAX,
     EDITOR_FONT_SIZE_MIN,
@@ -36,10 +36,12 @@ import {
     ZOOM_PERCENT_MAX,
     ZOOM_PERCENT_MIN,
 } from "@shared/constants/zoom";
-import { DEFAULT_LOCALE, LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
+import { LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
+import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
 import { resetAllPreferences, resetWorkspaceLayout } from "@/lib/settings/resetSettings";
 import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
+import { UPDATE_AUTO_CHECK_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
 import {
@@ -53,6 +55,7 @@ import {
     RECENT_PROJECTS_LIMIT_MAX,
     RECENT_PROJECTS_LIMIT_MIN,
 } from "@shared/constants/recentProjects";
+import { DEVELOPER_MODE_DEFAULT, DEVELOPER_MODE_KEY } from "@/lib/developer";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -91,6 +94,16 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 3,
     },
     {
+        // Its own category rather than a panel filed under Editor: shortcuts reach every surface in
+        // Studio, not just the editors, and nobody looking for them thought to open Editor first.
+        key: "shortcuts",
+        label: "Shortcuts",
+        labelKey: "settings.categories.shortcuts.label",
+        description: "Keys bound to each command throughout Studio.",
+        descriptionKey: "settings.categories.shortcuts.description",
+        order: 4,
+    },
+    {
         // Was "Sync", whose description promised a backup cadence that was never implemented; the
         // keys behind that promise are gone (RETIRED_GLOBAL_STATE_KEYS) and what is left here is
         // version control, so the category now says so.
@@ -99,7 +112,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.versionControl.label",
         description: "Checkpoints and the identity recorded on them.",
         descriptionKey: "settings.categories.versionControl.description",
-        order: 4,
+        order: 5,
     },
     {
         // Absorbed the former "Plugins" and "Advanced" categories, which between them held four
@@ -110,7 +123,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.network.label",
         description: "Where Studio downloads plugins, templates and build tooling from.",
         descriptionKey: "settings.categories.network.description",
-        order: 5,
+        order: 6,
     },
     {
         key: "data",
@@ -118,7 +131,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.data.label",
         description: "Cached files, resetting preferences, and moving them between machines.",
         descriptionKey: "settings.categories.data.description",
-        order: 6,
+        order: 7,
     },
 ];
 
@@ -142,11 +155,62 @@ export const AppSettings: AppSettingDefinition[] = [
         labelKey: "settings.items.language.label",
         description: "Display language for the Studio interface.",
         descriptionKey: "settings.items.language.description",
-        defaultValue: DEFAULT_LOCALE,
+        // The device's language, not a fixed "en": this row has to show what an unset key
+        // actually resolves to, and both the i18n bootstrap and the main process resolve it
+        // through the same device-preference walk. See `lib/i18n/deviceLocale`.
+        defaultValue: deviceDefaultLocale(),
         options: [...SUPPORTED_LOCALES],
         optionLabels: Object.fromEntries(
             SUPPORTED_LOCALES.map((code) => [code, LOCALE_META[code].nativeName]),
         ),
+    },
+    {
+        // Read by `lib/developer`, whose store every context menu consults as it is assembled: with
+        // this on, a menu grows a final section that copies the identifier of whatever was
+        // right-clicked. Nothing else in Studio reads it - it is not a mode the app runs in, and in
+        // particular it is not Dev Mode, which runs the game. Kept in General rather than behind an
+        // "Advanced" category, because a preference nobody can find is one that gets asked for again.
+        key: DEVELOPER_MODE_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Developer options",
+        labelKey: "settings.items.developerMode.label",
+        description: "Right-click menus gain a section for copying the ID of what you clicked.",
+        descriptionKey: "settings.items.developerMode.description",
+        defaultValue: DEVELOPER_MODE_DEFAULT,
+    },
+    {
+        // Read by the main process's UpdateManager when it decides whether to schedule the launch
+        // check. Off means Studio never asks on its own; the Check button in the panel below and
+        // the tray's Check for Updates row still work, so this turns off the *asking*, not the
+        // feature.
+        key: UPDATE_AUTO_CHECK_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Check for updates at launch",
+        labelKey: "update.setting.checkOnLaunch.label",
+        description: "Asks GitHub once, shortly after Studio starts. Downloads never begin on their own.",
+        descriptionKey: "update.setting.checkOnLaunch.description",
+        defaultValue: true,
+    },
+    {
+        // Rendered by `SETTING_PANELS.softwareUpdate`. Nothing is stored under this key: the state
+        // it draws lives in the main process (UpdateManager) and arrives pushed, so the progress
+        // bar is the downloader's own byte counts rather than an animation.
+        //
+        // This key is also the `highlight` that opens Settings here - the notification's action
+        // and the tray's Check for Updates row both send it (`UPDATE_PANEL_SETTING_KEY`).
+        key: UPDATE_PANEL_SETTING_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "softwareUpdate",
+        label: "Updates",
+        labelKey: "update.title",
+        description: "",
+        defaultValue: null,
     },
     {
         // Applied by the main process (`applyThemeMode`): the stored mode drives
@@ -273,16 +337,27 @@ export const AppSettings: AppSettingDefinition[] = [
     },
     {
         // Applied by the Story scene editor via `storyEditorTextStyle.tsx`.
+        //
+        // `Font`, not `Enum`: the list is the presets below PLUS every family installed on this
+        // computer, which the picker discovers at open time. `options` therefore carries only the
+        // presets - what the stored value may be is any family name, so nothing validates against
+        // this list (see `editorFontCssFamily`, which is what actually has to accept it).
         key: "editor.fontFamily",
         category: "editor",
         scope: SettingScope.Global,
-        type: SettingValueType.Enum,
+        type: SettingValueType.Font,
         label: "Story editor font",
         labelKey: "settings.items.editorFontFamily.label",
-        description: "Typeface used for story text in the scene editor.",
+        description: "Typeface used for story text in the scene editor. Any font installed on this computer can be chosen.",
         descriptionKey: "settings.items.editorFontFamily.description",
         defaultValue: EDITOR_FONT_FAMILY_DEFAULT,
-        options: [...EDITOR_FONT_FAMILY_OPTIONS],
+        options: [...EDITOR_FONT_FAMILY_PRESETS],
+        optionLabelKeys: {
+            "Default": "settings.items.editorFontFamily.options.default",
+            "Sans Serif": "settings.items.editorFontFamily.options.sansSerif",
+            "Serif": "settings.items.editorFontFamily.options.serif",
+            "Monospace": "settings.items.editorFontFamily.options.monospace",
+        },
     },
     {
         // Applied by the built-in text editor (`TextEditor` -> Monaco `lineNumbers`). The key
@@ -649,7 +724,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // `catalogId -> chord` map, and every open workspace picks the change up through the
         // global-state broadcast (see UIService's keybinding override sync).
         key: KEYBINDING_OVERRIDES_SETTINGS_KEY,
-        category: "editor",
+        category: "shortcuts",
         scope: SettingScope.Global,
         type: SettingValueType.Custom,
         panel: "keybindings",

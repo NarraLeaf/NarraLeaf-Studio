@@ -8,7 +8,7 @@ import type {
 } from "@shared/types/ui-editor/document";
 import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DEFAULT_UI_STAGE_SLOT_ID, UI_STAGE_SLOT_IDS, UI_STAGE_SLOT_LABELS } from "@shared/types/ui-editor/stageSlots";
-import { colorValueToCss, parseColorValue } from "../framework/utils/colorUtils";
+import { parseColorValue, serializeColorValue } from "../framework/utils/colorUtils";
 import type {
     ColorPickerFieldDefinition,
     CustomFieldDefinition,
@@ -19,6 +19,7 @@ import type {
     TextFieldDefinition,
 } from "../framework/types";
 import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
+import { SurfaceBackgroundImageField } from "../fields/SurfaceBackgroundImageField";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import type { Translator } from "@shared/i18n";
@@ -59,12 +60,19 @@ const getGameUiSlotLabel = (surface: UISurface): string => {
 function SurfacePageAnimationField({ data }: CustomFieldProps<SceneEditorContext>) {
     const settings = normalizeUIPageAnimationSettings(data.surface.settings?.pageAnimation);
     const update = (next: UIPageAnimationSettings) => {
+        // The editor hands back the whole animation record, so the merge key is derived rather than
+        // fixed: typing into "seconds" collapses into one undo entry, while moving on to the
+        // direction beside it starts a new one.
+        const changed = (Object.keys(next) as (keyof UIPageAnimationSettings)[])
+            .filter(key => next[key] !== settings[key])
+            .sort()
+            .join(",");
         data.documentService.updateSurface(data.surface.id, surface => {
             surface.settings = {
                 ...(surface.settings ?? {}),
                 pageAnimation: next,
             };
-        });
+        }, { mergeKey: `surface:${data.surface.id}:pageAnimation:${changed}` });
     };
 
     return createElement(PageAnimationEditor, { settings, onChange: update });
@@ -112,23 +120,37 @@ export const scenePropertySchema = (t: TranslateFn) =>
             type: "colorPicker",
             label: t("properties.scene.backgroundColor"),
             allowOpacity: true,
+            brandPalette: true,
             getValue: data =>
                 parseColorValue(data.surface.settings?.backgroundColor, {
                     hex: "#000000",
                     alpha: 1,
                 }),
             setValue: (data, value) => {
-                const normalizedValue = colorValueToCss({
+                const normalizedValue = serializeColorValue({
                     hex: value.hex,
                     alpha: value.alpha ?? 1,
+                    ...(value.link ? { link: value.link } : {}),
                 });
                 data.documentService.updateSurface(data.surface.id, surface => {
                     surface.settings = {
                         ...(surface.settings ?? {}),
                         backgroundColor: normalizedValue,
                     };
-                });
+                    // Dragged and typed into, so one entry per visit to the colour rather than one
+                    // per intermediate shade the author passed through.
+                }, { mergeKey: `surface:${data.surface.id}:backgroundColor` });
             },
+        }),
+        defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+            id: "scene.backgroundImage",
+            type: "custom",
+            label: t("properties.scene.backgroundImage"),
+            component: SurfaceBackgroundImageField,
+            // A Game UI is drawn over the running scene, and its whole job is to let that scene
+            // through. A full-bleed picture there would cover the one thing the slot exists to sit
+            // on top of, so the offer is not made.
+            hidden: data => isGameUi(data.surface),
         }),
         defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
             id: "scene.pageAnimation",

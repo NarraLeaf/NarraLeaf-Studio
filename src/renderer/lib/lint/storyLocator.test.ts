@@ -100,6 +100,21 @@ describe("createStoryRowLocator", () => {
         expect(locate("st1", "other", "n1")).toBeNull();
         expect(locate("st1", "sc1", "other")).toBeNull();
     });
+
+    it("keeps two stories apart even when their ids and scene ids overlap around the separator", () => {
+        // The per-scene cache is keyed on the two ids joined. Any separator an id could itself contain
+        // - ":", "/", "-" - lets ("a:b", "c") and ("a", "b:c") produce the same key, and the second
+        // lookup would then be answered with the first scene's rows: a report pointing at a row in a
+        // scene the rule never looked at. Hence U+0000, which no id can hold.
+        const both = createStoryRowLocator([
+            story("a", "First", [scene("b:c", "S", [narration("only-in-first", "first")])]),
+            story("a:b", "Second", [scene("c", "S", [narration("only-in-second", "second")])]),
+        ]);
+        expect(both("a", "b:c", "only-in-first")?.line).toBe(1);
+        expect(both("a", "b:c", "only-in-second")).toBeNull();
+        expect(both("a:b", "c", "only-in-second")?.line).toBe(1);
+        expect(both("a:b", "c", "only-in-first")).toBeNull();
+    });
 });
 
 describe("annotateStoryLocation", () => {

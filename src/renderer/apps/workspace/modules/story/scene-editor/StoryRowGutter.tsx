@@ -3,7 +3,7 @@ import type { StoryBlock } from "@shared/types/story";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { useCharacterFace } from "./storyCharacterFace";
 import type { CharacterAppearanceRef, VisibleStoryRow } from "./storySceneEditorTypes";
-import { getBlockBadgeInfo, isReadableAccentColor } from "./storySceneBlockUtils";
+import { getBlockBadgeInfo, readableAccentColor } from "./storySceneBlockUtils";
 import { paragraphActionCharacterId } from "./storyCharacterActions";
 import {
     StoryCommandGlyphMark,
@@ -81,7 +81,6 @@ export function characterIdentity(characterId: string, characters: Character[]):
     if (!character) {
         return unknownSpeakerIdentity("?");
     }
-    const color = character.profile.getColor();
     return characterSpeakerIdentity(character.profile.getName(), {
         // Whether artwork EXISTS is not knowable here (it needs the asset library and the compositor),
         // so this is the optimistic answer and `StoryRowGutter` downgrades to the disc when nothing
@@ -89,13 +88,14 @@ export function characterIdentity(characterId: string, characters: Character[]):
         // correction is invisible even on a cold asset cache.
         hasPortrait: true,
         // The project's own colour for this character, used exactly as chosen — the editor follows
-        // the author here rather than deriving its own idea of the hue.
+        // the author here rather than deriving its own idea of the hue. A stored colour may be a
+        // link at the project palette, so `readableAccentColor` resolves it before judging it.
         //
-        // The one filter is `isReadableAccentColor`, and it is a both-themes guard rather than a
+        // The one filter is the readability band, and it is a both-themes guard rather than a
         // matter of taste: this colour is painted on the dark surface and the light one, so a
         // near-black or near-white pick is invisible on whichever it matches. Those fall back to the
         // name hash, which is at least legible on both. Everything else is honoured verbatim.
-        color: color && isReadableAccentColor(color) ? color : undefined,
+        color: readableAccentColor(character.profile.getColor()),
     });
 }
 

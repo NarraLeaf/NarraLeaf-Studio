@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+/**
+ * Interface: the running UI, as the host sees it — the blueprints this surface is made of, what
+ * they logged, and the host state they read and write.
+ *
+ * Not the debugger: nothing here stops the game. The one thing in this panel that changes what the
+ * session records — the verbose log level — is therefore not owned here either; see the
+ * `outputLogLevels` prop.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { Check, ChevronDown, ChevronRight, Frame } from "lucide-react";
 import {
     getBlueprintDebugEventLogLevel,
     type BlueprintDebugEvent,
@@ -13,14 +22,29 @@ import { useTranslation } from "@/lib/i18n";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
-import { listBlueprintsForDevTools } from "./blueprintDebugPanelModel";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import { SAFE_AREA_PRESETS } from "@/lib/ui-editor/preview/surfacePreviewFrames";
+import { SAFE_AREA_FAMILY_LABELS } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
+import { blueprintWidgetElementId, listDevModeBlueprints } from "./blueprintDebugPanelModel";
+import { formatDebugValue } from "./debugValueFormat";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
 
-type DebugTabId = "blueprints" | "output" | "scope";
+/**
+ * `uiState` was called `scope`, which the debugger also calls a tab — and meant something else by
+ * it. The debugger's is one paused frame's variables; this one is the host's own runtime state
+ * (surface store, globals, persistence, widget interaction), which no frame owns.
+ */
+type DebugTabId = "blueprints" | "output" | "uiState";
 export type BlueprintOutputLogLevel = BlueprintDebugEventLogLevel;
 
 const OUTPUT_LOG_LEVELS: BlueprintOutputLogLevel[] = ["error", "warning", "log", "verbose"];
-const DEFAULT_OUTPUT_LOG_LEVELS = new Set<BlueprintOutputLogLevel>(["error", "warning", "log"]);
+/** Verbose is off by default — see the DebugBridge for what capturing it costs. Read-only: the
+ *  owner (DevModeContent) seeds its state from this and must not be able to edit the default. */
+export const DEFAULT_OUTPUT_LOG_LEVELS: ReadonlySet<BlueprintOutputLogLevel> = new Set<BlueprintOutputLogLevel>([
+    "error",
+    "warning",
+    "log",
+]);
 
 type BlueprintRuntimeDebugPanelProps = {
     debug: DebugBridge;
@@ -30,6 +54,26 @@ type BlueprintRuntimeDebugPanelProps = {
     scopeBridge: ScopeStoreBridge;
     widgetRuntimeStore: WidgetRuntimeStateStore;
     projectPath: string | null;
+    /**
+     * Which log levels the Output list shows. Owned by DevModeContent, not by this panel: `verbose`
+     * also arms capture at the DebugBridge, so it outlives the drawer being closed and the session
+     * being replaced by a timeline jump.
+     */
+    outputLogLevels: ReadonlySet<BlueprintOutputLogLevel>;
+    setOutputLogLevels: Dispatch<SetStateAction<ReadonlySet<BlueprintOutputLogLevel>>>;
+    /**
+     * Point at the widget a listed blueprint is attached to, or `null` for nothing. Owned by
+     * DevModeContent because the box is painted over the stage, which this panel is a sibling of
+     * rather than a parent — and because it must come down when the drawer closes mid-hover.
+     */
+    onHighlightElement: (elementId: string | null) => void;
+    /**
+     * Safe-area device preset drawn over the stage, `null` = off. Owned by DevModeContent for the
+     * same reason as `onHighlightElement`: the overlay is painted on the stage, which this panel is
+     * a sibling of — and closing the drawer must not take the frame down with it.
+     */
+    safeAreaId: string | null;
+    setSafeAreaId: Dispatch<SetStateAction<string | null>>;
     className?: string;
     /** Dock/float mode toggle + title-bar drag, owned by DevModeContent. */
     chrome?: DevModePanelChrome;
@@ -44,26 +88,29 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         scopeBridge,
         widgetRuntimeStore,
         projectPath,
+        outputLogLevels,
+        setOutputLogLevels,
+        onHighlightElement,
+        safeAreaId,
+        setSafeAreaId,
         className,
         chrome,
     } = props;
     const { t } = useTranslation();
     const [tab, setTab] = useState<DebugTabId>("output");
     const [events, setEvents] = useState<BlueprintDebugEvent[]>(() => debug.snapshot());
-    const [outputLogLevels, setOutputLogLevels] = useState<Set<BlueprintOutputLogLevel>>(
-        () => new Set(DEFAULT_OUTPUT_LOG_LEVELS),
-    );
     const [logLevelMenuOpen, setLogLevelMenuOpen] = useState(false);
+    const [safeAreaMenuOpen, setSafeAreaMenuOpen] = useState(false);
     const [expandedBp, setExpandedBp] = useState<Set<string>>(() => new Set());
     const [studioHint, setStudioHint] = useState<string | null>(null);
     const outputScrollRef = useRef<HTMLDivElement>(null);
     const logLevelMenuRef = useRef<HTMLDivElement>(null);
+    const safeAreaMenuRef = useRef<HTMLDivElement>(null);
 
     const [surfaceSnap, setSurfaceSnap] = useState(() =>
         scopeBridge.getSurfaceStore(activeSurfaceId).getSnapshot(),
     );
     const [globalSnap, setGlobalSnap] = useState(() => scopeBridge.getGlobalSnapshot());
-    const [persistSnap, setPersistSnap] = useState(() => scopeBridge.getPersistenceSnapshot());
     const [widgetSnap, setWidgetSnap] = useState(() => widgetRuntimeStore.getSnapshot());
 
     useEffect(() => {
@@ -72,14 +119,6 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
             setEvents(debug.snapshot());
         });
     }, [debug]);
-
-    // Verbose tracing is dropped at the bridge unless something asks for it, so the filter
-    // checkbox has to drive capture rather than just hide rows. Only events emitted while it is
-    // on are recorded.
-    useEffect(() => {
-        debug.setVerboseCaptureEnabled(outputLogLevels.has("verbose"));
-        return () => debug.setVerboseCaptureEnabled(false);
-    }, [debug, outputLogLevels]);
 
     useEffect(() => {
         const store = scopeBridge.getSurfaceStore(activeSurfaceId);
@@ -97,18 +136,15 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
     }, [scopeBridge]);
 
     useEffect(() => {
-        setPersistSnap(scopeBridge.getPersistenceSnapshot());
-        return scopeBridge.subscribePersistence(() => {
-            setPersistSnap(scopeBridge.getPersistenceSnapshot());
-        });
-    }, [scopeBridge]);
-
-    useEffect(() => {
         setWidgetSnap(widgetRuntimeStore.getSnapshot());
         return widgetRuntimeStore.subscribe(() => {
             setWidgetSnap(widgetRuntimeStore.getSnapshot());
         });
     }, [widgetRuntimeStore]);
+
+    // The highlight belongs to the row the pointer is on, so leaving the list by any route takes it
+    // down: another tab, the drawer closing, the session being replaced by a timeline jump.
+    useEffect(() => () => onHighlightElement(null), [tab, onHighlightElement]);
 
     useEffect(() => {
         if (tab !== "output") {
@@ -135,10 +171,54 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         return () => window.removeEventListener("pointerdown", onPointerDown);
     }, [logLevelMenuOpen]);
 
+    useEffect(() => {
+        if (!safeAreaMenuOpen) {
+            return;
+        }
+        const onPointerDown = (event: PointerEvent) => {
+            const target = event.target as Node | null;
+            if (target && safeAreaMenuRef.current?.contains(target)) {
+                return;
+            }
+            setSafeAreaMenuOpen(false);
+        };
+        window.addEventListener("pointerdown", onPointerDown);
+        return () => window.removeEventListener("pointerdown", onPointerDown);
+    }, [safeAreaMenuOpen]);
+
+    const chooseSafeArea = useCallback(
+        (id: string | null) => {
+            setSafeAreaId(id);
+            setSafeAreaMenuOpen(false);
+        },
+        [setSafeAreaId],
+    );
+
+    const renderSafeAreaOption = useCallback(
+        (id: string | null, label: string) => (
+            <button
+                key={id ?? "off"}
+                type="button"
+                role="menuitemradio"
+                aria-checked={safeAreaId === id}
+                className="flex w-full cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-left text-2xs text-fg-muted hover:bg-fill hover:text-fg"
+                onClick={() => chooseSafeArea(id)}
+            >
+                <span className="grid h-3 w-3 shrink-0 place-items-center">
+                    {safeAreaId === id ? <Check className="h-3 w-3 text-primary" aria-hidden /> : null}
+                </span>
+                <span className="truncate">{label}</span>
+            </button>
+        ),
+        [chooseSafeArea, safeAreaId],
+    );
+
+    // "What can I open in the workspace", scoped to the surface on screen — as opposed to the
+    // debugger's "what can I set a breakpoint in". Both questions live in one switch; see the model.
     const blueprintsList = useMemo(() => {
-        return listBlueprintsForDevTools(blueprintDocument.blueprints, {
-            document: uiDocument,
-            activeSurfaceId,
+        return listDevModeBlueprints(blueprintDocument.blueprints, {
+            purpose: "workspace",
+            scope: { document: uiDocument, activeSurfaceId },
         });
     }, [activeSurfaceId, blueprintDocument.blueprints, uiDocument]);
 
@@ -215,14 +295,50 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                 onPointerDown={chrome?.onTitleBarPointerDown}
             >
                 <span className="text-xs font-medium text-fg">{t("devMode.devtools.title")}</span>
-                <DevModePanelModeToggle chrome={chrome} />
+                <div className="flex shrink-0 items-center gap-1">
+                    {/* Session-scoped: what this window shows, not a project or Studio setting.
+                        `onPointerDown` is stopped so opening the menu does not start a panel drag. */}
+                    <div ref={safeAreaMenuRef} className="relative" onPointerDown={e => e.stopPropagation()}>
+                        <ToolbarButton
+                            size="xs"
+                            active={safeAreaId != null || safeAreaMenuOpen}
+                            aria-label={t("uiEditor.preview.safeArea")}
+                            title={t("uiEditor.preview.safeArea")}
+                            aria-haspopup="menu"
+                            aria-expanded={safeAreaMenuOpen}
+                            onClick={() => setSafeAreaMenuOpen(prev => !prev)}
+                        >
+                            <Frame className="h-3.5 w-3.5" aria-hidden />
+                        </ToolbarButton>
+                        {safeAreaMenuOpen ? (
+                            <div
+                                role="menu"
+                                aria-label={t("uiEditor.preview.safeArea")}
+                                // Right-anchored: the panel's right edge is the window's when docked.
+                                // Capped: a dozen devices is taller than a docked panel's header.
+                                className="absolute right-0 top-full z-20 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
+                            >
+                                {renderSafeAreaOption(null, t("uiEditor.preview.off"))}
+                                {SAFE_AREA_FAMILY_LABELS.map(([family, familyLabel]) => (
+                                    <div key={family}>
+                                        <div className="px-1.5 pb-0.5 pt-1.5 text-2xs text-fg-subtle">{familyLabel}</div>
+                                        {SAFE_AREA_PRESETS.filter(preset => preset.family === family).map(preset =>
+                                            renderSafeAreaOption(preset.id, preset.reference),
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+                    <DevModePanelModeToggle chrome={chrome} />
+                </div>
             </div>
             <div className="flex shrink-0 border-b border-edge bg-surface-sunken" role="tablist" aria-label={t("devMode.devtools.panelsAria")}>
                 {(
                     [
                         ["blueprints", t("devMode.tabs.blueprints")],
                         ["output", t("devMode.tabs.output")],
-                        ["scope", t("devMode.tabs.scope")],
+                        ["uiState", t("devMode.tabs.uiState")],
                     ] as const
                 ).map(([id, label]) => {
                     const active = tab === id;
@@ -256,12 +372,25 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         {blueprintsList.length === 0 ? (
                             <p className="text-2xs text-fg-subtle">{t("devMode.blueprints.empty")}</p>
                         ) : (
-                            <ul className="space-y-0.5">
+                            <ul
+                                className="space-y-0.5"
+                                // Per row on the way in, once on the way out: moving between rows is
+                                // an enter on the new one, and the gaps between them are not a reason
+                                // to blink the box off and back on.
+                                onPointerLeave={() => onHighlightElement(null)}
+                                onBlur={() => onHighlightElement(null)}
+                            >
                                 {blueprintsList.map(bp => {
                                     const expanded = expandedBp.has(bp.id);
                                     const canStudio = Boolean(projectPath) && studioPayloadSupported(bp);
+                                    const widgetElementId = blueprintWidgetElementId(bp);
                                     return (
-                                        <li key={bp.id} className="border-b border-edge-subtle pb-1.5 last:border-0">
+                                        <li
+                                            key={bp.id}
+                                            className="border-b border-edge-subtle pb-1.5 last:border-0"
+                                            onPointerEnter={() => onHighlightElement(widgetElementId)}
+                                            onFocus={() => onHighlightElement(widgetElementId)}
+                                        >
                                             <div className="flex items-start gap-1">
                                                 <button
                                                     type="button"
@@ -375,24 +504,27 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                     </div>
                 ) : null}
 
-                {tab === "scope" ? (
+                {tab === "uiState" ? (
                     <div className="min-h-0 flex-1 space-y-3 overflow-auto p-2">
-                        <KeyValueBlock title={t("devMode.scope.surface")} entries={surfaceSnap} surfaceId={activeSurfaceId} />
-                        <KeyValueBlock title={t("devMode.scope.global")} entries={globalSnap} />
-                        <KeyValueBlock title={t("devMode.scope.persistence")} entries={persistSnap} />
+                        <KeyValueBlock title={t("devMode.uiState.surface")} entries={surfaceSnap} surfaceId={activeSurfaceId} />
+                        <KeyValueBlock title={t("devMode.uiState.global")} entries={globalSnap} />
+                        {/* No Persistence block. It used to sit here as a raw storageKey → value dump,
+                            which is the same data the Saves panel now shows BY NAME, plus a named
+                            "other keys" list for what no declaration claims. Two readouts of one store
+                            is how a reader ends up trusting the one that says less. */}
                         <div>
-                            <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{t("devMode.scope.widget")}</p>
+                            <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("devMode.uiState.widget")}</h3>
                             <ul className="space-y-0.5 text-2xs text-fg-muted">
                                 <li>
-                                    {t("devMode.scope.hover")} ·{" "}
+                                    {t("devMode.uiState.hover")} ·{" "}
                                     {widgetSnap.hoverTargetIds.size === 0
                                         ? "-"
                                         : [...widgetSnap.hoverTargetIds].map(id => `${id.slice(0, 6)}…`).join(", ")}
                                 </li>
-                                <li>{t("devMode.scope.active")} · {widgetSnap.activePointerId ?? "-"}</li>
-                                <li>{t("devMode.scope.focus")} · {widgetSnap.focusedId ?? "-"}</li>
+                                <li>{t("devMode.uiState.active")} · {widgetSnap.activePointerId ?? "-"}</li>
+                                <li>{t("devMode.uiState.focus")} · {widgetSnap.focusedId ?? "-"}</li>
                                 <li className="break-all">
-                                    {t("devMode.scope.variants")} ·{" "}
+                                    {t("devMode.uiState.variants")} ·{" "}
                                     {widgetSnap.variantOverrides.size === 0
                                         ? "-"
                                         : [...widgetSnap.variantOverrides.entries()]
@@ -470,10 +602,12 @@ function KeyValueBlock(props: {
     const keys = [...entries.keys()].sort();
     return (
         <div>
-            <p className="mb-1 text-2xs tracking-wide text-fg-subtle">
+            {/* The drawer's section-heading style (see BlueprintDebuggerPanel's `Section`): an <h3>
+                carrying FieldLabel's eyebrow typography, and not uppercased. */}
+            <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">
                 {title}
                 {surfaceId ? <span className="text-fg-subtle"> · {surfaceId.slice(0, 8)}…</span> : null}
-            </p>
+            </h3>
             {keys.length === 0 ? (
                 <p className="text-2xs text-fg-subtle">{t("common.none")}</p>
             ) : (
@@ -488,24 +622,6 @@ function KeyValueBlock(props: {
             )}
         </div>
     );
-}
-
-function formatDebugValue(value: unknown, maxLen = 180): string {
-    if (value === undefined) {
-        return "undefined";
-    }
-    if (value === null) {
-        return "null";
-    }
-    if (typeof value === "string") {
-        return value.length > maxLen ? `${value.slice(0, maxLen)}…` : value;
-    }
-    try {
-        const s = JSON.stringify(value);
-        return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s;
-    } catch {
-        return "[unserializable]";
-    }
 }
 
 function formatExecutionError(ev: Extract<BlueprintDebugEvent, { type: "execution.error" }>): string {

@@ -44,10 +44,10 @@ export type ActionCommandId =
     | "decrementVariable"
     | "toggleVariable"
     | "resetVariable"
-    // Declaration-only: these build no block. See `STORY_DECLARATION_COMMANDS`.
+    // The only declaration a story row may still make. The `saved` / `persistent` pair that used to
+    // sit here went with `/save` and `/global` - those variables are declared in the project variable
+    // registry now, so there is no story block for the creator to build.
     | "declareSceneVariable"
-    | "declareSavedVariable"
-    | "declarePersistentVariable"
     | "executeScript"
     | "imageCreate"
     | "imageSetSource"
@@ -180,10 +180,6 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
         // v6: a declaration IS a row - the block id doubles as the variable id and storage key.
         case "declareSceneVariable":
             return { ...base, kind: "declaration", payload: { scope: "scene", name: "variable", valueType: "boolean", storageKey: blockId } };
-        case "declareSavedVariable":
-            return { ...base, kind: "declaration", payload: { scope: "saved", name: "variable", valueType: "boolean", storageKey: blockId } };
-        case "declarePersistentVariable":
-            return { ...base, kind: "declaration", payload: { scope: "persistent", name: "variable", valueType: "boolean", storageKey: blockId } };
         case "executeScript":
             return { ...base, kind: "action", payload: { action: "blueprint", blueprintId: "" } };
         case "imageCreate":

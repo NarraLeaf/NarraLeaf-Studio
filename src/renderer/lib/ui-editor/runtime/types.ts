@@ -12,6 +12,26 @@ import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInter
 export type UIHost = "app" | "player";
 
 /**
+ * Scope carried alongside a widget event dispatch: which placement of a shared definition it came
+ * from, and what that placement supplies.
+ *
+ * `componentParams` is resolved once per instance while the element tree is built - that is the only
+ * point that holds the instance element and the document at the same time - and rides along here so
+ * the blueprint the instance runs can read it. Every element inside one component instance shares
+ * one object; an instance whose component declares nothing leaves it undefined rather than passing
+ * an empty map, so nothing changes for content that has no params.
+ */
+export type UIHostAdapterElementEventOptions = {
+    listItemScope?: UIListItemScope | null;
+    instanceKey?: string;
+    componentId?: UIComponentId;
+    /** Resolved values by param id: the instance's own, falling back to the declared default. */
+    componentParams?: Record<string, string>;
+    eventControl?: BehaviorGraphEventControl;
+    allowClosedScopeExecution?: boolean;
+};
+
+/**
  * Dev Mode / runtime hooks for Blueprint M3-min (surface state + event dispatch).
  * Editor preview typically omits this field (no-op behavior in widgets).
  */
@@ -28,26 +48,14 @@ export type UIHostAdapterBlueprintRuntime = {
         elementId: string,
         eventName: string,
         payload?: Record<string, unknown>,
-        options?: {
-            listItemScope?: UIListItemScope | null;
-            instanceKey?: string;
-            componentId?: UIComponentId;
-            eventControl?: BehaviorGraphEventControl;
-            allowClosedScopeExecution?: boolean;
-        },
+        options?: UIHostAdapterElementEventOptions,
     ) => Promise<void>;
     /** Continue the current widget event from this element to its structural parent. */
     continueElementEventBubble?: (
         elementId: string,
         eventName: string,
         payload?: Record<string, unknown>,
-        options?: {
-            listItemScope?: UIListItemScope | null;
-            instanceKey?: string;
-            componentId?: UIComponentId;
-            eventControl?: BehaviorGraphEventControl;
-            allowClosedScopeExecution?: boolean;
-        },
+        options?: UIHostAdapterElementEventOptions,
     ) => Promise<boolean>;
     /** Dispatch a surface-level event on the current surfaceMain blueprint. */
     dispatchSurfaceBlueprintEvent?: (eventName: string, payload?: Record<string, unknown>) => Promise<void>;

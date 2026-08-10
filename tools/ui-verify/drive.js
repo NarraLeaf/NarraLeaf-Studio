@@ -20,6 +20,12 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const DEFAULT_OUT_DIR = path.join(__dirname, 'out');
 const DEFAULT_TARGET = 'workspace';
 
+/**
+ * Where a development build keeps its profile (see `BaseApp.setupUserDataDir`). Per checkout, so a
+ * worktree's list is its own — which is exactly why a run has to be able to ask rather than assume.
+ */
+const DEV_USER_DATA_DIR = path.join(REPO_ROOT, '.dev', 'temp', 'userData-dev');
+
 /** Alt / Ctrl / Meta / Shift, as CDP's `modifiers` bit mask. */
 const MODIFIER_BITS = { alt: 1, ctrl: 2, control: 2, meta: 4, cmd: 4, command: 4, shift: 8 };
 
@@ -187,6 +193,48 @@ class UiDriver {
     }
 }
 
+/**
+ * The dev profile's recently-opened projects, read straight from its store.
+ *
+ * Deliberately not over CDP: the point of this is to answer *before* an app is running — which
+ * project should the next launch be pointed at — and electron-store writes synchronously, so the
+ * file is current even while Studio is up. `exists` is here because a remembered project whose
+ * folder has been deleted or renamed reads exactly like a live one until it is launched.
+ */
+function listRecentProjects(options = {}) {
+    const userDataDir = options.userDataDir ?? DEV_USER_DATA_DIR;
+    const file = path.join(userDataDir, 'state', 'global.json');
+
+    let raw;
+    try {
+        raw = fs.readFileSync(file, 'utf8');
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            throw new Error(`No profile at ${file}. Launch the app once (\`yarn dev\`) first, or pass --user-data.`);
+        }
+        throw error;
+    }
+
+    // A hand-seeded profile can carry a BOM; electron-store's own parse dies on one, so do not
+    // reproduce that failure here just to read a list.
+    const state = JSON.parse(raw.replace(/^\uFEFF/, ''));
+    const projects = Array.isArray(state['app.recentProjects']) ? state['app.recentProjects'] : [];
+
+    return projects.map((project) => {
+        const projectPath = typeof project?.path === 'string' ? project.path : '';
+        const named = typeof project?.name === 'string' ? project.name.trim() : '';
+        // Mirrors recentProjectDisplayName: a record can have lost its name, and the folder is
+        // what every surface (and `--project`) then calls it.
+        const folder = path.basename(projectPath.replace(/[\\/]+$/, ''));
+        return {
+            name: named || folder || 'Untitled Project',
+            path: projectPath,
+            openedAt: typeof project?.openedAt === 'number' ? project.openedAt : null,
+            exists: projectPath !== '' && fs.existsSync(projectPath),
+        };
+    });
+}
+
 /** Connect to the first target whose title/url/type/id contains `options.target`. */
 async function connect(options = {}) {
     const client = await connectToTarget(options);
@@ -226,6 +274,8 @@ function parseArgs(argv) {
         else if (arg === '--target') options.target = take(arg);
         else if (arg === '--out') options.outDir = path.resolve(REPO_ROOT, take(arg));
         else if (arg === '--prefix') options.prefix = take(arg);
+        else if (arg === '--user-data') options.userDataDir = path.resolve(REPO_ROOT, take(arg));
+        else if (arg === '--json') options.json = true;
         else positional.push(arg);
     }
     return { command: positional.shift() ?? 'targets', args: positional, options };
@@ -234,6 +284,7 @@ function parseArgs(argv) {
 function printHelp() {
     console.log(`Usage:
   node tools/ui-verify/drive.js targets
+  node tools/ui-verify/drive.js projects          [--user-data <dir>] [--json]
   node tools/ui-verify/drive.js shot <name>       [--target <q>] [--out <dir>] [--prefix <p>]
   node tools/ui-verify/drive.js click <x> <y>     [--target <q>]
   node tools/ui-verify/drive.js hover <x> <y>     [--target <q>]
@@ -247,8 +298,13 @@ Options:
   --target <q>    Substring of the target title/url/type/id. Default: ${DEFAULT_TARGET}
   --out <dir>     Screenshot directory, relative to the repo root. Default: tools/ui-verify/out
   --prefix <p>    Screenshot filename prefix.
+  --user-data <d> Profile to read projects from. Default: .dev/temp/userData-dev
+  --json          Print machine-readable output (projects).
 
-Coordinates are CSS pixels. Screenshot pixels are CSS px * devicePixelRatio.`);
+Coordinates are CSS pixels. Screenshot pixels are CSS px * devicePixelRatio.
+
+Launch straight into a project, past the launcher and past first-run setup:
+  yarn dev:verify --skip-onboarding --project <name-or-path>`);
 }
 
 function print(value) {
@@ -267,6 +323,23 @@ async function runCli(argv = process.argv.slice(2)) {
         for (const [index, target] of (await listTargets(options)).entries()) {
             console.log(`${index}: [${target.type}] ${target.title}`);
             if (target.url) console.log(`   ${target.url}`);
+        }
+        return;
+    }
+
+    if (command === 'projects') {
+        const projects = listRecentProjects(options);
+        if (options.json) {
+            print(projects);
+            return;
+        }
+        if (projects.length === 0) {
+            console.log('(no recent projects — open one once, or pass --project <path> to the launch)');
+            return;
+        }
+        for (const [index, project] of projects.entries()) {
+            console.log(`${index}: ${project.name}${project.exists ? '' : '   (folder is missing)'}`);
+            console.log(`   ${project.path}`);
         }
         return;
     }
@@ -297,4 +370,14 @@ if (require.main === module) {
     });
 }
 
-module.exports = { UiDriver, connect, withDriver, listTargets, parseKeySpec, runCli, DEFAULT_OUT_DIR };
+module.exports = {
+    UiDriver,
+    connect,
+    withDriver,
+    listTargets,
+    listRecentProjects,
+    parseKeySpec,
+    runCli,
+    DEFAULT_OUT_DIR,
+    DEV_USER_DATA_DIR,
+};

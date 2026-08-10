@@ -19,11 +19,13 @@ import { createPropertyEditorSchema, defineField } from "@/apps/workspace/module
 import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
+import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import {
+    createInitialButtonAppearance,
     ensureButtonAppearanceHasAllKeys,
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
@@ -39,14 +41,16 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     const { documentService } = props.data;
     const element = props.data.element;
 
-    // Deferred while read-only - see `ContainerAppearanceField` for why this key-filling pass must
-    // not run inside a frozen project.
+    // Deferred while read-only, and creates the model when the element has none - see
+    // `ContainerAppearanceField` for both, and for why service-authored elements arrive without one.
     useLayoutEffect(() => {
-        if (props.readOnly || !isUsableAppearanceModel(appearance)) {
+        if (props.readOnly) {
             return;
         }
         const f = getButtonProps(element);
-        const next = ensureButtonAppearanceHasAllKeys(appearance, f);
+        const next = isUsableAppearanceModel(appearance)
+            ? ensureButtonAppearanceHasAllKeys(appearance, f)
+            : createInitialButtonAppearance(f);
         if (next !== appearance) {
             documentService.updateElementProps(element.id, {
                 appearance: next,
@@ -54,11 +58,13 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
         }
     }, [appearance, documentService, element, props.readOnly]);
 
+    const panelAppearance = isUsableAppearanceModel(appearance) ? appearance : createInitialButtonAppearance(flat);
+
     return (
         <AppearanceAuthoringPanel
             key={element.id}
             kind="button"
-            appearance={appearance ?? null}
+            appearance={panelAppearance}
             onReplace={next => {
                 documentService.updateElementProps(element.id, {
                     appearance: next,
@@ -329,18 +335,20 @@ export function createButtonInspector(ctx: InspectorContext) {
                                                 id: "button.colorPicker",
                                                 render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                                                     const current = getButtonProps(data.element);
+                                                    const stored = parseColorValue(current.color, { hex: "#FFFFFF", alpha: 1 });
                                                     const handleChange = (next: ColorValue) => {
                                                         onSaving(true);
                                                         try {
-                                                            patch({ color: next.hex });
+                                                            patch({ color: serializeColorValue(next) });
                                                         } finally {
                                                             onSaving(false);
                                                         }
                                                     };
                                                     return (
                                                         <ColorPickerTrigger
-                                                            value={{ hex: current.color, alpha: 1 }}
+                                                            value={stored}
                                                             displayMode="icon"
+                                                            brandPalette
                                                             allowOpacity={false}
                                                             onChange={handleChange}
                                                         />

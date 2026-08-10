@@ -118,8 +118,8 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
      * Whether the bytes on disk did not survive the decode - the document contains replacement
      * characters that no round-trip can turn back into the original bytes.
      *
-     * This is the *autosave interlock*, and it is the one piece of behaviour here that the plan does
-     * not spell out. Opening a GBK file with no byte-order mark shows replacement characters, by
+     * This is the *autosave interlock*, and it is the one piece of behaviour here that nothing
+     * asked for up front. Opening a GBK file with no byte-order mark shows replacement characters, by
      * design (§3.3: no guessing). Combined with a 400ms autosave, one keystroke would then write
      * that lossy text back over a colleague's file and destroy it silently - which is exactly what
      * happened once during verification. So: while the decode was lossy, nothing is written

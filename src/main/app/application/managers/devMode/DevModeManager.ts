@@ -4,6 +4,7 @@ import chokidar, { FSWatcher } from "chokidar";
 import { App } from "@/app/app";
 import { AppWindow } from "../window/appWindow";
 import { IPCEventType } from "@shared/types/ipcEvents";
+import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
 import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { RevisionId } from "@shared/types/vcs";
@@ -22,7 +23,7 @@ type DevModeSession = {
      * The directory the compile path reads, which is NOT always the project.
      *
      * While the workspace is showing a past revision, this is a snapshot of that revision and the
-     * author's own files are left alone (plan 2026-07-28-002 §1). Everything that identifies the
+     * author's own files are left alone. Everything that identifies the
      * session - the key in `sessions`, which workspace window gets its console output, which project's
      * freeze is consulted - stays `projectPath`; only reads move.
      */
@@ -344,7 +345,7 @@ export class DevModeManager {
         try {
             let started = Date.now();
             this.emitVerbose(session, "nlang compile started");
-            // `sourcePath`, not `projectPath`, for all three stages below: this is the whole of U4.
+            // `sourcePath`, not `projectPath`, for all three stages below — that is the whole of it.
             // The compile path is path-driven end to end, so running a past revision is a matter of
             // which directory it reads - see `revisionLaunchSource.ts`.
             const compileResult = await this.compiler.compile({ projectPath: session.sourcePath });
@@ -459,12 +460,19 @@ export class DevModeManager {
         const storyRoot = path.join(session.projectPath, "editor", "story");
         const localizationRoot = path.join(session.projectPath, "editor", "localization");
         const characterStorePath = path.join(session.projectPath, "editor", "services", "character.json");
+        // The brand palette is baked into the bundle exactly like the documents above it, so it
+        // belongs on this list for exactly their reason: what the running preview shows is the
+        // palette the last compile read, and a colour the author changes is not that palette until
+        // another compile happens. Left off, the preview keeps its start-up colours for the rest of
+        // the session with nothing reporting why - which reads as "the brand feature does not work"
+        // rather than as a missing watch, and is the hardest form of this bug to find afterwards.
+        const brandPath = path.join(session.projectPath, BRAND_DOCUMENT_PATH);
         const assetsRoot = path.join(session.projectPath, "assets");
         const blueprintMetaPath = path.join(assetsRoot, "assets.metadata.blueprint.json");
         const assetsContentRoot = path.join(assetsRoot, "content");
         this.emitVerbose(session, "watching project files for Dev Mode reload");
         session.watcher = chokidar.watch(
-            [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, blueprintMetaPath, assetsContentRoot],
+            [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, brandPath, blueprintMetaPath, assetsContentRoot],
             // Atomic writes put a scratch sibling in the tree for a few milliseconds before renaming
             // it into place. Reporting it would schedule a reload against a file that is already
             // gone, on top of the reload the rename itself triggers.

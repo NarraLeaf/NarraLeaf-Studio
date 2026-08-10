@@ -21,18 +21,18 @@ import {
 import { StoryLineValueToken } from "./StoryLineValueToken";
 import { StoryLineCharacterFace } from "./storyCharacterFace";
 import type { StoryCommandLineProjection } from "./storyCommandLine";
-import { storyActionRowFragments, type StoryRowFragment } from "@/lib/story/storyRowProjection";
+import { storyActionRowFragments, type StoryRowFragment, type StoryRowLookups } from "@/lib/story/storyRowProjection";
 import type { Character } from "@/lib/workspace/services/character/Character";
 
 /**
- * Inline quick-edit params (WI-2). A small, high-frequency subset of a committed row's params —
+ * Inline quick-edit params. A small, high-frequency subset of a committed row's params —
  * declared per command via `StoryCommandSpec.quickParams` — surfaced in the row summary as clickable
  * tokens so a tweak never has to open the inspector. There is no block→command parser, so the value
  * is read straight from the payload here and written back through the same history path the inspector
  * uses (`onUpdatePayload`), which keeps every quick edit undoable.
  *
  * The model half (which params a block has, and what each one reads as) moved to
- * `@/lib/story/storyQuickParamsModel` with U4 WI-1: the tokens are fragments of the row's *sentence*,
+ * `@/lib/story/storyQuickParamsModel`: the tokens are fragments of the row's *sentence*,
  * and the Dev Mode timeline has to print that sentence without mounting any of these popovers.
  */
 
@@ -41,17 +41,17 @@ export { getQuickParams, type QuickParam, type QuickParamValue };
 const TOKEN_CLASS = "cursor-pointer rounded-md px-0.5 underline decoration-dotted decoration-fg-subtle/60 underline-offset-2 transition-colors hover:bg-fill hover:text-fg";
 
 /**
- * One piece of a committed row's overview projection (WI-2 / bible M5): either a run of plain text
+ * One piece of a committed row's overview projection: either a run of plain text
  * (the target name and any modifiers the tokens do not own) or a clickable quick-edit token. The
  * tokens ARE fragments in the same stream, not a second layer appended after a finished string.
  */
 export type OverviewFragment = StoryRowFragment;
 
 /**
- * The structured overview of a committed action row (bible M5): `[target · modifiers]` with the
+ * The structured overview of a committed action row: `[target · modifiers]` with the
  * quick-edit params spliced in as first-class fragments.
  *
- * A thin `Character[]` adapter over the shared `storyActionRowFragments` (U4 WI-1) — the projection
+ * A thin `Character[]` adapter over the shared `storyActionRowFragments` — the projection
  * itself is what the Dev Mode timeline reads, so the two surfaces cannot drift.
  */
 export function blockOverview(
@@ -61,13 +61,18 @@ export function blockOverview(
     scenes: Record<StorySceneId, StoryScene> | undefined,
     label: (key: "story.quickParam.jumpLabel" | "story.quickParam.waitLabel") => string,
     motionName?: (animationId: string) => string | null,
+    projectVariableName?: StoryRowLookups["projectVariableName"],
 ): OverviewFragment[] {
-    return storyActionRowFragments(block, { character: characterRowLookup(characters), scene, scenes, motionName }, label);
+    return storyActionRowFragments(
+        block,
+        { character: characterRowLookup(characters), scene, scenes, motionName, projectVariableName },
+        label,
+    );
 }
 
 /**
  * Render a committed row's overview: the structured `[target][modifiers]` fragment stream, with any
- * quick-edit params inline as clickable tokens (WI-2). The single summary path for every action row —
+ * quick-edit params inline as clickable tokens. The single summary path for every action row —
  * a plain-`describeBlock` row is just an overview with no token fragments.
  */
 export function BlockOverview(props: {
@@ -87,6 +92,9 @@ export function BlockOverview(props: {
     // Resolved here rather than threaded from the rows host: the projection stays pure and the React
     // layer, which has the service, supplies the lookup (the rule `describeBlockSubject` documents).
     const motionName = useStoryMotionNames();
+    // Same source the command line reads its variable names from, so the two readings of one row
+    // cannot name the same variable differently.
+    const { projectVariableName } = useStoryCommandLineContext();
     const line = useStoryCommandLine(props.block, props.characters, props.scene, props.scenes);
 
     if (line) {
@@ -102,7 +110,7 @@ export function BlockOverview(props: {
         );
     }
 
-    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName);
+    const fragments = blockOverview(props.block, props.characters, props.scene, props.scenes, key => t(key), motionName, projectVariableName);
     return (
         // The rows no command owns keep the old reading: italic, and no fragment brighter than
         // `fg-muted`. A stage direction that cannot be typed as a line has no skeleton to echo, so it

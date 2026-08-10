@@ -24,9 +24,9 @@ export const lint = {
         },
         assetsUnreadable: {
             title: "资源无法读取",
-            description: "文件读不出来，或者解码失败",
+            description: "文件无法读取，或者解码失败",
             message: "{asset} 无法解码",
-            messageMissingBytes: "{asset} 读不出文件内容",
+            messageMissingBytes: "{asset} 的文件内容无法读取",
         },
         portabilityAssetName: {
             title: "文件名不安全",
@@ -40,8 +40,13 @@ export const lint = {
         },
         portabilityMediaFormat: {
             title: "格式不受支持",
-            description: "部分已选构建目标放不了的编码",
+            description: "部分已选构建目标不支持的编码",
             message: "{asset} 在 {platform} 上无法播放",
+        },
+        networkFetchDisallowed: {
+            title: "网络节点无法访问网络",
+            description: "工程不允许 HTTP，但蓝图里有网络节点",
+            message: "{blueprint} 发起了网络请求，本工程不允许",
         },
         storyInvalidCommand: {
             title: "无效指令",
@@ -56,7 +61,7 @@ export const lint = {
         storyLabelDuplicate: {
             title: "标签重复",
             description: "同一标签声明了两次，只有第一次生效",
-            message: "{label} 在上面已经声明过，这一处永远轮不到",
+            message: "{label} 在前面已经声明，此处不会被执行到",
         },
         storyLabelUnused: {
             title: "未使用的标签",
@@ -107,9 +112,9 @@ export const lint = {
         variablesRandomOutsideAssignment: {
             title: "赋值之外的随机数",
             description: "随机值出现在会被反复重算的位置",
-            message: "{fn}() 每次判断这个条件都会重掷一次，分支会自己变。先用 /set 掷进一个变量，再判断那个变量",
-            messageChoiceOption: "{fn}() 每次绘制菜单都会重掷一次，这个选项会闪。先用 /set 掷进一个变量，再判断那个变量",
-            messageInterpolation: "{fn}() 每次绘制这一行都会重掷一次，显示的值会一直变。先用 /set 掷进一个变量，再显示那个变量",
+            message: "{fn}() 在每次判断该条件时都会重新取值，分支结果会在两次判断之间变化；请先用 /set 取值到变量，再判断该变量",
+            messageChoiceOption: "{fn}() 在每次绘制菜单时都会重新取值，该选项会闪烁；请先用 /set 取值到变量，再判断该变量",
+            messageInterpolation: "{fn}() 在每次绘制该行时都会重新取值，显示的值会不断变化；请先用 /set 取值到变量，再显示该变量",
         },
         textOverlong: {
             title: "行太长",
@@ -118,7 +123,7 @@ export const lint = {
         },
         textEmpty: {
             title: "空行",
-            description: "对话行里没有文字",
+            description: "对白行里没有文字",
             message: "这一行没有文字",
         },
         localizationMissing: {
@@ -151,6 +156,15 @@ export const lint = {
             description: "对应的台词已经不存在",
             message: "{count} 条 {locale} 录音找不到对应的行",
         },
+        brandBrokenLink: {
+            title: "断开的颜色链接",
+            description: "颜色指向了解析不出结果的配色条目",
+            // 这三条和多数规则相反，会在句子里点出自己的出处：这类问题挂在工程上，
+            // 旁边那一列位置是空的，{where} 是几十条同类问题之间唯一的区分。
+            message: "{where} 用的 {color} 不在配色方案里",
+            messageChain: "{where} 用的 {color} 又指向了 {missing}，而配色方案里没有这个颜色",
+            messageCycle: "{where} 用的 {color}，它的链接绕回了自己",
+        },
     },
     message: {
         ruleFailed: "{rule} 没能运行",
@@ -159,11 +173,14 @@ export const lint = {
     category: {
         assets: "资源",
         portability: "可移植性",
+        network: "网络",
         story: "故事",
         variables: "变量",
         text: "文本",
         localization: "本地化",
         voice: "语音",
+        // 跟着面板叫，作者要改的就是那个面板，不叫链接协议的名字。
+        brand: "配色方案",
     },
     severity: {
         error: "错误",
@@ -204,7 +221,7 @@ export const lint = {
         blocked: "{count} 个问题拦下了构建",
         // 逐级写全「面板 → 分页 → 那一行」：这道闸默认开着，没进过这个面板的作者根本不知道
         // 有这么个设置，只说「在检查设置里」等于让人自己去翻。
-        blockedHint: "可以在 项目 → 检查 → 构建前检查 里改掉这个行为",
+        blockedHint: "可在「项目 → 检查 → 构建前检查」中修改该行为",
         skipped: "已跳过工程检查",
     },
     settings: {

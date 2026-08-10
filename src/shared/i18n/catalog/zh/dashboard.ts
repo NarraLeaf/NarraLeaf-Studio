@@ -45,7 +45,7 @@ export const dashboard = {
     scale: {
         title: "规模",
         scenes: "场景",
-        dialogueLines: "对话行",
+        dialogueLines: "对白行",
         totalWords: "字数",
         characters: "角色",
         assets: "资源",
@@ -75,7 +75,7 @@ export const dashboard = {
         streak: "连续写作",
         streakNone: "暂无连续记录",
         peak: "峰值 {words}",
-        empty: "尚未记录任何内容。一旦记录下当天的写作内容，柱状图便会出现",
+        empty: "尚未记录写作数据；记录到某一天的写作内容后，柱状图即会出现",
         chartLabel: "最近 30 天每天的写作字数",
         tooltip: {
             added: "{date} · 新增 {words}",
@@ -116,6 +116,6 @@ export const dashboard = {
         clear: "清空本项目统计数据",
         clearConfirm: "确定清空本项目的统计数据？",
         clearDetail:
-            "清除写作曲线、活跃时长、编辑次数与构建记录。从项目本身算出的数字不受影响。此操作无法撤销",
+            "清除写作曲线、活跃时长、编辑次数与构建记录；从项目内容统计得出的数字不受影响；此操作无法撤销",
     },
 } satisfies LocaleNamespace<"dashboard">;

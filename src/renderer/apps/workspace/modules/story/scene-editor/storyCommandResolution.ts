@@ -90,6 +90,12 @@ export function parseLiteral(raw: string): StoryLiteralValue {
     if (trimmed === "false") {
         return false;
     }
+    // `null` for the same reason as the JSON arm below, and it is the value that arm is missing: a
+    // json default of `null` is what the inspector's editor produces the moment it is opened on a
+    // declaration with no default, so the row's own line has to be able to say it back.
+    if (trimmed === "null") {
+        return null;
+    }
     if (trimmed !== "" && Number.isFinite(Number(trimmed))) {
         return Number(trimmed);
     }
@@ -320,7 +326,7 @@ function resolveAgainstType(
             const option = matchEnumOptionLocalized(type, value);
             // Normalizing the alias to its canonical value happens here, not in the parser: the parser
             // stays faithful to what was typed, the payload gets what it can store. A translated
-            // spelling normalizes on exactly the same step, so `t=淡变` banks `fade` (bible B6) and the
+            // spelling normalizes on exactly the same step, so `t=淡变` banks `fade` and the
             // project file never carries a locale.
             return option ? { value: { kind: "enum", value: option.value } } : null;
         }
@@ -335,7 +341,7 @@ function resolveAgainstType(
             return parsed === null ? null : { value: { kind: "number", value: parsed } };
         }
         case "boolean": {
-            // The human spellings collapse to the canonical pair here (bible B5).
+            // The human spellings collapse to the canonical pair here.
             const normalized = value.trim().toLowerCase();
             if (["true", "on", "yes"].includes(normalized)) {
                 return { value: { kind: "boolean", value: true } };
@@ -445,7 +451,10 @@ export function resolveCommandLine(line: StoryCommandLine, context: StoryCommand
 
     for (const param of line.def.params) {
         const arg = line.args.find(candidate => candidate.param?.name === param.name);
-        if (!arg || !arg.value) {
+        // An empty value is a slot the author has not filled yet (`d=`, mid-keystroke) and resolves to
+        // nothing - UNLESS they quoted it, which is the only way to WRITE the empty string and the
+        // only thing that tells the two apart.
+        if (!arg || (!arg.value && !arg.quoted)) {
             continue;
         }
         const outcome = resolveParam(param, arg.value, arg.valueSpan, context, resolved);

@@ -18,7 +18,10 @@ import {
     resolvePageAnimationMotion,
     type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
-import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import {
+    getSurfaceLayerBackgroundColor,
+    getSurfaceLayerBackgroundImageOpacity,
+} from "@/lib/ui-editor/runtime/surfaceBackground";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -34,6 +37,14 @@ import {
 import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
 import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
 import type { HostAdapterBundle, PageProps } from "./types";
+
+/**
+ * One shared empty table rather than a fresh `{}` per read.
+ *
+ * The element tree is memoised on its inputs, and a literal here would hand it a new object on every
+ * render - which is every page that has never patched a widget, i.e. most of them.
+ */
+const NO_WIDGET_RUNTIME_PATCHES: WidgetPatchesByScope[string] = {};
 
 /** The slice of a navigation entry the surface layer needs. */
 export type AppSurfaceLayerNavEntry = SurfaceNavigationEntry<PageProps, SurfaceNavigationPresentation> & {
@@ -108,6 +119,21 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         setSurfaceRuntimeSubscriptionsReadyKey(entry.key);
     }, [entry.key]);
 
+    // The ref is the live copy (a blueprint can patch a widget between renders); the state copy is
+    // what makes a patch re-render. Reading both, in that order, is the existing contract - the only
+    // change here is that "nothing to report" is one shared object instead of a fresh literal.
+    const widgetRuntimePatches =
+        widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
+        widgetPatchesByScope[entry.runtimeScopeId] ??
+        NO_WIDGET_RUNTIME_PATCHES;
+    const getWidgetRuntimePatches = useCallback(
+        () =>
+            widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
+            widgetPatchesByScope[entry.runtimeScopeId] ??
+            NO_WIDGET_RUNTIME_PATCHES,
+        [entry.runtimeScopeId, widgetPatchesByScope, widgetPatchesByScopeRef],
+    );
+
     useEffect(() => {
         if (hostAdapterBundle.hostAdapter.blueprintRuntime) {
             hostAdapterBundle.hostAdapter.blueprintRuntime.getSurfaceTransitionState = () => transitionStateRef.current;
@@ -147,6 +173,8 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         },
         [core.scopeBridge],
     );
+
+    const layerBackgroundColor = getSurfaceLayerBackgroundColor(surface, entry.presentation);
 
     const pageMotion = useMemo(
         () => resolvePageAnimationMotion({
@@ -236,7 +264,7 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             // Nested in-tree layers (SurfaceElementTree) keep the default scale of 1.
             scale={scale}
             className="absolute inset-0 flex items-center justify-center"
-            style={{ backgroundColor: getSurfaceBackgroundColor(surface) }}
+            style={{ backgroundColor: layerBackgroundColor }}
             presentZIndex={10 + layerIndex}
             exitZIndex={entry.exitBehind ? 0 : 30 + layerIndex}
             surfaceId={surface.id}
@@ -263,24 +291,26 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
                         surface={surface}
                         rendererRegistry={rendererRegistry}
                         scale={scale}
+                        // Already painted on the animation layer above, with the presentation
+                        // applied. Painting the authored colour again here would lay an opaque
+                        // sheet back over a thinned overlay.
+                        backgroundColor="transparent"
+                        // The picture, unlike the colour, cannot be hoisted onto the animation layer:
+                        // it belongs to the design box, which is this level down. Only the
+                        // presentation's thinning comes from up here.
+                        backgroundImageOpacity={getSurfaceLayerBackgroundImageOpacity(entry.presentation)}
                         hostAdapter={hostAdapterBundle.hostAdapter}
                         blueprintBindingContext={hostAdapterBundle.bindingContext}
-                        widgetRuntimePatches={
-                            widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
-                            widgetPatchesByScope[entry.runtimeScopeId] ??
-                            {}
-                        }
-                        getWidgetRuntimePatches={() =>
-                            widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
-                            widgetPatchesByScope[entry.runtimeScopeId] ??
-                            {}
-                        }
+                        widgetRuntimePatches={widgetRuntimePatches}
+                        getWidgetRuntimePatches={getWidgetRuntimePatches}
                         nestedSurfaceRuntime={nestedSurfaceRuntime}
                         surfaceLifecycleSignals={surfaceLifecycleSignals}
                         blueprintLifecycleReady={widgetBlueprintLifecycleReady}
                         interactive={effectiveInteractive}
                         keyboardInteractive={effectiveKeyboardInteractive}
                         onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
+                        // The uidoc here is the compiled bundle's; nothing edits it in place.
+                        staticDocument
                     />
                 </WidgetRuntimeStateProvider>
             </SurfaceLifecycleBoundary>

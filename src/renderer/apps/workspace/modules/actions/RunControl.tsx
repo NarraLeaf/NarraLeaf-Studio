@@ -12,6 +12,7 @@ import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
+import { readProjectMobileOrientation } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
@@ -30,6 +31,7 @@ import type { TestRunRecord } from "@/lib/testing/types";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { GameBuildStatus } from "@shared/types/gameBuild";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
+import { WorkspaceRunCommand } from "@shared/types/menu";
 import type { TranslationKey } from "@shared/i18n";
 
 /**
@@ -75,7 +77,7 @@ function normalizeRunMode(value: unknown): RunMode {
  * Which mode is selected persists globally (see `ui.runMode`).
  *
  * **Production Build lives in that dropdown**, not in its own title-bar icon: the version control
- * widget needs the room (plan 2026-07-28-002 §3), and run and build belong to one another anyway.
+ * widget needs the room, and run and build belong to one another anyway.
  * The action itself stays registered (see `buildAction`) because the macOS Dev ▸ Build menu, the
  * command palette and the freeze policy all resolve through the registry; `ActionBar` skips drawing
  * it. This control also carries the build's STATUS and its done/failed notifications, which used to
@@ -213,7 +215,7 @@ export function RunControl() {
      * Preview builds and runs the project the way a player would receive it, and that is the thing a
      * frozen workspace is specifically not claiming to be. Dev Mode runs what is on disk, which while
      * a freeze is manual IS the working tree - correct as it stands. Pointing Dev Mode at the focused
-     * revision instead is U4 (plan 2026-07-28-002 §4); nothing here anticipates it.
+     * revision instead is future work; nothing here anticipates it.
      *
      * Never applied while something is running: whatever the freeze says, a launched process must
      * always be stoppable, and this same button is the stop control.
@@ -246,7 +248,14 @@ export function RunControl() {
             } catch (e) {
                 console.error("[DevMode] flush before launch failed", e);
             }
-            await dev.launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
+                // No safeAreaId on purpose: the top bar runs the game the way a player gets it. The
+            // orientation is project context rather than a design aid, and the Dev Mode window's
+            // own safe-area picker needs it to resolve a device onto the right edge.
+            await dev.launch({
+                kind: "surface",
+                surfaceId: MAIN_APP_SURFACE_ID,
+                mobileOrientation: readProjectMobileOrientation(context),
+            });
         })();
     };
 
@@ -309,14 +318,14 @@ export function RunControl() {
         const launch = (target: RunMode) => runStateRef.current.launchMode(target);
         return commandService.registerMany([
             {
-                id: "run:dev-mode",
+                id: WorkspaceRunCommand.RunDevMode,
                 titleKey: "actions.run.runDevMode",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 when: idle,
                 run: () => launch("devMode"),
             },
             {
-                id: "run:preview",
+                id: WorkspaceRunCommand.RunPreview,
                 titleKey: "actions.run.runPreview",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 // Preview is what a frozen workspace is specifically not claiming to be; see above.
@@ -324,14 +333,14 @@ export function RunControl() {
                 run: () => launch("preview"),
             },
             {
-                id: "run:stop-dev-mode",
+                id: WorkspaceRunCommand.StopDevMode,
                 titleKey: "workspace.shell.stopDevMode",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 when: () => runStateRef.current.devActive,
                 run: () => runStateRef.current.runOrStop(),
             },
             {
-                id: "run:stop-preview",
+                id: WorkspaceRunCommand.StopPreview,
                 titleKey: "workspace.shell.stopPreview",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 when: () => runStateRef.current.previewActive,
@@ -350,7 +359,7 @@ export function RunControl() {
                 run: () => runStateRef.current.openTest(),
             },
             {
-                id: "run:stop-test",
+                id: WorkspaceRunCommand.StopTest,
                 titleKey: "test.action.stop",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 when: () => runStateRef.current.testActive,

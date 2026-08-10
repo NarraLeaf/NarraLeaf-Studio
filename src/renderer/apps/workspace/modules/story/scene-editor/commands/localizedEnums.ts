@@ -29,7 +29,7 @@ type EnumType = Extract<StoryCommandParamType, { kind: "enum" }>;
  * policy of the other two tables.
  *
  * Storage is untouched: {@link matchEnumOptionLocalized} returns the canonical option, so resolution
- * banks the canonical English value however the author spelled it (bible B6).
+ * banks the canonical English value however the author spelled it.
  */
 
 type LocalizedEnumCache = {

@@ -1,0 +1,23 @@
+{
+  "keys": {
+    "menu.continue": {
+      "sourceText": "Continue"
+    },
+    "menu.load": {
+      "sourceText": "Load"
+    },
+    "menu.quit": {
+      "sourceText": "Quit"
+    },
+    "menu.save": {
+      "sourceText": "Save"
+    },
+    "menu.settings": {
+      "sourceText": "Settings"
+    },
+    "menu.start": {
+      "sourceText": "Start"
+    }
+  },
+  "schemaVersion": 1
+}

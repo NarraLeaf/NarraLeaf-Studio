@@ -21,6 +21,7 @@ import type {
 } from "@shared/types/story";
 import {
     characterStageName,
+    declarationDefaultForType,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
     listScenesInDocumentOrder,
@@ -30,7 +31,10 @@ import {
     savedVariableDefs,
     sceneLabelNames,
     sceneVariableDefs,
+    storyPersistentDefs,
 } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
+import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
 import { resolveAudioTrack } from "@shared/types/audioTrack";
@@ -60,6 +64,7 @@ import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import { ConditionEditor, EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import { useStoryVoiceState } from "./useStoryVoiceState";
@@ -105,21 +110,28 @@ type StoryVariableOptions = {
     persistent: DeclaredVariableOption[];
 };
 
-/** Read declared scene/saved variables (from the story document) and persistent variables (shared blueprint store). */
+/**
+ * Every variable the picker may offer, per scope.
+ *
+ * `scene` comes off the story document, which owns that scope outright. The two project scopes are
+ * each a union of the project registry and the document's own declaration rows - the same merge the
+ * command line and the compiler read - because either surface alone offers the author a strictly
+ * smaller list than a typed `/set` accepts. Persistent entries are addressed by `storageKey` and
+ * saved ones by `id`, matching the two arms of `StoryVariableRef`.
+ */
 function useStoryVariableOptions(document: StoryDocument, sceneId: StorySceneId): StoryVariableOptions {
     const { context, isInitialized } = useWorkspace();
-    const [persistent, setPersistent] = useState<DeclaredVariableOption[]>([]);
+    const [registry, setRegistry] = useState<{ saved: VariableRegistryEntry[]; persistent: VariableRegistryEntry[] }>(
+        { saved: [], persistent: [] },
+    );
     useEffect(() => {
         if (!context || !isInitialized) return;
         const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const read = () => {
-            setPersistent(
-                service.listPersistentVariables().map(variable => ({
-                    id: variable.storageKey,
-                    name: variable.name,
-                    valueType: variable.valueType,
-                })),
-            );
+            setRegistry({
+                saved: service.listSavedVariables(),
+                persistent: service.listPersistentVariables(),
+            });
         };
         read();
         return service.onBlueprintHistoryChanged(read);
@@ -131,13 +143,27 @@ function useStoryVariableOptions(document: StoryDocument, sceneId: StorySceneId)
             name: variable.name,
             valueType: variable.valueType,
         }));
-        const saved = Object.values(savedVariableDefs(document)).map(variable => ({
-            id: variable.id,
-            name: variable.name,
-            valueType: variable.valueType,
-        }));
+        const saved = buildMergedVariableView(
+            registry.saved,
+            Object.values(savedVariableDefs(document)),
+        ).entries.map(entry => ({ id: entry.id, name: entry.name, valueType: entry.valueType }));
+        const persistent = buildMergedVariableView(
+            registry.persistent,
+            Object.values(storyPersistentDefs(document)),
+        ).entries.map(entry => ({ id: entry.storageKey, name: entry.name, valueType: entry.valueType }));
         return { scene, saved, persistent };
-    }, [document, sceneId, persistent]);
+    }, [document, sceneId, registry]);
+}
+
+/**
+ * {@link StoryRowLookups.projectVariableName} over the very options the pickers list, so the heading
+ * that names what the author is editing and the dropdown they edit it with cannot disagree.
+ *
+ * Each scope is already keyed the way its ref addresses an entry - `saved` by entry id, `persistent`
+ * by storage key - which is what lets one indexed read serve both.
+ */
+function projectVariableNameOf(options: StoryVariableOptions): NonNullable<StoryRowLookups["projectVariableName"]> {
+    return (scope, variableId) => options[scope].find(option => option.id === variableId)?.name ?? null;
 }
 
 function refVariableId(ref: StoryVariableRef): string {
@@ -448,6 +474,7 @@ export function ActionInspector(props: {
         return null;
     }, [assetsService]);
     const resolveMotionName = useStoryMotionNames();
+    const variableOptions = useStoryVariableOptions(props.document, props.sceneId);
     const subject = describeBlockSubject(
         block,
         props.characters,
@@ -455,6 +482,7 @@ export function ActionInspector(props: {
         props.document.scenes[props.sceneId],
         props.document.scenes,
         resolveMotionName,
+        projectVariableNameOf(variableOptions),
     );
     const freeze = useFreezeGuard();
 
@@ -698,14 +726,6 @@ const declarationTypeOptions = (t: TFunc): SelectOption[] => [
     { value: "string", label: t("storyVars.valueType.string") },
     { value: "json", label: t("storyVars.valueType.json") },
 ];
-
-/** The zero value a retype resets the default to (mirrors the Story Variables panel). */
-function declarationDefaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
-    if (valueType === "boolean") return false;
-    if (valueType === "number") return 0;
-    if (valueType === "json") return {};
-    return "";
-}
 
 /** Editor for a `declaration` row - the row IS the variable, so this edits the declaration itself. */
 function DeclarationPayloadFields(props: {
@@ -1344,8 +1364,8 @@ const vfxOperationOptions = (t: TFunc): SelectOption[] => [
  *
  * An author picking here is not expressing a preference, they are declaring which of two production
  * routes their clip came down: a true-alpha WebM composites plainly, glow rendered on black has to be
- * added. Naming the routes is what makes the choice answerable without a paragraph of explanation
- * (M3 card §1) - the keyword alone tells someone who already knows the answer.
+ * added. Naming the routes is what makes the choice answerable without a paragraph of explanation -
+ * the keyword alone tells someone who already knows the answer.
  */
 const vfxBlendOptions = (t: TFunc): SelectOption[] => [
     { value: "normal", label: t("storyInspector.vfxBlend.normal") },
@@ -2929,7 +2949,7 @@ function LabeledTextarea(props: { label: string; value: string; onChange: (value
  * sections (Basics / Appearance / Motion / Transition / Timing / ...).
  */
 /**
- * The inspector's voice region (WI-4): the current take's state in the primary locale, an audition
+ * The inspector's voice region: the current take's state in the primary locale, an audition
  * play/stop button when a take exists, and a jump to the voice table where binding lives. Assignment
  * stays import-first in the voice table (no inline assignment, `dialogue.voiceAssetId` is not revived).
  * Hidden when the project has no voiced language or the block carries no voiceable line.

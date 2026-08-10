@@ -12,8 +12,10 @@ import {
     normalizeRuns,
     rangeHasMark,
     rangeMarkColor,
+    rangeMarkRuby,
     renderRunsToElement,
     richRunsToPlain,
+    rubyRunAt,
     setSelectionUnitRange,
     spliceRuns,
     totalUnits,
@@ -25,7 +27,28 @@ import {
 } from "./richText";
 import { editKindForInputType, RichTextHistory, type RichTextSnapshot } from "./richTextHistory";
 
-export type ActiveMarks = { bold: boolean; italic: boolean; color?: string };
+export type ActiveMarks = {
+    bold: boolean;
+    italic: boolean;
+    color?: string;
+    /**
+     * The reading the ruby control would edit, and whether there is anything for it to act on.
+     *
+     * `ruby` is the reading shared by the selection, or — with a collapsed caret — the reading of
+     * the annotated run the caret sits in. `canRuby` is separate because those are two different
+     * questions: a selection can be annotated even when it carries no reading yet, and a caret
+     * outside any annotated run can do nothing at all, which is what leaves the control inert.
+     */
+    ruby?: string;
+    canRuby: boolean;
+};
+
+/**
+ * The unit range the ruby control addresses, and the reading already on it.
+ *
+ * Resolved once, when the popover opens, and handed back at commit time - see `getRubyTarget`.
+ */
+export type RubyTarget = { start: number; end: number; ruby?: string };
 
 export type PauseClickInfo = {
     unit: number;
@@ -49,6 +72,19 @@ export type RichTextInputHandle = {
     focus: () => void;
     toggleMark: (mark: "bold" | "italic") => void;
     setColor: (color: string) => void;
+    /**
+     * The range the ruby control would act on, read at the moment the popover opens. `null` when
+     * there is nothing to annotate — see `canRuby`.
+     */
+    getRubyTarget: () => RubyTarget | null;
+    /**
+     * Set or clear the reading. Pass `null` to remove it.
+     *
+     * `target` is the range `getRubyTarget` gave the caller when the popover opened, and passing it
+     * is how a commit stays pinned to the words it was typed for. Omitting it resolves the range
+     * afresh, which is only right when nothing can have moved the caret in between.
+     */
+    setRuby: (ruby: string | null, target?: { start: number; end: number }) => void;
     insertPause: (pause: number | true) => void;
     updatePauseAt: (unit: number, pause: number | true) => void;
     removePauseAt: (unit: number) => void;
@@ -216,9 +252,45 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         onChangeRef.current(richRunsToPlain(runs), runs);
     }, []);
 
-    const reportActive = useCallback(() => {
+    /**
+     * The marks last published to the toolbar. `onActiveMarksChange` is a `setState` on the row's edit
+     * box, so calling it with a fresh object that says the same thing re-renders the box and the strip
+     * for nothing — and it was being called at least twice per keystroke.
+     */
+    const lastMarksRef = useRef<ActiveMarks | null>(null);
+    /**
+     * The DOM selection the marks below were last read for.
+     *
+     * The same caret position gets reported twice for one keystroke — `selectionchange` on the document
+     * and the field's own `keyup` — and at typing speed those land in different frames, so batching
+     * alone does not merge them. The second read cannot produce a different answer: the selection has
+     * not moved and the text has not changed. Skipping it halves the `queryCommand*` calls, which are
+     * the most expensive thing on this path because each one makes Chromium flush style.
+     *
+     * Any path that *changes* something passes `force`, because a mark can change under a caret that
+     * never moved: `Bold` on a collapsed caret sets the style the next characters inherit, and reading
+     * "the selection is where it was" would leave the strip showing the old state.
+     */
+    const lastReportedSelectionRef = useRef<{ anchorNode: Node | null; anchorOffset: number; focusNode: Node | null; focusOffset: number } | null>(null);
+
+    const reportActive = useCallback((force = false) => {
         try {
             const el = editorRef.current;
+            const selection = globalThis.window.getSelection();
+            const reported = lastReportedSelectionRef.current;
+            if (!force && selection && reported
+                && reported.anchorNode === selection.anchorNode && reported.anchorOffset === selection.anchorOffset
+                && reported.focusNode === selection.focusNode && reported.focusOffset === selection.focusOffset) {
+                return;
+            }
+            lastReportedSelectionRef.current = selection
+                ? {
+                    anchorNode: selection.anchorNode,
+                    anchorOffset: selection.anchorOffset,
+                    focusNode: selection.focusNode,
+                    focusOffset: selection.focusOffset,
+                }
+                : null;
             const range = el ? getSelectionUnitRange(el) : null;
             if (el) {
                 markSelectedChips(el, range);
@@ -233,6 +305,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             }
             let bold = globalThis.document.queryCommandState("bold");
             let italic = globalThis.document.queryCommandState("italic");
+            // Ruby has no execCommand of its own, so both answers come off the unit model. A selection
+            // is always annotatable; a collapsed caret only when it is standing in a reading already.
+            let ruby: string | undefined;
+            let canRuby = false;
             if (el && range && range.start !== range.end) {
                 // A selection can include inline value chips (contentEditable=false), which execCommand's
                 // query state ignores — derive the active marks from the unit model instead.
@@ -240,11 +316,63 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 bold = rangeHasMark(runs, range.start, range.end, "bold");
                 italic = rangeHasMark(runs, range.start, range.end, "italic");
                 color = rangeMarkColor(runs, range.start, range.end);
+                ruby = rangeMarkRuby(runs, range.start, range.end);
+                canRuby = true;
+            } else if (el && selection) {
+                // Read off the DOM, not the unit model. This branch runs on every caret move, and
+                // `domToRuns` walks and normalizes the whole row to answer a question the span the
+                // caret is standing in already carries.
+                const node = selection.focusNode;
+                const from = node?.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node?.parentElement ?? null;
+                const host = from && el.contains(from) ? from.closest<HTMLElement>("[data-ruby]") : null;
+                ruby = host && el.contains(host) ? host.dataset.ruby || undefined : undefined;
+                canRuby = ruby !== undefined;
             }
-            onActiveRef.current?.({ bold, italic, color });
+            const previousMarks = lastMarksRef.current;
+            if (!previousMarks
+                || previousMarks.bold !== bold
+                || previousMarks.italic !== italic
+                || previousMarks.color !== color
+                || previousMarks.ruby !== ruby
+                || previousMarks.canRuby !== canRuby) {
+                lastMarksRef.current = { bold, italic, color, ruby, canRuby };
+                onActiveRef.current?.({ bold, italic, color, ruby, canRuby });
+            }
             setCaretColor(color ?? null);
         } catch {
             // queryCommandState can throw when there is no selection; ignore.
+        }
+    }, []);
+
+    /**
+     * Ask for the toolbar's state to be brought up to date, at most once per frame.
+     *
+     * Every caret move fires this from two directions at once — `selectionchange` on the document and
+     * the field's own `keyup`/`mouseup` — so a single keystroke ran the whole read twice. The read is
+     * not free: `queryCommandState`/`queryCommandValue` each force Chromium to flush style, and they
+     * were the most expensive DOM calls on the typing path (measured at 0.69ms per character between
+     * them).
+     *
+     * A frame of latency is the right trade. Nothing about the caret's own behaviour goes through
+     * here — this only decides whether the B in the style strip looks pressed.
+     */
+    const reportActiveFrameRef = useRef<number | null>(null);
+    const reportActiveForceRef = useRef(false);
+    const scheduleReportActive = useCallback((force = false) => {
+        reportActiveForceRef.current = reportActiveForceRef.current || force;
+        if (reportActiveFrameRef.current !== null) {
+            return;
+        }
+        reportActiveFrameRef.current = globalThis.requestAnimationFrame(() => {
+            reportActiveFrameRef.current = null;
+            const forced = reportActiveForceRef.current;
+            reportActiveForceRef.current = false;
+            reportActive(forced);
+        });
+    }, [reportActive]);
+    useEffect(() => () => {
+        if (reportActiveFrameRef.current !== null) {
+            globalThis.cancelAnimationFrame(reportActiveFrameRef.current);
         }
     }, []);
 
@@ -255,10 +383,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
 
     /** Record the pre-edit state of a mutation we perform ourselves (a chip, a mark, an inserted value). */
     const recordStructural = useCallback(() => {
-        const before = snapshot();
-        if (before) {
-            historyRef.current.record(before, { kind: "structural", now: performance.now() });
-        }
+        historyRef.current.record(snapshot, { kind: "structural", now: performance.now() });
     }, [snapshot]);
 
     // Typing goes through `beforeinput` because it is the only point where the pre-edit state still
@@ -273,11 +398,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 return;
             }
             const input = event as InputEvent;
-            const before = snapshot();
-            if (!before) {
-                return;
-            }
-            historyRef.current.record(before, {
+            // `snapshot` itself, not its result: it walks the whole field out of the DOM and measures
+            // the selection, and a burst of typing coalesces into ONE undo entry — so on all but the
+            // first keystroke of a burst the history would have thrown the answer away. See `record`.
+            historyRef.current.record(snapshot, {
                 kind: editKindForInputType(input.inputType),
                 boundary: input.data === " ",
                 now: performance.now(),
@@ -298,8 +422,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             savedRange.current = state.range;
         }
         emitChange();
-        reportActive();
-    }, [emitChange, reportActive]);
+        // Forced: undo/redo re-renders the runs, so the marks under the restored caret can differ
+        // from the ones under the caret it replaced even when the two sit at the same offset.
+        scheduleReportActive(true);
+    }, [emitChange, scheduleReportActive]);
 
     /** Returns false when this row has nothing left to undo, so the caller can hand off to story history. */
     const undo = useCallback((): boolean => {
@@ -333,12 +459,14 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         if (!el) {
             return;
         }
+        // The range itself is saved synchronously and always has been: `onTab` hands the caret to the
+        // style strip on this very keystroke, and the strip has nothing else to read it from.
         const range = getSelectionUnitRange(el);
         if (range) {
             savedRange.current = range;
         }
-        reportActive();
-    }, [reportActive]);
+        scheduleReportActive();
+    }, [scheduleReportActive]);
 
     /**
      * Where the collapsed caret currently sits, relative to the line's edges. `atFirstLine`/`atLastLine`
@@ -469,12 +597,12 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             const el = editorRef.current;
             const selection = globalThis.window.getSelection();
             if (el && selection && selection.rangeCount > 0 && el.contains(selection.getRangeAt(0).commonAncestorContainer)) {
-                reportActive();
+                scheduleReportActive();
             }
         };
         globalThis.document.addEventListener("selectionchange", onSelectionChange);
         return () => globalThis.document.removeEventListener("selectionchange", onSelectionChange);
-    }, [reportActive]);
+    }, [scheduleReportActive]);
 
     /**
      * Apply a bold/italic/color mark. For a real selection we go through the unit model so inline value
@@ -509,6 +637,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 programmaticRef.current = false;
             }
             saveSelection();
+            // The caret has not moved — only the style the next characters will inherit has changed —
+            // so the "same selection, same answer" shortcut has to be told this one is different.
+            scheduleReportActive(true);
             emitChange();
             return;
         }
@@ -525,8 +656,75 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         renderRunsToElement(el, next, renderOptionsRef.current);
         setSelectionUnitRange(el, range.start, range.end);
         saveSelection();
+        scheduleReportActive(true);
         emitChange();
-    }, [emitChange, recordStructural, saveSelection]);
+    }, [emitChange, recordStructural, saveSelection, scheduleReportActive]);
+
+    /**
+     * The words the ruby control is addressing: the selection, or — with a collapsed caret — the
+     * whole annotated run the caret is standing in. `null` when there is nothing to annotate.
+     *
+     * The popover reads this once, on the way in, and hands it back on the way out. Deriving it
+     * again at commit time would read the selection as it stands *then*, and the ordinary exit is a
+     * click back into the sentence: the caret has moved by the time the draft lands, so the reading
+     * would be written over whatever was clicked, or — a caret outside any annotated run — dropped
+     * without a word, which is the one outcome a draft popover exists to prevent.
+     */
+    const resolveRubyTarget = useCallback((): RubyTarget | null => {
+        const el = editorRef.current;
+        if (!el) {
+            return null;
+        }
+        const selection = getSelectionUnitRange(el) ?? savedRange.current;
+        if (!selection) {
+            return null;
+        }
+        const runs = domToRuns(el);
+        if (selection.start !== selection.end) {
+            return { ...selection, ruby: rangeMarkRuby(runs, selection.start, selection.end) };
+        }
+        return rubyRunAt(runs, selection.start);
+    }, []);
+
+    /**
+     * Set or clear the reading over `target`, or over whatever {@link resolveRubyTarget} finds when
+     * the caller has none. `null` removes it.
+     *
+     * Unlike {@link applyMark} this must never focus the editor: the reading is typed in a popover,
+     * and dragging focus back here would end the author's typing at the first character. The caret
+     * is only restored when the editor still holds focus.
+     *
+     * `textOnly` because a reading belongs to characters the author wrote. See
+     * {@link applyMarkToRange}.
+     */
+    const setRuby = useCallback((ruby: string | null, target?: { start: number; end: number }) => {
+        const el = editorRef.current;
+        if (!el) {
+            return;
+        }
+        const range = target ?? resolveRubyTarget();
+        if (!range) {
+            return;
+        }
+        const runs = domToRuns(el);
+        const value = ruby?.trim() || undefined;
+        if (value === rangeMarkRuby(runs, range.start, range.end)) {
+            // Closing the popover having changed nothing is the common exit. Rendering anyway would
+            // cost an undo entry for an edit that never happened.
+            return;
+        }
+        recordStructural();
+        const next = applyMarkToRange(runs, range.start, range.end, marks => ({ ...marks, ruby: value }), { textOnly: true });
+        renderRunsToElement(el, next, renderOptionsRef.current);
+        if (globalThis.document.activeElement === el) {
+            setSelectionUnitRange(el, range.start, range.end);
+            saveSelection();
+        } else {
+            savedRange.current = { start: range.start, end: range.end };
+        }
+        scheduleReportActive(true);
+        emitChange();
+    }, [emitChange, recordStructural, resolveRubyTarget, saveSelection, scheduleReportActive]);
 
     // Splice by explicit unit range without focusing the editor (so a pause popover's input keeps
     // focus). Caret is only restored when the editor already holds focus.
@@ -609,6 +807,8 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         },
         toggleMark: (mark) => applyMark(mark),
         setColor: (color) => applyMark("color", color),
+        getRubyTarget: resolveRubyTarget,
+        setRuby,
         insertPause,
         updatePauseAt: (unit, pause) => spliceUnits(unit, 1, [{ pause }], true),
         removePauseAt: (unit) => spliceUnits(unit, 1, [], false),
@@ -619,7 +819,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         updateEventAt: (unit, event) => spliceUnits(unit, 1, [{ event }], true),
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, resolveRubyTarget, setRuby, spliceUnits]);
 
     return (
         <div
@@ -679,7 +879,17 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                     }
                 }
             }}
-            onInput={emitChange}
+            onInput={() => {
+                emitChange();
+                // Forced, because an edit can change the marks under a caret that never moved — and
+                // the caret's own NODE can survive it. Chromium's native Ctrl+B wraps the existing
+                // text node in a <b> rather than replacing it, so anchorNode/anchorOffset come back
+                // identical and the "same selection, same answer" shortcut in `reportActive` would
+                // skip the one read that mattered: the strip stayed unpressed on the keystroke that
+                // pressed it, then caught up on the next caret move. Every browser-driven edit
+                // (native formatting, paste, drop, IME) arrives here and nowhere else.
+                scheduleReportActive(true);
+            }}
             onPaste={event => {
                 if (readOnly || !props.onMultiLinePaste) {
                     return;

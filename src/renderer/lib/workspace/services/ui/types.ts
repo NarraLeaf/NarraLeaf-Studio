@@ -266,6 +266,12 @@ export enum StatusBarAlignment {
 
 /**
  * Status bar item definition
+ *
+ * Carries no colours. It used to offer `backgroundColor` and `color`, which nothing ever read, so a
+ * caller that set them got silence. Cells take their ink from the bar: it washes to the theme colour
+ * while a run is on and every cell follows, which is the one colour state the bar actually has. A
+ * per-item override would be a raw CSS colour outside the semantic tokens, and it would have to
+ * survive that wash.
  */
 export interface StatusBarItem {
     id: string;
@@ -276,7 +282,5 @@ export interface StatusBarItem {
     priority?: number;
     command?: () => void;
     visible?: boolean;
-    backgroundColor?: string;
-    color?: string;
 }
 

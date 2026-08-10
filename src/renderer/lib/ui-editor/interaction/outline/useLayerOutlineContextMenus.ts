@@ -1,5 +1,5 @@
 import { useCallback, type MouseEvent } from "react";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import type { UIElement, UISurface } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import type { InputDialog } from "@/lib/components/dialogs";
@@ -11,6 +11,7 @@ import {
 import { hasUiEditorClipboard } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import {
     canAddRestToLeaderContainer,
+    getContainersToUngroup,
     getMoversToGroupIntoLeaderContainer,
 } from "@/lib/ui-editor/commands/uiEditorSelection";
 import {
@@ -24,6 +25,28 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import { createOutlinePanelMenuActions } from "@/lib/ui-editor/interaction/outline/outlinePanelContextActions";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
+import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
+import { translate } from "@/lib/i18n";
+
+/**
+ * The identifiers an outline menu can offer: the row's element, where there is a row, and the
+ * surface the outline is a view of.
+ *
+ * The surface entry needs the surface itself for its noun (a Page and a Game UI are worded
+ * differently), so it is dropped rather than guessed when the lookup misses.
+ */
+function developerIdEntries(
+    elementId: string | null,
+    surfaceId: string,
+    surface: UISurface | undefined,
+): DeveloperIdEntry[] {
+    const entries: DeveloperIdEntry[] = [{ kind: "element", value: elementId }];
+    if (surface) {
+        entries.push({ kind: "surface", value: surfaceId, label: getSurfaceDisplayLabel(surface, translate) });
+    }
+    return entries;
+}
 
 export function useLayerOutlineContextMenus(params: {
     surfaceId: string;
@@ -78,6 +101,7 @@ export function useLayerOutlineContextMenus(params: {
                 Boolean(menuSel) &&
                 canAddRestToLeaderContainer(menuSel!, doc) &&
                 getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+            const canUngroup = getContainersToUngroup(doc, surfaceId, menuSel).length > 0;
 
             const insertChildInOutline = (type: string) => {
                 if (!insertParentId) {
@@ -123,10 +147,15 @@ export function useLayerOutlineContextMenus(params: {
                 documentService,
                 insertParentIdForRow: insertParentId,
                 canAddToGroup: canGroup,
+                canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions,
             });
-            setMenuItems(items);
+            setMenuItems(appendDeveloperIdSection(
+                items,
+                developerIdEntries(element.id, surfaceId, surface),
+                { hideMenu, notify: uiService?.showNotification.bind(uiService) },
+            ));
             showMenu(event);
         },
         [
@@ -163,6 +192,7 @@ export function useLayerOutlineContextMenus(params: {
                 Boolean(menuSel) &&
                 canAddRestToLeaderContainer(menuSel!, doc) &&
                 getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+            const canUngroup = getContainersToUngroup(doc, surfaceId, menuSel).length > 0;
 
             const insertOutline = (type: string) => {
                 const fresh = documentService.getDocument();
@@ -206,10 +236,15 @@ export function useLayerOutlineContextMenus(params: {
                 documentService,
                 insertParentIdForRow: null,
                 canAddToGroup: canGroup,
+                canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions,
             });
-            setMenuItems(items);
+            setMenuItems(appendDeveloperIdSection(
+                items,
+                developerIdEntries(null, surfaceId, surface),
+                { hideMenu, notify: uiService?.showNotification.bind(uiService) },
+            ));
             showMenu(event);
         },
         [

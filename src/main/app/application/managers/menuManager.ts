@@ -9,11 +9,13 @@ import {
     NativeMenuGroup,
     NativeMenuItem,
     NativeMenuModel,
+    NativeMenuRuntimeStatus,
     WorkspaceMenuAction,
+    WorkspaceRunCommand,
 } from "@shared/types/menu";
 import { WindowAppType } from "@shared/types/window";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
-import { getMainTranslator } from "../i18n";
+import { getMainLocale, getMainTranslator } from "../i18n";
 import type { AppWindow } from "./window/appWindow";
 import type { Translator } from "@shared/i18n";
 
@@ -104,7 +106,10 @@ export class MenuManager {
      */
     private computeMenuKey(): string {
         const target = this.getMenuTargetWindow();
-        const locale = String(this.app.globalState.get("app.language"));
+        // The RESOLVED locale, not the raw key: with none stored the key is absent and every
+        // profile would key the same "undefined", so a menu built in the system language would
+        // never be rebuilt when a language is finally chosen that happens to match it.
+        const locale = getMainLocale(this.app);
         if (!target) {
             return `${locale}|<none>`;
         }
@@ -126,7 +131,7 @@ export class MenuManager {
             .map(group => `${group.label}[${group.slot}](${group.items.length})`)
             .join(", ") || "<none>";
         this.app.logger.debug(
-            `[Menu] Synced: ${groupSummary} | devMode=${model.runtime.devModeActive} preview=${model.runtime.previewActive}`,
+            `[Menu] Synced: ${groupSummary} | devMode=${model.runtime.devModeActive} preview=${model.runtime.previewActive} test=${model.runtime.testActive}`,
         );
 
         if (this.getMenuTargetWindow() === window) {
@@ -358,41 +363,7 @@ export class MenuManager {
             // Whatever else the workspace currently offers: an image tab's Preview, an audio
             // tab's Playback, plugin groups. These come and go with focus, hence the sync.
             ...topLevelGroups.map(group => this.buildSyncedGroupMenu(group)),
-            {
-                label: t("menu.dev.title"),
-                submenu: [
-                    // Dev Mode and Preview are toggles (the same action stops a running
-                    // instance), so a checkmark shows which one is live. Electron flips a
-                    // checkbox visually on every click, before anything has actually started -
-                    // the rebuild right after puts the checkmark back under the synced status,
-                    // which flips it for real once the runtime reports running.
-                    {
-                        label: t("menu.dev.devMode"),
-                        type: "checkbox",
-                        checked: runtime?.devModeActive ?? false,
-                        click: () => {
-                            this.sendActionToFocusedWindow(WorkspaceMenuAction.DevMode);
-                            this.updateMenu();
-                        },
-                    },
-                    {
-                        label: t("menu.dev.preview"),
-                        type: "checkbox",
-                        checked: runtime?.previewActive ?? false,
-                        click: () => {
-                            this.sendActionToFocusedWindow(WorkspaceMenuAction.Preview);
-                            this.updateMenu();
-                        },
-                    },
-                    { type: "separator" },
-                    {
-                        label: t("menu.dev.build"),
-                        click: () => {
-                            this.sendActionToFocusedWindow(WorkspaceMenuAction.Build);
-                        },
-                    },
-                ],
-            },
+            this.buildDevMenu(t, runtime),
             {
                 role: "windowMenu",
                 label: t("menu.window.title"),
@@ -440,6 +411,94 @@ export class MenuManager {
                 ],
             },
         ];
+    }
+
+    /**
+     * The Develop menu: the same four things the toolbar's Run split-button offers - Dev Mode,
+     * Preview, Production Build, Test - in the same order.
+     *
+     * **Every entry here is a live toggle, none of them a dead label.** Dev Mode and Preview are
+     * checkboxes over the synced runtime status; Test is not a mode, so it has no checkmark and
+     * changes its wording instead, which is also the only way to stop a test from the menu bar.
+     * Electron flips a checkbox visually on every click, before anything has actually started - the
+     * rebuild right after puts the checkmark back under the synced status, which flips it for real
+     * once the runtime reports running.
+     *
+     * The three run entries name CommandService commands rather than registry actions (see
+     * {@link WorkspaceRunCommand}); Production Build alone is still a registered action. Whether an
+     * entry means run or stop is decided HERE, from the status the menu already has, so the renderer
+     * never receives an id its `when` will refuse.
+     *
+     * Every label here is the Run dropdown's own (`actions.run.*`, `test.action.*`) rather than a
+     * copy under `menu.dev.*`. The menu bar and the dropdown open the same four things, and they
+     * used to call them different names - the menu said "Build Release" where the dropdown said
+     * "Production Build…", and "Preview Mode" where it said "Preview". `menu.dev.title` is all
+     * that is left under that namespace, because the menu itself is the one thing the dropdown
+     * has no name for.
+     */
+    private buildDevMenu(t: Translator["t"], runtime: NativeMenuRuntimeStatus | undefined): MenuItemConstructorOptions {
+        const devModeActive = runtime?.devModeActive ?? false;
+        const previewActive = runtime?.previewActive ?? false;
+        const testActive = runtime?.testActive ?? false;
+        const frozen = runtime?.frozen ?? false;
+        // One thing occupies the run slot at a time, so a mode that is not the one running cannot be
+        // started - and while a mode IS running its own entry has to stay live, because it is the
+        // stop control. Same rule the dropdown's mode rows follow. Freezing takes Preview with it:
+        // Preview builds and runs the project the way a player would receive it, which is precisely
+        // what a frozen workspace is not claiming to be, while Dev Mode runs what is on disk.
+        const slotHeldByOther = (mine: boolean) => (devModeActive || previewActive || testActive) && !mine;
+
+        return {
+            label: t("menu.dev.title"),
+            submenu: [
+                {
+                    label: t("actions.run.devMode"),
+                    type: "checkbox",
+                    checked: devModeActive,
+                    enabled: !slotHeldByOther(devModeActive),
+                    click: () => {
+                        this.sendActionToFocusedWindow(
+                            devModeActive ? WorkspaceRunCommand.StopDevMode : WorkspaceRunCommand.RunDevMode,
+                        );
+                        this.updateMenu();
+                    },
+                },
+                {
+                    label: t("actions.run.preview"),
+                    type: "checkbox",
+                    checked: previewActive,
+                    enabled: !slotHeldByOther(previewActive) && (previewActive || !frozen),
+                    click: () => {
+                        this.sendActionToFocusedWindow(
+                            previewActive ? WorkspaceRunCommand.StopPreview : WorkspaceRunCommand.RunPreview,
+                        );
+                        this.updateMenu();
+                    },
+                },
+                { type: "separator" },
+                {
+                    label: t("actions.run.productionBuild"),
+                    // `resolveFrozenActionDisabled` refuses this on the renderer side anyway; greying
+                    // it is so the refusal is something the author can see coming.
+                    enabled: !frozen,
+                    click: () => {
+                        this.sendActionToFocusedWindow(WorkspaceMenuAction.Build);
+                    },
+                },
+                {
+                    // Never gated, unlike everything above it: this opens the picker rather than
+                    // starting anything, and the picker is where an author reads why an individual
+                    // test is unavailable. A headless test runs on a frozen workspace too.
+                    label: testActive ? t("test.action.stop") : t("test.action.open"),
+                    click: () => {
+                        this.sendActionToFocusedWindow(
+                            testActive ? WorkspaceRunCommand.StopTest : WorkspaceRunCommand.RunTest,
+                        );
+                        this.updateMenu();
+                    },
+                },
+            ],
+        };
     }
 
     /**

@@ -113,7 +113,7 @@ describe("scene commands", () => {
     });
 });
 
-describe("generic verbs (bible B3)", () => {
+describe("generic verbs", () => {
     it("/show dispatches on the target: a character enters", () => {
         // `at=` wins the preset when both are given — a transform holds one, and a placement is the
         // more specific instruction. The rule `/image` already followed.
@@ -324,7 +324,7 @@ describe("media objects", () => {
         });
     });
 
-    it("/video reads the bare muted flag (bible B5)", () => {
+    it("/video reads the bare muted flag", () => {
         expect(build("/video intro muted")).toMatchObject({
             payload: { action: "video", operation: "create", objectName: "intro", assetId: "v1", muted: true },
         });
@@ -337,7 +337,7 @@ describe("media objects", () => {
     });
 });
 
-describe("sound (bible B4: target defaults to bgm)", () => {
+describe("sound (target defaults to bgm)", () => {
     it("/bgm sets the music with its flags", () => {
         expect(build("/bgm theme fade=1 loop")).toMatchObject({
             payload: { action: "audio", operation: "setBgm", assetId: "a1", fadeMs: 1000, loop: true },
@@ -514,8 +514,8 @@ describe("variables", () => {
         // The bug class this guards: a default read under the wrong kind silently declaring the
         // wrong type. `/local gold 100` must be a NUMBER with default 100, never a boolean.
         expect(declare("/local hp 100")).toEqual({ name: "hp", valueType: "number", defaultValue: 100, description: undefined });
-        expect(declare("/var seen")).toEqual({ name: "seen", valueType: "boolean", defaultValue: undefined, description: undefined });
-        expect(declare("/persis nickname type=string desc=\"player name\"")).toEqual({
+        expect(declare("/local seen")).toEqual({ name: "seen", valueType: "boolean", defaultValue: undefined, description: undefined });
+        expect(declare("/local nickname type=string desc=\"player name\"")).toEqual({
             name: "nickname", valueType: "string", defaultValue: undefined, description: "player name",
         });
         // An explicit type= wins over what the default suggests.
@@ -585,10 +585,17 @@ describe("variables", () => {
         expect(declare("/local hp \"gold + 1\"")).toMatchObject({ valueType: "string", defaultValue: "gold + 1" });
     });
 
-    it("the renamed declarations keep their old tokens working, and rename nothing in a document", () => {
-        // §3.6 renamed the tokens, not the payloads: a document stores blocks, never a command id, so
-        // an existing scene cannot notice. Proven rather than reasoned - build the same declaration
-        // through the new token and the old one and compare everything but the freshly minted ids.
+    it("a token is a spelling, never a thing a document records", () => {
+        // §3.6 renamed the declaration tokens and the retirement round deleted two of them outright,
+        // and neither could touch an existing scene: a document stores blocks, never a command id.
+        // Proven rather than reasoned - build the same declaration through both of `/local`'s
+        // spellings and compare everything but the freshly minted ids.
+        //
+        // The pair this used to run on was `/save` / `/var`, and the property it proved is exactly
+        // what made deleting them cheap. `/local` and `/scenevar` are the pair left standing; the two
+        // retired scopes can no longer be built from any line at all, which is the point of retiring
+        // them, so their side is asserted where they still appear - the row read-back
+        // (`storyCommandLine.test.ts`).
         const declaration = (source: string) => {
             const block = build(source);
             if (block.kind !== "declaration") {
@@ -596,12 +603,10 @@ describe("variables", () => {
             }
             return { ...block.payload, storageKey: "<id>" };
         };
-        expect(declaration("/save gold 10 type=number")).toEqual(declaration("/var gold 10 type=number"));
-        expect(declaration("/global nickname type=string")).toEqual(declaration("/persis nickname type=string"));
-        expect(declaration("/save gold 10 type=number").scope).toBe("saved");
-        expect(declaration("/global nickname type=string").scope).toBe("persistent");
-        // No payload carries the token that produced it - the structural reason the rename is free.
-        for (const source of ["/save gold", "/var gold", "/global nickname", "/persis nickname"]) {
+        expect(declaration("/local chapter 10 type=number")).toEqual(declaration("/scenevar chapter 10 type=number"));
+        expect(declaration("/local chapter 10 type=number").scope).toBe("scene");
+        // No payload carries the token that produced it - the structural reason a rename is free.
+        for (const source of ["/local chapter", "/scenevar chapter"]) {
             expect(Object.keys(build(source).payload).sort())
                 .toEqual(["defaultValue", "description", "name", "scope", "storageKey", "valueType"]);
         }
@@ -616,8 +621,8 @@ describe("variables", () => {
         if (block.kind !== "declaration") throw new Error("expected declaration");
         expect(block.payload).toMatchObject({ scope: "scene", name: "hp", valueType: "number", defaultValue: 100 });
         expect(block.payload.storageKey).toBe(block.id);
-        expect(build("/var seen").kind).toBe("declaration");
-        expect(build("/persis nickname type=string")).toMatchObject({ kind: "declaration", payload: { scope: "persistent", valueType: "string" } });
+        expect(build("/local seen").kind).toBe("declaration");
+        expect(build("/local nickname type=string")).toMatchObject({ kind: "declaration", payload: { scope: "scene", valueType: "string" } });
     });
 });
 
@@ -728,7 +733,7 @@ describe("logic and effects", () => {
         expect(build("/camera darken 0.6")).toMatchObject({ payload: { operation: "darken", darkness: 0.6 } });
         expect(build("/camera rotate -15")).toMatchObject({ payload: { operation: "rotate", rotation: -15 } });
         expect(build("/camera reset d=0.6")).toMatchObject({ payload: { operation: "reset", durationMs: 600 } });
-        // `/cam` is the same command, and an alias resolves to the canonical operation (bible B6).
+        // `/cam` is the same command, and an alias resolves to the canonical operation.
         expect(build("/cam dim 0.4")).toMatchObject({ payload: { action: "camera", operation: "darken", darkness: 0.4 } });
     });
 
@@ -755,7 +760,7 @@ describe("logic and effects", () => {
         expect(opensInspectorAfterCommit(spec, shot)).toBe(true);
         expect(opensInspectorAfterCommit(spec, build("/camera zoom 1.5"))).toBe(false);
         expect(opensInspectorAfterCommit(spec, build("/camera reset"))).toBe(false);
-        // `/camera shot` is the alias, and it resolves to the canonical operation (bible B6).
+        // `/camera shot` is the alias, and it resolves to the canonical operation.
         expect(build("/cam shot")).toMatchObject({ payload: { action: "camera", operation: "motion" } });
     });
 

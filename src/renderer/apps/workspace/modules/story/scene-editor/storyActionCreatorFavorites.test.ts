@@ -3,9 +3,10 @@ import { getCommandSpec } from "./commands/registry";
 import { LEGACY_FAVORITE_TO_SPEC_ID, migrateStarredActionIds } from "./storyActionCreatorFavorites";
 
 /**
- * The favourites migration (WI-4) - A1's only real data migration.
+ * The favourites migration - the one place the command-catalogue convergence needed a real
+ * data migration.
  *
- * `story.actionCreator.starredActionIds` stores palette ids, and A1 deleted the catalogue those came
+ * `story.actionCreator.starredActionIds` stores palette ids, and the convergence deleted the catalogue those came
  * from. The requirement is blunt: do not silently empty a user's favourites. So every id the old
  * sidebar could star has to land on a live spec, and the only ones allowed to disappear are the two
  * whose commands genuinely no longer exist.
@@ -25,8 +26,12 @@ const LEGACY_STARRABLE_IDS = [
     "soundRate", "muteSound", "note",
 ] as const;
 
-/** The only two allowed to vanish: a duplicate entry (D3) and a command that is no longer a command. */
-const DROPPED = ["conditionIf", "narration"];
+/**
+ * The four allowed to vanish: a duplicate entry (D3), a command that is no longer a command, and the
+ * two project-scope declarations retired with `/save` and `/global` - those variables live in the
+ * project variable registry now, and no story row declares them.
+ */
+const DROPPED = ["conditionIf", "narration", "declareSavedVariable", "declarePersistentVariable"];
 
 describe("starred favourites migration", () => {
     it("covers the whole legacy catalogue - no stored favourite falls through unmapped", () => {

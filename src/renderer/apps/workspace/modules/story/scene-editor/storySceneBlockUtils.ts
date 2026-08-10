@@ -1,5 +1,8 @@
 import { Aperture, Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
+import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
+import { storyVariableRefKey } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { richIfMeaningful } from "./richText";
 import { paragraphActionCharacterId } from "./storyCharacterActions";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -17,9 +20,10 @@ import {
 import { storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
 import { translate } from "@/lib/i18n";
 import { getCommandSpec } from "./commands/registry";
+import { DECLARATION_COMMANDS } from "./commands/specs/variables";
 
 /**
- * The row projection moved to `@/lib/story/storyRowProjection` (U4 WI-1) so the Dev Mode timeline can
+ * The row projection moved to `@/lib/story/storyRowProjection` so the Dev Mode timeline can
  * read the same sentence the editor shows. What stays here is the editor's own half: the `Character[]`
  * service adapters, the lucide icons, and the reading-layer passes (dialogue groups, visible rows).
  */
@@ -55,7 +59,7 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
                 current.delete(characterId);
             } else if (block.payload.operation === "enter") {
                 // An entrance shows the character and sets the whole appearance, placement included — its
-                // own block is the row the group-header dropdown rewrites (WI-3, M3.1).
+                // own block is the row the group-header dropdown rewrites.
                 current.set(characterId, { pose: block.payload.pose, tags: block.payload.tags, position, positionSourceId: block.id, shown: true });
             } else if (block.payload.operation === "expression") {
                 // An expression changes the appearance but not where the character stands, so the
@@ -87,22 +91,6 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
     };
     scene.rootBlockIds.forEach(visit);
     return result;
-}
-
-/**
- * Whether a row survives the "narrative only" filter (WI-6): narration, dialogue, choice prompts and
- * options, and studio notes. Everything else — action (including expression), control, jump,
- * declaration, invalid — is staging and hides. A whitelist, so a new staging kind hides by default.
- */
-export function isNarrativeRow(block: StoryBlock): boolean {
-    if (block.kind === "note") {
-        return true;
-    }
-    if (block.kind === "nodeAction") {
-        const action = block.payload.action;
-        return action === "narration" || action === "dialogue" || action === "choice" || action === "choiceOption";
-    }
-    return false;
 }
 
 /**
@@ -265,7 +253,7 @@ export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlock
             return;
         }
         // Disabled propagates down: a disabled container's whole subtree renders muted (and compiles
-        // out), so a row is effectively disabled when it or any ancestor is (WI-3 / schema v7).
+        // out), so a row is effectively disabled when it or any ancestor is (schema v7).
         const disabled = disabledAncestor || Boolean(block.disabled);
         lineNumber += 1;
         if (visible) {
@@ -327,43 +315,154 @@ export function getInsertionTargetAfter(scene: StoryScene, afterBlockId: StoryBl
     return { parentId: block.parentId, beforeBlockId: siblings[index + 1] ?? null };
 }
 
-export function getMoveTargetAfter(scene: StoryScene, movingBlockId: StoryBlockId, afterBlockId: StoryBlockId | null): StoryBlockTarget {
-    if (!afterBlockId) {
-        return { parentId: null };
-    }
-    const block = scene.blocks[afterBlockId];
-    if (!block) {
-        return { parentId: null };
-    }
-    const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
-    if (!siblings) {
-        return { parentId: block.parentId };
-    }
-    const siblingsAfterMove = siblings.filter(id => id !== movingBlockId);
-    const index = siblingsAfterMove.indexOf(afterBlockId);
-    if (index === -1) {
-        return { parentId: block.parentId };
-    }
-    return { parentId: block.parentId, beforeBlockId: siblingsAfterMove[index + 1] ?? null };
+/** Where a moving group lands, and the order its rows are inserted in. See {@link planBlockGroupMove}. */
+export interface StoryBlockGroupMove {
+    /** The roots to move, in document order. Every one is inserted at {@link target}, in this order. */
+    blockIds: StoryBlockId[];
+    target: StoryBlockTarget;
 }
 
-export function getMoveTargetBefore(scene: StoryScene, movingBlockId: StoryBlockId, beforeBlockId: StoryBlockId | null): StoryBlockTarget {
-    if (!beforeBlockId) {
-        return { parentId: null };
-    }
-    const block = scene.blocks[beforeBlockId];
-    if (!block) {
-        return { parentId: null };
-    }
-    const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
-    if (!siblings) {
-        return { parentId: block.parentId };
-    }
-    const siblingsAfterMove = siblings.filter(id => id !== movingBlockId);
-    return {
-        parentId: block.parentId,
-        beforeBlockId: siblingsAfterMove.includes(beforeBlockId) ? beforeBlockId : null,
+/** The ids in `ids`, in the order a reader meets them walking the scene. */
+function inDocumentOrder(scene: StoryScene, ids: Set<StoryBlockId>): StoryBlockId[] {
+    const ordered: StoryBlockId[] = [];
+    const visit = (blockId: StoryBlockId) => {
+        if (ids.has(blockId)) {
+            ordered.push(blockId);
+        }
+        for (const childId of scene.blocks[blockId]?.childrenIds ?? []) {
+            visit(childId);
+        }
     };
+    scene.rootBlockIds.forEach(visit);
+    return ordered;
+}
+
+/** The member of `ancestors` that contains `blockId` (or is it), else null. */
+function enclosingId(scene: StoryScene, blockId: StoryBlockId, ancestors: Set<StoryBlockId>): StoryBlockId | null {
+    let id: StoryBlockId | null = blockId;
+    while (id) {
+        if (ancestors.has(id)) {
+            return id;
+        }
+        id = scene.blocks[id]?.parentId ?? null;
+    }
+    return null;
+}
+
+/**
+ * Where a dropped selection lands: one target for the whole group, plus the order to apply it in.
+ *
+ * A single row had an easy time of it: take the row out of its siblings and read off the next one. A
+ * group cannot, because the row after the drop point may be *another member of the group*, and an
+ * anchor that is about to move is an anchor `insertId` will not find: it appends instead, and the
+ * group silently scatters to the end of the parent. So the anchor here is the first sibling at or
+ * after the drop point that is NOT moving, which is stable for the whole run of inserts.
+ *
+ * Which side of `targetBlockId` the group lands on follows the row the author actually grabbed, the
+ * way a sortable list behaves: dragging downwards drops *after* the row under the pointer, upwards
+ * drops *before* it.
+ *
+ * Returns null when the drop cannot mean anything: an empty selection, a target that is one of the
+ * moving rows, or a target inside a moving row's own subtree (a container cannot be moved into itself).
+ */
+export function planBlockGroupMove(
+    scene: StoryScene,
+    movingIds: StoryBlockId[],
+    grabbedBlockId: StoryBlockId,
+    targetBlockId: StoryBlockId,
+): StoryBlockGroupMove | null {
+    const roots = filterOutSelectedDescendants(scene, [...new Set(movingIds)]);
+    const target = scene.blocks[targetBlockId];
+    if (roots.length === 0 || !target) {
+        return null;
+    }
+    const rootSet = new Set(roots);
+    if (enclosingId(scene, targetBlockId, rootSet)) {
+        return null;
+    }
+    const siblings = target.parentId ? scene.blocks[target.parentId]?.childrenIds : scene.rootBlockIds;
+    const targetIndex = siblings?.indexOf(targetBlockId) ?? -1;
+    if (!siblings || targetIndex === -1) {
+        return null;
+    }
+    const blockIds = inDocumentOrder(scene, rootSet);
+    // The grabbed row tells us the direction, but a row grabbed *inside* a moving container is not
+    // itself a root — the container's own position is the one being dragged, so ask for that instead.
+    const grabbedRoot = enclosingId(scene, grabbedBlockId, rootSet) ?? blockIds[0];
+    const order = inDocumentOrder(scene, new Set([grabbedRoot, targetBlockId]));
+    const draggingDown = order.indexOf(grabbedRoot) < order.indexOf(targetBlockId);
+    const anchorIndex = draggingDown ? targetIndex + 1 : targetIndex;
+    const beforeBlockId = siblings.slice(anchorIndex).find(id => !rootSet.has(id)) ?? null;
+    return { blockIds, target: { parentId: target.parentId, beforeBlockId } };
+}
+
+/**
+ * One step of Alt+Up / Alt+Down over a selection: every selected row steps over the neighbour on that
+ * side, staying in its own parent — the keyboard nudge, as opposed to the drag, which drops the whole
+ * selection in one place.
+ *
+ * The unit that steps is a RUN of adjacent selected siblings, not a row: three rows selected in a row
+ * hop the one line above them together. Moving them individually would walk each over the line above
+ * it, which for the middle rows is another selected row — the selection would shuffle inside itself and
+ * come out reordered. Split selections keep their gaps, so Alt+Down then Alt+Up is exactly where you
+ * started; a scene surgery that cannot be taken back by the opposite key is not a nudge.
+ *
+ * Each run's anchor is a row that is NOT moving, and only runs move, so the groups can be applied in
+ * any order and every anchor is still there when its turn comes.
+ *
+ * Returns null when the selection cannot move as a whole: something is already against the end of its
+ * parent. All or nothing, again so the opposite key undoes it — letting the rows that can move move
+ * would silently close a gap the author would have to rebuild by hand.
+ */
+export function planSelectionNudge(
+    scene: StoryScene,
+    movingIds: StoryBlockId[],
+    direction: "up" | "down",
+): StoryBlockGroupMove[] | null {
+    const roots = filterOutSelectedDescendants(scene, [...new Set(movingIds)]);
+    if (roots.length === 0) {
+        return null;
+    }
+    const rootSet = new Set(roots);
+    const moves: StoryBlockGroupMove[] = [];
+    // Runs are per parent: a selection that spans a container's body and the rows after it is two runs,
+    // and each stays where it is in the tree.
+    const parents = new Set(roots.map(id => scene.blocks[id]?.parentId ?? null));
+    for (const parentId of parents) {
+        const siblings = parentId ? scene.blocks[parentId]?.childrenIds : scene.rootBlockIds;
+        if (!siblings) {
+            return null;
+        }
+        for (let index = 0; index < siblings.length;) {
+            if (!rootSet.has(siblings[index])) {
+                index += 1;
+                continue;
+            }
+            let end = index;
+            while (end + 1 < siblings.length && rootSet.has(siblings[end + 1])) {
+                end += 1;
+            }
+            const blockIds = siblings.slice(index, end + 1);
+            if (direction === "up") {
+                const previousId = siblings[index - 1];
+                if (!previousId) {
+                    return null;
+                }
+                moves.push({ blockIds, target: { parentId, beforeBlockId: previousId } });
+            } else {
+                const nextId = siblings[end + 1];
+                if (!nextId) {
+                    return null;
+                }
+                // Past the neighbour, and past any further selected rows — the next run's rows are
+                // moving too, and an anchor that moves is one `insertId` will not find.
+                const beforeBlockId = siblings.slice(end + 2).find(id => !rootSet.has(id)) ?? null;
+                moves.push({ blockIds, target: { parentId, beforeBlockId } });
+            }
+            index = end + 1;
+        }
+    }
+    return moves.length > 0 ? moves : null;
 }
 
 export function canAcceptChildren(block: StoryBlock | undefined): boolean {
@@ -415,7 +514,7 @@ export function isContainerBlock(block: StoryBlock | undefined): boolean {
  * The badge icons stay here, with the rest of the editor's React. Everything that decides WHICH badge
  * a row wears - its id, its label key and its colour group - is `storyBlockBadge` in the shared row
  * projection, so the editor's left-edge bar and the Dev Mode timeline's hue can never come from two
- * different chains of ifs (U4 WI-1).
+ * different chains of ifs.
  *
  * These are now the FALLBACK: a row that maps to a command wears that command's own glyph
  * ({@link rowCommandId}), so the plate matches the entry in the `/` menu that could have written the
@@ -515,13 +614,6 @@ function rowCommandId(block: StoryBlock): string | null {
     }
 }
 
-/** The three declaration commands, by the scope their row declares. */
-const DECLARATION_COMMANDS: Record<string, string> = {
-    scene: "declareLocal",
-    saved: "declareVar",
-    persistent: "declarePersis",
-};
-
 /**
  * The row's badge and its left-edge colour bar.
  *
@@ -561,15 +653,42 @@ export function characterRowLookup(characters: Character[]): StoryRowLookups["ch
         if (!character) {
             return null;
         }
-        const color = character.profile.getColor();
-        return color && isReadableAccentColor(color)
+        const color = readableAccentColor(character.profile.getColor());
+        return color
             ? { name: character.profile.getName(), color }
             : { name: character.profile.getName() };
     };
 }
 
-export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene, scenes?: Record<StorySceneId, StoryScene>): string {
-    return describeStoryBlock(block, { character: characterRowLookup(characters), scene, scenes });
+/**
+ * The project-variable name lookup the shared row projection takes, backed by the variable registry.
+ *
+ * The second coupling `characterRowLookup` breaks, for the same reason: the registry is a workspace
+ * service and the projection is pure. Keyed the way each scope's ref addresses its entry - `saved` by
+ * entry id, `persistent` by storage key - so one table answers for both scopes and no call site has
+ * to remember which is which.
+ */
+export function projectVariableNameLookup(
+    entries: readonly VariableRegistryEntry[],
+): NonNullable<StoryRowLookups["projectVariableName"]> {
+    const names = new Map(entries.map(entry => [
+        storyVariableRefKey({
+            scope: entry.scope,
+            variableId: entry.scope === "persistent" ? entry.storageKey : entry.id,
+        }),
+        entry.name,
+    ]));
+    return (scope, variableId) => names.get(storyVariableRefKey({ scope, variableId })) ?? null;
+}
+
+export function describeBlock(
+    block: StoryBlock,
+    characters: Character[],
+    scene?: StoryScene,
+    scenes?: Record<StorySceneId, StoryScene>,
+    projectVariableName?: StoryRowLookups["projectVariableName"],
+): string {
+    return describeStoryBlock(block, { character: characterRowLookup(characters), scene, scenes, projectVariableName });
 }
 
 /**
@@ -589,6 +708,7 @@ export function describeBlockSubject(
     scene?: StoryScene,
     scenes?: Record<StorySceneId, StoryScene>,
     resolveMotionName?: (animationId: string) => string | null,
+    projectVariableName?: StoryRowLookups["projectVariableName"],
 ): string {
     return describeStoryBlock(block, {
         character: characterRowLookup(characters),
@@ -596,6 +716,7 @@ export function describeBlockSubject(
         scene,
         scenes,
         motionName: resolveMotionName,
+        projectVariableName,
     });
 }
 
@@ -649,16 +770,38 @@ export function isReadableAccentColor(hex: string): boolean {
 }
 
 /**
+ * What a *stored* character accent paints as in Studio's own chrome, or `undefined` when nothing
+ * should be painted.
+ *
+ * Two steps, and the order is the whole point. A profile's `color` may be a `nlbrand:` link at the
+ * project palette rather than a hex literal, so it is resolved first; only then is the resolved
+ * literal put to {@link isReadableAccentColor}. Asking the band about the link itself would fail —
+ * `nlbrand:primary` is not a hex, and the band is right to say so — and the author would watch a
+ * character they had just given a brand colour go grey in every Studio surface at once.
+ *
+ * Every Studio chrome surface that tints something with a character's accent goes through here
+ * rather than repeating the pair, because "resolve, then band" being two calls is exactly how one
+ * surface ends up a step behind the others.
+ *
+ * A palette entry that is not itself a plain hex (a translucent one such as `button.shadow`) still
+ * comes back `undefined`: the band's question has not changed, and a half-transparent nametag was
+ * never a thing any of these surfaces could honour.
+ */
+export function readableAccentColor(stored: string | null | undefined): string | undefined {
+    const resolved = resolveBrandColorValue(stored);
+    return resolved && isReadableAccentColor(resolved) ? resolved : undefined;
+}
+
+/**
  * The editor accent colour a character carries, or `undefined` when none is set — or when the one set
  * would be unreadable on either theme's surface, in which case the nametag keeps the default ink
- * rather than disappearing into the background (see {@link isReadableAccentColor}).
+ * rather than disappearing into the background (see {@link readableAccentColor}).
  */
 export function getCharacterColor(characters: Character[], characterId: string | undefined): string | undefined {
     if (!characterId) {
         return undefined;
     }
-    const color = characters.find(character => character.profile.getId() === characterId)?.profile.getColor();
-    return color && isReadableAccentColor(color) ? color : undefined;
+    return readableAccentColor(characters.find(character => character.profile.getId() === characterId)?.profile.getColor());
 }
 
 export function selectRange(rows: VisibleStoryRow[], fromId: StoryBlockId, toId: StoryBlockId): Set<StoryBlockId> {

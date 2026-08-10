@@ -1,11 +1,13 @@
 import { LINT_CATEGORY_ORDER, type LintCategory, type LintRule, type LintRuleId } from "../types";
 import { ASSETS_LINT_RULES } from "./assets";
 import { PORTABILITY_LINT_RULES } from "./portability";
+import { NETWORK_LINT_RULES } from "./network";
 import { STORY_LINT_RULES } from "./story";
 import { VARIABLES_LINT_RULES } from "./variables";
 import { TEXT_LINT_RULES } from "./text";
 import { LOCALIZATION_LINT_RULES } from "./localization";
 import { VOICE_LINT_RULES } from "./voice";
+import { BRAND_LINT_RULES } from "./brand";
 
 /**
  * The rule registry - the one place that knows every rule exists.
@@ -19,11 +21,13 @@ import { VOICE_LINT_RULES } from "./voice";
 export const LINT_RULES: readonly LintRule[] = [
     ...ASSETS_LINT_RULES,
     ...PORTABILITY_LINT_RULES,
+    ...NETWORK_LINT_RULES,
     ...STORY_LINT_RULES,
     ...VARIABLES_LINT_RULES,
     ...TEXT_LINT_RULES,
     ...LOCALIZATION_LINT_RULES,
     ...VOICE_LINT_RULES,
+    ...BRAND_LINT_RULES,
 ];
 
 const RULES_BY_ID: ReadonlyMap<LintRuleId, LintRule> = new Map(LINT_RULES.map(rule => [rule.id, rule]));
@@ -43,8 +47,10 @@ export const LINT_RULES_BY_CATEGORY: Readonly<Record<LintCategory, readonly Lint
 
 export { ASSETS_LINT_RULES } from "./assets";
 export { PORTABILITY_LINT_RULES } from "./portability";
+export { NETWORK_LINT_RULES, collectBlueprintNetworkNodes } from "./network";
 export { STORY_LINT_RULES } from "./story";
 export { VARIABLES_LINT_RULES } from "./variables";
 export { TEXT_LINT_RULES } from "./text";
 export { LOCALIZATION_LINT_RULES } from "./localization";
 export { VOICE_LINT_RULES } from "./voice";
+export { BRAND_LINT_RULES, classifyBrandLink, collectBrokenBrandLinks } from "./brand";

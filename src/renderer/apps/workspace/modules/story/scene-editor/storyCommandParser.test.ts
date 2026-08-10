@@ -135,7 +135,7 @@ describe("parseCommandLine - a command named in the active locale", () => {
         i18nStore.setLocale("zh");
         expect(command("/背景").def?.commandId).toBe("background");
         expect(command("/跳转").def?.commandId).toBe("jump");
-        expect(command("/对话").def?.commandId).toBe("say");
+        expect(command("/对白").def?.commandId).toBe("say");
     });
 
     it("parses a Chinese token's arguments exactly as the English token would - English keys keep working", () => {
@@ -350,7 +350,7 @@ describe("canCommit", () => {
         expect(missingCoreParams(parseCommandLine("/bg forest"))).toEqual([]);
     });
 
-    it("reads a bare flag as a named boolean (bible B5)", () => {
+    it("reads a bare flag as a named boolean", () => {
         const line = command("/bgm battle loop");
         expect(getArgValue(line, "loop")).toBe("true");
         expect(line.issues).toEqual([]);
@@ -358,7 +358,7 @@ describe("canCommit", () => {
         expect(getArgValue(command("/bgm loop"), "audio")).toBe("loop");
     });
 
-    it("skips an omissible leading target when the value slot matches instead (bible B4)", () => {
+    it("skips an omissible leading target when the value slot matches instead", () => {
         // `/vol 0.5` is a volume with the default target; `/vol piano 0.5` names the sound.
         expect(getArgValue(command("/vol 0.5"), "volume")).toBe("0.5");
         expect(getArgValue(command("/vol 0.5"), "target")).toBeUndefined();

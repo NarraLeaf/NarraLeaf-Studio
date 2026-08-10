@@ -55,3 +55,34 @@ describe("buildStoryCommandContext - stage objects", () => {
         expect(context.stageObjects).toEqual({ image: [], text: [], layer: [], video: [], audio: [], vfx: [] });
     });
 });
+
+describe("buildStoryCommandContext - variables", () => {
+    /**
+     * Both project scopes are two-surface. The persistent arm has always merged the registry with the
+     * story rows; the saved arm read only the document, so a `/set` naming a registry-declared saved
+     * variable reported "unknown variable" for a variable the compiler resolves perfectly well - and
+     * after the declaration migration that is every saved variable in the project.
+     *
+     * The two ARE addressed differently on purpose: saved by entry id, persistent by storage key.
+     */
+    it("offers registry-declared saved variables, addressed by entry id", () => {
+        const context = buildStoryCommandContext({
+            assets: undefined,
+            characters: [],
+            document: null,
+            sceneId: null,
+            scene: null,
+            savedVariables: [
+                { id: "sv-1", name: "Affection", scope: "saved", valueType: "number", storageKey: "sk-1", defaultValue: 0 },
+            ],
+            persistentVariables: [
+                { id: "pv-1", name: "Playthroughs", scope: "persistent", valueType: "number", storageKey: "pk-1" },
+            ],
+        });
+
+        expect(context.variables).toEqual([
+            { name: "Affection", ref: { scope: "saved", variableId: "sv-1" }, valueType: "number", defaultValue: 0 },
+            { name: "Playthroughs", ref: { scope: "persistent", variableId: "pk-1" }, valueType: "number", defaultValue: undefined },
+        ]);
+    });
+});

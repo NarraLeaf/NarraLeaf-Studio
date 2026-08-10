@@ -19,6 +19,7 @@ import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/B
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
+import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
 import {
@@ -46,6 +47,8 @@ type EditorNodeWrapperProps = {
     useAppearanceInspectorPreview?: boolean;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
+    /** Resolved params of the component instance this element belongs to; null outside one. */
+    componentParams?: Record<string, string> | null;
     children?: React.ReactNode;
 };
 
@@ -121,9 +124,11 @@ export function EditorNodeWrapper({
     useAppearanceInspectorPreview = false,
     listItemScope,
     instanceKey,
+    componentParams,
     children,
 }: EditorNodeWrapperProps) {
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
+    const surfacePassive = useSurfacePassive();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const interactionDisabled = Boolean(
@@ -196,15 +201,22 @@ export function EditorNodeWrapper({
             setResetMotionId(null);
         }
     }, [displayableMotion, resetMotionId]);
+    // The element tree resolves component params afresh on every render, so its object identity
+    // moves even when the values did not. Keying the memo on the signature keeps the dispatch
+    // options - and therefore the handlers built from them - stable across those renders; when two
+    // signatures match, the captured object holds the same values by construction.
+    const componentParamsSig = componentParams ? JSON.stringify(componentParams) : "";
     const eventOptions = useMemo(
         () =>
-            listItemScope || instanceKey
+            listItemScope || instanceKey || componentParamsSig
                 ? {
                       listItemScope: listItemScope ?? null,
                       instanceKey,
+                      componentParams: componentParams ?? undefined,
                   }
                 : undefined,
-        [instanceKey, listItemScope],
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- componentParamsSig stands in for componentParams
+        [componentParamsSig, instanceKey, listItemScope],
     );
 
     const isDirectElementEvent = useCallback(
@@ -476,7 +488,9 @@ export function EditorNodeWrapper({
             width: normalizedWidth,
             height: normalizedHeight,
             opacity: motionControlsOpacity ? undefined : effectiveOpacity,
-            pointerEvents: isRoot ? "none" : "auto",
+            // A passive surface stays click-through all the way down. Setting it on the shell alone
+            // does nothing, because this very line is what takes the clicks back.
+            pointerEvents: isRoot || surfacePassive ? "none" : "auto",
             boxSizing: "border-box",
             display: "flex",
             flexDirection: "column",
@@ -494,7 +508,7 @@ export function EditorNodeWrapper({
             style.cursor = wrapperCursor;
         }
         return style;
-    }, [effectiveOpacity, layout, isRoot, layoutMode, motionControlsOpacity, styleOverrides, wrapperCursor]);
+    }, [effectiveOpacity, layout, isRoot, layoutMode, motionControlsOpacity, styleOverrides, surfacePassive, wrapperCursor]);
 
     // Once an element carries a pose (authored rotation, persistent offsets/scale, or any motion)
     // its transform must be owned by motion-managed style values: a raw `style.transform` string

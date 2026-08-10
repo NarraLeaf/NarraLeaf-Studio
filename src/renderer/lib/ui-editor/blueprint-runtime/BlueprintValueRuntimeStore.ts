@@ -9,6 +9,7 @@ import type {
 } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { clampSliderValue, normalizeSliderProps } from "@shared/types/ui-editor/slider";
+import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { evaluateBlueprintValue } from "./BlueprintValueEvaluator";
@@ -83,6 +84,21 @@ function coerceValue(value: unknown, valueType: ActiveBindingInput["valueType"])
     if (valueType === "float") {
         const n = typeof value === "number" ? value : Number(value);
         return Number.isFinite(n) ? n : undefined;
+    }
+    if (valueType === "boolean") {
+        // `undefined` is this store's word for "nothing usable came back", so "the graph returned
+        // nothing" must not be spelled the same way as "the graph returned false": `undefined` and
+        // `null` pass straight through, exactly as an unusable number does on the float branch.
+        //
+        // Everything else is decided here, and deliberately narrowly: on is `true`, the string
+        // "true", or the number 1 - the three shapes a boolean literal, a stringified preference and
+        // a 0/1 flag actually arrive in. Anything else is off: 0, "", an object, and above all the
+        // string "false", which plain truthiness would have read as on - the one wrong answer an
+        // author would never think to check for.
+        if (value == null) {
+            return undefined;
+        }
+        return value === true || value === "true" || value === 1;
     }
     return value;
 }
@@ -175,15 +191,50 @@ const SUPPORTED_VALUE_TARGETS: Array<{
             return value === undefined ? props.value : clampSliderValue(value, props);
         },
     },
+    // No `normalize`: the slider needs one to clamp into its range, and the switch has no range.
+    // `normalizeSwitchProps` already reads anything that is not `true` as off, so the merged value
+    // needs no second gate on the way in.
+    { elementType: UI_SWITCH_ELEMENT_TYPE, propPath: "checked", valueType: "boolean" },
 ];
 
 export class BlueprintValueRuntimeStore {
     private readonly entries = new Map<string, BindingRuntimeEntry>();
     private disposed = false;
     private lastSyncContext: ValueRuntimeSyncContext | null = null;
+    private changeAnnounced = false;
 
     public constructor(private readonly onChange: () => void) {}
 
+    /**
+     * Announce "some value on this surface resolved" at most once per microtask checkpoint.
+     *
+     * Every entry evaluates behind its own `await`, so a page with sixteen value-bound widgets used
+     * to announce sixteen separate changes - and the subscriber's answer to a change is to rebuild
+     * the entire element tree. Nothing renders between two microtasks, so the sixteen rebuilds all
+     * produced frames no one could see; only the last one was ever painted.
+     *
+     * Deliberately a microtask and not a frame: the batch still lands before the browser can paint,
+     * so this collapses redundant work without deferring anything an author could observe.
+     */
+    private announceChange(): void {
+        if (this.changeAnnounced) {
+            return;
+        }
+        this.changeAnnounced = true;
+        queueMicrotask(() => {
+            this.changeAnnounced = false;
+            if (this.disposed) {
+                return;
+            }
+            this.onChange();
+        });
+    }
+
+    /**
+     * Terminal. A disposed store answers `sync` / `ensureElementValue` / `refreshAll` with an early
+     * return forever, so whoever owns the instance has to build a new one to start resolving again
+     * (see `SurfaceValueRuntimeBoundary`, which is why the store lives in state and not a memo).
+     */
     public dispose(): void {
         this.disposed = true;
         this.entries.clear();
@@ -394,7 +445,7 @@ export class BlueprintValueRuntimeStore {
             entry.hasResolved = true;
             entry.resolvedValue = coerceValue(result.value, entry.input.valueType);
             if (!this.disposed && this.entries.get(entry.input.key) === entry) {
-                this.onChange();
+                this.announceChange();
             }
         } catch (err) {
             console.warn("[BlueprintValueRuntime] evaluation skipped", err);

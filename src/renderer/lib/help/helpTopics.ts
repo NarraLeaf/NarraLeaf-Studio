@@ -47,6 +47,7 @@ export const HELP_TOPIC_IDS = [
     "sceneSnapshot",
     "storyMotion",
     "assets",
+    "mediaConversion",
     "characters",
     "appearances",
     "puppetRuntimes",
@@ -54,10 +55,12 @@ export const HELP_TOPIC_IDS = [
     "audioClips",
     "voice",
     "localization",
+    "brand",
     "uiSurfaces",
     "uiComponents",
     "blueprints",
     "uiBindings",
+    "networkNodes",
     "lint",
     "tests",
     "dashboard",
@@ -189,6 +192,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["characters", "audio", "lint"],
     },
     {
+        id: "mediaConversion",
+        section: "content",
+        related: ["assets", "webOptimization"],
+    },
+    {
         id: "characters",
         section: "content",
         related: ["appearances", "assets", "storyScene"],
@@ -231,6 +239,13 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     },
 
     // --- Game interface -------------------------------------------------------
+    // Brand leads the section: the palette is what every surface below it is painted from, and a
+    // reader who meets "point this at a project color" on a widget arrives here for the answer.
+    {
+        id: "brand",
+        section: "interface",
+        related: ["uiSurfaces", "uiComponents", "lint"],
+    },
     {
         id: "uiSurfaces",
         section: "interface",
@@ -252,6 +267,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "uiBindings",
         section: "interface",
         related: ["blueprints", "uiSurfaces", "storyVariables"],
+    },
+    {
+        id: "networkNodes",
+        section: "interface",
+        related: ["blueprints", "assetProtection", "lint"],
     },
 
     // --- Checks ---------------------------------------------------------------
@@ -334,7 +354,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "assetProtection",
         section: "ship",
-        related: ["build", "webOptimization", "plugins"],
+        related: ["build", "webOptimization", "plugins", "networkNodes"],
     },
     {
         id: "webOptimization",

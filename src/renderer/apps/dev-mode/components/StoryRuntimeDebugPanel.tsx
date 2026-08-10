@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryBlockId, StoryDocument, StoryLiteralValue, StoryScene, StorySceneId, StoryVariableValueType } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { useTranslation } from "@/lib/i18n";
 import { Select } from "@/lib/components/elements/Select";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { GameAppStoryRuntimeBridge } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
 import { SceneFlowCanvas } from "@/apps/workspace/modules/story-flow/SceneFlowCanvas";
-// The same readability band the story editor's nametag uses. Imported rather than restated so an
-// accent that the editor refuses to draw cannot quietly reappear here (both are Studio chrome, both
-// render on the light and the dark surface).
-import { isReadableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
 import {
     branchDeltaFor,
     collectBranchEffects,
@@ -30,6 +27,7 @@ import {
     projectExecutionContext,
     projectSceneTimeline,
     projectStoryTrailHighlight,
+    resolveSceneIdForBlock,
     seedStoryRunTrail,
     type DeclaredStoryVariable,
     type StackViewLike,
@@ -38,6 +36,7 @@ import {
     type StorySceneBlockIndex,
     type StoryTimelineRow,
 } from "./storyRuntimeDebugModel";
+import { buildStoryRowLookups } from "./runtimeIssueModel";
 
 type StoryRuntimeTabId = "variables" | "context" | "timeline" | "scene";
 
@@ -55,33 +54,34 @@ const SCENE_GRAPH_MIN_TITLE_PX = 11.5;
  * (a name, no service) and asset names as the bundle's `assetNames` table, so the panel can read a row
  * exactly as the editor writes it without ever reaching for a workspace service.
  *
- * The accent colour is banded here, at the lookup, rather than where it is painted: the projection's
- * `StoryRowCharacter.color` is documented as "when the surface has one and *it is readable*", so the
- * one place that knows this is Studio chrome is the one place that fills the slot.
+ * The building itself lives in `runtimeIssueModel` because the error banner needs the identical
+ * lookups with no panel in sight — an error that quotes line 37 has to quote it the way this panel
+ * and the editor do, and two copies of the rule would drift with only one of them being watched.
  */
 function useStoryRowLookups(bundle: DevModeBundle, document: StoryDocument, scene: StoryScene | undefined): StoryRowLookups {
-    const charactersById = useMemo(
-        () => new Map((bundle.storyLibrary?.characters ?? []).map(character => [character.id, character])),
-        [bundle.storyLibrary],
+    return useMemo(
+        () => buildStoryRowLookups(bundle, document, scene),
+        [bundle, document, scene],
     );
-    const assetNames = bundle.storyLibrary?.assetNames;
-    return useMemo<StoryRowLookups>(() => ({
-        character: characterId => {
-            const character = charactersById.get(characterId);
-            if (!character) {
-                return null;
-            }
-            const color = character.color;
-            return {
-                name: character.name,
-                ...(color && isReadableAccentColor(color) ? { color } : {}),
-            };
-        },
-        assetName: assetId => assetNames?.[assetId] ?? null,
-        scene,
-        scenes: document.scenes,
-        document,
-    }), [charactersById, assetNames, scene, document]);
+}
+
+/**
+ * The project variable registry, both scopes, as this window can actually reach it.
+ *
+ * Off the bundle and NOT off `LocalBlueprintService`: Dev Mode is a separate window with no workspace
+ * services at all, which is why the registry is baked into the bundle in the first place. It is also
+ * why there is no subscription to refresh — a bundle is a snapshot of the project the running game
+ * was compiled from, and a panel that reported a variable the run does not have would be describing a
+ * different game than the one on screen.
+ */
+function useBundleVariableRegistry(bundle: DevModeBundle): {
+    saved: VariableRegistryEntry[];
+    persistent: VariableRegistryEntry[];
+} {
+    return useMemo(() => ({
+        saved: Object.values(bundle.ui.savedVariables ?? {}),
+        persistent: Object.values(bundle.ui.persistentVariables ?? {}),
+    }), [bundle]);
 }
 
 type StoryRuntimeDebugPanelProps = {
@@ -95,13 +95,13 @@ type StoryRuntimeDebugPanelProps = {
 };
 
 const SCOPE_LABEL: Record<StoryRuntimeVariableScope, string> = {
-    // Editor command-token vocabulary (/local, /var, /persis) — see the M5 card WI-1.
+    // Editor command-token vocabulary (/local, /var, /persis).
     scene: "Local",
     saved: "Var",
     persistent: "Persis",
 };
 
-/** Coalesce the play-head stream to at most one re-read per frame (WI-2: throttle high-frequency). */
+/** Coalesce the play-head stream to at most one re-read per frame. */
 function useStoryRuntimeTick(storyRuntime: GameAppStoryRuntimeBridge): number {
     const [tick, setTick] = useState(0);
     useEffect(() => {
@@ -126,8 +126,8 @@ function useStoryRuntimeTick(storyRuntime: GameAppStoryRuntimeBridge): number {
 }
 
 /**
- * The scene currently executing: the current block resolves to whichever scene owns it (every scene
- * is compiled, so this follows jumps). Falls back to the launched scene before the first action.
+ * The scene currently executing, starting from an engine action id rather than a Studio block —
+ * which is what the two tabs that track the play head with {@link useCurrentActionId} hold.
  */
 function resolveRunningSceneId(
     storyRuntime: GameAppStoryRuntimeBridge,
@@ -135,15 +135,11 @@ function resolveRunningSceneId(
     currentActionId: string | null,
     fallbackSceneId: StorySceneId,
 ): StorySceneId {
-    const blockId = blockIdForActionId(storyRuntime.getActionIdBindings(), currentActionId);
-    if (blockId) {
-        for (const [id, scene] of Object.entries(document.scenes)) {
-            if (blockId in scene.blocks) {
-                return id;
-            }
-        }
-    }
-    return fallbackSceneId;
+    return resolveSceneIdForBlock(
+        document,
+        blockIdForActionId(storyRuntime.getActionIdBindings(), currentActionId),
+        fallbackSceneId,
+    );
 }
 
 function useCurrentActionId(storyRuntime: GameAppStoryRuntimeBridge): string | null {
@@ -446,6 +442,7 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
                         scopeBridge={scopeBridge}
                         document={document}
                         entrySceneId={context.sceneId}
+                        bundle={bundle}
                     />
                 ) : tab === "context" ? (
                     <ExecutionContextTab
@@ -463,6 +460,7 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
                         document={document}
                         entrySceneId={context.sceneId}
                         trail={trail}
+                        bundle={bundle}
                     />
                 )}
             </div>
@@ -477,8 +475,10 @@ function VariablesTab(props: {
     scopeBridge: ScopeStoreBridge;
     document: StoryDocument;
     entrySceneId: StorySceneId;
+    bundle: DevModeBundle;
 }): ReactNode {
-    const { storyRuntime, scopeBridge, document, entrySceneId } = props;
+    const { storyRuntime, scopeBridge, document, entrySceneId, bundle } = props;
+    const registry = useBundleVariableRegistry(bundle);
     const { t } = useTranslation();
     const currentActionId = useCurrentActionId(storyRuntime);
     const [persistTick, setPersistTick] = useState(0);
@@ -495,7 +495,10 @@ function VariablesTab(props: {
         [storyRuntime, document, currentActionId, entrySceneId],
     );
 
-    const declared = useMemo(() => listDeclaredStoryVariables(document, sceneId), [document, sceneId]);
+    const declared = useMemo(
+        () => listDeclaredStoryVariables(document, sceneId, registry.saved, registry.persistent),
+        [document, sceneId, registry],
+    );
 
     const rows = useMemo(() => {
         void currentActionId;
@@ -561,7 +564,7 @@ function VariablesTab(props: {
                 }
                 return (
                     <div key={scope}>
-                        <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{SCOPE_LABEL[scope]}</p>
+                        <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{SCOPE_LABEL[scope]}</h3>
                         <ul className="space-y-1">
                             {scopeRows.map(row => (
                                 <li key={`${scope}:${row.variable.id}`} className="flex items-center gap-2">
@@ -728,16 +731,10 @@ function ExecutionContextTab(props: {
     const tick = useStoryRuntimeTick(storyRuntime);
     const currentBlockId = useCurrentBlockId(storyRuntime);
 
-    const sceneId = useMemo<StorySceneId>(() => {
-        if (currentBlockId) {
-            for (const [id, scene] of Object.entries(document.scenes)) {
-                if (currentBlockId in scene.blocks) {
-                    return id;
-                }
-            }
-        }
-        return entrySceneId;
-    }, [currentBlockId, document, entrySceneId]);
+    const sceneId = useMemo<StorySceneId>(
+        () => resolveSceneIdForBlock(document, currentBlockId, entrySceneId),
+        [currentBlockId, document, entrySceneId],
+    );
 
     const scene = document.scenes[sceneId];
     const lookups = useStoryRowLookups(bundle, document, scene);
@@ -763,13 +760,13 @@ function ExecutionContextTab(props: {
     return (
         <div className="min-h-0 flex-1 space-y-3 overflow-auto p-2">
             <div>
-                <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{t("devMode.runtime.contextScene")}</p>
+                <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("devMode.runtime.contextScene")}</h3>
                 <p className="truncate text-fg" title={view.sceneName}>{view.sceneName}</p>
             </div>
 
             {view.chain.length > 0 || view.orphanRound ? (
                 <div>
-                    <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{t("devMode.runtime.contextInside")}</p>
+                    <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("devMode.runtime.contextInside")}</h3>
                     <ul className="space-y-0.5">
                         {view.chain.map((rung, index) => (
                             <li key={rung.blockId} className="flex items-baseline gap-1.5" style={{ paddingLeft: index * 10 }}>
@@ -788,7 +785,7 @@ function ExecutionContextTab(props: {
 
             {view.branches.length > 0 ? (
                 <div>
-                    <p className="mb-1 text-2xs tracking-wide text-fg-subtle">{t("devMode.runtime.contextRunning")}</p>
+                    <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("devMode.runtime.contextRunning")}</h3>
                     <ul className="space-y-0.5">
                         {view.branches.map(branch => (
                             <li key={branch.index} className="flex items-baseline gap-1.5">
@@ -847,19 +844,11 @@ function TimelineTab(props: {
 
     const currentBlockId = useCurrentBlockId(storyRuntime);
 
-    // The timeline follows the running scene so the play head stays on screen across jumps; every
-    // scene is compiled, so the current block resolves to whichever scene is live. Falls back to the
-    // launched scene before the first action.
-    const runningSceneId = useMemo<StorySceneId>(() => {
-        if (currentBlockId) {
-            for (const [id, scene] of Object.entries(document.scenes)) {
-                if (currentBlockId in scene.blocks) {
-                    return id;
-                }
-            }
-        }
-        return entrySceneId;
-    }, [currentBlockId, document, entrySceneId]);
+    // The timeline follows the running scene so the play head stays on screen across jumps.
+    const runningSceneId = useMemo<StorySceneId>(
+        () => resolveSceneIdForBlock(document, currentBlockId, entrySceneId),
+        [currentBlockId, document, entrySceneId],
+    );
 
     const runningScene = document.scenes[runningSceneId];
     const lookups = useStoryRowLookups(bundle, document, runningScene);
@@ -986,11 +975,12 @@ function readLiveNumericValue(
     document: StoryDocument,
     sceneId: StorySceneId,
     variable: SceneFlowNumericVariable,
+    registry: { saved: readonly VariableRegistryEntry[]; persistent: readonly VariableRegistryEntry[] },
 ): number | null {
     // Matched on scope + id rather than re-deriving the storage key: `listDeclaredStoryVariables` is
     // what the Variables tab reads, and two derivations of one key is how a panel starts showing a
     // value that belongs to nothing.
-    const declared = listDeclaredStoryVariables(document, sceneId).find(
+    const declared = listDeclaredStoryVariables(document, sceneId, registry.saved, registry.persistent).find(
         candidate => candidate.scope === variable.scope && candidate.id === variable.variableId,
     );
     if (!declared) {
@@ -1017,8 +1007,13 @@ function SceneTab(props: {
     document: StoryDocument;
     entrySceneId: StorySceneId;
     trail: StoryRunTrail;
+    bundle: DevModeBundle;
 }): ReactNode {
-    const { storyRuntime, scopeBridge, document, entrySceneId, trail } = props;
+    const { storyRuntime, scopeBridge, document, entrySceneId, trail, bundle } = props;
+    const registry = useBundleVariableRegistry(bundle);
+    // Flat, both scopes: every API below keys an entry by the scope it declares, and a counter an
+    // author wants the map focused on is as likely to be a game-level flag as a per-playthrough one.
+    const registryVariables = useMemo(() => [...registry.saved, ...registry.persistent], [registry]);
     const { t } = useTranslation();
     const currentActionId = useCurrentActionId(storyRuntime);
 
@@ -1038,7 +1033,7 @@ function SceneTab(props: {
     const [focusKey, setFocusKey] = useState("");
     const [persistTick, setPersistTick] = useState(0);
 
-    // Reuse the workspace scene-flow projection (no second node graph — see the M5 card WI-5 / §8).
+    // Reuse the workspace scene-flow projection (no second node graph).
     // The SAME set goes to the builder and to the canvas: the builder packs the column against the
     // taller boxes, and a canvas drawing rows the layout did not budget for overlaps its neighbours.
     const graph = useMemo(
@@ -1090,7 +1085,10 @@ function SceneTab(props: {
         return scopeBridge.subscribePersistence(() => setPersistTick(value => value + 1));
     }, [scopeBridge]);
 
-    const numericVariables = useMemo(() => listNumericStoryVariables(document), [document]);
+    const numericVariables = useMemo(
+        () => listNumericStoryVariables(document, registryVariables),
+        [document, registryVariables],
+    );
     const focused = useMemo(
         () => numericVariables.find(variable => variable.key === focusKey) ?? null,
         [numericVariables, focusKey],
@@ -1131,19 +1129,19 @@ function SceneTab(props: {
             return undefined;
         }
         const chips: Record<StorySceneId, string> = {};
-        for (const [sceneId, range] of computeVariableRanges(graph, document, focused.key)) {
+        for (const [sceneId, range] of computeVariableRanges(graph, document, focused.key, registryVariables)) {
             chips[sceneId] = formatStoryVariableRangeChip(range);
         }
         return chips;
-    }, [focused, graph, document]);
+    }, [focused, graph, document, registryVariables]);
 
     const liveValue = useMemo(() => {
         void currentActionId;
         void persistTick;
         return focused
-            ? readLiveNumericValue(storyRuntime, scopeBridge, document, currentSceneId, focused)
+            ? readLiveNumericValue(storyRuntime, scopeBridge, document, currentSceneId, focused, registry)
             : null;
-    }, [focused, storyRuntime, scopeBridge, document, currentSceneId, currentActionId, persistTick]);
+    }, [focused, storyRuntime, scopeBridge, document, currentSceneId, currentActionId, persistTick, registry]);
 
     /**
      * The path this run has walked, dimming what it did not.

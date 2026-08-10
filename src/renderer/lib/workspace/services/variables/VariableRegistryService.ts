@@ -6,6 +6,7 @@ import type { StoryLiteralValue, StoryVariableValueType } from "@shared/types/st
 import {
     type VariableRegistry,
     type VariableRegistryEntry,
+    type VariableRegistryScope,
 } from "@shared/types/variables/registry";
 import {
     createEmptyVariableRegistry,
@@ -21,8 +22,10 @@ import { Services, IVariableRegistryService, WorkspaceContext } from "../service
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
 import { UuidService } from "../core/UuidService";
+import { StoryService } from "../story/StoryService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import { EventEmitter } from "../ui/EventEmitter";
+import { migrateProjectScopedDeclarations } from "./storyDeclarationMigration";
 
 type VariableRegistryServiceEvents = {
     registryChanged: VariableRegistry;
@@ -30,9 +33,14 @@ type VariableRegistryServiceEvents = {
 };
 
 /**
- * Project-level persistent variable registry (M-VAR). Owns `editor/variables.json`: the blueprint-
- * declared persistent variables the bible does NOT author as story rows. Mirrors {@link UIGraphService}
- * (single project JSON, migrate-on-load, revision + debounced autosave, change events).
+ * Project-level variable registry (M-VAR). Owns `editor/variables.json`: the project-scoped variable
+ * definitions - `saved` and `persistent` - authored from the variables panel. Mirrors
+ * {@link UIGraphService} (single project JSON, migrate-on-load, revision + debounced autosave,
+ * change events).
+ *
+ * The service is scope-agnostic wherever it can be: an entry's scope is set once, at creation, and
+ * everything after that (rename, retype, default, description, delete) treats the two alike. Only
+ * {@link createEntry} and the scoped listings need to know.
  *
  * Undo for these mutations rides the blueprint history channel: {@link LocalBlueprintService} captures
  * a registry snapshot alongside the blueprint document, so a persistent-variable edit is a single
@@ -69,6 +77,35 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         await registerAutoSaver(ctx, depend, "variables", "workspace.shell.save.stores.variables", this.autoSaver);
 
         await this.load();
+    }
+
+    /**
+     * Convert the `/save` and `/global` declaration rows of a pre-retirement project into registry
+     * entries. See {@link migrateProjectScopedDeclarations} for what the pass does and why it has no
+     * "already ran" flag.
+     *
+     * **Why here and not in a service of its own.** The pass has exactly one owner: it writes this
+     * registry, its whole correctness argument is about this registry's write path (a refused save
+     * must leave the rows standing), and it holds no state between runs. A dedicated service would
+     * add a lifecycle for something that runs once and would then have to be ordered against both
+     * this service and `StoryService` - the ordering problem `activate` exists to remove.
+     *
+     * **Why `activate` and not `init`.** Every service's `init` has completed by the time any
+     * `activate` runs (`WorkspaceContext`), and the UI has not rendered yet. So `StoryService` is
+     * guaranteed up without this service declaring a dependency on it, and no panel can read a
+     * half-converted project.
+     *
+     * Failures are warned and swallowed: `activate` is awaited before the workspace renders, so a
+     * throw here would turn "a variable did not move" into "the project will not open". Nothing was
+     * recorded as done, so the next open tries again.
+     */
+    public async activate(ctx: WorkspaceContext): Promise<void> {
+        try {
+            const storyService = ctx.services.get<StoryService>(Services.Story);
+            await migrateProjectScopedDeclarations(storyService, this);
+        } catch (error) {
+            console.warn("[VariableRegistryService] declaration migration failed", error);
+        }
     }
 
     public async load(): Promise<VariableRegistry> {
@@ -132,8 +169,13 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         return this.registry;
     }
 
+    /** Every entry, both scopes, name-sorted. Scope-aware callers want {@link listEntriesInScope}. */
     public listEntries(): VariableRegistryEntry[] {
         return listRegistryEntries(this.getRegistry());
+    }
+
+    public listEntriesInScope(scope: VariableRegistryScope): VariableRegistryEntry[] {
+        return listRegistryEntries(this.getRegistry(), scope);
     }
 
     public getEntry(id: string): VariableRegistryEntry | undefined {
@@ -171,18 +213,27 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         this.events.emit("registryChanged", registry);
     }
 
-    public createEntry(input?: {
-        name?: string;
-        valueType?: string;
-        defaultValue?: StoryLiteralValue;
-        description?: string;
-    }): VariableRegistryEntry {
+    /**
+     * `scope` is required and has no default. The two scopes are backed by different stores, so a
+     * default would silently decide where an author's variable lives - and the wrong answer is only
+     * discovered when a save file does or does not carry it. Every caller states which it wants.
+     */
+    public createEntry(
+        scope: VariableRegistryScope,
+        input?: {
+            name?: string;
+            valueType?: string;
+            defaultValue?: StoryLiteralValue;
+            description?: string;
+        },
+    ): VariableRegistryEntry {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const id = uuidService.generate();
         const entry: VariableRegistryEntry = {
             id,
             storageKey: id,
-            name: input?.name?.trim() || `persist_${id.slice(0, 8)}`,
+            name: input?.name?.trim() || `${scope === "saved" ? "saved" : "persist"}_${id.slice(0, 8)}`,
+            scope,
             valueType: normalizePersistentValueType(input?.valueType),
             // Conditional, not `defaultValue: input?.defaultValue`. A variable created without a
             // default is the ordinary case, and the assigning form puts an explicit `undefined` in
@@ -279,7 +330,7 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
 
     /**
      * First-time registry for a project that predates M-VAR: seed from the blueprint document's
-     * persistent variables (the field being relocated). Once WI-2 strips the field, this seed reads
+     * persistent variables (the field being relocated). Once the field is stripped, this seed reads
      * the stripped-and-stashed legacy entries the UIGraphService migration hands over.
      */
     private createSeededRegistry(): VariableRegistry {

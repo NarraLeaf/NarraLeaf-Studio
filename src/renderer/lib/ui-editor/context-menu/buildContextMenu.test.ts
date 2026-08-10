@@ -52,6 +52,7 @@ function noopActions() {
     return {
         hideMenu: vi.fn(),
         arrange: vi.fn(),
+        align: vi.fn(),
         insertType: vi.fn(),
         paste: vi.fn(),
         copy: vi.fn(),
@@ -62,6 +63,7 @@ function noopActions() {
         renamePrimary: vi.fn(),
         setSelectedVisible: vi.fn(),
         addSelectionToLeaderGroup: vi.fn(),
+        ungroupSelection: vi.fn(),
         addSelectionToComponentLibrary: vi.fn(),
     };
 }
@@ -83,6 +85,7 @@ describe("UI editor context menus", () => {
             documentService: {} as any,
             actions: noopActions(),
             canAddToGroup: false,
+            canUngroup: false,
             allowAddToComponentLibrary: true,
         });
 
@@ -98,6 +101,7 @@ describe("UI editor context menus", () => {
             "show-selected",
             "hide-selected",
             "add-to-group",
+            "ungroup",
         ]) {
             expect(findItem(items, id).disabled).toBe(true);
         }
@@ -108,7 +112,6 @@ describe("UI editor context menus", () => {
         const doc = createDocument();
         const actions = {
             ...noopActions(),
-            copyElementId: vi.fn(),
             pasteIntoParent: vi.fn(),
             expandAllBranches: vi.fn(),
             collapseAllBranches: vi.fn(),
@@ -129,6 +132,7 @@ describe("UI editor context menus", () => {
             documentService: { updateElementLayout: vi.fn() } as any,
             actions,
             canAddToGroup: false,
+            canUngroup: false,
             allowAddToComponentLibrary: true,
             insertParentIdForRow: "root",
         });
@@ -145,17 +149,22 @@ describe("UI editor context menus", () => {
             "delete",
             "add-to-component-library",
             "add-to-group",
+            "ungroup",
         ]) {
             expect(findItem(items, id).disabled).toBe(true);
         }
         expect(findItem(items, "arrange").submenu?.every(item => item.disabled)).toBe(true);
     });
 
-    it("copies the right-clicked outline row element id", () => {
+    /**
+     * Identifiers are Developer options' business now (`lib/developer`), appended by the menu's host
+     * after this builder has run. The outline used to carry a Copy Element ID row of its own, which
+     * would be a second, always-on copy of the same action sitting above the section.
+     */
+    it("leaves identifier rows to the developer section", () => {
         const doc = createDocument();
         const actions = {
             ...noopActions(),
-            copyElementId: vi.fn(),
             pasteIntoParent: vi.fn(),
             expandAllBranches: vi.fn(),
             collapseAllBranches: vi.fn(),
@@ -176,15 +185,12 @@ describe("UI editor context menus", () => {
             documentService: { updateElementLayout: vi.fn() } as any,
             actions,
             canAddToGroup: false,
+            canUngroup: false,
             allowAddToComponentLibrary: true,
             insertParentIdForRow: "child",
         });
 
-        const item = findItem(items, "copy-element-id");
-        expect(enabled(item)).toBe(true);
-        item.onClick?.();
-
-        expect(actions.hideMenu).toHaveBeenCalledOnce();
-        expect(actions.copyElementId).toHaveBeenCalledWith("child");
+        expect(items.some(item => !("separator" in item) && item.id.includes("-id"))).toBe(false);
+        expect(enabled(findItem(items, "copy"))).toBe(true);
     });
 });

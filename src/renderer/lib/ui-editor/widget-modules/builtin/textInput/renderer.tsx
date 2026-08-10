@@ -26,6 +26,7 @@ import {
     resolveButtonVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
+import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
@@ -264,6 +265,11 @@ export function TextInputRenderer(props: WidgetRendererProps) {
             : undefined;
     const paddingMotionActive = innerTransition != null;
 
+    // Resolved rather than handed to CSS as stored: the field's colour can be a brand link, and an
+    // `nlbrand:` token in a `color` declaration is dropped by the browser, leaving the input to
+    // inherit whatever is behind it.
+    const inputColor = colorValueToCss(parseColorValue(p.color, { hex: "#FFFFFF", alpha: 1 }));
+
     const inputStyle: CSSProperties = {
         flex: 1,
         width: "100%",
@@ -276,7 +282,7 @@ export function TextInputRenderer(props: WidgetRendererProps) {
         boxSizing: "border-box",
         fontSize: p.fontSize,
         fontWeight: p.fontWeight,
-        color: p.color,
+        color: inputColor,
         textAlign: p.textAlign,
         lineHeight: p.lineHeight,
         cursor: "inherit",

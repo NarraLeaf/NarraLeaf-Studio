@@ -62,6 +62,14 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END = "blueprint.event.h
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED = "blueprint.event.head.textInputValueChanged" as const;
 /** Fires when the player commits the field (Enter), not on every keystroke. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT = "blueprint.event.head.textInputSubmit" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED = "blueprint.event.head.switchChanged" as const;
+/**
+ * Sugar over `switchChanged`: all three run for the same flip, in the order changed -> turnedOn |
+ * turnedOff. They exist because a settings-page graph almost always cares about one direction only,
+ * which would otherwise cost every such graph a Branch.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON = "blueprint.event.head.switchTurnedOn" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF = "blueprint.event.head.switchTurnedOff" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
 /** Entry for global NarraLeaf game runtime readiness. */
@@ -128,6 +136,9 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_ON,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SWITCH_TURNED_OFF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
@@ -541,6 +552,17 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE = "blueprint.elem
 export const BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE = "blueprint.element.stopEventBubble" as const;
 export const BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL = "blueprint.image.assetLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE = "blueprint.data.returnValue" as const;
+/**
+ * Park a value on the exec chain and read it from anywhere afterwards, as many times as you like.
+ *
+ * Every other data output feeds exactly one consumer, because a pure node re-evaluates at each read -
+ * two consumers of one Random Float would get two different numbers. A Memo has no second writer, so
+ * every read of it is the same value by construction, and that is what earns it fan-out. It is an
+ * engine facility rather than a recommended way to hold state: the value lives as long as the
+ * blueprint instance and reads before the write see `null`, both of which are the author's to reason
+ * about. Variables remain the way to carry state on purpose.
+ */
+export const BLUEPRINT_NODE_TYPE_DATA_MEMO = "blueprint.data.memo" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT = "blueprint.data.toFloat" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER = "blueprint.data.toInteger" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_BOOLEAN = "blueprint.data.toBoolean" as const;
@@ -770,6 +792,21 @@ export function readBlueprintFnSignatureSnapshot(
     };
 }
 export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
+/**
+ * Pop the page opened last and reveal whatever it covered - the other half of Go Page.
+ *
+ * Every page a game opens over a running story (save, load, config, backlog) needs a way out, and
+ * Go Page is not it: navigation is a stack, so "go to the page I came from" pushes a third layer
+ * over the two already there and the game is still buried. The host has had `navigation.closeLayer`
+ * since the stack existed; until this node there was no way for an author to reach it.
+ */
+export const BLUEPRINT_NODE_TYPE_PAGE_BACK = "blueprint.page.back" as const;
+/**
+ * Dismiss whatever the player opened over a running game, and do nothing when no game is running.
+ * `Go Page (None)` empties the stack unconditionally, which from the title screen would throw away
+ * the screen the player is standing on; this is the node an Escape handler can hold on every page.
+ */
+export const BLUEPRINT_NODE_TYPE_PAGE_CLEAR = "blueprint.page.clear" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS = "blueprint.page.getProps" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSurfaceExiting" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING = "blueprint.page.isSurfaceEntering" as const;
@@ -893,6 +930,32 @@ export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT = "blueprint.game.setSk
 export const BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME = "blueprint.game.getTrackVolume" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_TRACK_VOLUME = "blueprint.game.setTrackVolume" as const;
 
+/**
+ * Network nodes: an HTTP request and the two nodes that read what came back.
+ *
+ * Reading is deferred to its own node rather than published as `responseText`/`responseJson` pins on
+ * Fetch, because a response that nobody reads should cost nothing to decode, and because a JSON
+ * parse failure needs an execution branch - as an output pin it can only be reported as `null`,
+ * which is indistinguishable from a body that really was `null`.
+ *
+ * All three publish through `execute()`'s `outputValues`, so all three are listed on the read side
+ * in `resolveSelfOutput` in `graphParamResolvers.ts`.
+ */
+export const BLUEPRINT_NODE_TYPE_NETWORK_FETCH = "blueprint.network.fetch" as const;
+export const BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT = "blueprint.network.readResponseText" as const;
+export const BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON = "blueprint.network.readResponseJson" as const;
+
+/** The request methods the Fetch node offers, in display order. */
+export const BLUEPRINT_NETWORK_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"] as const;
+
+export type BlueprintNetworkMethod = typeof BLUEPRINT_NETWORK_METHODS[number];
+
+/** Inspector param holding the request method. */
+export const BLUEPRINT_NETWORK_PARAM_METHOD = "networkMethod";
+
+/** Methods that carry a request body; the `body` pin is ignored on the others. */
+export const BLUEPRINT_NETWORK_METHODS_WITH_BODY: readonly BlueprintNetworkMethod[] = ["POST", "PUT", "PATCH"];
+
 // Localization nodes. Every getter here is latent and publishes its result through
 // `execute()`'s `outputValues`, so each one also has to be listed on the read side,
 // in `resolveSelfOutput` in `graphParamResolvers.ts`.
@@ -910,6 +973,14 @@ export const BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE = "blueprint.voice.getLangua
 export const BLUEPRINT_NODE_TYPE_VOICE_SET_LANGUAGE = "blueprint.voice.setLanguage" as const;
 export const BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES = "blueprint.voice.getAvailableLanguages" as const;
 export const BLUEPRINT_NODE_TYPE_VOICE_PLAY = "blueprint.voice.play" as const;
+
+/**
+ * Reads one value the placement supplied to the component this blueprint belongs to.
+ *
+ * Instances of a component share its blueprint, so a literal baked into that blueprint is the same
+ * literal for every placement. This node is what makes two placements differ.
+ */
+export const BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM = "blueprint.component.getParam" as const;
 
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;
@@ -1013,6 +1084,17 @@ export const BLUEPRINT_NODE_TYPE_TEXT_INPUT_CLEAR = "blueprint.textInput.clear" 
 export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE = "blueprint.element.textInput.getValue" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_SET_VALUE = "blueprint.element.textInput.setValue" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_CLEAR = "blueprint.element.textInput.clear" as const;
+
+export const BLUEPRINT_NODE_TYPE_SWITCH_GET_CHECKED = "blueprint.switch.getChecked" as const;
+export const BLUEPRINT_NODE_TYPE_SWITCH_SET_CHECKED = "blueprint.switch.setChecked" as const;
+export const BLUEPRINT_NODE_TYPE_SWITCH_TOGGLE = "blueprint.switch.toggle" as const;
+export const BLUEPRINT_NODE_TYPE_SWITCH_TURN_ON = "blueprint.switch.turnOn" as const;
+export const BLUEPRINT_NODE_TYPE_SWITCH_TURN_OFF = "blueprint.switch.turnOff" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_GET_CHECKED = "blueprint.element.switch.getChecked" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_SET_CHECKED = "blueprint.element.switch.setChecked" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE = "blueprint.element.switch.toggle" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TURN_ON = "blueprint.element.switch.turnOn" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TURN_OFF = "blueprint.element.switch.turnOff" as const;
 
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS = "blueprint.list.setItems" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS = "blueprint.list.getItems" as const;

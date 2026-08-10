@@ -14,7 +14,7 @@ import type {
     StorySceneId,
 } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listSceneIdsInDocumentOrder } from "@shared/types/story";
-import { formatStoryConditionSummary } from "../story/projection/storySceneProjection";
+import { formatStoryConditionSummary, type ProjectVariableNames } from "../story/projection/storySceneProjection";
 
 /** Node box size. The layout and the node component must agree on these. */
 export const SCENE_FLOW_NODE_WIDTH = 216;
@@ -180,6 +180,15 @@ export type SceneFlowGraphOptions = {
      * whose boxes move when a new field lands is a map the author stops trusting.
      */
     expandedSceneIds?: ReadonlySet<StorySceneId>;
+    /**
+     * Display names for `saved` variables declared only in the project registry, so a condition arm
+     * reading one is labelled `好感 >= 5` rather than `variable >= 5`.
+     *
+     * Optional because the graph shape does not depend on it — every test and every caller that only
+     * wants topology keeps working — but a map is read, and after the declaration migration the
+     * registry is the ONLY place a saved variable is declared, so a caller with services must pass it.
+     */
+    variableNames?: ProjectVariableNames;
 };
 
 /**
@@ -195,7 +204,12 @@ export type SceneFlowGraphOptions = {
  * `if` drift the first time a condition kind is added, and then the line and the row it leaves from
  * word the same fork two ways.
  */
-function describeArm(block: StoryBlock, scene: StoryScene, document: StoryDocument): SceneFlowBranchLabel | null {
+function describeArm(
+    block: StoryBlock,
+    scene: StoryScene,
+    document: StoryDocument,
+    variableNames?: ProjectVariableNames,
+): SceneFlowBranchLabel | null {
     if (block.kind === "nodeAction" && block.payload.action === "choiceOption") {
         return { kind: "choice", label: block.payload.text.value.trim() };
     }
@@ -205,7 +219,7 @@ function describeArm(block: StoryBlock, scene: StoryScene, document: StoryDocume
         }
         return {
             kind: block.payload.branch === "elseIf" ? "conditionElseIf" : "condition",
-            label: formatStoryConditionSummary(block.payload.condition, scene, document),
+            label: formatStoryConditionSummary(block.payload.condition, scene, document, variableNames),
         };
     }
     return null;
@@ -224,7 +238,12 @@ type SceneFlowOwningArm = {
  * what a reader of the map needs to see. It is also what makes a nested fork's rows the owners of
  * their own jumps rather than the outer option's.
  */
-function resolveOwningArm(scene: StoryScene, block: StoryBlock, document: StoryDocument): SceneFlowOwningArm | null {
+function resolveOwningArm(
+    scene: StoryScene,
+    block: StoryBlock,
+    document: StoryDocument,
+    variableNames?: ProjectVariableNames,
+): SceneFlowOwningArm | null {
     const seen = new Set<StoryBlockId>();
     let parentId = block.parentId;
     // A corrupted document must not hang the editor, hence the visited set.
@@ -234,7 +253,7 @@ function resolveOwningArm(scene: StoryScene, block: StoryBlock, document: StoryD
         if (!parent) {
             return null;
         }
-        const branch = describeArm(parent, scene, document);
+        const branch = describeArm(parent, scene, document, variableNames);
         if (branch) {
             return { block: parent, branch };
         }
@@ -268,7 +287,11 @@ type SceneFlowArmDraft = {
  * scene, prefixed with the arm that owns them (`跟她走 › gold >= 5`). A second level of boxes is
  * where a map stops being readable, and the prefix keeps the provenance without it.
  */
-function collectSceneArms(scene: StoryScene, document: StoryDocument): SceneFlowArmDraft[] {
+function collectSceneArms(
+    scene: StoryScene,
+    document: StoryDocument,
+    variableNames?: ProjectVariableNames,
+): SceneFlowArmDraft[] {
     const drafts: SceneFlowArmDraft[] = [];
     // Scene-wide: a corrupted `childrenIds` cycle must not recurse forever, and a block two parents
     // both claim belongs to the one the author reads first.
@@ -321,7 +344,7 @@ function collectSceneArms(scene: StoryScene, document: StoryDocument): SceneFlow
             visited.add(block.id);
 
             if (block.kind === "control" && block.payload.control === "conditionBranch") {
-                const branch = describeArm(block, scene, document);
+                const branch = describeArm(block, scene, document, variableNames);
                 if (branch) {
                     // An `elseIf`/`else` with no `if` above it is corrupt rather than a continuation
                     // of whatever ran before it, so it opens a fork of its own instead of joining a
@@ -345,7 +368,7 @@ function collectSceneArms(scene: StoryScene, document: StoryDocument): SceneFlow
                     const fork = { id: block.id, kind: "choice" as const, order: nextForkOrder++ };
                     let order = 0;
                     for (const option of options) {
-                        const branch = visited.has(option.id) ? null : describeArm(option, scene, document);
+                        const branch = visited.has(option.id) ? null : describeArm(option, scene, document, variableNames);
                         if (!branch) {
                             continue;
                         }
@@ -517,7 +540,7 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
 
     for (const sceneId of sceneIds) {
         const scene = document.scenes[sceneId];
-        const arms = collectSceneArms(scene, document);
+        const arms = collectSceneArms(scene, document, options?.variableNames);
         const armByBlockId = new Map(arms.map(arm => [arm.node.blockId, arm]));
 
         // Depth-first, so the forks this collapses into one edge are listed in the order the author
@@ -528,7 +551,7 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
             }
             // Resolved before the dangling/self exits: those jumps still belong to an arm, and an
             // option whose only jump is broken must say so on its own row, not just on the scene.
-            const owner = resolveOwningArm(scene, block, document);
+            const owner = resolveOwningArm(scene, block, document, options?.variableNames);
             // An arm the fork walk never registered — an option with no `choice` container above it,
             // which the compiler diagnoses — still labels its edge, but owns no row to attribute to.
             const arm = owner ? armByBlockId.get(owner.block.id) : undefined;

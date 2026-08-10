@@ -1,0 +1,823 @@
+{
+  "schemaVersion": 15,
+  "id": "71bb159f-1322-4539-b09f-9593a426a67d",
+  "name": "Skeleton",
+  "entrySceneId": "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33",
+  "chapters": [
+    {
+      "id": "7be19329-7184-45db-a9eb-ae9e1853b649",
+      "name": "Chapter 1",
+      "sceneIds": [
+        "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33",
+        "5143dcd8-bebc-4468-b4e2-00f6d5781af6",
+        "c083e0f3-8665-451a-800a-6d2cd5650d33"
+      ],
+      "meta": {
+        "createdAt": "2026-08-07T04:03:28.336Z",
+        "updatedAt": "2026-08-07T04:03:28.336Z"
+      }
+    }
+  ],
+  "scenes": {
+    "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33": {
+      "id": "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33",
+      "name": "Corridor",
+      "runtimeName": "corridor",
+      "description": "",
+      "rootBlockIds": [
+        "4ed7e788-e36a-4615-9d03-75b6c4432d58",
+        "db4296b2-35a8-4bd9-a86e-256716e9a383",
+        "a63fe9cb-8f8b-4b52-8b4d-1a6d88964c37",
+        "b2d057b6-b78e-4d4f-a744-7efe81e7ec3e",
+        "f4d91404-7cdf-43a7-9207-5c0d5a18e1ec",
+        "c802254b-7228-4702-8035-c8521a8df4e1",
+        "51d4f8dc-dd7d-41b6-86e1-863ecf109ad8",
+        "502b0cb8-c336-4e4b-9b5b-a64e8fce60b3",
+        "0803318f-7c62-49ca-a603-bd1b5fbb96b7",
+        "2171b783-dd7e-4582-89e5-2885d7d9ea3a",
+        "4ae3fc91-8959-4cb0-ac6c-15a0c6c05fc9"
+      ],
+      "blocks": {
+        "db4296b2-35a8-4bd9-a86e-256716e9a383": {
+          "id": "db4296b2-35a8-4bd9-a86e-256716e9a383",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "setBackground",
+            "assetId": "93bad884-1f14-4ad2-85fb-c05d7b5ffef6",
+            "transition": {
+              "kind": "throughColor",
+              "durationMs": 800,
+              "props": {
+                "color": "#000000",
+                "hold": 25
+              }
+            }
+          }
+        },
+        "a63fe9cb-8f8b-4b52-8b4d-1a6d88964c37": {
+          "id": "a63fe9cb-8f8b-4b52-8b4d-1a6d88964c37",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "audio",
+            "operation": "setBgm",
+            "assetId": "49b1db61-3d5e-4453-aa78-531a78e38de5",
+            "audioTrackId": "bgm",
+            "fadeMs": 1200,
+            "loop": true,
+            "volume": 0.7
+          }
+        },
+        "b2d057b6-b78e-4d4f-a744-7efe81e7ec3e": {
+          "id": "b2d057b6-b78e-4d4f-a744-7efe81e7ec3e",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "narration",
+            "text": {
+              "textId": "244efc55-d457-4c7e-9c9b-591658c37d5d",
+              "role": "narration",
+              "value": "The last bell rang twenty minutes ago."
+            }
+          }
+        },
+        "f4d91404-7cdf-43a7-9207-5c0d5a18e1ec": {
+          "id": "f4d91404-7cdf-43a7-9207-5c0d5a18e1ec",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "narration",
+            "text": {
+              "textId": "fe23a3b0-4e38-40fb-a58b-ee1385975d85",
+              "role": "narration",
+              "value": "The corridor still smells of chalk and floor wax. Behind me a locker ticks as it cools."
+            }
+          }
+        },
+        "c802254b-7228-4702-8035-c8521a8df4e1": {
+          "id": "c802254b-7228-4702-8035-c8521a8df4e1",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "character",
+            "operation": "enter",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "transform": {
+              "mode": "preset",
+              "preset": "center",
+              "durationMs": 400,
+              "props": {
+                "zoom": 0.52,
+                "yoffset": -50
+              }
+            },
+            "transition": {
+              "kind": "fadeIn",
+              "durationMs": 400
+            }
+          }
+        },
+        "51d4f8dc-dd7d-41b6-86e1-863ecf109ad8": {
+          "id": "51d4f8dc-dd7d-41b6-86e1-863ecf109ad8",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "504bea55-21b8-4b55-b6b7-ec75ff4f1fe6",
+              "role": "dialogue",
+              "value": "You're late."
+            }
+          }
+        },
+        "502b0cb8-c336-4e4b-9b5b-a64e8fce60b3": {
+          "id": "502b0cb8-c336-4e4b-9b5b-a64e8fce60b3",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "f01d556e-e725-4702-b254-cc41352e816b",
+              "role": "dialogue",
+              "value": "Third time this week. I was starting to think the club had one member."
+            }
+          }
+        },
+        "0803318f-7c62-49ca-a603-bd1b5fbb96b7": {
+          "id": "0803318f-7c62-49ca-a603-bd1b5fbb96b7",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "683b73ba-729c-4bc5-8c41-d641a257a1f4",
+            "text": {
+              "textId": "3bb15660-8cd1-4d06-b8f9-6d3bb2d3b086",
+              "role": "dialogue",
+              "value": "It has two. One of them is just slow."
+            }
+          }
+        },
+        "2171b783-dd7e-4582-89e5-2885d7d9ea3a": {
+          "id": "2171b783-dd7e-4582-89e5-2885d7d9ea3a",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "b86c0033-9139-453a-bba4-664f3d2c812c",
+              "role": "dialogue",
+              "value": "One and a half. You keep leaving before it gets dark."
+            }
+          }
+        },
+        "4ae3fc91-8959-4cb0-ac6c-15a0c6c05fc9": {
+          "id": "4ae3fc91-8959-4cb0-ac6c-15a0c6c05fc9",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "jump",
+          "payload": {
+            "targetSceneId": "5143dcd8-bebc-4468-b4e2-00f6d5781af6",
+            "transition": {
+              "kind": "throughColor",
+              "durationMs": 800,
+              "props": {
+                "color": "#000000",
+                "hold": 25
+              }
+            }
+          }
+        },
+        "4ed7e788-e36a-4615-9d03-75b6c4432d58": {
+          "id": "4ed7e788-e36a-4615-9d03-75b6c4432d58",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "setVariable",
+            "target": {
+              "scope": "persistent",
+              "variableId": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5"
+            },
+            "value": "Chapter 1 · The corridor"
+          }
+        }
+      },
+      "meta": {
+        "createdAt": "2026-08-07T04:03:28.338Z",
+        "updatedAt": "2026-08-07T04:03:28.338Z"
+      },
+      "defaultBackgroundAssetId": "93bad884-1f14-4ad2-85fb-c05d7b5ffef6"
+    },
+    "5143dcd8-bebc-4468-b4e2-00f6d5781af6": {
+      "id": "5143dcd8-bebc-4468-b4e2-00f6d5781af6",
+      "name": "The clubroom",
+      "runtimeName": "the_clubroom",
+      "description": "",
+      "rootBlockIds": [
+        "ffbcdd16-60d8-46fc-bdf8-b90aa5a15d4b",
+        "8ff953af-a0de-4461-a0fb-67bd5e1a294f",
+        "74f948bf-0fe5-4c2e-b83e-7c238118b024",
+        "a6d5bdd2-5b60-45c0-bf91-6bcc5b02d5a6",
+        "b084c36a-6107-47e0-94c2-69cde115ad7e",
+        "6b76015d-ce6b-46c8-a601-cb5308d58ed1",
+        "8420fa2d-5ff5-4ef2-a856-51464e040ebc",
+        "c5634a9d-1088-4c08-bcd9-a8db90b55c16",
+        "137c2f66-96f4-47bf-858e-e000827767f3",
+        "f1658534-73c0-4766-9bed-b37cf9216e0e",
+        "195fa305-150f-44dd-a8a9-94e8a2ceefe7",
+        "b8b5fc31-5ac6-476a-8900-36f6e6386d15"
+      ],
+      "blocks": {
+        "ffbcdd16-60d8-46fc-bdf8-b90aa5a15d4b": {
+          "id": "ffbcdd16-60d8-46fc-bdf8-b90aa5a15d4b",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "setBackground",
+            "assetId": "64ce569f-7104-4c57-9baf-20d14d1e0ddb",
+            "transition": {
+              "kind": "dissolve",
+              "durationMs": 600
+            }
+          }
+        },
+        "74f948bf-0fe5-4c2e-b83e-7c238118b024": {
+          "id": "74f948bf-0fe5-4c2e-b83e-7c238118b024",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "audio",
+            "operation": "setBgm",
+            "assetId": "71ab0eb2-9a43-4f2a-80a3-65ed77ff353e",
+            "audioTrackId": "bgm",
+            "fadeMs": 1200,
+            "loop": true,
+            "volume": 0.7
+          }
+        },
+        "a6d5bdd2-5b60-45c0-bf91-6bcc5b02d5a6": {
+          "id": "a6d5bdd2-5b60-45c0-bf91-6bcc5b02d5a6",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "narration",
+            "text": {
+              "textId": "d8394864-327a-4c4f-bcec-8521d44a9b09",
+              "role": "narration",
+              "value": "The clubroom is a classroom nobody claimed. Four desks pushed together, one window that will not close."
+            }
+          }
+        },
+        "b084c36a-6107-47e0-94c2-69cde115ad7e": {
+          "id": "b084c36a-6107-47e0-94c2-69cde115ad7e",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "character",
+            "operation": "enter",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "transform": {
+              "mode": "preset",
+              "preset": "center",
+              "durationMs": 400,
+              "props": {
+                "zoom": 0.52,
+                "yoffset": -50
+              }
+            },
+            "transition": {
+              "kind": "fadeIn",
+              "durationMs": 400
+            }
+          }
+        },
+        "6b76015d-ce6b-46c8-a601-cb5308d58ed1": {
+          "id": "6b76015d-ce6b-46c8-a601-cb5308d58ed1",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "2b3a87e6-5d6f-47c2-a1be-cd3a84aaa999",
+              "role": "dialogue",
+              "value": "The festival is in three weeks and we have nothing."
+            }
+          }
+        },
+        "8420fa2d-5ff5-4ef2-a856-51464e040ebc": {
+          "id": "8420fa2d-5ff5-4ef2-a856-51464e040ebc",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "6cc6b2f7-b60e-4279-a94c-cc8860ba5287",
+              "role": "dialogue",
+              "value": "Which means one of us has to decide what we are making."
+            }
+          }
+        },
+        "c5634a9d-1088-4c08-bcd9-a8db90b55c16": {
+          "id": "c5634a9d-1088-4c08-bcd9-a8db90b55c16",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "d24f89b5-dd27-4fd3-a9e0-9eb42d9eaa4d",
+              "role": "dialogue",
+              "value": "I decided last year."
+            }
+          }
+        },
+        "137c2f66-96f4-47bf-858e-e000827767f3": {
+          "id": "137c2f66-96f4-47bf-858e-e000827767f3",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "683b73ba-729c-4bc5-8c41-d641a257a1f4",
+            "text": {
+              "textId": "0ef2885e-0186-4327-b43f-ee9676c2a33a",
+              "role": "dialogue",
+              "value": "So it is my turn."
+            }
+          }
+        },
+        "f1658534-73c0-4766-9bed-b37cf9216e0e": {
+          "id": "f1658534-73c0-4766-9bed-b37cf9216e0e",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "narration",
+            "text": {
+              "textId": "ab801b46-85ba-416f-9df8-48c3a040488a",
+              "role": "narration",
+              "value": "She spins a pen once and stops it flat under one finger."
+            }
+          }
+        },
+        "195fa305-150f-44dd-a8a9-94e8a2ceefe7": {
+          "id": "195fa305-150f-44dd-a8a9-94e8a2ceefe7",
+          "parentId": null,
+          "childrenIds": [
+            "50e43bce-a764-470b-842f-8374e35fbcbc",
+            "2f1beb16-ab83-42b3-b768-8bdba9ffdde6"
+          ],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "choice",
+            "prompt": {
+              "textId": "9bbce5a5-e5de-40d3-a6b4-c7c2b75d6193",
+              "role": "choicePrompt",
+              "value": "What do we make?"
+            }
+          }
+        },
+        "b8b5fc31-5ac6-476a-8900-36f6e6386d15": {
+          "id": "b8b5fc31-5ac6-476a-8900-36f6e6386d15",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "jump",
+          "payload": {
+            "targetSceneId": "c083e0f3-8665-451a-800a-6d2cd5650d33",
+            "transition": {
+              "kind": "throughColor",
+              "durationMs": 800,
+              "props": {
+                "color": "#000000",
+                "hold": 25
+              }
+            }
+          }
+        },
+        "50e43bce-a764-470b-842f-8374e35fbcbc": {
+          "id": "50e43bce-a764-470b-842f-8374e35fbcbc",
+          "parentId": "195fa305-150f-44dd-a8a9-94e8a2ceefe7",
+          "childrenIds": [
+            "e2d989b3-1e73-4836-b65b-31b0554d6f28",
+            "50a9af7d-fb6a-4dcb-81a9-e3438f8a17af",
+            "c135d4d3-f9db-430b-9172-f24739f91286",
+            "283216d4-8129-4835-b102-8463b247aeae"
+          ],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "choiceOption",
+            "text": {
+              "textId": "7838034c-5481-4b4e-beb6-d5815b817b56",
+              "role": "choiceOption",
+              "value": "Something honest."
+            }
+          }
+        },
+        "2f1beb16-ab83-42b3-b768-8bdba9ffdde6": {
+          "id": "2f1beb16-ab83-42b3-b768-8bdba9ffdde6",
+          "parentId": "195fa305-150f-44dd-a8a9-94e8a2ceefe7",
+          "childrenIds": [
+            "cd04ae26-d8cb-4693-938b-f1dd6c5e0b08",
+            "917da4ea-6ece-4d00-aa6b-4d89929b58a7",
+            "bbfcb279-6f24-4fb5-81d8-2cfb91ba987e",
+            "aaafd39a-bc01-48ae-8f85-fe718e089b0d"
+          ],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "choiceOption",
+            "text": {
+              "textId": "8ee513a4-713c-4277-8e8b-2c25be0a29f9",
+              "role": "choiceOption",
+              "value": "Something people will actually come to."
+            }
+          }
+        },
+        "e2d989b3-1e73-4836-b65b-31b0554d6f28": {
+          "id": "e2d989b3-1e73-4836-b65b-31b0554d6f28",
+          "parentId": "50e43bce-a764-470b-842f-8374e35fbcbc",
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "683b73ba-729c-4bc5-8c41-d641a257a1f4",
+            "text": {
+              "textId": "0fa2eb35-3aad-424a-9e40-50a420d4bb3d",
+              "role": "dialogue",
+              "value": "Something honest. Even if it's small."
+            }
+          }
+        },
+        "50a9af7d-fb6a-4dcb-81a9-e3438f8a17af": {
+          "id": "50a9af7d-fb6a-4dcb-81a9-e3438f8a17af",
+          "parentId": "50e43bce-a764-470b-842f-8374e35fbcbc",
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "be532c25-3947-4340-bea6-a8dbc2462abe",
+              "role": "dialogue",
+              "value": "...Huh."
+            }
+          }
+        },
+        "c135d4d3-f9db-430b-9172-f24739f91286": {
+          "id": "c135d4d3-f9db-430b-9172-f24739f91286",
+          "parentId": "50e43bce-a764-470b-842f-8374e35fbcbc",
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "a0ed03b2-7717-4aed-aff2-f27a14259b8d",
+              "role": "dialogue",
+              "value": "That's the first thing you've said this month that wasn't a joke."
+            }
+          }
+        },
+        "283216d4-8129-4835-b102-8463b247aeae": {
+          "id": "283216d4-8129-4835-b102-8463b247aeae",
+          "parentId": "50e43bce-a764-470b-842f-8374e35fbcbc",
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "setVariable",
+            "target": {
+              "scope": "saved",
+              "variableId": "6987a20b-6086-4aee-b49a-04397af993f6"
+            },
+            "value": true
+          }
+        },
+        "cd04ae26-d8cb-4693-938b-f1dd6c5e0b08": {
+          "id": "cd04ae26-d8cb-4693-938b-f1dd6c5e0b08",
+          "parentId": "2f1beb16-ab83-42b3-b768-8bdba9ffdde6",
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "683b73ba-729c-4bc5-8c41-d641a257a1f4",
+            "text": {
+              "textId": "e783a4da-946b-4c53-af82-5ba464ea88db",
+              "role": "dialogue",
+              "value": "Something people will actually come to."
+            }
+          }
+        },
+        "917da4ea-6ece-4d00-aa6b-4d89929b58a7": {
+          "id": "917da4ea-6ece-4d00-aa6b-4d89929b58a7",
+          "parentId": "2f1beb16-ab83-42b3-b768-8bdba9ffdde6",
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "22c5aa1d-856c-46f5-be7f-3c6341de0e8a",
+              "role": "dialogue",
+              "value": "Cold. But not wrong."
+            }
+          }
+        },
+        "bbfcb279-6f24-4fb5-81d8-2cfb91ba987e": {
+          "id": "bbfcb279-6f24-4fb5-81d8-2cfb91ba987e",
+          "parentId": "2f1beb16-ab83-42b3-b768-8bdba9ffdde6",
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "7b9e8fe3-9570-4df1-9adb-f11fee070023",
+              "role": "dialogue",
+              "value": "Then we're making something loud."
+            }
+          }
+        },
+        "aaafd39a-bc01-48ae-8f85-fe718e089b0d": {
+          "id": "aaafd39a-bc01-48ae-8f85-fe718e089b0d",
+          "parentId": "2f1beb16-ab83-42b3-b768-8bdba9ffdde6",
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "setVariable",
+            "target": {
+              "scope": "saved",
+              "variableId": "6987a20b-6086-4aee-b49a-04397af993f6"
+            },
+            "value": false
+          }
+        },
+        "8ff953af-a0de-4461-a0fb-67bd5e1a294f": {
+          "id": "8ff953af-a0de-4461-a0fb-67bd5e1a294f",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "setVariable",
+            "target": {
+              "scope": "persistent",
+              "variableId": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5"
+            },
+            "value": "Chapter 1 · The clubroom"
+          }
+        }
+      },
+      "meta": {
+        "createdAt": "2026-08-07T04:03:28.338Z",
+        "updatedAt": "2026-08-07T04:03:28.338Z"
+      },
+      "defaultBackgroundAssetId": "64ce569f-7104-4c57-9baf-20d14d1e0ddb"
+    },
+    "c083e0f3-8665-451a-800a-6d2cd5650d33": {
+      "id": "c083e0f3-8665-451a-800a-6d2cd5650d33",
+      "name": "Last light",
+      "runtimeName": "last_light",
+      "description": "",
+      "rootBlockIds": [
+        "22f9d72d-8877-4a4a-b54e-069242054642",
+        "199cc19a-a416-4a56-8687-ebf6ec9c5e7f",
+        "1cafc69e-d83a-48b8-a0f5-00446e2f428c",
+        "cc6cf0c3-f193-422c-96bd-8e86be37ed50",
+        "33451d3b-c09a-4bc2-98d6-3304ac7b9cd1",
+        "baabcc8c-d1cd-48f6-bc91-91be99e4513e",
+        "6d06d8da-0f7b-49e6-a2b6-4a7d0112b11b",
+        "deffff02-965b-44db-b126-6c0bec798a69",
+        "cf1f223c-4487-4787-aec3-1f3bf98d7240"
+      ],
+      "blocks": {
+        "22f9d72d-8877-4a4a-b54e-069242054642": {
+          "id": "22f9d72d-8877-4a4a-b54e-069242054642",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "setBackground",
+            "assetId": "5322b0e3-f48d-4b77-bfcd-7406613191ce",
+            "transition": {
+              "kind": "dissolve",
+              "durationMs": 600
+            }
+          }
+        },
+        "1cafc69e-d83a-48b8-a0f5-00446e2f428c": {
+          "id": "1cafc69e-d83a-48b8-a0f5-00446e2f428c",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "narration",
+            "text": {
+              "textId": "c727b458-0715-4cc0-a44d-237f176d67c3",
+              "role": "narration",
+              "value": "We stayed until the windows went orange and the corridor lights came on by themselves."
+            }
+          }
+        },
+        "cc6cf0c3-f193-422c-96bd-8e86be37ed50": {
+          "id": "cc6cf0c3-f193-422c-96bd-8e86be37ed50",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "character",
+            "operation": "enter",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "transform": {
+              "mode": "preset",
+              "preset": "center",
+              "durationMs": 400,
+              "props": {
+                "zoom": 0.52,
+                "yoffset": -50
+              }
+            },
+            "transition": {
+              "kind": "fadeIn",
+              "durationMs": 400
+            }
+          }
+        },
+        "33451d3b-c09a-4bc2-98d6-3304ac7b9cd1": {
+          "id": "33451d3b-c09a-4bc2-98d6-3304ac7b9cd1",
+          "parentId": null,
+          "childrenIds": [
+            "ba294d91-a990-4119-9a92-12fb0fc31bdb",
+            "d2e8a253-f83e-47da-8870-9c7e88200d07"
+          ],
+          "kind": "control",
+          "payload": {
+            "control": "condition"
+          }
+        },
+        "baabcc8c-d1cd-48f6-bc91-91be99e4513e": {
+          "id": "baabcc8c-d1cd-48f6-bc91-91be99e4513e",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "16565a92-8975-4521-8342-985e1bf3909c",
+              "role": "dialogue",
+              "value": "Same time tomorrow. Don't be late."
+            }
+          }
+        },
+        "6d06d8da-0f7b-49e6-a2b6-4a7d0112b11b": {
+          "id": "6d06d8da-0f7b-49e6-a2b6-4a7d0112b11b",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "character",
+            "operation": "exit",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "transition": {
+              "kind": "dissolve",
+              "durationMs": 600
+            }
+          }
+        },
+        "deffff02-965b-44db-b126-6c0bec798a69": {
+          "id": "deffff02-965b-44db-b126-6c0bec798a69",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "narration",
+            "text": {
+              "textId": "2ad31ac5-94dc-4b98-a8e3-1c78549f6edf",
+              "role": "narration",
+              "value": "This is where the demo ends, and where your game starts."
+            }
+          }
+        },
+        "cf1f223c-4487-4787-aec3-1f3bf98d7240": {
+          "id": "cf1f223c-4487-4787-aec3-1f3bf98d7240",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "narration",
+            "text": {
+              "textId": "d594ab16-35fa-4777-8237-bd2e7bbab4f7",
+              "role": "narration",
+              "value": "Open any part of it. All of it was made in Studio, the same way you would make yours."
+            }
+          }
+        },
+        "ba294d91-a990-4119-9a92-12fb0fc31bdb": {
+          "id": "ba294d91-a990-4119-9a92-12fb0fc31bdb",
+          "parentId": "33451d3b-c09a-4bc2-98d6-3304ac7b9cd1",
+          "childrenIds": [
+            "fe04b9e6-2883-4afd-881b-1e8cd9d7bd97"
+          ],
+          "kind": "control",
+          "payload": {
+            "control": "conditionBranch",
+            "branch": "if",
+            "condition": {
+              "kind": "variable",
+              "target": {
+                "scope": "saved",
+                "variableId": "6987a20b-6086-4aee-b49a-04397af993f6"
+              },
+              "operator": "isTrue"
+            }
+          }
+        },
+        "fe04b9e6-2883-4afd-881b-1e8cd9d7bd97": {
+          "id": "fe04b9e6-2883-4afd-881b-1e8cd9d7bd97",
+          "parentId": "ba294d91-a990-4119-9a92-12fb0fc31bdb",
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "9e22391e-e548-4ccd-89fb-f7c424e3ce24",
+              "role": "dialogue",
+              "value": "For what it is worth - I would have picked that one too."
+            }
+          }
+        },
+        "d2e8a253-f83e-47da-8870-9c7e88200d07": {
+          "id": "d2e8a253-f83e-47da-8870-9c7e88200d07",
+          "parentId": "33451d3b-c09a-4bc2-98d6-3304ac7b9cd1",
+          "childrenIds": [
+            "62763119-eeaa-440a-a9ca-e7b3663888c6"
+          ],
+          "kind": "control",
+          "payload": {
+            "control": "conditionBranch",
+            "branch": "else"
+          }
+        },
+        "62763119-eeaa-440a-a9ca-e7b3663888c6": {
+          "id": "62763119-eeaa-440a-a9ca-e7b3663888c6",
+          "parentId": "d2e8a253-f83e-47da-8870-9c7e88200d07",
+          "childrenIds": [],
+          "kind": "nodeAction",
+          "payload": {
+            "action": "dialogue",
+            "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+            "text": {
+              "textId": "79796785-4322-45dc-b84d-37efa0e8549e",
+              "role": "dialogue",
+              "value": "Loud is fine. Loud gets people through the door."
+            }
+          }
+        },
+        "199cc19a-a416-4a56-8687-ebf6ec9c5e7f": {
+          "id": "199cc19a-a416-4a56-8687-ebf6ec9c5e7f",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "action",
+          "payload": {
+            "action": "setVariable",
+            "target": {
+              "scope": "persistent",
+              "variableId": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5"
+            },
+            "value": "Chapter 1 · Last light"
+          }
+        }
+      },
+      "meta": {
+        "createdAt": "2026-08-07T04:03:28.338Z",
+        "updatedAt": "2026-08-07T04:03:28.338Z"
+      },
+      "defaultBackgroundAssetId": "5322b0e3-f48d-4b77-bfcd-7406613191ce"
+    }
+  },
+  "meta": {
+    "createdAt": "2026-08-07T04:03:28.336Z",
+    "updatedAt": "2026-08-08T02:18:20.879Z"
+  }
+}
