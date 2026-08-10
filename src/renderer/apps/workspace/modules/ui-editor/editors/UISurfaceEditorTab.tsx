@@ -474,12 +474,16 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             } catch (e) {
                 console.error("[DevMode] flush before launch failed", e);
             }
+            // The canvas launch button is the one that carries the canvas's own reference frame
+            // across. The top bar's Run is "play it as the player gets it" and passes nothing, so
+            // the two launches stay meaningfully different.
             await devModeService.launch({
                 kind: "surface",
                 surfaceId,
+                safeAreaId: previewSafeAreaId,
             });
         })();
-    }, [devModeService, isComponentEdit, surfaceId, workspace]);
+    }, [devModeService, isComponentEdit, previewSafeAreaId, surfaceId, workspace]);
 
     const handleOpenSurfaceEditor = useCallback(
         (targetSurfaceId: string) => {
