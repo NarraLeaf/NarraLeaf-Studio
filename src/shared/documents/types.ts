@@ -31,6 +31,8 @@ export type DocumentKind =
     | "ui-graphs"
     | "variables"
     | "audio-tracks"
+    /** The project's palette, at `editor/brand.json`. Cross-cutting, like the two above it. */
+    | "brand"
     | "localization"
     | "localization-keys"
     | "voice"

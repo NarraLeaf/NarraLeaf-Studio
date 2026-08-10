@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "@/lib/i18n";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
@@ -236,7 +236,7 @@ export function CompactButtonAppearance({
                         strokeSideRaw={String(getBorder("strokeSide") ?? "all")}
                         onStrokeSideChange={next => patchBorder("strokeSide", next)}
                         borderColorCss={String(getBorder("borderColor") ?? "")}
-                        onBorderColorChange={(next: ColorValue) => patchBorder("borderColor", colorValueToCss(next))}
+                        onBorderColorChange={(next: ColorValue) => patchBorder("borderColor", serializeColorValue(next))}
                         strokeOpacity01={readFiniteNumber(getBorder("strokeOpacity"), 1)}
                         onStrokeOpacity01Change={o => patchBorder("strokeOpacity", o)}
                         moreMenu={buildBorderMoreMenu()}
