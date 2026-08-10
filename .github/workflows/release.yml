@@ -121,11 +121,18 @@ jobs:
       # hundreds of megabytes of intermediate output. if-no-files-found: error because a
       # packaging step that silently produces nothing must not read as a pass.
       #
-      # The *.yml and *.blockmap lines are the auto-updater's half of a release. `latest.yml` is
-      # the feed an installed Studio polls, and the blockmap is what turns a 270 MB update into a
-      # delta. Dropping them does not fail anything here or look wrong on the release page — it
-      # just means every installed copy checks for updates against a 404, forever, and says so
-      # only in its log. This is the one step in the chain with no visible failure.
+      # The latest*.yml and *.blockmap lines are the auto-updater's half of a release. `latest.yml`
+      # (`latest-mac.yml` on macOS) is the feed an installed Studio polls, and the blockmap is what
+      # turns a 270 MB update into a delta. Dropping them does not fail anything here or look wrong
+      # on the release page — it just means every installed copy checks for updates against a 404,
+      # forever, and says so only in its log. This is the one step in the chain with no visible
+      # failure.
+      #
+      # `latest*.yml` and not `*.yml`: build/ also holds electron-builder's own `builder-debug.yml`,
+      # which is a debug dump rather than update metadata, and every platform writes one under that
+      # same name. A release asset name must be unique, so collecting them turns the publish step
+      # below into a 422 on the second platform — which is how v0.5.0 first failed to publish. The
+      # feed files are the only .yml a release wants, and they are already platform-distinct.
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
@@ -134,7 +141,7 @@ jobs:
             build/*.exe
             build/*.dmg
             build/*.zip
-            build/*.yml
+            build/latest*.yml
             build/*.blockmap
           if-no-files-found: error
 
@@ -163,9 +170,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t files < <(find dist-artifacts -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' -o -name '*.blockmap' \) | sort)
+          mapfile -t files < <(find dist-artifacts -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name 'latest*.yml' -o -name '*.blockmap' \) | sort)
           test "${#files[@]}" -gt 0 || { echo "::error::no installers found to attach"; exit 1; }
           printf 'attaching:\n'; printf '  %s\n' "${files[@]}"
+          # A release asset is identified by its basename, so two platforms contributing the same
+          # filename cannot both be attached. Caught here it names the file; left to the API it
+          # arrives as a 422 partway through uploading, after the release object already exists.
+          # Every installer name here contains spaces, so basename must be called per element
+          # rather than through xargs, which would split on them.
+          dupes=$(for f in "${files[@]}"; do basename "$f"; done | sort | uniq -d)
+          test -z "$dupes" || { echo "::error::two platforms produced the same asset name: $(printf '%s' "$dupes" | tr '\n' ' ')"; exit 1; }
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$TAG" "${files[@]}" --repo "$REPO" --clobber
           else
