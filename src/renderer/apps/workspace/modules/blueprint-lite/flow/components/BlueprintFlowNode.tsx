@@ -33,6 +33,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
     BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     formatBlueprintKeyboardBinding,
     formatBlueprintKeyboardBindingFromEvent,
@@ -2443,6 +2444,10 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
 
     const isEventHead = catalog.role === "eventHead" || catalog.role === "fnHead";
     const isVarDeclare = catalog.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR;
+    // Memo is the one node whose output may feed several consumers, so it does not read like the node
+    // next to it even though it is shaped like one. `binding` is the token for a value that came from
+    // somewhere else, which is exactly what reading a Memo is.
+    const isMemo = catalog.type === BLUEPRINT_NODE_TYPE_DATA_MEMO;
     const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
     const firstNodeError = nodeDiagnostics?.find(d => d.severity === "error");
     const showAddPinRow =
@@ -2617,11 +2622,13 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                 firstNodeError
                     ? "border-danger/85 ring-1 ring-danger/40"
                     : selected
-                      ? "border-primary/80 ring-1 ring-primary/40"
+                      ? isMemo
+                          ? "border-binding/80 ring-1 ring-binding/40"
+                          : "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
             } ${!firstNodeError && isEventHead ? "border-l-primary/70" : ""} ${
                 !firstNodeError && isVarDeclare ? "border-l-amber-500/80" : ""
-            } ${
+            } ${!firstNodeError && isMemo ? "border-l-2 border-l-binding/70" : ""} ${
                 !firstNodeError && isTerminalNode ? "border-r-primary/70" : ""
             }`}
             title={firstNodeError?.message}
