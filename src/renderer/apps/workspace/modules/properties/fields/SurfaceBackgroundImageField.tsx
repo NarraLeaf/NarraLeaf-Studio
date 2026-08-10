@@ -62,7 +62,7 @@ export function SurfaceBackgroundImageField({ data }: CustomFieldProps<SceneEdit
                 delete settings.backgroundImage;
             }
             surface.settings = settings;
-        });
+        }, { mergeKey: `surface:${data.surface.id}:backgroundImage` });
     };
 
     return (

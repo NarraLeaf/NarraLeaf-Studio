@@ -40,6 +40,7 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
+import type { UpdateState } from "@shared/constants/update";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
@@ -360,6 +361,22 @@ export interface RendererPreloadedInterface {
             filePath?: string;
             content?: string;
         }>>;
+        /**
+         * Software updates. The renderer only ever *asks* - what an update is, whether one can be
+         * installed on this host, and how far a download has got are all decided in main
+         * (`UpdateManager`) and pushed through `onStateChanged`.
+         */
+        update: {
+            /** One snapshot, for a surface that just mounted. Changes arrive on `onStateChanged`. */
+            getState(): Promise<RequestStatus<{ state: UpdateState }>>;
+            /** Ask whether a newer release exists. Never starts a download. */
+            check(): Promise<RequestStatus<{ state: UpdateState }>>;
+            /** Start the transfer. Only the Settings panel calls this - see its header for why. */
+            download(): Promise<RequestStatus<{ state: UpdateState }>>;
+            /** Quit and apply what was downloaded. */
+            install(): Promise<RequestStatus<void>>;
+            onStateChanged(handler: (state: UpdateState) => void): AppEventToken;
+        };
     };
 
     devMode: {

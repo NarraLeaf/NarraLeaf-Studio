@@ -63,29 +63,9 @@ export class AppSettingsWindowLaunchHandler extends IPCHandler<IPCEventType.appL
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { props }: IPCEvents[IPCEventType.appLaunchSettings]["data"]): Promise<RequestStatus<void>> {
-        const existing = window
-            .getApp()
-            .windowManager.getWindows()
-            .find(candidate => candidate.getWindowType() === WindowAppType.Settings);
-        if (existing) {
-            if (props?.highlight) {
-                existing.sendIpcEvent(IPCEventType.settingsHighlight, { highlight: props.highlight });
-            }
-            existing.focus();
-            return this.success(void 0);
-        }
-
-        await window.getApp().launchSettings(window, props, {
-            parent: window.win,
-            minWidth: 800,
-            minHeight: 500,
-            width: 1200,
-            height: 800,
-            center: true,
-            x: undefined,
-            y: undefined,
-        });
-
+        // The reuse-or-launch logic lives on App because the tray's "Check for Updates" row needs
+        // the same behaviour from a process that has no window to ask on behalf of.
+        await window.getApp().revealSettings(props, window);
         return this.success(void 0);
     }
 }

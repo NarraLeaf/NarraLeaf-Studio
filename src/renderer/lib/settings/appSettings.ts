@@ -41,6 +41,7 @@ import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
 import { resetAllPreferences, resetWorkspaceLayout } from "@/lib/settings/resetSettings";
 import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
+import { UPDATE_AUTO_CHECK_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
 import {
@@ -178,6 +179,38 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Right-click menus gain a section for copying the ID of what you clicked.",
         descriptionKey: "settings.items.developerMode.description",
         defaultValue: DEVELOPER_MODE_DEFAULT,
+    },
+    {
+        // Read by the main process's UpdateManager when it decides whether to schedule the launch
+        // check. Off means Studio never asks on its own; the Check button in the panel below and
+        // the tray's Check for Updates row still work, so this turns off the *asking*, not the
+        // feature.
+        key: UPDATE_AUTO_CHECK_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Check for updates at launch",
+        labelKey: "update.setting.checkOnLaunch.label",
+        description: "Asks GitHub once, shortly after Studio starts. Downloads never begin on their own.",
+        descriptionKey: "update.setting.checkOnLaunch.description",
+        defaultValue: true,
+    },
+    {
+        // Rendered by `SETTING_PANELS.softwareUpdate`. Nothing is stored under this key: the state
+        // it draws lives in the main process (UpdateManager) and arrives pushed, so the progress
+        // bar is the downloader's own byte counts rather than an animation.
+        //
+        // This key is also the `highlight` that opens Settings here - the notification's action
+        // and the tray's Check for Updates row both send it (`UPDATE_PANEL_SETTING_KEY`).
+        key: UPDATE_PANEL_SETTING_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "softwareUpdate",
+        label: "Updates",
+        labelKey: "update.title",
+        description: "",
+        defaultValue: null,
     },
     {
         // Applied by the main process (`applyThemeMode`): the stored mode drives
