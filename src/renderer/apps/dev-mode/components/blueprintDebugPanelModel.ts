@@ -164,6 +164,19 @@ function byName(a: { name: string }, b: { name: string }): number {
     return a.name.localeCompare(b.name);
 }
 
+/**
+ * The widget a blueprint is attached to, or `null` when it is attached to none — what Interface ▸
+ * Blueprints points at on the stage while a row is hovered.
+ *
+ * Only the two widget owners answer. A page's own blueprint is the whole surface rather than
+ * something in it, a global one is nowhere in particular, and a shared asset is not on this stage at
+ * all; drawing a box for any of them would be pointing at the wrong thing rather than at nothing.
+ */
+export function blueprintWidgetElementId(bp: Blueprint): string | null {
+    const owner = bp.owner;
+    return owner.kind === "widgetMain" || owner.kind === "widgetValue" ? owner.elementId : null;
+}
+
 function isBlueprintInSurfaceScope(bp: Blueprint, scope: SurfaceElementScope): boolean {
     const owner = bp.owner;
     if (owner.kind === "globalMain") {
