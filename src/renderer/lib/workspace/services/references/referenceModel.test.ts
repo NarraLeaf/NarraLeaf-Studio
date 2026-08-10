@@ -327,6 +327,26 @@ describe("extractUIDocumentAssetReferences", () => {
         expect(references[0]).toMatchObject({ assetId: "legacy-1", dormant: true });
     });
 
+    it("finds a Surface's background image, which no element holds", () => {
+        const document = {
+            ...doc([]),
+            surfaces: [
+                { id: "s1", name: "Main Menu", settings: { backgroundImage: { assetId: "bg-1", fillMode: "cover" } } },
+                { id: "s2", name: "Config", settings: { backgroundColor: "#000000" } },
+            ],
+        } as unknown as UIDocument;
+
+        const references = extractUIDocumentAssetReferences(document);
+
+        expect(references).toHaveLength(1);
+        expect(references[0]).toMatchObject({
+            assetId: "bg-1",
+            label: "Main Menu",
+            field: "backgroundImage",
+            target: { kind: "uiSurface", surfaceId: "s1" },
+        });
+    });
+
     it("reads a widget's bare assetId and posterAssetId", () => {
         // Before `nl.video` this walk knew `imageFill`, `fontAssetId`, and `nl.image`'s legacy bare
         // id - nothing else. A widget naming its prop `assetId` was preloaded by the shipped game
