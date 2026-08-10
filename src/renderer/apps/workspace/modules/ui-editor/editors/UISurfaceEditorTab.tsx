@@ -55,6 +55,7 @@ import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/e
 import { SurfaceAlignTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceAlignMenu";
 import { SurfacePreviewFramesTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
 import { SurfacePreviewFramesReadout } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesReadout";
+import { readProjectMobileOrientation } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
 import { SurfacePreviewFramesOverlay } from "@/lib/ui-editor/preview/SurfacePreviewFramesOverlay";
 import { listInsertPaletteModules } from "@/lib/ui-editor/widget-modules/insertPalette";
 import { MOVEABLE_DOUBLE_CLICK_TARGET_SELECTOR } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
@@ -155,6 +156,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const smartSnapDetail = useSmartSnapDetailSettings(stateService);
     const previewAspectId = usePreviewAspectId(stateService);
     const previewSafeAreaId = usePreviewSafeAreaId(stateService);
+    // What the shells lock to, which is what decides which edge a device inset lands on.
+    const mobileOrientation = readProjectMobileOrientation(context);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
     /**
      * A palette edit repaints the canvas for the same reason a document edit does, and is invisible
@@ -481,9 +484,10 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                 kind: "surface",
                 surfaceId,
                 safeAreaId: previewSafeAreaId,
+                mobileOrientation,
             });
         })();
-    }, [devModeService, isComponentEdit, previewSafeAreaId, surfaceId, workspace]);
+    }, [devModeService, isComponentEdit, mobileOrientation, previewSafeAreaId, surfaceId, workspace]);
 
     const handleOpenSurfaceEditor = useCallback(
         (targetSurfaceId: string) => {
@@ -799,6 +803,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 designSize={surface.designSize}
                                 aspectId={previewAspectId}
                                 safeAreaId={previewSafeAreaId}
+                                mobileOrientation={mobileOrientation}
                                 viewportScale={viewport.scale}
                             />
                             {documentService ? (
@@ -813,6 +818,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             designSize={surface.designSize}
                             aspectId={previewAspectId}
                             safeAreaId={previewSafeAreaId}
+                            mobileOrientation={mobileOrientation}
                         />
                     </div>
 

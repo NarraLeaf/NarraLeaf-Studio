@@ -13,6 +13,7 @@ import {
     isSafeAreaPresetId,
     isSurfacePreviewAspectPresetId,
     pickSurfacePreviewOrientation,
+    resolveSafeAreaOrientation,
     type SafeAreaGeometry,
     type SafeAreaPreset,
     type SurfacePreviewAspectPreset,
@@ -38,7 +39,7 @@ function safeArea(id: string): SafeAreaPreset {
 
 /** Ad-hoc device with the same geometry in both orientations — for math-only cases. */
 function fakeDevice(geometry: SafeAreaGeometry): SafeAreaPreset {
-    return { id: "test", reference: "test", landscape: geometry, portrait: geometry };
+    return { id: "test", reference: "test", family: "android", landscape: geometry, portrait: geometry };
 }
 
 describe("aspect preset table", () => {
@@ -208,12 +209,10 @@ describe("computeScreenRatioFrame", () => {
 });
 
 describe("safe-area preset table", () => {
-    it("defines the three documented ids with both orientations", () => {
-        expect(SAFE_AREA_PRESETS.map(p => p.id)).toEqual([
-            "ios-dynamic-island",
-            "ios-notch",
-            "android-gesture",
-        ]);
+    it("is a real device list, every entry consistent across its two orientations", () => {
+        expect(SAFE_AREA_PRESETS.length).toBeGreaterThanOrEqual(10);
+        expect(new Set(SAFE_AREA_PRESETS.map(p => p.id)).size).toBe(SAFE_AREA_PRESETS.length);
+        expect(new Set(SAFE_AREA_PRESETS.map(p => p.family))).toEqual(new Set(["iphone", "ipad", "android"]));
         for (const preset of SAFE_AREA_PRESETS) {
             expect(preset.reference).toBeTruthy();
             expect(preset.landscape.screen.width).toBeGreaterThanOrEqual(preset.landscape.screen.height);
@@ -230,8 +229,8 @@ describe("safe-area preset table", () => {
         }
     });
 
-    it("carries the measured iOS numbers, with mirrored landscape side insets", () => {
-        const island = safeArea("ios-dynamic-island");
+    it("carries the sourced iOS numbers, with mirrored landscape side insets", () => {
+        const island = safeArea("iphone-15-pro");
         expect(island.reference).toBe("iPhone 15 Pro");
         expect(island.landscape).toEqual({
             screen: { width: 852, height: 393 },
@@ -242,32 +241,72 @@ describe("safe-area preset table", () => {
             insets: { left: 0, right: 0, top: 59, bottom: 34 },
         });
 
-        const notch = safeArea("ios-notch");
-        expect(notch.reference).toBe("iPhone 13");
+        const notch = safeArea("iphone-14");
         expect(notch.landscape.insets).toEqual({ left: 47, right: 47, top: 0, bottom: 21 });
         expect(notch.portrait.insets).toEqual({ left: 0, right: 0, top: 47, bottom: 34 });
 
-        // Mirrored on purpose: Apple applies the same inset to both edges in landscape.
-        for (const id of ["ios-dynamic-island", "ios-notch"]) {
-            const preset = safeArea(id);
+        // The mini costs MORE than the 13/14 despite the same logical size: same notch, less width.
+        expect(safeArea("iphone-13-mini").portrait.insets.top).toBe(50);
+        expect(safeArea("iphone-16-pro").portrait.insets.top).toBe(62);
+
+        for (const preset of SAFE_AREA_PRESETS.filter(p => p.family === "iphone" && p.portrait.insets.top > 0)) {
+            // Mirrored on purpose: Apple applies the same inset to both edges in landscape, and the
+            // side inset is exactly the portrait top inset.
             expect(preset.landscape.insets.left).toBe(preset.landscape.insets.right);
+            expect(preset.landscape.insets.left).toBe(preset.portrait.insets.top);
             // Home indicator: 21pt landscape, 34pt portrait, constant across the generations.
             expect(preset.landscape.insets.bottom).toBe(21);
             expect(preset.portrait.insets.bottom).toBe(34);
         }
     });
 
-    it("carries the AOSP Android baseline: gesture bar only, no status/nav insets", () => {
-        const android = safeArea("android-gesture");
-        expect(android.reference).toBe("Pixel 7");
-        expect(android.landscape).toEqual({
-            screen: { width: 915, height: 412 },
-            insets: { left: 0, right: 0, top: 0, bottom: 24 },
-        });
-        expect(android.portrait).toEqual({
-            screen: { width: 412, height: 915 },
-            insets: { left: 0, right: 0, top: 0, bottom: 24 },
-        });
+    it("models THIS product's shells: hidden status bar zeroes the top inset without ears", () => {
+        // Apple's own answer: an iPad with the status bar hidden reports {0,0,20,0}. The iPhone's
+        // top inset survives because it is the sensor housing, not the status bar.
+        for (const id of ["ipad-10", "ipad-pro-11"]) {
+            const pad = safeArea(id);
+            expect(pad.portrait.insets).toEqual({ left: 0, right: 0, top: 0, bottom: 20 });
+            expect(pad.landscape.insets).toEqual({ left: 0, right: 0, top: 0, bottom: 20 });
+        }
+        // No ears AND no home indicator: safe on every edge, which is a real answer worth having.
+        const se = safeArea("iphone-se-3");
+        expect(se.portrait.insets).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+        expect(se.landscape.insets).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+    });
+
+    it("models Android as the display cutout, NOT the hidden navigation bar", () => {
+        const android = safeArea("android-punch-hole");
+        expect(android.family).toBe("android");
+        // The old table had this exactly backwards: bottom 24dp and no cutout at all.
+        expect(android.portrait.insets).toEqual({ left: 0, right: 0, top: 48, bottom: 0 });
+        expect(android.landscape.insets).toEqual({ left: 48, right: 48, top: 0, bottom: 0 });
+    });
+
+    it("still resolves the preset ids that shipped before the table was rebuilt", () => {
+        // Persisted in Studio settings and carried on a Dev Mode launch entry — dropping them would
+        // silently turn the overlay off for anyone who had one selected.
+        expect(getSafeAreaPreset("iphone-15-pro")?.id).toBe("iphone-15-pro");
+        expect(getSafeAreaPreset("iphone-14")?.id).toBe("iphone-14");
+        expect(getSafeAreaPreset("android-punch-hole")?.id).toBe("android-punch-hole");
+        expect(isSafeAreaPresetId("iphone-14")).toBe(true);
+    });
+
+    it("takes the orientation from the project setting, not from the design size", () => {
+        const preset = safeArea("iphone-15-pro");
+        // A landscape stage in a portrait-locked project: the housing is on the top edge, not the sides.
+        const forced = computeSafeAreaFrame({
+            designSize: DESIGN_1920x1080,
+            preset,
+            mobileOrientation: "portrait",
+        })!;
+        expect(forced.orientation).toBe("portrait");
+        expect(computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset })!.orientation).toBe("landscape");
+        // `auto` locks nothing, so there is no answer to read and the design size decides.
+        expect(
+            computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset, mobileOrientation: "auto" })!.orientation,
+        ).toBe("landscape");
+        expect(resolveSafeAreaOrientation({ width: 1080, height: 1920 }, "auto")).toBe("portrait");
+        expect(resolveSafeAreaOrientation({ width: 1080, height: 1920 }, "landscape")).toBe("landscape");
     });
 
     it("every table entry produces usable geometry for a normal design size", () => {
@@ -284,7 +323,7 @@ describe("safe-area preset table", () => {
     });
 
     it("validates ids", () => {
-        expect(isSafeAreaPresetId("ios-notch")).toBe(true);
+        expect(isSafeAreaPresetId("iphone-14")).toBe(true);
         expect(isSafeAreaPresetId("pixel-9000")).toBe(false);
         expect(getSafeAreaPreset("pixel-9000")).toBeNull();
         expect(getSafeAreaPreset(null)).toBeNull();
@@ -299,7 +338,7 @@ describe("orientation selection", () => {
     });
 
     it("reads the matching orientation out of the preset", () => {
-        const island = safeArea("ios-dynamic-island");
+        const island = safeArea("iphone-15-pro");
         const landscape = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset: island })!;
         expect(landscape.orientation).toBe("landscape");
         // Landscape has no top inset at all; portrait's 59pt notch is on top.
@@ -335,7 +374,7 @@ describe("computeSafeAreaFrame — worked examples", () => {
         // bottom = 21 / 0.363888... = 57.7099... design px
         const frame = computeSafeAreaFrame({
             designSize: DESIGN_1920x1080,
-            preset: safeArea("ios-dynamic-island"),
+            preset: safeArea("iphone-15-pro"),
         })!;
         expect(frame.orientation).toBe("landscape");
         expect(frame.insets.left).toBe(0);
@@ -350,19 +389,33 @@ describe("computeSafeAreaFrame — worked examples", () => {
         expect(frame.safeRect.height).toBeCloseTo(1022.2901, 4);
     });
 
-    it("16:9 on the Android gesture baseline: no side insets, bottom = 24 / fit", () => {
-        // fit = min(915/1920, 412/1080) = 412/1080 = 0.381481...
+    it("16:9 on Android: the pillarbox eats most of the punch hole, nothing at the bottom", () => {
+        // fit = min(915/1920, 412/1080) = 412/1080 = 0.381481...; content 732.4 wide in a 915 screen,
+        // so each pillarbox is 91.3dp — thicker than half the 48dp cutout but not all of it.
         const fit = 412 / 1080;
+        const ox = (915 - 1920 * fit) / 2;
         const frame = computeSafeAreaFrame({
             designSize: DESIGN_1920x1080,
-            preset: safeArea("android-gesture"),
+            preset: safeArea("android-punch-hole"),
         })!;
         expect(frame.orientation).toBe("landscape");
-        expect(frame.insets.left).toBe(0);
-        expect(frame.insets.right).toBe(0);
-        expect(frame.insets.top).toBe(0);
-        expect(frame.insets.bottom).toBeCloseTo(24 / fit, 9);
-        expect(frame.insets.bottom).toBeCloseTo(62.9126, 4);
+        expect(ox).toBeGreaterThan(48);
+        // The bars swallow the cutout whole on this shape — and the hidden nav bar contributes
+        // nothing, so a 16:9 game is genuinely clear on a punch-hole phone.
+        expect(frame.insets).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+        expect(frame.fullySafe).toBe(true);
+    });
+
+    it("a 21:9 design on Android does lose its edges to the punch hole", () => {
+        // Wider design => a thinner pillarbox => the cutout reaches past it into the content.
+        const design = { width: 2520, height: 1080 };
+        const fit = Math.min(915 / 2520, 412 / 1080);
+        const frame = computeSafeAreaFrame({ designSize: design, preset: safeArea("android-punch-hole") })!;
+        const ox = (915 - 2520 * fit) / 2;
+        expect(ox).toBeLessThan(48);
+        expect(frame.insets.left).toBeCloseTo((48 - ox) / fit, 9);
+        expect(frame.insets.left).toBe(frame.insets.right);
+        expect(frame.insets.bottom).toBe(0);
         expect(frame.fullySafe).toBe(false);
     });
 });
@@ -482,8 +535,12 @@ describe("computeSafeAreaFrame — math", () => {
 });
 
 describe("computeUnsafeBands", () => {
-    it("covers only the bottom strip for a 16:9 design on every device preset", () => {
-        for (const preset of SAFE_AREA_PRESETS) {
+    it("covers only the home-indicator strip for a 16:9 design on a notched iPhone", () => {
+        // The pillarbox is thicker than the housing on every 16:9-on-iPhone combination, so the only
+        // thing left is the home indicator at the bottom. This IS the shape of the common case.
+        const iphones = SAFE_AREA_PRESETS.filter(p => p.family === "iphone" && p.portrait.insets.top > 0);
+        expect(iphones.length).toBeGreaterThan(0);
+        for (const preset of iphones) {
             const frame = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset })!;
             const bands = computeUnsafeBands(DESIGN_1920x1080, frame);
             expect(bands).toHaveLength(1);
@@ -491,6 +548,17 @@ describe("computeUnsafeBands", () => {
             expect(bands[0].width).toBe(1920);
             expect(bands[0].height).toBeCloseTo(frame.insets.bottom, 6);
             expect(bands[0].y).toBeCloseTo(1080 - frame.insets.bottom, 6);
+        }
+    });
+
+    it("has nothing to cover on the devices a 16:9 game is genuinely clear on", () => {
+        // An iPad's letterbox is deeper than its home indicator, an SE has no insets at all, and the
+        // Android pillarbox swallows the punch hole. All three are real "no risk here" answers, and
+        // all three draw an empty canvas — which is why the readout says it in words.
+        for (const id of ["ipad-10", "ipad-pro-11", "iphone-se-3", "android-punch-hole"]) {
+            const frame = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset: safeArea(id) })!;
+            expect(frame.fullySafe).toBe(true);
+            expect(computeUnsafeBands(DESIGN_1920x1080, frame)).toEqual([]);
         }
     });
 
@@ -520,7 +588,7 @@ describe("computeUnsafeBands", () => {
         // "nothing is covered" - and the canvas then looks identical to the layer being off, which
         // is the entire reason `SurfacePreviewFramesReadout` says it in words.
         const portrait = { width: 1080, height: 1920 };
-        const frame = computeSafeAreaFrame({ designSize: portrait, preset: safeArea("android-gesture") })!;
+        const frame = computeSafeAreaFrame({ designSize: portrait, preset: safeArea("android-punch-hole") })!;
         expect(frame.orientation).toBe("portrait");
         expect(frame.fullySafe).toBe(true);
         expect(computeUnsafeBands(portrait, frame)).toEqual([]);
@@ -535,7 +603,7 @@ describe("computeUnsafeBands", () => {
         expect(fully.fullySafe).toBe(true);
         expect(computeUnsafeBands({ width: 1000, height: 1000 }, fully)).toEqual([]);
         expect(computeUnsafeBands(DESIGN_1920x1080, null)).toEqual([]);
-        const frame = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset: safeArea("ios-notch") })!;
+        const frame = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset: safeArea("iphone-14") })!;
         expect(computeUnsafeBands({ width: 0, height: 1080 }, frame)).toEqual([]);
     });
 
@@ -555,7 +623,7 @@ describe("id convenience wrappers", () => {
         expect(computeScreenRatioFrameById(DESIGN_1920x1080, "16:9")).not.toBeNull();
         expect(computeScreenRatioFrameById(DESIGN_1920x1080, "nope")).toBeNull();
         expect(computeScreenRatioFrameById(DESIGN_1920x1080, null)).toBeNull();
-        expect(computeSafeAreaFrameById(DESIGN_1920x1080, "ios-notch")).not.toBeNull();
+        expect(computeSafeAreaFrameById(DESIGN_1920x1080, "iphone-14")).not.toBeNull();
         expect(computeSafeAreaFrameById(DESIGN_1920x1080, "nope")).toBeNull();
         expect(computeSafeAreaFrameById(DESIGN_1920x1080, null)).toBeNull();
     });
