@@ -48,6 +48,7 @@ import { lint } from "./lint";
 import { documentDiff } from "./documentDiff";
 import { test } from "./test";
 import { help } from "./help";
+import { update } from "./update";
 
 export const en = {
     common,
@@ -89,4 +90,5 @@ export const en = {
     documentDiff,
     test,
     help,
+    update,
 } as const;

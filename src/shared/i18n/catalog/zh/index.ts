@@ -44,6 +44,7 @@ import { lint } from "./lint";
 import { documentDiff } from "./documentDiff";
 import { test } from "./test";
 import { help } from "./help";
+import { update } from "./update";
 import type { LocaleMessages } from "../types";
 
 export const zh = {
@@ -86,4 +87,5 @@ export const zh = {
     documentDiff,
     test,
     help,
+    update,
 } satisfies LocaleMessages;

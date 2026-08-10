@@ -34,6 +34,22 @@ export interface GlobalStateType extends Record<string, any> {
      * distinct in the interface from Dev Mode (`ui.runMode`), which runs the game.
      */
     "app.developerMode": boolean;
+    /**
+     * Whether Studio asks GitHub for a newer release shortly after launch.
+     *
+     * Deliberately *not* the old `app.autoCheckUpdates`, which is in `RETIRED_GLOBAL_STATE_KEYS`
+     * and swept from every profile on start-up: reusing that name would make the sweeper delete
+     * the author's answer on the next launch. See `@shared/constants/update`.
+     */
+    "app.updateCheckOnLaunch": boolean;
+    /**
+     * Whether this profile has been told that Studio keeps running after its last window closes.
+     *
+     * Installation state rather than a preference, like `app.onboardingVersion`: it has no
+     * settings row and deliberately no entry in `GLOBAL_STATE_DEFAULTS`, because absence is what
+     * makes the notice show. See `@shared/constants/update`.
+     */
+    "app.trayResidencyNoticeShown": boolean;
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /**
      * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the
@@ -262,6 +278,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // else - while `editor.slashAtAlias`, two keys further down, was reading that same machine's
     // languages to decide its own default.
     "app.developerMode": false,
+    "app.updateCheckOnLaunch": true,
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
