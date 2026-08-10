@@ -4,19 +4,24 @@ import { useTranslation } from "@/lib/i18n";
 import { listKnownPuppetRuntimes } from "@shared/utils/puppetRuntimes";
 import type { CharacterAppearanceKind } from "@/lib/workspace/services/character/types";
 import { isImeKeyEvent } from "../../../components/layout/imeComposition";
+import { isBrandLink } from "@shared/brand/brandLink";
 import { ColorPickerTrigger } from "../../properties/framework/fields/ColorPickerField";
 import { addRecentColor } from "../../properties/framework/fields/recentColors";
-import { normalizeHex, rgbToHex } from "../../properties/framework/utils/colorUtils";
+import { colorValueToCss, parseColorValue, rgbToHex, serializeColorValue } from "../../properties/framework/utils/colorUtils";
+import type { ColorValue } from "../../properties/framework/types";
 import { StorySpeakerDiscMark } from "../../story/scene-editor/StoryRowGutterMark";
-import { isReadableAccentColor } from "../../story/scene-editor/storySceneBlockUtils";
+import { readableAccentColor } from "../../story/scene-editor/storySceneBlockUtils";
 import { characterSpeakerIdentity, storySpeakerHash } from "../../story/scene-editor/storySpeakerIdentity";
 
 export type CreateCharacterDialogValue = {
     name: string;
     kind: CharacterAppearanceKind;
     /**
+     * The colour as it should be stored: a literal, or a `nlbrand:` link at the project palette.
+     *
      * Absent when the author left the colour alone — which is a real state, not a missing one: the
-     * name hash keeps deciding, forever and in every project that spells the name the same way.
+     * name hash keeps deciding, forever and in every project that spells the name the same way. So
+     * the three states this dialog can produce are link, literal, and none.
      */
     color?: string;
 };
@@ -83,20 +88,33 @@ export function CreateCharacterDialogContent({
     const { t } = useTranslation();
     const [name, setName] = useState("");
     const [kind, setKind] = useState<CharacterAppearanceKind>(defaultKind);
+    // The colour as it will be stored: a literal, a `nlbrand:` link, or nothing.
     const [color, setColor] = useState<string | undefined>(undefined);
     // Live while the picker panel is open, settled into `color` when it closes: `onChange` fires on
     // every frame of a drag across the colour map.
-    const [draft, setDraft] = useState<string | null>(null);
+    const [draft, setDraft] = useState<ColorValue | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const trimmed = name.trim();
-    const previewColor = draft ?? color;
     const previewName = trimmed || t("characters.create.unnamed");
+    // What the preview paints, which is not what gets stored: a link has to be resolved before any
+    // of this can be drawn, and a drag in progress outranks the settled value. `readableAccentColor`
+    // does the resolve and applies the same band the story gutter will apply to this character from
+    // its very first line, so the preview cannot promise a colour the rows will then refuse.
+    const previewColor = draft
+        ? readableAccentColor(colorValueToCss(draft))
+        : readableAccentColor(color);
+    // What the picker itself opens on, which is a third thing again: no band (the picker shows what
+    // it holds, readable or not), and a link read back with its id still attached so that reopening
+    // the panel and nudging the opacity rewrites the link rather than freezing a hex over it.
+    const pickerValue = color
+        ? parseColorValue(color, { hex: autoAccentSeed(previewName), alpha: 1 })
+        : null;
     // The very mark the story gutter will draw for this character, from the very same resolver — the
     // preview is not a rendition of the rule, it *is* the rule (gutter 规范 §3.3).
     const identity = characterSpeakerIdentity(previewName, {
         hasPortrait: false,
-        color: previewColor && isReadableAccentColor(previewColor) ? previewColor : undefined,
+        color: previewColor,
     });
 
     const spriteOptions = useMemo(() => SPRITE_KINDS.map(value => ({
@@ -117,7 +135,9 @@ export function CreateCharacterDialogContent({
             setError(t("characters.create.nameRequired"));
             return;
         }
-        if (color) {
+        // Literals only, and a link's resolved colour is deliberately not recorded in its place -
+        // see `CharacterColorField.commit`, which makes the same call for the same reason.
+        if (color && !isBrandLink(color)) {
             addRecentColor(color);
         }
         onSubmit({ name: trimmed, kind, color });
@@ -200,22 +220,26 @@ export function CreateCharacterDialogContent({
                         <StorySpeakerDiscMark identity={identity} />
                         <span
                             className="truncate text-sm text-fg"
-                            style={previewColor && isReadableAccentColor(previewColor) ? { color: previewColor } : undefined}
+                            style={previewColor ? { color: previewColor } : undefined}
                         >
                             {previewName}
                         </span>
                     </div>
                     <ColorPickerTrigger
-                        value={{ hex: previewColor ?? autoAccentSeed(previewName), alpha: 1 }}
+                        value={draft ?? pickerValue ?? { hex: autoAccentSeed(previewName), alpha: 1 }}
                         // The hex appears only once the author has actually chosen one. On automatic
                         // the swatch still shows the colour the name gives them — that is true — but
                         // printing a hex beside it would read as a value that had been *set*.
                         displayMode={color ? "icon-hex" : "icon"}
                         allowOpacity={false}
-                        onChange={next => setDraft(normalizeHex(next.hex) ?? next.hex)}
+                        brandPalette
+                        onChange={setDraft}
                         onCommit={next => {
                             setDraft(null);
-                            setColor(normalizeHex(next.hex) ?? undefined);
+                            // Serialized, not flattened to a hex: picking a palette swatch has to
+                            // store the link, or the new character is frozen at whatever the brand
+                            // said the day they were created.
+                            setColor(serializeColorValue(next));
                         }}
                     />
                     {/* Nothing in the automatic state: the hint under this row already says the name

@@ -306,6 +306,33 @@ export function getActiveBrandPaletteRevision(): number {
     return activeRevision;
 }
 
+/**
+ * One stored colour value, resolved against the live palette into something that can be painted.
+ *
+ * `getActiveBrandPalette().resolveValueCss(...)` with the two conveniences every caller was writing
+ * for itself: a nullable input (a colour field that is optional hands over `undefined`), and a name
+ * that says at the call site which of the three things is happening. A value that is not a link
+ * comes back as it stands; a broken link, a ring, or a chain past {@link BRAND_LINK_MAX_DEPTH}
+ * comes back `null`, as does a blank or absent value.
+ *
+ * **It exists so that a link can be unwrapped *before* a caller's own colour guard runs.** Studio is
+ * full of guards that ask "is this a hex I can draw" - `isReadableAccentColor`, `CHARACTER_ACCENT_HEX`,
+ * `normalizeHex` - and every one of them correctly answers "no" for `nlbrand:primary`. That is the
+ * safety net a half-adopted project is rolled out behind (see `brandLink.ts`), and it must stay
+ * intact: teaching a guard about links would give the product two definitions of a valid colour.
+ * Teaching a *reader* to resolve first is the other half, and this is the one call it makes.
+ *
+ * Reading the module-level palette rather than taking one is the point: the callers are surfaces
+ * (story rows, a character list, the compiler's nametag config) that would otherwise each need a
+ * palette threaded down to them.
+ */
+export function resolveBrandColorValue(value: string | null | undefined): string | null {
+    if (typeof value !== "string") {
+        return null;
+    }
+    return getActiveBrandPalette().resolveValueCss(value);
+}
+
 function sameBrandColors(left: readonly BrandColor[], right: readonly BrandColor[]): boolean {
     if (left.length !== right.length) {
         return false;

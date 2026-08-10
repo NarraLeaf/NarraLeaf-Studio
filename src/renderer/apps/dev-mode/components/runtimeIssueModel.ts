@@ -11,10 +11,11 @@
  * names the row the editor also calls 37, and quotes it word for word.
  */
 
-// The same readability band the story editor's nametag uses. Imported rather than restated so an
-// accent that the editor refuses to draw cannot quietly reappear here (both are Studio chrome, both
-// render on the light and the dark surface).
-import { isReadableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
+// The same brand-link resolve and readability band the story editor's nametag uses. Imported rather
+// than restated so an accent that the editor refuses to draw cannot quietly reappear here, and so a
+// character pointed at the project palette is coloured in both (both are Studio chrome, both render
+// on the light and the dark surface).
+import { readableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import { projectSceneTimeline } from "./storyRuntimeDebugModel";
@@ -27,9 +28,9 @@ import type { StoryBlockId, StoryDocument, StoryId, StoryScene, StorySceneId } f
  * no service) and asset names from the bundle's table, so a row reads here exactly as the editor
  * writes it without ever reaching for a workspace service.
  *
- * The accent colour is banded at the lookup rather than where it is painted: the projection's
- * `StoryRowCharacter.color` is documented as "when the surface has one and *it is readable*", and
- * this is the one place that knows the surface is Studio chrome.
+ * The accent colour is resolved and banded at the lookup rather than where it is painted: the
+ * projection's `StoryRowCharacter.color` is documented as a literal ready for CSS, "when the surface
+ * has one and *it is readable*", and this is the one place that knows the surface is Studio chrome.
  */
 /**
  * The slice of a Dev Mode bundle a row's words come out of: the story library (character names,
@@ -64,10 +65,10 @@ export function buildStoryRowLookups(
             if (!character) {
                 return null;
             }
-            const color = character.color;
+            const color = readableAccentColor(character.color);
             return {
                 name: character.name,
-                ...(color && isReadableAccentColor(color) ? { color } : {}),
+                ...(color ? { color } : {}),
             };
         },
         assetName: assetId => assetNames?.[assetId] ?? null,

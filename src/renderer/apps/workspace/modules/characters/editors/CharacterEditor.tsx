@@ -58,7 +58,7 @@ import { syncCharacterEditorTabTitle } from "../state/useCharacterFocus";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { combinationKey, enumerateCombinations } from "@/lib/workspace/services/character/characterCombinations";
 import { characterAvatarAxisIds, characterAvatarKey } from "@shared/utils/characterAvatar";
-import { isReadableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
+import { readableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
 import {
     CHARACTER_INSPECTOR_DEFAULT_WIDTH,
     CHARACTER_INSPECTOR_MAX_FRACTION,
@@ -579,10 +579,10 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         })
         : null;
 
-    const accent = character.profile.getColor();
     // An accent that all but matches one theme's surface is unreadable there, so it degrades to the
-    // default ink rather than making the name disappear - the same guard the story nametags use.
-    const headerColor = accent && isReadableAccentColor(accent) ? accent : undefined;
+    // default ink rather than making the name disappear - the same guard the story nametags use,
+    // reached through the same helper so that a brand link is resolved before the band judges it.
+    const headerColor = readableAccentColor(character.profile.getColor());
 
     const renameHint = t("characters.editor.renameHint");
 

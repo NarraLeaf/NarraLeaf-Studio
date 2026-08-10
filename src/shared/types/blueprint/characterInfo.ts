@@ -7,13 +7,15 @@
  * character table.
  *
  * The colour is the one place the two subsystems genuinely disagree. A character profile stores a
- * hex *string* (`#40a8c4`); a blueprint colour pin carries {@link BlueprintRGBAColor}. Converting
- * here - once, at the boundary - is deliberate: every consumer downstream then sees the pin type it
- * declares, and nobody writes a second hex parser.
+ * *string* - a hex literal (`#40a8c4`), or a `nlbrand:` link at the project palette; a blueprint
+ * colour pin carries {@link BlueprintRGBAColor}. Converting here - once, at the boundary - is
+ * deliberate: every consumer downstream then sees the pin type it declares, and nobody writes a
+ * second hex parser or a second link resolver.
  *
  * Comments in English per project convention.
  */
 
+import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import {
     normalizeBlueprintImageAssetValue,
     normalizeBlueprintRGBAColor,
@@ -47,9 +49,16 @@ function trimmed(value: unknown): string {
  * blueprint reads can never drift apart. That function has no failure mode (an unparseable string
  * normalizes to the default), so the *only* signal available here is presence: an empty or
  * non-string value is null, anything else is a colour.
+ *
+ * That absence of a failure mode is why the brand link has to come off *here* rather than being left
+ * to the parse: handed `nlbrand:primary`, `normalizeBlueprintRGBAColor` does not report a problem,
+ * it returns opaque white - so a character pointed at the project palette would read out of a
+ * blueprint as white, with nothing to say it had ever been anything else. Resolving first makes the
+ * pin carry the colour the palette says, and a link the palette cannot answer for falls to null,
+ * which is the same "no colour" a character without one has.
  */
 export function toBlueprintCharacterColor(value: unknown): BlueprintRGBAColor | null {
-    const raw = trimmed(value);
+    const raw = typeof value === "string" ? resolveBrandColorValue(value) : null;
     return raw ? normalizeBlueprintRGBAColor(raw) : null;
 }
 
