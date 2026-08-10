@@ -11,7 +11,6 @@ import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
-import { translate } from "@/lib/i18n";
 import type { ContainerWidgetProps } from "@shared/types/ui-editor/container";
 import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
 import type { TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
@@ -21,6 +20,15 @@ import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chr
 
 /** Stable id for the primary variant (blueprint / runtime default). */
 export const DEFAULT_APPEARANCE_VARIANT_ID = "default";
+
+/**
+ * Variant names are document data, not Studio chrome. Naming them through the translator wrote
+ * whatever language the authoring Studio happened to be in straight into the project, and it shipped:
+ * the bundled skeleton template arrived with 204 variants literally named "默认", which every author
+ * then read regardless of their own language. Names on disk are English, like every other identifier
+ * an author sees in a project file.
+ */
+export const DEFAULT_APPEARANCE_VARIANT_NAME = "Default";
 
 /** Stable key order for container appearance groups (used by compact inspector and migrations). */
 export const CONTAINER_KEY_ORDER: ContainerAppearancePropertyKey[] = [
@@ -407,7 +415,7 @@ export function createInitialContainerAppearance(props: ContainerWidgetProps): A
         variants: [
             {
                 id: DEFAULT_APPEARANCE_VARIANT_ID,
-                name: translate("widgets.defaults.appearanceVariant"),
+                name: DEFAULT_APPEARANCE_VARIANT_NAME,
                 propertyGroups,
             },
         ],
@@ -424,7 +432,7 @@ export function createInitialButtonAppearance(props: ButtonWidgetProps): Appeara
         variants: [
             {
                 id: DEFAULT_APPEARANCE_VARIANT_ID,
-                name: translate("widgets.defaults.appearanceVariant"),
+                name: DEFAULT_APPEARANCE_VARIANT_NAME,
                 propertyGroups,
             },
         ],
@@ -441,7 +449,7 @@ export function createInitialTextAppearance(props: TextWidgetProps): AppearanceM
         variants: [
             {
                 id: DEFAULT_APPEARANCE_VARIANT_ID,
-                name: translate("widgets.defaults.appearanceVariant"),
+                name: DEFAULT_APPEARANCE_VARIANT_NAME,
                 propertyGroups,
             },
         ],
@@ -459,7 +467,7 @@ export function createInitialImageAppearance(rectangleLike: RectangleLikeProps):
         variants: [
             {
                 id: DEFAULT_APPEARANCE_VARIANT_ID,
-                name: translate("widgets.defaults.appearanceVariant"),
+                name: DEFAULT_APPEARANCE_VARIANT_NAME,
                 propertyGroups,
             },
         ],
