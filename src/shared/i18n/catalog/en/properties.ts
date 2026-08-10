@@ -19,6 +19,7 @@ export const properties = {
         typeGameUi: "Game UI",
         typePage: "Page",
         backgroundColor: "Background Color",
+        backgroundImage: "Background Image",
         animation: "Animation",
         logic: "Logic",
     },

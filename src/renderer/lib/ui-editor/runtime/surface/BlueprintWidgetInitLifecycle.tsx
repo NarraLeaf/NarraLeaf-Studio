@@ -126,10 +126,10 @@ export function BlueprintWidgetInitLifecycle({
         const blueprintIds = blueprintIdsFromWiringKey(localsWiringKey);
         return () => {
             for (const blueprintId of blueprintIds) {
-                releaseBlueprintWidgetLocals(surfaceId, elementId, blueprintId, runtimeScopeId);
+                releaseBlueprintWidgetLocals(surfaceId, elementId, blueprintId, runtimeScopeId, { componentId });
             }
         };
-    }, [surfaceId, runtimeScopeId, elementId, hasBlueprintRuntime, localsWiringKey]);
+    }, [surfaceId, runtimeScopeId, elementId, componentId, hasBlueprintRuntime, localsWiringKey]);
 
     useLayoutEffect(() => {
         if (!rt || !initSig) {

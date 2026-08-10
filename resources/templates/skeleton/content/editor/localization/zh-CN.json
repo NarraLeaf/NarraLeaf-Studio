@@ -107,6 +107,16 @@
       "status": "translated",
       "target": "我们一直待到窗户变成橙色，走廊的灯自己亮了起来。"
     },
+    "char:683b73ba-729c-4bc5-8c41-d641a257a1f4": {
+      "sourceHash": "fnv1a:92b85fd0",
+      "status": "translated",
+      "target": "Aoi"
+    },
+    "char:77eb07ac-4af6-48c0-80c1-7db3de78a9ce": {
+      "sourceHash": "fnv1a:152f0e87",
+      "status": "translated",
+      "target": "Narra"
+    },
     "d24f89b5-dd27-4fd3-a9e0-9eb42d9eaa4d": {
       "sourceHash": "fnv1a:9b0e6c0d",
       "status": "translated",
@@ -136,6 +146,36 @@
       "sourceHash": "fnv1a:04f3324d",
       "status": "translated",
       "target": "走廊里还留着粉笔和地板蜡的味道。身后有个储物柜正在降温，咔、咔地响。"
+    },
+    "key:menu.continue": {
+      "sourceHash": "fnv1a:ab43d664",
+      "status": "reviewed",
+      "target": "继续"
+    },
+    "key:menu.load": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "reviewed",
+      "target": "加载"
+    },
+    "key:menu.quit": {
+      "sourceHash": "fnv1a:c7b3d356",
+      "status": "reviewed",
+      "target": "退出"
+    },
+    "key:menu.save": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "reviewed",
+      "target": "保存"
+    },
+    "key:menu.settings": {
+      "sourceHash": "fnv1a:4b058728",
+      "status": "reviewed",
+      "target": "设置"
+    },
+    "key:menu.start": {
+      "sourceHash": "fnv1a:0ae8097f",
+      "status": "reviewed",
+      "target": "开始"
     }
   }
 }

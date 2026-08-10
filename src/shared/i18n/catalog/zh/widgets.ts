@@ -392,7 +392,6 @@ export const widgets = {
         puppet: {
             name: "Spine2D / Live2D 模型",
         },
-        appearanceVariant: "默认",
     },
     unsupportedType: "不支持的类型：{type}",
 } satisfies LocaleNamespace<"widgets">;

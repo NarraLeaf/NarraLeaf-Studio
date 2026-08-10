@@ -352,7 +352,6 @@ export const widgets = {
         // Names the two renderers on purpose while the stored type names neither - user ruling
         // 2026-07-29. An author looking for Spine or Live2D has to be able to find this in a palette.
         puppet: { name: "Spine2D / Live2D Model" },
-        appearanceVariant: "Default",
     },
     unsupportedType: "Unsupported type: {type}",
 } as const;
