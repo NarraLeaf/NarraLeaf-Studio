@@ -69,6 +69,19 @@ privileged bootstrap bridge is revoked per module instance, and a popup gets a
 fresh one; a same-origin opener can reach into it. Nothing is lost — the code
 drawing that window calls IPC through the opener's bridge.
 
+## Getting into one
+
+Two ways in, and they are the same route (`useDetachBlueprintEditor`) so a detached editor is
+named, keyed and restored identically however it was opened:
+
+- **From inside the editor** — the pop-out control on its title row, or a middle click along that
+  row. The tab closes behind it.
+- **From any blueprint entry, on a right click** — the interface's logic card, a widget's, a value
+  binding's, a story action's, the UI panel's global blueprint card. Left click still opens a tab;
+  right click skips it and opens the window. The gesture is one rule everywhere rather than a
+  property of one card, which is why the option is threaded through
+  `useOpenBlueprintTarget(target, { inOwnWindow })` rather than decided by each entry.
+
 ## Lifetime
 
 - Chromium closes a popup with its opener window (`outlivesOpener: false`), and

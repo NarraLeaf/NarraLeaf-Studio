@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
-import { detachEditor, updateDetachedEditorPayload } from "@/apps/workspace/detached/detachedEditors";
+import { updateDetachedEditorPayload } from "@/apps/workspace/detached/detachedEditors";
+import {
+    findEditorGroupIdForTab,
+    findEditorTabTitle,
+    useDetachBlueprintEditor,
+} from "@/apps/workspace/detached/detachBlueprintEditor";
 import { useIsDetachedHost } from "@/lib/components/layout";
 import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
@@ -212,21 +217,6 @@ function getBlueprintFlowViewportPanelId(tabId: string): string {
 
 function getSurfaceTabId(targetSurfaceId: string): string {
     return `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
-}
-
-function findEditorGroupIdForTab(layout: Readonly<EditorLayout>, tabId: string): string | null {
-    if ("tabs" in layout) {
-        return layout.tabs.some(tab => tab.id === tabId) ? layout.id : null;
-    }
-    return findEditorGroupIdForTab(layout.first, tabId) ?? findEditorGroupIdForTab(layout.second, tabId);
-}
-
-/** The tab strip's own name for a tab, so a detached editor can be restored under it. */
-function findEditorTabTitle(layout: Readonly<EditorLayout>, tabId: string): string | null {
-    if ("tabs" in layout) {
-        return layout.tabs.find(tab => tab.id === tabId)?.title ?? null;
-    }
-    return findEditorTabTitle(layout.first, tabId) ?? findEditorTabTitle(layout.second, tabId);
 }
 
 function buildBlueprintPayloadWithGraphFocus(
@@ -506,6 +496,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const { openEditorTab } = useRegistry();
     /** Already in a window of its own: the pop-out control has nothing left to offer. */
     const isDetachedHost = useIsDetachedHost();
+    const detachBlueprint = useDetachBlueprintEditor();
     const revision = useBlueprintDocumentRevision();
     // The canvas and its cards carry their own clamp (`BlueprintFlowCanvas`, `BlueprintFlowNode`);
     // what is left in this file is the keyboard, the empty state and one on-open normalisation.
@@ -905,23 +896,21 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         if (isDetachedHost) {
             return;
         }
-        const store = uiService.getStore();
-        const layout = store.getEditorLayout();
-        detachEditor({
-            kind: "blueprint",
-            tabId,
-            // The same two words the editor's own title row shows, so the window in the dock is
-            // recognisable as the blueprint it holds.
-            title: `${t("blueprint.header.title")} ${bp.name}`,
+        // The same route a right click on any blueprint entry takes, so the window this editor
+        // moves into is named, keyed and restored exactly like one opened from outside.
+        detachBlueprint({
+            blueprintId: payload.blueprintId,
+            ownerKind: payload.ownerKind,
+            surfaceId: payload.surfaceId,
+            componentId: payload.componentId,
+            elementId: payload.elementId,
+            propPath: payload.propPath,
             // Carried across so closing the window puts back the tab that was here, name included -
             // this editor is opened under several names (the blueprint's own, the widget it belongs
             // to), and re-deriving one would rename it on the way back.
-            tabTitle: findEditorTabTitle(layout, tabId) ?? t("blueprint.tab.title"),
-            payload,
+            title: findEditorTabTitle(uiService.getStore().getEditorLayout(), tabId) ?? t("blueprint.tab.title"),
         });
-        const groupId = findEditorGroupIdForTab(layout, tabId);
-        store.closeEditorTabInGroup(tabId, groupId ?? undefined);
-    }, [bp.name, isDetachedHost, payload, t, tabId, uiService]);
+    }, [detachBlueprint, isDetachedHost, payload, t, tabId, uiService]);
 
     /**
      * Middle click on the title row detaches, matching the control beside it.

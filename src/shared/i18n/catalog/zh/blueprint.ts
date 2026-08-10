@@ -7,6 +7,10 @@ export const blueprint = {
         detach: "在独立窗口中打开",
         detachFailed: "独立窗口未能打开，蓝图仍留在工作区",
     },
+    /** Shared by every blueprint entry: the card or button that leads into a blueprint. */
+    entry: {
+        openInWindow: "右键在独立窗口中打开",
+    },
     tab: {
         title: "蓝图",
         invalid: "蓝图标签页无效",
