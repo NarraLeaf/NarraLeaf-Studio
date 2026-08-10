@@ -8,7 +8,7 @@ import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { MergedPersistentNameCollision } from "@shared/variables/mergedPersistentView";
 import type { AssetType } from "../workspace/services/assets/assetTypes";
 import type { AssetReference } from "../workspace/services/references/referenceModel";
-import type { LintingConfiguration } from "../workspace/project/configuration";
+import type { LintingConfiguration, NetworkConfiguration } from "../workspace/project/configuration";
 
 /**
  * The snapshot every lint rule reads.
@@ -42,7 +42,7 @@ export type LintAssetEntry = {
 
 export type LintCharacterEntry = { id: string; name: string; assetIds: readonly string[] };
 
-/** A display name declared in both the project registry and a story `/persis` row. */
+/** A display name declared in both the project registry and a story declaration row. */
 export type PersistentNameCollision = MergedPersistentNameCollision;
 
 export type LintImageProbe =
@@ -78,6 +78,15 @@ export type LintVoiceContext = {
 
 export type LintContext = {
     config: LintingConfiguration;
+    /**
+     * The project's network policy.
+     *
+     * Here rather than read off a service, for the reason stated above: a rule is a pure function of
+     * this value. `network/fetch-disallowed` is the whole reason it exists - whether a blueprint's
+     * network nodes are a problem is not a property of the blueprint, it is a property of the
+     * blueprint *and* the setting that decides whether the shipped game may reach the network.
+     */
+    network: NetworkConfiguration;
     stories: readonly LintStoryEntry[];
     blueprintDocument: BlueprintDocument | null;
     uiDocument: UIDocument | null;
@@ -85,8 +94,18 @@ export type LintContext = {
     referencedAssetIds: ReadonlySet<string>;
     assetReferences: ReadonlyMap<string, readonly AssetReference[]>;
     characters: readonly LintCharacterEntry[];
+    /**
+     * The project variable registry, BOTH scopes, exactly as the service holds it.
+     *
+     * One list rather than two because an entry carries its own `scope`, and a rule that needs one
+     * scope must say so at the point it reads (`entry.scope === "persistent"`). Splitting it here
+     * would only move the same decision somewhere a rule author never looks - and the display-name
+     * index genuinely wants every entry regardless of scope.
+     */
     variableRegistry: readonly VariableRegistryEntry[];
     persistentNameCollisions: readonly PersistentNameCollision[];
+    /** The same cross-surface ambiguity for the `saved` scope, which is now project-level too. */
+    savedNameCollisions: readonly PersistentNameCollision[];
     localization: LintLocalizationContext | null;
     voice: LintVoiceContext | null;
     buildPlatforms: readonly GameBuildPlatform[];

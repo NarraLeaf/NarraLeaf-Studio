@@ -19,8 +19,8 @@
  * proves nothing, since whoever could re-point the asset could re-point the
  * checksum with it.
  *
- * Layout produced (one platform per run, the host's unless --platform says
- * otherwise):
+ * Layout produced (one platform/arch pair per run, the host's unless --platform
+ * and --arch say otherwise):
  *
  *   resources/codesign/<platform>/zsign[.exe]   the binary
  *   resources/codesign/<platform>/LICENSE       upstream MIT notice; we
@@ -31,7 +31,7 @@
  *
  * Usage:
  *   node project/build/prepare-codesign-tools.js
- *   node project/build/prepare-codesign-tools.js --platform=darwin   # cross-stage
+ *   node project/build/prepare-codesign-tools.js --platform=darwin --arch=arm64  # cross-stage
  *
  * Env:
  *   NLS_SKIP_CODESIGN_TOOLS=1  skip entirely (offline development builds). The
@@ -64,8 +64,16 @@ const LICENSE_SHA256 = '57a50ade7eafe84091e7f97169e2c555980513e5d425ba8b21c76ce7
  *   - Linux takes the *musl static* build on purpose. zsign-linux-x86_64.tar.gz
  *     is a quarter of the size because it dynamically links the build host's
  *     libssl — which is precisely the dependency a vendored tool must not have.
- *   - macOS has an arm64 asset and no x64 one. There is nothing to stage on an
- *     Intel Mac; see the `null` entry below and the note in zsignTool.ts.
+ *   - macOS has an arm64 asset and no x64 one, and that is now moot as well as
+ *     true: Studio is not shipped for Intel Macs, so darwin-x64 is not a host
+ *     anything is staged for. The missing zsign asset was one of the three
+ *     reasons for that decision — see the `null` entry below and the note in
+ *     zsignTool.ts.
+ *
+ * The arch keyed on here comes from the caller rather than from process.arch.
+ * That is about the *target installer's* architecture, which is not necessarily
+ * the runner's; no shipped target cross-builds today, but the parameter is what
+ * keeps that a fact about the matrix rather than an assumption in this file.
  *
  * `entry` is the name inside the archive, `binary` the name we stage it under —
  * the Linux asset unpacks as `zsign-musl`, and callers should not have to care.
@@ -94,8 +102,9 @@ const ASSETS = {
             entry: 'zsign',
             binary: 'zsign',
         },
-        // No macOS x64 asset exists upstream at v1.1.1. Recorded rather than
-        // omitted so the skip below can say why.
+        // No macOS x64 asset exists upstream at v1.1.1, and Studio no longer
+        // ships an Intel-Mac host to want one. Recorded rather than omitted so
+        // the skip below can say why.
         x64: null,
     },
 };
@@ -188,16 +197,26 @@ function extractEntry(archive, assetName, entry, outDir) {
     return extracted;
 }
 
-/** True when the staged tree is already exactly what this script would produce. */
-function alreadyStaged(targetDir, spec, platform, arch) {
+/** The manifest of an already-staged tree, or null if there is not a readable one. */
+function stagedManifest(targetDir) {
     const manifestPath = path.join(targetDir, 'manifest.json');
     if (!fs.existsSync(manifestPath)) {
-        return false;
+        return null;
     }
-    let manifest;
     try {
-        manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     } catch {
+        // Unreadable is treated as absent everywhere: staging replaces the tree
+        // wholesale, so there is nothing to be gained by distinguishing
+        // "corrupt" from "missing".
+        return null;
+    }
+}
+
+/** True when the staged tree is already exactly what this script would produce. */
+function alreadyStaged(targetDir, spec, platform, arch) {
+    const manifest = stagedManifest(targetDir);
+    if (manifest === null) {
         return false;
     }
     if (
@@ -227,12 +246,40 @@ function alreadyStaged(targetDir, spec, platform, arch) {
     }
 
     const platform = argValue('platform') ?? process.platform;
+    // --arch, not process.arch: the runner's architecture is not necessarily the
+    // installer's. pack-electron.js reads the target off electron-builder's own
+    // --x64/--arm64 and forwards it here, so what gets staged follows what is
+    // being packaged instead of what happens to be packaging it.
     const arch = argValue('arch') ?? process.arch;
+
+    const targetDir = path.join(rootDir, 'resources', 'codesign', platform);
+
+    // electron-builder copies whatever is sitting in resources/codesign/<platform>
+    // into the installer it is building and has no idea what architecture those
+    // bytes are for, so a tree staged for a different arch is discarded here.
+    // `alreadyStaged` cannot cover the case: an arch with no asset returns at the
+    // skip below, before any staging decision is made.
+    //
+    // No shipped target cross-builds any more — Studio packages one arch per
+    // platform, macOS being Apple Silicon only — so today this fires on a checkout
+    // still holding a tree from an older pin or an older Studio. It stays because
+    // the failure it prevents (a Mach-O that cannot execute where the installer
+    // lands) is silent, and it costs one manifest read.
+    const stagedArch = stagedManifest(targetDir)?.arch ?? null;
+    if (stagedArch !== null && stagedArch !== arch) {
+        console.warn(
+            `[codesign-tools] discarding the staged ${platform}-${stagedArch} zsign: this run `
+            + `targets ${platform}-${arch}, and shipping the other one would put a binary in the `
+            + 'installer that cannot execute there',
+        );
+        fs.rmSync(targetDir, { recursive: true, force: true });
+    }
+
     const spec = ASSETS[platform]?.[arch] ?? null;
     if (spec === null) {
-        // Not an error. A host with no upstream asset still produces a working
+        // Not an error. A target with no upstream asset still produces a working
         // Studio — one that reports iOS signing as unavailable instead of
-        // shipping a binary that cannot run here.
+        // shipping a binary that cannot run there.
         console.warn(
             `[codesign-tools] no zsign ${ZSIGN_TAG} asset for ${platform}-${arch}; skipping. `
             + 'The resulting Studio cannot sign iOS builds on this platform '
@@ -241,7 +288,6 @@ function alreadyStaged(targetDir, spec, platform, arch) {
         return;
     }
 
-    const targetDir = path.join(rootDir, 'resources', 'codesign', platform);
     if (alreadyStaged(targetDir, spec, platform, arch)) {
         console.log(`[codesign-tools] zsign ${ZSIGN_VERSION} already staged for ${platform}-${arch}, nothing to do`);
         return;

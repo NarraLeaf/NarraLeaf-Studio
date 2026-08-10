@@ -31,6 +31,7 @@ import {
     BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD,
     BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_VALUES,
     BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY,
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN,
     BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE,
     BLUEPRINT_NODE_TYPE_DATA_IS_NULL,
@@ -96,12 +97,16 @@ import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE,
+    BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING,
+    BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
+    BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
+    BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
@@ -232,6 +237,10 @@ import {
     BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_SWITCH_GET_CHECKED,
+    BLUEPRINT_NODE_TYPE_SWITCH_TOGGLE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_GET_CHECKED,
+    BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE,
     BLUEPRINT_NODE_TYPE_TEXT_INPUT_GET_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE,
     BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES,
@@ -264,6 +273,7 @@ import {
     resolveEffectiveBlueprintNodePins,
 } from "../effectivePins";
 import { readBlueprintNodeOutputValue } from "../nodeOutputValues";
+import { readBlueprintMemoValue } from "../memoValues";
 import {
     normalizeBlueprintElementRefValue,
     readBlueprintElementRefParams,
@@ -341,6 +351,8 @@ export type DataPinResolveRuntime = {
         elementId?: string;
         blueprintId?: string;
         componentId?: string;
+        /** Resolved params of the component instance this execution belongs to, by param id. */
+        componentParams?: Record<string, string>;
     };
     valueExecution?: BehaviorGraphValueExecution;
 };
@@ -1358,6 +1370,30 @@ function resolveFrameNodeOutput(
     return key ? api.frame.getParam(key) : null;
 }
 
+/**
+ * What `Get Component Param` publishes: the value the placement supplied, or the empty string.
+ *
+ * Empty rather than undefined in all three miss cases - no instance behind this execution, no param
+ * chosen on the node yet, a param that was removed out from under a graph that still points at it.
+ * Blueprints have one empty value, and a node that returns undefined would make the difference
+ * between "blank" and "broken" show up as a crash somewhere downstream instead of here.
+ */
+function resolveComponentParamNodeOutput(
+    portId: string,
+    params: Record<string, unknown>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (portId !== "value") {
+        return undefined;
+    }
+    const paramId = String(params.paramId ?? "").trim();
+    if (!paramId) {
+        return "";
+    }
+    const supplied = runtime?.executionOwner?.componentParams?.[paramId];
+    return typeof supplied === "string" ? supplied : "";
+}
+
 function resolvePageNodeOutput(portId: string, runtime?: DataPinResolveRuntime): unknown {
     if (portId === "props") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.navigation.getPageProps() ?? {};
@@ -2060,6 +2096,55 @@ function resolveSliderNodeOutput(
     return undefined;
 }
 
+function resolveSwitchNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    type: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (portId !== "checked") {
+        return undefined;
+    }
+    // Toggle is an exec node: the value on its `checked` pin is the post-toggle state its
+    // `execute()` published into the per-execution output cache, not something re-read from
+    // the widget. Without this branch the pin resolves to `undefined` with no error at all.
+    if (type === BLUEPRINT_NODE_TYPE_SWITCH_TOGGLE || type === BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_TOGGLE) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    const isElementTarget = type === BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_GET_CHECKED;
+    if (!isElementTarget && type !== BLUEPRINT_NODE_TYPE_SWITCH_GET_CHECKED) {
+        return undefined;
+    }
+    const ref = isElementTarget
+        ? sameSurfaceElementRef(
+            normalizeBlueprintElementRefValue(resolveInput(graph, nodeId, "switch", params, blueprintLocals, depth, runtime)),
+            runtime,
+        )
+        : undefined;
+    if (isElementTarget && ref?.elementType !== "nl.switch") {
+        return undefined;
+    }
+    const elementId = isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId;
+    const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
+    if (!elementId || !api) {
+        return undefined;
+    }
+    let props: ReturnType<typeof api.widget.getSwitchProperties>;
+    try {
+        props = api.widget.getSwitchProperties(elementId);
+    } catch {
+        return undefined;
+    }
+    if (ref) {
+        trackElementDependency(runtime, ref, "props.checked");
+    }
+    return props.checked;
+}
+
 function resolveListNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -2122,6 +2207,7 @@ const WIDGET_PROPERTY_ELEMENT_TYPES: Record<string, string> = {
     image: "nl.image",
     button: "nl.button",
     slider: "nl.slider",
+    switch: "nl.switch",
     list: "nl.list",
     frame: "nl.frame",
     frameWidget: "nl.frame",
@@ -2501,6 +2587,9 @@ function resolveSelfOutput(
             return selfNode.params?.value ?? null;
         }
     }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_DATA_MEMO && portId === "result") {
+        return readBlueprintMemoValue(blueprintLocals, nodeId);
+    }
     if (isBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
         return runtime?.eventPayload?.[portId] ?? null;
     }
@@ -2570,6 +2659,17 @@ function resolveSelfOutput(
     if (selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY && portId === "handle") {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
+    // The network family, kept out of the cross-product list above on purpose: `response`, `text`
+    // and `status` are new port names there, and joining that list would hand them to every node
+    // type it covers while handing these three every port name in it.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_NETWORK_FETCH ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON) &&
+        (portId === "response" || portId === "status" || portId === "error" || portId === "text" || portId === "value")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
     // Animate Property hands the token it minted to a later Stop Animation, so the
     // token has to survive the hop through the node output store.
     if (
@@ -2617,6 +2717,9 @@ function resolveSelfOutput(
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
         return resolveFrameNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM) {
+        return resolveComponentParamNodeOutput(portId, selfNode.params ?? {}, runtime);
     }
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS ||
@@ -2727,6 +2830,19 @@ function resolveSelfOutput(
     );
     if (sliderOutput !== undefined) {
         return sliderOutput;
+    }
+    const switchOutput = resolveSwitchNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    if (switchOutput !== undefined) {
+        return switchOutput;
     }
     const textInputOutput = resolveTextInputNodeOutput(
         graph,

@@ -8,9 +8,12 @@ import { resolveFrozenActionDisabled } from "../components/ui/freezeActionPolicy
 import { useWorkspaceFrozen } from "./useWorkspaceFrozen";
 import type { ActionDefinition, ActionGroup } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
-import { Services } from "@/lib/workspace/services/services";
+import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
+import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import type { FocusContext } from "@/lib/workspace/services/ui";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
+import type { Workspace } from "@/lib/workspace/workspace";
 import { EditMenuRole, MenuActionId } from "@shared/types/menu";
 
 /**
@@ -39,6 +42,15 @@ export function useMenuActionHandler(): void {
         (actionId: MenuActionId) => {
             const action = findRegisteredAction(actionId, actions, actionGroups, focusContext);
             if (!action) {
+                // Not everything the menu bar names is a toolbar action. The Develop menu's Dev
+                // Mode / Preview / Test are palette COMMANDS - they lost their standalone actions
+                // when the Run split-button took over launching them, and for a while afterwards
+                // those three menu items dispatched ids nothing answered to, so clicking them did
+                // nothing but log this warning. The CommandService is the registry they live in
+                // now, so ask it before giving up.
+                if (runRegisteredCommand(actionId, context, workspace, focusContext)) {
+                    return;
+                }
                 console.warn(`[MenuAction] Unregistered menu action: ${actionId}`);
                 return;
             }
@@ -66,7 +78,7 @@ export function useMenuActionHandler(): void {
 
             action.onClick(workspace);
         },
-        [actionGroups, actions, focusContext, frozen, workspace],
+        [actionGroups, actions, context, focusContext, frozen, workspace],
     );
 
     useEffect(() => {
@@ -112,6 +124,45 @@ function hasSelectionInsideActiveElement(): boolean {
         return false;
     }
     return active.contains(selection.getRangeAt(0).commonAncestorContainer);
+}
+
+/**
+ * Run a directly-registered palette command by id. Returns whether one was found and run, so the
+ * caller can still report a genuinely unknown id.
+ *
+ * `when` is honoured for the same reason the palette honours it: it is where a command states that
+ * it cannot run right now (Dev Mode is already up, a test is still going), and the answer must not
+ * depend on which door the user came through. The menu bar decides run-vs-stop from the runtime
+ * status it renders its checkmarks from, so a refusal here means the two disagreed - worth a line
+ * in the console rather than a silent no-op.
+ *
+ * No freeze check, unlike the action path above: these commands carry the freeze in their own
+ * `when` (Preview is off while frozen, a headless test is not), and the blanket
+ * `resolveFrozenActionDisabled` rule - everything outside File and Help - would switch off Dev Mode
+ * and Test, which a frozen workspace is meant to keep.
+ */
+function runRegisteredCommand(
+    commandId: MenuActionId,
+    context: WorkspaceContext | null,
+    workspace: Workspace | null,
+    focusContext: FocusContext | null,
+): boolean {
+    if (!context || !workspace) {
+        return false;
+    }
+    const command = context.services
+        .get<CommandService>(Services.Command)
+        .getRegistered()
+        .find(candidate => candidate.id === commandId);
+    if (!command) {
+        return false;
+    }
+    if (command.when && !command.when(focusContext ?? { area: FocusArea.None })) {
+        console.warn(`[MenuAction] Menu command is not available right now: ${commandId}`);
+        return true;
+    }
+    void command.run(workspace);
+    return true;
 }
 
 function findRegisteredAction(

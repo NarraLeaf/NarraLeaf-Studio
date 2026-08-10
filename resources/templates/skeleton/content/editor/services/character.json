@@ -1,0 +1,55 @@
+{
+  "characters": [
+    {
+      "profile": {
+        "appearance": {
+          "avatars": {
+            "p1oh": {
+              "baked": "fe5f2877"
+            }
+          },
+          "defaultPoseId": "p1oh",
+          "kind": "preset",
+          "poses": [
+            {
+              "assetId": "926860bf-6a08-4837-856f-4bf8f157f2ba",
+              "id": "p1oh",
+              "name": "Default",
+              "portrait": {
+                "h": 0.35,
+                "w": 0.38,
+                "x": 0.455,
+                "y": 0.01
+              }
+            }
+          ]
+        },
+        "attributes": {},
+        "description": "",
+        "id": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
+        "name": "Narra",
+        "nicknames": [],
+        "tags": [],
+        "thumbnail": null
+      }
+    },
+    {
+      "profile": {
+        "appearance": {
+          "defaultPoseId": null,
+          "kind": "preset",
+          "poses": []
+        },
+        "attributes": {},
+        "description": "",
+        "id": "683b73ba-729c-4bc5-8c41-d641a257a1f4",
+        "name": "Aoi",
+        "nicknames": [],
+        "tags": [],
+        "thumbnail": null
+      }
+    }
+  ],
+  "groups": {},
+  "version": 2
+}

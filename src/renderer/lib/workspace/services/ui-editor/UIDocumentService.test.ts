@@ -57,9 +57,21 @@ function ownerKeyForTest(owner: BlueprintOwnerRef): string {
     }
 }
 
-function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
+/** What {@link UIDocumentService} asked to be recorded, in the order it asked. */
+type RecordedHistoryCall = { surfaceId: string; mergeKey?: string };
+
+function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: boolean } = {}) {
     let nextId = 0;
     const service = new UIDocumentService();
+    const historyCalls: RecordedHistoryCall[] = [];
+    const historyService = {
+        // Enough of the real service for the recording decision: the snapshots themselves are
+        // `UIEditorHistoryService`'s business and are covered by its own tests.
+        captureSnapshot: (surfaceId: string) => ({ surfaceId }),
+        record: (call: { surfaceId: string; mergeKey?: string }) => {
+            historyCalls.push({ surfaceId: call.surfaceId, mergeKey: call.mergeKey });
+        },
+    };
     const blueprintDocument: any = {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {},
@@ -139,6 +151,9 @@ function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
                 if (options.withLocalBlueprint && serviceId === Services.LocalBlueprint) {
                     return localBlueprintService;
                 }
+                if (options.withHistory && serviceId === Services.UIEditorHistory) {
+                    return historyService;
+                }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
@@ -147,7 +162,7 @@ function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
     const initialDocument = (service as any).createEmptyDocument();
     (service as any).document = initialDocument;
 
-    return { service, initialDocument, blueprintDocument, createGraphBlueprint };
+    return { service, initialDocument, blueprintDocument, createGraphBlueprint, historyCalls };
 }
 
 describe("UIDocumentService surface creation", () => {
@@ -612,6 +627,23 @@ describe("UIDocumentService surface creation", () => {
         expect(mainSurface?.name).toBe("Start");
     });
 
+    it("records a surface's own edits in that surface's undo stack", () => {
+        // These were the one kind of edit in the interface editor with no history behind them:
+        // `mutateDocument` records only for a caller that names a surface, and neither of these
+        // did - so Ctrl+Z could not take back a page's name or its background.
+        const { service, historyCalls } = createHarness({ withHistory: true });
+
+        service.renameSurface(MAIN_APP_SURFACE_ID, "Title Screen");
+        service.updateSurface(MAIN_APP_SURFACE_ID, surface => {
+            surface.settings = { ...(surface.settings ?? {}), backgroundColor: "#123456" };
+        }, { mergeKey: "surface:main:backgroundColor" });
+
+        expect(historyCalls).toEqual([
+            { surfaceId: MAIN_APP_SURFACE_ID, mergeKey: `surface:${MAIN_APP_SURFACE_ID}:name` },
+            { surfaceId: MAIN_APP_SURFACE_ID, mergeKey: "surface:main:backgroundColor" },
+        ]);
+    });
+
     it("duplicates Pages with independent elements and private blueprints", () => {
         const { service, blueprintDocument, createGraphBlueprint } = createHarness({ withLocalBlueprint: true });
         const source = service.createSurface({
@@ -937,6 +969,188 @@ describe("UIDocumentService component library", () => {
         expect(materializedRoot.childrenIds[0]).not.toBe(text.id);
     });
 
+    /**
+     * What the two inspector halves rely on. The declare side replaces the whole list on every
+     * keystroke, so the questions are all about what survives that replacement.
+     */
+    it("keeps instance values pointed across a rename and a removal", () => {
+        const { service } = createHarness();
+        const doc = service.getDocument();
+        const surface = doc.surfaces[0]!;
+        const rootId = surface.rootElementId;
+        const source: UIElement = {
+            id: "slot-source",
+            type: "nl.container",
+            name: "Slot",
+            parentId: rootId,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 200, height: 60 },
+        };
+        doc.elements[rootId]!.childrenIds.push(source.id);
+        doc.elements[source.id] = source;
+        const component = service.createComponentFromElements(surface.id, [source.id], "Save Slot")!;
+        const instance = service.createComponentInstance(rootId, component.id, {});
+
+        service.setComponentParams(component.id, [
+            { id: "saveId", name: "Save id", type: "string", defaultValue: "1" },
+            { id: "label", name: "Label", type: "string", defaultValue: "Empty" },
+        ]);
+        service.setComponentInstanceParam(instance.id, "saveId", "7");
+        // An empty override is a value, not a reset - it has to be stored, or an author could not
+        // say "blank" for a param whose default is not.
+        service.setComponentInstanceParam(instance.id, "label", "");
+        expect(getUIComponentLink(service.getDocument().elements[instance.id])?.params)
+            .toEqual({ saveId: "7", label: "" });
+
+        // Only `name` changes: identity is `id`, so nothing the instance stored is unpointed.
+        service.setComponentParams(component.id, [
+            { id: "saveId", name: "Which save", type: "string", defaultValue: "1" },
+            { id: "label", name: "Label", type: "string", defaultValue: "Empty" },
+        ]);
+        expect(getUIComponentLink(service.getDocument().elements[instance.id])?.params)
+            .toEqual({ saveId: "7", label: "" });
+
+        // Removing a param leaves its instance values alone, so re-adding the same id is how an
+        // author undoes the deletion. Sweeping here would make a stray click a silent data loss.
+        service.setComponentParams(component.id, [
+            { id: "label", name: "Label", type: "string", defaultValue: "Empty" },
+        ]);
+        service.setComponentParams(component.id, [
+            { id: "saveId", name: "Save id", type: "string", defaultValue: "1" },
+            { id: "label", name: "Label", type: "string", defaultValue: "Empty" },
+        ]);
+        expect(getUIComponentLink(service.getDocument().elements[instance.id])?.params)
+            .toEqual({ saveId: "7", label: "" });
+    });
+
+    // A component that arrives inert is worth placing once, which is why every component in the
+    // bundled template had exactly one instance. Extraction now carries the logic across, remapped so
+    // it drives the copy rather than the elements still sitting on the surface.
+    it("carries a widget blueprint into the component it extracts", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+        const surface = service.createSurface({ kind: "appSurface", host: "app", name: "Save" });
+        const doc = service.getDocument();
+        const rootId = surface.rootElementId;
+        const hit: UIElement = {
+            id: "hit-area",
+            type: "nl.container",
+            name: "Hit area",
+            parentId: rootId,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 200, height: 60 },
+            behavior: { events: { mouseClick: { kind: "blueprintEvent", blueprintId: "bp-hit", eventId: "click" } } },
+        } as unknown as UIElement;
+        doc.elements[rootId]!.childrenIds.push(hit.id);
+        doc.elements[hit.id] = hit;
+
+        blueprintDocument.blueprints["bp-hit"] = {
+            id: "bp-hit",
+            name: "Hit area",
+            owner: { kind: "widgetMain", surfaceId: surface.id, elementId: hit.id },
+            frontend: "visual",
+            programKind: "graph",
+            members: { variables: {}, fields: {}, functions: {} },
+            bindings: {},
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        click: {
+                            id: "click",
+                            graph: {
+                                nodes: {
+                                    ref: {
+                                        id: "ref",
+                                        type: "blueprint.element.ref",
+                                        params: { surfaceId: surface.id, elementId: hit.id, elementType: "nl.container" },
+                                    },
+                                },
+                                edges: [],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        } as never;
+        blueprintDocument.ownerRecords[`widgetMain:${surface.id}:${hit.id}`] = {
+            activeBlueprintId: "bp-hit",
+            privateBlueprintIds: ["bp-hit"],
+            initializedFrontend: "visual",
+        } as never;
+
+        const component = service.createComponentFromElements(surface.id, [hit.id], "Save slot")!;
+        const copy = component.elements[component.rootElementId]!;
+
+        // The binding survives, and names the clone rather than the surface's blueprint.
+        const boundId = (copy.behavior?.events?.mouseClick as { blueprintId?: string } | undefined)?.blueprintId;
+        expect(boundId).toBeTruthy();
+        expect(boundId).not.toBe("bp-hit");
+
+        const cloned = blueprintDocument.blueprints[boundId!]!;
+        expect(cloned.owner).toMatchObject({ kind: "componentWidgetMain", componentId: component.id, elementId: copy.id });
+        expect(blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${copy.id}`]?.activeBlueprintId).toBe(boundId);
+
+        // The whole point of the remap: an element ref inside the clone points at the component's
+        // copy. Left alone it would reach back out and drive the element still on the surface.
+        const refParams = (cloned.program as never as {
+            graphs: { events: Record<string, { graph: { nodes: Record<string, { params: Record<string, string> }> } }> };
+        }).graphs.events.click.graph.nodes.ref.params;
+        expect(refParams.elementId).toBe(copy.id);
+        expect(refParams.elementId).not.toBe(hit.id);
+
+        // The original is untouched: extraction copies into the library, it does not move.
+        expect(service.getDocument().elements[hit.id]).toBeTruthy();
+        expect(blueprintDocument.blueprints["bp-hit"]).toBeTruthy();
+
+        // Exactly one clone. Selecting an element is enough to give it a blueprint, so most elements
+        // own an empty one; carrying those put a shell in the library for every box in the selection.
+        const clones = Object.values(blueprintDocument.blueprints).filter(
+            b => (b as { owner?: { kind?: string; componentId?: string } }).owner?.kind === "componentWidgetMain"
+                && (b as { owner?: { componentId?: string } }).owner?.componentId === component.id,
+        );
+        expect(clones).toHaveLength(1);
+    });
+
+    it("leaves an empty blueprint behind when it extracts", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+        const surface = service.createSurface({ kind: "appSurface", host: "app", name: "Save" });
+        const doc = service.getDocument();
+        const rootId = surface.rootElementId;
+        const box: UIElement = {
+            id: "plain-box",
+            type: "nl.container",
+            name: "Box",
+            parentId: rootId,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 40, height: 40 },
+        };
+        doc.elements[rootId]!.childrenIds.push(box.id);
+        doc.elements[box.id] = box;
+        blueprintDocument.blueprints["bp-empty"] = {
+            id: "bp-empty",
+            name: "Box",
+            owner: { kind: "widgetMain", surfaceId: surface.id, elementId: box.id },
+            frontend: "visual",
+            programKind: "graph",
+            members: { variables: {}, fields: {}, functions: {} },
+            bindings: {},
+            program: { kind: "graph", graphs: { events: { click: { id: "click", graph: { nodes: {}, edges: [] } } }, functions: {} } },
+        } as never;
+        blueprintDocument.ownerRecords[`widgetMain:${surface.id}:${box.id}`] = {
+            activeBlueprintId: "bp-empty",
+            privateBlueprintIds: ["bp-empty"],
+            initializedFrontend: "visual",
+        } as never;
+
+        const component = service.createComponentFromElements(surface.id, [box.id], "Box")!;
+        const clones = Object.values(blueprintDocument.blueprints).filter(
+            b => (b as { owner?: { kind?: string; componentId?: string } }).owner?.kind === "componentWidgetMain"
+                && (b as { owner?: { componentId?: string } }).owner?.componentId === component.id,
+        );
+        expect(clones).toHaveLength(0);
+    });
+
     it("wraps multi-selection components in a relative container root", () => {
         const { service } = createHarness();
         const doc = service.getDocument();
@@ -971,5 +1185,283 @@ describe("UIDocumentService component library", () => {
         expect(componentChildren.map(element => element.type)).toEqual(["nl.container", "nl.text"]);
         expect(componentChildren[0].layout).toMatchObject({ x: 0, y: 0 });
         expect(componentChildren[1].layout).toMatchObject({ x: 150, y: 60 });
+    });
+});
+
+describe("UIDocumentService template import: components and naming", () => {
+    /**
+     * A template that ships one library component plus a Page whose element is an
+     * instance of it - the shape a component-set template has.
+     */
+    function createComponentTemplate(): UIDocument {
+        return {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "tpl-doc",
+            name: "Template",
+            surfaces: [
+                {
+                    id: "tpl-surface",
+                    name: "Menu",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: "tpl-root",
+                },
+            ],
+            components: [
+                {
+                    id: "tpl-component",
+                    name: "Primary Button",
+                    rootElementId: "tpl-component-root",
+                    elements: {
+                        "tpl-component-root": {
+                            id: "tpl-component-root",
+                            type: "nl.container",
+                            name: "Button",
+                            parentId: null,
+                            childrenIds: ["tpl-component-label"],
+                            layout: { x: 0, y: 0, width: 200, height: 48 },
+                        },
+                        "tpl-component-label": {
+                            id: "tpl-component-label",
+                            type: "nl.text",
+                            name: "Label",
+                            parentId: "tpl-component-root",
+                            childrenIds: [],
+                            layout: { x: 0, y: 0, width: 200, height: 48 },
+                        },
+                    },
+                },
+            ],
+            elements: {
+                "tpl-root": {
+                    id: "tpl-root",
+                    type: "nl.root",
+                    name: "Root",
+                    parentId: null,
+                    childrenIds: ["tpl-instance"],
+                    layout: { x: 0, y: 0, width: 1280, height: 720 },
+                },
+                "tpl-instance": {
+                    id: "tpl-instance",
+                    type: "nl.container",
+                    name: "Start",
+                    parentId: "tpl-root",
+                    childrenIds: [],
+                    layout: { x: 100, y: 200, width: 200, height: 48 },
+                    extra: { componentLink: { componentId: "tpl-component", linked: true } },
+                },
+            },
+        } as UIDocument;
+    }
+
+    it("copies a template's components into the library under fresh ids", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        expect(result.importedComponents).toHaveLength(1);
+        const imported = result.importedComponents[0]!;
+        // The library entry exists, is not the template's own id, and kept its elements.
+        expect(service.getDocument().components?.map(component => component.id)).toContain(imported.id);
+        expect(imported.id).not.toBe("tpl-component");
+        expect(Object.keys(imported.elements)).toHaveLength(2);
+        expect(Object.keys(imported.elements)).not.toContain("tpl-component-root");
+        expect(imported.elements[imported.rootElementId]?.parentId).toBeNull();
+    });
+
+    it("repoints an imported surface's component instances at the copied component", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        const surface = result.importedSurfaces[0]!;
+        const document = service.getDocument();
+        const instance = Object.values(document.elements).find(
+            element => element.parentId === surface.rootElementId,
+        );
+        // Before component import existed this link dangled at "tpl-component",
+        // which is an id no project ever holds.
+        expect(getUIComponentLink(instance)?.componentId).toBe(result.importedComponents[0]!.id);
+    });
+
+    it("keeps template names as authored rather than naming them copies", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        expect(result.importedSurfaces[0]?.name).toBe("Menu");
+        expect(result.importedComponents[0]?.name).toBe("Primary Button");
+    });
+
+    it("suffixes only on a real collision with something already in the project", () => {
+        const { service } = createHarness();
+
+        service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+        const second = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        expect(second.importedSurfaces[0]?.name).toBe("Menu 2");
+        expect(second.importedComponents[0]?.name).toBe("Primary Button 2");
+    });
+
+    it("clones a component's own blueprints onto the copied component", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+        const graphs = {
+            blueprintDocument: {
+                schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                blueprints: {
+                    "tpl-bp": {
+                        id: "tpl-bp",
+                        name: "On click",
+                        owner: {
+                            kind: "componentWidgetMain",
+                            componentId: "tpl-component",
+                            elementId: "tpl-component-root",
+                        },
+                        frontend: "visual",
+                        programKind: "graph",
+                        program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                        members: { variables: {}, fields: {}, functions: {} },
+                        bindings: {},
+                    },
+                },
+                ownerRecords: {
+                    "componentWidgetMain:tpl-component:tpl-component-root": {
+                        activeBlueprintId: "tpl-bp",
+                        privateBlueprintIds: ["tpl-bp"],
+                        initializedFrontend: "visual",
+                    },
+                },
+                persistentVariables: {},
+                meta: {},
+            },
+        };
+
+        const result = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs,
+            placement: { kind: "appSurface" },
+        });
+
+        const imported = result.importedComponents[0]!;
+        const cloned = Object.values<any>(blueprintDocument.blueprints).find(
+            blueprint => blueprint.owner.kind === "componentWidgetMain"
+                && blueprint.owner.componentId === imported.id,
+        );
+        expect(cloned).toBeDefined();
+        expect(cloned.id).not.toBe("tpl-bp");
+        // The owner must point at the copied element, not the template's element id.
+        expect(Object.keys(imported.elements)).toContain(cloned.owner.elementId);
+    });
+});
+
+describe("UIDocumentService template import: multi-surface templates", () => {
+    /** Two Pages, the first embedding the second through an nl.frame. */
+    function createFramedTemplate(): UIDocument {
+        return {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "tpl-framed",
+            name: "Config",
+            surfaces: [
+                {
+                    id: "tpl-shell",
+                    name: "Config",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: "tpl-shell-root",
+                },
+                {
+                    id: "tpl-pane",
+                    name: "Config Â· Sound",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: "tpl-pane-root",
+                },
+            ],
+            elements: {
+                "tpl-shell-root": {
+                    id: "tpl-shell-root",
+                    type: "nl.root",
+                    name: "Root",
+                    parentId: null,
+                    childrenIds: ["tpl-frame"],
+                    layout: { x: 0, y: 0, width: 1280, height: 720 },
+                },
+                "tpl-frame": {
+                    id: "tpl-frame",
+                    type: "nl.frame",
+                    name: "Pane",
+                    parentId: "tpl-shell-root",
+                    childrenIds: [],
+                    layout: { x: 320, y: 0, width: 960, height: 720 },
+                    props: { targetSurfaceId: "tpl-pane" },
+                },
+                "tpl-pane-root": {
+                    id: "tpl-pane-root",
+                    type: "nl.root",
+                    name: "Root",
+                    parentId: null,
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 1280, height: 720 },
+                },
+            },
+        } as UIDocument;
+    }
+
+    it("repoints a frame at the sibling surface that arrived with it", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createFramedTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        expect(result.importedSurfaces).toHaveLength(2);
+        const pane = result.importedSurfaces.find(surface => surface.name.startsWith("Config Â·"))!;
+        const frame = Object.values(service.getDocument().elements)
+            .find(element => element.type === "nl.frame")!;
+
+        // Before this was fixed the frame kept "tpl-pane" â€” the template's own id,
+        // which no project holds â€” and the pane rendered as an empty box.
+        expect((frame.props as { targetSurfaceId?: string }).targetSurfaceId).toBe(pane.id);
+        expect((frame.props as { targetSurfaceId?: string }).targetSurfaceId).not.toBe("tpl-pane");
+    });
+
+    it("gives each surface of a multi-surface template its own fresh id", () => {
+        const { service } = createHarness();
+
+        const result = service.importTemplateBundle({
+            document: createFramedTemplate(),
+            graphs: undefined,
+            placement: { kind: "appSurface" },
+        });
+
+        const ids = result.importedSurfaces.map(surface => surface.id);
+        expect(new Set(ids).size).toBe(2);
+        expect(ids).not.toContain("tpl-shell");
+        expect(ids).not.toContain("tpl-pane");
     });
 });

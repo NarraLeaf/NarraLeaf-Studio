@@ -10,11 +10,14 @@ import type {
     UITemplateAssetRef,
     UITemplateBundle,
     UITemplateFetchedAsset,
+    UITemplatePreview,
+    UIThemeDescriptor,
     UITemplateRegistryEntry,
     UITemplateRegistryIndex,
     UITemplateSurfacePlacement,
 } from "@shared/types/uiTemplateRegistry";
 import { isSafeRelativeEntry } from "@shared/utils/pluginManifest";
+import { normalizeLocalizedTextPack } from "@shared/types/localizedText";
 import { resolveDownloadSource } from "@shared/utils/downloadSource";
 import { applyDownloadRewrite } from "./downloadRewrites";
 
@@ -129,8 +132,10 @@ function normalizeUITemplateEntry(raw: unknown): UITemplateRegistryEntry | null 
     if (preview && !isSafeRelativeEntry(preview)) {
         return null;
     }
+    const theme = asString(record.theme);
     return {
         id,
+        theme: theme || undefined,
         name: asString(record.name) || id,
         version: asString(record.version),
         description: asString(record.description),
@@ -142,10 +147,70 @@ function normalizeUITemplateEntry(raw: unknown): UITemplateRegistryEntry | null 
         preview: preview || undefined,
         surface: normalizeSurfacePlacement(record.surface),
         assets: normalizeAssets(record.assets),
+        locales: normalizeLocalizedTextPack(record.locales),
     };
 }
 
-export async function fetchTemplateIndex(url: string): Promise<UITemplateRegistryIndex> {
+/**
+ * Coerce one raw theme record, or `null` if it lacks what the store needs to draw
+ * a card. `templateCount` is trusted only as a number — the renderer counts the
+ * entries it actually has rather than relying on it.
+ */
+function normalizeThemeDescriptor(raw: unknown): UIThemeDescriptor | null {
+    if (!raw || typeof raw !== "object") {
+        return null;
+    }
+    const record = raw as Record<string, unknown>;
+    const id = asString(record.id);
+    const path = asString(record.path);
+    const preview = asString(record.preview);
+    if (!id || !path) {
+        return null;
+    }
+    if (preview && !isSafeRelativeEntry(preview)) {
+        return null;
+    }
+    return {
+        id,
+        name: asString(record.name) || id,
+        version: asString(record.version),
+        description: asString(record.description),
+        publisher: asString(record.publisher),
+        path,
+        preview: preview || undefined,
+        templateCount: typeof record.templateCount === "number" ? record.templateCount : 0,
+        locales: normalizeLocalizedTextPack(record.locales),
+    };
+}
+
+/**
+ * Last index read per URL.
+ *
+ * Opt-in through `maxAgeMs`, exactly as the plugin registry's memo is: a Refresh
+ * passes nothing and therefore really goes to the network, while the calls that
+ * only need the index to resolve a path — "which file belongs to this template
+ * id" — reuse it. Without this, opening the store, entering a theme and adding
+ * one screen fetched index.json four times over.
+ */
+const indexMemo = new Map<string, { at: number; index: UITemplateRegistryIndex }>();
+
+export async function fetchTemplateIndex(
+    url: string,
+    options: { maxAgeMs?: number } = {},
+): Promise<UITemplateRegistryIndex> {
+    const maxAgeMs = options.maxAgeMs ?? 0;
+    if (maxAgeMs > 0) {
+        const cached = indexMemo.get(url);
+        if (cached && Date.now() - cached.at <= maxAgeMs) {
+            return cached.index;
+        }
+    }
+    const index = await readTemplateIndex(url);
+    indexMemo.set(url, { at: Date.now(), index });
+    return index;
+}
+
+async function readTemplateIndex(url: string): Promise<UITemplateRegistryIndex> {
     const response = await fetchWithTimeout(url);
     if (!response.ok) {
         throw new Error(`Template registry request failed (${response.status} ${response.statusText})`);
@@ -170,9 +235,17 @@ export async function fetchTemplateIndex(url: string): Promise<UITemplateRegistr
             .map(normalizeUITemplateEntry)
             .filter((entry): entry is UITemplateRegistryEntry => entry !== null)
         : [];
+    // Additive: a registry that predates themes simply has none, and the store
+    // falls back to one flat shelf rather than showing an empty browse level.
+    const themes = Array.isArray(record.themes)
+        ? record.themes
+            .map(normalizeThemeDescriptor)
+            .filter((theme): theme is UIThemeDescriptor => theme !== null)
+        : [];
     return {
         formatVersion: UI_TEMPLATE_REGISTRY_FORMAT_VERSION,
         repository: asString(record.repository),
+        themes,
         templates,
     };
 }
@@ -249,6 +322,62 @@ async function fetchAssetFile(url: string, ref: UITemplateAssetRef): Promise<UIT
         mime: inferMime(fileName),
         dataBase64: buffer.toString("base64"),
     };
+}
+
+/**
+ * Fetch each requested theme's poster image.
+ *
+ * The renderer never reaches the network itself, so the bytes come back base64 and
+ * it turns them into a data URL. One theme failing costs its own card.
+ */
+/** Raw poster bytes, before the cache turns them into a `data:` URL. */
+export type FetchedThemePoster = { id: string; mime: string; dataBase64: string };
+
+export async function fetchThemePreviews(
+    themes: UIThemeDescriptor[],
+    indexUrl: string,
+): Promise<FetchedThemePoster[]> {
+    const baseDir = registryBaseDir(indexUrl);
+    const previews: FetchedThemePoster[] = [];
+    for (const theme of themes) {
+        if (!theme.preview) {
+            continue;
+        }
+        try {
+            const url = resolveTemplateFileUrl(baseDir, theme.path, theme.preview);
+            const fetched = await fetchAssetFile(url, { id: theme.id, path: theme.preview });
+            previews.push({ id: theme.id, mime: fetched.mime, dataBase64: fetched.dataBase64 });
+        } catch (error) {
+            console.warn(`[uiTemplates] theme poster unavailable for ${theme.id}`, error);
+        }
+    }
+    return previews;
+}
+
+/**
+ * Fetch just the `UIDocument` of each requested template, for the store's cards.
+ *
+ * Deliberately not {@link fetchTemplateBundle} per card: a card is only looked at,
+ * and the bundle would pull every template's logic graph and every byte of its
+ * resources to draw a thumbnail. One template failing yields no entry for it
+ * rather than failing the grid — a card that cannot draw is better than a store
+ * that cannot open.
+ */
+export async function fetchTemplatePreviews(
+    entries: UITemplateRegistryEntry[],
+    indexUrl: string,
+): Promise<UITemplatePreview[]> {
+    const baseDir = registryBaseDir(indexUrl);
+    const previews: UITemplatePreview[] = [];
+    for (const entry of entries) {
+        try {
+            const document = await fetchJsonFile(resolveTemplateFileUrl(baseDir, entry.path, entry.document));
+            previews.push({ id: entry.id, document });
+        } catch (error) {
+            console.warn(`[uiTemplates] preview unavailable for ${entry.id}`, error);
+        }
+    }
+    return previews;
 }
 
 /**

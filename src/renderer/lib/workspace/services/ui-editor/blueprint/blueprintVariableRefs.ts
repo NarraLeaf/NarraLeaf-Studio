@@ -157,6 +157,15 @@ export function createExplicitBlueprintVariableRef(blueprintId: string, variable
     return `${EXPLICIT_BLUEPRINT_VARIABLE_REF_PREFIX}${encodePart(blueprintId)}:${encodePart(variableId)}`;
 }
 
+/**
+ * Whether a key names a variable by blueprint *and* id rather than by bare id. Execution locals
+ * carry both forms for every accessible variable, so anything enumerating them (the debugger's
+ * scope view) has to drop one of the two or show every variable twice.
+ */
+export function isExplicitBlueprintVariableRef(key: string): boolean {
+    return key.startsWith(EXPLICIT_BLUEPRINT_VARIABLE_REF_PREFIX);
+}
+
 export function parseBlueprintVariableRef(raw: unknown, currentBlueprintId: string): BlueprintVariableRef | null {
     const value = String(raw ?? "").trim();
     if (!value) {

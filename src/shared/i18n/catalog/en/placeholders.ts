@@ -30,5 +30,7 @@ export const placeholders = {
         keybindings: "Keyboard Shortcuts",
         history: "History",
         notifications: "Notifications",
+        plugins: "Plugins",
+        variables: "Variables",
     },
 } as const;

@@ -27,9 +27,9 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
 /**
  * `variables` - the story's state: declared, used, and unambiguous.
  *
- * `variables/name-collision` reads `ctx.persistentNameCollisions`, which is
- * `mergedPersistentView`'s own answer rather than a second scan - the compiler already reports the
- * same list, and two scans that could disagree about what collides would be worse than no rule.
+ * `variables/name-collision` reads `ctx.persistentNameCollisions` / `ctx.savedNameCollisions`, which
+ * are `mergedPersistentView`'s own answer rather than a second scan - the compiler already reports
+ * the same list, and two scans that could disagree about what collides would be worse than no rule.
  *
  * The two scans here are deliberately asymmetric about disabled rows, for the same reason
  * `declarations.ts` refuses to skip a disabled declaration:
@@ -40,9 +40,17 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
  *    is still a place the variable is wanted; reporting the variable as unused would invite them to
  *    delete the declaration out from under it.
  *
- * Scope decides reach, exactly as the compiler resolves it: `scene` binds within its own scene,
- * `saved` within its document, `persistent` across the project - story `/persis` rows AND the
- * project variable registry, which is a legitimate declaration site of its own.
+ * Scope decides reach, exactly as the compiler resolves it. `scene` binds within its own scene. The
+ * other two are PROJECT-level and reach across every story, because both are declared in two places:
+ * a story declaration row (`/save`, `/persis`) and the project variable registry, which is a
+ * legitimate declaration site of its own with no row to point at. A registry `saved` entry belongs
+ * to the project, not to whichever story happens to read it, so a scan that kept saved uses per-story
+ * would report it unused in every story but one.
+ *
+ * `ctx.variableRegistry` carries BOTH project scopes; every read of it here filters on `entry.scope`
+ * first. Treating the flat list as persistent identities would let a `saved` entry silently satisfy a
+ * persistent reference, which resolves to nothing at runtime - the two scopes are backed by different
+ * stores.
  *
  * `variables/random-outside-assignment` is the odd one out: it is about *when* a value is computed
  * rather than whether it resolves. Its reasoning lives above `RANDOM_FUNCTIONS` below.
@@ -358,21 +366,29 @@ function collectBlueprintVariableUses(document: BlueprintDocument | null): Recor
 }
 
 /**
- * The persistent identities a reference may resolve against: the project registry plus every story
- * `/persis` row, project-wide because persistent state is app-level and shared.
+ * The identities a reference of one project scope may resolve against: the registry entries of that
+ * scope plus every story declaration row of it, project-wide because both scopes outlive any one
+ * story.
  *
  * Both `id` and `storageKey` are accepted. The compiler validates against the merged storage keys
  * only, and for both surfaces the two are the same value unless an author changed one - so the extra
  * arm costs nothing and cannot turn a working reference into an error.
+ *
+ * Scope-filtered rather than scope-blind: a `saved` entry accepted as a persistent identity would
+ * turn a reference that reads app-level storage into one that silently finds nothing there.
  */
-function collectPersistentIdentities(ctx: LintContext): Set<string> {
+function collectProjectScopeIdentities(ctx: LintContext, scope: "saved" | "persistent"): Set<string> {
     const identities = new Set<string>();
     for (const entry of ctx.variableRegistry) {
+        if (entry.scope !== scope) {
+            continue;
+        }
         identities.add(entry.id);
         identities.add(entry.storageKey);
     }
+    const rowsOf = scope === "saved" ? savedVariableDefs : storyPersistentDefs;
     for (const story of ctx.stories) {
-        for (const def of Object.values(storyPersistentDefs(story.document))) {
+        for (const def of Object.values(rowsOf(story.document))) {
             identities.add(def.id);
             identities.add(def.storageKey);
         }
@@ -380,8 +396,8 @@ function collectPersistentIdentities(ctx: LintContext): Set<string> {
     return identities;
 }
 
-/** The two ids one persistent declaration answers to. */
-function persistentAliases(id: string, storageKey: string | undefined): string[] {
+/** The two ids one project-scoped declaration answers to. */
+function variableAliases(id: string, storageKey: string | undefined): string[] {
     return storageKey && storageKey !== id ? [id, storageKey] : [id];
 }
 
@@ -442,11 +458,16 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "error",
         slug: "variablesUndeclared",
         run(ctx) {
-            const persistentIdentities = collectPersistentIdentities(ctx);
+            const persistentIdentities = collectProjectScopeIdentities(ctx, "persistent");
+            // Project-wide, like the persistent set beside it and for the same reason: a saved
+            // variable may be declared in the registry with no row anywhere, so "is it declared"
+            // cannot be answered out of the document doing the reading. It also has to agree with
+            // `unused` below - a row that rule counts as used from another story must not be an
+            // undeclared reference here.
+            const savedIdentities = collectProjectScopeIdentities(ctx, "saved");
             const findings: LintFinding[] = [];
 
             for (const entry of ctx.stories) {
-                const saved = savedVariableDefs(entry.document);
                 const names = buildVariableNameIndex(ctx, entry);
                 for (const scene of listScenesInDocumentOrder(entry.document)) {
                     if (!scene) {
@@ -461,7 +482,7 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                             use.ref.scope === "scene"
                                 ? Boolean(sceneDefs[use.ref.variableId])
                                 : use.ref.scope === "saved"
-                                    ? Boolean(saved[use.ref.variableId])
+                                    ? savedIdentities.has(use.ref.variableId)
                                     : persistentIdentities.has(use.ref.variableId);
                         if (declared) {
                             continue;
@@ -496,8 +517,13 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
 
             // Uses, gathered from EVERY row (disabled included - see the file header). Scene-scoped
             // uses are keyed by their scene, because that is the only place they can resolve.
+            //
+            // Saved uses are NOT keyed by story, and that is the fix for a real false positive: a
+            // saved variable declared in the project registry belongs to no story at all, so a
+            // per-story tally would find it unused in every story except the one that reads it and
+            // warn the author to delete a variable the project depends on.
             const sceneUses = new Map<string, Set<string>>();
-            const savedUses = new Map<string, Set<string>>();
+            const savedUses = new Set<string>();
             const persistentUses = new Set<string>();
 
             const addTo = (map: Map<string, Set<string>>, key: string, value: string) => {
@@ -519,13 +545,30 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                         if (use.ref.scope === "scene") {
                             addTo(sceneUses, `${entry.id}:${scene.id}`, use.ref.variableId);
                         } else if (use.ref.scope === "saved") {
-                            addTo(savedUses, entry.id, use.ref.variableId);
+                            savedUses.add(use.ref.variableId);
                         } else {
                             persistentUses.add(use.ref.variableId);
                         }
                     }
                 }
             }
+
+            /**
+             * Whether anything in the project reads or writes this project-scoped variable.
+             *
+             * The scope picks the tally, and getting that wrong is not a near miss: a saved entry
+             * checked against `persistentUses` is checked against a set its refs can never land in,
+             * so every saved variable in the project would be reported dead.
+             */
+            const usedAtProjectScope = (
+                scope: "saved" | "persistent",
+                id: string,
+                storageKey: string | undefined,
+            ): boolean => {
+                const uses = scope === "saved" ? savedUses : persistentUses;
+                const fromBlueprint = scope === "saved" ? blueprintUses.saved : blueprintUses.persistent;
+                return variableAliases(id, storageKey).some(alias => uses.has(alias) || fromBlueprint.has(alias));
+            };
 
             const isUsed = (
                 declaration: StoryDeclarationBlock,
@@ -538,12 +581,7 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                         || blueprintUses.scene.has(declaration.id)
                     );
                 }
-                if (declaration.payload.scope === "saved") {
-                    return Boolean(savedUses.get(storyId)?.has(declaration.id)) || blueprintUses.saved.has(declaration.id);
-                }
-                return persistentAliases(declaration.id, declaration.payload.storageKey).some(
-                    alias => persistentUses.has(alias) || blueprintUses.persistent.has(alias),
-                );
+                return usedAtProjectScope(declaration.payload.scope, declaration.id, declaration.payload.storageKey);
             };
 
             const findings: LintFinding[] = [];
@@ -567,13 +605,12 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                 }
             }
 
-            // Registry entries are the one persistent declaration site with no row to jump to, so they
-            // are reported against the project rather than a story.
+            // Registry entries are the one declaration site with no row to jump to, so they are
+            // reported against the project rather than a story. Each is checked against ITS OWN
+            // scope's use set: a saved entry read by a `/set` is used, and reading it off the
+            // persistent tally would report every saved variable in the project as dead.
             for (const registryEntry of ctx.variableRegistry) {
-                const used = persistentAliases(registryEntry.id, registryEntry.storageKey).some(
-                    alias => persistentUses.has(alias) || blueprintUses.persistent.has(alias),
-                );
-                if (used) {
+                if (usedAtProjectScope(registryEntry.scope, registryEntry.id, registryEntry.storageKey)) {
                     continue;
                 }
                 findings.push({
@@ -594,15 +631,23 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
         slug: "variablesNameCollision",
         run(ctx) {
             const findings: LintFinding[] = [];
-            for (const collision of ctx.persistentNameCollisions) {
-                const site = findPersistentDeclarationSite(ctx, collision.storageKeys);
-                findings.push({
-                    ruleId: "variables/name-collision",
-                    messageKey: "lint.rule.variablesNameCollision.message",
-                    messageParams: { variable: collision.name },
-                    location: site ? storyLocation(site.entry, site.scene, site.block.id) : { kind: "project" },
-                    ...(site ? { target: blockTarget(site.entry, site.scene, site.block.id) } : {}),
-                });
+            // Both project scopes, each against its own declaration rows. The finding reads the same
+            // either way - a name means two things - so the scope only decides which row to jump to.
+            const byScope = [
+                { scope: "persistent" as const, collisions: ctx.persistentNameCollisions },
+                { scope: "saved" as const, collisions: ctx.savedNameCollisions },
+            ];
+            for (const { scope, collisions } of byScope) {
+                for (const collision of collisions) {
+                    const site = findDeclarationSite(ctx, scope, collision.storageKeys);
+                    findings.push({
+                        ruleId: "variables/name-collision",
+                        messageKey: "lint.rule.variablesNameCollision.message",
+                        messageParams: { variable: collision.name },
+                        location: site ? storyLocation(site.entry, site.scene, site.block.id) : { kind: "project" },
+                        ...(site ? { target: blockTarget(site.entry, site.scene, site.block.id) } : {}),
+                    });
+                }
             }
             return findings;
         },
@@ -727,11 +772,12 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
 ];
 
 /**
- * The story `/persis` row behind one of a collision's storage keys, so the finding has somewhere to
+ * The story declaration row behind one of a collision's storage keys, so the finding has somewhere to
  * jump to. A collision always spans both surfaces, and only the story side has a row.
  */
-function findPersistentDeclarationSite(
+function findDeclarationSite(
     ctx: LintContext,
+    scope: "saved" | "persistent",
     storageKeys: readonly string[],
 ): { entry: LintStoryEntry; scene: StoryScene; block: StoryDeclarationBlock } | null {
     const wanted = new Set(storageKeys);
@@ -741,7 +787,7 @@ function findPersistentDeclarationSite(
                 continue;
             }
             for (const block of listSceneDeclarationBlocks(scene)) {
-                if (block.payload.scope !== "persistent") {
+                if (block.payload.scope !== scope) {
                     continue;
                 }
                 if (wanted.has(block.payload.storageKey) || wanted.has(block.id)) {

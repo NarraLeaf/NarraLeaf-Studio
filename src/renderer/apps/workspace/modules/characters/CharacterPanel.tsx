@@ -18,7 +18,9 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { FolderPlus, MoreVertical, RefreshCw, Tag, User, UserPlus, Users } from "lucide-react";
-import { isReadableAccentColor } from "../story/scene-editor/storySceneBlockUtils";
+import { readableAccentColor } from "../story/scene-editor/storySceneBlockUtils";
+import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
+import { cn } from "@/lib/utils/cn";
 import { syncCharacterEditorTabTitle, useCharacterFocus } from "./state/useCharacterFocus";
 
 /** The one character-panel menu row that only reads: re-reading the character list off disk. */
@@ -28,6 +30,17 @@ type MenuTarget =
     | { type: "panel" }
     | { type: "character"; character: Character }
     | { type: "group"; group: CharacterGroup };
+
+/** What Developer options can copy from each of the three menus. The panel's own menu names nothing. */
+function developerIdEntriesFor(target: MenuTarget): DeveloperIdEntry[] {
+    if (target.type === "character") {
+        return [{ kind: "character", value: target.character.profile.getProfile().id }];
+    }
+    if (target.type === "group") {
+        return [{ kind: "characterGroup", value: target.group.id }];
+    }
+    return [];
+}
 
 type CharacterItem = {
     id: string;
@@ -115,7 +128,9 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 thumbnailId: profile.thumbnail,
                 nicknames: profile.nicknames,
                 tags: profile.tags,
-                color: profile.color && isReadableAccentColor(profile.color) ? profile.color : undefined,
+                // Resolved here, once, rather than where the row paints it: the stored value can be
+                // a brand link, and `item.color` is documented downstream as a colour to hand to CSS.
+                color: readableAccentColor(profile.color),
                 source: character,
             };
         });
@@ -555,19 +570,29 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         // Every row here creates, renames, moves or deletes a character or a group - all writes - except
         // the one that re-reads the list. Menus still open and still list what exists, so a frozen
         // project can be browsed; the rows are simply inert.
-        setMenuItems(freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CHARACTER_MENU_IDS, freeze.reason));
+        const frozen = freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CHARACTER_MENU_IDS, freeze.reason);
+        const uiService = context?.services.get<UIService>(Services.UI);
+        setMenuItems(appendDeveloperIdSection(frozen, developerIdEntriesFor(target), {
+            hideMenu: closeMenu,
+            notify: uiService ? (message, type) => uiService.showNotification(message, type) : undefined,
+        }));
         setMenuState({ visible: true, position: { x: rect.right, y: rect.bottom } });
-    }, [buildContextMenu, freeze]);
+    }, [buildContextMenu, closeMenu, context, freeze]);
 
     const renderCharacterRow = useCallback((item: CharacterItem) => {
         const thumbnailUrl = thumbnails[item.id];
         const isFocused = focusedCharacterId === item.id;
-        const focusedStyles = isFocused ? "bg-primary/20 border-l-2 border-primary" : "";
 
         return (
             <div
                 key={item.id}
-                className={`group flex items-center gap-3 px-3 py-2 cursor-default hover:bg-fill border-b border-edge-subtle last:border-b-0 transition-colors ${focusedStyles}`}
+                className={cn(
+                    "group flex items-center gap-3 px-3 py-2 cursor-default transition-colors hover:bg-fill",
+                    // Per side, not `border-edge-subtle`: the whole-element form also paints the accent
+                    // bar below, and the row that had one was the only row in the list showing it.
+                    "border-b border-b-edge-subtle last:border-b-0",
+                    isFocused && "bg-primary/20 border-l-2 border-l-primary",
+                )}
                 data-character-id={item.id}
                 onClick={() => handleCharacterClick(item.source)}
             >
@@ -666,7 +691,12 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                     <span>{t("characters.panel.ungrouped")}</span>
                                     <span className="text-fg-subtle">({ungroupedCharacters.length})</span>
                                 </div>
-                                <div className="divide-y divide-edge-subtle">
+                                {/* No `divide-y` here, nor around the members below. Every row already
+                                    draws its own separator, and the divide utilities are written as
+                                    `> * + *` — higher specificity than anything a row can set — so
+                                    they were zeroing the second row's border and recolouring every
+                                    focused row's accent bar back to the separator colour. */}
+                                <div>
                                     {ungroupedCharacters.map(renderCharacterRow)}
                                 </div>
                             </div>
@@ -717,7 +747,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                             {members.length === 0 ? (
                                                 <div className="px-3 py-2 text-xs text-fg-subtle">{t("characters.panel.groupEmpty")}</div>
                                             ) : (
-                                                <div className="divide-y divide-edge-subtle">
+                                                <div>
                                                     {members.map(renderCharacterRow)}
                                                 </div>
                                             )}

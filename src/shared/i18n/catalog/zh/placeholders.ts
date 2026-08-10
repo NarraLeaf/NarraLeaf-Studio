@@ -30,5 +30,8 @@ export const placeholders = {
         keybindings: "快捷键",
         history: "历史",
         notifications: "通知",
+        plugins: "插件",
+        // 面板里三段分别叫「存档变量 / 全局变量 / 场景变量」，标题就是它们共同的那个词，不另造新词
+        variables: "变量",
     },
 } satisfies LocaleNamespace<"placeholders">;

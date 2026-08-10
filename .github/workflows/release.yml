@@ -1,9 +1,27 @@
 name: Release
 
 # Cuts a downloadable, versioned GitHub Release from a version tag. Push a tag
-# like v0.1.1 and this builds the three desktop installers — Windows x64 and
-# macOS on both architectures — and attaches them to a Release named for the
-# tag, marked as the latest stable.
+# like v0.1.1 and this builds the desktop installers — Windows x64 and macOS
+# Apple Silicon — and attaches them to a Release named for the tag, marked as
+# the latest stable.
+#
+# This release is also what installed copies of Studio update from: alongside the installers it
+# carries `latest.yml` and the `.blockmap` files electron-updater reads (see the Upload step).
+# Two consequences for whoever cuts a release: the tag must match `version` in package.json
+# exactly, and the release must not be left as a draft — an installed Studio cannot see either
+# one, and fails quietly rather than loudly.
+#
+# There is deliberately no macOS x64 installer: Studio is not shipped for Intel
+# Macs. Three of its subsystems have no Intel-Mac implementation and two of them
+# are not ours to fix — @lore-vcs publishes only sdk-arm64-apple-darwin (version
+# control is a core feature), zsign publishes no macOS x64 asset (iOS signing),
+# and our LGPL FFmpeg is compiled host-arch-only (media conversion). Shipping an
+# Intel build would mean an author discovers each gap one at a time, after their
+# work is already inside the tool. Rosetta only runs the other way round, so an
+# arm64 installer is not a substitute either.
+#
+# This is about where *Studio* runs. Games built with Studio still target Intel
+# Macs — see GAME_BUILD_ARCHS_BY_PLATFORM in src/shared/types/gameBuild.ts.
 #
 # Nothing here is code-signed, so every installer is unsigned and the OS will
 # quarantine it on first launch — the same caveat as the nightly builds.
@@ -29,17 +47,13 @@ concurrency:
 jobs:
   build:
     strategy:
-      # One broken target must not hide the results of the other two.
+      # One broken target must not hide the results of the other.
       fail-fast: false
       matrix:
         include:
           - name: windows-x64
             os: windows-latest
             args: --win --x64
-            electron_arch: x64
-          - name: macos-x64
-            os: macos-latest
-            args: --mac --x64
             electron_arch: x64
           - name: macos-arm64
             os: macos-latest
@@ -60,13 +74,17 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      # npm_config_arch is load-bearing on the macos-x64 target: prepare-preview-
-      # runner.js stages node_modules/electron/dist into resources/, and that copy
-      # becomes the Electron runtime the packaged Studio ships. Electron's installer
-      # honours npm_config_arch, so without this the x64 job — running on an arm64
-      # runner — would embed an arm64 runtime in an Intel-Mac installer, where it
-      # cannot execute. --no-immutable because this repo deliberately does not
-      # commit yarn.lock, so every CI run legitimately writes one.
+      # npm_config_arch pins the Electron runtime to the *target's* architecture
+      # rather than the runner's: prepare-preview-runner.js stages
+      # node_modules/electron/dist into resources/, and that copy becomes the
+      # Electron runtime the packaged Studio ships. Electron's installer honours
+      # npm_config_arch, so a job whose runner arch differs from its target arch
+      # would otherwise embed a runtime that cannot execute where the installer
+      # lands. Every row above happens to be self-matched today (the macOS x64
+      # target, which was the one that genuinely cross-built, is gone), so this is
+      # now defence against a runner image moving or a row being added — keep it.
+      # --no-immutable because this repo deliberately does not commit yarn.lock,
+      # so every CI run legitimately writes one.
       - name: Install dependencies
         run: yarn install --no-immutable
         env:
@@ -76,14 +94,38 @@ jobs:
       # electron-builder must not try to reach a release itself.
       # CSC_IDENTITY_AUTO_DISCOVERY=false stops it hunting for a signing identity
       # the runner does not have.
+      #
+      # NLS_REQUIRE_FFMPEG turns prepare-ffmpeg.js's skips into failures. Every
+      # one of them is the right answer on a developer's machine and the wrong
+      # one here: an installer staged without FFmpeg reports media conversion as
+      # unavailable to everyone who downloads it, and says so only in a warning
+      # line in a green log. It matters most on macOS, where the binary is
+      # compiled from source on the runner rather than downloaded.
       - name: Package
         run: yarn pack-electron ${{ matrix.args }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          NLS_REQUIRE_FFMPEG: "1"
 
-      # Only the installers — the unpacked app directories in build/ are hundreds
-      # of megabytes of intermediate output. if-no-files-found: error because a
+      # The other half of the gate above. Staging into resources/ and getting
+      # into the installer are two different steps, and the second one —
+      # electron-builder's extraResources — is the one that copies nothing and
+      # carries on. The script reads the installer that is about to be attached
+      # to the release; see its header for why each platform is checked the way
+      # it is.
+      - name: Verify FFmpeg shipped inside the package
+        shell: bash
+        run: bash project/build/verify-packaged-ffmpeg.sh
+
+      # Only the installers and the update metadata — the unpacked app directories in build/ are
+      # hundreds of megabytes of intermediate output. if-no-files-found: error because a
       # packaging step that silently produces nothing must not read as a pass.
+      #
+      # The *.yml and *.blockmap lines are the auto-updater's half of a release. `latest.yml` is
+      # the feed an installed Studio polls, and the blockmap is what turns a 270 MB update into a
+      # delta. Dropping them does not fail anything here or look wrong on the release page — it
+      # just means every installed copy checks for updates against a 404, forever, and says so
+      # only in its log. This is the one step in the chain with no visible failure.
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
@@ -92,6 +134,8 @@ jobs:
             build/*.exe
             build/*.dmg
             build/*.zip
+            build/*.yml
+            build/*.blockmap
           if-no-files-found: error
 
   # Collect every platform's installers and publish them as one Release for the
@@ -119,7 +163,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t files < <(find dist-artifacts -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' \) | sort)
+          mapfile -t files < <(find dist-artifacts -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' -o -name '*.blockmap' \) | sort)
           test "${#files[@]}" -gt 0 || { echo "::error::no installers found to attach"; exit 1; }
           printf 'attaching:\n'; printf '  %s\n' "${files[@]}"
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then

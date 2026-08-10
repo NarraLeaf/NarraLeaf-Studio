@@ -1,8 +1,15 @@
 import type { UIDocument, UIElement, UIElementId, UILayout } from "@shared/types/ui-editor/document";
-import { isUIElementFlowLayoutChild, uiElementTypeAcceptsUserChildren } from "@shared/types/ui-editor/document";
+import {
+    isLinkedUIComponentElement,
+    isUIElementFlowLayoutChild,
+    isUIStructuralWidgetPart,
+    uiElementTypeAcceptsUserChildren,
+} from "@shared/types/ui-editor/document";
+import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { getElementSurfaceTopLeftEx, surfaceRectToParentLocalLayout } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutGeometry";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 export type MoveRejectReason = "invalid_surface" | "invalid_target" | "invalid_movers" | "cycle" | "root_locked";
 
@@ -18,6 +25,8 @@ export type PlannedMove = {
 export type PlanMoveElementsOutcome = { ok: false; reason: MoveRejectReason } | { ok: true; plan: PlannedMove };
 
 const ROOT_WIDGET_TYPE = "nl.root";
+/** The one type "group" means: what grouping creates, and so the only thing ungrouping dissolves. */
+export const GROUP_WIDGET_TYPE = "nl.container";
 
 export function collectSubtreeElementIds(document: UIDocument, rootId: UIElementId): Set<UIElementId> {
     const out = new Set<UIElementId>();
@@ -182,6 +191,19 @@ export function planMoveElementsInSurface(
         if (el.type === ROOT_WIDGET_TYPE) {
             return false;
         }
+        // A widget's own part cannot leave it. The move is one-way - the target check above refuses
+        // to put anything back into a widget that takes no user children - so a track dropped on the
+        // canvas is gone for good: the widget falls back to placeholder chrome while an orphan with
+        // a dead slot marker sits somewhere else. For a switch the part carries the `on` appearance
+        // variant too, so the authored travel and its transition leave with it and the only symptom
+        // the author sees is that the switch stopped animating.
+        //
+        // Dropped from the selection rather than failing the whole move, matching how `nl.root` is
+        // handled just above: dragging four elements one of which is a track should move the other
+        // three.
+        if (isUIStructuralWidgetPart(document, el)) {
+            return false;
+        }
         return true;
     });
 
@@ -253,4 +275,98 @@ export function applyPlannedMove(document: UIDocument, plan: PlannedMove): void 
             normalizeFlowChildLayout(document, el);
         }
     }
+}
+
+/**
+ * A list places its children by slot, so a plain element moved under one becomes its item template.
+ * Elements that already carry a slot - the template itself, the scrollbar parts - keep the one they have.
+ */
+export function normalizeListSlotsForMovedChildren(
+    document: UIDocument,
+    targetParentId: UIElementId,
+    movedIds: Iterable<UIElementId>,
+): void {
+    if (!isListLikeWidgetType(document.elements[targetParentId]?.type)) {
+        return;
+    }
+    for (const id of movedIds) {
+        const moved = document.elements[id];
+        const slot = moved?.extra?.listSlot;
+        if (moved && slot !== "itemTemplate" && slot !== "scrollbarTrack" && slot !== "scrollbarThumb") {
+            moved.extra = {
+                ...(moved.extra ?? {}),
+                listSlot: "itemTemplate",
+            };
+        }
+    }
+}
+
+/**
+ * True when `containerId` is a group that can be dissolved back into its parent.
+ *
+ * The exclusions are the places where a container is structure rather than a user's group: a
+ * surface root (nothing to lift into), a component editor's stand-in root, and anything inside a
+ * linked component instance, whose shape belongs to the component definition. A parent that does
+ * not take user children - a slider's track, say - can only hold the parts it was built with, so a
+ * group nested there stays put unless it is empty.
+ */
+export function canUngroupContainer(document: UIDocument, surfaceId: string, containerId: UIElementId): boolean {
+    const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
+    if (!effectiveRootId || !isStrictDescendantOf(document, containerId, effectiveRootId)) {
+        return false;
+    }
+    const container = document.elements[containerId];
+    if (!container || container.type !== GROUP_WIDGET_TYPE) {
+        return false;
+    }
+    if (isComponentEditorRootElement(container) || isLinkedUIComponentElement(container)) {
+        return false;
+    }
+    if (document.surfaces.some(surface => surface.rootElementId === containerId)) {
+        return false;
+    }
+    const parent = container.parentId != null ? document.elements[container.parentId] : undefined;
+    if (!parent || isLinkedUIComponentElement(parent)) {
+        return false;
+    }
+    return container.childrenIds.length === 0 || uiElementTypeAcceptsUserChildren(parent.type);
+}
+
+/**
+ * Dissolve a group: its children take its place among its siblings, then it is removed.
+ *
+ * The inverse of grouping, and deliberately not "delete, keep the children" - the children are
+ * spliced in at the index the container held, so z-order survives, and `applyPlannedMove` rewrites
+ * each child's layout for its new parent, so nothing appears to move on the canvas.
+ *
+ * Returns the lifted child ids (empty for an empty group, which just disappears), or `null` when
+ * `containerId` is not a dissolvable group - in which case the document is left untouched.
+ */
+export function applyUngroupContainer(
+    document: UIDocument,
+    surfaceId: string,
+    containerId: UIElementId,
+): UIElementId[] | null {
+    if (!canUngroupContainer(document, surfaceId, containerId)) {
+        return null;
+    }
+    const container = document.elements[containerId];
+    const parentId = container.parentId as UIElementId;
+    const children = [...container.childrenIds];
+
+    if (children.length > 0) {
+        const planned = planMoveElementsInSurface(document, surfaceId, children, parentId, containerId);
+        if (!planned.ok) {
+            return null;
+        }
+        applyPlannedMove(document, planned.plan);
+        normalizeListSlotsForMovedChildren(document, parentId, planned.plan.movers);
+    }
+
+    const parent = document.elements[parentId];
+    if (parent) {
+        parent.childrenIds = parent.childrenIds.filter(id => id !== containerId);
+    }
+    delete document.elements[containerId];
+    return children;
 }

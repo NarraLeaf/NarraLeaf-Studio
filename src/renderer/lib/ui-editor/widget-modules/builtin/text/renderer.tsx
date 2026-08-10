@@ -15,7 +15,7 @@ import { motion } from "motion/react";
 import type { AppearanceFieldTransition } from "@shared/types/ui-editor/appearance";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
-import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -205,7 +205,9 @@ export function TextRenderer({
     };
     const p = resolveTextVisualProps(element, flatProps.appearance ?? undefined, resolveCtx);
     const appearanceTransitions = resolveTextAppearanceTransitions(flatProps.appearance ?? undefined, resolveCtx);
-    const color = colorValueToCss({ hex: p.color, alpha: 1 });
+    // The text colour can be a brand link, so it is read before it is painted: passing the
+    // stored string in as `hex` would leave `normalizeHex` to reject it and paint white.
+    const color = colorValueToCss(parseColorValue(p.color, { hex: "#FFFFFF", alpha: 1 }));
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
     // Localized display text (runtime only; design time and inline editing keep the source text).
     const displayText = useLocalizedWidgetText({

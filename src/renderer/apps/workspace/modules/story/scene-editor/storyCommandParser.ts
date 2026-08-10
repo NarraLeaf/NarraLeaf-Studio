@@ -51,6 +51,14 @@ export type StoryCommandArg = {
     keySpan?: StoryCommandSpan;
     value: string;
     valueSpan: StoryCommandSpan;
+    /**
+     * The value was written inside quotes.
+     *
+     * Carried for one question, which only the tokenizer can answer: an EMPTY value the author wrote
+     * (`''`) versus one they have not typed yet (`desc=`, mid-keystroke). The resolver skips the
+     * second and must not skip the first, or a declaration's `""` default would be unsayable.
+     */
+    quoted?: boolean;
 };
 
 export type StoryCommandIssue =
@@ -183,7 +191,7 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
             return !(type.max !== undefined && parsed > type.max);
         }
         case "boolean":
-            // Flags accept the human spellings too; resolution canonicalizes to true/false (bible B5).
+            // Flags accept the human spellings too; resolution canonicalizes to true/false.
             return ["true", "false", "on", "off", "yes", "no"].includes(value.trim().toLowerCase());
         case "color":
             return /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value.trim());
@@ -309,11 +317,11 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
                     issues.push({ code: "badValue", span: valueSpan, value, expected: paramTypes(param) });
                 }
             }
-            args.push({ param, key, keySpan, value, valueSpan });
+            args.push({ param, key, keySpan, value, valueSpan, quoted: token.quoted });
             continue;
         }
 
-        // A bare token naming an unfilled named boolean is a flag: `/bgm battle loop` (bible B5).
+        // A bare token naming an unfilled named boolean is a flag: `/bgm battle loop`.
         // Bound only after the first positional has been consumed (or when there are none), so a
         // leading value that happens to spell a flag name still fills the slot the author meant.
         // Localized too, so a flag reads in one language throughout. The existing
@@ -333,7 +341,7 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
             continue;
         }
 
-        // An omissible leading positional (bible B4): when the token strictly matches the NEXT
+        // An omissible leading positional: when the token strictly matches the NEXT
         // positional's closed value set and not this one's, this slot was skipped, not filled -
         // `/vol 0.5` is a volume with the default target, not a sound named "0.5".
         if (param.skippable) {
@@ -350,7 +358,7 @@ function parseCommand(source: string): Extract<StoryCommandLine, { kind: "comman
         if (isBadValue(param, token.text)) {
             issues.push({ code: "badValue", span: token.span, value: token.text, expected: paramTypes(param) });
         }
-        args.push({ param, key: null, value: token.text, valueSpan: token.span });
+        args.push({ param, key: null, value: token.text, valueSpan: token.span, quoted: token.quoted });
     }
 
     return { kind: "command", token: nameToken.text, tokenSpan: nameToken.span, def, args, issues };
@@ -406,7 +414,7 @@ export function unfilledParams(line: Extract<StoryCommandLine, { kind: "command"
 
 /**
  * Whether the line may be committed as its action. Issues always block; unfilled params block when
- * they are part of the command's required core (bible B9) - a committed row is always a complete,
+ * they are part of the command's required core - a committed row is always a complete,
  * working instruction. An incomplete line is not lost: the commit path lands it as a draft row, and
  * the reason line names the missing slot.
  */

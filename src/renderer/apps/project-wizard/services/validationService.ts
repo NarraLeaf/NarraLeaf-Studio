@@ -3,7 +3,7 @@ import { translate } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { FsRequestResult } from "@shared/types/os";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
-import { ProjectData, DirectoryValidationResult, ValidationErrors } from "../types";
+import { ProjectData, DirectoryValidationResult, ProjectFlow, ValidationErrors } from "../types";
 
 /**
  * Service for handling all validation logic in the project wizard
@@ -203,24 +203,28 @@ export class ValidationService {
     /**
      * Check if all validation passes for current step
      */
-    static isStepValid(step: string, projectData: ProjectData): boolean {
+    static isStepValid(step: string, projectData: ProjectData, flow: ProjectFlow): boolean {
         switch (step) {
-            case "template":
-                return projectData.template !== "";
-            case "details":
-                return projectData.name.trim() !== "" &&
-                       projectData.resolution !== "" &&
-                       projectData.appId.trim() !== "" &&
-                       this.validateAppId(projectData.appId);
-            case "settings":
+            // Only the create flow has anything to pick here. The other two origins are complete
+            // the moment they are selected, and gating them on a template would be gating them on
+            // a list they are not looking at.
+            case "origin":
+                return flow !== "create" || projectData.template !== "";
+            case "project":
                 // No check on `versionControl`: it is a closed union with a default, so unlike the
                 // free-form string it used to be there is no "not chosen yet" state to guard.
-                return projectData.location !== undefined &&
+                return projectData.name.trim() !== "" &&
+                       projectData.appId.trim() !== "" &&
+                       this.validateAppId(projectData.appId) &&
                        projectData.location.trim() !== "";
-            // Nothing to validate: the import page collects nothing, because both of its choices
-            // are made in native dialogs after the button is pressed.
+            // Empty means the author typed a size outside the bounds; the stage page clears it
+            // rather than keeping the last good one, so this is what stops them walking on.
+            case "stage":
+                return projectData.resolution !== "";
+            // Both answers are picked on the page now, so both gate the button that unpacks.
             case "import":
-                return true;
+                return projectData.packagePath.trim() !== "" &&
+                       projectData.location.trim() !== "";
             case "source":
             // The clone page asks for nothing of its own - it acts on what Source collected - so
             // it is valid under exactly the same conditions. Falls through rather than repeating
@@ -229,13 +233,11 @@ export class ValidationService {
             case "clone":
                 return parseVcsRemoteUrl(projectData.remoteUrl) !== null &&
                        projectData.location.trim() !== "";
+            // Everything the earlier pages gated, re-asserted: this is the page with the button
+            // that writes, and it is reachable by walking back and forth.
             case "review":
-                return projectData.name.trim() !== "" &&
-                       projectData.resolution !== "" &&
-                       projectData.appId.trim() !== "" &&
-                       this.validateAppId(projectData.appId) &&
-                       projectData.location !== undefined &&
-                       projectData.location.trim() !== "";
+                return this.isStepValid("project", projectData, flow) &&
+                       this.isStepValid("stage", projectData, flow);
             default:
                 return false;
         }

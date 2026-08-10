@@ -27,12 +27,15 @@ import { widgetChrome } from "./widgetChrome";
 import { console } from "./console";
 import { project } from "./project";
 import { welcome } from "./welcome";
+import { onboarding } from "./onboarding";
 import { about } from "./about";
 import { actions } from "./actions";
 import { placeholders } from "./placeholders";
 import { wizard } from "./wizard";
 import { devMode } from "./devMode";
+import { developer } from "./developer";
 import { pluginPermission } from "./pluginPermission";
+import { plugins } from "./plugins";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
 import { build } from "./build";
@@ -41,6 +44,8 @@ import { lint } from "./lint";
 import { documentDiff } from "./documentDiff";
 import { test } from "./test";
 import { help } from "./help";
+import { update } from "./update";
+import { brand } from "./brand";
 import type { LocaleMessages } from "../types";
 
 export const zh = {
@@ -66,12 +71,15 @@ export const zh = {
     console,
     project,
     welcome,
+    onboarding,
     about,
     actions,
     placeholders,
     wizard,
     devMode,
+    developer,
     pluginPermission,
+    plugins,
     dialogs,
     defaultDoc,
     build,
@@ -80,4 +88,6 @@ export const zh = {
     documentDiff,
     test,
     help,
+    update,
+    brand,
 } satisfies LocaleMessages;

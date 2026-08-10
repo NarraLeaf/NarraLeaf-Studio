@@ -2,9 +2,15 @@ import path from "path";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type { BlueprintPersistentVariable, SharedBlueprintAsset } from "@shared/types/blueprint/document";
-import type { PersistentVariableRuntimeTable, VariableRegistry } from "@shared/types/variables/registry";
+import {
+    VARIABLE_REGISTRY_SCHEMA_VERSION,
+    type PersistentVariableRuntimeTable,
+    type SavedVariableRuntimeTable,
+    type VariableRegistry,
+} from "@shared/types/variables/registry";
 import {
     buildPersistentRuntimeTable,
+    buildSavedRuntimeTable,
     migrateVariableRegistryToLatest,
     seedRegistryEntriesFromBlueprintPersistent,
 } from "@shared/variables/variableRegistryModel";
@@ -23,6 +29,9 @@ import type { GameVoiceBundle } from "@shared/types/voice";
 import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
 import type { AudioClipRegion, GameAudioBundle } from "@shared/types/audio";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
+import type { BrandColor } from "@shared/types/brand";
+import { migrateProjectBrandDocument, normalizeProjectBrandColors } from "@shared/types/brand";
+import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
@@ -48,7 +57,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         blueprintDocument: migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
     };
     const localBlueprints = uigraphs.blueprintDocument;
-    const persistentVariables = await loadPersistentVariableTable(context.projectPath, uigraphsRaw.blueprintDocument);
+    const variableTables = await loadVariableRuntimeTables(context.projectPath, uigraphsRaw.blueprintDocument);
     const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
     const storyLibrary = await loadStoryLibrary(context.projectPath);
@@ -57,6 +66,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
+    const brand = await loadProjectBrand(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -66,7 +76,8 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
             uigraphs,
             localBlueprints,
             sharedBlueprints,
-            persistentVariables,
+            persistentVariables: variableTables.persistent,
+            savedVariables: variableTables.saved,
         },
         storyLibrary,
         localization,
@@ -74,6 +85,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         audio,
         autoSave,
         preferences,
+        brand,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
@@ -112,24 +124,36 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
  * Load blueprint-type assets from metadata shard + content shards (same layout as renderer Assets pipeline).
  */
 /**
- * Load the project-level persistent variable registry (M-VAR) and project it to the runtime table the
+ * Load the project-level variable registry (M-VAR) once and project it to BOTH runtime tables the
  * bundle carries. Prefers `editor/variables.json`; if that file is absent (a project opened only in a
  * pre-M-VAR Studio, or a Dev Mode start before the renderer migrated), it seeds from the legacy
  * `persistentVariables` still on the raw blueprint document, so Dev Mode never loses persistent vars.
+ *
+ * One read, two projections - not two loaders: the file is a single registry holding both scopes, and
+ * reading it twice would let a write landing between the reads hand the bundle a saved table and a
+ * persistent table from different revisions of the same file.
+ *
+ * The legacy branch contributes nothing to the saved table on purpose: the old blueprint field held
+ * persistent variables and only persistent variables, so a project that never wrote a registry has no
+ * registry-backed saved variables at all - its saved ones are the story's `/save` rows.
  */
-async function loadPersistentVariableTable(
+async function loadVariableRuntimeTables(
     projectPath: string,
     rawBlueprintDocument: unknown,
-): Promise<PersistentVariableRuntimeTable> {
+): Promise<{ persistent: PersistentVariableRuntimeTable; saved: SavedVariableRuntimeTable }> {
     const registryPath = path.join(projectPath, "editor", "variables.json");
     const raw = await readOptionalJsonFile<unknown>(registryPath);
     if (raw) {
-        return buildPersistentRuntimeTable(migrateVariableRegistryToLatest(raw));
+        const registry = migrateVariableRegistryToLatest(raw);
+        return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
     }
     const legacy = readRawPersistentVariables(rawBlueprintDocument);
     const { entries } = seedRegistryEntriesFromBlueprintPersistent(legacy);
-    const registry: VariableRegistry = { schemaVersion: 1, entries };
-    return buildPersistentRuntimeTable(registry);
+    // Stamped at the current version, not at the version the legacy field belonged to: `entries` was
+    // just built by the seeder, so it already has the current shape (scope included) and claiming an
+    // older version would only mislead anything that reads it.
+    const registry: VariableRegistry = { schemaVersion: VARIABLE_REGISTRY_SCHEMA_VERSION, entries };
+    return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
 }
 
 function readRawPersistentVariables(blueprintDocument: unknown): Record<string, BlueprintPersistentVariable> | undefined {
@@ -224,7 +248,7 @@ async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrar
 const NAMED_ASSET_TYPES = ["image", "audio", "video", "model"] as const;
 
 /**
- * `assetId → name` for the media a story row names (U4 WI-1).
+ * `assetId → name` for the media a story row names.
  *
  * Read from the same flat `assets/assets.metadata.<type>.json` shards the renderer's asset service
  * owns — `{ id: { id, name, ... } }` — and reduced to names alone: this table exists so a Dev Mode
@@ -524,6 +548,34 @@ export async function loadPlayerPreferences(projectPath: string): Promise<Player
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizePlayerPreferences(app?.preferences);
+}
+
+/**
+ * The project's palette from `editor/brand.json`, through the same migration + normalizer the
+ * renderer's `BrandService` writes with, so the bundle and the panel can never disagree about what
+ * the document said.
+ *
+ * Dense like the autosave config rather than optional like localization, and for a sharper reason:
+ * a `nlbrand:` link is not a colour until a palette is beside it, so "this project has never opened
+ * the Brand surface" has to arrive as the seeds rather than as a gap - a gap would make every
+ * seeded slot unresolvable in a project that had done nothing wrong. The seeds are exactly what the
+ * service would have written on first open, so the two states are indistinguishable downstream.
+ *
+ * Every failure path lands on that same seed instead of propagating. A hand-corrupted colour file
+ * must not be the reason a preview will not start or a build cannot be produced: booting in the
+ * default palette is a state the author can see and fix, where a refused start is one they can only
+ * guess at. The path comes from the document spec rather than being spelled again here - the spec
+ * is what version control keys on, and two spellings would drift in exactly the way nothing
+ * reports. Exported for tests.
+ */
+export async function loadProjectBrand(projectPath: string): Promise<BrandColor[]> {
+    const brandPath = path.join(projectPath, BRAND_DOCUMENT_PATH);
+    try {
+        const raw = await readOptionalJsonFile<unknown>(brandPath);
+        return migrateProjectBrandDocument(raw ?? {}).colors;
+    } catch {
+        return normalizeProjectBrandColors([]);
+    }
 }
 
 function resolveAssetContentPath(projectPath: string, assetId: string): string | null {

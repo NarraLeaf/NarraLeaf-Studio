@@ -2,6 +2,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { normalizeLocale, setLocaleContributions } from "@shared/i18n";
 import { LOCALIZED_COMMANDS_KEY } from "@/lib/settings/commandLanguageOptions";
 import { commandI18nStore } from "./commandLocale";
+import { deviceDefaultLocale } from "./deviceLocale";
 import { i18nStore } from "./store";
 
 let subscribed = false;
@@ -40,7 +41,11 @@ async function loadPluginLocales(): Promise<void> {
  * different languages depending on how you got there.
  */
 function applyPreference(): void {
-    i18nStore.setLocale(normalizeLocale(preference));
+    // No stored value means nobody has chosen yet, which is a different question from "chose
+    // something this build does not have": the first is answered by the machine's own languages,
+    // the second by the fallback chain inside `normalizeLocale`. Collapsing them is what had
+    // Studio open in English on a device that had already said otherwise.
+    i18nStore.setLocale(preference === undefined ? deviceDefaultLocale() : normalizeLocale(preference));
 }
 
 /**

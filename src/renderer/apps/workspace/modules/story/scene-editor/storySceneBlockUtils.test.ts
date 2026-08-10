@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { deleteBlockFromScene, insertBlockInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isNarrativeRow, isReadableAccentColor, nextSelectionAfterDelete, planRowBackspaceReplacement } from "./storySceneBlockUtils";
+import { deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor } from "./storySceneBlockUtils";
+import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
 function control(payload: Extract<StoryBlock, { kind: "control" }>["payload"]): StoryBlock {
@@ -268,32 +271,19 @@ describe("buildVisibleRows line numbers", () => {
 
 describe("filter then group", () => {
     it("keeps original line numbers and groups the survivors that filtering made adjacent", () => {
-        // Pipeline mirrors the controller: buildVisibleRows -> narrative filter -> annotateDialogueGroups.
+        // Pipeline mirrors the controller: buildVisibleRows -> row filter -> annotateDialogueGroups.
         const blocks = [
             dialogue("d1", { characterId: "c1" }),
             characterAction("x", { action: "character", operation: "enter", characterId: "c1" }),
             dialogue("d2", { characterId: "c1" }),
         ];
+        const dialogueOnly = dialogueOnlyStoryRowFilter();
         const visible = buildVisibleRows(scene(blocks, blocks.map(b => b.id)), new Set());
-        const filtered = annotateDialogueGroups(visible.filter(row => isNarrativeRow(row.block)));
+        const filtered = annotateDialogueGroups(visible.filter(row => storyRowPassesFilter(row.block, dialogueOnly, () => null)));
         // The hidden `enter` (line 2) is dropped, but d1/d2 keep their original numbers — not renumbered.
         expect(filtered.map(row => row.lineNumber)).toEqual([1, 3]);
         // With the staging row gone, d1/d2 are adjacent and group.
         expect(filtered.map(row => row.groupRole)).toEqual(["head", "member"]);
-    });
-});
-
-describe("isNarrativeRow", () => {
-    it("keeps narration, dialogue, choice, option and note; hides staging", () => {
-        expect(isNarrativeRow(narration("n"))).toBe(true);
-        expect(isNarrativeRow(dialogue("d", { characterId: "c1" }))).toBe(true);
-        expect(isNarrativeRow(nodeAction({ action: "choice" }))).toBe(true);
-        expect(isNarrativeRow(nodeAction({ action: "choiceOption", text: { textId: "t", role: "choiceText", value: "" } }))).toBe(true);
-        expect(isNarrativeRow({ id: "b", kind: "note", parentId: null, childrenIds: [], payload: { text: { textId: "t", role: "note", value: "" } } })).toBe(true);
-        // Staging kinds hide, including a character expression (an action).
-        expect(isNarrativeRow(characterAction("x", { action: "character", operation: "expression", characterId: "c1" }))).toBe(false);
-        expect(isNarrativeRow(control({ control: "condition" }))).toBe(false);
-        expect(isNarrativeRow({ id: "b", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "s2" } })).toBe(false);
     });
 });
 
@@ -325,6 +315,54 @@ describe("isReadableAccentColor", () => {
         expect(isReadableAccentColor("#ffff00")).toBe(false); // bright yellow, unreadable on light
         expect(isReadableAccentColor("not-a-color")).toBe(false);
     });
+
+    /**
+     * A brand link is not a hex, and the band above is right to refuse it. What must not happen is
+     * the refusal reaching a surface: every Studio chrome reader goes through `readableAccentColor`,
+     * which unwraps the link first, so that an author who points a character at the project palette
+     * does not watch them go grey in the story rows, the character list and the Dev Mode timeline at
+     * the same moment.
+     */
+    describe("readableAccentColor", () => {
+        beforeEach(() => {
+            setActiveBrandPalette([
+                ...BUILTIN_BRAND_COLORS,
+                { id: "cast.alice", value: "#40a8c4" },
+                { id: "cast.pale", value: "#ffffff" },
+            ]);
+        });
+
+        afterEach(() => {
+            setActiveBrandPalette(BUILTIN_BRAND_COLORS);
+        });
+
+        it("resolves a link before banding it", () => {
+            expect(readableAccentColor("nlbrand:cast.alice")).toBe("#40a8c4");
+            expect(readableAccentColor("nlbrand:primary")).toBe("#40A8C4");
+        });
+
+        it("leaves a literal exactly as it was", () => {
+            expect(readableAccentColor("#40a8c4")).toBe("#40a8c4");
+        });
+
+        it("still bands the colour a link resolves to", () => {
+            // Near-white through the palette is as unreadable as near-white written by hand.
+            expect(readableAccentColor("nlbrand:cast.pale")).toBeUndefined();
+            // A translucent entry is not a hex the band can read, so it is refused like any other.
+            expect(readableAccentColor("nlbrand:button.shadow")).toBeUndefined();
+        });
+
+        it("says nothing for a link the palette cannot answer for", () => {
+            expect(readableAccentColor("nlbrand:gone")).toBeUndefined();
+        });
+
+        /** No accent stays no accent — the resolver must not manufacture a default. */
+        it("says nothing for a value that was never set", () => {
+            expect(readableAccentColor(undefined)).toBeUndefined();
+            expect(readableAccentColor(null)).toBeUndefined();
+            expect(readableAccentColor("")).toBeUndefined();
+        });
+    });
 });
 
 describe("buildDialogueAppearances", () => {
@@ -348,7 +386,7 @@ describe("buildDialogueAppearances", () => {
         expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).has("d1")).toBe(false);
     });
 
-    it("tracks the placement (WI-3): an enter sets it and names its own block as the source", () => {
+    it("tracks the placement: an enter sets it and names its own block as the source", () => {
         const blocks = [
             characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "left" } }),
             dialogue("d1", { characterId: "c1" }),
@@ -387,7 +425,7 @@ describe("buildDialogueAppearances", () => {
         expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1")?.shown).toBe(true);
     });
 
-    it("reads back a placement move on a never-shown speaker without inventing a shown avatar (WI-3 round-trip)", () => {
+    it("reads back a placement move on a never-shown speaker without inventing a shown avatar", () => {
         // The group-header dropdown authors this /move for a speaker with no /show; the scan must read it
         // back so a second pick rewrites it rather than stacking a duplicate — but must not mark it shown.
         const blocks = [
@@ -488,5 +526,143 @@ describe("planRowBackspaceReplacement", () => {
         const restored = JSON.parse(JSON.stringify(snapshot)) as StoryScene;
         expect(restored.blocks.blank).toBeUndefined();
         expect(restored).toEqual(scene(blocks, ["n1", "a1", "n2"]));
+    });
+});
+
+describe("planBlockGroupMove", () => {
+    /** Four rows at the top level: the shape most drags happen in. */
+    const flat = () => scene([narration("a"), narration("b"), narration("c"), narration("d")], ["a", "b", "c", "d"]);
+
+    /** Runs the plan the way the controller does, and reports the row order it leaves behind. */
+    function applied(live: StoryScene, movingIds: string[], grabbed: string, target: string): string[] | null {
+        const plan = planBlockGroupMove(live, movingIds, grabbed, target);
+        if (!plan) {
+            return null;
+        }
+        moveBlocksInScene(live, [plan]);
+        return live.rootBlockIds;
+    }
+
+    it("drops the whole group after the target when the grabbed row came from above it", () => {
+        expect(applied(flat(), ["a", "b"], "a", "d")).toEqual(["c", "d", "a", "b"]);
+    });
+
+    it("drops the whole group before the target when the grabbed row came from below it", () => {
+        expect(applied(flat(), ["c", "d"], "d", "b")).toEqual(["a", "c", "d", "b"]);
+    });
+
+    it("keeps document order however the selection was built", () => {
+        // Selected bottom-up (`d` clicked first), grabbed by `c` and dragged above `a`: the rows still
+        // land as c, then d.
+        expect(applied(flat(), ["d", "c"], "c", "a")).toEqual(["c", "d", "a", "b"]);
+    });
+
+    it("anchors on a row that is NOT moving, so a non-contiguous group lands together", () => {
+        // `c` sits right after the drop point and is itself moving. Anchoring on it would insert `a`
+        // in front of a row about to leave, and `c` would then be appended to the end of the scene.
+        expect(applied(flat(), ["a", "c"], "a", "b")).toEqual(["b", "a", "c", "d"]);
+    });
+
+    it("carries the group into the container it is dropped on", () => {
+        const live = scene([
+            narration("a"), narration("b"),
+            group("g", ["g1"]), narration("g1", "g"),
+        ], ["a", "b", "g"]);
+        expect(applied(live, ["a", "b"], "a", "g1")).toEqual(["g"]);
+        expect(live.blocks.g.childrenIds).toEqual(["g1", "a", "b"]);
+        expect(live.blocks.a.parentId).toBe("g");
+    });
+
+    it("declines a drop on one of the moving rows", () => {
+        expect(planBlockGroupMove(flat(), ["a", "b"], "a", "b")).toBeNull();
+    });
+
+    it("declines a drop inside a moving container - a block cannot be moved into itself", () => {
+        const live = scene([
+            narration("a"),
+            group("g", ["g1"]), narration("g1", "g"),
+        ], ["a", "g"]);
+        expect(planBlockGroupMove(live, ["g"], "g", "g1")).toBeNull();
+        // Grabbing a row inside the container drags the container, so the same drop is still refused.
+        expect(planBlockGroupMove(live, ["g", "g1"], "g1", "g1")).toBeNull();
+    });
+
+    it("drags the container when the grabbed row is a selected descendant of it", () => {
+        const live = scene([
+            narration("a"),
+            group("g", ["g1"]), narration("g1", "g"),
+        ], ["a", "g"]);
+        // `g1` is selected too, but it rides along inside `g` rather than moving on its own.
+        const plan = planBlockGroupMove(live, ["g", "g1"], "g1", "a");
+        expect(plan?.blockIds).toEqual(["g"]);
+        moveBlocksInScene(live, [plan!]);
+        expect(live.rootBlockIds).toEqual(["g", "a"]);
+    });
+
+    it("declines an empty selection and a target that is gone", () => {
+        expect(planBlockGroupMove(flat(), [], "a", "b")).toBeNull();
+        expect(planBlockGroupMove(flat(), ["a"], "a", "missing")).toBeNull();
+    });
+});
+
+describe("planSelectionNudge", () => {
+    const rows = (...ids: string[]) => scene(ids.map(id => narration(id)), [...ids]);
+
+    /** Runs the plan the way the controller does, and reports the row order it leaves behind. */
+    function nudged(live: StoryScene, movingIds: string[], direction: "up" | "down"): string[] | null {
+        const plan = planSelectionNudge(live, movingIds, direction);
+        if (!plan) {
+            return null;
+        }
+        moveBlocksInScene(live, plan);
+        return live.rootBlockIds;
+    }
+
+    it("steps one row over its neighbour, either way", () => {
+        expect(nudged(rows("a", "b", "c"), ["b"], "up")).toEqual(["b", "a", "c"]);
+        expect(nudged(rows("a", "b", "c"), ["b"], "down")).toEqual(["a", "c", "b"]);
+    });
+
+    it("hops a run of adjacent rows over the one line beyond it, keeping their order", () => {
+        expect(nudged(rows("a", "b", "c", "d"), ["b", "c"], "up")).toEqual(["b", "c", "a", "d"]);
+        expect(nudged(rows("a", "b", "c", "d"), ["b", "c"], "down")).toEqual(["a", "d", "b", "c"]);
+    });
+
+    it("keeps the gaps in a split selection - each run steps over its own neighbour", () => {
+        expect(nudged(rows("a", "b", "c", "d"), ["a", "c"], "down")).toEqual(["b", "a", "d", "c"]);
+        expect(nudged(rows("a", "b", "c", "d"), ["b", "d"], "up")).toEqual(["b", "a", "d", "c"]);
+    });
+
+    it("is undone by the opposite direction, which a selection that collapsed its gaps would not be", () => {
+        const live = rows("a", "b", "c", "d", "e", "f");
+        const selection = ["a", "c", "e"];
+        expect(nudged(live, selection, "down")).toEqual(["b", "a", "d", "c", "f", "e"]);
+        expect(nudged(live, selection, "up")).toEqual(["a", "b", "c", "d", "e", "f"]);
+    });
+
+    it("moves whole or not at all: one row against the end stops the others too", () => {
+        expect(planSelectionNudge(rows("a", "b", "c"), ["a", "c"], "down")).toBeNull();
+        expect(planSelectionNudge(rows("a", "b", "c"), ["a", "c"], "up")).toBeNull();
+        expect(planSelectionNudge(rows("a", "b"), ["a", "b"], "up")).toBeNull();
+        expect(planSelectionNudge(rows("a", "b"), [], "down")).toBeNull();
+    });
+
+    it("steps each run inside its own parent when the selection spans a container", () => {
+        const live = scene([
+            group("g", ["g1", "g2"]), narration("g1", "g"), narration("g2", "g"),
+            narration("a"), narration("b"),
+        ], ["g", "a", "b"]);
+        // `g1` (inside the container) and `a` (outside it) each move down one, in their own list.
+        expect(nudged(live, ["g1", "a"], "down")).toEqual(["g", "b", "a"]);
+        expect(live.blocks.g.childrenIds).toEqual(["g2", "g1"]);
+    });
+
+    it("carries a selected container's children with it rather than moving them separately", () => {
+        const live = scene([
+            narration("a"),
+            group("g", ["g1"]), narration("g1", "g"),
+        ], ["a", "g"]);
+        expect(nudged(live, ["g", "g1"], "up")).toEqual(["g", "a"]);
+        expect(live.blocks.g.childrenIds).toEqual(["g1"]);
     });
 });

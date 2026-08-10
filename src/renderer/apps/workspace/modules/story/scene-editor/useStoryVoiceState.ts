@@ -45,7 +45,7 @@ export type StoryVoiceState = {
 };
 
 /**
- * The shared voice-state read for a story row (WI-4). Extracted from `StoryVoiceIndicator` so the row
+ * The shared voice-state read for a story row. Extracted from `StoryVoiceIndicator` so the row
  * mic, the row audition button, and the inspector voice section all query takes one way — the primary
  * locale's document, cached by the voice service — instead of each re-deriving it. Also wires the
  * shared single-player audition and the jump to the voice table.

@@ -3,6 +3,7 @@ import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { InputDialog } from "@/lib/components/dialogs";
 import type { BuildOutlineContextMenuInput } from "@/lib/ui-editor/context-menu/types";
 import { uiEditorArrange } from "@/lib/ui-editor/commands/uiEditorArrange";
+import { uiEditorAlign } from "@/lib/ui-editor/commands/uiEditorAlign";
 import {
     uiEditorCopySelection,
     uiEditorCutSelection,
@@ -12,6 +13,7 @@ import {
     uiEditorPaste,
     uiEditorPasteIntoParent,
     uiEditorSelectAllInSurface,
+    uiEditorUngroupSelection,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
 import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -22,34 +24,6 @@ import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoo
 const ROOT_WIDGET_TYPE = "nl.root";
 
 export type OutlinePanelMenuActions = BuildOutlineContextMenuInput["actions"];
-
-async function writeTextToClipboard(text: string): Promise<void> {
-    const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : null;
-    if (clipboard?.writeText) {
-        await clipboard.writeText(text);
-        return;
-    }
-
-    if (typeof document === "undefined") {
-        throw new Error("Clipboard API is not available.");
-    }
-
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "true");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    textarea.style.top = "0";
-    document.body.appendChild(textarea);
-    textarea.select();
-    try {
-        if (!document.execCommand("copy")) {
-            throw new Error("Copy command was rejected.");
-        }
-    } finally {
-        textarea.remove();
-    }
-}
 
 export function createOutlinePanelMenuActions(params: {
     documentService: UIDocumentService;
@@ -97,6 +71,12 @@ export function createOutlinePanelMenuActions(params: {
             }
             uiEditorArrange(documentService, surfaceId, menuSel, op);
         },
+        align: op => {
+            if (!documentService || !menuSel) {
+                return;
+            }
+            uiEditorAlign(documentService, surfaceId, menuSel, op);
+        },
         insertChildInOutline,
         paste: () => {
             const sel = stateService.getSelection();
@@ -112,16 +92,6 @@ export function createOutlinePanelMenuActions(params: {
         },
         pasteIntoParent: parentId => {
             uiEditorPasteIntoParent(documentService, localBlueprint, stateService, surfaceId, parentId, null);
-        },
-        copyElementId: elementId => {
-            void writeTextToClipboard(elementId)
-                .then(() => {
-                    uiService?.showNotification("Element ID copied.", "success");
-                })
-                .catch(error => {
-                    uiService?.showNotification("Failed to copy Element ID.", "error");
-                    console.error(error);
-                });
         },
         copy: () => uiEditorCopySelection(documentService, localBlueprint, surfaceId, menuSel),
         cut: () => uiEditorCutSelection(documentService, localBlueprint, stateService, surfaceId, menuSel, uiService),
@@ -160,6 +130,9 @@ export function createOutlinePanelMenuActions(params: {
         },
         addSelectionToLeaderGroup: () => {
             uiEditorGroupIntoLeaderContainer(documentService, stateService, surfaceId, menuSel);
+        },
+        ungroupSelection: () => {
+            uiEditorUngroupSelection(documentService, stateService, surfaceId, menuSel, uiService);
         },
         addSelectionToComponentLibrary: () => {
             if (!menuSel || menuSel.elementIds.length === 0) {

@@ -1,4 +1,4 @@
-/** `project` - the Project settings sidebar: overview hub plus five slide-in sub-pages. */
+/** `project` - the Project settings sidebar: overview hub plus six slide-in sub-pages. */
 export const project = {
     // A row names what is inside it. These were sentences about what each page was for, which read
     // as claims rather than contents and did not survive the merge: a page holding three parts
@@ -12,6 +12,12 @@ export const project = {
             title: "Game",
             description: "Saving, player defaults, and audio tracks",
         },
+        // Named for the page, not for its one current part: the palette is what is here today, and
+        // typography and the rest of a project's look are meant to join it.
+        design: {
+            title: "Design",
+            description: "Colors, and the controls they paint",
+        },
         project: {
             title: "Project",
             description: "Project check rules and what stops a build",
@@ -22,7 +28,7 @@ export const project = {
         },
         settings: {
             title: "Settings",
-            description: "Security, optimization, and mobile orientation",
+            description: "Security, signing, optimization, and mobile",
         },
     },
     // The headings that tell one part of a sub-page from the next. A heading is a noun, never a
@@ -34,7 +40,13 @@ export const project = {
         saving: "Saving",
         playerDefaults: "Player defaults",
         audioTracks: "Audio tracks",
+        // The two parts of the Brand sub-page. The colors an author decides, and the slots that
+        // follow them; the rest of that page's words are in the `brand` namespace, beside the model
+        // whose ids they name.
+        brandColors: "Colors",
+        brandControls: "Controls",
         security: "Security",
+        signing: "Signing",
         optimization: "Optimization",
         mobile: "Mobile",
     },
@@ -54,6 +66,15 @@ export const project = {
         authorLabel: "Author",
         authorPlaceholder: "Author, organization, or email",
         websiteLabel: "Website",
+        // Shown in the packaged app's file properties and About box. Editable here rather than only
+        // in the build dialog, which now reads it back instead of asking for it.
+        copyrightLabel: "Copyright",
+        copyrightPlaceholder: "© Your Studio",
+        // The long form, kept apart from the line above because they reach different readers: one
+        // line goes into the binary's file properties, this goes into a file players can open.
+        copyrightTextLabel: "Copyright Notice",
+        copyrightTextPlaceholder: "Fonts, music and assets used, and who they belong to…",
+        copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. Left empty, no file is shipped.",
         descriptionPlaceholder: "Describe your project…",
         required: "Required",
     },
@@ -78,12 +99,12 @@ export const project = {
     },
     game: {
         autoSaveTitle: "Automatic saving",
-        autoSaveDescription: "Save the playthrough on a timer, so a crash costs a moment instead of a session.",
+        autoSaveDescription: "Save the playthrough on a timer, so a crash loses at most one interval.",
         autoSaveIntervalTitle: "Save every",
-        autoSaveIntervalDescription: "How often to check. Nothing is written unless the story moved on.",
+        autoSaveIntervalDescription: "How often to check. Nothing is written unless the story advanced.",
         autoSaveIntervalUnit: "s",
         autoSaveSlotsTitle: "Autosaves kept",
-        autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They stay out of the player's own save slots.",
+        autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They are separate from the player's own save slots.",
     },
     // The Player defaults group: the value each player setting starts at. Every one of these is
     // still the player's to change while they play, and what they change is kept, so the wording
@@ -91,7 +112,7 @@ export const project = {
     preferences: {
         // One line on the group heading, not a paragraph in the page. Everything else it used to
         // say is either visible in the rows or of no use to the author reading them.
-        intro: "Where each setting starts for a player who has not changed it. Players can change all of them, and what they choose is kept.",
+        intro: "The starting value of each setting for a player who has not changed it. Players can change all of them, and their choices are kept.",
         group: {
             dialogue: "Dialogue",
             skipping: "Skipping",
@@ -118,7 +139,7 @@ export const project = {
         },
         showDialog: {
             title: "Show the dialogue box",
-            description: "Off starts the game with the box hidden, as the player's hide-UI toggle leaves it.",
+            description: "When off, the game starts with the dialogue box hidden, in the state the player's hide-UI toggle produces.",
         },
         skip: {
             title: "Allow skipping",
@@ -154,7 +175,7 @@ export const project = {
         },
         voiceEndMode: {
             title: "When a voiced line ends",
-            description: "What happens to the clip when its sentence is done. Whatever you pick, two voices never play at once.",
+            description: "What happens to the clip when its line ends. Two voice clips never play at once, whichever option is selected.",
             option: {
                 stop: "Stop the clip",
                 fade: "Fade the clip out",
@@ -216,10 +237,14 @@ export const project = {
     settings: {
         allowHttpTitle: "Allow HTTP",
         allowHttpDescription: "When off, the game is confined to the app protocol and all HTTP/HTTPS requests are blocked.",
-        allowHttpWebHint: "Does not apply to the Web export, only to desktop builds.",
+        allowHttpWebHint: "Not enforced in the Web export, which is itself served over HTTP. Network nodes still run there.",
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
         encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",
+        // The whole Signing group in one line. Every signable platform gets a row, whether or not this
+        // machine can build it: a certificate is obtained days before the build that uses it, and
+        // preparing one is why this sits in the panel rather than in the build dialog.
+        signingDescription: "Which credential signs each platform. Certificates and passwords stay on this machine; the project stores only which one to use.",
         webLosslessImagesTitle: "Convert images to WebP",
         webLosslessImagesDescription: "Re-encode exported images as lossless WebP where that is smaller.",
         webLosslessImagesHint: "Each conversion is compared with the original pixel by pixel and discarded unless it decodes identically. Android and iOS builds serve the same exported site, so this applies to them too.",

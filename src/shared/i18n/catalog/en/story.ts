@@ -207,7 +207,7 @@ export const story = {
             noDecisions: "No decisions",
             // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
             stopsHere: "stops here",
-            stopsHereTitle: "A path stops here but this is not an ending: it looped back, or an option ran out of continuations",
+            stopsHereTitle: "A path stops here but this is not an ending: it looped back to a visited scene, or an option has nothing written after it",
             diagnostics: {
                 unreachableEndings: {
                     one: "{count} ending no route reaches",
@@ -250,6 +250,26 @@ export const story = {
         },
         hint: {
             openScene: "Double-click a scene to open it",
+            // Says what the gesture DOES, not just that it exists: the map deliberately does not
+            // write the jump, and an author who expects it to will read the opened editor as a
+            // detour rather than as the point.
+            connect: "Drag between scenes to write a jump",
+        },
+        // A line on the map, and the jumps behind it.
+        edge: {
+            reveal: "Show these jumps",
+            disconnect: "Delete connection",
+            confirmRemove: {
+                one: "Delete the jump from {source} to {target}?",
+                other: "Delete all {count} jumps from {source} to {target}?",
+            },
+            // Names the one thing an author cannot see from the map: a jump is a line in a scene,
+            // possibly under a fork, and deleting the connection deletes those lines.
+            confirmRemoveDetail: {
+                one: "The jump is removed from {source}. This can be undone in the scene editor.",
+                other: "All {count} jumps are removed from {source}. This can be undone in the scene editor.",
+            },
+            confirmRemoveAction: "Delete Jumps",
         },
         action: {
             resetLayout: "Reset Layout",
@@ -300,6 +320,11 @@ export const story = {
         clickHint: "Waits until the player clicks to continue.",
         remove: "Remove pause",
     },
+    ruby: {
+        title: "Ruby text",
+        placeholder: "Reading",
+        remove: "Remove ruby text",
+    },
     interpolation: {
         title: "Insert value",
         kindVariable: "Variable",
@@ -318,6 +343,8 @@ export const story = {
         insertValue: "Insert inline value",
         insertValueHint: "Insert inline value (variable or blueprint)",
         insertExpression: "Insert expression change",
+        ruby: "Ruby text",
+        rubyHint: "Ruby text (select the words to annotate)",
         tools: "Rich text tools",
         pauseClick: "Pause (waits for a click)",
         pauseSeconds: "Pause {seconds}s",
@@ -475,11 +502,35 @@ export const story = {
     },
 
     view: {
-        narrativeOnly: "Narrative only",
         density: "Reading density",
         "density.compact": "Compact",
         "density.standard": "Standard",
         "density.comfortable": "Comfortable",
+        /** Which kinds of row the scene shows. The facet names are reading labels, not command categories. */
+        filter: {
+            title: "Filter rows",
+            /** The two at the top of the panel: one preset, one way out. */
+            dialogueOnly: "Dialogue only",
+            clear: "Clear filter",
+            sectionScript: "Script",
+            sectionStaging: "Directions",
+            sectionCast: "Cast",
+            facet: {
+                dialogue: "Dialogue",
+                narration: "Narration",
+                choice: "Choices",
+                note: "Notes",
+                character: "Character",
+                stage: "Stage",
+                camera: "Camera",
+                scene: "Scene",
+                sound: "Sound",
+                flow: "Flow",
+                data: "Variables",
+                utils: "Other",
+                invalid: "Invalid rows",
+            },
+        },
     },
     diagnostics: {
         missingAsset: "This row points at an asset the project no longer has.",
@@ -489,6 +540,11 @@ export const story = {
         placeholder: "Find in scene",
         replacePlaceholder: "Replace with",
         caseSensitive: "Match case",
+        wholeWord: "Match whole word",
+        regex: "Use a regular expression",
+        // The pattern would not compile. Sits where the hit count sits, because that is the question
+        // it answers: there is no count, and this is why.
+        invalidPattern: "Invalid pattern",
         noMatches: "No results",
         previous: "Previous match",
         next: "Next match",
@@ -576,6 +632,12 @@ export const story = {
         placeholderNote: "Note…",
         placeholderText: "Text…",
         dragRow: "Drag row",
+        // A grip on a selected row carries the whole selection, and says so before it is pulled — the
+        // count is the only warning that a drag is about to move more than the line under the pointer.
+        dragRows: {
+            one: "Drag {count} row",
+            other: "Drag {count} rows",
+        },
         // Two strings per row button, and the difference is load-bearing: `insert`/`delete` are the
         // ACCESSIBLE NAMES and `insertTitle`/`deleteTitle` the tooltips, which add the keybinding. They
         // read the same because a screen reader and a pointer deserve the same sentence — these used to
@@ -634,12 +696,14 @@ export const story = {
         loadingScene: "Loading story scene…",
         notFound: "Story or scene not found.",
         addRow: "Click or type to add a row…",
-        emptyHint: "This scene is empty. Type {trigger} on a new row to pick a command, or just write a line of narration.",
+        emptyHint: "This scene is empty. Type {trigger} on a new row to pick a command, or write a line of narration.",
         emptyExampleBg: "set the backdrop",
         emptyExampleShow: "bring someone on stage",
         emptyExampleSay: "give them a line",
         emptyOpenManual: "Open the command manual",
-        variablesPanel: "Story Variables",
+        /** The scene has rows, but the filter is hiding all of them — a different thing from an empty scene. */
+        filteredEmpty: "No rows match the filter.",
+        filteredEmptyClear: "Show all",
         snapshotsPanel: "Scene Snapshots",
     },
     preview: {
@@ -792,14 +856,12 @@ export const story = {
         toggle: { label: "Toggle", detail: "Flip a true/false variable" },
         reset: { label: "Reset", detail: "Restore a variable to its default" },
         declareLocal: { label: "Local variable", detail: "Declare a scene variable" },
-        declareVar: { label: "Save variable", detail: "Declare a variable that rides the save file" },
-        declarePersis: { label: "Global variable", detail: "Declare an app-level variable blueprints can read" },
         if: { label: "If", detail: "Branch on a condition" },
         menu: { label: "Menu", detail: "Let the player choose" },
-        repeat: { label: "Repeat", detail: "Run the enclosed actions a set number of times — for a condition instead, use /until" },
+        repeat: { label: "Repeat", detail: "Run the enclosed actions a set number of times. For a condition instead, use /until" },
         // The detail carries the one thing the token cannot: `until` says when to STOP, so the group
         // runs while the condition is false. Named as a stop condition because that is what it is.
-        until: { label: "Until", detail: "Repeat the enclosed actions until a condition becomes true — it is checked before each pass" },
+        until: { label: "Until", detail: "Repeat the enclosed actions until a condition becomes true. The condition is checked before each pass" },
         break: { label: "Break", detail: "Leave the repeat group this row sits in" },
         parallel: { label: "Parallel", detail: "Run the enclosed actions together" },
         race: { label: "Race", detail: "Run all, continue when the first finishes" },
@@ -972,8 +1034,8 @@ export const story = {
         moveSelectionUp: "Move story row selection up",
         extendSelectionDown: "Extend story row selection down",
         extendSelectionUp: "Extend story row selection up",
-        moveRowDown: "Move the selected story row down",
-        moveRowUp: "Move the selected story row up",
+        moveRowDown: "Move the selected story rows down",
+        moveRowUp: "Move the selected story rows up",
         selectFirst: "Select the first story row",
         selectLast: "Select the last story row",
         pageDown: "Move story row selection down a page",

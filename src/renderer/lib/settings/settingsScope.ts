@@ -97,6 +97,11 @@ function specForSetting(setting: AppSettingDefinition): SettingsValueSpec {
             // Not `enum`: the presets are ids, but `allowCustomColor` stores a hex that is in no
             // option list, so checking membership would reject a value the picker itself wrote.
             return { ...base, kind: "string" };
+        case SettingValueType.Font:
+            // Same reason, one step further: the option list holds only the presets, and the
+            // families beside them are whatever the EXPORTING machine had installed. Membership
+            // would reject every one of them, which is most of what this setting can hold.
+            return { ...base, kind: "string" };
         case SettingValueType.String:
             return { ...base, kind: "string" };
         default:

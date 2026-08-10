@@ -1,6 +1,7 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
-import type { PersistentVariableRuntimeTable } from "./variables/registry";
+import type { BrandColor } from "./brand";
+import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle } from "./localization";
 import type { PlayerPreferences } from "./preference";
 import type { AutoSaveConfiguration } from "./saves";
@@ -15,6 +16,22 @@ export type DevModeEntry =
     | {
           kind: "surface";
           surfaceId: UISurfaceId;
+          /**
+           * Safe-area device preset id to open the window with; omitted / `null` = no overlay.
+           *
+           * Only the UI Surface editor's canvas launch button sets this. Launching from the top bar
+           * is "run it the way a player gets it", so it deliberately carries no design aid. This is
+           * the window's *initial* value only: the Interface panel can change it for the rest of the
+           * session and nothing is ever written back to the project or to Studio settings.
+           */
+          safeAreaId?: string | null;
+          /**
+           * The project's `app.mobile.orientation`, so the window resolves a device inset onto the
+           * same edge the editor did. Unlike `safeAreaId` this is not a design aid but plain
+           * project context, so BOTH launch paths send it — the Interface panel's picker has to be
+           * able to answer correctly in a window the top bar opened.
+           */
+          mobileOrientation?: "landscape" | "portrait" | "auto";
       }
     | {
           kind: "story";
@@ -59,7 +76,7 @@ export type DevModeBlueprintDebugEventPayload = {
     event: BlueprintDebugEvent;
 };
 
-/** Play-head row forwarded from a Dev Mode window to its project's workspace (WI-2 editor sync). */
+/** Play-head row forwarded from a Dev Mode window to its project's workspace. */
 export type DevModeStoryRowPayload = {
     projectPath: string;
     storyId: string;
@@ -69,6 +86,27 @@ export type DevModeStoryRowPayload = {
 
 /** The workspace-side story-row highlight, forwarded from Dev Mode (no projectPath on delivery). */
 export type DevModeStoryRowHighlight = {
+    storyId: string;
+    sceneId: string;
+    blockId: string;
+};
+
+/**
+ * "Take me to this row" — a Dev Mode request to open the row in the workspace's story editor.
+ *
+ * Deliberately a different channel from {@link DevModeStoryRowPayload}, which follows the play head:
+ * that one must never open a tab or steal focus (it fires on every action), while this one exists to
+ * do exactly that, because the author asked. Same shape, opposite manners.
+ */
+export type DevModeStoryRowOpenPayload = {
+    projectPath: string;
+    storyId: string;
+    sceneId: string;
+    blockId: string;
+};
+
+/** The workspace-side "open this row" request, forwarded from Dev Mode (no projectPath on delivery). */
+export type DevModeStoryRowOpenRequest = {
     storyId: string;
     sceneId: string;
     blockId: string;
@@ -180,7 +218,7 @@ export type DevModeStoryLibrary = {
      * `assetId → author-facing asset name`, for the media types a story row can name (image / audio /
      * video). Names only — the bytes travel through the compiler, and this table exists so the Dev
      * Mode debug panel can read a row the way the editor does: `Set background outside_s.jpg` rather
-     * than `Set background 4b645b59-1723-4ac9-98ab-e6859b837bef` (U4 WI-1).
+     * than `Set background 4b645b59-1723-4ac9-98ab-e6859b837bef`.
      */
     assetNames: Record<string, string>;
 };
@@ -213,6 +251,19 @@ export type DevModeBundle = {
          * `persistentVariableId`).
          */
         persistentVariables: PersistentVariableRuntimeTable;
+        /**
+         * Project-level SAVED variables (M-VAR registry), baked from the same
+         * `editor/variables.json`. Keyed by variable id, exactly like `persistentVariables`.
+         *
+         * A separate field rather than a scope filter over one table: the two scopes are backed by
+         * different stores - saved values ride the playthrough's save file, persistent values live in
+         * app-level host persistence - so a consumer that could reach the wrong one would write player
+         * progress into the wrong lifetime.
+         *
+         * These are only half of "every saved variable": the story's own `/save` declaration rows are
+         * the other authoring surface, and the compiler unions the two.
+         */
+        savedVariables: SavedVariableRuntimeTable;
     };
     story?: StoryDocument;
     storyLibrary?: DevModeStoryLibrary;
@@ -259,6 +310,23 @@ export type DevModeBundle = {
      * defaults" - i.e. exactly how those bundles already behaved.
      */
     preferences?: PlayerPreferences;
+    /**
+     * The project's own palette, baked from `editor/brand.json`.
+     *
+     * Carried by the bundle for the reason localization and audio are: Dev Mode and the packaged
+     * runtime are one code path fed by one channel, so a colour that resolves in a preview has to
+     * resolve the same way in a shipped game without a second pipeline agreeing to it. And it has
+     * to travel *with* the documents rather than be read separately, because a stored colour
+     * anywhere in the UI document may be a `nlbrand:<id>` link (see `@shared/brand/brandLink`) -
+     * a link is not a colour until there is a palette beside it, and a bundle carrying one without
+     * the other is a game whose buttons paint their own fallback.
+     *
+     * Absent means the bundle predates the feature, which every consumer reads as
+     * `BUILTIN_BRAND_COLORS` - the same seed a project that has never opened the Brand surface
+     * holds on disk, so an old bundle and a fresh project answer identically. Every bundle this
+     * Studio assembles carries it.
+     */
+    brand?: BrandColor[];
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

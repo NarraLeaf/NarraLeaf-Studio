@@ -25,7 +25,7 @@ function createDocument(): UIDocument {
                 id: "root",
                 type: "nl.root",
                 parentId: null,
-                childrenIds: ["slider", "outer"],
+                childrenIds: ["slider", "switch", "outer"],
                 layout: { x: 0, y: 0, width: 320, height: 180 },
             },
             slider: {
@@ -50,6 +50,29 @@ function createDocument(): UIDocument {
                 childrenIds: [],
                 extra: { sliderSlot: "handle" },
                 layout: { x: 121, y: 9, width: 18, height: 22 },
+            },
+            switch: {
+                id: "switch",
+                type: "nl.switch",
+                parentId: "root",
+                childrenIds: ["switchTrack", "switchThumb"],
+                layout: { x: 0, y: 140, width: 52, height: 28 },
+            },
+            switchTrack: {
+                id: "switchTrack",
+                type: "nl.container",
+                parentId: "switch",
+                childrenIds: [],
+                extra: { switchSlot: "track" },
+                layout: { x: 0, y: 0, width: 52, height: 28 },
+            },
+            switchThumb: {
+                id: "switchThumb",
+                type: "nl.container",
+                parentId: "switch",
+                childrenIds: [],
+                extra: { switchSlot: "thumb" },
+                layout: { x: 3, y: 3, width: 22, height: 22 },
             },
             outer: {
                 id: "outer",
@@ -89,6 +112,24 @@ describe("container drill selection", () => {
         expect(isUiContainerDrillLockHit(document, "surface", selection, "handle")).toBe(true);
         expect(isUiContainerDrillLockHit(document, "surface", selection, "track")).toBe(true);
         expect(isUiContainerDrillLockHit(document, "surface", selection, "slider")).toBe(false);
+    });
+
+    it("treats selected switches as drillable structural parents", () => {
+        const document = createDocument();
+        const selection = {
+            editor: "ui" as const,
+            surfaceId: "surface",
+            elementIds: ["switch"],
+            primaryId: "switch",
+        };
+
+        expect(isUiContainerDrillLockHit(document, "surface", selection, "switchThumb")).toBe(true);
+        expect(isUiContainerDrillLockHit(document, "surface", selection, "switchTrack")).toBe(true);
+        expect(isUiContainerDrillLockHit(document, "surface", selection, "switch")).toBe(false);
+        // A hit outside the selected switch is not a drill either, so the assertions above cannot
+        // pass just because the descendant walk says yes to everything.
+        expect(isUiContainerDrillLockHit(document, "surface", selection, "handle")).toBe(false);
+        expect(resolveUiContainerDrillTarget(document, "surface", selection, "switchThumb")).toBe("switchThumb");
     });
 
     it("resolves a deep hit to the direct child of the selected container", () => {

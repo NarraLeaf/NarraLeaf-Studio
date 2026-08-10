@@ -6,7 +6,8 @@ import type { ImportQueueState } from "../state/useImportQueue";
 
 /**
  * The import strip: how far a multi-file import has got while it runs, and which files it could not
- * read once it stops.
+ * read once it stops — each with the reason it was turned away, since a per-file refusal is reported
+ * nowhere else (only a whole bucket falling over raises an alert).
  *
  * It is a row inside the panel, not a floating layer — a drop of twenty files is part of working in
  * the panel, and an overlay would cover the tree the author is dropping onto. It shows nothing at
@@ -49,7 +50,14 @@ export function ImportQueueStrip({
                 <span className="text-xs text-danger">
                     {tn("assets.import.failedCount", state.failures.length)}
                 </span>
-                <ul className="mt-1 max-h-24 overflow-y-auto space-y-0.5">
+                {/*
+                  * One line per failure: the file name, and nothing else. The reason used to be
+                  * rendered underneath it, which turned a twenty-file drop into a wall of prose in a
+                  * panel column narrow enough to wrap every sentence three times. The reason is the
+                  * import dialog's job now - it says what is wrong *before* anything is copied, while
+                  * the author can still act on it. Here it stays in `title=`, with the full path.
+                  */}
+                <ul className="mt-1 max-h-32 overflow-y-auto space-y-1">
                     {state.failures.map(failure => (
                         <li
                             key={failure.path}

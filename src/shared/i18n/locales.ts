@@ -114,3 +114,35 @@ export function normalizeLocale(value: unknown): LocaleCode {
     }
     return DEFAULT_LOCALE;
 }
+
+/**
+ * Pick a locale out of a machine's ORDERED language preferences — what to show someone who has
+ * never chosen a language.
+ *
+ * Different from {@link normalizeLocale} in the one way that matters: a list is a preference
+ * order, so this walks it and takes the first entry Studio actually has. Normalizing only the
+ * head would answer {@link DEFAULT_LOCALE} for a machine that asked for French and then Chinese,
+ * which throws away the second half of what it said.
+ *
+ * Shared because both processes need the same answer from different sources — the renderer reads
+ * `navigator.languages`, the main process reads `app.getPreferredSystemLanguages()` — and two
+ * implementations of "which language is this machine in" is two answers waiting to disagree.
+ */
+export function resolvePreferredLocale(tags: readonly string[]): LocaleCode {
+    for (const tag of tags) {
+        const normalized = String(tag ?? "").toLowerCase().replace(/_/g, "-");
+        if (!normalized) {
+            continue;
+        }
+        // Read off before the guard below: `LocaleCode` is `string`, so a failed narrowing leaves
+        // `normalized` as `never` and nothing can be done with it afterwards.
+        const primary = normalized.split("-")[0];
+        if (isRegisteredLocale(normalized)) {
+            return normalized;
+        }
+        if (isRegisteredLocale(primary)) {
+            return primary;
+        }
+    }
+    return DEFAULT_LOCALE;
+}

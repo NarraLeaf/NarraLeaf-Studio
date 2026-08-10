@@ -669,7 +669,7 @@ export type StoryActionPayload =
           /**
            * The story's stage camera (`story.camera`) — a Displayable like any other in the engine, but
            * its own action kind here because an author does not file "move the camera" next to "move a
-           * sprite" (plan 2026-07-24-006 §3.3).
+           * sprite".
            *
            * Two facts this payload cannot state but every consumer must respect: the camera is a
            * **story-level singleton** whose pose survives a scene change (and rides the save file), and

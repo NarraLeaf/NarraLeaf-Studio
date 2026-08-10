@@ -5,7 +5,7 @@ import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
-import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
+import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -13,6 +13,9 @@ import { SearchBox } from "./components/SearchBox";
 import { FilterSystem, type ActiveFilter } from "./components/FilterSystem";
 import { ImportQueueStrip } from "./components/ImportQueueStrip";
 import { ModelImportWizard } from "./components/ModelImportWizard";
+import { MediaImportDialog } from "./components/MediaImportDialog";
+import { MediaConvertAssetDialog } from "./components/MediaConvertAssetDialog";
+import { useMediaAssetSupport } from "./state/useMediaAssetSupport";
 
 import { useAssetData } from "./state/useAssetData";
 import { useMultiSelection } from "./state/useMultiSelection";
@@ -76,8 +79,8 @@ interface AssetsPanelState {
     /**
      * Which sidebar sections are open. Still named `assetTypeOpenItems` on disk: the ids stored by
      * a build from before sections were categories are filtered out by
-     * {@link filterKnownAssetCategoryIds}, which is exactly the "persisted UI state may lapse"
-     * the plan allows.
+     * {@link filterKnownAssetCategoryIds} - persisted UI state is deliberately allowed to
+     * lapse this way.
      */
     assetTypeOpenItems?: string[];
     expandedGroupIds?: string[];
@@ -141,6 +144,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         if (!context) return null;
         const uiService = context.services.get<UIService>(Services.UI);
         return createInputDialog(uiService);
+    }, [context]);
+    // How the context menu's developer section says an identifier reached the clipboard.
+    const notifyFromMenu = useMemo(() => {
+        if (!context) return undefined;
+        const uiService = context.services.get<UIService>(Services.UI);
+        return (message: string, type: "success" | "error") => uiService.showNotification(message, type);
     }, [context]);
 
     const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTargetState | null>(null);
@@ -275,7 +284,15 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             return next.length === prev.length ? prev : next;
         });
     }, [groups, hasLoaded]);
-    
+
+    // Stable across renders on purpose. The icon grid hangs its "back out of this folder" handler off
+    // this, and publishes that handler to the compact toolbar from an effect. A fresh arrow here made
+    // the handler new on every render, so the effect re-ran and re-published on every render - which
+    // rendered again. Entering a folder in the bottom dock looped until React gave up.
+    const handleIconGroupPathChange = useCallback((next: string[]) => {
+        setIconGroupPathIds(resolveAssetGroupPathIds(next, groups));
+    }, [groups]);
+
     const onActionComplete = useCallback(() => {
         loadAssets();
         handleClearSelection();
@@ -301,9 +318,11 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const { importQueue, importState, dismissImportFailures } = useImportQueue();
 
     const {
-        handleCreateGroup, handleCreateTextFile, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
+        handleCreateGroup, handleCreateTextFile, handleCopy, handleCut, handlePaste, handleRename, handleReplaceContent, handleDelete, handleExport, handleImport, handleRetryImport, handleImportToGroup, handleImportRemote,
         handleCreateMagicTags, handleApplyMagicTags,
-        modelImportRequest, completeModelImport, cancelModelImport
+        modelImportRequest, completeModelImport, cancelModelImport,
+        mediaImportRequest, completeMediaImport, cancelMediaImport,
+        mediaConvertRequest, handleConvertMedia, finishMediaConvert, cancelMediaConvert
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
         focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup, importQueue
@@ -320,12 +339,14 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const handleCutRef = useRef(handleCut);
     const handlePasteRef = useRef(handlePaste);
     const handleDeleteRef = useRef(handleDelete);
+    const handleExportRef = useRef(handleExport);
 
     // Update refs when functions change
     handleCopyRef.current = handleCopy;
     handleCutRef.current = handleCut;
     handlePasteRef.current = handlePaste;
     handleDeleteRef.current = handleDelete;
+    handleExportRef.current = handleExport;
 
     // Magic Tags handler
     const handleMagicTagsClick = useCallback(async () => {
@@ -413,6 +434,27 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         registerClipboardShortcuts: false, // already provided by action shortcuts
     });
 
+    /**
+     * Which assets will not play as they are. Read by both views to draw their mark, and by the
+     * menu to decide whether to offer the conversion.
+     *
+     * Keyed by asset id and never by `Asset` identity: the library edits its records in place, so a
+     * reference to one lives forever and would never look changed.
+     */
+    const mediaSupport = useMediaAssetSupport();
+
+    const canConvertMedia = useMemo(() => {
+        const item = contextMenuTarget?.item;
+        if (!item || contextMenuTarget?.isGroup) {
+            return false;
+        }
+        const asset = item as Asset;
+        if (asset.source !== AssetSource.Local) {
+            return false;
+        }
+        return mediaSupport.get(asset.id)?.state === "convertible";
+    }, [contextMenuTarget, mediaSupport]);
+
     const { menuState, contextMenu, showContextMenu, closeContextMenu } = useAssetsContextMenu({
         clipboard, contextMenuTarget, setContextMenuTarget, selectedItems, isMultiSelectMode,
         handleClearSelection,
@@ -420,9 +462,13 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleCut: () => handleCutRef.current(),
         handlePaste: () => handlePasteRef.current(),
         handleDelete: () => handleDeleteRef.current(),
+        handleExport: () => handleExportRef.current(),
         handleRename,
         handleReplaceContent: () => handleReplaceContent(),
-        handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
+        handleConvertMedia: () => handleConvertMedia(),
+        canConvertMedia,
+        handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick,
+        notify: notifyFromMenu,
     });
 
     const handleRootDrop = useCallback(
@@ -549,6 +595,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         isNarrowed,
         compactToolbar: !showHeader,
         setAssetsIconToolbarCenter,
+        mediaSupport,
+        handleConvertMedia,
     };
 
     return (
@@ -715,7 +763,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             iconSize={iconSize}
                             onIconSizeChange={setIconSize}
                             groupPathIds={iconGroupPathIds}
-                            onGroupPathChange={(next) => setIconGroupPathIds(resolveAssetGroupPathIds(next, groups))}
+                            onGroupPathChange={handleIconGroupPathChange}
                         />
                     )}
                 </div>
@@ -726,6 +774,25 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     onClose={cancelModelImport}
                     onImport={(selection) => void completeModelImport(selection)}
                 />
+                {/* Mounted only while there is something to ask about, so a run's conversion state
+                    cannot survive into the next import. */}
+                {mediaImportRequest && (
+                    <MediaImportDialog
+                        plan={mediaImportRequest.plan}
+                        onCancel={cancelMediaImport}
+                        onResolve={(resolution) => void completeMediaImport(resolution)}
+                    />
+                )}
+                {/* Mounted only while there is an asset to convert, for the same reason as the
+                    import dialog above: half its state describes a conversion in flight. */}
+                {mediaConvertRequest && (
+                    <MediaConvertAssetDialog
+                        asset={mediaConvertRequest.asset}
+                        record={mediaConvertRequest.record}
+                        onClose={cancelMediaConvert}
+                        onConverted={finishMediaConvert}
+                    />
+                )}
                 <MagicTagDialog
                     visible={magicTagDialogVisible}
                     assets={magicTagAssets}

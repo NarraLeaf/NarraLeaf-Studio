@@ -10,6 +10,15 @@ export const menu = {
         unhide: "全部显示",
         quit: "退出 {name}",
     },
+    tray: {
+        openLauncher: "打开启动器",
+        checkForUpdates: "检查更新…",
+        quit: "退出 {name}",
+        residencyNotice: {
+            title: "NarraLeaf Studio 仍在运行",
+            body: "它留在通知区域，以便下载和更新继续完成。右键单击图标可重新打开或退出。",
+        },
+    },
     file: {
         title: "文件",
         new: "新建工作区",
@@ -35,11 +44,10 @@ export const menu = {
             stopSpeaking: "停止朗读",
         },
     },
+    // 这里只留菜单自己的标题。菜单里的每一项都复用运行下拉框的文案
+    //（`actions.run.*`、`test.action.*`），免得同样的四件事在两处叫两个名字。
     dev: {
         title: "开发",
-        devMode: "开发模式",
-        preview: "预览模式",
-        build: "构建发行版本",
     },
     window: {
         title: "窗口",

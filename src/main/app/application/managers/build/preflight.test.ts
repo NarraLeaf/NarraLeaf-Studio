@@ -8,7 +8,9 @@ import type {
     PluginSidecarContribution,
     PluginSidecarTargetContribution,
 } from "@shared/types/plugins";
+import type { BuildPreflightFinding, GameBuildTarget } from "@shared/types/gameBuild";
 import type { SigningCredential, SigningCredentialKind } from "@shared/types/signing";
+import { GameBuildManager } from "./GameBuildManager";
 import {
     checkIcon,
     collectSidecarRequirements,
@@ -259,6 +261,91 @@ describe("readProjectSigningIds", () => {
 
     it("survives a signing key that is not an object at all", () => {
         expect(readProjectSigningIds(config({ signing: "cred-win" }))).toEqual({});
+    });
+});
+
+/**
+ * The one signing finding that depends on the *formats* a target selected
+ * rather than on the credential alone. It is driven through the real
+ * signingPreflight - the rule reads the selection, and a test of the predicate
+ * alone would not notice the rule being asked the wrong question.
+ *
+ * The vault is a hand-written credentials.json rather than a stub: `get` is what
+ * decides whether the android slot is reached at all, and its on-disk shape is
+ * the thing worth pinning. The other findings the same pass produces (the
+ * password cannot be unsealed without a keyring here) are not this test's
+ * business, so it asserts on one code.
+ */
+describe("the Google Play finding", () => {
+    let vaultRoot: string;
+
+    beforeEach(async () => {
+        vaultRoot = await fs.mkdtemp(path.join(os.tmpdir(), "nls-preflight-play-"));
+        await fs.writeFile(
+            path.join(vaultRoot, "credentials.json"),
+            JSON.stringify({
+                version: 1,
+                credentials: [{
+                    id: "cred-droid",
+                    kind: "android-keystore",
+                    label: "Release key",
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                    file: "release.p12",
+                    alias: "release",
+                }],
+            }),
+        );
+    });
+
+    afterEach(async () => {
+        await fs.rm(vaultRoot, { recursive: true, force: true });
+    });
+
+    async function findingsFor(formats: GameBuildTarget["formats"]): Promise<BuildPreflightFinding[]> {
+        const manager = new GameBuildManager({
+            storageManager: { getNamespacePath: () => vaultRoot },
+        } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
+        // signingPreflight is private: it is the unit under test precisely
+        // because it is the only place the rule lives, and exporting it to be
+        // testable would widen the manager's surface for a test's convenience.
+        const preflight = (manager as unknown as {
+            signingPreflight(
+                projectConfig: ProjectConfigData | null,
+                targets: GameBuildTarget[],
+                hostPlatform: "windows",
+                iosBundleId: string,
+            ): Promise<BuildPreflightFinding[]>;
+        }).signingPreflight;
+        return preflight.call(
+            manager,
+            config({ signing: { android: "cred-droid" } }),
+            [{ platform: "android", formats }],
+            "windows",
+            "com.example.game",
+        );
+    }
+
+    const hasFinding = (findings: BuildPreflightFinding[]) =>
+        findings.some(finding => finding.code === "signing-android-not-play");
+
+    it("fires for an APK-only selection, as a warning", async () => {
+        const findings = await findingsFor(["apk"]);
+        expect(hasFinding(findings)).toBe(true);
+        // It ships; it just cannot go to Play. The build is not blocked.
+        expect(findings.find(finding => finding.code === "signing-android-not-play")).toMatchObject({
+            severity: "warning",
+            section: "signing",
+        });
+    });
+
+    it("says nothing once the AAB is selected alongside", async () => {
+        // The remedy the message names has been taken; repeating it would be
+        // the kind of standing warning authors learn to scroll past.
+        expect(hasFinding(await findingsFor(["apk", "aab"]))).toBe(false);
+    });
+
+    it("says nothing for an AAB-only selection", async () => {
+        expect(hasFinding(await findingsFor(["aab"]))).toBe(false);
     });
 });
 

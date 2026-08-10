@@ -10,7 +10,7 @@ import {
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
-import { MousePointer2, Move, Play, Magnet, ChevronDown, PanelsTopLeft } from "lucide-react";
+import { MousePointer2, Move, Play, Magnet, PanelsTopLeft } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { ContextMenu, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -26,6 +26,8 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
+import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
+import { uiSurfaceHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { flushUIDocAndGraphIfDirty } from "@/apps/workspace/modules/actions/flushDevModeAssets";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -38,6 +40,8 @@ import {
     useViewportTransform,
     useSmartSnapEnabled,
     useSmartSnapDetailSettings,
+    usePreviewAspectId,
+    usePreviewSafeAreaId,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
 import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
 import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceImageDrop";
@@ -48,6 +52,11 @@ import {
     SurfaceEditorToolbarSegButton,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
 import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceSnapSettingsMenu";
+import { SurfaceAlignTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceAlignMenu";
+import { SurfacePreviewFramesTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
+import { SurfacePreviewFramesReadout } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesReadout";
+import { readProjectMobileOrientation } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
+import { SurfacePreviewFramesOverlay } from "@/lib/ui-editor/preview/SurfacePreviewFramesOverlay";
 import { listInsertPaletteModules } from "@/lib/ui-editor/widget-modules/insertPalette";
 import { MOVEABLE_DOUBLE_CLICK_TARGET_SELECTOR } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 import {
@@ -77,6 +86,7 @@ import {
     shouldShowEditorSurfaceLowOpacityOutline,
 } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
@@ -144,7 +154,19 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const viewport = useViewportTransform(stateService);
     const smartSnapEnabled = useSmartSnapEnabled(stateService);
     const smartSnapDetail = useSmartSnapDetailSettings(stateService);
+    const previewAspectId = usePreviewAspectId(stateService);
+    const previewSafeAreaId = usePreviewSafeAreaId(stateService);
+    // What the shells lock to, which is what decides which edge a device inset lands on.
+    const mobileOrientation = readProjectMobileOrientation(context);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
+    /**
+     * A palette edit repaints the canvas for the same reason a document edit does, and is invisible
+     * for the opposite one: `nlbrand:` colours are resolved while the tree is built, so the document
+     * version does not move and the memo below would hand back the tree it built against the old
+     * palette. Measured: editing the primary colour left the canvas on the previous colour until an
+     * unrelated re-render, which reads as "the link does not work".
+     */
+    const brandRevision = useBrandPaletteRevision();
     const widgetModules = useMemo(() => listInsertPaletteModules(surface), [surface]);
     const deferredDocumentVersion = useDeferredValue(documentVersion);
     const deferredGraphVersion = useDeferredValue(graphVersion);
@@ -421,7 +443,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             className: "relative",
             style,
         });
-    }, [documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion]);
+    }, [documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion, brandRevision]);
 
     const applyTool = useCallback(
         (nextTool: UITool) => {
@@ -455,12 +477,17 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             } catch (e) {
                 console.error("[DevMode] flush before launch failed", e);
             }
+            // The canvas launch button is the one that carries the canvas's own reference frame
+            // across. The top bar's Run is "play it as the player gets it" and passes nothing, so
+            // the two launches stay meaningfully different.
             await devModeService.launch({
                 kind: "surface",
                 surfaceId,
+                safeAreaId: previewSafeAreaId,
+                mobileOrientation,
             });
         })();
-    }, [devModeService, isComponentEdit, surfaceId, workspace]);
+    }, [devModeService, isComponentEdit, mobileOrientation, previewSafeAreaId, surfaceId, workspace]);
 
     const handleOpenSurfaceEditor = useCallback(
         (targetSurfaceId: string) => {
@@ -521,6 +548,32 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         documentService,
         readOnly,
     });
+
+    /**
+     * Say which stack a scope-less undo means while this surface is the one on screen.
+     *
+     * Every other editor claims this on editor focus, through `useHistoryScope`. This one owns its
+     * stack through {@link UIEditorHistoryService} instead and so claimed nothing at all - which the
+     * canvas never noticed, because its own `mod+z` addresses the surface directly, but the Edit
+     * menu and the shell keybinding both read the active scope and were therefore answering for the
+     * project stack whatever the author had open.
+     *
+     * Keyed on `active` rather than on focus: an edit made in the property inspector belongs to the
+     * surface being shown, and by then focus is on the panel rather than on the canvas.
+     */
+    useEffect(() => {
+        if (!historyService || !surfaceId || !active || !context) {
+            return undefined;
+        }
+        const history = context.services.get<HistoryService>(Services.History);
+        const scopeId = uiSurfaceHistoryScope(surfaceId);
+        history.setActiveScope(scopeId);
+        return () => {
+            if (history.getActiveScopeId() === scopeId) {
+                history.setActiveScope(null);
+            }
+        };
+    }, [active, context, historyService, surfaceId]);
 
     useEffect(() => {
         const root = editorRootRef.current;
@@ -604,7 +657,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         };
     }, [handleSurfaceDoubleClick, active]);
 
-    if (!surface) {
+    // `stateService` is null only while the workspace context is, and `surface` is read through
+    // that same context - so a surface implies a state service. Guarding both here is what lets the
+    // toolbar below use it without a null branch: the alternative is a disabled twin control that
+    // can never render but still has to be written, styled and translated.
+    if (!surface || !stateService) {
         return (
             <div className="h-full flex items-center justify-center text-sm text-fg-subtle">
                 {isComponentEdit ? t("uiEditor.editor.componentNotFound") : t("uiEditor.editor.interfaceNotFound")}
@@ -667,19 +724,25 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 active={smartSnapEnabled}
                                 onClick={handleToggleSmartSnap}
                                 title={t("uiEditor.snap.tip")}
-                                disabled={!stateService}
                                 aria-pressed={smartSnapEnabled}
                             >
                                 <Magnet className="h-4 w-4" />
                             </SurfaceEditorToolbarSegButton>
-                            {stateService ? (
-                                <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} />
-                            ) : (
-                                <SurfaceEditorToolbarSegButton type="button" disabled title={t("uiEditor.snap.settings")} aria-label={t("uiEditor.snap.settings")}>
-                                    <ChevronDown className="h-4 w-4" />
-                                </SurfaceEditorToolbarSegButton>
-                            )}
+                            <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} />
                         </SurfaceEditorToolbarButtonGroup>
+                        <SurfaceAlignTrigger
+                            surfaceId={surface.id}
+                            documentService={documentService}
+                            stateService={stateService}
+                            readOnly={readOnly.active}
+                            readOnlyReason={readOnly.reason}
+                            revision={`${documentVersion}:${selectionVersion}`}
+                        />
+                        <SurfacePreviewFramesTrigger
+                            stateService={stateService}
+                            aspectId={previewAspectId}
+                            safeAreaId={previewSafeAreaId}
+                        />
                         <div className="mx-1 h-6 w-px bg-fill" />
                         <button
                             type="button"
@@ -735,6 +798,14 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         ) : null}
                         <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
                             {surfaceContent}
+                            {/* Design-space reference frames, under the diagnostics and interaction layers. */}
+                            <SurfacePreviewFramesOverlay
+                                designSize={surface.designSize}
+                                aspectId={previewAspectId}
+                                safeAreaId={previewSafeAreaId}
+                                mobileOrientation={mobileOrientation}
+                                viewportScale={viewport.scale}
+                            />
                             {documentService ? (
                                 <SurfaceLayoutDiagnosticMarkers
                                     document={documentService.getDocument()}
@@ -742,6 +813,13 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 />
                             ) : null}
                         </div>
+                        {/* Outside the transformed node on purpose - this one is text. */}
+                        <SurfacePreviewFramesReadout
+                            designSize={surface.designSize}
+                            aspectId={previewAspectId}
+                            safeAreaId={previewSafeAreaId}
+                            mobileOrientation={mobileOrientation}
+                        />
                     </div>
 
                     {stateService && documentService ? (

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
@@ -8,8 +8,11 @@ import {
     type UIElement,
     getUIComponentLink,
     isUIElementFlowLayoutChild,
+    resolveUIComponentParams,
 } from "@shared/types/ui-editor/document";
+import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
+import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
@@ -37,6 +40,7 @@ import {
 } from "@/lib/ui-editor/runtime/pageAnimation";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
+import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
 
 export type SurfaceBlueprintBindingContext = {
@@ -95,10 +99,32 @@ export type SurfaceElementTreeProps = {
     keyboardInteractive?: boolean;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
     blueprintLifecycleReady?: boolean;
+    /**
+     * Set by hosts whose `document` is a snapshot nothing can edit under them - the game runtime,
+     * whose uidoc comes out of a compiled bundle and is replaced wholesale (a new object) when that
+     * bundle is. It is what licenses {@link SurfaceElementTreeContent} to treat prop identity as the
+     * whole truth and reuse the tree it built last time.
+     *
+     * The editor canvas must NOT set it: `UIDocumentService.mutateDocument` edits the document
+     * object in place and re-emits the *same* reference, so identity there says nothing about
+     * content and a memoised tree would simply stop showing edits.
+     */
+    staticDocument?: boolean;
+    /**
+     * Counter the host bumps when a store it subscribes to *on this tree's behalf* has changed -
+     * `GameSurfaceRenderer` watches the surface-state store and the widget runtime patches for
+     * exactly that reason. It has to be a prop because what those stores change is read during the
+     * tree walk rather than passed in, so nothing else here would tell the memo they moved.
+     */
+    hostRenderTick?: number;
 };
 
 /**
  * Shared element-tree renderer for editor preview and Dev Mode runtime (same layout / registry semantics).
+ *
+ * **Not a component in practice: callers invoke it directly** (`SurfaceElementTree({...})`), and its
+ * own tests read the returned tree. So it must stay hook-free - the brand palette is subscribed one
+ * level down, in `EditorNodeWrapper`, which is a real component and wraps every element.
  */
 export function SurfaceElementTree(props: SurfaceElementTreeProps): ReactNode {
     if (props.blueprintBindingContext) {
@@ -114,16 +140,32 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
         hostAdapter,
         blueprintBindingContext,
     } = props;
-    const [, setBindingTick] = useState(0);
-    const valueRuntime = useMemo(
-        () => new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1)),
-        [surface.id, hostAdapter.blueprintRuntime?.runtimeScopeId],
-    );
-
-    useEffect(() => () => valueRuntime.dispose(), [valueRuntime]);
+    // Kept as a value, not a write-only tick setter: it is the only thing that can tell the memo
+    // below that the value runtime handed out different values for the same document.
+    const [bindingTick, setBindingTick] = useState(0);
+    const runtimeScopeId = hostAdapter.blueprintRuntime?.runtimeScopeId ?? null;
+    /**
+     * The store is built by an effect rather than by `useMemo`, because `dispose()` is terminal:
+     * a disposed store answers every `sync` / `ensureElementValue` with an early return and has no
+     * way back. `React.StrictMode` - on in every unpackaged build, see `renderApp.tsx` - mounts,
+     * tears down, and mounts again, and that second mount re-runs the effects against the *same*
+     * instance the first mount captured. A memoized store would be killed by the throwaway
+     * teardown and then synced while dead, so nothing on the surface would ever resolve and
+     * nothing would say so. Letting the effect own the instance means the remount gets a live one.
+     */
+    const [valueRuntime, setValueRuntime] = useState<BlueprintValueRuntimeStore | null>(null);
 
     useEffect(() => {
-        if (!blueprintBindingContext) {
+        const store = new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1));
+        setValueRuntime(store);
+        return () => {
+            store.dispose();
+            setValueRuntime(current => (current === store ? null : current));
+        };
+    }, [runtimeScopeId, surface.id]);
+
+    useEffect(() => {
+        if (!blueprintBindingContext || !valueRuntime) {
             return;
         }
         valueRuntime.sync({
@@ -136,7 +178,7 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
     }, [blueprintBindingContext, document, hostAdapter, surface, valueRuntime]);
 
     useEffect(() => {
-        if (!blueprintBindingContext) {
+        if (!blueprintBindingContext || !valueRuntime) {
             return undefined;
         }
         const onStateChanged = () => {
@@ -152,8 +194,51 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
         };
     }, [blueprintBindingContext, valueRuntime]);
 
-    return <>{renderSurfaceElementTreeWithValueRuntime(props, valueRuntime)}</>;
+    return <SurfaceElementTreeContent {...props} valueRuntime={valueRuntime} bindingTick={bindingTick} />;
 }
+
+type SurfaceElementTreeContentProps = SurfaceElementTreeProps & {
+    valueRuntime: BlueprintValueRuntimeStore | null;
+    /** See {@link SurfaceValueRuntimeBoundary}: the value runtime's own "I changed" counter. */
+    bindingTick: number;
+};
+
+function areSurfaceElementTreeInputsEqual(
+    previous: SurfaceElementTreeContentProps,
+    next: SurfaceElementTreeContentProps,
+): boolean {
+    // Only a host that promised its document is a snapshot may be told "nothing changed" - see
+    // `staticDocument`. Everyone else falls through to a plain re-render, exactly as before.
+    if (next.staticDocument !== true) {
+        return false;
+    }
+    const previousKeys = Object.keys(previous) as (keyof SurfaceElementTreeContentProps)[];
+    const nextKeys = Object.keys(next) as (keyof SurfaceElementTreeContentProps)[];
+    if (previousKeys.length !== nextKeys.length) {
+        return false;
+    }
+    return nextKeys.every(key => Object.is(previous[key], next[key]));
+}
+
+/**
+ * Building the element tree is the most expensive thing a surface does, and almost none of the
+ * re-renders that reach it change what it produces.
+ *
+ * One page switch renders this ~33 times (measured in Dev Mode on a 16-element page): navigation
+ * state settling, prepaint and interaction readiness, lifecycle signal bumps and each layer's own
+ * transition state all land here, and every one of them used to walk every element, re-run the
+ * binding merge and rebuild every `EditorNodeWrapper` - to produce a tree identical to the last one.
+ *
+ * The comparison is `React.memo`'s own, over *all* props rather than a hand-kept list, so a prop
+ * added to {@link SurfaceElementTreeProps} later cannot quietly fall out of it. What it cannot see
+ * is a store read during the walk; those have to announce themselves through `bindingTick` /
+ * `hostRenderTick`.
+ */
+const SurfaceElementTreeContent = memo(function SurfaceElementTreeContent(
+    props: SurfaceElementTreeContentProps,
+): ReactNode {
+    return renderSurfaceElementTreeWithValueRuntime(props, props.valueRuntime);
+}, areSurfaceElementTreeInputsEqual);
 
 function renderSurfaceElementTreeWithValueRuntime(
     props: SurfaceElementTreeProps,
@@ -608,6 +693,7 @@ function NestedSurfaceInstance(props: {
             onBeforeExit={handleBeforeExit}
             onEnterComplete={handleEnterComplete}
         >
+            <SurfaceBackgroundImageLayer surface={targetSurface} />
             <SurfaceElementTree
                 document={document}
                 surface={targetSurface}
@@ -745,9 +831,13 @@ function renderLinkedComponentInstanceContent(input: {
             [root.id]: rootSnapshot,
         },
     };
-    const componentInstanceKey = input.instanceKey
-        ? `${input.instanceKey}\0component:${input.instanceElement.id}`
-        : `component:${input.instanceElement.id}`;
+    const componentInstanceKey = buildUIComponentInstanceKey(input.instanceKey, input.instanceElement.id);
+    // The one point that holds both the instance element and the document, so the one point that can
+    // answer "what does THIS placement supply". Everything below runs the shared definition and can
+    // only be handed the answer. A component that declares nothing passes null rather than an empty
+    // map, so the dispatch options of content without params are byte-for-byte what they were.
+    const resolvedParams = resolveUIComponentParams(component, link);
+    const componentParams = Object.keys(resolvedParams).length > 0 ? resolvedParams : null;
     const viewportStyle: CSSProperties = {
         position: "relative",
         width: "100%",
@@ -787,6 +877,7 @@ function renderLinkedComponentInstanceContent(input: {
                     [...input.componentPath, component.id],
                     input.surfaceLifecycleSignals,
                     input.blueprintLifecycleReady ?? true,
+                    componentParams,
                 )}
             </div>
         </div>
@@ -813,6 +904,8 @@ function renderElementTree(
     componentPath: string[] = [],
     surfaceLifecycleSignals?: SurfaceLifecycleSignals,
     blueprintLifecycleReady = true,
+    /** Resolved params of the component instance this subtree belongs to; null outside one. */
+    componentParams: Record<string, string> | null = null,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
     const runtimePatch = widgetRuntimePatches?.[element.id];
@@ -872,12 +965,20 @@ function renderElementTree(
                 componentPath,
                 surfaceLifecycleSignals,
                 blueprintLifecycleReady,
+                componentParams,
             );
         })
         .filter((node): node is ReactNode => node !== null);
     };
 
-    const children = isListLikeWidgetType(resolved.type) || resolved.type === "nl.slider" ? [] : renderChildren();
+    // Widgets that place their own children call `renderChildren` themselves - with slot ids, an
+    // instance key and (for the switch) per-part variant overrides - so the tree must not also
+    // render them here, or every part would be drawn twice.
+    const rendersOwnChildren =
+        isListLikeWidgetType(resolved.type)
+        || resolved.type === "nl.slider"
+        || resolved.type === UI_SWITCH_ELEMENT_TYPE;
+    const children = rendersOwnChildren ? [] : renderChildren();
 
     const renderer = rendererRegistry.get(resolved.type);
     const linkedComponentContent = renderLinkedComponentInstanceContent({
@@ -961,6 +1062,7 @@ function renderElementTree(
             useAppearanceInspectorPreview={useAppearanceInspectorPreview}
             listItemScope={listItemScope ?? null}
             instanceKey={instanceKey}
+            componentParams={componentParams}
         >
             {blueprintLifecycleReady && hostAdapter.blueprintRuntime ? (
                 <BlueprintWidgetInitLifecycle
@@ -971,6 +1073,7 @@ function renderElementTree(
                     initBinding={resolved.behavior?.events?.init}
                     hostAdapter={hostAdapter}
                     componentId={componentId}
+                    componentParams={componentParams}
                     listItemScope={listItemScope}
                     instanceKey={instanceKey || undefined}
                     surfaceLifecycleSignals={surfaceLifecycleSignals}

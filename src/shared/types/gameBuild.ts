@@ -23,10 +23,20 @@ export type GameBuildDesktopPlatform = Exclude<GameBuildPlatform, "web" | GameBu
 
 /**
  * Distribution formats. "dir" is the unpacked folder (fast local check; for
- * web it is the deployable site folder), "zip" a portable archive, "apk"/"ipa"
- * the mobile install packages; the rest are per-platform installers.
+ * web it is the deployable site folder), "zip" a portable archive,
+ * "apk"/"aab"/"ipa" the mobile packages; the rest are per-platform installers.
  */
-export type GameBuildFormat = "dir" | "zip" | "nsis" | "dmg" | "appimage" | "apk" | "ipa";
+export type GameBuildFormat = "dir" | "zip" | "nsis" | "dmg" | "appimage" | "apk" | "aab" | "ipa";
+
+/**
+ * The packages a mobile platform emits. Android has two, and they are formats
+ * of the one platform rather than platforms of their own: the APK installs on a
+ * device (sideloading, and the stores that take APKs), the AAB is the upload
+ * Google Play accepts. Both come out of the same repack, off the same payload
+ * and the same signing credential - only the container and the signature scheme
+ * differ.
+ */
+export type GameBuildMobileFormat = "apk" | "aab" | "ipa";
 
 /** CPU architecture a desktop target is packaged for. "universal" is macOS-only. */
 export type GameBuildArch = "x64" | "arm64" | "universal";
@@ -123,7 +133,12 @@ export type BuildPreflightCode =
     | "signing-host-unsupported"
     /** Signing reaches the network (timestamping, cloud signing, fetching signtool). */
     | "signing-needs-network"
-    /** A signed APK still cannot go to Google Play, which takes only AABs. */
+    /**
+     * The Android target is producing only an APK, which Google Play does not
+     * accept. Reported against a configured release keystore, because that is
+     * the point at which an author means to publish; selecting the AAB format
+     * alongside answers it.
+     */
     | "signing-android-not-play"
     | "signing-ios-profile-mismatch"
     /** The keychain identity the macOS credential names is not on this machine. */
@@ -191,7 +206,7 @@ export const GAME_BUILD_FORMATS_BY_PLATFORM: Record<GameBuildPlatform, GameBuild
     macos: ["zip", "dmg", "dir"],
     linux: ["zip", "appimage", "dir"],
     web: ["zip", "dir"],
-    android: ["apk"],
+    android: ["apk", "aab"],
     ios: ["ipa"],
 };
 
@@ -233,7 +248,25 @@ export function deriveGameAppId(identifier: string | undefined, projectName: str
     return `com.narraleaf.games.${sanitized}`;
 }
 
-/** Archs offered per desktop platform, in display order. */
+/**
+ * Archs offered per desktop platform, in display order.
+ *
+ * **This is where the author's game runs, not where Studio runs. Do not "tidy" the two into
+ * agreement.**
+ *
+ * Studio itself is no longer shipped for Intel Macs: three of its subsystems have no darwin-x64
+ * implementation and two of them are upstream gaps we cannot close (@lore-vcs publishes only
+ * `sdk-arm64-apple-darwin`, so version control - a core feature - is simply missing; zsign publishes
+ * no macOS x64 asset, so iOS signing is missing; our LGPL FFmpeg is compiled host-arch-only, so
+ * media conversion is missing). See .github/workflows/release.yml.
+ *
+ * None of that touches this table. A game packaged on Apple Silicon still ships for Intel Macs, and
+ * must keep doing so - that is a large installed base of *players*, who are not running Studio.
+ * Nothing in the pipeline needs an Intel Mac to produce it either: @narraleaf/encryption vendors a
+ * prebuilt `darwin-x64` nlcrypto.node, and Electron's own x64 runtime is downloaded by
+ * electron-builder. `macos: [..., "x64", ...]` is therefore load-bearing, and gameBuild.test.ts
+ * asserts it stays.
+ */
 export const GAME_BUILD_ARCHS_BY_PLATFORM: Record<GameBuildDesktopPlatform, GameBuildArch[]> = {
     windows: ["x64", "arm64"],
     macos: ["arm64", "x64", "universal"],
@@ -283,6 +316,7 @@ const BUILDER_EXT_TOKEN: Record<Exclude<GameBuildFormat, "dir">, string> = {
     dmg: "dmg",
     appimage: "AppImage",
     apk: "apk",
+    aab: "aab",
     ipa: "ipa",
 };
 
@@ -306,18 +340,43 @@ export function webExportZipName(artifactBaseName: string, version: string): str
 }
 
 /**
- * File a mobile install package is written to, under the output dir. Same
- * naming family as the web export: no arch token (the shells are
- * ABI-independent), the platform spelled out. Lives here for the same reason
- * as the helpers above: the build dialog predicts the exact name the repack
- * worker writes, and two copies would drift.
+ * File a mobile package is written to, under the output dir. Same naming family
+ * as the web export: no arch token (the shells are ABI-independent), the
+ * platform spelled out. Lives here for the same reason as the helpers above:
+ * the build dialog predicts the exact name the repack worker writes, and two
+ * copies would drift.
+ *
+ * The format is a parameter rather than derived from the platform: Android
+ * emits two packages that differ only in their container, so the one name has
+ * to be able to end in either.
  */
 export function mobileExportFileName(
     platform: GameBuildMobilePlatform,
+    format: GameBuildMobileFormat,
     artifactBaseName: string,
     version: string,
 ): string {
-    return `${artifactBaseName}-${version}-${platform}.${platform === "android" ? "apk" : "ipa"}`;
+    return `${artifactBaseName}-${version}-${platform}.${format}`;
+}
+
+/**
+ * The package a mobile platform emits for a requested format, or null when it
+ * offers no such package. The dialog only sends what it offers, but a stored
+ * selection carried across Studio versions - or any non-UI caller - can name
+ * anything.
+ *
+ * GAME_BUILD_FORMATS_BY_PLATFORM stays the one offer list; the check after it is
+ * what makes the answer a mobile package at the type level, written out rather
+ * than asserted through a type predicate (whose body TypeScript never checks).
+ */
+function mobilePackageFormat(
+    platform: GameBuildMobilePlatform,
+    format: GameBuildFormat,
+): GameBuildMobileFormat | null {
+    if (!GAME_BUILD_FORMATS_BY_PLATFORM[platform].includes(format)) {
+        return null;
+    }
+    return format === "apk" || format === "aab" || format === "ipa" ? format : null;
 }
 
 /**
@@ -459,12 +518,15 @@ export function predictGameBuildArtifacts(input: {
             continue;
         }
         if (platform === "android" || platform === "ios") {
+            // One artifact per selected format, not one per platform: an Android
+            // target asked for both packages writes both, off the same repack.
             for (const format of target.formats) {
-                if (!GAME_BUILD_FORMATS_BY_PLATFORM[platform].includes(format)) {
+                const packageFormat = mobilePackageFormat(platform, format);
+                if (!packageFormat) {
                     continue;
                 }
                 predicted.push({
-                    name: mobileExportFileName(platform, artifactBaseName, version),
+                    name: mobileExportFileName(platform, packageFormat, artifactBaseName, version),
                     kind: "file",
                     platform,
                     format,

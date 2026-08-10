@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -10,6 +11,36 @@ import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime
 import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 
 export type GameAppLogLevel = "info" | "warning" | "error";
+
+/**
+ * How a runtime issue was traced back to a story row — which is also how much the attribution is
+ * worth, so a host can say so rather than presenting a guess as a fact:
+ *
+ *  - `compile`: the compiler named the block itself while translating it. Exact.
+ *  - `playHead`: the row the engine was last executing when the failure surfaced. Right for anything
+ *    that throws while a row is running, and a near miss for anything asynchronous — the row named
+ *    is where playback WAS, which is a real place to start looking and not a claim about the cause.
+ *  - `session`: nothing was running that could be blamed (a boot failure, a reload failure). No row.
+ */
+export type GameAppIssueOrigin = "compile" | "playHead" | "session";
+
+/**
+ * A runtime failure with its authored origin attached. See {@link GameAppHost.reportIssue}.
+ *
+ * `blockId` is a Studio block id, deliberately not a scene id or a line number: the runtime knows
+ * which block it was compiling or running and nothing beyond that. Turning a block into "line 37 of
+ * Scene 2" needs the story document, which only a host with the project open has — so the runtime
+ * reports the fact and the host does the locating.
+ */
+export type GameAppRuntimeIssue = {
+    level: Extract<GameAppLogLevel, "warning" | "error">;
+    message: string;
+    origin: GameAppIssueOrigin;
+    /** Studio story block this came from; absent when nothing could be attributed. */
+    blockId?: string;
+    /** The underlying stack, when there was one. Kept for the cases a location cannot explain. */
+    stack?: string;
+};
 
 /** Raw save record as stored by the host (Studio IPC or the game runtime bridge). */
 export type GameAppSaveRecord = {
@@ -68,8 +99,27 @@ export type GameAppHost = {
     bootAction: GameAppBootAction;
     persistenceAdapter: BlueprintPersistentStoreAdapter | null;
     onDebugEvent?: (event: BlueprintDebugEvent) => void;
+    /**
+     * Install the blueprint breakpoint debugger for this session. Only Dev Mode sets it; a
+     * packaged game and the workspace story preview leave it off, so nothing in those builds can
+     * stop a graph at a node. See `useBlueprintRuntimeCore`.
+     */
+    debuggerEnabled?: boolean;
     disposeMessage: string;
     log: (level: GameAppLogLevel, message: string) => void;
+    /**
+     * The same failures `log` carries, plus where in the author's story they came from.
+     *
+     * `log` takes a string, so everything a host could use to point at the offending row — the block
+     * the compiler blamed, the row the play head was on — was being flattened into prose and thrown
+     * away. A stack trace tells an author which of OUR functions threw; it never tells them that
+     * line 37's `/show` names a character that no longer exists, which is the only fact they can act
+     * on. This channel exists so a host that HAS the story open can say that.
+     *
+     * Optional, and additive: every issue reported here is also logged, so a host that omits this
+     * (the packaged game — it has no editor to point into) loses nothing it had before.
+     */
+    reportIssue?: (issue: GameAppRuntimeIssue) => void;
     resolveStoryAssetUrl: (
         assetId: string,
         assetType?: StoryAssetKind,
@@ -99,6 +149,17 @@ export type GameAppHost = {
      * the close. Returns an unsubscribe function. Hosts without a real window (story preview) omit it.
      */
     subscribeCloseRequested?: (listener: () => Promise<boolean> | boolean) => () => void;
+    /**
+     * Issue one Fetch node request. Where it goes is the host's business, and the three shells
+     * differ: Dev Mode and the packaged desktop game hand it to their main process, which is the
+     * only origin not subject to CORS and the only place the project's Allow HTTP setting can be
+     * enforced; the web export has no main process and uses the browser's own `fetch`.
+     *
+     * Omitted by hosts with nowhere to send it (the workspace story preview). The node then reports
+     * a `networkError` saying so, which is the same degradation the sound family takes when there is
+     * no running game to play through.
+     */
+    networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
 };
 
 /** A read-only view of the current execution stacks (root + in-flight async branches). */
@@ -121,8 +182,20 @@ export type GameAppStoryRuntimeBridge = {
     } | null;
     /** action↔block bindings of the running compiled story (empty when none). */
     getActionIdBindings: () => readonly NlrActionIdBinding[];
-    /** Resolved Storable namespace names for the running story's variable scopes. */
-    getVariableNamespaces: () => { saved: string | null; sceneLocal: Record<string, string> };
+    /**
+     * Resolved Storable namespace names for the running story's scopes, exactly as they key the
+     * save file's `game.store`. They carry the engine's own prefix (`persistent:` / `local:`), so a
+     * reader of a save blob matches these strings rather than rebuilding one.
+     *
+     * `visited` is the reserved record of entered scenes and picked options (see `storyVisited.ts`).
+     * It is not a variable scope an author writes to, but it travels inside the save alongside the
+     * ones that are, and the Saves panel is where it becomes readable.
+     */
+    getVariableNamespaces: () => {
+        saved: string | null;
+        visited: string | null;
+        sceneLocal: Record<string, string>;
+    };
     /** Most recently executed action id (engine play head), or null before the first action. */
     getCurrentActionId: () => string | null;
     /**
@@ -158,6 +231,29 @@ export type GameAppStoryRuntimeBridge = {
     relaunch: (options: { sceneId?: string; startBlockId?: string; snapshotId?: string }) => Promise<void>;
 };
 
+/**
+ * Save slots, for a host debug overlay that lists and loads them.
+ *
+ * Every method is the SAME call the game's own Save/Load nodes make, deliberately: the question the
+ * Saves panel answers is "does this save still load", and a debug-only load path would answer it for
+ * a code path no player ever takes.
+ */
+export type GameAppSaveBridge = {
+    /** Player slot ids - the authoring view, with the reserved autosave slots filtered out. */
+    listIds: () => Promise<string[]>;
+    /** The stored record as written: author metadata plus the serialized game. */
+    read: (id: string) => Promise<GameAppSaveRecord | null>;
+    /**
+     * Load a save into the RUNNING game.
+     *
+     * Throws whatever `LiveGame.deserialize` throws - and it throws AFTER `reset()` and
+     * `forceRemount()`, so by the time a caller catches anything the stage is already empty. A
+     * caller that means to survive a failure has to put the session back itself (`relaunch`).
+     */
+    load: (id: string) => Promise<void>;
+    remove: (id: string) => Promise<void>;
+};
+
 /** Context handed to host-rendered overlays (e.g. the Dev Mode debug panel). */
 export type GameAppOverlayContext = {
     core: BlueprintRuntimeCore | null;
@@ -170,6 +266,8 @@ export type GameAppOverlayContext = {
     fastForwardToNextChoice: () => Promise<void>;
     /** Read/write bridge over the running story runtime for the story-runtime debug panel. */
     storyRuntime: GameAppStoryRuntimeBridge;
+    /** Save-slot access for the Saves panel, on the game's own paths. */
+    saves: GameAppSaveBridge;
 };
 
 /** Context handed to the host frame around the game content. */

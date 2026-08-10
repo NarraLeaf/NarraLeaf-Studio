@@ -96,9 +96,9 @@ export const storyInspector = {
         easeIn: "缓入",
         easeOut: "缓出",
         easeInOut: "缓入缓出",
-        circIn: "圆形缓入",
-        circOut: "圆形缓出",
-        circInOut: "圆形缓入缓出",
+        circIn: "圆弧缓入",
+        circOut: "圆弧缓出",
+        circInOut: "圆弧缓入缓出",
         backIn: "回弹缓入",
         backOut: "回弹缓出",
         backInOut: "回弹缓入缓出",
@@ -141,8 +141,8 @@ export const storyInspector = {
         fan: "多片扇叶绕中心并行扫过",
         dots: "网格中的圆点逐渐扩大直至连成一片",
         slide: "新图片从一侧滑入，同时旧图片向外滑出",
-        darkness: "在起始暗度上换图，再把亮度动到结束暗度。1 → 0 是从黑场中浮现，0 → 1 是渐暗至黑",
-        throughColor: "用纯色盖住画面，停留片刻再显露新图片。淡入黑／白、光圈至黑场、闪白（停留 0）都用它",
+        darkness: "在起始暗度上换图，再把亮度动到结束暗度；1 → 0 是从黑场中浮现，0 → 1 是渐暗至黑",
+        throughColor: "用纯色盖住画面，停留片刻再显露新图片；淡入黑／白、光圈至黑场、闪白（停留 0）都用它",
     },
     wipeDirection: {
         left: "左",
@@ -355,7 +355,7 @@ export const storyInspector = {
         seekTime: "跳到",
     },
     nvl: {
-        hint: "子行在 NLR NVL 模式下运行，下方的变换效果会在 NVL 图层进入时对其进行动画处理",
+        hint: "子行在 NVL 模式下运行；下方的变换在 NVL 图层进入时播放",
         motionLabel: "NVL 进入动画",
     },
     character: {
@@ -374,7 +374,7 @@ export const storyInspector = {
         puppetParamAdd: "添加参数",
         puppetParamRemove: "移除参数",
         puppetNoParams: "这一行还没有设置任何参数",
-        notPuppetHint: "这个角色由 Studio 绘制，没有运行时状态可设置",
+        notPuppetHint: "该角色由 Studio 绘制，没有可设置的运行时状态",
     },
     asset: {
         missing: "资源缺失",
@@ -432,13 +432,13 @@ export const storyInspector = {
         loopKindTimes: "按次数",
         loopKindUntil: "直到条件成立",
         until: "何时停止",
-        untilHint: "条件为假时不断重复，一旦成立立即停止。每轮开始前检查，因此一开始就成立的条件会让整组一次都不执行",
-        breakHint: "跳出本行所在的重复组。不在重复组里时它什么也不做",
+        untilHint: "条件为假时重复执行，条件成立时停止；条件在每轮开始前检查，因此初始即成立的条件会使整组一次都不执行",
+        breakHint: "跳出本行所在的重复组；不在重复组里时它什么也不做",
         branch: "分支",
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },
     condition: {
-        brokenExpression: "该表达式已无法解析，它引用的变量可能被重命名或删除了。修复前该分支恒为假",
+        brokenExpression: "该表达式无法解析，它引用的变量可能已被重命名或删除；修复之前该分支恒为假",
         clear: "清除条件",
     },
     declaration: {

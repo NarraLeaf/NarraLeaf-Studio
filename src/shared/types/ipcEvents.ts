@@ -6,11 +6,12 @@ import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
-import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
+import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
@@ -22,10 +23,15 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
+import type { UpdateState } from "@shared/constants/update";
+import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
+import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
-import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
+import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
+import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
+import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -100,6 +106,7 @@ export enum IPCEventType {
     appGlobalStateChanged = "app.globalState.changed",
     appAddRecentProject = "app.addRecentProject",
     appRemoveRecentProject = "app.removeRecentProject",
+    appRevealRecentProject = "app.revealRecentProject",
     appCheckRecentProjects = "app.checkRecentProjects",
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
@@ -109,6 +116,11 @@ export enum IPCEventType {
     appGlobalStateDelete = "app.globalState.delete",
     appExportSettings = "app.exportSettings",
     appImportSettings = "app.importSettings",
+    appUpdateGetState = "app.update.getState",
+    appUpdateCheck = "app.update.check",
+    appUpdateDownload = "app.update.download",
+    appUpdateInstall = "app.update.install",
+    appUpdateStateChanged = "app.update.stateChanged",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -141,6 +153,7 @@ export enum IPCEventType {
 
     projectWizardLaunch = "projectWizard.launch",
     projectWizardSelectDirectory = "projectWizard.selectDirectory",
+    projectWizardSelectPackage = "projectWizard.selectPackage",
     projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
     
     workspaceLaunch = "workspace.launch",
@@ -149,6 +162,10 @@ export enum IPCEventType {
     workspaceClose = "workspace.close",
     psdOpen = "psd.open",
     psdBake = "psd.bake",
+    mediaProbe = "media.probe",
+    mediaConvertStart = "media.convert.start",
+    mediaConvertCancel = "media.convert.cancel",
+    mediaConvertGetStatus = "media.convert.getStatus",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
@@ -164,6 +181,7 @@ export enum IPCEventType {
     workspaceBlueprintDebugEvent = "workspace.blueprint.debugEvent",
     workspaceDevModeConsoleLog = "workspace.devMode.consoleLog",
     workspaceStoryRowHighlight = "workspace.storyRow.highlight",
+    workspaceStoryRowOpen = "workspace.storyRow.open",
     
     devModeLaunch = "devMode.launch",
     devModeStop = "devMode.stop",
@@ -177,6 +195,7 @@ export enum IPCEventType {
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
     devModeForwardBlueprintDebugEvent = "devMode.blueprintDebug.forward",
     devModeForwardStoryRow = "devMode.storyRow.forward",
+    devModeOpenStoryRowInWorkspace = "devMode.storyRow.openInWorkspace",
     devModeSaveWrite = "devMode.save.write",
     devModeSaveRead = "devMode.save.read",
     devModeSaveListIds = "devMode.save.listIds",
@@ -213,6 +232,7 @@ export enum IPCEventType {
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
     blueprintPersistenceSetValue = "blueprintPersistence.setValue",
     blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
+    blueprintNetworkFetch = "blueprintNetwork.fetch",
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -233,8 +253,13 @@ export enum IPCEventType {
 
     uiTemplateRegistryFetch = "uiTemplate.registryFetch",
     uiTemplateFetchBundle = "uiTemplate.fetchBundle",
+    uiTemplateFetchPreviews = "uiTemplate.fetchPreviews",
+    uiTemplateFetchThemePreviews = "uiTemplate.fetchThemePreviews",
+    projectTemplateList = "projectTemplate.list",
+    projectTemplateScaffold = "projectTemplate.scaffold",
 
     assetFetchRemote = "asset.fetchRemote",
+    assetExportToFolder = "asset.exportToFolder",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -531,6 +556,21 @@ export type IPCEvents = {
         response: void;
     };
     /**
+     * Show one remembered project's folder in the OS file manager.
+     *
+     * Takes a path, unlike its workspace counterpart, because the launcher has no project of its
+     * own - the list is what it acts on. The host still refuses any path that is not in the
+     * history, so this is a "reveal one of these", never a "reveal anything".
+     */
+    [IPCEventType.appRevealRecentProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: void;
+    };
+    /**
      * Check every remembered project against the disk and report the ones that are gone.
      *
      * Takes no paths: the main process reads the history itself, so a renderer cannot use this to
@@ -636,6 +676,45 @@ export type IPCEvents = {
             /** Keys refused because they are not preferences. */
             refused: string[];
         };
+    };
+    /**
+     * The updater's current state. Requested once when a surface mounts; every change after that
+     * arrives on `appUpdateStateChanged` rather than by polling, so a progress bar is showing the
+     * downloader's own byte counts.
+     */
+    [IPCEventType.appUpdateGetState]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { state: UpdateState };
+    };
+    /** Ask whether a newer release exists. Never starts a download - see `appUpdateDownload`. */
+    [IPCEventType.appUpdateCheck]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { state: UpdateState };
+    };
+    /**
+     * Start downloading the offered installer.
+     *
+     * Separate from the check because they are separate decisions: the check is free, the
+     * download is a few hundred megabytes. Only the Settings panel calls this - the notification
+     * that announces an update opens the panel instead, so nobody commits to the transfer from a
+     * toast they were half-reading.
+     */
+    [IPCEventType.appUpdateDownload]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { state: UpdateState };
+    };
+    /** Quit and apply the downloaded installer. Silent, so the wizard is not walked again. */
+    [IPCEventType.appUpdateInstall]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: void;
     };
     /** Write a settings document to a file the user picks. See `@shared/utils/settingsDocument`. */
     [IPCEventType.appExportSettings]: {
@@ -1223,6 +1302,21 @@ export type IPCProjectWizardEvents = {
             dest: string | null;
         };
     };
+    /**
+     * Choose the `.nlspkg` an import unpacks, granting this window read access to it.
+     *
+     * Separate from the import itself, so the wizard can show what was chosen and let the author
+     * change their mind before anything is unpacked. That grant is also the only way the path the
+     * renderer hands back is usable: the import handler checks rather than grants.
+     */
+    [IPCEventType.projectWizardSelectPackage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            dest: string | null;
+        };
+    };
     [IPCEventType.projectWizardGetDefaultDirectory]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -1272,6 +1366,58 @@ export type IPCWorkspaceEvents = {
             layers: PsdBakedLayer[];
         };
     };
+    /**
+     * What is inside a media file, and whether the engine can play it. Read-only: it runs ffprobe
+     * and nothing else, converts nothing, and writes nothing.
+     */
+    [IPCEventType.mediaProbe]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+        };
+        response: {
+            outcome: MediaProbeOutcome;
+        };
+    };
+    /**
+     * Convert one media file, in the shape `gameBuild` uses for a long task: `start` returns a job
+     * id straight away, `getStatus` is polled while it runs, `cancel` stops it.
+     *
+     * Split into three calls rather than one long-running request because a request that does not
+     * answer for four minutes cannot report progress and cannot be called off, and because the work
+     * has to outlive a renderer that reloads.
+     */
+    [IPCEventType.mediaConvertStart]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            request: MediaConvertRequest;
+        };
+        response: {
+            state: MediaConvertStateSnapshot;
+        };
+    };
+    [IPCEventType.mediaConvertCancel]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            jobId: string;
+        };
+        response: {
+            state: MediaConvertStateSnapshot;
+        };
+    };
+    [IPCEventType.mediaConvertGetStatus]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            jobId: string;
+        };
+        response: {
+            state: MediaConvertStateSnapshot;
+        };
+    };
     [IPCEventType.workspaceSelectFolder]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -1300,13 +1446,23 @@ export type IPCWorkspaceEvents = {
             skippedCount?: number;
         };
     };
+    /**
+     * Unpack a chosen package into a chosen folder.
+     *
+     * Both paths are the caller's, and neither is granted here: the two pickers
+     * (`projectWizardSelectPackage`, `projectWizardSelectDirectory`) are what give this window
+     * access to them, and this handler only checks. A path the renderer was never given stays
+     * unreadable, which is the whole point of asking for them separately.
+     */
     [IPCEventType.workspaceImportProjectPackage]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: {
+            packagePath: string;
+            targetDir: string;
+        },
         response: {
-            canceled: boolean;
-            projectPath?: string;
+            projectPath: string;
             projectName?: string;
             fileCount?: number;
             byteLength?: number;
@@ -1425,7 +1581,7 @@ export type IPCWorkspaceEvents = {
      *
      * Main refuses the production build and the Preview runtime while it is - both are started in
      * main and reached by IPC, so a disabled button in the top bar does not stop them. Dev Mode is
-     * allowed and runs the revision instead (plan 2026-07-28-002 §1), which is why `revision`
+     * allowed and runs the revision instead, which is why `revision`
      * travels with the kind.
      *
      * A message rather than a request: the renderer has nothing to do with the answer, and the
@@ -1444,7 +1600,7 @@ export type IPCWorkspaceEvents = {
              * author is looking at, so main needs the id and not only the fact of a freeze. A
              * `"revision"` freeze that arrives without one makes main REFUSE the launch rather than
              * fall back to the working tree - running the current game while the author is reading
-             * version #1 is the failure U4 exists to prevent.
+             * version #1 is the failure this exists to prevent.
              */
             revision?: RevisionId;
         };
@@ -1472,6 +1628,12 @@ export type IPCWorkspaceEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
         data: DevModeStoryRowHighlight;
+        response: never;
+    };
+    [IPCEventType.workspaceStoryRowOpen]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: DevModeStoryRowOpenRequest;
         response: never;
     };
 };
@@ -1623,6 +1785,12 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Host,
         data: DevModeStoryRowPayload;
         response: never;
+    };
+    [IPCEventType.devModeOpenStoryRowInWorkspace]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: DevModeStoryRowOpenPayload;
+        response: void;
     };
     [IPCEventType.devModeSaveWrite]: {
         type: IPCMessageType.request,
@@ -1938,6 +2106,27 @@ export type IPCBlueprintPersistenceEvents = {
         },
         response: void;
     };
+    /**
+     * One Fetch node request, issued from the main process on the Dev Mode preview's behalf.
+     *
+     * The renderer sends the request and never the decision: the handler reads the project's own
+     * Allow HTTP setting off disk and refuses when it is off. Trusting a flag the renderer passed
+     * would make this channel a way around the setting rather than a way to honour it.
+     *
+     * The project path, not a window handle, is what identifies whose setting applies - the same
+     * shape `devModeNetworkPolicy` already uses.
+     */
+    [IPCEventType.blueprintNetworkFetch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            request: BlueprintNetworkFetchRequest;
+        },
+        response: {
+            result: BlueprintNetworkFetchResult;
+        };
+    };
 };
 
 export type IPCPluginPermissionEvents = {
@@ -2124,6 +2313,43 @@ export type IPCUITemplateEvents = {
         },
         response: UITemplateBundle;
     };
+    // Store: fetch just the `UIDocument` of several templates, to draw their cards.
+    // One call for the whole grid, so the index is fetched once rather than per card.
+    [IPCEventType.uiTemplateFetchPreviews]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            templateIds: string[];
+        },
+        response: UITemplatePreview[];
+    };
+    // Store: fetch the poster image of each named theme, for the browse level.
+    [IPCEventType.uiTemplateFetchThemePreviews]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            themeIds: string[];
+        },
+        response: UIThemePreview[];
+    };
+
+    // Bundled project templates: what this build ships, read from resources/.
+    [IPCEventType.projectTemplateList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: ProjectTemplateDescriptor[];
+    };
+    // Copy one bundled template's content over a project the wizard just wrote.
+    [IPCEventType.projectTemplateScaffold]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            templateId: string;
+            projectPath: string;
+        },
+        response: { filesCopied: number };
+    };
 };
 
 export type IPCAssetEvents = {
@@ -2147,6 +2373,23 @@ export type IPCAssetEvents = {
             validators?: RemoteAssetValidators;
         },
         response: RemoteAssetFetchResult;
+    };
+    /**
+     * Copy library files out to a folder the author picks.
+     *
+     * The dialog and the copying both happen here rather than in the renderer, because a folder
+     * chosen through `fsSelectDirectory` is granted *read* access only - a renderer-side copy into
+     * it would be refused by the very policy that makes the picker safe. The renderer says which
+     * files and what to call them; main decides whether it is allowed to read each source (the
+     * window's existing grants, i.e. the project) and where under the chosen folder it may land.
+     */
+    [IPCEventType.assetExportToFolder]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            entries: AssetExportEntry[];
+        },
+        response: AssetExportResult;
     };
 };
 
@@ -2219,6 +2462,19 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
         data: { highlight: string },
+        response: never;
+    };
+    /**
+     * Main pushing the updater's state to every open window.
+     *
+     * Broadcast rather than addressed: the Settings panel draws the detail, the launcher shows a
+     * line beside the version number, and a workspace raises a notification - three surfaces that
+     * must not disagree about whether an update is downloading.
+     */
+    [IPCEventType.appUpdateStateChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { state: UpdateState },
         response: never;
     };
 };

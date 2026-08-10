@@ -23,7 +23,7 @@ export const assets = {
         moreReferences: "…and {count} more",
         unverifiedTitle: "Cannot check what uses these assets",
         unverifiedMessage:
-            "The reference index could not be read, so nothing can say whether these are still in use. Delete them anyway?",
+            "The reference index could not be read, so their usage cannot be determined. Delete them anyway?",
         confirmTitle: {
             one: "Delete {count} item?",
             other: "Delete {count} items?",
@@ -33,6 +33,43 @@ export const assets = {
         action: "Delete",
         /** A delete the service refused after the author had already confirmed it. */
         failedTitle: "Failed to delete",
+        /**
+         * The delete that fell over as a whole rather than per row, so there is no list to read and
+         * one line is the entire answer. The per-row refusals go to `failedTitle` above.
+         */
+        failed: "Could not delete: {error}",
+    },
+    /**
+     * Renaming one row. Names the row and stops, for the reason `createGroup.failed` below carries
+     * no reason either: a rename is only refused when the write fails, which already puts the
+     * workspace's own save failure on screen with the file and a retry.
+     *
+     * The old name is the right one to say. The record is put back when the write fails, so that is
+     * the name still on the row, and the one the author can look for.
+     */
+    rename: {
+        failed: "Could not rename {name}",
+    },
+    /**
+     * A new group that was not kept. Names are not checked against each other, so the only way here
+     * is the group list failing to reach the disk.
+     *
+     * Carries no reason on purpose. That write also raises the workspace's own save failure, which
+     * is already on screen naming the file and offering a retry, and repeating its sentence in a
+     * second toast says the same thing twice. What that one cannot say is which action was lost,
+     * and the row is drawn either way, so this is the only place the author is told the group in
+     * front of them is not real.
+     */
+    createGroup: {
+        failed: "Could not create the group",
+    },
+    /**
+     * A paste that did not carry everything across. Named per row in an alert rather than counted
+     * in a toast, because which rows are missing is the whole of what the author needs.
+     */
+    paste: {
+        failedTitle: "Nothing was pasted",
+        someFailedTitle: "Some items were not pasted",
     },
     /**
      * Swapping the file behind an asset record. The record keeps its id, so every reference follows;
@@ -168,6 +205,90 @@ export const assets = {
         remoteFailedTitle: "Failed to import remote asset",
     },
     /**
+     * What an author is asked before files that will not play are copied into the project.
+     *
+     * The vocabulary rule here is stricter than usual, because everything this dialog knows is
+     * internal: containers, codecs, demuxers, stream tables. **None of it may appear.** An author
+     * did not choose the player's decoder set and cannot change it, so naming any part of it turns
+     * an actionable sentence into trivia. Every string below says what the author will get.
+     *
+     * Two words are load-bearing and must survive translation. "Converting" has to read as making a
+     * *new* file - `intro` is the one sentence that stops "convert" being read as "rewrite what is
+     * on my disk" - and the quality-loss line has to stay in the group heading, where it is read
+     * before the button, rather than in a footnote under it.
+     */
+    mediaConvert: {
+        title: "Some files need converting",
+        /** When nothing on the list can be converted, offering one would be a lie. */
+        titleRefusedOnly: "Some files cannot be imported",
+        intro: "Converting writes a new file into the project. The original file is not modified.",
+        convertingTitle: "Converting",
+        convertingIntro: "Whatever finishes is imported.",
+        group: {
+            lossless: "Can be converted",
+            losslessHint: "The picture and sound are unchanged.",
+            lossy: "Can be converted, with some quality loss",
+            lossyHint: "The picture and sound are re-encoded, which takes longer and loses some quality.",
+            refused: "Cannot be imported",
+        },
+        /** Row subtitle: what the author ends up with. */
+        becomes: "becomes .{ext}",
+        refusal: {
+            notMedia: "Not a sound or video file.",
+            noStreams: "Holds no sound and no picture.",
+        },
+        state: {
+            waiting: "Waiting",
+            done: "Done",
+            failed: "Could not convert",
+            stopped: "Stopped",
+            unavailable: "No converter on this computer",
+        },
+        convertAction: "Convert and Import",
+        skipAction: "Skip These Files",
+        importAnywayAction: "Import Without Converting",
+        stopAction: "Stop Converting",
+        /** Named in the panel's failure list afterwards, so the file is not lost silently. */
+        failedError: "This file could not be converted.",
+    },
+    /**
+     * The mark on an asset **already in the library** that will not play, and its conversion.
+     *
+     * Separate from `mediaConvert` above, which is the import conversation. The difference is not
+     * cosmetic: an import can offer to leave a file out, and this cannot - the file is already in
+     * the project and something may already point at it, so every sentence here is about changing
+     * what is there rather than about deciding what to bring in.
+     *
+     * The two states never share wording. `needsConverting` has something to do about it and reads
+     * as an instruction; `notPlayable` has nothing, and telling that author to convert would be
+     * advice they cannot follow.
+     */
+    support: {
+        needsConverting: "Needs converting",
+        needsConvertingHint: "This file does not play in the game. Converting it makes it playable.",
+        /**
+         * The same mark, on an asset pinned to a URL, where there is no button behind it.
+         *
+         * Converting one is not offered, and the reason is not a missing feature: the bytes of a
+         * remote asset are a copy of what the URL serves, and rewriting them would leave the record
+         * saying they came from somewhere they did not. So the instruction is the only one that
+         * works — bring the file in as a file. New imports are refused before they get this far;
+         * this sentence is for the ones already in a project.
+         */
+        needsConvertingRemoteHint:
+            "This file does not play in the game, and a file kept as a link cannot be converted. "
+            + "Convert it outside Studio and add the result as a file.",
+        notPlayable: "Will not play",
+        notPlayableHint: "This file contains no audio and no video, so there is nothing to convert.",
+        menuConvert: "Convert File…",
+        convertTitle: "Convert File",
+        /** Says what changes, because the swap keeps the asset and everything pointing at it. */
+        convertIntro: "The converted file replaces this one, and every reference to it is updated.",
+        convertAction: "Convert",
+        /** The moment between a finished conversion and the library holding the new bytes. */
+        replacing: "Putting the file in place",
+    },
+    /**
      * The guided import for model bundles — the one asset type an author has a *folder* of rather
      * than files, and the one whose contents Studio can check before it copies them.
      *
@@ -180,7 +301,7 @@ export const assets = {
         title: "Import Models",
         familyStep: "What kind of model is this?",
         /** Said up front because the runtime installer is the step authors expect to be blocked by. */
-        familyNoRuntime: "Nothing is installed here. The drawing runtime is set up later, on the character.",
+        familyNoRuntime: "No runtime is installed here. The drawing runtime is set on the character.",
         family: {
             live2d: "Live2D Cubism",
             live2dHint: "A folder holding a .model3.json, or Cubism 2's model.json.",
@@ -188,7 +309,7 @@ export const assets = {
             spineHint: "A folder holding a .skel or .json skeleton beside its .atlas.",
         },
         folderStep: "Choose a folder",
-        folderHint: "One model's folder, or a folder holding several. Everything inside is searched.",
+        folderHint: "One model's folder, or a folder holding several. The whole folder is searched.",
         chooseFolder: "Choose Folder…",
         changeFolder: "Change…",
         rescan: "Scan again",
@@ -198,7 +319,7 @@ export const assets = {
             other: "{count} models found",
         },
         noneFound: "No {family} models in this folder.",
-        noneFoundHint: "Check the kind chosen above, then the folder. It should be the one the exporter wrote.",
+        noneFoundHint: "Check the kind selected above, then the folder. It must be the folder the exporter wrote.",
         entry: "Entry",
         /** Row subtitle: what the folder holds, before any of it is copied. */
         fileSummary: "{count} files · {size}",
@@ -210,7 +331,7 @@ export const assets = {
             other: "Import {count} models",
         },
         /** Why a row starts unticked, and that ticking it anyway is allowed. */
-        blockedHint: "Models with missing files start unticked. Tick one to import it as it is.",
+        blockedHint: "Models with missing files start unticked. Tick one to import it as-is.",
         problemCount: {
             one: "{count} problem",
             other: "{count} problems",
@@ -241,7 +362,7 @@ export const assets = {
         failedTitle: "Could not scan that folder",
         unreadable: "That folder could not be read.",
         /** Refused rather than truncated: a partial listing would report present files as missing. */
-        tooManyFiles: "That folder holds {count} files, too many to check. Pick the folder the models are in.",
+        tooManyFiles: "That folder holds {count} files, too many to check. Select the folder the models are in.",
     },
     menu: {
         newGroup: "New Group",
@@ -262,6 +383,22 @@ export const assets = {
             one: "Delete {count} item",
             other: "Delete {count} items",
         },
+        export: "Export…",
+        exportCount: {
+            one: "Export {count} item…",
+            other: "Export {count} items…",
+        },
+    },
+    export: {
+        /** A folder with nothing in it: the command worked, there was simply nothing to copy. */
+        empty: "There are no files to export.",
+        success: {
+            one: "Exported {count} file.",
+            other: "Exported {count} files.",
+        },
+        partial: "Exported {exported} files, {failed} could not be exported.",
+        partialTitle: "Some files were not exported",
+        failed: "Export failed: {error}",
     },
     selector: {
         selectType: "Select {type}",
@@ -376,8 +513,8 @@ export const assets = {
         typePlaceholder: "Type to preview your own text…",
     },
     jsonPreview: {
-        invalid: "This file is not valid JSON, showing raw content.",
-        truncated: "File is too large to pretty-print, showing the beginning only.",
+        invalid: "This file is not valid JSON. Showing the raw content.",
+        truncated: "This file is too large to format. Showing the beginning only.",
     },
     // The built-in Monaco text editor. It has no status bar of its own: the file name, encoding,
     // line ending and selection are cells in the WORKSPACE status bar, so most of what follows is

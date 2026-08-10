@@ -53,7 +53,12 @@ import { RichTextToolbar } from "./RichTextToolbar";
 import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
 import { ExpressionPopover } from "./ExpressionPopover";
-import { collectStoryVariableOptions, resolveInterpolationName, type PersistentVariableOption } from "./storyInterpolation";
+import {
+    collectStoryVariableOptions,
+    resolveInterpolationName,
+    type PersistentVariableOption,
+    type SavedVariableOption,
+} from "./storyInterpolation";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { RichTextView } from "./RichTextView";
 import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
@@ -115,7 +120,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     textInputRef: RefObject<RichTextInputHandle | null>;
     tempSpeakers: TempSpeakerRef[];
     /**
-     * Reading density (U1). The row itself reads nothing from it any more — every length it needs
+     * Reading density. The row itself reads nothing from it any more — every length it needs
      * arrives as a CSS variable on the editor root — but it stays a prop so a density switch still
      * crosses the memo boundary and re-renders the rows at the new metrics.
      */
@@ -127,8 +132,15 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      * when the author changes it.
      */
     rowHighlight: StoryRowHighlight;
+    /**
+     * How many rows this row's grip picks up: 1 normally, the whole selection when this row is part of
+     * one. A number rather than the selection itself, so the row stays memoised on primitives.
+     */
+    dragGroupSize: number;
+    /** This row is in the air with the row being dragged, and dims with it. */
+    coDragging: boolean;
 }) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef } = props;
     // The name column carries the editor's body type, so the nametag and the words it introduces are
     // the same size — the column, not a smaller type, is what makes the name read as a label.
@@ -206,8 +218,8 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      * paragraph was named once, at its head — and its gutter carries the run's rule instead of a mark.
      */
     const continuationRow = row.groupRole === "member";
-    // A dialogue group head backed by a real character carries the hover-reveal placement dropdown
-    // (WI-3): a standalone line is a run of one, so it counts too. A bare-name speaker has no character
+    // A dialogue group head backed by a real character carries the hover-reveal placement dropdown:
+    // a standalone line is a run of one, so it counts too. A bare-name speaker has no character
     // to place, so it gets none.
     const dialogueHead = isDialogue && !continuationRow
         && block.kind === "nodeAction" && block.payload.action === "dialogue" && Boolean(block.payload.characterId);
@@ -221,7 +233,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      */
     const namesSpeaker = isDialogue && !continuationRow && !containerInfo;
     /** Where a nesting connector that ends on this row stops, and where one that opens a block leaves from. */
-    const rowTextCentre = ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].rowBox / 2;
+    const rowTextCenter = ROW_CONTENT_PAD_PX + STORY_DENSITY_METRICS[props.density].rowBox / 2;
     const rowMarkBottom = ROW_CONTENT_PAD_PX + STORY_MARK_PX;
     /**
      * Whether the pointer is on this row, kept local so a hover re-renders one row and nothing else.
@@ -240,6 +252,13 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     const [gripFocused, setGripFocused] = useState(false);
     const reduceMotion = useReduceMotion();
     const showRowActions = hovered || active;
+    // Whether this row's trailing controls land on the artwork strip rather than on the row's own
+    // surface (see `.nl-on-media` in styles.css). The same condition the strip itself is drawn on —
+    // a `/bg` row with something to show — because the strip is right-aligned and the controls are
+    // the only things over it.
+    const controlsOverArtwork = block.kind === "action"
+        && block.payload.action === "setBackground"
+        && Boolean(block.payload.assetId || block.payload.color);
     // The grip and the line number occupy one box, so exactly one of them is visible at a time.
     const showGrip = hovered || gripFocused;
     // Reordering a row writes the scene. Everything else this row does - selecting, folding, reading
@@ -258,12 +277,17 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     // Withheld whole while frozen rather than left attached and inert: a grip that picks the row up and
     // then refuses to drop it reads as a broken editor.
     const dragListeners = freeze.gesture(listeners) ?? {};
+    // A multi-row drag lifts one row under the pointer; the rest of the group stays put. They dim with
+    // it so the gesture reads as "these lines are in the air" rather than "one line is, and the others
+    // happen to be selected".
     const sortableStyle: CSSProperties = {
         transform: toSortableTransform(transform),
         transition,
         zIndex: isDragging ? 20 : undefined,
-        opacity: isDragging ? 0.72 : undefined,
+        opacity: isDragging || props.coDragging ? 0.72 : undefined,
     };
+    const dragsGroup = props.dragGroupSize > 1;
+    const dragLabel = dragsGroup ? tn("story.rows.dragRows", props.dragGroupSize) : t("story.rows.dragRow");
 
     return (
         <div
@@ -276,7 +300,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 // is load-bearing: a wrapped line keeps its first line aligned with its mark.
                 "group relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_1fr] items-start border-l-2 pr-3",
                 selected ? "border-primary bg-primary/20" : active ? "border-primary bg-fill-subtle" : "border-transparent hover:bg-fill-subtle",
-                // A disabled row (WI-3) dims whole — muted content, kept line number — but no invented
+                // A disabled row dims whole — muted content, kept line number — but no invented
                 // chrome; the runtime treats it as absent.
                 row.disabled ? "opacity-45" : "",
             ].join(" ")}
@@ -363,8 +387,8 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     {...dragListeners}
                     role="button"
                     tabIndex={0}
-                    aria-label={t("story.rows.dragRow")}
-                    title={freeze.frozen ? freeze.reason : t("story.rows.dragRow")}
+                    aria-label={dragLabel}
+                    title={freeze.frozen ? freeze.reason : dragLabel}
                     className={`absolute right-2 top-1 flex h-[var(--nl-story-row-box)] w-[18px] touch-none select-none items-center justify-center rounded-md text-fg-subtle transition-opacity hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${showGrip ? "opacity-100" : "opacity-0"} ${freeze.frozen ? "cursor-not-allowed" : "hover:cursor-grab"}`}
                     onFocus={() => setGripFocused(true)}
                     onBlur={() => setGripFocused(false)}
@@ -373,13 +397,26 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 >
                     <GripVertical className="pointer-events-none h-3.5 w-3.5" />
                 </div>
+                {/* How many lines are in the air, shown on the row the pointer is carrying. The other
+                    members of the group only dim — a count beside each of them would be the same fact
+                    printed once per row. */}
+                {isDragging && dragsGroup ? (
+                    <span
+                        aria-hidden
+                        // Clear of the grip (18px wide, 8px in) and standing where the line number
+                        // would be — which is already yielding, because the pointer is on this row.
+                        className="pointer-events-none absolute right-[30px] top-1 flex h-[var(--nl-story-row-box)] items-center rounded-md bg-primary px-1 text-2xs font-medium tabular-nums text-on-primary"
+                    >
+                        {props.dragGroupSize}
+                    </span>
+                ) : null}
             </div>
             <div className="relative min-w-0 py-1">
                 <RowNesting
                     depth={row.depth}
                     nextDepth={row.nextRowDepth ?? 0}
                     opensBlock={Boolean(containerInfo) && !collapsed && block.childrenIds.length > 0}
-                    stopAt={rowTextCentre}
+                    stopAt={rowTextCenter}
                     markBottom={rowMarkBottom}
                     highlight={selected || active}
                 />
@@ -503,8 +540,13 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                         reading, so it keeps its own always-visible slot. The voice audition button
                         shares the slot but hover-reveals itself — it is an action, and voice *status*
                         is the voice table's job rather than a mark on every spoken row. */}
+                    {/* Both trailing clusters hold the single-line box open and centre in it, like every
+                        other cell in this flex. Without it they are 24px of buttons in an `items-start`
+                        row: their centre line sits at 12px while the words centre at half the row box,
+                        so the icons ride high by 2px in compact and 7px in comfortable — the looser the
+                        density an author picks, the more crooked the row's own controls look. */}
                     {containerInfo ? null : (
-                        <div className="ml-auto flex shrink-0 items-center gap-1">
+                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             {diagnostic ? <RowDiagnosticMark code={diagnostic.code} /> : null}
                             <StoryVoiceIndicator block={block} />
                         </div>
@@ -512,9 +554,10 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     <div
                         aria-hidden={!showRowActions}
                         className={[
-                            "flex shrink-0 items-center gap-1 transition-opacity",
+                            "flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1 transition-opacity",
                             containerInfo ? "ml-auto" : "",
                             showRowActions ? "opacity-100" : "pointer-events-none opacity-0",
+                            controlsOverArtwork ? "nl-on-media" : "",
                         ].join(" ")}
                     >
                         {containerInfo ? (
@@ -646,29 +689,39 @@ function TextEditBox(props: {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const toolbarRef = useRef<RichTextToolbarHandle | null>(null);
     const { context, isInitialized } = useWorkspace();
-    const [persistentVars, setPersistentVars] = useState<PersistentVariableOption[]>([]);
+    // Both project scopes, because both are declared in the registry as well as in story rows: the
+    // inline `{value}` picker and the chip label beside it must offer and name the same set a typed
+    // `/set` resolves, or a registry-declared variable is addressable only from the command line.
+    const [projectVars, setProjectVars] = useState<{ saved: SavedVariableOption[]; persistent: PersistentVariableOption[] }>(
+        { saved: [], persistent: [] },
+    );
     useEffect(() => {
         if (!context || !isInitialized) return;
         const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const read = () =>
-            setPersistentVars(
-                service.listPersistentVariables().map(variable => ({
+            setProjectVars({
+                saved: service.listSavedVariables().map(variable => ({
+                    id: variable.id,
+                    name: variable.name,
+                    valueType: (variable.valueType as SavedVariableOption["valueType"]) ?? "string",
+                })),
+                persistent: service.listPersistentVariables().map(variable => ({
                     storageKey: variable.storageKey,
                     name: variable.name,
                     valueType: (variable.valueType as PersistentVariableOption["valueType"]) ?? "string",
                 })),
-            );
+            });
         read();
         return service.onBlueprintHistoryChanged(read);
     }, [context, isInitialized]);
     const variableOptions = useMemo(
-        () => collectStoryVariableOptions(props.document, props.scene.id, persistentVars),
-        [props.document, props.scene.id, persistentVars],
+        () => collectStoryVariableOptions(props.document, props.scene.id, projectVars.persistent, projectVars.saved),
+        [props.document, props.scene.id, projectVars],
     );
     const resolveInterpolationLabel = useMemo(
         () => (interp: Parameters<typeof resolveInterpolationName>[3]) =>
-            resolveInterpolationName(props.document, props.scene.id, persistentVars, interp),
-        [props.document, props.scene.id, persistentVars],
+            resolveInterpolationName(props.document, props.scene.id, projectVars.persistent, interp, projectVars.saved),
+        [props.document, props.scene.id, projectVars],
     );
     // The inline expression chip names the look the author picked, through the same lookup the command
     // line reads — so the chip and a typed `/face` say the same word. See `storyAppearanceLabel`.
@@ -692,7 +745,7 @@ function TextEditBox(props: {
     // falls to <body>.
     const lastToolbarInteractRef = useRef(0);
     const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
-    const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false });
+    const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false, canRuby: false });
     const textStyle = useStoryEditorTextStyle();
 
     useEffect(() => {
@@ -788,6 +841,11 @@ function TextEditBox(props: {
             // measured, and it is the one motion an editing surface may never make: the words move away
             // from the click that was aiming at them.
             className="relative flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center self-stretch overflow-visible"
+            // The same bleed the read-only body has (see ROW_TEXT_HIT_BLEED), so the band above and
+            // below an OPEN line belongs to the line as well. Without it, clicking a hair above the
+            // words you are editing lands on the row, blurs the field and commits — the caret leaves
+            // the sentence because the pointer missed by two pixels.
+            style={ROW_TEXT_HIT_BLEED}
         >
             <RichTextToolbar ref={toolbarRef} editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} canInsertEvent={Boolean(dialoguePayload?.characterId)} onInsertEvent={insertEvent} onReturnToText={() => props.editorRef.current?.focus()} />
             <RichTextInput
@@ -945,7 +1003,7 @@ const STAGE_PLACEMENTS: { value: StoryStagePlacement; icon: typeof AlignLeft }[]
 ];
 
 /**
- * The dialogue group head's placement control (WI-3, M3.1): a hover-reveal dropdown that reads the
+ * The dialogue group head's placement control: a hover-reveal dropdown that reads the
  * speaker's current `at=` and writes it back. It is a declarative shell — the controller keeps the
  * document as command lines (rewrites the enter/move `at=`, or inserts a `/move`), so this only ever
  * shows and picks left/center/right. Absent placement reads as the runtime default, center.
@@ -1621,7 +1679,7 @@ function ContainerHeaderWord({ info, textStyle }: { info: StoryContainerHeaderIn
     );
 }
 
-/** The engine-mode badge on a parallel/race header (WI-3): `all` / `allAsync` / `any`, in control colour. */
+/** The engine-mode badge on a parallel/race header: `all` / `allAsync` / `any`, in control colour. */
 function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
     const color = getCommandCategory("flow").iconColor;
     return (
@@ -1751,7 +1809,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
                 hidden, and it still has to occupy its exact width to push what follows into place. */}
             <span className="invisible">{props.value}</span>
             {props.confirmation ? (
-                // The just-declared line's receipt (bible §3.5). It only ever rides an empty slot (the
+                // The just-declared line's receipt. It only ever rides an empty slot (the
                 // commit clears the value and the next edit strips it), so it renders flush at the start.
                 <span className="not-italic text-success/80">{props.confirmation}</span>
             ) : reason ? (
@@ -1823,7 +1881,7 @@ export function InsertRow(props: {
     // Drop the trigger character (either "/" or "@") to get the query the menus rank against.
     const chooserQuery = value.slice(1);
     // The menu is derived from the text, never stored - so a reopened draft row always has its
-    // completion (bible M3). Escape is the one thing text cannot express: `chooserDismissed` shuts the
+    // completion. Escape is the one thing text cannot express: `chooserDismissed` shuts the
     // menu until the next keystroke clears it (see the controller), so it forces "none" here.
     const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(value, props.slashAtAlias);
     // The trigger this line is actually wearing — the author's own key, not the canonical "/".
@@ -1833,7 +1891,7 @@ export function InsertRow(props: {
     const [composing, setComposing] = useState(false);
     // Coloured only while the line IS a command: `insertChooserType` answers that from the text, and
     // `chooserDismissed` (Escape) must not change it — the line is still a command, the menu is just shut.
-    const colourLine = !composing && isActionCommandLine(value, props.slashAtAlias);
+    const colorLine = !composing && isActionCommandLine(value, props.slashAtAlias);
     const menuAnchorRef = useRef<HTMLDivElement | null>(null);
     const menuFrame = useAnchoredMenuFrame(menuAnchorRef, chooser !== "none", 312);
     const pluginCommands = useStoryPluginActionCommands();
@@ -1856,8 +1914,8 @@ export function InsertRow(props: {
         },
         [chooserQuery, ct, pluginCommands, scopeName],
     );
-    // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification
-    // (WI-1). Handed over undeduped, because the menu's category column needs both readings of it —
+    // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
+    // Handed over undeduped, because the menu's category column needs both readings of it —
     // 全部 collapses to one row per command (a verb repeated under six subjects with the same sentence
     // each time reads as six commands, not as one that reaches six places), while a chosen category
     // wants the full filing, where `/show` under 图片 is the answer rather than a repeat.
@@ -2009,7 +2067,7 @@ export function InsertRow(props: {
                     anchor, so it is positioned against the field's box and inherits its exact metrics.
                     `min-w-0 flex-1` moves off the textarea onto the wrapper; the textarea then fills it. */}
                 <div className="relative flex min-w-0 flex-1">
-                {colourLine ? <CommandLineHighlight source={source} trigger={trigger} textStyle={textStyle} /> : null}
+                {colorLine ? <CommandLineHighlight source={source} trigger={trigger} textStyle={textStyle} /> : null}
                 <CommandGhostHint value={value} source={source} caret={caret} textStyle={textStyle} commandContext={props.commandContext} confirmation={props.mode.confirmation} />
                 <textarea
                     ref={props.inputRef}
@@ -2021,7 +2079,7 @@ export function InsertRow(props: {
                         // Transparent glyphs, opaque caret: the colours come from the mirror behind.
                         // Prose keeps its own text — there is nothing to colour, and a line the mirror
                         // would not draw must never be invisible.
-                        colourLine ? "text-transparent caret-[rgb(var(--nl-fg))]" : "text-fg",
+                        colorLine ? "text-transparent caret-[rgb(var(--nl-fg))]" : "text-fg",
                     ].join(" ")}
                     style={textStyle}
                     onCompositionStart={() => setComposing(true)}
@@ -2354,7 +2412,7 @@ type MenuCategory = typeof ALL_MENU_CATEGORY | StoryCommandCategoryId;
  *    sidebar shows (`buildSpecSidebarGroups`) — a generic verb appears under every subject its
  *    `accepts` names, so an author browsing 图片 finds "显示" exactly where the sidebar puts it. The two
  *    menus are one source now; the `/` browse is no longer a second catalogue filed single-point by
- *    `category` (plan 2026-07-26-003 WI-1).
+ *    `category`.
  *  - **filter** (a query): under 全部, the matcher's ranked hits, flat across categories, best match
  *    first — the ranking is the point, so headers (and the multi-subject repetition) would only get in
  *    its way. Under a chosen category the sections stay and the query ranks *within* them, which is
@@ -3094,13 +3152,36 @@ function TextClickTarget(props: { style?: CSSProperties; className?: string; chi
     return (
         <div
             className={["flex min-w-0 flex-1 cursor-text items-center self-stretch nl-selectable-text", props.className].filter(Boolean).join(" ")}
-            style={props.style}
+            style={{ ...props.style, ...ROW_TEXT_HIT_BLEED }}
             data-story-row-text=""
         >
             {props.children}
         </div>
     );
 }
+
+/**
+ * Reach the click surface into the row's own vertical padding, without moving one glyph.
+ *
+ * The row's content column carries {@link ROW_CONTENT_PAD_PX} above and below the line box, and that
+ * band belonged to the ROW — so on a 36px compact row, 8px of it (22%) answered a click by selecting
+ * the line instead of putting a caret in it. Aiming at the top of a line and getting a selection is
+ * the wrong answer everywhere else an author types, and there is no gesture it was reserved for: the
+ * gutter, a modified click and Escape all still select a row without editing it.
+ *
+ * Padding and margin cancel, so the CONTENT box is untouched and the text stays exactly where it was
+ * — this widens the hit area and nothing else. That is not a nicety here: the read-only body and the
+ * editor have to agree on the text's y to a fraction of a pixel or the words visibly jump the moment
+ * the caret arrives, which is a defect this editor has already shipped twice.
+ *
+ * A margin box that stretches (`self-stretch`) is what makes the two ends line up on wrapped rows
+ * too: the flex line grows to the paragraph, the border box grows with it, and the bleed stays a
+ * constant band at the row's real edges.
+ */
+const ROW_TEXT_HIT_BLEED: CSSProperties = {
+    paddingBlock: ROW_CONTENT_PAD_PX,
+    marginBlock: -ROW_CONTENT_PAD_PX,
+};
 
 /** A draft row's line: the source, and why it has not committed yet. */
 function DraftRowPreview(props: { source: string; commandContext: StoryCommandContext }) {
@@ -3131,7 +3212,7 @@ function BlockPreview(props: {
     document: StoryDocument;
     characters: Character[];
     commandContext: StoryCommandContext;
-    /** Commit an inline quick-param edit (WI-2) through the same history path the inspector uses. */
+    /** Commit an inline quick-param edit through the same history path the inspector uses. */
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
     const block = props.block;

@@ -6,11 +6,13 @@ import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
 import {
+    createInitialImageAppearance,
     ensureImageAppearanceHasAllKeys,
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { i18nStore } from "@/lib/i18n";
+import { getImageWidgetRectangleProps } from "./helpers";
 
 /** Module-level so FieldRenderer keeps a stable component identity across schema rebuilds (preserves variant selection). */
 function ImageAppearanceField(props: CustomFieldProps<UIInspectorData>) {
@@ -21,29 +23,33 @@ function ImageAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     const { documentService } = props.data;
     const element = props.data.element;
 
-    // Deferred while read-only - see `ContainerAppearanceField` for why this key-filling pass must
-    // not run inside a frozen project.
+    // Deferred while read-only, and creates the model when the element has none - see
+    // `ContainerAppearanceField` for both, and for why service-authored elements arrive without one.
     useLayoutEffect(() => {
-        if (props.readOnly || !isUsableAppearanceModel(appearance)) {
+        if (props.readOnly) {
             return;
         }
-        const next = ensureImageAppearanceHasAllKeys(appearance, element);
+        const next = isUsableAppearanceModel(appearance)
+            ? ensureImageAppearanceHasAllKeys(appearance, element)
+            : createInitialImageAppearance(getImageWidgetRectangleProps(element));
         if (next !== appearance) {
             documentService.updateElementProps(element.id, {
-                ...element.props,
                 appearance: next,
             });
         }
     }, [appearance, documentService, element, props.readOnly]);
 
+    const panelAppearance = isUsableAppearanceModel(appearance)
+        ? appearance
+        : createInitialImageAppearance(getImageWidgetRectangleProps(element));
+
     return (
         <AppearanceAuthoringPanel
             key={element.id}
             kind="image"
-            appearance={appearance ?? null}
+            appearance={panelAppearance}
             onReplace={next => {
                 documentService.updateElementProps(element.id, {
-                    ...element.props,
                     appearance: next,
                 });
             }}

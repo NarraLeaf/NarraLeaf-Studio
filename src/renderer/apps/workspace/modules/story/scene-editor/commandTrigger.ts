@@ -37,8 +37,8 @@ export type InsertChooser = "none" | "action" | "character";
  * opens the action creator, a "#" line the speaker picker, anything else is prose with no menu. The
  * caret decides *which* part of an action line is being completed (command name vs argument), but that
  * runs through the cursor, not this. The insert state deliberately does not store this - a stored copy
- * drifted out of sync, which is how a reopened draft row kept a stale "none" and lost its completion
- * (bible M3). Escape's one-shot suppression is the one thing text cannot express; it rides a separate
+ * drifted out of sync, which is how a reopened draft row kept a stale "none" and lost its completion.
+ * Escape's one-shot suppression is the one thing text cannot express; it rides a separate
  * `chooserDismissed` flag that the next keystroke clears.
  */
 export function insertChooserType(value: string, aliasEnabled: boolean): InsertChooser {
@@ -58,4 +58,16 @@ export function insertChooserType(value: string, aliasEnabled: boolean): InsertC
  */
 export function toCanonicalCommandLine(value: string, aliasEnabled: boolean): string {
     return aliasEnabled && value.startsWith(ALT_ACTION_TRIGGER) ? ACTION_TRIGGER + value.slice(1) : value;
+}
+
+/**
+ * The other direction: a canonical line spelled with the trigger the author actually types.
+ *
+ * The exact inverse of {@link toCanonicalCommandLine}, and it lives beside it for that reason - a
+ * committed row and a declaration's receipt both show a line the projection wrote in canonical form,
+ * and both have to show it wearing the author's own "@". Only the first character changes, so every
+ * span recorded against the canonical string stays valid.
+ */
+export function toDisplayedCommandLine(source: string, trigger: "/" | "@"): string {
+    return source.startsWith(ACTION_TRIGGER) ? trigger + source.slice(1) : source;
 }

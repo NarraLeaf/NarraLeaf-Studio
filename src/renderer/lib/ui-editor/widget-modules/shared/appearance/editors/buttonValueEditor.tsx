@@ -3,7 +3,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { ColorValue, ImageFillFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { ImageFillField } from "@/apps/workspace/modules/properties/framework/fields/ImageFillField";
-import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
@@ -42,8 +42,9 @@ export function ButtonAppearanceValueEditor({
                 <ColorPickerTrigger
                     value={cv}
                     displayMode="icon"
+                    brandPalette
                     allowOpacity={false}
-                    onChange={(next: ColorValue) => onChange(colorValueToCss(next))}
+                    onChange={(next: ColorValue) => onChange(serializeColorValue(next))}
                 />
             );
         }
@@ -147,8 +148,9 @@ export function ButtonAppearanceValueEditor({
                 <ColorPickerTrigger
                     value={cv}
                     displayMode="icon"
+                    brandPalette
                     allowOpacity={false}
-                    onChange={(next: ColorValue) => onChange(colorValueToCss(next))}
+                    onChange={(next: ColorValue) => onChange(serializeColorValue(next))}
                 />
             );
         }

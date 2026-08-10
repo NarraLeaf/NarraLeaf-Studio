@@ -21,8 +21,10 @@ import {
     uiEditorGroupIntoLeaderContainer,
     uiEditorPasteAfterSelection,
     uiEditorSelectAllInSurface,
+    uiEditorUngroupSelection,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
+import { uiEditorAlign, type UiEditorAlignOp } from "@/lib/ui-editor/commands/uiEditorAlign";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { UI_EDITOR_WRITABLE, type UIEditorReadOnly } from "./readOnlyInteraction";
@@ -135,6 +137,13 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             const s = getUiSelection(stateService, surfaceId);
             uiEditorGroupIntoLeaderContainer(documentService, stateService, surfaceId, s);
         };
+        const ungroup = () => {
+            if (!documentService || !stateService || isTypingInField()) {
+                return;
+            }
+            const s = getUiSelection(stateService, surfaceId);
+            uiEditorUngroupSelection(documentService, stateService, surfaceId, s, uiService);
+        };
         const selectAll = () => {
             if (!documentService || !stateService || isTypingInField()) {
                 return;
@@ -147,6 +156,12 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             }
             const s = getUiSelection(stateService, surfaceId);
             uiEditorDeleteSelection(documentService, stateService, surfaceId, s, uiService);
+        };
+        const align = (op: UiEditorAlignOp) => () => {
+            if (!documentService || !stateService || isTypingInField()) {
+                return;
+            }
+            uiEditorAlign(documentService, surfaceId, getUiSelection(stateService, surfaceId), op);
         };
         const undo = () => {
             if (!historyService || isTypingInField()) {
@@ -179,6 +194,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
                 { suffix: "paste", key: "v", handler: whenWritable(paste) },
                 { suffix: "dup", key: "d", handler: whenWritable(duplicate) },
                 { suffix: "group", key: "g", handler: whenWritable(group) },
+                { suffix: "ungroup", key: "shift+g", handler: whenWritable(ungroup) },
                 { suffix: "selall", key: "a", handler: selectAll },
             ]),
         );
@@ -201,6 +217,49 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
                 handler: whenWritable(() => {
                     requestRenamePrimary();
                 }),
+            },
+            // Spelled out rather than generated from the op list: `keybindingCatalog.test.ts` reads
+            // these from source, and a computed `id` is invisible to it - which is how six story
+            // motion bindings once shipped unrebindable.
+            {
+                id: "align-left",
+                key: "alt+a",
+                handler: whenWritable(align("left")),
+            },
+            {
+                id: "align-horizontal-center",
+                key: "alt+h",
+                handler: whenWritable(align("horizontalCenter")),
+            },
+            {
+                id: "align-right",
+                key: "alt+d",
+                handler: whenWritable(align("right")),
+            },
+            {
+                id: "align-top",
+                key: "alt+w",
+                handler: whenWritable(align("top")),
+            },
+            {
+                id: "align-vertical-center",
+                key: "alt+v",
+                handler: whenWritable(align("verticalCenter")),
+            },
+            {
+                id: "align-bottom",
+                key: "alt+s",
+                handler: whenWritable(align("bottom")),
+            },
+            {
+                id: "distribute-horizontal",
+                key: "alt+shift+h",
+                handler: whenWritable(align("distributeHorizontal")),
+            },
+            {
+                id: "distribute-vertical",
+                key: "alt+shift+v",
+                handler: whenWritable(align("distributeVertical")),
             },
         ];
     }, [

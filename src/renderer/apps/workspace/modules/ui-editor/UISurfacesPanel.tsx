@@ -20,8 +20,9 @@ import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/el
 import { PanelsTopLeft } from "lucide-react";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
-import type { UseTranslation } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { appendDeveloperIdSection } from "@/lib/developer";
+import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
 import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
@@ -30,7 +31,7 @@ import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
 import { ComponentLibraryPanel } from "./panel/ComponentLibraryPanel";
-import { getComponentTabId } from "./editors/componentEditorAdapter";
+import { getComponentEditorSurfaceId, getComponentTabId } from "./editors/componentEditorAdapter";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import type { BlueprintEntryTabPayload } from "../blueprint-lite/blueprintEntryTabId";
 import { useBlueprintDocumentRevision } from "../blueprint-lite/hooks/useBlueprintDocumentRevision";
@@ -49,6 +50,7 @@ import {
 import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_OPTIONS, STAGE_SLOT_LABELS, SURFACE_KIND_OPTIONS } from "./panel/constants";
 import type { EditorLayout, EditorTabDefinition } from "../../registry/types";
 import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -102,14 +104,6 @@ function getSurfaceIdentityLabel(surface: UISurface): string {
         return DEFAULT_APP_SURFACE_NAME;
     }
     return surface.kind === "appSurface" ? "Page" : "Game UI";
-}
-
-// Localized surface-type label used in confirms, notifications, and context-menu items.
-function getSurfaceDisplayLabel(surface: UISurface, t: UseTranslation["t"]): string {
-    if (surface.id === MAIN_APP_SURFACE_ID) {
-        return DEFAULT_APP_SURFACE_NAME;
-    }
-    return surface.kind === "appSurface" ? t("uiEditor.surfaceKind.page") : t("uiEditor.surfaceKind.gameUi");
 }
 
 // Exported for the quick-open picker, so surfaces open through the exact same tab definition.
@@ -224,6 +218,23 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         }));
     }, [globalBlueprintId, openEditorTab]);
 
+    /**
+     * Make `subjectId` the properties panel's subject and bring the panel forward.
+     *
+     * Takes an id rather than a surface because a component's subject is its editor's pseudo surface
+     * (`component-editor:<id>`), which is not in `document.surfaces` at all.
+     */
+    const focusSurfaceProperties = useCallback((subjectId: string) => {
+        if (!context) {
+            return;
+        }
+        const uiService = context.services.get<UIService>(Services.UI);
+        uiService.getStore().setSelection({ type: "scene", data: subjectId });
+        uiService.focus.setFocus(FocusArea.LeftPanel, panelId);
+        uiService.panels.show("narraleaf-studio:properties");
+        uiService.focus.setFocus(FocusArea.LeftPanel, panelId, { silent: true });
+    }, [context, panelId]);
+
     const handleOpenComponent = useCallback((component: UIComponentDefinition) => {
         openEditorTab({
             id: getComponentTabId(component.id),
@@ -234,24 +245,20 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             closable: true,
             modified: false,
         });
-    }, [openEditorTab]);
-
-    const focusSceneProperties = useCallback((surface: UISurface) => {
-        if (!context) {
-            return;
-        }
-        const uiService = context.services.get<UIService>(Services.UI);
-        uiService.getStore().setSelection({ type: "scene", data: surface.id });
-        uiService.focus.setFocus(FocusArea.LeftPanel, panelId);
-        uiService.panels.show("narraleaf-studio:properties");
-        uiService.focus.setFocus(FocusArea.LeftPanel, panelId, { silent: true });
-    }, [context, panelId]);
+        // The same bargain a page card makes: opening it also makes it the panel's subject. For a
+        // component that subject is where its params are declared - its root is the outline's root
+        // and so not selectable, leaving nothing inside it to hang them on.
+        focusSurfaceProperties(getComponentEditorSurfaceId(component.id));
+    }, [focusSurfaceProperties, openEditorTab]);
 
     const handleSurfaceClick = useCallback((surface: UISurface) => {
         handleOpenSurface(surface);
-        focusSceneProperties(surface);
-    }, [focusSceneProperties, handleOpenSurface]);
+        focusSurfaceProperties(surface.id);
+    }, [focusSurfaceProperties, handleOpenSurface]);
 
+    // Same reason as the canvas: a palette edit changes what a `nlbrand:` colour paints without
+    // touching the document, so the thumbnails need their own reason to be rebuilt.
+    const brandRevision = useBrandPaletteRevision();
     const renderSurfacePreview = useCallback((surface: UISurface) => {
         if (!runtimeBridge) {
             return null;
@@ -263,7 +270,14 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             className: "relative",
             style: backgroundColor ? { backgroundColor } : undefined,
         });
-    }, [runtimeBridge]);
+    }, [runtimeBridge, brandRevision]);
+
+    // Each card asks only about itself, so an edit to one page leaves the other cards' element trees
+    // alone. Without this the panel rebuilds every preview in the project on every keystroke.
+    const getSurfaceContentRevision = useCallback(
+        (surface: UISurface) => documentService?.getSurfaceContentRevision(surface.id) ?? 0,
+        [documentService],
+    );
 
     useEffect(() => {
         if (!documentService || hasEnsuredAppSurface) {
@@ -395,10 +409,14 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     },
                 );
             }
-            setMenuItems(items);
+            setMenuItems(appendDeveloperIdSection(
+                items,
+                [{ kind: "surface", value: surface.id, label }],
+                { hideMenu, notify: uiService?.showNotification.bind(uiService) },
+            ));
             showMenu(event);
         },
-        [freeze, showMenu, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface, t],
+        [freeze, showMenu, hideMenu, uiService, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface, t],
     );
 
     const promptCreateSurface = useCallback(
@@ -566,6 +584,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 surfaces={filteredSurfaces}
                 globalBlueprintCard={globalBlueprintCard}
                 renderSurfacePreview={renderSurfacePreview}
+                getSurfaceContentRevision={getSurfaceContentRevision}
                 onSurfaceClick={handleSurfaceClick}
                 onOpenMenu={handleOpenMenu}
             />
@@ -585,6 +604,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 isOpen={templateStoreOpen}
                 onClose={() => setTemplateStoreOpen(false)}
                 documentService={documentService}
+                runtimeBridge={runtimeBridge}
+                initialKind={kind}
+                occupiedStageSlotIds={occupiedStageSlotIds}
                 onApplied={handleOpenSurface}
                 onNotify={(message, level) => uiService?.showNotification(message, level)}
             />

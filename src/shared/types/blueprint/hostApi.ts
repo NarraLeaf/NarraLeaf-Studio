@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 31 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 32 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -112,6 +112,7 @@ export type BlueprintHostApiContract = {
     frame: BlueprintHostApiFamily;
     game: BlueprintHostApiFamily;
     sound: BlueprintHostApiFamily;
+    network: BlueprintHostApiFamily;
     devtools: BlueprintHostApiFamily;
 };
 
@@ -138,6 +139,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
         },
         closeLayer: {
             capabilityId: "navigation.closeLayer",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        clearPages: {
+            capabilityId: "navigation.clearPages",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        clearGameOverlay: {
+            capabilityId: "navigation.clearGameOverlay",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
@@ -220,6 +237,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
         },
         setSliderProperties: {
             capabilityId: "widget.setSliderProperties",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { elementId: "", patch: {} },
+            output: null,
+        },
+        getSwitchProperties: {
+            capabilityId: "widget.getSwitchProperties",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { elementId: "" },
+            output: {},
+        },
+        setSwitchProperties: {
+            capabilityId: "widget.setSwitchProperties",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
@@ -679,6 +712,35 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: false,
             input: {},
             output: null,
+        },
+    },
+    /**
+     * HTTP for authored screens: an online notice board, a patch note, a leaderboard.
+     *
+     * Three properties of this family are load-bearing and are enforced by the host, not by the
+     * node:
+     *
+     *  - **The project's Allow HTTP setting gates it.** The request is issued from the main process,
+     *    which sits outside the CSP and `webRequest` cage that confines the renderer, so the cage
+     *    cannot be what stops it. A host that skipped this check would hand a project that switched
+     *    the network off a working network.
+     *  - **Only `http:` and `https:` are reachable.** Any other scheme is refused before a request is
+     *    made, which is what keeps `file:` out and this node from being a local file reader.
+     *  - **The response is bounded.** A body over the cap is refused rather than truncated: half a
+     *    JSON document parses into a different error than the one that actually happened.
+     *
+     * Only the request is a host capability. The body it returns is held in the execution's own
+     * `blueprintLocals`, so the reader nodes need nothing from the host - and a response is
+     * unreachable from any other execution without anyone having to remember to free it.
+     */
+    network: {
+        fetch: {
+            capabilityId: "network.fetch",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { url: "", method: "GET", headers: null, body: null, timeoutMs: null },
+            output: { outcome: "success", status: 0, body: null, error: null },
         },
     },
     devtools: {

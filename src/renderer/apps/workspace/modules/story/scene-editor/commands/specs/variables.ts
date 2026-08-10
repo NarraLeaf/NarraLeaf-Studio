@@ -1,5 +1,5 @@
-import { Equal, Globe, Minus, Plus, RotateCcw, Save, ToggleRight, Variable } from "lucide-react";
-import type { StoryActionPayload, StoryBlock, StoryExpr, StoryExpression, StoryLiteralValue, StoryVariableValueType } from "@shared/types/story";
+import { Equal, Minus, Plus, RotateCcw, ToggleRight, Variable } from "lucide-react";
+import type { StoryActionPayload, StoryBlock, StoryDeclarationPayload, StoryExpr, StoryExpression, StoryLiteralValue, StoryVariableValueType } from "@shared/types/story";
 import { inferStoryExpressionType, storyExprTypeFits } from "@shared/utils/storyExpressionEval";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 import { storyVariableRefKey } from "@shared/types/story";
@@ -8,12 +8,18 @@ import type { StoryCommandResolutionIssue, StoryCommandValue } from "../../story
 import { defineStoryCommand, type ResolvedArgsOf, type StoryCommandParamSpec, type StoryCommandValidateContext } from "../spec";
 
 /**
- * Variables: `/set` and its sugars `/inc` `/dec` `/toggle` `/reset`, plus the three declarations
- * `/local` `/save` `/global`.
+ * Variables: `/set` and its sugars `/inc` `/dec` `/toggle` `/reset`, plus the one declaration
+ * `/local`.
  *
  * The sugars all lower to the identical `setVariable` block `/set` builds - they differ only in the
- * expression they synthesize - so the compiler and inspector see one shape. The declarations build no
- * block at all: committing one mutates the variable registry and leaves the scene as it was.
+ * expression they synthesize - so the compiler and inspector see one shape.
+ *
+ * There used to be three declarations. `/save` and `/global` are retired: a story document owns
+ * `scene` variables and nothing else, and the two project scopes are authored in the project variable
+ * registry, which is the only place they can be declared once for a project rather than once per
+ * story. See `services/variables/storyDeclarationMigration.ts` for the pass that moves existing rows
+ * across. Declaration ROWS of those scopes still RENDER (see {@link DECLARATION_COMMANDS}) - a frozen
+ * project cannot be migrated, and its rows must read as themselves in the meantime.
  */
 
 const VARIABLE: StoryCommandParamSpec = { hint: "variable", type: { kind: "variable" }, positional: true, core: true };
@@ -231,8 +237,9 @@ export function defaultForType(valueType: StoryVariableValueType): StoryLiteralV
 // ---------------------------------------------------------------------------
 
 /**
- * The params every `/local` `/save` `/global` line takes - identical across all three, because the
- * only thing that differs between them is the scope, and the scope is the command name.
+ * The params a `/local` line takes. Still its own function rather than an inline record: the shape is
+ * the *declaration* param set, and it is what the retired `/save` and `/global` took too - a row of
+ * either still reads back through these slots (`storyCommandLine`'s `declarationSentence`).
  *
  * `default` is a {@link StoryCommandParamType constant}, not an expression: a declaration runs once,
  * before any variable exists, so a slot offering variables would complete straight into an error.
@@ -259,20 +266,25 @@ function declarationParams() {
     } as const;
 }
 
-/** A name already taken in the target scope is refused outright - silently overwriting the existing declaration would reset a variable other rows already point at. */
-function validateDeclaration(scope: "scene" | "saved" | "persistent") {
-    return (args: { readonly name?: StoryCommandValue }, ctx: StoryCommandValidateContext): StoryCommandResolutionIssue[] => {
-        const name = args.name;
-        const span = ctx.spanOf("name");
-        if (name?.kind !== "text" || !span) {
-            return [];
-        }
-        const needle = name.value.trim().toLowerCase();
-        if (ctx.context.variables.some(entry => entry.ref.scope === scope && entry.name.trim().toLowerCase() === needle)) {
-            return [{ code: "duplicateVariable", span, value: name.value }];
-        }
+/**
+ * A name already taken in the scene scope is refused outright - silently overwriting the existing
+ * declaration would reset a variable other rows already point at.
+ *
+ * Scoped to `scene` rather than parameterised, because `scene` is the only scope a story row may
+ * still declare. The project scopes get the same protection from the variables panel, over the
+ * registry.
+ */
+function validateSceneDeclaration(args: { readonly name?: StoryCommandValue }, ctx: StoryCommandValidateContext): StoryCommandResolutionIssue[] {
+    const name = args.name;
+    const span = ctx.spanOf("name");
+    if (name?.kind !== "text" || !span) {
         return [];
-    };
+    }
+    const needle = name.value.trim().toLowerCase();
+    if (ctx.context.variables.some(entry => entry.ref.scope === "scene" && entry.name.trim().toLowerCase() === needle)) {
+        return [{ code: "duplicateVariable", span, value: name.value }];
+    }
+    return [];
 }
 
 /**
@@ -334,27 +346,53 @@ function inferDeclaredType(defaultValue: StoryLiteralValue | undefined): StoryVa
  * other line, its overview names it, Enter/double-click opens its type/default editor, and deleting
  * it deletes the variable. `storageKey` is the block's own id, minted here so the key exists before
  * the row lands.
+ *
+ * That `storageKey === id` identity is load-bearing beyond this file: it is what lets the retirement
+ * pass turn a `/save` or `/global` row into a registry entry with the SAME id and storage key, so
+ * every ref, scene snapshot and on-disk save file keeps resolving. Do not mint them separately.
  */
-function buildDeclaration(scope: "scene" | "saved" | "persistent") {
-    return (args: ResolvedArgsOf<ReturnType<typeof declarationParams>>, ctx: { generateId: () => string }): StoryBlock => {
-        const id = ctx.generateId();
-        const declared = declarationFromArgs(args);
-        return {
-            id,
-            kind: "declaration",
-            parentId: null,
-            childrenIds: [],
-            payload: {
-                scope,
-                name: declared?.name ?? "variable",
-                valueType: declared?.valueType ?? "boolean",
-                defaultValue: declared?.defaultValue,
-                description: declared?.description,
-                storageKey: id,
-            },
-        };
+function buildSceneDeclaration(args: ResolvedArgsOf<ReturnType<typeof declarationParams>>, ctx: { generateId: () => string }): StoryBlock {
+    const id = ctx.generateId();
+    const declared = declarationFromArgs(args);
+    return {
+        id,
+        kind: "declaration",
+        parentId: null,
+        childrenIds: [],
+        payload: {
+            scope: "scene",
+            name: declared?.name ?? "variable",
+            valueType: declared?.valueType ?? "boolean",
+            defaultValue: declared?.defaultValue,
+            description: declared?.description,
+            storageKey: id,
+        },
     };
 }
+
+/**
+ * The command each scope's declaration row belongs to.
+ *
+ * Exported because a declaration row has to be able to name the command that wrote it from the
+ * payload alone - the row's glyph asks (`storySceneBlockUtils`), and so does the line the row reads
+ * back as (`storyCommandLine`). A second copy of a three-row table is how a scope ends up wearing one
+ * command's icon and another command's verb.
+ *
+ * **All three rows stay, including the two whose commands are retired.** `declareVar` and
+ * `declarePersis` no longer resolve to a spec, and that is on purpose: what they still do is keep a
+ * `saved` / `persistent` row RENDERING AS ITSELF. A project that is frozen (or whose registry could
+ * not be written) still holds those rows, and dropping them from this table would make them fall
+ * through to the no-command path and read as an unowned row instead of the declaration they are.
+ * Both consumers degrade gracefully on a missing spec: the badge falls back to its own icon, and the
+ * line falls back to the retired TOKEN (`retiredCommandToken`, in the registry) so the row reads
+ * `/save …` rather than leaking `declareVar` - the ids below are internal names and belong to no
+ * author's vocabulary.
+ */
+export const DECLARATION_COMMANDS: Record<StoryDeclarationPayload["scope"], string> = {
+    scene: "declareLocal",
+    saved: "declareVar",
+    persistent: "declarePersis",
+};
 
 export const declareLocal = defineStoryCommand({
     id: "declareLocal",
@@ -366,43 +404,21 @@ export const declareLocal = defineStoryCommand({
     // command line already has, and the one an author needs for any default with a space in it.
     examples: ["/local hp 100", "/local hp 100 type=number desc='Player health'", "/local inv \"[1, 2]\" type=json"],
     params: declarationParams(),
-    build: buildDeclaration("scene"),
-    validate: validateDeclaration("scene"),
+    build: buildSceneDeclaration,
+    validate: validateSceneDeclaration,
 });
 
 /**
- * `/save`, not `/var` (§3.6): `var` is every programming language's word for "a variable", so an
- * author reaches for it to declare a variable of ANY scope - the strongest intuition trap in the whole
- * set. `/var` stays as an alias, because muscle memory and every existing note that spells it must
- * keep resolving.
+ * `/local` is the only declaration left.
  *
- * The token is reserved for this and nothing else (§12.5): **`/save` declares a save-scoped variable;
- * triggering a save is not a story command and will not become one** - saving is a runtime/UI concern,
- * and a later `/save` meaning "write a save file" would silently re-point every line already using it.
+ * `/save` (aliases `var`, `savedvar`) and `/global` (aliases `persis`, `persistent`) were removed
+ * outright - not deprecated, not hidden. A saved or persistent variable is a PROJECT-level
+ * definition: it outlives the scene it was typed in and is read by stories and blueprints that have
+ * never heard of that scene, so declaring it inside one story document put its single definition
+ * somewhere only that document could see. It is authored in the variables panel now.
+ *
+ * All six spellings are burned into `RESERVED_TOKENS` (`commands/registry.ts`) rather than freed: a
+ * scene exported to a script file still holds `/save gold 10 type=number` lines that the importer
+ * re-parses verbatim, so a future `/save` meaning anything else would silently reinterpret them.
  */
-export const declareVar = defineStoryCommand({
-    id: "declareVar",
-    token: "save",
-    aliases: ["var", "savedvar"],
-    category: "data",
-    icon: Save,
-    examples: ["/save chapter 1 type=number"],
-    params: declarationParams(),
-    build: buildDeclaration("saved"),
-    validate: validateDeclaration("saved"),
-});
-
-/** `/global`, not `/persis` (§3.6): `persis` is a truncation, not a word - there is nothing to guess. */
-export const declarePersis = defineStoryCommand({
-    id: "declarePersis",
-    token: "global",
-    aliases: ["persis", "persistent"],
-    category: "data",
-    icon: Globe,
-    examples: ["/global seenIntro false type=boolean"],
-    params: declarationParams(),
-    build: buildDeclaration("persistent"),
-    validate: validateDeclaration("persistent"),
-});
-
-export const VARIABLE_COMMANDS = [set, inc, dec, toggle, reset, declareLocal, declareVar, declarePersis];
+export const VARIABLE_COMMANDS = [set, inc, dec, toggle, reset, declareLocal];

@@ -1,4 +1,4 @@
-import { DEFAULT_LINTING_CONFIGURATION } from "../workspace/project/configuration";
+import { DEFAULT_LINTING_CONFIGURATION, DEFAULT_NETWORK_CONFIGURATION } from "../workspace/project/configuration";
 import type { LintContext } from "./context";
 
 /**
@@ -12,6 +12,8 @@ import type { LintContext } from "./context";
 export function createTestLintContext(overrides: Partial<LintContext> = {}): LintContext {
     return {
         config: { ...DEFAULT_LINTING_CONFIGURATION },
+        // The secure default, same as a new project. A test about the network rule turns it on.
+        network: { ...DEFAULT_NETWORK_CONFIGURATION },
         stories: [],
         blueprintDocument: null,
         uiDocument: null,
@@ -21,6 +23,7 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         characters: [],
         variableRegistry: [],
         persistentNameCollisions: [],
+        savedNameCollisions: [],
         localization: null,
         voice: null,
         buildPlatforms: [],

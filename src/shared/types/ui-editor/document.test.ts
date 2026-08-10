@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     isUIElementFlowLayoutChild,
     UI_DOCUMENT_SCHEMA_VERSION,
+    uiElementTypeAcceptsChildren,
     uiElementTypeAcceptsUserChildren,
     type UIDocument,
 } from "./document";
@@ -123,6 +124,62 @@ function createSliderPartsDocument(): UIDocument {
     };
 }
 
+function createSwitchPartsDocument(): UIDocument {
+    return {
+        schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        id: "doc",
+        name: "Doc",
+        surfaces: [
+            {
+                id: "surface",
+                name: "Surface",
+                host: "app",
+                kind: "appSurface",
+                designSize: { width: 320, height: 180 },
+                rootElementId: "root",
+            },
+        ],
+        elements: {
+            root: {
+                id: "root",
+                type: "nl.root",
+                parentId: null,
+                childrenIds: ["switch"],
+                layout: { x: 0, y: 0, width: 320, height: 180 },
+            },
+            switch: {
+                id: "switch",
+                type: "nl.switch",
+                parentId: "root",
+                childrenIds: ["track", "thumb"],
+                layout: { x: 0, y: 0, width: 52, height: 28 },
+                props: {
+                    checked: false,
+                    interactionDisabled: false,
+                    trackElementId: "track",
+                    thumbElementId: "thumb",
+                },
+            },
+            track: {
+                id: "track",
+                type: "nl.container",
+                parentId: "switch",
+                childrenIds: [],
+                extra: { switchSlot: "track" },
+                layout: { x: 0, y: 0, width: 52, height: 28 },
+            },
+            thumb: {
+                id: "thumb",
+                type: "nl.container",
+                parentId: "switch",
+                childrenIds: [],
+                extra: { switchSlot: "thumb" },
+                layout: { x: 3, y: 3, width: 22, height: 22 },
+            },
+        },
+    };
+}
+
 describe("UI document flow layout", () => {
     it("keeps list item templates in flow but lets scrollbar parts use authored free layout", () => {
         const doc = createListSlotDocument();
@@ -138,5 +195,14 @@ describe("UI document flow layout", () => {
         expect(uiElementTypeAcceptsUserChildren("nl.slider")).toBe(false);
         expect(isUIElementFlowLayoutChild(doc, doc.elements.track!)).toBe(false);
         expect(isUIElementFlowLayoutChild(doc, doc.elements.handle!)).toBe(false);
+    });
+
+    it("treats switch track and thumb as authored internal parts", () => {
+        const doc = createSwitchPartsDocument();
+
+        expect(uiElementTypeAcceptsChildren("nl.switch")).toBe(true);
+        expect(uiElementTypeAcceptsUserChildren("nl.switch")).toBe(false);
+        expect(isUIElementFlowLayoutChild(doc, doc.elements.track!)).toBe(false);
+        expect(isUIElementFlowLayoutChild(doc, doc.elements.thumb!)).toBe(false);
     });
 });

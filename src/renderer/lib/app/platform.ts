@@ -8,3 +8,11 @@ export function isMacPlatform(): boolean {
         return false;
     }
 }
+
+export function isWindowsPlatform(): boolean {
+    try {
+        return getPlatformInfo().system === PlatformSystem.win32;
+    } catch {
+        return false;
+    }
+}

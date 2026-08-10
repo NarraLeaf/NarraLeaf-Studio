@@ -1,6 +1,5 @@
 /*
  * Acceptance — asset category merge + built-in Monaco text editor.
- * Card: docs/plans/2026-07-31-001-plan-asset-categories-and-text-editor.md §6
  *
  *   NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<electron pid> NLS_VERIFY_PROJECT=<project copy> \
  *     node tools/ui-verify/scenarios/asset-categories-and-text-editor.js \

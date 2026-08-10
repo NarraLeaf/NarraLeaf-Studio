@@ -17,9 +17,11 @@ import {
 } from "../../../logging/diagnosticsBundle";
 import type { MissingRecentProject, RecentProjectMissingReason } from "@shared/types/state/appStateTypes";
 import { DirEntry, findProjectConfigFileName } from "@shared/utils/nlproj";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
 import { clearCacheBuckets, measureCacheInventory } from "../../storage/cacheInventory";
 import { isProtectedStateKey } from "@shared/constants/settingsScopes";
+import { getMainLocale } from "../../../i18n";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -299,6 +301,43 @@ export class AppRemoveRecentProjectHandler extends IPCHandler<IPCEventType.appRe
 }
 
 /**
+ * Show one remembered project's folder in the OS file manager.
+ *
+ * The path is checked against the history before anything is opened. Its workspace counterpart
+ * (`WorkspaceOpenProjectFolderHandler`) can read the folder off the window's own props and so never
+ * has to trust the message at all; the launcher has no project of its own, so the guard is the
+ * history itself - a renderer that has been talked into asking cannot point this at a home
+ * directory, only at a folder the user already opened as a project.
+ *
+ * Comparison goes through `normalizeProjectPath` for the reason every other project-path comparison
+ * does: the same folder reaches us spelled several ways, and a plain string match would refuse the
+ * entry the user just clicked.
+ */
+export class AppRevealRecentProjectHandler extends IPCHandler<IPCEventType.appRevealRecentProject> {
+    readonly name = IPCEventType.appRevealRecentProject;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.appRevealRecentProject]["data"],
+    ): Promise<RequestStatus<void>> {
+        const wanted = normalizeProjectPath(data.path);
+        const known = window.app.globalState.recentlyOpened.list()
+            .find(project => normalizeProjectPath(project.path) === wanted);
+        if (!wanted || !known) {
+            return this.failed(new Error("Refusing to reveal a folder that is not a remembered project."));
+        }
+
+        // openPath answers with a message rather than throwing, and an empty string means it worked.
+        const failure = await shell.openPath(path.resolve(known.path));
+        if (failure) {
+            return this.failed(new Error(failure));
+        }
+        return this.success(void 0);
+    }
+}
+
+/**
  * Picks a background image via the native dialog and caches it under userData/backgrounds. Only
  * the cache file name travels back - renderers never hand us arbitrary paths to copy from later.
  */
@@ -407,7 +446,10 @@ export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExpo
                 osRelease: os.release(),
                 arch: process.arch,
                 packaged: window.app.isPackaged(),
-                locale: String(window.app.globalState.get("app.language") ?? "unknown"),
+                // The locale in force, not the raw key: with none stored the key is absent, and a
+                // report that said "unknown" about a Studio the author is plainly reading in
+                // Chinese would answer the wrong question.
+                locale: getMainLocale(window.app),
                 userDataDir: window.app.getUserDataDir(),
                 logsDir,
                 generatedAt: new Date().toISOString(),

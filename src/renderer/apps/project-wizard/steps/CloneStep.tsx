@@ -1,5 +1,4 @@
 import { useTranslation } from "@/lib/i18n";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/lib/components/elements";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { CloneFailure, CloneStatus, ProjectData } from "../types";
 
@@ -28,74 +27,66 @@ export function CloneStep({ projectData, remote, cloneStatus, cloneFailure }: Cl
     const busy = cloneStatus === "cloning";
 
     return (
-        <div className="p-6">
-            <div className="space-y-6">
-                <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-fg">{t("wizard.clone.title")}</h2>
-                    <p className="text-sm text-fg-muted">
-                        {t("wizard.clone.subtitle")}
-                    </p>
+        <div className="h-full overflow-y-auto p-5">
+            <div className="max-w-xl space-y-4">
+                <div className="overflow-hidden rounded-md border border-edge">
+                    <SummaryRow
+                        label={t("wizard.source.parsedServer")}
+                        value={remote?.origin ?? projectData.remoteUrl}
+                        first
+                    />
+                    <SummaryRow
+                        label={t("wizard.source.parsedName")}
+                        value={remote?.name ?? t("wizard.review.notSpecified")}
+                    />
+                    <SummaryRow label={t("wizard.fields.location")} value={projectData.location} />
                 </div>
 
-                <div className="grid gap-6 max-w-2xl">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>{t("wizard.clone.summary.title")}</CardTitle>
-                            <CardDescription>
-                                {t("wizard.clone.summary.description")}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div className="space-y-1 min-w-0">
-                                    <label className="font-medium text-fg-muted">{t("wizard.source.parsedServer")}</label>
-                                    <p className="text-fg break-all">{remote?.origin ?? projectData.remoteUrl}</p>
-                                </div>
-                                <div className="space-y-1 min-w-0">
-                                    <label className="font-medium text-fg-muted">{t("wizard.source.parsedName")}</label>
-                                    <p className="text-fg break-all">{remote?.name ?? t("wizard.review.notSpecified")}</p>
-                                </div>
-                            </div>
-                            <div className="space-y-1 min-w-0">
-                                <label className="text-sm font-medium text-fg-muted">
-                                    {t("wizard.source.destinationLabel")}
-                                </label>
-                                <p className="text-sm text-fg break-all">{projectData.location}</p>
-                            </div>
-                        </CardContent>
-                    </Card>
+                <p className="text-sm text-fg-muted">{t("wizard.clone.subtitle")}</p>
 
-                    {busy && (
-                        <div className="flex items-start gap-3 rounded-lg border border-edge bg-fill/50 p-4">
-                            <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin text-primary" />
-                            <p className="text-sm text-fg-muted">{t("wizard.clone.working")}</p>
-                        </div>
-                    )}
+                {busy && (
+                    <div className="flex items-center gap-2 text-sm text-fg-muted">
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                        {t("wizard.clone.working")}
+                    </div>
+                )}
 
-                    {!busy && cloneFailure && (
-                        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4">
-                            <div className="flex items-start gap-3">
-                                <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-danger" />
-                                <div className="min-w-0 flex-1 space-y-1">
-                                    <h3 className="text-sm font-medium text-danger">
-                                        {cloneFailure.kind === "notAProject"
-                                            ? t("wizard.clone.error.notAProjectTitle")
-                                            : t("wizard.clone.error.failedTitle")}
-                                    </h3>
-                                    {/* The path is named, not implied: those files are on disk, they are
-                                        why the folder the author picked is no longer usable for a second
-                                        attempt, and nothing else on screen says where they went. */}
-                                    <p className="break-words text-sm text-danger">
-                                        {cloneFailure.kind === "notAProject"
-                                            ? t("wizard.clone.error.notAProject", { path: cloneFailure.destination })
-                                            : cloneFailure.message}
-                                    </p>
-                                </div>
+                {!busy && cloneFailure && (
+                    <div className="rounded-md border border-danger/20 bg-danger/10 p-3">
+                        <div className="flex items-start gap-2">
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+                            <div className="min-w-0 flex-1 space-y-1">
+                                <p className="text-sm font-medium text-danger">
+                                    {cloneFailure.kind === "notAProject"
+                                        ? t("wizard.clone.error.notAProjectTitle")
+                                        : t("wizard.clone.error.failedTitle")}
+                                </p>
+                                {/* The path is named, not implied: those files are on disk, they are
+                                    why the folder the author picked is no longer usable for a second
+                                    attempt, and nothing else on screen says where they went. */}
+                                <p className="break-words text-xs text-danger">
+                                    {cloneFailure.kind === "notAProject"
+                                        ? t("wizard.clone.error.notAProject", { path: cloneFailure.destination })
+                                        : cloneFailure.message}
+                                </p>
                             </div>
                         </div>
-                    )}
-                </div>
+                    </div>
+                )}
             </div>
+        </div>
+    );
+}
+
+function SummaryRow({ label, value, first = false }: { label: string; value: string; first?: boolean }) {
+    return (
+        <div
+            className={`flex items-baseline justify-between gap-4 px-3 py-2 text-sm ${
+                first ? "" : "border-t border-edge"
+            }`}
+        >
+            <span className="shrink-0 text-fg-muted">{label}</span>
+            <span className="min-w-0 break-all text-right text-fg">{value}</span>
         </div>
     );
 }

@@ -12,6 +12,14 @@ export enum SettingValueType {
      * each id paints.
      */
     Color = "color",
+    /**
+     * A font family, chosen from a searchable list of the presets plus everything installed on this
+     * computer.
+     *
+     * Unlike `Enum` the option list is not fixed — it is discovered at open time and differs per
+     * machine — so the stored string is any family name, and `options` carries only the presets.
+     */
+    Font = "font",
     /** A bounded number the user drags rather than types; needs `min`/`max`. */
     Slider = "slider",
     /**
@@ -40,6 +48,7 @@ export type TypeofSettingSchema<T extends SettingValueType> =
     T extends SettingValueType.Boolean ? boolean :
     T extends SettingValueType.Enum ? string :
     T extends SettingValueType.Color ? string :
+    T extends SettingValueType.Font ? string :
     T extends SettingValueType.Slider ? number :
     T extends SettingValueType.Action ? null :
     T extends SettingValueType.Custom ? null :

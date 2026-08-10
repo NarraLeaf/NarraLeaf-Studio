@@ -36,11 +36,13 @@ import { SearchService } from "./search/SearchService";
 import { ReferenceService } from "./references/ReferenceService";
 import { VariableRegistryService } from "./variables/VariableRegistryService";
 import { AudioTrackService } from "./audio/AudioTrackService";
+import { BrandService } from "./brand/BrandService";
 import { SaveStatusService } from "./autosave/SaveStatusService";
 import { VersionControlService } from "./core/VersionControlService";
 import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
 import { WorkspaceReloadService } from "./core/WorkspaceReloadService";
 import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
+import { MediaSupportService } from "./media/MediaSupportService";
 import { RecoveryService } from "./core/RecoveryService";
 
 export class ServiceRegistry {
@@ -57,6 +59,7 @@ export class ServiceRegistry {
         [Services.Story]: StoryService.getInstance(),
         [Services.Character]: CharacterService.getInstance(),
         [Services.PuppetDescription]: PuppetDescriptionService.getInstance(),
+        [Services.MediaSupport]: MediaSupportService.getInstance(),
         [Services.UIDocument]: UIDocumentService.getInstance(),
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
         [Services.UIEditorState]: UIEditorStateService.getInstance(),
@@ -82,6 +85,7 @@ export class ServiceRegistry {
         [Services.Reference]: ReferenceService.getInstance(),
         [Services.VariableRegistry]: VariableRegistryService.getInstance(),
         [Services.AudioTracks]: AudioTrackService.getInstance(),
+        [Services.Brand]: BrandService.getInstance(),
         [Services.SaveStatus]: SaveStatusService.getInstance(),
         [Services.VersionControl]: VersionControlService.getInstance(),
         [Services.WorkspaceFreeze]: WorkspaceFreezeService.getInstance(),

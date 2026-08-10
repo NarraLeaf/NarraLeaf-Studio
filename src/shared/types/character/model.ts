@@ -237,7 +237,7 @@ export interface LayeredAppearance {
  *
  * Editor convenience only: a story row stores tags, never a snapshot id. Letting rows name a snapshot
  * would put it in the story schema and make renaming and deleting one a referential-integrity problem
- * — the plan leaves that question open, and nothing here forecloses it.
+ * — that question is deliberately left open, and nothing here forecloses it.
  */
 export interface CharacterSnapshot extends CharacterNamed {
     tags: CharacterTagSelection;
@@ -249,7 +249,7 @@ export interface CharacterSnapshot extends CharacterNamed {
  * The engine owns the box — where it sits, its layer, its transform, its opacity, its entry in a
  * saved game — and hands the inside to a backend registered under {@link backend}. Studio ships no
  * such backend and is not allowed to: the renderers authors want for animated characters are
- * licensed in terms a source-available application cannot meet (card 2026-07-27-002). So this arm
+ * licensed in terms a source-available application cannot meet. So this arm
  * carries no renderer-specific field, and never will — every product-specific knob goes in
  * {@link options}, which Studio passes through without reading.
  *

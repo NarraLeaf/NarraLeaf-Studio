@@ -323,6 +323,9 @@ export function useStageSlotSurfaceRuntime(input: {
 
 const STATIC_SURFACE_LIFECYCLE_SIGNALS = { beforeSurfaceExit: 0, afterSurfaceEnter: 0 };
 
+/** See the note on `NO_WIDGET_RUNTIME_PATCHES` in AppSurfaceLayer: a fresh `{}` defeats the memo. */
+const NO_WIDGET_RUNTIME_PATCHES: Record<string, DevModeWidgetRuntimePatch> = {};
+
 /**
  * Shared render body for Game UI slot surfaces: lifecycle boundary + widget runtime provider +
  * surface renderer. Slot components wrap this in their slot-specific NLR chrome.
@@ -339,13 +342,19 @@ export function StageSlotSurfaceBody(props: {
     runtime: StageSlotSurfaceRuntime;
     /** "none" makes the surface shell click-through (On-Stage overlay). */
     surfacePointerEvents?: CSSProperties["pointerEvents"];
+    /** Display-only slot: no widget inside takes pointer events (notification toasts). */
+    passive?: boolean;
 }) {
-    const { options, surface, runtime, surfacePointerEvents } = props;
+    const { options, surface, runtime, surfacePointerEvents, passive } = props;
     const { core, bundle, rendererRegistry, lifecycleRef, makeStateAccessors, widgetRuntimeStore, widgetPatchesByScopeRef } = options;
     const document = bundle.ui.uidoc;
     const { runtimeScopeId, hostAdapter } = runtime;
     const [subscriptionsReady, setSubscriptionsReady] = useState(false);
     const handleRuntimeSubscriptionsReady = useCallback(() => setSubscriptionsReady(true), []);
+    const getWidgetRuntimePatches = useCallback(
+        () => widgetPatchesByScopeRef.current[runtimeScopeId] ?? NO_WIDGET_RUNTIME_PATCHES,
+        [runtimeScopeId, widgetPatchesByScopeRef],
+    );
 
     const globalStateReader = useMemo(() => {
         if (!core) {
@@ -390,10 +399,13 @@ export function StageSlotSurfaceBody(props: {
                     scale={1}
                     hostAdapter={hostAdapter}
                     blueprintBindingContext={bindingContext}
-                    getWidgetRuntimePatches={() => widgetPatchesByScopeRef.current[runtimeScopeId] ?? {}}
+                    getWidgetRuntimePatches={getWidgetRuntimePatches}
                     surfaceLifecycleSignals={STATIC_SURFACE_LIFECYCLE_SIGNALS}
                     onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     surfacePointerEvents={surfacePointerEvents}
+                    passive={passive}
+                    // The uidoc here is the compiled bundle's; nothing edits it in place.
+                    staticDocument
                 />
             </WidgetRuntimeStateProvider>
         </SurfaceLifecycleBoundary>

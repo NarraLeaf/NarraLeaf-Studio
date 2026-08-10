@@ -31,15 +31,14 @@ import { blobAt, readRevisionGraph, threeWay } from "./revisionReader";
 import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote";
 
 /**
- * D0 of docs/plans/2026-07-31-004: the measurement harness for five unknown Lore
- * behaviours.
+ * A measurement harness for five unknown Lore merge behaviours.
  *
  * **This file is a probe, not a spec.** Every other integration test in this directory
  * asserts a behaviour that was measured first and written down second. Here nothing has
- * been measured yet: §1.6 of the plan lists five questions whose answers change the
- * design, and an `expect(...)` about any of them would be a guess wearing the costume of
- * a test. So each experiment collects observations into a plain object and PRINTS it.
- * The only assertions are liveness ones - the experiment ran and produced something.
+ * been measured yet: five open questions about automerge decide the design, and an
+ * `expect(...)` about any of them would be a guess wearing the costume of a test. So each
+ * experiment collects observations into a plain object and PRINTS it. The only assertions
+ * are liveness ones - the experiment ran and produced something.
  *
  * Reading the output is the deliverable. Nothing here decides anything.
  *
@@ -331,7 +330,7 @@ function sha256(bytes: Buffer): string {
  * The working tree copy of a document, described without interpreting it.
  *
  * `text` is printed verbatim and in full. It is small, and it is the single most
- * important observation of D0 - a summary of it would be exactly the guess this file
+ * important observation these experiments make - a summary would be exactly the guess this file
  * exists to avoid.
  */
 function readWorkingCopy(absolute: string, needles: Readonly<Record<string, string>>) {
@@ -386,7 +385,7 @@ const NON_ADJACENT_NEEDLES = {
  * All EIGHT of Lore's per-file conflict flags for one path.
  *
  * Three of them (`conflictAutomerged` / `conflictMine` / `conflictTheirs`) were being
- * decoded and discarded until this card; nothing has ever seen what they hold on a real
+ * decoded and discarded until now; nothing has ever seen what they hold on a real
  * conflict, which is why they are reported raw here rather than folded into a verdict.
  */
 function statusFlags(files: readonly LoreStatusFilePayload[], relative: string) {
@@ -700,11 +699,11 @@ function serverUrl(name: string): string {
 
 describe.skipIf(!remoteEnabled)("E6 - conflict through revisionSync", () => {
     /**
-     * The path Studio will actually hit (plan §4.1), and the one §7 of the plan does not
+     * The path Studio will actually hit, and the one the resolution design does not
      * cover: a merge nobody started with `branchMergeStart`.
      *
      * Whether Lore considers a sync-induced merge the same kind of in-progress merge -
-     * whether the resolve verbs even apply to it - decides whether D6 has one resolution
+     * whether the resolve verbs even apply to it - decides whether resolution has one
      * pipeline or two.
      */
     it("reports what a diverged sync leaves behind, and whether the resolve verbs apply to it", async () => {

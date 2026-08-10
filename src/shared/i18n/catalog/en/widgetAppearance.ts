@@ -7,7 +7,6 @@ export const widgetAppearance = {
     variant: {
         nameLabel: "Variant name",
         untitled: "Untitled variant",
-        defaultName: "Variant {index}",
         addTitle: "Add variant (duplicate current)",
         setDefaultTitle: "Set as default variant",
         deleteTitle: "Delete variant",
@@ -139,7 +138,7 @@ export const widgetAppearance = {
         toggleTitle: "Require {condition} = true (cycle: unset → true → false)",
         overridesTitle: "State overrides (advanced)",
         overridesHint:
-            "For a single hover/active/disabled/focused override, use the module header instead. Last matching row wins per property.",
+            "For a single hover, active, disabled or focused override, use the module header. Per property, the last matching row applies.",
         conditionalRows: "Conditional rows",
         removeRow: "Remove row",
         addRowManually: "Add row manually",

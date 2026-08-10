@@ -14,7 +14,7 @@ import {
 import { motion } from "motion/react";
 import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
-import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
@@ -263,7 +263,9 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const showLabel = displayLabel.trim().length > 0;
     const hasChildNodes = children != null && Children.count(children) > 0;
 
-    const color = colorValueToCss({ hex: p.color, alpha: 1 });
+    // The label colour can be a brand link, so it is read before it is painted: passing the
+    // stored string in as `hex` would leave `normalizeHex` to reject it and paint white.
+    const color = colorValueToCss(parseColorValue(p.color, { hex: "#FFFFFF", alpha: 1 }));
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
     const labelTextShadow = effectShadowStoredToCss(v.effects.effectTextShadow, "outer");
     const labelTypography: CSSProperties = {

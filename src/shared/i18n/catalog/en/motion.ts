@@ -130,7 +130,7 @@ export const motion = {
         previewBackgroundTitle: "Preview background image (editor only)",
         selectOrCreate: "Select or create a story motion.",
         deleteConfirm: "Delete motion \"{name}\"?",
-        deleteDetail: "This removes the motion asset and closes related editors.",
+        deleteDetail: "The motion asset is removed and related editors are closed.",
         clearAria: "Clear {name}",
     },
 

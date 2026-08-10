@@ -14,7 +14,7 @@ export const bg = defineStoryCommand({
     category: "scene",
     icon: Wallpaper,
     examples: ["/bg forest_day", "/bg forest_day t=fade d=0.5", "/bg #101018"],
-    // Inline quick-edit (WI-2): the transition duration. The transition kind (`t`, an enum) stays an
+    // Inline quick-edit: the transition duration. The transition kind (`t`, an enum) stays an
     // inspector choice — a qualitative pick, not a high-frequency micro-adjust.
     quickParams: ["d"],
     params: {

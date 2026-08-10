@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { UILayersPanel } from "@/lib/ui-editor/interaction";
@@ -21,7 +21,15 @@ export type SurfaceOutlinePanelProps = {
     readOnly?: UIEditorReadOnly;
 };
 
-export function SurfaceOutlinePanel({
+/**
+ * Memoised because the editor tab re-renders on every document revision, and this subtree is the
+ * most expensive thing under it - one dnd-kit draggable per layer. Every prop here is either a
+ * string, a boolean, a service instance or a memoised object, so the comparison holds for edits and
+ * releases only when the outline is genuinely being handed something different. What the outline
+ * itself has to redraw is decided inside `UILayersPanel`, which watches its own slice of the
+ * document.
+ */
+export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
     surfaceId,
     stateService,
     documentService,
@@ -58,7 +66,9 @@ export function SurfaceOutlinePanel({
         return null;
     }
 
-    const panelClasses = `absolute inset-y-0 left-0 z-10 w-64 border-r border-edge-subtle bg-surface-sunken transition-transform duration-200 ease-out ${
+    // A column, so the header keeps its height and the tree gets whatever is left - without this the
+    // tree's own `h-full` measured the whole panel and pushed its tail out of view with no way back.
+    const panelClasses = `absolute inset-y-0 left-0 z-10 flex w-64 flex-col border-r border-edge-subtle bg-surface-sunken transition-transform duration-200 ease-out ${
         isCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"
     }`;
 
@@ -67,7 +77,7 @@ export function SurfaceOutlinePanel({
     return (
         <>
             <div className={panelClasses}>
-                <div className="px-3 py-2 border-b border-edge text-xs text-fg-subtle flex items-center justify-between">
+                <div className="shrink-0 px-3 py-2 border-b border-edge text-xs text-fg-subtle flex items-center justify-between">
                     <span>{t("uiEditor.editor.outlineTitle")}</span>
                     <button
                         type="button"
@@ -79,7 +89,10 @@ export function SurfaceOutlinePanel({
                     </button>
                 </div>
                 {!isCollapsed && (
-                    <div className="h-full">
+                    // `min-h-0` is what lets a flex child shrink below its content; without it the
+                    // overflow never engages. `overscroll-contain` keeps a wheel that runs off the end
+                    // of the tree from reaching the canvas behind it and zooming instead.
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                         {canShowLayers ? (
                             <UILayersPanel
                                 surfaceId={surfaceId}
@@ -109,4 +122,4 @@ export function SurfaceOutlinePanel({
             )}
         </>
     );
-}
+});

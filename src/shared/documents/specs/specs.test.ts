@@ -15,7 +15,7 @@ import {resolveDocumentSpecForPath} from "@shared/documents/registry";
 import {DocumentSpec} from "@shared/documents/types";
 import {LocalizationDocument, LocalizationKeysDocument} from "@shared/types/localization";
 import {VoiceDocument} from "@shared/types/voice";
-import {VariableRegistry} from "@shared/types/variables/registry";
+import {VARIABLE_REGISTRY_SCHEMA_VERSION, VariableRegistry} from "@shared/types/variables/registry";
 
 class MemoryStorage implements DocumentStorage {
     public readonly files = new Map<string, string>();
@@ -125,9 +125,9 @@ describe("document specs: optional fields survive a round trip", () => {
 
     it("round-trips a variable registry with every optional field absent", async () => {
         const document: VariableRegistry = {
-            schemaVersion: 1,
+            schemaVersion: VARIABLE_REGISTRY_SCHEMA_VERSION,
             entries: {
-                gold: {id: "gold", name: "Gold", valueType: "number", storageKey: "gold"},
+                gold: {id: "gold", name: "Gold", scope: "persistent", valueType: "number", storageKey: "gold"},
             },
         };
 
@@ -136,11 +136,12 @@ describe("document specs: optional fields survive a round trip", () => {
 
     it("round-trips a variable registry with every optional field present", async () => {
         const document: VariableRegistry = {
-            schemaVersion: 1,
+            schemaVersion: VARIABLE_REGISTRY_SCHEMA_VERSION,
             entries: {
                 gold: {
                     id: "gold",
                     name: "Gold",
+                    scope: "saved",
                     valueType: "number",
                     defaultValue: 0,
                     storageKey: "gold",

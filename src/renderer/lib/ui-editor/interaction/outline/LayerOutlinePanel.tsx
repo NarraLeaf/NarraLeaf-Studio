@@ -29,6 +29,7 @@ import {
     OutlineDragPreview,
     OutlineSubtree,
 } from "@/lib/ui-editor/interaction/outline/LayerOutlineRows";
+import { computeOutlineSignature } from "@/lib/ui-editor/interaction/outline/outlineSignature";
 import { useLayerOutlineContextMenus } from "@/lib/ui-editor/interaction/outline/useLayerOutlineContextMenus";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -44,6 +45,7 @@ import {
 // `menuRow()` onto. Same import direction as `useUIEditorKeybindings`, which reaches for the
 // workspace's keybinding hooks.
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
+import { DEVELOPER_MENU_ROW_IDS } from "@/lib/developer";
 
 export type UILayersPanelProps = {
     surfaceId: string;
@@ -60,14 +62,14 @@ export type UILayersPanelProps = {
 /**
  * The outline menu rows a read-only surface keeps: the ones that only read.
  *
- * Copy fills the clipboard, `copy-element-id` writes to it too, Select All / Expand All / Collapse All
- * move selection and editor state. Everything else - insert, paste, cut, duplicate, rename, delete,
- * visibility, group, add-to-library, and whatever a widget module contributes under `sep-widget` -
- * edits the document, so it is not named here and is therefore disabled.
+ * Copy fills the clipboard, the developer section copies identifiers into it, Select All / Expand All
+ * / Collapse All move selection and editor state. Everything else - insert, paste, cut, duplicate,
+ * rename, delete, visibility, group, add-to-library, and whatever a widget module contributes under
+ * `sep-widget` - edits the document, so it is not named here and is therefore disabled.
  */
 const READ_ONLY_OUTLINE_MENU_IDS: ReadonlySet<string> = new Set([
     "copy",
-    "copy-element-id",
+    ...DEVELOPER_MENU_ROW_IDS,
     "select-all",
     "expand-all",
     "collapse-all",
@@ -174,13 +176,22 @@ export function UILayersPanel({
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
 
+    // Redraw for the changes the outline can show, and ignore the rest. See `computeOutlineSignature`
+    // for why: a row is not a cheap `<li>`, it is a dnd-kit draggable, and there are one per layer.
+    const outlineSignatureRef = useRef<string | null>(null);
     useEffect(() => {
+        outlineSignatureRef.current = computeOutlineSignature(documentService.getDocument(), surfaceId);
         return documentService.onDocumentChanged(() => {
+            const next = computeOutlineSignature(documentService.getDocument(), surfaceId);
+            if (next === outlineSignatureRef.current) {
+                return;
+            }
+            outlineSignatureRef.current = next;
             startTransition(() => {
                 setDocVersion(v => v + 1);
             });
         });
-    }, [documentService]);
+    }, [documentService, surfaceId]);
 
     useEffect(() => {
         return stateService.on("selectionChanged", selectionNext => {

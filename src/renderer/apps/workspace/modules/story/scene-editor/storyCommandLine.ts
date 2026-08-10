@@ -1,11 +1,15 @@
 import type {
     StoryActionPayload,
     StoryBlock,
+    StoryDeclarationPayload,
+    StoryLiteralValue,
     StoryTransformPreset,
     StoryTransformRef,
     StoryTransitionRef,
+    StoryVariableValueType,
 } from "@shared/types/story";
 import {
+    declarationDefaultForType,
     layerActionTargetRef,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
@@ -27,7 +31,8 @@ import { ACTION_TRIGGER } from "./commandTrigger";
 import { localizedEnumValue } from "./commands/localizedEnums";
 import { localizedParamKey } from "./commands/localizedParams";
 import { localizedUnit } from "./commands/localizedUnits";
-import { getDefById, localizedCommandToken } from "./commands/registry";
+import { getDefById, localizedCommandToken, retiredCommandToken } from "./commands/registry";
+import { DECLARATION_COMMANDS } from "./commands/specs/variables";
 import {
     transformPresetFor,
     transitionKindFor,
@@ -62,15 +67,15 @@ import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues
  * a row is not allowed to display a command the editor would refuse.
  *
  * **Why a hand-written table rather than a generic inverse of `spec.build`.** `build` is many-to-one
- * by design (bible B3: `/show` lands on six different payloads, `/swap` on two) and lossy on purpose
+ * by design (`/show` lands on six different payloads, `/swap` on two) and lossy on purpose
  * (`t=fade` becomes `fadeIn` or `dissolve` depending on context). There is no mechanical inverse to
  * derive. What CAN be shared is the vocabulary, and all of it is: the verb comes from
  * {@link storyVerbCommandId} (the same table the row's verb word already used), the keys from
  * {@link localizedParamKey}, the enum words from {@link localizedEnumValue}, and the transition words
  * from the same `transitions.ts` tables `build` writes through, read backwards.
  *
- * `null` means "no command owns this row" — an inspector-only displayable operation, a declaration, a
- * prose row. The caller keeps whatever it was already showing; this never invents a line.
+ * `null` means "no command owns this row" — an inspector-only displayable operation, a container
+ * header, a prose row. The caller keeps whatever it was already showing; this never invents a line.
  */
 
 /**
@@ -243,21 +248,38 @@ function booleanValue(value: boolean | undefined): string {
 }
 
 /**
- * Quote a value the tokenizer would otherwise split. A value containing a single quote is wrapped in
- * double quotes, since the tokenizer has no escape syntax and both kinds group identically.
+ * Quote a value the tokenizer would otherwise mis-read. A value containing a single quote is wrapped
+ * in double quotes, since the tokenizer has no escape syntax and both kinds group identically.
+ *
+ * Three characters force the quotes, and all three for the same reason — bare, they make the line
+ * parse as something other than this value:
+ *
+ *  - **whitespace** splits one token into two;
+ *  - **`=`** turns the token into a `key=value` pair, so a default of `a=b` reads as an unknown param;
+ *  - **a quote character** opens a group that never closes, and the rest of the line falls inside it —
+ *    which is how a description reading `it's fine` came back as an unterminated quote.
  *
  * A GREEDY slot is never quoted: it takes the rest of the line verbatim, so the quotes would land in
  * the value itself and a `/rename Alice The Stranger` would read back as one called `'The Stranger'`.
  */
 function quoteValue(value: string, greedy: boolean): string {
-    if (greedy || !/\s/.test(value)) {
+    if (greedy) {
+        return value;
+    }
+    // The empty string is a fourth case, and the quotes are not decoration: bare, it is not a token at
+    // all, so the only way to WRITE one is an empty quoted token. Only an arg built directly can carry
+    // it here — `arg()` reads `""` as "nothing to say" and drops the arg.
+    if (value === "") {
+        return "''";
+    }
+    if (!/[\s='"]/.test(value)) {
         return value;
     }
     return value.includes("'") ? `"${value}"` : `'${value}'`;
 }
 
 /**
- * The pause lengths `/wait` offers beside its input — the bible's B10 "high-frequency" set, in the
+ * The pause lengths `/wait` offers beside its input — the "high-frequency" set, in the
  * seconds the line is written in.
  */
 const WAIT_PRESET_SECONDS = [0.2, 0.5, 1, 2, 3] as const;
@@ -997,7 +1019,7 @@ function actionSentence(
             return {
                 commandId,
                 args: [
-                    positional("variable", variableRefShortLabel(payload.target, lookups.scene, lookups.scenes), variables.length === 0 ? {} : {
+                    positional("variable", variableRefShortLabel(payload.target, lookups), variables.length === 0 ? {} : {
                         // Keyed by the ref's own key, since a variable is a scope plus an id rather
                         // than a name — two scopes may hold the same word.
                         choices: variables.map(entry => ({ value: storyVariableRefKey(entry.ref), label: entry.name })),
@@ -1015,7 +1037,7 @@ function actionSentence(
             return {
                 commandId,
                 args: [payload.mode === "duration"
-                    // The house set (bible B10) rides along, so the common pauses are one click rather
+                    // The house set rides along, so the common pauses are one click rather
                     // than a number to type.
                     ? positional("seconds", seconds(payload.durationMs), {
                         presets: WAIT_PRESET_SECONDS,
@@ -1101,8 +1123,83 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
         // that lies about what the row is.
         return null;
     }
-    // Prose, notes, declarations and invalid drafts all read as themselves already.
+    if (block.kind === "declaration") {
+        return declarationSentence(block.payload);
+    }
+    // Prose, notes and invalid drafts all read as themselves already.
     return null;
+}
+
+/**
+ * A declaration row as the line that declares it — `/local hp 100 type=number desc='Player health'`.
+ *
+ * This row was the last one printing a *description* (`hp: number = 100`) after every other row had
+ * moved to printing its line, and the carve-out that kept it there does not survive contact with its
+ * own reason: "no command owns this row". `/local` owns it exactly the way `/hide` owns a hide row —
+ * it is the command that built it, `declarationFromArgs` is a pure reader of the same args, and the
+ * round trip in `storyCommandLine.test.ts` proves the line rebuilds the payload. The rows that still
+ * answer `null` above fail a test this one passes: a container header holds children, and a
+ * `/blueprint` line has no arguments to carry what the row says.
+ *
+ * The prose reading cost the author two things a line does not: the type came out as the internal
+ * `number` in an editor set to Chinese (the row said a word the author cannot type, in a language
+ * they are not writing in), and the description was simply not shown — a row that says less than the
+ * line that made it.
+ *
+ * `type=` is always written, even where the author left it out. A declaration's type is INFERRED from
+ * the default when it is omitted (`/local hp 100` is a number), so the row printing it is the row
+ * saying what the editor decided — the one thing an author most needs to see confirmed, and the same
+ * reason `/hide Alice` reads back with the transition it defaulted to.
+ */
+function declarationSentence(payload: StoryDeclarationPayload): Sentence {
+    return {
+        commandId: DECLARATION_COMMANDS[payload.scope],
+        args: [
+            // The name is printed, never offered: unlike a stage object's name it is safe to change
+            // (v6 references resolve by the row's id, not by spelling), but it is still text with no
+            // closed list behind it — the same slot `/rename`'s new name fills.
+            positional("name", payload.name),
+            declarationDefaultArg(payload.defaultValue),
+            arg("type", payload.valueType, {
+                enum: true,
+                // The default follows the type, exactly as the inspector's dropdown makes it follow:
+                // one shared rule, or a retype would leave a different value behind depending on
+                // which surface the author did it from — and `hp: boolean = 100` is a variable whose
+                // own line contradicts itself.
+                apply: next => ({
+                    ...payload,
+                    valueType: next as StoryVariableValueType,
+                    defaultValue: declarationDefaultForType(next as StoryVariableValueType),
+                }),
+            }),
+            arg("desc", payload.description),
+        ],
+    };
+}
+
+/**
+ * A declaration's stored default as the token that reads back to it, or `null` when it declares none.
+ *
+ * Written with its KEY (`初始值=false`) even though the slot is positional, and it is the only arg in
+ * the table that is. The name is the row's subject; everything after it is a modifier, and a bare
+ * `false` sitting between the name and `类型=布尔` was the one token on the line with nothing to say
+ * what it was. Keys are the author's own setting to hide (`editor.hideParamNames`), which is what
+ * makes spelling this one out the safe default rather than an imposition.
+ *
+ * Built directly rather than through {@link arg} for one value: the EMPTY string. `arg()` reads `""`
+ * as "nothing to say" and drops the arg, and dropping this one would declare a different variable —
+ * an absent default is never seeded at all (a saved one seeds `null`), while an empty one seeds the
+ * empty string, and `""` is exactly what a retype to `string` leaves behind. {@link quoteValue} is
+ * what makes it a legal token.
+ *
+ * Everything that is not a string goes through `JSON.stringify`, which writes numbers, booleans,
+ * `null`, lists and objects in the one syntax `parseLiteral` reads back.
+ */
+function declarationDefaultArg(value: StoryLiteralValue | undefined): Arg | null {
+    if (value === undefined) {
+        return null;
+    }
+    return { param: "default", value: typeof value === "string" ? value : JSON.stringify(value) };
 }
 
 /**
@@ -1119,6 +1216,15 @@ export function projectStoryCommandLine(block: StoryBlock, lookups: StoryCommand
     const def = getDefById(sentence.commandId);
     // The verb in the author's own command language, and always a spelling the parser accepts —
     // `localizedCommandToken` comes out of the same pass that built the parser's accept table.
-    const verb = def ? localizedCommandToken(def) : sentence.commandId;
+    //
+    // A row whose command was RETIRED has neither: no def, so no localized spelling and no localized
+    // keys either, and the whole line comes out in the source vocabulary. It still has to say the verb
+    // the author would have typed — a `saved` declaration surviving in a frozen project reads
+    // `/save Honest type=boolean`, not `/declareVar Honest type=boolean`, which is a name from the
+    // inside of this module and is also what the script export would put in the file.
+    //
+    // That line no longer re-parses, and must not: re-importing it would recreate a project-scope
+    // declaration inside a story document, which is the shape the retirement exists to remove.
+    const verb = def ? localizedCommandToken(def) : retiredCommandToken(sentence.commandId) ?? sentence.commandId;
     return writeLine(def, verb, sentence.args);
 }

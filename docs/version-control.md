@@ -20,7 +20,7 @@ Studio 的版本控制以 [Epic Games Lore](https://github.com/EpicGames/lore) �
 | 能纯离线吗 | **单机能**，已验证；团队场景首次读远端历史要联网 |
 | 原生库能进 Electron 吗 | **能**，Electron 38 直接可用，无需重编 |
 | 需要写服务端包装吗 | **P0 不需要**，见 §5。局域网协作已实现，连接流程见 §5.3.1 |
-| Intel Mac 怎么办 | **VCS 做成可插拔可降级**，Studio 照常全平台分发，见 §7 |
+| Intel Mac 怎么办 | 当时的答案是**可插拔可降级**；后来 Studio 直接**不再发 Intel Mac 宿主**，见 §7 |
 
 ## 1. Lore 架构（够用的最小认知）
 
@@ -413,7 +413,7 @@ stage / commit 本身在三种配置下都是 5–20 ms，**开销全在等待**
 
 ---
 
-> **§4.23–§4.30 来自 2026-08-01 的合并实测**（卡 [2026-07-31-004](plans/2026-07-31-004-plan-vcs-diff-and-resolve.md) 的 D0）。
+> **§4.23–§4.30 来自 2026-08-01 的合并实测。**
 > 此前仓库里**没有一行代码碰过 Lore 的合并面**，所以这八条全部是第一次测量。脚本是
 > `mergeSpike*.integration.test.ts`（打真 DLL，其中三条要真 loreserver 0.8.5）。
 > **§4.29 值得单独读**：它记的是一条真缺陷，也记着这条缺陷第一次被归因错了——错的那版会让
@@ -440,7 +440,7 @@ SyntaxError: Expected double-quoted property name in JSON at position 423
 | `doc.json~theirs` | 能 parse，sha256 **与 `blobAt(theirs)` 逐字节相同** |
 
 也就是说三路合并的三个输入**已经在磁盘上了**，各自是一份完整、可解析的文档。写回管线
-**既不需要读那份带标记的文件，也不需要从 DAG 重建**——计划 §6 里那个「若 automerge 破坏 JSON
+**既不需要读那份带标记的文件，也不需要从 DAG 重建**——原先「若 automerge 破坏 JSON
 就改用 `threeWay` 重建」的备案，被一个更简单的答案取代了。
 
 **并且这三个附属文件不会进提交**：解决之后提交，修订里只有 `doc.json`（实测
@@ -449,7 +449,7 @@ SyntaxError: Expected double-quoted property name in JSON at position 423
 **这条对 Studio 还差半步，已补测**（`sidecarStaging.integration.test.ts`）：上面那次测量是
 「解决完直接 commit」，而 Studio 的提交路径**先 `stage(globals, [root])` 整棵树**，那一刻三个
 附属文件正躺在工作树里。补测结论是 **`stage` 连报都不报它们**（`stagedSidecars: []`），提交里
-仍然只有 `doc.json`。所以 D6 的写回管线不需要为它们做任何排除——但这是**实测**来的，不是从
+仍然只有 `doc.json`。所以写回管线不需要为它们做任何排除——但这是**实测**来的，不是从
 上一段推的，两者的提交姿势不一样。
 
 ### 4.24 冲突路径**只在事件流里出现一次**，`repositoryStatus` 永远不报
@@ -489,13 +489,13 @@ SyntaxError: Expected double-quoted property name in JSON at position 423
 | `branch_merge_resolve_mine` | 用 mine **覆写**工作树 | mine |
 | `branch_merge_resolve_theirs` | 用 theirs **覆写**工作树 | theirs |
 
-**所以逐变更解决（计划的第二档）在机制上是通的**：先把合并结果写进工作树，再
+**所以逐变更解决（第二档）在机制上是通的**：先把合并结果写进工作树，再
 `branchMergeResolve([绝对路径])`，提交出来的就是它。
 
 两条附带实测：
 
 - **不需要 `fileStageMerge`。** 直接 `revisionCommit` 就成功（本地路径与同步路径都是），
-  计划 §1.4 里那个「暂存合并结果」的步骤是多余的。
+  「暂存合并结果」这一步是多余的。
 - `_mine` / `_theirs` **不发** `BRANCH_MERGE_RESOLVE_FILE` 事件（`files: []`），只有
   `resolve` 发。想确认哪些路径被解决了，得看工作树，不能看事件。
 
@@ -518,7 +518,7 @@ SyntaxError: Expected double-quoted property name in JSON at position 423
 整棵工作树按内容哈希做清单，合并前 / 合并后 / abort 后三次对比：abort 后与合并前
 **逐文件相同**（`differsFromBeforeMerge: []`），三个附属文件也被删干净，status 回到合并前。
 
-**所以「取消合并」这个按钮可以存在**（计划 §4.4 把它挂在这条实测上）。
+**所以「取消合并」这个按钮可以存在**，它就挂在这条实测上。
 
 ### 4.28 仓库锁在**同一个进程内**同样是阻塞的
 
@@ -573,8 +573,8 @@ globals**。所以：
   逐个读，**A、B 全程都读得出**——没有跨工程波及；
 - **已发布的 V5a 没有因此受损**，同步之后不需要让作者重启。
 
-**唯一会踩到它的是本卡自己**：冲突解决之后那次 commit 如果走在线 globals，作者刚解决出来的
-字节就会在当前进程里读不回来。所以 **D6 的写回管线必须用离线 globals 提交**——合并是在线
+**唯一会踩到它的是写回管线自己**：冲突解决之后那次 commit 如果走在线 globals，作者刚解决出来的
+字节就会在当前进程里读不回来。所以 **写回管线必须用离线 globals 提交**——合并是在线
 动作，提交不是，这两件事在同一条管线里必须用不同的 globals。这条没有测过，因为那条管线还
 不存在；写它的时候按这条来，并在它的集成测试里钉住。
 
@@ -600,7 +600,7 @@ baseFromUnionGraph:      e40c23c2…     ← 两个分支的图合起来就找�
 修法有两个，都成立：把两边分支的 `history` 并起来再算 LCA；或者干脆**用 §4.23 的
 `~base` 附属文件**——合并态下它就在磁盘上，比重算 LCA 更直接也更便宜。
 
-> **已修（D7 模型半，2026-08-01）**：取的是第一种。`revisionReader.ts` 加了
+> **已修（2026-08-01）**：取的是第一种。`revisionReader.ts` 加了
 > `readMergeGraph(globals, tips)`（当前分支 → 每个未覆盖的 tip 走 `history({revision})` →
 > 仍有洞才并全部分支）与 `graphCoversAncestry(graph, tip)`，`threeWay` 改用前者。
 > **实测：`history(globals, {revision: theirs})` 一步就够**，它给的 2 个节点里就有真 base，
@@ -609,7 +609,7 @@ baseFromUnionGraph:      e40c23c2…     ← 两个分支的图合起来就找�
 > **没用 `~base` 附属文件，理由是寻址方式不同**：`threeWay` 是按「两个修订」提问的，要对
 > 任意一对修订作答（历史里两点比较、还没开始的合并、Lore 自动合掉因而根本没写附属文件的
 > 路径）；附属文件只在合并进行中、且只为冲突路径存在，上面三种它一个都答不了，也分不出
-> 「add/add」和「Lore 干净合掉了」。附属文件仍是 D6 写回管线的正解——那条路径确实在合并态里。
+> 「add/add」和「Lore 干净合掉了」。附属文件仍是写回管线的正解——那条路径确实在合并态里。
 >
 > 同时补上的是**「找不到 base」的两种含义要分开**：`ThreeWay.baseStatus` 现在是
 > `found` / `absent-in-base` / `no-common-ancestor` / `indeterminate`。前两者之外，
@@ -617,7 +617,7 @@ baseFromUnionGraph:      e40c23c2…     ← 两个分支的图合起来就找�
 > 正是本条缺陷发货时的样子。
 >
 > **还没修**：`VcsManager.getMergeBase` 仍旧走 `readRevisionGraph`，同一个洞原样还在
-> （`VcsManager.ts` 属于 D6 的地盘，本卡没碰）。
+> （`VcsManager.ts` 不在这次改动的范围内）。
 
 ### 4.31 ⚠️ 同步之后，`_mine` / `_theirs` 两个 verb **跟附属文件和冲突标记是反的**
 
@@ -681,7 +681,7 @@ Failed to parse JSON from <project>/editor/story/index.json
 **一旦真的有东西要解决，解决界面就够不着了**——而「关掉窗口第二天再回来」正是 §4.24
 那套附属文件探测存在的理由。
 
-裁决按本卡计划 §6：**因为合并没做完而无法解析的文档，不是损坏文档**，把它挪进隔离区等于
+裁决：**因为合并没做完而无法解析的文档，不是损坏文档**，把它挪进隔离区等于
 给一份好文件贴坏标签。而「有没有合并在进行」在**解析任何文档之前**就问得出来——
 `readMergeState` 只要状态头 + 一次附属文件遍历。
 
@@ -800,7 +800,7 @@ clone**，但**连接是两件事，只做第一件会静默地半成功**。
 
 单机场景（P0）完全不涉及这些——所有 fragment 本来就在本地。
 
-## 7. 可插拔与降级 —— Studio 依旧全平台分发
+## 7. 可插拔与降级 —— 缺后端只砍一个功能，不砍整个 app
 
 v0.8.5 官方产物只有四个：
 
@@ -813,7 +813,22 @@ v0.8.5 官方产物只有四个：
 | **`darwin-x64`（Intel Mac）** | ❌ **没有** |
 | **`win32-arm64`** | ❌ **没有** |
 
-**决定：不砍平台，砍能力。** Studio 在所有平台照常分发；没有原生构建的机器上，版本控制这一个功能报告自己不可用，其余功能完全不受影响。
+**当时的决定：不砍平台，砍能力。** 没有原生构建的机器上，版本控制这一个功能报告自己不可用，其余功能完全不受影响。
+
+> **⚠ 后续推翻（Intel Mac 部分）：Studio 不再把 Intel Mac 当宿主平台，只发 Apple Silicon 版。**
+>
+> 降级机制本身没变，也仍然必须留着——`win32-arm64` 还在用它。变的是 `darwin-x64`：那台机器上缺的
+> 不止版本控制，还有 iOS 签名（zsign 不发 macOS x64 资产）和媒体转换（我们的 LGPL ffmpeg 只编
+> arm64），三个子系统里两个不归我们管。作者会在把内容投进工具**之后**一个一个撞上去，而
+> 「这个平台不支持」是一次性的诚实坏消息。Rosetta 也是单向的：x64 能跑在 Apple Silicon 上，arm64
+> 不能跑在 Intel 上，所以 arm64 安装包不是替代品。决定与理由写在
+> [.github/workflows/release.yml](../.github/workflows/release.yml) 顶部。
+>
+> **这说的是 Studio 跑在哪，不是游戏跑在哪。** 作者在 Apple Silicon 上做的游戏仍然可以打给
+> Intel Mac，见 `GAME_BUILD_ARCHS_BY_PLATFORM`（`src/shared/types/gameBuild.ts`）。
+>
+> 所以下表里 `darwin-x64` 那行现在是「不会被命中」而不是「会降级」；本节其余内容照旧适用于
+> `win32-arm64` 与自建库（`LORE_LIB_PATH`）。
 
 ### 为什么必须是动态加载
 
@@ -961,8 +976,7 @@ window[RendererInterfaceKey].vcs
 ## 10. 待解问题
 
 - **界面尚未对接**。渲染进程的框架层已落（`VersionControlService`：可用性、状态快照、历史缓存、
-  变更订阅），但还没有任何 VCS 界面消费它。总体规划见
-  [plans/2026-07-27-001-plan-editor-data-and-version-control.md](plans/2026-07-27-001-plan-editor-data-and-version-control.md)
+  变更订阅），但还没有任何 VCS 界面消费它。
 - **仓库来源已定，尚未实现**：项目目录 == 仓库根（`repositoryCreate` 就在项目根建 `.lore/`，
   没有第二种布局）。**不自动建库**——建库会在项目根写独占锁，必须是作者的显式决定。入口留在
   项目设置 + 新建项目向导，属 V1

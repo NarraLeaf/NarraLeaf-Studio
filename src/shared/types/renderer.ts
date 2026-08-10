@@ -2,6 +2,9 @@ import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/u
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
+import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
+import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -10,7 +13,7 @@ import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbilit
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
-import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowPayload } from "./devMode";
+import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
@@ -37,10 +40,13 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
+import type { UpdateState } from "@shared/constants/update";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
-import type { UITemplateBundle, UITemplateFetchResult } from "./uiTemplateRegistry";
+import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
+import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
+import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
@@ -163,6 +169,8 @@ export interface RendererPreloadedInterface {
     };
 
     selectProjectDirectory(): Promise<RequestStatus<{ dest: string | null }>>;
+    /** Pick the `.nlspkg` an import unpacks; the chosen file becomes readable to this window. */
+    selectProjectPackage(): Promise<RequestStatus<{ dest: string | null }>>;
 
     // Workspace
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
@@ -170,6 +178,26 @@ export interface RendererPreloadedInterface {
     openPsd(): Promise<RequestStatus<{ filePath: string | null; document: PsdDocument | null }>>;
     /** Bake the chosen layers to full-canvas PNGs. */
     bakePsd(request: PsdBakeRequest): Promise<RequestStatus<{ layers: PsdBakedLayer[] }>>;
+    /**
+     * What is inside a media file, and whether the engine can play it as it stands.
+     *
+     * Read-only: it runs ffprobe and returns a verdict. Converting anything is a separate,
+     * explicit step.
+     */
+    probeMedia(path: string): Promise<RequestStatus<{ outcome: MediaProbeOutcome }>>;
+    /**
+     * Converting a media file, polled the way a production build is.
+     *
+     * `start` answers with a job id as soon as the process is up; `getStatus` carries progress while
+     * it runs and the outcome once it stops; `cancel` stops it and removes the partial file. A job
+     * id that means nothing here answers `idle`, which is also what a job answers once it has aged
+     * out of the main process's memory.
+     */
+    mediaConvert: {
+        start(request: MediaConvertRequest): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;
+        cancel(jobId: string): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;
+        getStatus(jobId: string): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;
+    };
     workspace: {
         launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
         /**
@@ -187,9 +215,8 @@ export interface RendererPreloadedInterface {
             byteLength?: number;
             skippedCount?: number;
         }>>;
-        importProjectPackage(): Promise<RequestStatus<{
-            canceled: boolean;
-            projectPath?: string;
+        importProjectPackage(packagePath: string, targetDir: string): Promise<RequestStatus<{
+            projectPath: string;
             projectName?: string;
             fileCount?: number;
             byteLength?: number;
@@ -295,6 +322,8 @@ export interface RendererPreloadedInterface {
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
         /** Removes by path; the main process owns the read-modify-write. */
         removeRecentProject(path: string): Promise<RequestStatus<void>>;
+        /** Shows a remembered project's folder in the OS file manager. Paths outside the history are refused. */
+        revealRecentProject(path: string): Promise<RequestStatus<void>>;
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
         getSystemPath(name: "desktop" | "home"): Promise<RequestStatus<{ path: string }>>;
@@ -332,6 +361,22 @@ export interface RendererPreloadedInterface {
             filePath?: string;
             content?: string;
         }>>;
+        /**
+         * Software updates. The renderer only ever *asks* - what an update is, whether one can be
+         * installed on this host, and how far a download has got are all decided in main
+         * (`UpdateManager`) and pushed through `onStateChanged`.
+         */
+        update: {
+            /** One snapshot, for a surface that just mounted. Changes arrive on `onStateChanged`. */
+            getState(): Promise<RequestStatus<{ state: UpdateState }>>;
+            /** Ask whether a newer release exists. Never starts a download. */
+            check(): Promise<RequestStatus<{ state: UpdateState }>>;
+            /** Start the transfer. Only the Settings panel calls this - see its header for why. */
+            download(): Promise<RequestStatus<{ state: UpdateState }>>;
+            /** Quit and apply what was downloaded. */
+            install(): Promise<RequestStatus<void>>;
+            onStateChanged(handler: (state: UpdateState) => void): AppEventToken;
+        };
     };
 
     devMode: {
@@ -353,6 +398,14 @@ export interface RendererPreloadedInterface {
         forwardBlueprintDebugEvent(payload: DevModeBlueprintDebugEventPayload): void;
         forwardStoryRow(payload: DevModeStoryRowPayload): void;
         onStoryRowHighlight(handler: (payload: DevModeStoryRowHighlight) => void): AppEventToken;
+        /**
+         * Open a story row in the workspace and bring that window forward. Unlike `forwardStoryRow`
+         * this is a deliberate navigation — it opens the scene editor if it is not already open — so
+         * it is only ever called from something the author clicked.
+         */
+        openStoryRowInWorkspace(payload: DevModeStoryRowOpenPayload): Promise<RequestStatus<void>>;
+        /** Workspace side of {@link openStoryRowInWorkspace}. */
+        onStoryRowOpen(handler: (payload: DevModeStoryRowOpenRequest) => void): AppEventToken;
         resolveAssetUrl(assetId: string, assetType?: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         openBlueprintInWorkspace(
@@ -678,6 +731,19 @@ export interface RendererPreloadedInterface {
         removeValue(projectRef: BlueprintPersistenceProjectRef, key: string): Promise<RequestStatus<void>>;
     };
 
+    blueprintNetwork: {
+        /**
+         * One Fetch node request, issued by the main process for a Dev Mode preview.
+         *
+         * `projectPath` decides whose Allow HTTP setting applies; the handler reads it off disk
+         * rather than taking the renderer's word for it.
+         */
+        fetch(
+            projectPath: string,
+            request: BlueprintNetworkFetchRequest,
+        ): Promise<RequestStatus<{ result: BlueprintNetworkFetchResult }>>;
+    };
+
     pluginPermissions: {
         request(request: PluginPermissionRequest): Promise<RequestStatus<PluginPermissionPromptResult>>;
         grant(
@@ -707,6 +773,16 @@ export interface RendererPreloadedInterface {
     uiTemplates: {
         registryFetch(): Promise<RequestStatus<UITemplateFetchResult>>;
         fetchBundle(templateId: string): Promise<RequestStatus<UITemplateBundle>>;
+        /** Documents only, for the store's cards. See {@link UITemplatePreview}. */
+        fetchPreviews(templateIds: string[]): Promise<RequestStatus<UITemplatePreview[]>>;
+        /** Theme poster images, for the browse level. */
+        fetchThemePreviews(themeIds: string[]): Promise<RequestStatus<UIThemePreview[]>>;
+    };
+
+    /** Project templates bundled with this build (resources/templates). */
+    projectTemplates: {
+        list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
+        scaffold(templateId: string, projectPath: string): Promise<RequestStatus<{ filesCopied: number }>>;
     };
 
     assets: {
@@ -719,6 +795,15 @@ export interface RendererPreloadedInterface {
          * then answers `not-modified` and transfers nothing.
          */
         fetchRemote(url: string, validators?: RemoteAssetValidators): Promise<RequestStatus<RemoteAssetFetchResult>>;
+
+        /**
+         * Ask for a folder and copy the named library files into it.
+         *
+         * The dialog belongs to this call: a folder the renderer picks for itself is granted read
+         * access only, so the copying has to happen on the side that can widen the grant. Cancelling
+         * the dialog is a success carrying `canceled: true`, not a failure.
+         */
+        exportToFolder(entries: AssetExportEntry[]): Promise<RequestStatus<AssetExportResult>>;
     };
 
     /**

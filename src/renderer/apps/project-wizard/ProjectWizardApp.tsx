@@ -1,51 +1,56 @@
+import { useMemo } from "react";
+import { AlertCircle, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { AppLayout } from "@/lib/components/layout";
-import { WizardHeader, WizardNavigation } from "./components";
+import { IconButton } from "@/lib/components/elements";
+import { WizardNavigation, WizardSteps } from "./components";
 import { useProjectWizard } from "./hooks/useProjectWizard";
+import { useProjectTemplates } from "./bundledProjectTemplates";
 import { CloneStep } from "./steps/CloneStep";
-import { DetailsStep } from "./steps/DetailsStep";
 import { ImportStep } from "./steps/ImportStep";
+import { OriginStep } from "./steps/OriginStep";
+import { ProjectStep } from "./steps/ProjectStep";
 import { ReviewStep } from "./steps/ReviewStep";
-import { SettingsStep } from "./steps/SettingsStep";
 import { SourceStep } from "./steps/SourceStep";
-import { TemplateStep } from "./steps/TemplateStep";
+import { StageStep } from "./steps/StageStep";
 import { StepConfig, WizardStep } from "./types";
 import type { TranslationKey } from "@shared/i18n";
 
 /**
- * The label and one-line description each page carries in the header, keyed by page.
+ * The rail label each page carries, keyed by page.
  *
- * Every page in every flow is described here rather than per flow: a page belongs to whichever
- * flows list it, and describing it twice is how the same step ends up named two things.
+ * Every page of every flow is named here rather than per flow: a page belongs to whichever flows
+ * list it, and naming it twice is how the same step ends up called two things.
  */
-const STEP_LABEL_KEYS: Record<WizardStep, { label: TranslationKey; description: TranslationKey }> = {
-    template: { label: "wizard.steps.template.label", description: "wizard.steps.template.description" },
-    details: { label: "wizard.steps.details.label", description: "wizard.steps.details.description" },
-    settings: { label: "wizard.steps.settings.label", description: "wizard.steps.settings.description" },
-    review: { label: "wizard.steps.review.label", description: "wizard.steps.review.description" },
-    source: { label: "wizard.steps.source.label", description: "wizard.steps.source.description" },
-    clone: { label: "wizard.steps.clone.label", description: "wizard.steps.clone.description" },
-    import: { label: "wizard.steps.import.label", description: "wizard.steps.import.description" },
+const STEP_LABEL_KEYS: Record<WizardStep, TranslationKey> = {
+    origin: "wizard.steps.origin",
+    project: "wizard.steps.project",
+    stage: "wizard.steps.stage",
+    review: "wizard.steps.review",
+    source: "wizard.steps.source",
+    clone: "wizard.steps.clone",
+    import: "wizard.steps.import",
 };
 
 /**
  * Main Project Wizard Application Component
- * Refactored to use decoupled architecture with services and custom hooks
  */
 export function ProjectWizardApp() {
     const { t } = useTranslation();
+    const templates = useProjectTemplates();
 
-    // Use the custom hook for all wizard logic
     const {
         currentStep,
         steps: stepKeys,
         flow,
+        setFlow,
         remote,
         projectData,
         validationErrors,
         directoryValidation,
         isValidatingDirectory,
         isSelectingDirectory,
+        isSelectingPackage,
         isCreatingProject,
         creationError,
         cloneStatus,
@@ -62,6 +67,7 @@ export function ProjectWizardApp() {
         handleSelectDirectory,
         cloneProject,
         importProject,
+        selectPackage,
         nextStep,
         prevStep,
         createProject,
@@ -69,20 +75,24 @@ export function ProjectWizardApp() {
         clearCreationError,
     } = useProjectWizard();
 
-    // Step configuration - which pages exist depends on the flow the first page started.
-    const steps: StepConfig[] = stepKeys.map(key => ({
-        key,
-        label: t(STEP_LABEL_KEYS[key].label),
-        description: t(STEP_LABEL_KEYS[key].description),
-    }));
+    const steps: StepConfig[] = stepKeys.map(key => ({ key, label: t(STEP_LABEL_KEYS[key]) }));
 
     /**
-     * Handle project creation
+     * The template the author picked, once the list has arrived.
+     *
+     * Resolved here rather than in each page because two of them need it for different reasons -
+     * the stage page needs the sizes it allows, the review page needs its name - and a second
+     * lookup is a second chance to disagree about what "picked" means.
      */
+    const selectedTemplate = useMemo(
+        () => templates.find(template => template.id === projectData.template) ?? null,
+        [templates, projectData.template],
+    );
+
     const handleCreateProject = async () => {
         const result = await createProject();
-        // If successful, closeWith() in projectService will handle window closing
-        // If failed, error is already displayed via creationError state
+        // On success `closeWith()` in projectService closes the window; on failure the message is
+        // already on screen through `creationError`.
         if (!result.success) {
             console.error("Failed to create project:", result.error);
         }
@@ -107,34 +117,25 @@ export function ProjectWizardApp() {
         void handleCreateProject();
     };
 
-    /**
-     * Handle cancel action
-     */
-    const handleCancel = () => {
-        window.close();
-    };
-
-    /**
-     * Render the current step content
-     */
     const renderStepContent = () => {
         switch (currentStep) {
-            case "template":
-                return <TemplateStep projectData={projectData} updateProjectData={updateProjectData} />;
-            case "details":
+            case "origin":
                 return (
-                    <DetailsStep
+                    <OriginStep
+                        projectData={projectData}
+                        updateProjectData={updateProjectData}
+                        flow={flow}
+                        onFlowChange={setFlow}
+                        templates={templates}
+                    />
+                );
+            case "project":
+                return (
+                    <ProjectStep
                         projectData={projectData}
                         updateProjectData={updateProjectData}
                         updateProjectName={updateProjectName}
                         updateAppId={updateAppId}
-                    />
-                );
-            case "settings":
-                return (
-                    <SettingsStep
-                        projectData={projectData}
-                        updateProjectData={updateProjectData}
                         validationErrors={validationErrors}
                         directoryValidation={directoryValidation}
                         isValidatingDirectory={isValidatingDirectory}
@@ -145,8 +146,16 @@ export function ProjectWizardApp() {
                         isSelectingDirectory={isSelectingDirectory}
                     />
                 );
+            case "stage":
+                return (
+                    <StageStep
+                        projectData={projectData}
+                        updateProjectData={updateProjectData}
+                        templateStageSizes={selectedTemplate?.stageSizes ?? []}
+                    />
+                );
             case "review":
-                return <ReviewStep projectData={projectData} />;
+                return <ReviewStep projectData={projectData} template={selectedTemplate} />;
             case "source":
                 return (
                     <SourceStep
@@ -173,7 +182,20 @@ export function ProjectWizardApp() {
                     />
                 );
             case "import":
-                return <ImportStep importStatus={importStatus} importFailure={importFailure} />;
+                return (
+                    <ImportStep
+                        projectData={projectData}
+                        importStatus={importStatus}
+                        importFailure={importFailure}
+                        validationErrors={validationErrors}
+                        directoryValidation={directoryValidation}
+                        isValidatingDirectory={isValidatingDirectory}
+                        onSelectPackage={selectPackage}
+                        isSelectingPackage={isSelectingPackage}
+                        onSelectDirectory={handleSelectDirectory}
+                        isSelectingDirectory={isSelectingDirectory}
+                    />
+                );
             default:
                 return null;
         }
@@ -181,46 +203,29 @@ export function ProjectWizardApp() {
 
     return (
         <AppLayout title={t("wizard.appTitle")} iconSrc="/favicon.ico">
-            <div className="h-full flex flex-col">
-                {/* Progress Header */}
-                <WizardHeader steps={steps} currentStep={currentStep} />
+            <div className="flex h-full flex-col">
+                <div className="flex min-h-0 flex-1">
+                    <WizardSteps steps={steps} currentStep={currentStep} />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                        <div className="min-h-0 flex-1">{renderStepContent()}</div>
 
-                {/* Step Content */}
-                <div className="flex-1 overflow-y-auto">
-                    {renderStepContent()}
-                    
-                    {/* Error Message */}
-                    {creationError && (
-                        <div className="p-4 mx-6 mb-4 bg-danger/10 border border-danger/20 rounded-lg">
-                            <div className="flex items-start gap-3">
-                                <div className="text-danger mt-0.5 flex-shrink-0">
-                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                    </svg>
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="text-sm font-medium text-danger">
-                                        {t("wizard.error.createFailedTitle")}
-                                    </h3>
-                                    <p className="text-sm text-danger mt-1 break-words">
-                                        {creationError}
-                                    </p>
-                                </div>
-                                <button
+                        {creationError && (
+                            <div className="mx-5 mb-3 flex items-start gap-2 rounded-md border border-danger/20 bg-danger/10 p-3">
+                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+                                <p className="min-w-0 flex-1 break-words text-xs text-danger">{creationError}</p>
+                                <IconButton
+                                    size="sm"
+                                    variant="ghost"
                                     onClick={clearCreationError}
-                                    className="text-danger/70 hover:text-danger flex-shrink-0"
                                     aria-label={t("wizard.error.closeError")}
                                 >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
+                                    <X className="h-3.5 w-3.5" />
+                                </IconButton>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
 
-                {/* Navigation Footer */}
                 <WizardNavigation
                     steps={steps}
                     currentStep={currentStep}
@@ -230,7 +235,7 @@ export function ProjectWizardApp() {
                     onPrevStep={prevStep}
                     onNextStep={nextStep}
                     onFinish={handleFinish}
-                    onCancel={handleCancel}
+                    onCancel={() => window.close()}
                 />
             </div>
         </AppLayout>

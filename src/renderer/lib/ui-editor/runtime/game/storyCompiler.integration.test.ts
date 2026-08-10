@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BlurDissolve, Control, Darkness, DevTools, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
+import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
 import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryConditionRef, StoryDocument, StoryTransitionRef } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
@@ -916,7 +918,7 @@ describe("compileStudioStoryToNlr", () => {
 
         it("warns and omits an expression whose character is not on stage", async () => {
             // The image resolves, but char-alice was never shown, so there is no on-stage portrait to
-            // swap - the token would be a silent no-op. WI-0.1: surface it instead of dropping it quietly.
+            // swap - the token would be a silent no-op, so surface it instead of dropping it quietly.
             const compiled = await compileStudioStoryToNlr({
                 document: baseDocument(eventDialogue({ event: { expression: { characterId: "char-alice", pose: "pose-angry" } } }), ["say"]),
                 sceneId: "scene-1",
@@ -1090,6 +1092,76 @@ describe("compileStudioStoryToNlr", () => {
 
             expect(nametagColor(speaker)).toBeUndefined();
         });
+
+        /**
+         * The accent pointed at the project palette rather than frozen as a hex.
+         *
+         * This is the seam the whole feature turns on and the one that breaks silently. The summary
+         * carries the stored string unfiltered, so a `nlbrand:` link arrives here intact and has to
+         * be resolved before `CHARACTER_ACCENT_HEX` — which is right to refuse a link — is asked
+         * about it. Miss the resolve and the test would still pass every other row in this describe:
+         * the nametag simply comes back untinted, exactly as it does for a character with no colour,
+         * in the editor's preview *and* in the shipped game, with nothing to say why.
+         */
+        describe("an accent that points at the project palette", () => {
+            beforeEach(() => {
+                setActiveBrandPalette([
+                    ...BUILTIN_BRAND_COLORS,
+                    { id: "cast.alice", value: "#123456" },
+                    { id: "cast.echo", value: "nlbrand:cast.alice" },
+                ]);
+            });
+
+            afterEach(() => {
+                setActiveBrandPalette(BUILTIN_BRAND_COLORS);
+            });
+
+            it.each([
+                ["a seeded id", "nlbrand:primary", "#40A8C4"],
+                ["an author's own colour", "nlbrand:cast.alice", "#123456"],
+                ["a link through a link", "nlbrand:cast.echo", "#123456"],
+            ])("hands the runtime nametag the resolved hex for %s", async (_label, stored, expected) => {
+                const speaker = await compileSpeaker([
+                    { id: "char-alice", name: "Alice", color: stored, appearance: EMPTY_APPEARANCE },
+                ]);
+
+                expect(nametagColor(speaker)).toBe(expected);
+            });
+
+            it("follows the palette rather than the value stored the day it was picked", async () => {
+                setActiveBrandPalette([...BUILTIN_BRAND_COLORS, { id: "cast.alice", value: "#ABCDEF" }]);
+
+                const speaker = await compileSpeaker([
+                    { id: "char-alice", name: "Alice", color: "nlbrand:cast.alice", appearance: EMPTY_APPEARANCE },
+                ]);
+
+                expect(nametagColor(speaker)).toBe("#ABCDEF");
+            });
+
+            it.each([
+                ["names nothing", "nlbrand:gone"],
+                ["lands on a translucent entry no hex can spell", "nlbrand:button.shadow"],
+            ])("leaves the nametag untinted for a link that %s", async (_label, stored) => {
+                const speaker = await compileSpeaker([
+                    { id: "char-alice", name: "Alice", color: stored, appearance: EMPTY_APPEARANCE },
+                ]);
+
+                expect(nametagColor(speaker)).toBeUndefined();
+            });
+
+            /**
+             * The invariant the resolver must not quietly break: an optional field with nothing in
+             * it stays empty. A resolver that answered a default for "no value" would give every
+             * uncoloured character in the project the palette's primary.
+             */
+            it("still leaves a character with no accent untinted", async () => {
+                const speaker = await compileSpeaker([
+                    { id: "char-alice", name: "Alice", appearance: EMPTY_APPEARANCE },
+                ]);
+
+                expect(nametagColor(speaker)).toBeUndefined();
+            });
+        });
     });
 
     // A speaker the author typed that has no Studio character behind it. NLR's dialogue box only
@@ -1245,7 +1317,7 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.diagnostics).toEqual([]);
     });
 
-    it("validates persistent references against the declared set (bible §3.3)", async () => {
+    it("validates persistent references against the declared set", async () => {
         const persistentDecl: StoryBlock = {
             id: "flag-decl",
             kind: "declaration",
@@ -1638,7 +1710,7 @@ describe("compileStudioStoryToNlr localization", () => {
 
     it("maps {n} placeholders in translations back to the source interpolation words", async () => {
         let locale = "en";
-        // The persistent variable the interpolation reads must be declared (bible §3.3), so a
+        // The persistent variable the interpolation reads must be declared, so a
         // persistent `//persis playerName` row seeds it; the host still supplies the live value.
         const playerNameDecl: StoryBlock = {
             id: "playerName",
@@ -2267,13 +2339,155 @@ describe("compileStudioStoryToNlr voice", () => {
             sceneId: "scene-1",
             characters: [],
             persistentVariables: {
-                bp_score: { id: "bp_score", name: "Score", valueType: "number", storageKey: "bp_score" },
+                bp_score: { id: "bp_score", name: "Score", scope: "persistent", valueType: "number", storageKey: "bp_score" },
             },
         });
         expect(compiled.diagnostics).toContainEqual({
             level: "warning",
             blockId: undefined,
             message: 'Persistent variable "Score" is declared in both the variable registry and a story row; references are ambiguous.',
+        });
+    });
+
+    it("falls back to a REGISTRY-declared persistent variable's default while the host has stored nothing", async () => {
+        // The registry is where persistent variables are declared after the migration, but the
+        // compiler collected its default-value table from the document's `/persis` rows alone. So a
+        // flag the author gave a starting value reached the runtime with no default at all and read as
+        // empty until something wrote it - while Dev Mode's variables panel, which reads the merged
+        // view, showed the default and disagreed with the running game.
+        const say: StoryBlock = {
+            id: "say",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "narration",
+                text: {
+                    textId: "text-persist",
+                    value: "Chapter ",
+                    role: "narration",
+                    rich: [
+                        { text: "Chapter " },
+                        { interpolation: { kind: "variable", target: { scope: "persistent", variableId: "key_chapter" } } },
+                    ],
+                },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say }, ["say"]),
+            sceneId: "scene-1",
+            // The host has never written this key, which is the whole state under test.
+            persistence: { get: () => undefined, set: () => undefined },
+            persistentVariables: {
+                "reg-chapter": {
+                    id: "reg-chapter",
+                    name: "Chapter",
+                    scope: "persistent",
+                    valueType: "number",
+                    defaultValue: 3,
+                    storageKey: "key_chapter",
+                },
+            },
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const words = getSaySentence(compiled, "say").text as any[];
+        const rendered = words
+            .map(word => (typeof word?.text === "function" ? word.text({}) : (word?.text ?? word)))
+            .join("");
+        expect(rendered).toBe("Chapter 3");
+    });
+
+    /** A `/save`-scope declaration row, i.e. the story-document half of the saved population. */
+    function savedDeclarationRow(id: string, name: string, storageKey: string, defaultValue: number): StoryBlock {
+        return {
+            id,
+            kind: "declaration",
+            parentId: null,
+            childrenIds: [],
+            payload: { scope: "saved", name, valueType: "number", defaultValue, storageKey },
+        };
+    }
+
+    /** `/set <saved var> <literal>`, addressing a saved variable by its id whichever surface declared it. */
+    function setSavedRow(id: string, variableId: string, value: number): StoryBlock {
+        return {
+            id,
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "setVariable", target: { scope: "saved", variableId }, value },
+        };
+    }
+
+    it("seeds registry-backed saved variables into the saved namespace beside story-declared ones (M-VAR)", async () => {
+        // `saved` is a project-registry scope as well as a story-row one. Both surfaces have to land in
+        // the SAME Storable namespace, each under its own storage key, and a `/set` on either has to
+        // resolve - the registry entry id and the declaration block id are both uuids, so one flat
+        // id-keyed table can carry them together.
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(
+                {
+                    "gold-save-decl": savedDeclarationRow("gold-save-decl", "Gold", "story_gold", 5),
+                    "set-story-gold": setSavedRow("set-story-gold", "gold-save-decl", 12),
+                    "set-registry-affection": setSavedRow("set-registry-affection", "reg-affection", 3),
+                },
+                ["gold-save-decl", "set-story-gold", "set-registry-affection"],
+            ),
+            sceneId: "scene-1",
+            savedVariables: {
+                "reg-affection": {
+                    id: "reg-affection",
+                    name: "Affection",
+                    scope: "saved",
+                    valueType: "number",
+                    defaultValue: 2,
+                    storageKey: "reg_affection",
+                },
+            },
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        // The seed record, read off the Persistent the compiler registered on the story. That record is
+        // where the defaults live until a game boots and initializes the namespace from it, so it is the
+        // only place a compile-level test can observe the seeding at all.
+        const savedPersistent = ((compiled.story as unknown as { persistent: unknown[] }).persistent)
+            .find(entry => DevTools.getNamespaceName(entry as never) === compiled.savedNamespaceName) as
+            { defaultContent: Record<string, unknown> } | undefined;
+        expect(savedPersistent?.defaultContent).toEqual({ story_gold: 5, reg_affection: 2 });
+
+        // ...and both rows write into that one namespace under their own keys.
+        const setsOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story))
+            .filter((action: any) => action?.type === "persistent:set")
+            .map((action: any) => ({
+                namespace: DevTools.getNamespaceName(action.callee),
+                content: action.contentNode?.getContent?.(),
+            }));
+        expect(setsOf("set-story-gold")).toEqual([
+            { namespace: compiled.savedNamespaceName, content: ["story_gold", 12] },
+        ]);
+        expect(setsOf("set-registry-affection")).toEqual([
+            { namespace: compiled.savedNamespaceName, content: ["reg_affection", 3] },
+        ]);
+    });
+
+    it("warns when a saved name is declared in both the registry and a story row (M-VAR merged view)", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(
+                { "gold-save-decl": savedDeclarationRow("gold-save-decl", "Gold", "story_gold", 5) },
+                ["gold-save-decl"],
+            ),
+            sceneId: "scene-1",
+            savedVariables: {
+                "reg-gold": { id: "reg-gold", name: "Gold", scope: "saved", valueType: "number", storageKey: "reg_gold" },
+            },
+        });
+        expect(compiled.diagnostics).toContainEqual({
+            level: "warning",
+            blockId: undefined,
+            message: 'Saved variable "Gold" is declared in both the variable registry and a story row; references are ambiguous.',
         });
     });
 });
@@ -3461,6 +3675,76 @@ describe("break", () => {
         // on the player's screen, so the production build has to refuse it here.
         expect(outside.diagnostics).toEqual([
             { level: "error", blockId: "brk", message: "Break is not inside a repeat group; there is no loop for it to leave." },
+        ]);
+    });
+});
+
+describe("diagnostics carry their origin row", () => {
+    it("blames the row for a character whose image cannot be resolved, and names the character not its id", async () => {
+        // The case the Dev Mode error banner exists for: a `/show` naming a character the project no
+        // longer resolves an image for. The blockId is what turns this into "line N" in the banner,
+        // and the message must not carry the id — an author cannot match a UUID to anything they wrote.
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: {
+                    id: "show",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "character", operation: "enter", characterId: "char-ghost" },
+                },
+            }, ["show"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-ghost", name: "Nattou", appearance: EMPTY_APPEARANCE }],
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "warning", blockId: "show", message: "Character image source not found for Nattou." },
+        ]);
+    });
+
+    it("falls back to a name the author typed rather than to the character id", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: {
+                    id: "show",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: {
+                        action: "character",
+                        operation: "enter",
+                        characterId: "6f1b9d0e-0000-4000-8000-000000000000",
+                        objectName: "narrator",
+                    },
+                },
+            }, ["show"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics).toHaveLength(1);
+        expect(compiled.diagnostics[0]?.blockId).toBe("show");
+        expect(compiled.diagnostics[0]?.message).toBe("Character image source not found for narrator.");
+        // The specific regression this guards: the id used to be interpolated straight in.
+        expect(compiled.diagnostics[0]?.message).not.toContain("6f1b9d0e");
+    });
+
+    it("blames the row for an unparseable command", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                bad: {
+                    id: "bad",
+                    kind: "invalid",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { source: "/show nobody" },
+                } as unknown as StoryBlock,
+            }, ["bad"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "error", blockId: "bad", message: "Invalid command, skipped: /show nobody" },
         ]);
     });
 });

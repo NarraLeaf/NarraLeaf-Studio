@@ -54,6 +54,8 @@ import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
 import type { PuppetDescription } from "narraleaf-react";
 import type { PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
+import type { MediaAssetSupportRecord } from "./media/mediaAssetSupport";
+import type { MediaSupportScan } from "./media/MediaSupportService";
 import type {
     UIDocument,
     UISurface,
@@ -78,8 +80,10 @@ import type {
     BlueprintPrivateOwnerRecord,
     Blueprint,
 } from "@shared/types/blueprint/document";
-import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
+import type { VariableRegistry, VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
 import type { AudioTrackChannel, ProjectAudioTrack, ProjectAudioTrackDocument } from "@shared/types/audioTrack";
+import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
+import type { BrandPalette } from "@shared/brand/brandRegistry";
 import type {
     ReadonlyBlueprintSurfaceSummary,
     ReadonlyBlueprintWidgetSummary,
@@ -188,6 +192,8 @@ enum Services {
     Assets = "assets",
     /** What a puppet's model says it contains — motions, expressions, skins, parameters */
     PuppetDescription = "puppetDescription",
+    /** Which media assets already in the project will not play, and what to convert them into */
+    MediaSupport = "mediaSupport",
     /** Per-project plugin dependency table: scan, persist, and resolve compatibility */
     ProjectDependency = "projectDependency",
     /** Accumulated authoring activity (writing curve, active time, build history) */
@@ -196,6 +202,8 @@ enum Services {
     VariableRegistry = "variableRegistry",
     /** Project-level audio tracks: the authoring-time mix presets every audio surface points at */
     AudioTracks = "audioTracks",
+    /** The project's own palette: the colours every `nlbrand:` link in the project resolves through */
+    Brand = "brand",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
     SaveStatus = "saveStatus",
     // Texture = "texture",
@@ -346,7 +354,11 @@ interface IUIDocumentService extends IService {
     }): UISurface;
     deleteSurface(surfaceId: string): void;
     renameSurface(surfaceId: string, name: string): void;
-    updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void;
+    updateSurface(
+        surfaceId: string,
+        updater: (surface: UISurface) => void,
+        options?: { mergeKey?: string },
+    ): void;
     duplicateSurface(surfaceId: string, name?: string): UISurface | null;
     getComponent(componentId: string): UIComponentDefinition | undefined;
     getComponentUsageCount(componentId: string): number;
@@ -458,13 +470,17 @@ interface IVariableRegistryService extends IService {
     save(registry: VariableRegistry): Promise<void>;
     getRegistry(): VariableRegistry;
     listEntries(): VariableRegistryEntry[];
+    listEntriesInScope(scope: VariableRegistryScope): VariableRegistryEntry[];
     getEntry(id: string): VariableRegistryEntry | undefined;
     onRegistryChanged(handler: (registry: VariableRegistry) => void): () => void;
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
     applyRegistryMutation(mutator: (registry: VariableRegistry) => void): void;
-    createEntry(input?: { name?: string; valueType?: string; defaultValue?: StoryLiteralValue; description?: string }): VariableRegistryEntry;
+    createEntry(
+        scope: VariableRegistryScope,
+        input?: { name?: string; valueType?: string; defaultValue?: StoryLiteralValue; description?: string },
+    ): VariableRegistryEntry;
     renameEntry(id: string, name: string): void;
     setEntryValueType(id: string, valueType: StoryVariableValueType): void;
     setEntryDefault(id: string, defaultValue: StoryLiteralValue | undefined): void;
@@ -499,6 +515,35 @@ interface IAudioTrackService extends IService {
     /** Refuses the three seeded buses; promotes the children of whatever it does delete. */
     deleteTrack(id: string): boolean;
     moveTrack(id: string, beforeId: string | null): void;
+}
+
+/**
+ * The project's palette - the colours a `nlbrand:` link resolves through. See `@shared/types/brand`
+ * for the model and `@shared/brand/brandRegistry` for the resolution.
+ *
+ * Besides owning the document it *publishes*: every mutation pushes the new list to the module-level
+ * active palette, which is what the colour fields themselves read.
+ */
+interface IBrandService extends IService {
+    load(): Promise<BrandColor[]>;
+    save(document: ProjectBrandDocument): Promise<void>;
+    getDocument(): ProjectBrandDocument;
+    listColors(): BrandColor[];
+    getColor(id: string): BrandColor | undefined;
+    /** The resolved palette, for previewing an id. Same object the rest of the window paints from. */
+    getPalette(): BrandPalette;
+    onColorsChanged(handler: (colors: BrandColor[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    createColor(input?: { name?: string; value?: string }): BrandColor;
+    renameColor(id: string, name: string): boolean;
+    updateColor(id: string, patch: { name?: string; value?: string }): void;
+    /** Refuses the seeded slots: the control appearances point at them, so they exist at all times. */
+    deleteColor(id: string): boolean;
+    moveColor(id: string, beforeId: string | null): void;
+    replaceDocument(document: ProjectBrandDocument): void;
+    flushPendingChanges(): Promise<void>;
 }
 
 interface ILocalBlueprintService extends IService {
@@ -594,7 +639,34 @@ interface ILocalBlueprintService extends IService {
         variableId: string,
         defaultValue: import("@shared/types/blueprint/document").LiteralValue | undefined,
     ): void;
+    setPersistentVariableValueType(
+        historyBlueprintId: string,
+        variableId: string,
+        valueType: StoryVariableValueType,
+    ): void;
     deletePersistentVariable(historyBlueprintId: string, variableId: string): void;
+    listPersistentVariables(): VariableRegistryEntry[];
+    listSavedVariables(): VariableRegistryEntry[];
+    createSavedRegistryVariable(
+        historyBlueprintId: string,
+        input?: {
+            name?: string;
+            valueType?: string;
+            defaultValue?: import("@shared/types/blueprint/document").LiteralValue;
+        },
+    ): VariableRegistryEntry;
+    renameSavedRegistryVariable(historyBlueprintId: string, variableId: string, name: string): void;
+    setSavedRegistryVariableDefault(
+        historyBlueprintId: string,
+        variableId: string,
+        defaultValue: import("@shared/types/blueprint/document").LiteralValue | undefined,
+    ): void;
+    setSavedRegistryVariableValueType(
+        historyBlueprintId: string,
+        variableId: string,
+        valueType: StoryVariableValueType,
+    ): void;
+    deleteSavedRegistryVariable(historyBlueprintId: string, variableId: string): void;
     renameBlueprintVariable(blueprintId: string, variableId: string, name: string): void;
     setBlueprintVariableDefault(
         blueprintId: string,
@@ -687,6 +759,10 @@ interface UIEditorStateEvents {
     smartSnapDetailSettingsChanged: SmartSnapDetailSettings;
     /** Ephemeral snap guide lines in surface space (viewport overlay). */
     snapGuidesChanged: ActiveSnapGuides | null;
+    /** Screen-ratio preview frame preset id, `null` = off (pure view state, global settings). */
+    previewAspectChanged: string | null;
+    /** Safe-area preview frame device preset id, `null` = off (pure view state, global settings). */
+    previewSafeAreaChanged: string | null;
 }
 
 interface IUIEditorFontFaceService extends IService {
@@ -747,6 +823,15 @@ interface IUIEditorStateService extends IService {
     /** Which guide categories participate when smart snap is on (persisted). */
     getSmartSnapDetailSettings(): SmartSnapDetailSettings;
     patchSmartSnapDetailSettings(patch: Partial<SmartSnapDetailSettings>): void;
+    /**
+     * Screen-ratio preview frame preset id (`null` = off). Pure view state: persisted in global
+     * settings, never in the UIDocument, so toggling it cannot dirty the project.
+     */
+    getPreviewAspectId(): string | null;
+    setPreviewAspectId(aspectId: string | null): void;
+    /** Safe-area preview frame device preset id (`null` = off). Pure view state, see above. */
+    getPreviewSafeAreaId(): string | null;
+    setPreviewSafeAreaId(safeAreaId: string | null): void;
     /** Active snap guides for the current interaction (null clears overlay). */
     getSnapGuides(): ActiveSnapGuides | null;
     setSnapGuides(guides: ActiveSnapGuides | null): void;
@@ -872,6 +957,11 @@ interface IStoryService extends IService {
         blockId: StoryBlockId,
         target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
     ): void;
+    moveBlocks(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        moves: { blockIds: StoryBlockId[]; target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null } }[],
+    ): void;
     canImportStoryPackage(): false;
     canExportStoryPackage(): false;
 }
@@ -950,6 +1040,28 @@ interface IPuppetDescriptionService extends IService {
     peekCharacter(characterId: string): PuppetDescription | null;
     invalidate(request?: PuppetDescriptionRequest): Promise<void>;
     onDescriptionChanged(handler: () => void): () => void;
+}
+
+/**
+ * Whether the media already in the project will play, and what to convert it into if not.
+ *
+ * The counterpart to the import gate: that one asks about a file the author is holding, this one
+ * asks about the library, where assets imported before the gate existed (or imported deliberately
+ * unconverted) are still sitting. Answers are cached under the content hash in `editor/cache/`, so
+ * a build asks without paying for a probe per file.
+ *
+ * An unanswered probe is never a verdict: a host with no ffprobe leaves every sound and video asset
+ * without a record and reports `probeAvailable: false`, and callers must treat that as "not known",
+ * not as "fine" and not as "broken".
+ */
+interface IMediaSupportService extends IService {
+    scan(options?: { force?: boolean }): Promise<MediaSupportScan>;
+    getLastScan(): MediaSupportScan;
+    /** The last scan's answer for one asset, for render paths that cannot await. */
+    peek(assetId: string): MediaAssetSupportRecord | null;
+    listUnplayable(): { asset: Asset; record: MediaAssetSupportRecord }[];
+    refresh(assetId: string): Promise<void>;
+    onChanged(handler: () => void): () => void;
 }
 
 // Asset Services
@@ -1052,6 +1164,11 @@ interface ILocalizationService extends IService {
     addLocale(entry: LocalizationLocaleEntry): Promise<LocalizationConfiguration>;
     removeLocale(code: string): Promise<LocalizationConfiguration>;
     setSourceLocale(code: string): Promise<LocalizationConfiguration>;
+    /** Edit a language's display name and fallback. Rejects a fallback that would never be read. */
+    updateLocaleEntry(
+        code: string,
+        patch: Partial<Pick<LocalizationLocaleEntry, "displayName" | "fallback">>,
+    ): Promise<LocalizationConfiguration>;
     loadDocument(locale: string): Promise<LocalizationDocument>;
     getDocumentIfLoaded(locale: string): LocalizationDocument | undefined;
     onDocumentChanged(handler: (event: { locale: string; document: LocalizationDocument }) => void): () => void;
@@ -1204,7 +1321,9 @@ export {
     IWorkspaceReloadService, IVideoService,
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IPuppetDescriptionService,
+    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IBrandService,
+    IPuppetDescriptionService,
+    IMediaSupportService,
     ITestRunService, IRecoveryService,
     Services, WorkspaceContext
 };

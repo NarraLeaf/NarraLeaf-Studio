@@ -6,7 +6,7 @@
  * The stored type is `nl.puppet`: one widget covering Spine2D, Live2D and anything else an author
  * writes a backend for, with `backend` picking which. That keeps the document schema stable — adding
  * support for another format later is a new folder in the author's project, not a migration — and it
- * keeps Studio's own vocabulary free of any renderer's name (card 2026-07-27-002; the standing
+ * keeps Studio's own vocabulary free of any renderer's name (the standing
  * phrasing is in `puppetBackendHost.ts`: nothing here names a renderer, and nothing here is allowed
  * to). The *author-facing* name does say "Spine2D / Live2D Model", because a widget called "Puppet"
  * tells nobody what it is for (user ruling 2026-07-29).

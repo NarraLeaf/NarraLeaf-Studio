@@ -41,12 +41,29 @@ const NODE_META_STYLE: CSSProperties = {
 };
 
 /**
- * Edges still need handles to anchor to, but the map is read-only, so they are kept invisible: a
- * visible dot on the rim reads as "drag from here to connect", which is not on offer.
+ * Edges need handles to anchor to whether or not anything can be dragged from them, so the map's
+ * read-only reading keeps them invisible: a visible dot on the rim reads as "drag from here to
+ * connect", and on a surface that offers no connecting that is a lie.
  *
  * Shared with the branch rows so an arm's handle sits exactly where the scene's does, one row down.
  */
 export const SCENE_FLOW_HANDLE_CLASS = "!h-2 !w-2 !border-0 !bg-transparent !opacity-0";
+
+/**
+ * The same handle where connecting IS on offer: a small accent dot that fades in with the node.
+ *
+ * Kept quiet until the pointer is on the box. The map is read first and edited second, and a grid of
+ * permanent dots turns a diagram into a wiring panel — but a handle nobody can find is a feature
+ * nobody uses, so hover is the compromise. `!opacity-100` while connecting so the target rims all
+ * light up mid-drag rather than only the one the pointer happens to be over.
+ */
+export const SCENE_FLOW_CONNECTABLE_HANDLE_CLASS = [
+    "!h-2.5 !w-2.5 !rounded-full !border !border-surface-raised !bg-primary",
+    "!opacity-0 transition-opacity group-hover:!opacity-100",
+    // While a line is being dragged, every rim it could land on lights up — not just the one the
+    // pointer happens to be over. The canvas puts the class on its root for the length of the drag.
+    "[.narraleaf-scene-flow-connecting_&]:!opacity-100",
+].join(" ");
 
 /**
  * One scene. Everything that could be wrong with it (dangling jump, never reached) is a badge, so
@@ -56,9 +73,12 @@ export const SCENE_FLOW_HANDLE_CLASS = "!h-2 !w-2 !border-0 !bg-transparent !opa
  * over the space that opens up. The title and meta block keep the top 72px either way, so toggling
  * a scene never moves the thing the author was looking at.
  */
-export function SceneFlowNode({ data, selected }: NodeProps) {
+export function SceneFlowNode({ data, selected, isConnectable }: NodeProps) {
     const { t, tn } = useTranslation();
     const scene = data as SceneFlowNodeData;
+    // Straight from React Flow's own `nodesConnectable`, so the rim can never say the map offers
+    // connecting while the canvas is refusing it (a frozen workspace, the Dev Mode embed).
+    const handleClass = isConnectable ? SCENE_FLOW_CONNECTABLE_HANDLE_CLASS : SCENE_FLOW_HANDLE_CLASS;
     const current = scene.current === true;
     const armCount = scene.armCount ?? 0;
     const onToggleExpanded = scene.onToggleExpanded;
@@ -107,7 +127,7 @@ export function SceneFlowNode({ data, selected }: NodeProps) {
                 type="target"
                 position={Position.Left}
                 style={{ top: SCENE_FLOW_NODE_HEIGHT / 2 }}
-                className={cn(SCENE_FLOW_HANDLE_CLASS, "!left-0")}
+                className={cn(handleClass, "!left-0")}
             />
 
             {/* Fixed at the collapsed node's height so the branch rows below it grow into new space
@@ -187,7 +207,7 @@ export function SceneFlowNode({ data, selected }: NodeProps) {
                 type="source"
                 position={Position.Right}
                 style={{ top: SCENE_FLOW_NODE_HEIGHT / 2 }}
-                className={cn(SCENE_FLOW_HANDLE_CLASS, "!right-0")}
+                className={cn(handleClass, "!right-0")}
             />
         </div>
     );

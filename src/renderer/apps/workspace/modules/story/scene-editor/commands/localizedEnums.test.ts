@@ -86,7 +86,7 @@ describe("the parse, end to end", () => {
         expect(getArgValue(line, "t")).toBe("淡变");
     });
 
-    it("stores the canonical English value however it was spelled (bible B6)", () => {
+    it("stores the canonical English value however it was spelled", () => {
         const stored = (source: string) => {
             const line = command(source);
             return resolveCommandLine(line, EMPTY_STORY_COMMAND_CONTEXT).args.t;

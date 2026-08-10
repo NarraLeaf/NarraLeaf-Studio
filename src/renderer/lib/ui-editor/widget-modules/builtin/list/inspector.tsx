@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { getSupportedEffectKindsForWidgetType } from "@shared/types/ui-editor/effects";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
+import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type {
     ColorValue,
     CustomFieldProps,
@@ -892,8 +893,9 @@ export function createListInspector(ctx: InspectorContext) {
                                 displayMode: "icon-hex",
                                 allowOpacity: false,
                                 hidden: hasAuthoredScrollbarParts,
-                                getValue: (d: D) => ({ hex: getLiveListProps(d).scrollbar.trackStyle.backgroundColor }),
-                                setValue: (_d: D, value: ColorValue) => patchScrollbarPart("trackStyle", { backgroundColor: value.hex, fillType: "color", fillOpacity: 1 }),
+                                brandPalette: true,
+                                getValue: (d: D) => parseColorValue(getLiveListProps(d).scrollbar.trackStyle.backgroundColor, { hex: "#FFFFFF", alpha: 1 }),
+                                setValue: (_d: D, value: ColorValue) => patchScrollbarPart("trackStyle", { backgroundColor: serializeColorValue(value), fillType: "color", fillOpacity: 1 }),
                             }),
                             defineField<D, any>({
                                 id: "list.scrollbar.trackImage",
@@ -910,8 +912,9 @@ export function createListInspector(ctx: InspectorContext) {
                                 displayMode: "icon-hex",
                                 allowOpacity: false,
                                 hidden: hasAuthoredScrollbarParts,
-                                getValue: (d: D) => ({ hex: getLiveListProps(d).scrollbar.thumbStyle.backgroundColor }),
-                                setValue: (_d: D, value: ColorValue) => patchScrollbarPart("thumbStyle", { backgroundColor: value.hex, fillType: "color", fillOpacity: 1 }),
+                                brandPalette: true,
+                                getValue: (d: D) => parseColorValue(getLiveListProps(d).scrollbar.thumbStyle.backgroundColor, { hex: "#FFFFFF", alpha: 1 }),
+                                setValue: (_d: D, value: ColorValue) => patchScrollbarPart("thumbStyle", { backgroundColor: serializeColorValue(value), fillType: "color", fillOpacity: 1 }),
                             }),
                             defineField<D, any>({
                                 id: "list.scrollbar.thumbImage",

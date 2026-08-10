@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+    GAME_BUILD_ARCHS_BY_PLATFORM,
+    GAME_BUILD_FORMATS_BY_PLATFORM,
     defaultGameBuildArch,
     deriveAndroidVersionCode,
     deriveGameAppId,
@@ -128,12 +130,47 @@ describe("predictGameBuildArtifacts", () => {
         ]);
     });
 
+    it("predicts the AAB alone when that is all the Android target asked for", () => {
+        expect(predictGameBuildArtifacts({ ...base, targets: [{ platform: "android", formats: ["aab"] }] }))
+            .toEqual([
+                { name: "MyGame-1.2.0-android.aab", kind: "file", platform: "android", format: "aab" },
+            ]);
+    });
+
+    it("predicts one artifact per selected format, not one per mobile platform", () => {
+        // The shape the AAB batch turned on: Android is one platform emitting
+        // two differently-named packages, so a per-platform prediction would
+        // have shown one file where the build writes two.
+        const predicted = predictGameBuildArtifacts({
+            ...base,
+            targets: [{ platform: "android", formats: ["apk", "aab"] }],
+        });
+        expect(predicted).toEqual([
+            { name: "MyGame-1.2.0-android.apk", kind: "file", platform: "android", format: "apk" },
+            { name: "MyGame-1.2.0-android.aab", kind: "file", platform: "android", format: "aab" },
+        ]);
+    });
+
     it("ignores formats a mobile platform does not offer", () => {
         const predicted = predictGameBuildArtifacts({
             ...base,
             targets: [{ platform: "android", formats: ["zip", "apk", "ipa"] }],
         });
         expect(predicted.map(a => a.name)).toEqual(["MyGame-1.2.0-android.apk"]);
+    });
+
+    it("predicts a name for every format a mobile platform offers", () => {
+        // The offer table and the naming path are two halves that must not
+        // drift: a format added to the table with no extension here would be
+        // selectable in the dialog and silently missing from the preview.
+        for (const platform of ["android", "ios"] as const) {
+            const formats = GAME_BUILD_FORMATS_BY_PLATFORM[platform];
+            const predicted = predictGameBuildArtifacts({ ...base, targets: [{ platform, formats }] });
+            expect(predicted.map(a => a.format)).toEqual(formats);
+            expect(predicted.map(a => a.name)).toEqual(
+                formats.map(format => `MyGame-1.2.0-${platform}.${format}`),
+            );
+        }
     });
 
     it("falls back to the platform's first arch when none was chosen", () => {
@@ -176,9 +213,13 @@ describe("webExportZipName", () => {
 });
 
 describe("mobileExportFileName", () => {
-    it("pairs each platform with its package extension", () => {
-        expect(mobileExportFileName("android", "MyGame", "1.2.0")).toBe("MyGame-1.2.0-android.apk");
-        expect(mobileExportFileName("ios", "MyGame", "1.2.0")).toBe("MyGame-1.2.0-ios.ipa");
+    it("ends the name in the requested format, not in the platform's one package", () => {
+        // Android emits two packages from one target, so the extension has to
+        // come from the format; deriving it from the platform (as this did)
+        // would have named the .aab ".apk" and overwritten it.
+        expect(mobileExportFileName("android", "apk", "MyGame", "1.2.0")).toBe("MyGame-1.2.0-android.apk");
+        expect(mobileExportFileName("android", "aab", "MyGame", "1.2.0")).toBe("MyGame-1.2.0-android.aab");
+        expect(mobileExportFileName("ios", "ipa", "MyGame", "1.2.0")).toBe("MyGame-1.2.0-ios.ipa");
     });
 });
 
@@ -305,6 +346,28 @@ describe("defaultGameBuildArch", () => {
 
     it("uses x64 for a cross build regardless of host arch", () => {
         expect(defaultGameBuildArch("windows", "macos", "arm64")).toBe("x64");
+    });
+});
+
+describe("GAME_BUILD_ARCHS_BY_PLATFORM", () => {
+    // This guards against a specific plausible edit, not against a typo.
+    //
+    // Studio itself is no longer shipped for Intel Macs (no @lore-vcs darwin-x64 backend, no zsign
+    // macOS x64 asset, no x86_64 LGPL FFmpeg build). Someone tidying up after that decision could
+    // very reasonably read "we dropped Intel Mac" and delete this row too - which would silently
+    // strip a large installed base of *players* from every game built with Studio.
+    //
+    // Host and target are different questions. Nothing in the pipeline needs an Intel Mac to
+    // produce an Intel-Mac game: @narraleaf/encryption vendors a prebuilt darwin-x64
+    // nlcrypto.node, and electron-builder downloads Electron's x64 runtime. If this assertion is
+    // in your way, the answer is not to delete it.
+    it("still offers x64 and universal for macOS, because a game's host is not Studio's host", () => {
+        expect(GAME_BUILD_ARCHS_BY_PLATFORM.macos).toContain("x64");
+        expect(GAME_BUILD_ARCHS_BY_PLATFORM.macos).toContain("universal");
+    });
+
+    it("normalizes an explicit macOS x64 choice to itself rather than dropping it", () => {
+        expect(normalizeGameBuildArch("macos", "x64")).toBe("x64");
     });
 });
 

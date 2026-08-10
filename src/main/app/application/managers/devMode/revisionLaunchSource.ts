@@ -7,7 +7,7 @@ import type { RevisionSnapshotResult } from "../vcs/revisionSnapshot";
  *
  * The working tree normally. A snapshot of one revision while the workspace is showing that revision,
  * because the project owner's decision for a frozen workspace is that **Dev Mode runs the focused
- * version** while Preview and the production build are refused (plan 2026-07-28-002 §1).
+ * version** while Preview and the production build are refused.
  *
  * A **manual** freeze keeps the working tree, and that is not an omission: nothing has replaced what
  * is on disk during a manual freeze, so the working tree IS what the author is looking at. The two

@@ -6,9 +6,8 @@
  * names and payloads are opaque values it stores and forwards. Studio ships none either — and
  * that is deliberate rather than incidental. The renderers authors want for animated characters
  * are distributed under licences that a source-available, freely modifiable application cannot
- * carry — see the licensing survey in `docs/plans/`, card 2026-07-27-002. So the author supplies
- * the runtime, exactly as they do under Ren'Py or TyranoScript, and this module is the whole of
- * what Studio contributes: find what the author put in their project, load it, hand it the game.
+ * carry. So the author supplies the runtime, and this module is the whole of what Studio
+ * contributes: find what the author put in their project, load it, hand it the game.
  *
  * Nothing here names a renderer, and nothing here is allowed to. A backend module is any ES module
  * the host can import; the only thing Studio asks of it is that it yields objects satisfying the

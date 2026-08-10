@@ -1092,7 +1092,16 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             },
         ],
         async execute(ctx) {
-            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "index", ctx.params, ctx.blueprintLocals);
+            // With the runtime, because the index that picks a choice almost always comes from the
+            // `Item Click` head that heard the click, and an event head's outputs live in the event
+            // payload. Without it the pin resolved to null and every wired Select Choice threw.
+            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "index", ctx.params, ctx.blueprintLocals, 0, {
+                hostAdapter: ctx.hostAdapter,
+                eventPayload: ctx.eventPayload,
+                listItemScope: ctx.listItemScope,
+                instanceKey: ctx.instanceKey,
+                executionOwner: ctx.executionOwner,
+            });
             const index = Number(wired ?? ctx.params.index);
             if (!Number.isInteger(index) || index < 0) {
                 throw new BlueprintGraphExecutionError(
