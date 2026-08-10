@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { SurfacePreviewRect, SurfacePreviewSize } from "./surfacePreviewFrames";
 import { computeSafeAreaFrameById, computeScreenRatioFrameById, computeUnsafeBands } from "./surfacePreviewFrames";
+import type { SafeAreaMobileOrientation } from "./surfacePreviewFrames";
 
 export type SurfacePreviewFramesOverlayProps = {
     /** Surface design size; the design rect is `{x: 0, y: 0, ...designSize}`. */
@@ -9,6 +10,8 @@ export type SurfacePreviewFramesOverlayProps = {
     aspectId: string | null;
     /** Safe-area device preset id, `null` = the safe-area frame is off. */
     safeAreaId: string | null;
+    /** The project's `app.mobile.orientation`; decides which edge the device inset lands on. */
+    mobileOrientation?: SafeAreaMobileOrientation | null;
     /** Canvas CSS scale, so hairlines can be kept at 1 device px. */
     viewportScale: number;
 };
@@ -35,7 +38,7 @@ export type SurfacePreviewFramesOverlayProps = {
  * `SurfacePreviewFramesReadout`.
  */
 export function SurfacePreviewFramesOverlay(props: SurfacePreviewFramesOverlayProps) {
-    const { designSize, aspectId, safeAreaId, viewportScale } = props;
+    const { designSize, aspectId, safeAreaId, mobileOrientation, viewportScale } = props;
 
     // The parent is CSS-scaled, so a 1px stroke authored in design units renders at `scale` px.
     // Divide it back out to keep every hairline at one device pixel at any zoom. Blink derives a
@@ -50,8 +53,8 @@ export function SurfacePreviewFramesOverlay(props: SurfacePreviewFramesOverlayPr
         [designSize, aspectId],
     );
     const safeFrame = useMemo(
-        () => computeSafeAreaFrameById(designSize, safeAreaId),
-        [designSize, safeAreaId],
+        () => computeSafeAreaFrameById(designSize, safeAreaId, mobileOrientation),
+        [designSize, safeAreaId, mobileOrientation],
     );
     const unsafeBands = useMemo(
         () => computeUnsafeBands(designSize, safeFrame),
