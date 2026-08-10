@@ -969,6 +969,60 @@ describe("UIDocumentService component library", () => {
         expect(materializedRoot.childrenIds[0]).not.toBe(text.id);
     });
 
+    /**
+     * What the two inspector halves rely on. The declare side replaces the whole list on every
+     * keystroke, so the questions are all about what survives that replacement.
+     */
+    it("keeps instance values pointed across a rename and a removal", () => {
+        const { service } = createHarness();
+        const doc = service.getDocument();
+        const surface = doc.surfaces[0]!;
+        const rootId = surface.rootElementId;
+        const source: UIElement = {
+            id: "slot-source",
+            type: "nl.container",
+            name: "Slot",
+            parentId: rootId,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 200, height: 60 },
+        };
+        doc.elements[rootId]!.childrenIds.push(source.id);
+        doc.elements[source.id] = source;
+        const component = service.createComponentFromElements(surface.id, [source.id], "Save Slot")!;
+        const instance = service.createComponentInstance(rootId, component.id, {});
+
+        service.setComponentParams(component.id, [
+            { id: "saveId", name: "Save id", type: "string", defaultValue: "1" },
+            { id: "label", name: "Label", type: "string", defaultValue: "Empty" },
+        ]);
+        service.setComponentInstanceParam(instance.id, "saveId", "7");
+        // An empty override is a value, not a reset - it has to be stored, or an author could not
+        // say "blank" for a param whose default is not.
+        service.setComponentInstanceParam(instance.id, "label", "");
+        expect(getUIComponentLink(service.getDocument().elements[instance.id])?.params)
+            .toEqual({ saveId: "7", label: "" });
+
+        // Only `name` changes: identity is `id`, so nothing the instance stored is unpointed.
+        service.setComponentParams(component.id, [
+            { id: "saveId", name: "Which save", type: "string", defaultValue: "1" },
+            { id: "label", name: "Label", type: "string", defaultValue: "Empty" },
+        ]);
+        expect(getUIComponentLink(service.getDocument().elements[instance.id])?.params)
+            .toEqual({ saveId: "7", label: "" });
+
+        // Removing a param leaves its instance values alone, so re-adding the same id is how an
+        // author undoes the deletion. Sweeping here would make a stray click a silent data loss.
+        service.setComponentParams(component.id, [
+            { id: "label", name: "Label", type: "string", defaultValue: "Empty" },
+        ]);
+        service.setComponentParams(component.id, [
+            { id: "saveId", name: "Save id", type: "string", defaultValue: "1" },
+            { id: "label", name: "Label", type: "string", defaultValue: "Empty" },
+        ]);
+        expect(getUIComponentLink(service.getDocument().elements[instance.id])?.params)
+            .toEqual({ saveId: "7", label: "" });
+    });
+
     it("wraps multi-selection components in a relative container root", () => {
         const { service } = createHarness();
         const doc = service.getDocument();

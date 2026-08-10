@@ -9,6 +9,7 @@ export const properties = {
         motionKeyframe: "Motion Keyframe",
         storyMotion: "Story Motion",
         scene: "Scene",
+        component: "Component",
         character: "Character",
     },
     scene: {
@@ -45,7 +46,15 @@ export const properties = {
     },
     linkedComponent: {
         missing: "Missing component",
-        info: "Linked instance. Only position, size, and rotation can be changed before unlinking.",
+        info: "Linked instance. Only its params and its position, size and rotation can be changed before unlinking.",
+    },
+    componentParams: {
+        title: "Params",
+        none: "No params",
+        add: "Add param",
+        remove: "Remove param",
+        namePlaceholder: "Name",
+        defaultPlaceholder: "Default",
     },
     binding: {
         notReady: "Blueprint not ready for this control.",

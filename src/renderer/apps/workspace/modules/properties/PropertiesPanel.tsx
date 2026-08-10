@@ -53,6 +53,7 @@ import {
     createComponentDocumentServiceAdapter,
     parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
@@ -525,6 +526,15 @@ function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
     );
 }
 
+/**
+ * Declared at module scope, not inline in the schema below: the schema is rebuilt on every document
+ * revision, and an inline component would be a new type each time - React would remount the field
+ * and the text cursor would leave the input on the first keystroke.
+ */
+function LinkedComponentParamsSection({ data }: { data: UIInspectorData }) {
+    return <LinkedComponentParamsField element={data.element} documentService={data.documentService} />;
+}
+
 function createLinkedComponentInspectorSchema(
     layoutSchema: PropertyEditorSchema<UIInspectorData>,
     element: UIElement,
@@ -535,6 +545,12 @@ function createLinkedComponentInspectorSchema(
         title: element.name ?? t("properties.layout.linkedComponent"),
         fields: [
             ...(layoutSchema.fields ?? []),
+            defineField<UIInspectorData, any>({
+                id: "component.params",
+                type: "custom",
+                component: LinkedComponentParamsSection,
+                order: 98,
+            }),
             defineField<UIInspectorData, any>({
                 id: "component.linkInfo",
                 type: "custom",
@@ -614,6 +630,23 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         });
     }, [graphService]);
 
+    /**
+     * The component being edited, when the component editor has nothing selected.
+     *
+     * Deselecting on any canvas publishes the surface as the panel's subject, and a component editor
+     * runs on a `component-editor:<id>` pseudo surface that is not in `document.surfaces` - so that
+     * selection used to resolve to nothing at all. It is the one moment the panel's subject is the
+     * component itself rather than something inside it, which is where params are declared: its root
+     * is the outline's root and therefore not selectable, so there is no element to hang them on.
+     */
+    const activeComponentDefinition = useMemo(() => {
+        const componentId = parseComponentEditorSurfaceId(activeSceneId);
+        if (!componentId || !documentService) {
+            return null;
+        }
+        return documentService.getDocument().components?.find(item => item.id === componentId) ?? null;
+    }, [activeSceneId, documentService, documentVersion]);
+
     const activeSceneSurface = useMemo(() => {
         if (!documentService || !activeSceneId) {
             return null;
@@ -659,6 +692,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? t("properties.panel.motionKeyframe")
         : storyScene
         ? storyScene.name
+        : activeComponentDefinition
+        ? activeComponentDefinition.name
         : activeSceneSurface
         ? activeSceneSurface.name
         : activeCharacter
@@ -670,6 +705,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? t("properties.panel.storyMotion")
         : storyScene
         ? t("properties.panel.scene")
+        : activeComponentDefinition
+        ? t("properties.panel.component")
         : activeSceneSurface
         ? t("properties.panel.scene")
         : activeCharacter
@@ -1080,6 +1117,17 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 </>
             );
         }
+        if (activeComponentDefinition && documentService) {
+            // A bare section stack with no PropertyEditor chrome of its own, so the padding is here.
+            return (
+                <div className="p-3">
+                    <ComponentParamsEditor
+                        component={activeComponentDefinition}
+                        documentService={documentService}
+                    />
+                </div>
+            );
+        }
         if (sceneEditorContext) {
             return <PropertyEditor schema={sceneSchema} data={sceneEditorContext} />;
         }
@@ -1106,6 +1154,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const isEmpty = !storyContent
         && !storyMotionSelection
         && !uiInspectorContent
+        && !activeComponentDefinition
         && !sceneEditorContext
         && !activeCharacter
         && !activeAsset;
