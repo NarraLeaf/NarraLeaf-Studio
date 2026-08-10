@@ -349,13 +349,20 @@ function ColorRow({
                 style={{ backgroundColor: colorValueToCss(shown) }}
                 title={edit.title}
             >
+                {/* Frozen maps to `readOnly`, not to `writes().disabled`. A disabled trigger cannot
+                    be opened, and the panel is the only place a colour is legible - a swatch shows
+                    that this row is teal, not whether it is #40A8C4. Reading is exactly what the
+                    freeze guard's own doc says it has no business blocking; `disabled` stays for
+                    the case where there is no service to read from either. */}
                 <ColorPickerTrigger
                     value={shown}
                     displayMode="swatch"
                     allowOpacity
                     brandPalette
                     brandExclude={exclusions}
-                    disabled={edit.disabled}
+                    disabled={!service}
+                    readOnly={freeze.frozen}
+                    ariaLabel={edit.title}
                     onChange={setDraft}
                     onCommit={commit}
                 />
