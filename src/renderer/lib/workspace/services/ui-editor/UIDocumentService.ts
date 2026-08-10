@@ -466,13 +466,26 @@ function sanitizeComponentName(name: string | undefined, fallback: string): stri
     return trimmed.length > 0 ? trimmed : fallback;
 }
 
+/**
+ * An element as it goes into a component definition.
+ *
+ * `behavior` survives, because it is what makes the component worth placing: an author who selects a
+ * working save slot and asks for a component should get a working save slot, not a picture of one.
+ * The blueprints those bindings name are cloned alongside (see `carryWidgetBlueprintsIntoComponent`),
+ * so they point at the copy rather than at the elements still sitting on the surface.
+ *
+ * `valueBindings` does not survive, and that is deliberate rather than an oversight. A value binding
+ * inside a component instance is cached without the instance in its key, so every placement would
+ * read one entry - twelve slots showing the same line of text, with nothing to suggest why. Dropping
+ * the binding leaves a visibly empty field instead, which an author can see and fix. Restore this
+ * once the value runtime is keyed per instance.
+ */
 function stripElementForComponentDefinition(element: UIElement): UIElement {
     const next = cloneJson(element);
     if (next.extra?.componentLink) {
         const { componentLink: _componentLink, ...rest } = next.extra;
         next.extra = Object.keys(rest).length > 0 ? rest : undefined;
     }
-    delete next.behavior;
     delete next.valueBindings;
     return next;
 }
@@ -2454,6 +2467,62 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (!root) {
             return null;
         }
+
+        // Carry the logic across with the layout. Template import already does exactly this in the
+        // other direction - a component arriving with its own blueprints - so the remap machinery is
+        // the same one, pointed at a real surface as the source instead of a component.
+        // Guarded like the surface-duplicate path: a context without the blueprint service still has
+        // to be able to extract layout, and the component is worth making either way.
+        let localBp: LocalBlueprintService | null = null;
+        try {
+            localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            localBp = null;
+        }
+        const blueprintDocument = localBp?.getBlueprintDocument();
+        const blueprintIdMap: Record<string, string> = {};
+        const carried: { ownerKey: string; blueprint: Blueprint }[] = [];
+        if (blueprintDocument) {
+            for (const oldElementId of Object.keys(elementIdMap)) {
+                const ownerKey = widgetMainOwnerKey(surfaceId, oldElementId);
+                const sourceBlueprintId = blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+                if (sourceBlueprintId && blueprintDocument.blueprints[sourceBlueprintId]) {
+                    blueprintIdMap[sourceBlueprintId] = uuidService.generate();
+                }
+            }
+        }
+        if (blueprintDocument && Object.keys(blueprintIdMap).length > 0) {
+            const remapContext: SurfaceDuplicateRemapContext = {
+                oldSurfaceId: surfaceId,
+                newSurfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${componentId}`,
+                elementIdMap,
+                blueprintIdMap,
+            };
+            for (const [oldBlueprintId, newBlueprintId] of Object.entries(blueprintIdMap)) {
+                const sourceBlueprint = blueprintDocument.blueprints[oldBlueprintId];
+                const owner = sourceBlueprint?.owner;
+                if (!sourceBlueprint || owner?.kind !== "widgetMain") {
+                    continue;
+                }
+                const newElementId = elementIdMap[owner.elementId];
+                if (!newElementId) {
+                    continue;
+                }
+                const cloned = remapSurfaceDuplicateReferenceValue(cloneJson(sourceBlueprint), remapContext) as Blueprint;
+                cloned.id = newBlueprintId;
+                cloned.owner = { kind: "componentWidgetMain", componentId, elementId: newElementId };
+                carried.push({ ownerKey: componentWidgetMainOwnerKey(componentId, newElementId), blueprint: cloned });
+            }
+            // Element bindings name the blueprint by id, so they have to follow the clone; a copy
+            // still pointing at the original would run the surface's blueprint from inside the
+            // instance and drive the elements that are still out there.
+            for (const element of Object.values(componentElements)) {
+                if (element.behavior) {
+                    element.behavior = remapSurfaceDuplicateReferenceValue(element.behavior, remapContext) as UIElement["behavior"];
+                }
+            }
+        }
+
         const component: UIComponentDefinition = {
             id: componentId,
             name: sanitizeComponentName(name, selectedTopElements.length === 1 ? (selectedTopElements[0].name ?? translate("defaultDoc.componentName")) : translate("defaultDoc.componentName")),
@@ -2470,6 +2539,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(doc => {
             doc.components = [...(doc.components ?? []), component];
         }, { history: false });
+        if (carried.length > 0) {
+            localBp?.applyBlueprintMutation(bpDoc => {
+                for (const { ownerKey, blueprint } of carried) {
+                    bpDoc.blueprints[blueprint.id] = blueprint;
+                    registerPrivateBlueprintAsActive(bpDoc, ownerKey, blueprint.id, blueprint.frontend);
+                }
+            });
+        }
         return component;
     }
 
