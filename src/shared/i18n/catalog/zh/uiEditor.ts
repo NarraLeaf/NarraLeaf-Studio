@@ -126,6 +126,13 @@ export const uiEditor = {
         aspect: "屏幕比例",
         safeArea: "安全区",
         off: "关闭",
+        noOverlap: "无遮挡",
+        inset: {
+            top: "上",
+            right: "右",
+            bottom: "下",
+            left: "左",
+        },
     },
     templateStore: {
         open: "从模板开始",

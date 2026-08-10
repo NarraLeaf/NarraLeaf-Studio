@@ -7,6 +7,7 @@ import {
     computeSafeAreaFrameForGeometry,
     computeScreenRatioFrame,
     computeScreenRatioFrameById,
+    computeUnsafeBands,
     getSafeAreaPreset,
     getSurfacePreviewAspectPreset,
     isSafeAreaPresetId,
@@ -477,6 +478,75 @@ describe("computeSafeAreaFrame — math", () => {
                 orientation: "landscape",
             }),
         ).toBeNull();
+    });
+});
+
+describe("computeUnsafeBands", () => {
+    it("covers only the bottom strip for a 16:9 design on every device preset", () => {
+        for (const preset of SAFE_AREA_PRESETS) {
+            const frame = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset })!;
+            const bands = computeUnsafeBands(DESIGN_1920x1080, frame);
+            expect(bands).toHaveLength(1);
+            expect(bands[0].x).toBe(0);
+            expect(bands[0].width).toBe(1920);
+            expect(bands[0].height).toBeCloseTo(frame.insets.bottom, 6);
+            expect(bands[0].y).toBeCloseTo(1080 - frame.insets.bottom, 6);
+        }
+    });
+
+    it("gives the corners to the horizontal bands so no area is covered twice", () => {
+        const frame = computeSafeAreaFrameForGeometry({
+            designSize: { width: 1000, height: 1000 },
+            geometry: {
+                screen: { width: 1000, height: 1000 },
+                insets: { left: 10, right: 20, top: 30, bottom: 40 },
+            },
+            orientation: "landscape",
+        })!;
+        const bands = computeUnsafeBands({ width: 1000, height: 1000 }, frame);
+        expect(bands).toEqual([
+            { x: 0, y: 0, width: 1000, height: 30 },
+            { x: 0, y: 960, width: 1000, height: 40 },
+            { x: 0, y: 30, width: 10, height: 930 },
+            { x: 980, y: 30, width: 20, height: 930 },
+        ]);
+        const area = bands.reduce((sum, b) => sum + b.width * b.height, 0);
+        // 1000x1000 minus the safe rect: no overlap means the two agree exactly.
+        expect(area).toBe(1000 * 1000 - frame.safeRect.width * frame.safeRect.height);
+    });
+
+    it("is empty for the real preset that reaches fullySafe: Pixel 7 against a portrait design", () => {
+        // The pillarbox/letterbox swallows the 24dp gesture zone whole, so the honest answer is
+        // "nothing is covered" - and the canvas then looks identical to the layer being off, which
+        // is the entire reason `SurfacePreviewFramesReadout` says it in words.
+        const portrait = { width: 1080, height: 1920 };
+        const frame = computeSafeAreaFrame({ designSize: portrait, preset: safeArea("android-gesture") })!;
+        expect(frame.orientation).toBe("portrait");
+        expect(frame.fullySafe).toBe(true);
+        expect(computeUnsafeBands(portrait, frame)).toEqual([]);
+    });
+
+    it("is empty for a fully safe frame, a null frame and a degenerate design", () => {
+        const fully = computeSafeAreaFrameForGeometry({
+            designSize: { width: 1000, height: 1000 },
+            geometry: { screen: { width: 1000, height: 1000 }, insets: { left: 0, right: 0, top: 0, bottom: 0 } },
+            orientation: "landscape",
+        })!;
+        expect(fully.fullySafe).toBe(true);
+        expect(computeUnsafeBands({ width: 1000, height: 1000 }, fully)).toEqual([]);
+        expect(computeUnsafeBands(DESIGN_1920x1080, null)).toEqual([]);
+        const frame = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset: safeArea("ios-notch") })!;
+        expect(computeUnsafeBands({ width: 0, height: 1080 }, frame)).toEqual([]);
+    });
+
+    it("clamps insets that swallow the whole design rather than inverting geometry", () => {
+        const frame = computeSafeAreaFrameForGeometry({
+            designSize: { width: 100, height: 100 },
+            geometry: { screen: { width: 100, height: 100 }, insets: { left: 0, right: 0, top: 400, bottom: 0 } },
+            orientation: "portrait",
+        })!;
+        const bands = computeUnsafeBands({ width: 100, height: 100 }, frame);
+        expect(bands).toEqual([{ x: 0, y: 0, width: 100, height: 100 }]);
     });
 });
 

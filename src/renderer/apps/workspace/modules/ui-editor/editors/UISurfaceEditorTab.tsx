@@ -54,6 +54,7 @@ import {
 import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceSnapSettingsMenu";
 import { SurfaceAlignTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceAlignMenu";
 import { SurfacePreviewFramesTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
+import { SurfacePreviewFramesReadout } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesReadout";
 import { SurfacePreviewFramesOverlay } from "@/lib/ui-editor/preview/SurfacePreviewFramesOverlay";
 import { listInsertPaletteModules } from "@/lib/ui-editor/widget-modules/insertPalette";
 import { MOVEABLE_DOUBLE_CLICK_TARGET_SELECTOR } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
@@ -803,6 +804,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 />
                             ) : null}
                         </div>
+                        {/* Outside the transformed node on purpose - this one is text. */}
+                        <SurfacePreviewFramesReadout
+                            designSize={surface.designSize}
+                            aspectId={previewAspectId}
+                            safeAreaId={previewSafeAreaId}
+                        />
                     </div>
 
                     {stateService && documentService ? (
