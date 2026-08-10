@@ -552,6 +552,17 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE = "blueprint.elem
 export const BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE = "blueprint.element.stopEventBubble" as const;
 export const BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL = "blueprint.image.assetLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE = "blueprint.data.returnValue" as const;
+/**
+ * Park a value on the exec chain and read it from anywhere afterwards, as many times as you like.
+ *
+ * Every other data output feeds exactly one consumer, because a pure node re-evaluates at each read -
+ * two consumers of one Random Float would get two different numbers. A Memo has no second writer, so
+ * every read of it is the same value by construction, and that is what earns it fan-out. It is an
+ * engine facility rather than a recommended way to hold state: the value lives as long as the
+ * blueprint instance and reads before the write see `null`, both of which are the author's to reason
+ * about. Variables remain the way to carry state on purpose.
+ */
+export const BLUEPRINT_NODE_TYPE_DATA_MEMO = "blueprint.data.memo" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT = "blueprint.data.toFloat" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER = "blueprint.data.toInteger" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_BOOLEAN = "blueprint.data.toBoolean" as const;
