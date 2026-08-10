@@ -12,8 +12,10 @@ export const project = {
             title: "游戏",
             description: "存档、玩家默认值与音频轨道",
         },
-        brand: {
-            title: "配色",
+        // 按这一页最终要装的东西命名，而不是按它现在只有的那一块：目前只有配色，字体等其余外观
+        // 设定要放到它旁边。
+        design: {
+            title: "设计",
             description: "颜色，以及由它们上色的控件",
         },
         project: {

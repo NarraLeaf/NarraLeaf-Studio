@@ -12,8 +12,10 @@ export const project = {
             title: "Game",
             description: "Saving, player defaults, and audio tracks",
         },
-        brand: {
-            title: "Brand",
+        // Named for the page, not for its one current part: the palette is what is here today, and
+        // typography and the rest of a project's look are meant to join it.
+        design: {
+            title: "Design",
             description: "Colors, and the controls they paint",
         },
         project: {

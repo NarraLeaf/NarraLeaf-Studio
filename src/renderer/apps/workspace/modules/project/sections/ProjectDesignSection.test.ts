@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS, type BrandColor } from "@shared/types/brand";
-import { brandLinkExclusions } from "./ProjectBrandSection";
+import { brandLinkExclusions } from "./ProjectDesignSection";
 
 /**
  * The Brand panel's one invariant that cannot be seen on screen: the picker must never offer a

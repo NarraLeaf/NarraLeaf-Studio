@@ -113,7 +113,7 @@ export function brandLinkExclusions(palette: BrandPalette, id: string): string[]
     return excluded;
 }
 
-export function ProjectBrandSection({ uiService }: ProjectSectionProps) {
+export function ProjectDesignSection({ uiService }: ProjectSectionProps) {
     const { t, tn, has } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const freeze = useFreezeGuard();
