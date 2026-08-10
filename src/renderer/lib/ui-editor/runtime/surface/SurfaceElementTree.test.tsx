@@ -104,6 +104,117 @@ describe("SurfaceElementTree", () => {
         expect(componentRootLifecycle?.props.instanceKey).toBe("component:instance");
     });
 
+    /**
+     * The tree is the only place that holds the instance element and the document at once, so it is
+     * the only place that can answer what a placement supplies. Everything below it runs the shared
+     * definition, so if the answer does not leave here it never exists.
+     */
+    it("hands each linked instance its own resolved params", () => {
+        const component = {
+            id: "component",
+            name: "Save Slot",
+            rootElementId: "component-root",
+            params: [
+                { id: "saveId", name: "Save id", type: "string" as const, defaultValue: "1" },
+                { id: "label", name: "Label", type: "string" as const, defaultValue: "Empty" },
+            ],
+            elements: {
+                "component-root": {
+                    id: "component-root",
+                    type: "nl.container",
+                    parentId: null,
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 160, height: 80 },
+                },
+            },
+        };
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            components: [component],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["slot-a", "slot-b"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                "slot-a": {
+                    id: "slot-a",
+                    type: "nl.container",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 160, height: 80 },
+                    extra: {
+                        componentLink: {
+                            componentId: "component",
+                            linked: true,
+                            // `label` left alone, so it must arrive as the declared default; an empty
+                            // string is a value the author meant and must not fall back.
+                            params: { saveId: "7", label: "" },
+                        },
+                    },
+                },
+                "slot-b": {
+                    id: "slot-b",
+                    type: "nl.container",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 88, width: 160, height: 80 },
+                    extra: { componentLink: { componentId: "component", linked: true } },
+                },
+            },
+        };
+        const surface = document.surfaces[0]!;
+        const hostAdapter: UIHostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                surfaceId: surface.id,
+                setSurfaceState: () => undefined,
+                getSurfaceState: () => undefined,
+                emitDebug: () => undefined,
+                dispatchElementBlueprintEvent: async () => undefined,
+            },
+        };
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "nl.root", render: props => <>{props.children}</> },
+            { type: "nl.container", render: props => <>{props.children}</> },
+        ]);
+
+        const tree = SurfaceElementTree({
+            document,
+            surface,
+            rootElement: document.elements.root!,
+            rendererRegistry,
+            hostAdapter,
+        });
+
+        const lifecycleNodes = flattenNodes(tree).filter(
+            (node): node is React.ReactElement<React.ComponentProps<typeof BlueprintWidgetInitLifecycle>> =>
+                isValidElement(node) && node.type === BlueprintWidgetInitLifecycle,
+        );
+        const paramsFor = (instanceKey: string) =>
+            lifecycleNodes.find(node => node.props.instanceKey === instanceKey)?.props.componentParams;
+
+        expect(paramsFor("component:slot-a")).toEqual({ saveId: "7", label: "" });
+        expect(paramsFor("component:slot-b")).toEqual({ saveId: "1", label: "Empty" });
+        // The page's own elements are not inside any instance and must stay untouched.
+        expect(lifecycleNodes.find(node => node.props.elementId === "slot-a")?.props.componentParams).toBeNull();
+    });
+
     it("passes the host adapter into element wrappers so Dev Mode widget events can dispatch", () => {
         const document: UIDocument = {
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,

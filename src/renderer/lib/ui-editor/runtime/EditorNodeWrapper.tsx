@@ -47,6 +47,8 @@ type EditorNodeWrapperProps = {
     useAppearanceInspectorPreview?: boolean;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
+    /** Resolved params of the component instance this element belongs to; null outside one. */
+    componentParams?: Record<string, string> | null;
     children?: React.ReactNode;
 };
 
@@ -122,6 +124,7 @@ export function EditorNodeWrapper({
     useAppearanceInspectorPreview = false,
     listItemScope,
     instanceKey,
+    componentParams,
     children,
 }: EditorNodeWrapperProps) {
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
@@ -198,15 +201,22 @@ export function EditorNodeWrapper({
             setResetMotionId(null);
         }
     }, [displayableMotion, resetMotionId]);
+    // The element tree resolves component params afresh on every render, so its object identity
+    // moves even when the values did not. Keying the memo on the signature keeps the dispatch
+    // options - and therefore the handlers built from them - stable across those renders; when two
+    // signatures match, the captured object holds the same values by construction.
+    const componentParamsSig = componentParams ? JSON.stringify(componentParams) : "";
     const eventOptions = useMemo(
         () =>
-            listItemScope || instanceKey
+            listItemScope || instanceKey || componentParamsSig
                 ? {
                       listItemScope: listItemScope ?? null,
                       instanceKey,
+                      componentParams: componentParams ?? undefined,
                   }
                 : undefined,
-        [instanceKey, listItemScope],
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- componentParamsSig stands in for componentParams
+        [componentParamsSig, instanceKey, listItemScope],
     );
 
     const isDirectElementEvent = useCallback(
