@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Blueprint, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
-import { listDevModeBlueprints } from "./blueprintDebugPanelModel";
+import { blueprintWidgetElementId, listDevModeBlueprints } from "./blueprintDebugPanelModel";
 
 /** The Interface panel's half of the one listing function: "what can I open in the workspace". */
 function listForWorkspace(
@@ -255,5 +255,34 @@ describe("listDevModeBlueprints — workspace", () => {
         expect(
             listForWorkspace(blueprints, { document, activeSurfaceId: "mounted-stage" }).map(bp => bp.id),
         ).toEqual(["stage-surface", "stage-widget"]);
+    });
+});
+
+describe("blueprintWidgetElementId", () => {
+    it("names the widget behind both widget-owned kinds", () => {
+        const main = authoredBlueprint("main", "Main", {
+            kind: "widgetMain",
+            surfaceId: "app",
+            elementId: "app-button",
+        });
+        const value = authoredBlueprint("value", "Value", {
+            kind: "widgetValue",
+            surfaceId: "app",
+            elementId: "app-label",
+            propPath: "text",
+        });
+
+        expect(blueprintWidgetElementId(main)).toBe("app-button");
+        expect(blueprintWidgetElementId(value)).toBe("app-label");
+    });
+
+    it("answers nothing for the owners that are not a widget on the stage", () => {
+        const surface = authoredBlueprint("surface", "Surface", { kind: "surfaceMain", surfaceId: "app" });
+        const global = authoredBlueprint("global", "Global", { kind: "globalMain" });
+        const shared = authoredBlueprint("shared", "Shared", { kind: "sharedAsset", assetId: "asset" });
+
+        expect(blueprintWidgetElementId(surface)).toBeNull();
+        expect(blueprintWidgetElementId(global)).toBeNull();
+        expect(blueprintWidgetElementId(shared)).toBeNull();
     });
 });
