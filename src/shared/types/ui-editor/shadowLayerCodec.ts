@@ -3,6 +3,8 @@
  * Shared between editor UI and runtime CSS composition (no React).
  */
 
+import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
+
 export type ShadowLikeLayer = {
     inset: boolean;
     offsetX: number;
@@ -110,7 +112,25 @@ export function layerDataToShadowLike(layer: EffectShadowLayerData, inset: boole
     return { inset, ...layer };
 }
 
+/**
+ * The stored layer as one CSS fragment, with a brand link resolved to the colour it stands for.
+ *
+ * The resolve happens here rather than at each paint site because a `box-shadow` is one string: an
+ * unresolved `nlbrand:` token in the middle of it makes the browser drop the *whole* declaration, so
+ * a shadow whose colour follows the palette would simply not exist. Reaching the registry directly
+ * (rather than through the `colorUtils` pair) keeps this module where it is - shared, no React, no
+ * renderer imports - and it is the same resolver those two call.
+ *
+ * A literal, or a link that does not resolve, is emitted exactly as stored: a broken link is meant to
+ * paint nothing and be reported by lint, not to be quietly swapped for a colour nobody chose.
+ *
+ * One consequence worth naming: `EffectsStackEditor`'s "custom CSS" escape hatch stores what this
+ * returns, so converting a linked shadow to custom CSS bakes the colour in. That is the honest
+ * outcome - a free-form CSS string has nowhere to keep a link - and it only happens when the author
+ * deliberately leaves the structured model.
+ */
 export function shadowLayerDataToCss(layer: EffectShadowLayerData, mode: ShadowSerializeMode): string {
-    const sl = layerDataToShadowLike(layer, mode === "inner");
+    const color = getActiveBrandPalette().resolveValueCss(layer.color) ?? layer.color;
+    const sl = layerDataToShadowLike({ ...layer, color }, mode === "inner");
     return serializeShadowLikeLayer(sl, mode);
 }

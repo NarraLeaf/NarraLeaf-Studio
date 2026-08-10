@@ -162,6 +162,16 @@ export const lint = {
             description: "A recording whose line no longer exists",
             message: "{count} {locale} recordings have no line",
         },
+        brandBrokenLink: {
+            title: "Broken color link",
+            description: "A color pointing at a palette entry that resolves to nothing",
+            // These three name their own site, unlike most rules: the finding is filed under the
+            // project, so the locator column beside it prints nothing, and {where} is the only thing
+            // that tells one of these findings from the next.
+            message: "{where} uses {color}, which the palette does not have",
+            messageChain: "{where} uses {color}, which links on to {missing} - a color the palette does not have",
+            messageCycle: "{where} uses {color}, whose links lead back to themselves",
+        },
     },
     message: {
         ruleFailed: "{rule} could not run",
@@ -176,6 +186,8 @@ export const lint = {
         text: "Text",
         localization: "Localization",
         voice: "Voice",
+        // Named after the panel the author fixes one of these in, not after the link protocol.
+        brand: "Brand palette",
     },
     severity: {
         error: "Error",

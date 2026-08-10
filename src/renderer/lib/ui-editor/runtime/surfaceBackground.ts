@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import {
     normalizeUISurfaceBackgroundImage,
@@ -11,8 +12,22 @@ export const EDITOR_SURFACE_LOW_OPACITY_THRESHOLD = 0.2;
 export const EDITOR_SURFACE_LOW_OPACITY_OUTLINE =
     "1px solid var(--narraleaf-accent-strong, rgba(64, 168, 196, 0.92))";
 
+/**
+ * The colour a surface paints behind everything on it, as CSS.
+ *
+ * Every reader in this module goes through here, which is why the brand link is resolved at this one
+ * point: the value ends up interpolated into a `color-mix()` and measured by `getCssBackgroundAlpha`,
+ * and neither of those can be handed an `nlbrand:` token. Resolved through the registry rather than
+ * the `colorUtils` pair because those two work in `{hex, alpha}` and would flatten `transparent` and
+ * every functional-notation colour an author may have typed; this keeps the stored spelling for
+ * anything that is not a link.
+ *
+ * A link that does not resolve falls through as itself, so a broken reference paints nothing and lint
+ * is the thing that explains why - rather than a colour appearing that no one chose.
+ */
 export function getSurfaceBackgroundColor(surface: UISurface): string {
-    return surface.settings?.backgroundColor ?? (surface.kind === "stageSurface" ? "transparent" : "#ffffff");
+    const stored = surface.settings?.backgroundColor ?? (surface.kind === "stageSurface" ? "transparent" : "#ffffff");
+    return getActiveBrandPalette().resolveValueCss(stored) ?? stored;
 }
 
 /**
@@ -161,7 +176,10 @@ export function getEditorSurfaceAreaBackgroundColor(surface: UISurface): string 
     if (surface.kind !== "stageSurface") {
         return undefined;
     }
-    return isTransparentBackground(surface.settings?.backgroundColor) ? EDITOR_SURFACE_AREA_BACKGROUND : undefined;
+    // Through `getSurfaceBackgroundColor` rather than off `settings` directly, so a linked colour is
+    // measured as the colour it resolves to. Reading the raw field would see an unparseable string,
+    // and `getCssBackgroundAlpha` calls that opaque - the checkerboard would vanish under a link.
+    return isTransparentBackground(getSurfaceBackgroundColor(surface)) ? EDITOR_SURFACE_AREA_BACKGROUND : undefined;
 }
 
 export function shouldShowEditorSurfaceLowOpacityOutline(surface: UISurface): boolean {
