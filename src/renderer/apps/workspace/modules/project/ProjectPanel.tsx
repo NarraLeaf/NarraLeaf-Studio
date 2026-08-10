@@ -10,7 +10,7 @@ import { useProjectNavItems, ProjectPanelHome, type ProjectSectionId } from "./P
 import { ProjectSubPage } from "./components/ProjectSubPage";
 import { ProjectAppPage } from "./pages/ProjectAppPage";
 import { ProjectGamePage } from "./pages/ProjectGamePage";
-import { ProjectBrandSection } from "./sections/ProjectBrandSection";
+import { ProjectDesignSection } from "./sections/ProjectDesignSection";
 import { ProjectSettingsSection } from "./sections/ProjectSettingsSection";
 import { ProjectRuntimesSection } from "./sections/ProjectRuntimesSection";
 import { ProjectLintingSection } from "./sections/ProjectLintingSection";
@@ -29,7 +29,7 @@ export type ProjectPanelPayload = {
  * answers about whichever part the author was not looking at.
  */
 const SUB_PAGE_HELP_TOPICS: Partial<Record<ProjectSectionId, HelpTopicId>> = {
-    brand: "brand",
+    design: "brand",
     project: "lint",
     runtimes: "puppetRuntimes",
 };
@@ -133,7 +133,7 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                             {activeItem.id === "game" ? <ProjectGamePage {...sectionProps} /> : null}
                             {/* Brand is two parts of one subject and names them itself: the
                                 colours an author decides, and the slots that follow them. */}
-                            {activeItem.id === "brand" ? <ProjectBrandSection {...sectionProps} /> : null}
+                            {activeItem.id === "design" ? <ProjectDesignSection {...sectionProps} /> : null}
                             {/* Project and Runtimes hold a single part each, so they carry no
                                 headings of their own - the sub-page header already named it. */}
                             {activeItem.id === "project" ? <ProjectLintingSection {...sectionProps} /> : null}

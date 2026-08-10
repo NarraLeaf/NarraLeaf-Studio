@@ -4,7 +4,7 @@ import { useTranslation } from "@/lib/i18n";
 import { InteractiveCard } from "@/lib/components/elements";
 import type { ProjectConfig } from "@/lib/workspace/project/project";
 
-export type ProjectSectionId = "app" | "game" | "brand" | "project" | "runtimes" | "settings";
+export type ProjectSectionId = "app" | "game" | "design" | "project" | "runtimes" | "settings";
 
 export type ProjectNavItem = {
     id: ProjectSectionId;
@@ -16,7 +16,7 @@ export type ProjectNavItem = {
 const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
     app: AppWindow,
     game: Gamepad2,
-    brand: Palette,
+    design: Palette,
     project: ListChecks,
     runtimes: Boxes,
     settings: SlidersHorizontal,
@@ -29,11 +29,16 @@ const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
 // question an author actually arrives with, and the parts inside it are told apart by headings.
 //
 // The order is how far the answer is from the player. App is the application's own identity, Game
-// is what the player meets, and Brand follows it because the palette is what the player sees first:
-// the colour of a screen registers before a word of it has been read, so it belongs on the player's
-// side of the list rather than beside the settings that produce a build. Project is what the
-// project is checked against, Runtimes and Settings are what it is built with and how it ships.
-const PROJECT_NAV_ORDER: ProjectSectionId[] = ["app", "game", "brand", "project", "runtimes", "settings"];
+// is what the player meets, and Design follows it because how a screen looks registers before a
+// word of it has been read, so it belongs on the player's side of the list rather than beside the
+// settings that produce a build. Project is what the project is checked against, Runtimes and
+// Settings are what it is built with and how it ships.
+//
+// Design is named for what it will hold, not for what it holds today. Today that is the colour
+// palette and nothing else; typography and the rest of a project's look are meant to arrive beside
+// it, and a row called "Brand" would have had to be renamed - taking its deep-link id with it - the
+// first time one did.
+const PROJECT_NAV_ORDER: ProjectSectionId[] = ["app", "game", "design", "project", "runtimes", "settings"];
 
 /**
  * The project navigation rows, with localized title/description. Shared by the

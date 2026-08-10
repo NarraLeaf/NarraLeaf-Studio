@@ -289,7 +289,29 @@ export function ColorPickerTrigger({
     const [isDragging, setIsDragging] = useState(false);
     const isDraggingMapRef = useRef(false);
     const [layoutTick, setLayoutTick] = useState(0);
-    const [colorState, setColorState] = useState(() => deriveColorState(value));
+    /**
+     * `value`, with a link's colour read from the palette as it stands right now.
+     *
+     * A caller hands us the `ColorValue` it parsed when *it* last rendered, and a palette edit does
+     * not re-render it - the document did not change. Resolving here instead means the swatch and
+     * the hex label follow the palette on the spot, in every one of the twenty-odd call sites,
+     * without each of them having to subscribe. `palette` is a fresh instance after every edit, so
+     * this memo and the sync effect below both notice.
+     *
+     * The author's own alpha wins over the entry's: it is this field's setting, not the palette's.
+     */
+    const resolvedValue = useMemo<ColorValue>(() => {
+        if (!value.link) {
+            return value;
+        }
+        const css = palette.resolveCss(value.link);
+        if (!css) {
+            return value;
+        }
+        const fromPalette = parseColorValue(css, { hex: value.hex, alpha: value.alpha ?? 1 });
+        return { hex: fromPalette.hex, alpha: value.alpha ?? fromPalette.alpha, link: value.link };
+    }, [palette, value]);
+    const [colorState, setColorState] = useState(() => deriveColorState(resolvedValue));
     const [hexDraft, setHexDraft] = useState(() => colorState.hex);
     const [isEditingHex, setIsEditingHex] = useState(false);
     // The brand entry this value points at, if any. Kept beside `colorState` rather than inside it
@@ -319,7 +341,7 @@ export function ColorPickerTrigger({
 
     useEffect(() => {
         setColorState((prev) => {
-            const incomingHex = normalizeHex(value.hex) || "#FFFFFF";
+            const incomingHex = normalizeHex(resolvedValue.hex) || "#FFFFFF";
 
             if (isDraggingMapRef.current) {
                 return prev;
@@ -339,8 +361,8 @@ export function ColorPickerTrigger({
 
             // Same hex: do not re-derive HSL (float/hex rounding differs from HSV map path and causes thumb flicker).
             if (incomingHex === prev.hex) {
-                if (value.alpha !== undefined && Math.abs((value.alpha ?? 1) - prev.alpha) > 1e-6) {
-                    const next = { ...prev, alpha: clamp(value.alpha, 0, 1) };
+                if (resolvedValue.alpha !== undefined && Math.abs((resolvedValue.alpha ?? 1) - prev.alpha) > 1e-6) {
+                    const next = { ...prev, alpha: clamp(resolvedValue.alpha, 0, 1) };
                     colorStateRef.current = next;
                     pendingPushHexRef.current = null;
                     lastMapInteractionRef.current = false;
@@ -351,8 +373,8 @@ export function ColorPickerTrigger({
                 return prev;
             }
 
-            const next = deriveColorState(value);
-            if (value.alpha === undefined) {
+            const next = deriveColorState(resolvedValue);
+            if (resolvedValue.alpha === undefined) {
                 next.alpha = prev.alpha;
             }
             if (isAchromaticHsl(next.saturation, next.lightness)) {
@@ -363,7 +385,7 @@ export function ColorPickerTrigger({
             colorStateRef.current = next;
             return next;
         });
-    }, [value]);
+    }, [resolvedValue]);
 
     useEffect(() => {
         colorStateRef.current = colorState;
@@ -700,7 +722,13 @@ export function ColorPickerTrigger({
         };
     }, []);
 
-    const displayColor = useMemo(() => colorValueToCss(colorState), [colorState]);
+    // `colorState` is the colour the panel is editing and deliberately carries no link (every edit
+    // in it clears one). The trigger, though, is showing the *field's* value, so it paints what the
+    // link resolves to - otherwise a swatch keeps the colour the palette used to have.
+    const displayColor = useMemo(
+        () => colorValueToCss({ hex: colorState.hex, alpha: colorState.alpha, link: activeBrandLink ?? undefined }),
+        [activeBrandLink, colorState],
+    );
     const currentRgb = useMemo(() => {
         return hslToRgb(colorState.hue, colorState.saturation, colorState.lightness);
     }, [colorState]);
