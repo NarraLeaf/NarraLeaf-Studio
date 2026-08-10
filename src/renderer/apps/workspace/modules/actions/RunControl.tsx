@@ -12,6 +12,7 @@ import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
+import { readProjectMobileOrientation } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
@@ -247,7 +248,14 @@ export function RunControl() {
             } catch (e) {
                 console.error("[DevMode] flush before launch failed", e);
             }
-            await dev.launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
+                // No safeAreaId on purpose: the top bar runs the game the way a player gets it. The
+            // orientation is project context rather than a design aid, and the Dev Mode window's
+            // own safe-area picker needs it to resolve a device onto the right edge.
+            await dev.launch({
+                kind: "surface",
+                surfaceId: MAIN_APP_SURFACE_ID,
+                mobileOrientation: readProjectMobileOrientation(context),
+            });
         })();
     };
 

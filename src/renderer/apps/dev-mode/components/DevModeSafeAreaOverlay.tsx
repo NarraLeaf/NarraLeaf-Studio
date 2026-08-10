@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import {
     computeSafeAreaFrameById,
     computeUnsafeBands,
+    type SafeAreaMobileOrientation,
     type SurfacePreviewSize,
 } from "@/lib/ui-editor/preview/surfacePreviewFrames";
 
@@ -10,6 +11,8 @@ export type DevModeSafeAreaOverlayProps = {
     designSize: SurfacePreviewSize;
     /** Device preset id, `null` = the overlay is off. */
     safeAreaId: string | null;
+    /** The project's `app.mobile.orientation`, forwarded on the launch entry. */
+    mobileOrientation?: SafeAreaMobileOrientation | null;
 };
 
 /**
@@ -23,10 +26,10 @@ export type DevModeSafeAreaOverlayProps = {
  * a device's notch / home indicator covers, the dashed line is the boundary. It is a design aid over
  * a live game, so it is `pointer-events-none` throughout and never touches the game's own layers.
  */
-export function DevModeSafeAreaOverlay({ designSize, safeAreaId }: DevModeSafeAreaOverlayProps) {
+export function DevModeSafeAreaOverlay({ designSize, safeAreaId, mobileOrientation }: DevModeSafeAreaOverlayProps) {
     const frame = useMemo(
-        () => computeSafeAreaFrameById(designSize, safeAreaId),
-        [designSize, safeAreaId],
+        () => computeSafeAreaFrameById(designSize, safeAreaId, mobileOrientation),
+        [designSize, safeAreaId, mobileOrientation],
     );
     const bands = useMemo(() => computeUnsafeBands(designSize, frame), [designSize, frame]);
 

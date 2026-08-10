@@ -90,92 +90,194 @@ export type SafeAreaGeometry = {
     insets: SurfacePreviewInsets;
 };
 
+/** Menu grouping. Also the shape of the inset rule that produced the numbers. */
+export type SafeAreaDeviceFamily = "iphone" | "ipad" | "android";
+
 /**
  * A safe-area preset is a *device*, not a flat percentage: the whole point is that the letterbox bars
  * can swallow the notch entirely, in which case the correct answer is "no risk on this device".
  *
- * Both orientations are carried because iOS insets differ substantially between them. The consuming
- * math picks one automatically from the design size — there is no separate control for it.
+ * Both orientations are carried because iOS insets differ substantially between them.
  */
 export type SafeAreaPreset = {
     id: string;
-    /** Device the numbers were measured on. Surfaced in the toolbar menu, so keep it exact. */
+    /** Exact marketing name — it is what the menu and the readout show. */
     reference: string;
+    family: SafeAreaDeviceFamily;
     landscape: SafeAreaGeometry;
     portrait: SafeAreaGeometry;
 };
 
 /**
- * Source notes — these numbers look arbitrary without them:
+ * What a device contributes before the rule below turns it into two geometries.
  *
- * 1. iOS landscape side insets are **mirrored**: Apple applies the same inset to both edges
- *    regardless of which side the sensor housing is on. Equal left/right is deliberate, not a
- *    copy-paste error.
- * 2. The iOS home indicator is 21pt in landscape and 34pt in portrait, constant from iPhone X
- *    through iPhone 16 Pro Max.
- * 3. Android values are **AOSP defaults** (`navigation_bar_height` = 24dp in the gestural overlay).
- *    A fullscreen/immersive game reports *zero* status-bar and nav-bar insets, but the bottom
- *    home-gesture zone is a mandatory gesture area that cannot be excluded — which is why Android
- *    carries a bottom inset and nothing else. OEM overlays vary these, so treat Android as a
- *    baseline rather than per-device truth.
- * 4. Apple publishes no official inset table; these are community-measured per-generation values
- *    (useyourloaf.com), independently corroborated for the iPhone 12/13 generation.
- * 5. iOS 26-era hardware (iPhone 17 / Air) breaks the pattern with a non-zero landscape *top* inset
- *    of 20pt. Single source, not yet corroborated, so it is deliberately not in this table.
+ * `points` is the PORTRAIT logical size, and it is `nativePixels / scale` — an arithmetic identity
+ * from two first-party numbers, so a typo in either is catchable rather than a silent lie. `housing`
+ * is the only per-device inset value; everything else comes from the shared rule.
  */
-export const SAFE_AREA_PRESETS: readonly SafeAreaPreset[] = [
-    {
-        id: "ios-dynamic-island",
-        reference: "iPhone 15 Pro",
-        landscape: {
-            screen: { width: 852, height: 393 },
-            insets: { left: 59, right: 59, top: 0, bottom: 21 },
-        },
-        portrait: {
-            screen: { width: 393, height: 852 },
-            insets: { left: 0, right: 0, top: 59, bottom: 34 },
-        },
-    },
-    {
-        id: "ios-notch",
-        reference: "iPhone 13",
-        landscape: {
-            screen: { width: 844, height: 390 },
-            insets: { left: 47, right: 47, top: 0, bottom: 21 },
-        },
-        portrait: {
-            screen: { width: 390, height: 844 },
-            insets: { left: 0, right: 0, top: 47, bottom: 34 },
-        },
-    },
-    {
-        id: "android-gesture",
-        reference: "Pixel 7",
-        landscape: {
-            screen: { width: 915, height: 412 },
-            insets: { left: 0, right: 0, top: 0, bottom: 24 },
-        },
-        portrait: {
-            screen: { width: 412, height: 915 },
-            insets: { left: 0, right: 0, top: 0, bottom: 24 },
-        },
-    },
+type SafeAreaDeviceSpec = {
+    id: string;
+    reference: string;
+    family: SafeAreaDeviceFamily;
+    /** Portrait logical size in pt (iOS) / dp (Android). */
+    points: SurfacePreviewSize;
+    /**
+     * How far the sensor housing / display cutout reaches into the screen, in logical units: the
+     * portrait top inset, and (mirrored) the landscape side inset. 0 for a device with no cutout.
+     */
+    housing: number;
+    /** Home-indicator inset: `[portrait, landscape]`. `[0, 0]` for a home-button device. */
+    homeIndicator: [number, number];
+};
+
+/**
+ * Real devices, and the rule that turns each into a pair of geometries.
+ *
+ * **These numbers describe THIS product's shells, not a generic app.** Both mobile shells run the
+ * game full-screen with the system chrome out of the way, and the exported entry document carries
+ * `viewport-fit=cover` (`webShell.ts`), so the page's layout viewport is the whole screen and the
+ * game genuinely paints under the housing:
+ *
+ * - **iOS** (`@narraleaf/studio-shell`): `UIStatusBarHidden`, `prefersStatusBarHidden`,
+ *   `prefersHomeIndicatorAutoHidden`, and `setContentInsetAdjustmentBehavior` on the WKWebView's
+ *   scroll view.
+ * - **Android**: `enterImmersiveMode` + `setDecorFitsSystemWindows(false)` + a non-default
+ *   `layoutInDisplayCutoutMode`, i.e. edge-to-edge with the system bars hidden and the content laid
+ *   out into the cutout.
+ *
+ * Two consequences that a generic inset table gets wrong, and that this one gets right:
+ *
+ * 1. **A hidden status bar zeroes the top inset on a device with no "ears".** Apple's own answer
+ *    (developer.apple.com/forums/thread/110724): an iPad with the status bar hidden reports
+ *    `{0, 0, 20, 0}` — "the non-zero top inset on the iPhone is the exceptional case, it's there
+ *    because the iPhone has ears, not because of the iPhone's status bar". So an iPad here has NO
+ *    top inset, and an iPhone SE is safe on every edge, while a notched iPhone keeps its housing.
+ * 2. **Android reports the display cutout, not the navigation bar.** WebView forwards system-bar
+ *    insets only where the bars actually overlap the WebView (developer.android.com — "Understand
+ *    window insets in WebView"), and this shell hides them. The bottom gesture strip is therefore
+ *    *not* part of `env(safe-area-inset-bottom)` here — which is exactly backwards from what this
+ *    table used to say, when Android's only inset was a 24dp bottom one and it had no cutout at all.
+ *    The gesture strip is still a bad place for a button; it is a touch-routing hazard rather than
+ *    an occlusion, and this overlay deliberately draws only what is covered.
+ *
+ * Sources for the device numbers: logical point sizes and portrait insets from useyourloaf.com's
+ * per-generation screen-size tables (iPhone 13 / 14 / 16), which are the corroborated community
+ * reference — Apple publishes screen sizes but no inset table. The landscape rule (sides mirrored to
+ * the portrait top inset, 21pt home indicator) is from the iPhone X measurements and has held for
+ * every generation since.
+ *
+ * ⚠ **The Android entry is a typical device, not a measured one.** Cutout geometry is per-OEM and
+ * no first-party table exists; its name says so. The honest fix is to read `env(safe-area-inset-*)`
+ * off a real handset, which nothing in this product does yet.
+ */
+const SAFE_AREA_DEVICES: readonly SafeAreaDeviceSpec[] = [
+    // 750x1334 @2x. Home button: no ears and no home indicator, so with the status bar hidden it is
+    // safe on every edge. Kept precisely because "this device has no risk" is a real answer.
+    { id: "iphone-se-3", reference: "iPhone SE (3rd gen)", family: "iphone", points: { width: 375, height: 667 }, housing: 0, homeIndicator: [0, 0] },
+    // 1125x2436 @3x. The mini's housing costs MORE than a 13's (50 vs 47): same notch, narrower screen.
+    { id: "iphone-13-mini", reference: "iPhone 13 mini", family: "iphone", points: { width: 375, height: 812 }, housing: 50, homeIndicator: [34, 21] },
+    // 1170x2532 @3x — iPhone 12/12 Pro, 13/13 Pro, 14.
+    { id: "iphone-14", reference: "iPhone 14", family: "iphone", points: { width: 390, height: 844 }, housing: 47, homeIndicator: [34, 21] },
+    // 1284x2778 @3x — iPhone 12/13 Pro Max, 14 Plus.
+    { id: "iphone-14-plus", reference: "iPhone 14 Plus", family: "iphone", points: { width: 428, height: 926 }, housing: 47, homeIndicator: [34, 21] },
+    // 1179x2556 @3x — iPhone 14 Pro, 15, 15 Pro, 16. First Dynamic Island size.
+    { id: "iphone-15-pro", reference: "iPhone 15 Pro", family: "iphone", points: { width: 393, height: 852 }, housing: 59, homeIndicator: [34, 21] },
+    // 1290x2796 @3x — iPhone 14 Pro Max, 15 Plus, 15 Pro Max, 16 Plus.
+    { id: "iphone-15-pro-max", reference: "iPhone 15 Pro Max", family: "iphone", points: { width: 430, height: 932 }, housing: 59, homeIndicator: [34, 21] },
+    // 1206x2622 @3x. The 16 Pro pair is the first to go past 59.
+    { id: "iphone-16-pro", reference: "iPhone 16 Pro", family: "iphone", points: { width: 402, height: 874 }, housing: 62, homeIndicator: [34, 21] },
+    // 1320x2868 @3x.
+    { id: "iphone-16-pro-max", reference: "iPhone 16 Pro Max", family: "iphone", points: { width: 440, height: 956 }, housing: 62, homeIndicator: [34, 21] },
+    // 1640x2360 @2x. No ears; status bar hidden => top 0. The home indicator is 20pt on iPad, and it
+    // does not shrink in landscape the way the iPhone's does.
+    { id: "ipad-10", reference: "iPad (10th gen)", family: "ipad", points: { width: 820, height: 1180 }, housing: 0, homeIndicator: [20, 20] },
+    // 1668x2388 @2x.
+    { id: "ipad-pro-11", reference: "iPad Pro 11\"", family: "ipad", points: { width: 834, height: 1194 }, housing: 0, homeIndicator: [20, 20] },
+    // Pixel-class 1080x2400 @2.625. Housing = a punch hole on the top edge, which lands on a short
+    // edge in landscape; mirrored like iOS because the shell may lock either landscape rotation.
+    // No home-indicator inset: the gesture strip is not reported as safe-area here (see above).
+    { id: "android-punch-hole", reference: "Android punch-hole (typical)", family: "android", points: { width: 412, height: 915 }, housing: 48, homeIndicator: [0, 0] },
 ];
+
+/**
+ * The rule, applied once per device.
+ *
+ * Landscape mirrors the housing onto BOTH side edges: Apple insets both sides equally regardless of
+ * which way the phone is turned, so content does not jump when the player rotates — and our shells
+ * can lock either landscape rotation, so the same is the safe reading on Android.
+ */
+function expandSafeAreaDevice(device: SafeAreaDeviceSpec): SafeAreaPreset {
+    const { width, height } = device.points;
+    const [portraitIndicator, landscapeIndicator] = device.homeIndicator;
+    return {
+        id: device.id,
+        reference: device.reference,
+        family: device.family,
+        portrait: {
+            screen: { width, height },
+            insets: { left: 0, right: 0, top: device.housing, bottom: portraitIndicator },
+        },
+        landscape: {
+            screen: { width: height, height: width },
+            insets: { left: device.housing, right: device.housing, top: 0, bottom: landscapeIndicator },
+        },
+    };
+}
+
+export const SAFE_AREA_PRESETS: readonly SafeAreaPreset[] = SAFE_AREA_DEVICES.map(expandSafeAreaDevice);
+
+/**
+ * Ids this table used to ship, mapped to the device they actually described.
+ *
+ * A preset id is persisted in Studio settings and travels on a Dev Mode launch entry, so dropping
+ * these would silently turn the overlay off for anyone who had one selected — which is the exact
+ * "I picked something and nothing happened" this whole feature has already been reported for once.
+ */
+const LEGACY_SAFE_AREA_PRESET_IDS: Readonly<Record<string, string>> = {
+    "ios-dynamic-island": "iphone-15-pro",
+    "ios-notch": "iphone-14",
+    "android-gesture": "android-punch-hole",
+};
 
 export function getSafeAreaPreset(id: string | null | undefined): SafeAreaPreset | null {
     if (!id) {
         return null;
     }
-    return SAFE_AREA_PRESETS.find(preset => preset.id === id) ?? null;
+    const resolved = LEGACY_SAFE_AREA_PRESET_IDS[id] ?? id;
+    return SAFE_AREA_PRESETS.find(preset => preset.id === resolved) ?? null;
 }
 
 export function isSafeAreaPresetId(id: unknown): boolean {
-    return typeof id === "string" && SAFE_AREA_PRESETS.some(preset => preset.id === id);
+    return typeof id === "string" && getSafeAreaPreset(id) !== null;
 }
 
 /** Square designs count as landscape; there is no third case to show. */
 export function pickSurfacePreviewOrientation(designSize: SurfacePreviewSize): SurfacePreviewOrientation {
     return designSize.width >= designSize.height ? "landscape" : "portrait";
+}
+
+/**
+ * How the project says its mobile builds are rotated (`app.mobile.orientation`). `auto` means the
+ * shell locks nothing, so there is no answer to read and the design size is the best guess left.
+ */
+export type SafeAreaMobileOrientation = "landscape" | "portrait" | "auto";
+
+/**
+ * Which orientation the device is held in, for inset purposes.
+ *
+ * The project setting wins because it is what the shells actually do — `setRequestedOrientation` on
+ * Android, `UISupportedInterfaceOrientations` on iOS. Inferring it from the design size instead is
+ * only right by coincidence: it agrees with the setting in a well-formed project and quietly shows
+ * the wrong edge in exactly the projects that need checking, and it cannot represent `auto` at all.
+ */
+export function resolveSafeAreaOrientation(
+    designSize: SurfacePreviewSize,
+    mobileOrientation?: SafeAreaMobileOrientation | null,
+): SurfacePreviewOrientation {
+    if (mobileOrientation === "landscape" || mobileOrientation === "portrait") {
+        return mobileOrientation;
+    }
+    return pickSurfacePreviewOrientation(designSize);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -351,12 +453,14 @@ export function computeSafeAreaFrameForGeometry(input: {
 export function computeSafeAreaFrame(input: {
     designSize: SurfacePreviewSize;
     preset: SafeAreaPreset;
+    /** The project's `app.mobile.orientation`; omitted / `auto` falls back to the design size. */
+    mobileOrientation?: SafeAreaMobileOrientation | null;
 }): SafeAreaFrame | null {
-    const { designSize, preset } = input;
+    const { designSize, preset, mobileOrientation } = input;
     if (!isUsableSize(designSize)) {
         return null;
     }
-    const orientation = pickSurfacePreviewOrientation(designSize);
+    const orientation = resolveSafeAreaOrientation(designSize, mobileOrientation);
     return computeSafeAreaFrameForGeometry({
         designSize,
         geometry: preset[orientation],
@@ -420,7 +524,8 @@ export function computeScreenRatioFrameById(
 export function computeSafeAreaFrameById(
     designSize: SurfacePreviewSize,
     safeAreaId: string | null | undefined,
+    mobileOrientation?: SafeAreaMobileOrientation | null,
 ): SafeAreaFrame | null {
     const preset = getSafeAreaPreset(safeAreaId);
-    return preset ? computeSafeAreaFrame({ designSize, preset }) : null;
+    return preset ? computeSafeAreaFrame({ designSize, preset, mobileOrientation }) : null;
 }
