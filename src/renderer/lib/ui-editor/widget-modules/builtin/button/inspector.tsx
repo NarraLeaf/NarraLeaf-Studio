@@ -19,6 +19,7 @@ import { createPropertyEditorSchema, defineField } from "@/apps/workspace/module
 import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
+import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
@@ -334,18 +335,20 @@ export function createButtonInspector(ctx: InspectorContext) {
                                                 id: "button.colorPicker",
                                                 render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                                                     const current = getButtonProps(data.element);
+                                                    const stored = parseColorValue(current.color, { hex: "#FFFFFF", alpha: 1 });
                                                     const handleChange = (next: ColorValue) => {
                                                         onSaving(true);
                                                         try {
-                                                            patch({ color: next.hex });
+                                                            patch({ color: serializeColorValue(next) });
                                                         } finally {
                                                             onSaving(false);
                                                         }
                                                     };
                                                     return (
                                                         <ColorPickerTrigger
-                                                            value={{ hex: current.color, alpha: 1 }}
+                                                            value={stored}
                                                             displayMode="icon"
+                                                            brandPalette
                                                             allowOpacity={false}
                                                             onChange={handleChange}
                                                         />

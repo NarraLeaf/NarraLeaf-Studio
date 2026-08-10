@@ -5,11 +5,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
 import { DEFAULT_PLAYER_PREFERENCES } from "@shared/types/preference";
+import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import {
     loadAutoSaveConfiguration,
     loadGameAudio,
     loadGameLocalization,
     loadPlayerPreferences,
+    loadProjectBrand,
     resolveStoryDocumentPathForIndexEntry,
 } from "./bundleAssembler";
 
@@ -373,5 +375,67 @@ describe("bundleAssembler audio payload", () => {
         const projectPath = await createProject(undefined, "{not json");
         const tracks = (await loadGameAudio(projectPath)).tracks;
         expect(tracks?.map(track => track.id)).toEqual(["bgm", "sound", "voice"]);
+    });
+});
+
+/**
+ * The brand palette. Dense like the tracks and for the same reason: a `nlbrand:` link is only a
+ * colour while a palette is beside it, so every path out of this loader has to be a usable palette
+ * rather than an absence the runtime would have to invent an answer for.
+ */
+describe("bundleAssembler brand palette", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    async function createProject(document?: string): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-brand-test-"));
+        tempDirs.push(projectPath);
+        if (document !== undefined) {
+            await mkdir(path.join(projectPath, "editor"), { recursive: true });
+            await writeFile(path.join(projectPath, "editor", "brand.json"), document);
+        }
+        return projectPath;
+    }
+
+    it("seeds the built-in palette for a project that has never opened the Brand surface", async () => {
+        const colors = await loadProjectBrand(await createProject());
+        expect(colors).toEqual([...BUILTIN_BRAND_COLORS]);
+        // The seeded control slots have to arrive as links, not as pre-resolved literals: resolving
+        // them here would freeze today's primary into the bundle and "change the primary colour"
+        // would stop meaning anything in a shipped game.
+        expect(colors.find(color => color.id === "button.primary")?.value).toBe("nlbrand:primary");
+    });
+
+    it("carries the author's palette, their own colours included", async () => {
+        const projectPath = await createProject(JSON.stringify({
+            schemaVersion: 1,
+            colors: [
+                { id: "primary", value: "#FF0000" },
+                { id: "ink", name: "Ink", value: "nlbrand:primary/0.5" },
+            ],
+        }));
+        const colors = await loadProjectBrand(projectPath);
+        expect(colors.find(color => color.id === "primary")?.value).toBe("#FF0000");
+        expect(colors.find(color => color.id === "ink")).toEqual({ id: "ink", name: "Ink", value: "nlbrand:primary/0.5" });
+        // Whatever the author's document was missing comes back seeded, so the runtime can assume
+        // every built-in id resolves.
+        expect(BUILTIN_BRAND_COLORS.every(seed => colors.some(color => color.id === seed.id))).toBe(true);
+    });
+
+    it("falls back to the seeds rather than throwing on an unreadable document", async () => {
+        // One corrupted colour file must not be the reason a preview will not start; booting in the
+        // default palette is a state the author can see.
+        expect(await loadProjectBrand(await createProject("{not json")))
+            .toEqual([...BUILTIN_BRAND_COLORS]);
+        expect(await loadProjectBrand(await createProject(JSON.stringify({ colors: "nonsense" }))))
+            .toEqual([...BUILTIN_BRAND_COLORS]);
+    });
+
+    it("falls back to the seeds when the project cannot be read at all", async () => {
+        expect(await loadProjectBrand(path.join(os.tmpdir(), "nls-missing-project")))
+            .toEqual([...BUILTIN_BRAND_COLORS]);
     });
 });

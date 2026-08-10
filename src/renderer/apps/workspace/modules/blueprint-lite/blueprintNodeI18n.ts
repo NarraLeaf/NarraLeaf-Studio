@@ -248,6 +248,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get Wrap Mode": "blueprint.node.getWrapMode",
     "Go Page": "blueprint.node.goPage",
     "Go back": "blueprint.node.goBack",
+    "Memo": "blueprint.node.memo",
     "Clear Page": "blueprint.node.clearPage",
     "Greater Than": "blueprint.node.greaterThan",
     "Greater Than Or Equal": "blueprint.node.greaterThanOrEqual",

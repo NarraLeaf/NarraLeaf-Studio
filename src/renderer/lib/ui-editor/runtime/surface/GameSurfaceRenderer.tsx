@@ -8,6 +8,7 @@ import type {
     SurfaceBlueprintBindingContext,
     SurfaceLifecycleSignals,
 } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { SurfaceElementTree } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { SurfacePassiveContext } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
@@ -52,6 +53,13 @@ export type GameSurfaceRendererProps = {
      */
     backgroundColor?: string;
     /**
+     * Thins the Surface's background picture, for a page presented over a running game.
+     *
+     * Unlike `backgroundColor` this is a factor rather than a replacement: the picture is the
+     * author's, and the presentation only decides how much of the scene behind it shows through.
+     */
+    backgroundImageOpacity?: number;
+    /**
      * Passed straight through to {@link SurfaceElementTree}: the caller promises this `document` is a
      * snapshot nothing mutates in place, which is what lets the element tree be memoised. Both
      * runtime hosts (the app surface stack and the stage slots) render out of a compiled bundle and
@@ -79,6 +87,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         surfacePointerEvents,
         passive = false,
         backgroundColor,
+        backgroundImageOpacity,
         staticDocument,
     } = props;
     // Kept as values, not write-only tick setters: the element tree is memoised on its inputs, and
@@ -187,6 +196,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             onContextMenu={interactive ? handleSurfaceRightClick : undefined}
         >
             <div style={surfaceStyle}>
+                <SurfaceBackgroundImageLayer surface={surface} opacity={backgroundImageOpacity} />
                 <SurfaceElementTree
                     document={document}
                     surface={surface}
