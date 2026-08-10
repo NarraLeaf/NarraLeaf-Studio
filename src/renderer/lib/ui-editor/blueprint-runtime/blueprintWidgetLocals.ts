@@ -24,6 +24,20 @@ function cloneJsonValue<T>(value: T): T {
 
 const store = new Map<string, Record<string, unknown>>();
 
+/**
+ * Key on the per-execution locals object holding the current blueprint's raw lifecycle record, so
+ * Memo nodes can park a value there for as long as the blueprint instance is alive.
+ *
+ * Memo deliberately does not use the node-output store: that one is created fresh per execution, and
+ * a Memo whose value vanished the moment its event finished would be readable only from the branch
+ * that wrote it - the least useful half of what the node is for. Living in the variable record gives
+ * it the lifetime a Var has, including being dropped when the widget unmounts.
+ */
+export const BLUEPRINT_MEMO_RECORD_KEY = "__nlBlueprintMemoRecord";
+
+/** Prefix for Memo slots inside a blueprint's variable record; keeps them clear of author variables. */
+export const BLUEPRINT_MEMO_SLOT_PREFIX = "__nlMemo\0";
+
 function widgetVariableStoreKey(runtimeScopeId: string, elementId: string, blueprintId: string): string {
     return `widget\0${runtimeScopeId}\0${elementId}\0${blueprintId}`;
 }
@@ -64,7 +78,9 @@ function acquireVariableStore(key: string, bp: Blueprint): Record<string, unknow
     }
     const defaults = defaultLocalsFromBlueprint(bp);
     for (const id of Object.keys(locals)) {
-        if (!(id in defaults)) {
+        // Memo slots are not declared anywhere, so they would be pruned as "a variable that no longer
+        // exists" on the next acquire - which is every execution.
+        if (!(id in defaults) && !id.startsWith(BLUEPRINT_MEMO_SLOT_PREFIX)) {
             delete locals[id];
         }
     }
@@ -122,6 +138,19 @@ export function acquireBlueprintExecutionLocals(input: {
         surfaceId: input.surfaceId,
     });
 
+    // Acquired up front rather than as a side effect of the variable loop below: a blueprint that
+    // declares no variables contributes no options, and its Memo nodes would have nowhere to live.
+    const currentRecord = acquireVariableStore(
+        blueprintVariableStoreKey(current, input.runtimeScopeId, input.elementInstanceKey),
+        current,
+    );
+    storesByBlueprintId.set(input.currentBlueprintId, currentRecord);
+    Object.defineProperty(out, BLUEPRINT_MEMO_RECORD_KEY, {
+        enumerable: false,
+        configurable: true,
+        value: currentRecord,
+    });
+
     for (const option of options) {
         const bp = input.blueprintDocument.blueprints[option.blueprintId];
         if (!bp) {
@@ -159,11 +188,33 @@ export function resolveBlueprintLocalValue(input: {
     return input.blueprintLocals[key];
 }
 
+/**
+ * Drop the lifecycle locals an unmounting element owns for one blueprint.
+ *
+ * Matches on a bounded prefix plus the blueprint id rather than rebuilding the key, because the
+ * create path keys by owner kind and appends an instance segment for elements inside a component or a
+ * list row. Rebuilding it here is what went wrong before: the key was built by a second function that
+ * knew about neither, so an element with an instance key kept its store forever, and a component
+ * instance's store - a different key form entirely - was never deleted at all. Coming back to a screen
+ * then found the variables from last time still in place.
+ *
+ * The `\0` after the element id bounds the match, so no other element's stores can be caught by it.
+ */
 export function releaseBlueprintWidgetLocals(
     surfaceId: string,
     elementId: string,
     blueprintId: string,
     runtimeScopeId?: string,
+    options?: { componentId?: string },
 ): void {
-    store.delete(widgetVariableStoreKey(runtimeScopeId ?? surfaceId, elementId, blueprintId));
+    const prefixes = [`widget\0${runtimeScopeId ?? surfaceId}\0${elementId}\0`];
+    if (options?.componentId) {
+        prefixes.push(`componentWidget\0${options.componentId}\0${elementId}\0`);
+    }
+    const suffix = `\0${blueprintId}`;
+    for (const key of [...store.keys()]) {
+        if (key.endsWith(suffix) && prefixes.some(prefix => key.startsWith(prefix))) {
+            store.delete(key);
+        }
+    }
 }
