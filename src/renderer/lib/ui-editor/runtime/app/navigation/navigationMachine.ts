@@ -56,6 +56,7 @@ export type NavigationEvent =
           targetSurface: UISurface | null;
           targetHiddenForGame: boolean;
           reducedMotion: boolean | null;
+          targetIndex?: number;
       }
     | { type: "PREPAINT_READY"; entryKey: string }
     | { type: "ENTER_COMPLETE"; entryKey: string }
@@ -128,6 +129,7 @@ export function reduceNavigation(state: NavigationState, event: NavigationEvent)
                 targetSurface: event.targetSurface,
                 targetHiddenForGame: event.targetHiddenForGame,
                 prefersReducedMotion: event.reducedMotion,
+                targetIndex: event.targetIndex,
             });
             if (!update) {
                 return { state };
