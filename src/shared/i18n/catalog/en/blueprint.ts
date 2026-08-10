@@ -883,6 +883,7 @@ export const blueprint = {
         getWrapMode: "Get Wrap Mode",
         goPage: "Go Page",
         goBack: "Go back",
+        memo: "Memo",
         clearPage: "Clear Page",
         greaterThan: "Greater Than",
         greaterThanOrEqual: "Greater Than Or Equal",
