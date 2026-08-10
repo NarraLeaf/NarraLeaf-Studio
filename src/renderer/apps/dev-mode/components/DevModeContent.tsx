@@ -28,6 +28,8 @@ import {
     type BlueprintOutputLogLevel,
 } from "./BlueprintRuntimeDebugPanel";
 import { DevModeWidgetHighlight } from "./DevModeWidgetHighlight";
+import { DevModeSafeAreaOverlay } from "./DevModeSafeAreaOverlay";
+import { isSafeAreaPresetId } from "@/lib/ui-editor/preview/surfacePreviewFrames";
 import { StoryRuntimeDebugPanel } from "./StoryRuntimeDebugPanel";
 import { SavesDebugPanel } from "./SavesDebugPanel";
 import { BlueprintDebuggerProvider } from "./debugger/BlueprintDebuggerContext";
@@ -180,6 +182,9 @@ function DevModeDebugOverlay(props: {
     /** Whether the debug FAB is hidden for this window; same owner and reason as `activePanel`. */
     fabHidden: boolean;
     setFabHidden: Dispatch<SetStateAction<boolean>>;
+    /** Safe-area preset the stage overlay is drawing; owned above, picked in the Interface panel. */
+    safeAreaId: string | null;
+    setSafeAreaId: Dispatch<SetStateAction<string | null>>;
 }) {
     const {
         core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath, fastForwardToNextChoice, storyRuntime,
@@ -189,6 +194,7 @@ function DevModeDebugOverlay(props: {
         outputLogLevels, setOutputLogLevels,
         sessionError, onDismissSessionError, issues, onDismissIssue, onDismissAllIssues,
         fabHidden, setFabHidden,
+        safeAreaId, setSafeAreaId,
     } = props;
     const { t } = useTranslation();
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
@@ -576,6 +582,8 @@ function DevModeDebugOverlay(props: {
                                     outputLogLevels={outputLogLevels}
                                     setOutputLogLevels={setOutputLogLevels}
                                     onHighlightElement={setHighlightedElementId}
+                                    safeAreaId={safeAreaId}
+                                    setSafeAreaId={setSafeAreaId}
                                     className="h-full min-h-0 w-full"
                                     chrome={panelChrome}
                                 />
@@ -1212,6 +1220,34 @@ export function DevModeContent(props: DevModeContentProps) {
 
     const getScale = useCallback(() => scale, [scale]);
 
+    /**
+     * Safe-area device preset for this window, `null` = off.
+     *
+     * Scoped to the Dev Mode session and nothing wider: seeded once from the launch entry (only the
+     * UI editor's canvas launch button sends one) and then owned by the Interface panel's picker.
+     * Never written back — the editor's canvas frame and what this window is showing are two
+     * separate decisions, and a window that silently rewrote the editor's choice would be the more
+     * surprising of the two.
+     *
+     * Owned here for the same reason as `activePanel` below: the panel that draws the picker is
+     * unmounted whenever the drawer closes, and a timeline jump remounts the whole session.
+     * Declared above `renderFrame` because that callback lists it as a dependency.
+     */
+    const [safeAreaId, setSafeAreaId] = useState<string | null>(null);
+    const safeAreaSeededRef = useRef(false);
+    useEffect(() => {
+        // `entry` arrives a tick after mount (it comes from the window props), so this cannot be a
+        // `useState` initializer. Seeded once: after that the picker owns the value, and a re-render
+        // carrying the same entry must not undo the author's choice.
+        if (safeAreaSeededRef.current || !entry) {
+            return;
+        }
+        safeAreaSeededRef.current = true;
+        if (entry.kind === "surface" && isSafeAreaPresetId(entry.safeAreaId)) {
+            setSafeAreaId(entry.safeAreaId ?? null);
+        }
+    }, [entry]);
+
     const renderFrame = useCallback((ctx: GameAppFrameContext) => {
         const viewportSize = resolveDevModeViewportSize({
             activeSurfaceDesignSize: ctx.activeSurface.designSize,
@@ -1225,11 +1261,13 @@ export function DevModeContent(props: DevModeContentProps) {
                         onRenderScaleChange={value => handleAspectUpdate({ scale: value })}
                     >
                         {ctx.children}
+                        {/* Inside the box, so it covers the stage and not the letterbox bars. */}
+                        <DevModeSafeAreaOverlay designSize={viewportSize} safeAreaId={safeAreaId} />
                     </StageViewportFrame>
                 </div>
             </div>
         );
-    }, [handleAspectUpdate]);
+    }, [handleAspectUpdate, safeAreaId]);
 
     const renderPlaceholder = useCallback(() => (
         <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
@@ -1308,6 +1346,8 @@ export function DevModeContent(props: DevModeContentProps) {
                 onDismissAllIssues={dismissAllIssues}
                 fabHidden={fabHidden}
                 setFabHidden={setFabHidden}
+                safeAreaId={safeAreaId}
+                setSafeAreaId={setSafeAreaId}
             />
         );
     }, [
@@ -1323,6 +1363,7 @@ export function DevModeContent(props: DevModeContentProps) {
         dismissIssue,
         dismissAllIssues,
         fabHidden,
+        safeAreaId,
     ]);
 
     if (!bundle || !host) {
