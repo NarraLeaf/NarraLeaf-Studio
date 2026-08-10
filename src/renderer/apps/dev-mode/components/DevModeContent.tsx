@@ -1262,12 +1262,16 @@ export function DevModeContent(props: DevModeContentProps) {
                     >
                         {ctx.children}
                         {/* Inside the box, so it covers the stage and not the letterbox bars. */}
-                        <DevModeSafeAreaOverlay designSize={viewportSize} safeAreaId={safeAreaId} />
+                        <DevModeSafeAreaOverlay
+                            designSize={viewportSize}
+                            safeAreaId={safeAreaId}
+                            mobileOrientation={entry?.kind === "surface" ? entry.mobileOrientation : undefined}
+                        />
                     </StageViewportFrame>
                 </div>
             </div>
         );
-    }, [handleAspectUpdate, safeAreaId]);
+    }, [entry, handleAspectUpdate, safeAreaId]);
 
     const renderPlaceholder = useCallback(() => (
         <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">

@@ -155,7 +155,9 @@ export function SurfaceToolbarPopoverPanel({
         <div
             ref={popover.panelRef}
             data-surface-toolbar-popover={dataAttribute ?? "true"}
-            className={`fixed z-50 min-w-[220px] rounded-md border border-edge bg-surface-raised py-2 shadow-lg ${className}`.trim()}
+            // Capped and scrollable: the device list is a dozen rows and the panel is positioned, not
+            // laid out, so an over-tall one would run off the bottom of the window instead of fitting.
+            className={`fixed z-50 max-h-[min(70vh,34rem)] min-w-[220px] overflow-y-auto rounded-md border border-edge bg-surface-raised py-2 shadow-lg ${className}`.trim()}
             style={{ left: popover.position.x, top: popover.position.y }}
             onMouseDown={e => e.stopPropagation()}
         >

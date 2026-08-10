@@ -24,6 +24,7 @@ import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeSt
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { SAFE_AREA_PRESETS } from "@/lib/ui-editor/preview/surfacePreviewFrames";
+import { SAFE_AREA_FAMILY_LABELS } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
 import { blueprintWidgetElementId, listDevModeBlueprints } from "./blueprintDebugPanelModel";
 import { formatDebugValue } from "./debugValueFormat";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
@@ -193,6 +194,25 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         [setSafeAreaId],
     );
 
+    const renderSafeAreaOption = useCallback(
+        (id: string | null, label: string) => (
+            <button
+                key={id ?? "off"}
+                type="button"
+                role="menuitemradio"
+                aria-checked={safeAreaId === id}
+                className="flex w-full cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-left text-2xs text-fg-muted hover:bg-fill hover:text-fg"
+                onClick={() => chooseSafeArea(id)}
+            >
+                <span className="grid h-3 w-3 shrink-0 place-items-center">
+                    {safeAreaId === id ? <Check className="h-3 w-3 text-primary" aria-hidden /> : null}
+                </span>
+                <span className="truncate">{label}</span>
+            </button>
+        ),
+        [chooseSafeArea, safeAreaId],
+    );
+
     // "What can I open in the workspace", scoped to the surface on screen — as opposed to the
     // debugger's "what can I set a breakpoint in". Both questions live in one switch; see the model.
     const blueprintsList = useMemo(() => {
@@ -295,27 +315,17 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                 role="menu"
                                 aria-label={t("uiEditor.preview.safeArea")}
                                 // Right-anchored: the panel's right edge is the window's when docked.
-                                className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
+                                // Capped: a dozen devices is taller than a docked panel's header.
+                                className="absolute right-0 top-full z-20 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
                             >
-                                {[
-                                    { id: null, label: t("uiEditor.preview.off") },
-                                    ...SAFE_AREA_PRESETS.map(preset => ({ id: preset.id, label: preset.reference })),
-                                ].map(option => (
-                                    <button
-                                        key={option.id ?? "off"}
-                                        type="button"
-                                        role="menuitemradio"
-                                        aria-checked={safeAreaId === option.id}
-                                        className="flex w-full cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-left text-2xs text-fg-muted hover:bg-fill hover:text-fg"
-                                        onClick={() => chooseSafeArea(option.id)}
-                                    >
-                                        <span className="grid h-3 w-3 shrink-0 place-items-center">
-                                            {safeAreaId === option.id ? (
-                                                <Check className="h-3 w-3 text-primary" aria-hidden />
-                                            ) : null}
-                                        </span>
-                                        <span className="truncate">{option.label}</span>
-                                    </button>
+                                {renderSafeAreaOption(null, t("uiEditor.preview.off"))}
+                                {SAFE_AREA_FAMILY_LABELS.map(([family, familyLabel]) => (
+                                    <div key={family}>
+                                        <div className="px-1.5 pb-0.5 pt-1.5 text-2xs text-fg-subtle">{familyLabel}</div>
+                                        {SAFE_AREA_PRESETS.filter(preset => preset.family === family).map(preset =>
+                                            renderSafeAreaOption(preset.id, preset.reference),
+                                        )}
+                                    </div>
                                 ))}
                             </div>
                         ) : null}
