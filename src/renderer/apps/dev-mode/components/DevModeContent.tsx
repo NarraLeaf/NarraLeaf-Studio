@@ -27,6 +27,7 @@ import {
     DEFAULT_OUTPUT_LOG_LEVELS,
     type BlueprintOutputLogLevel,
 } from "./BlueprintRuntimeDebugPanel";
+import { DevModeWidgetHighlight } from "./DevModeWidgetHighlight";
 import { StoryRuntimeDebugPanel } from "./StoryRuntimeDebugPanel";
 import { SavesDebugPanel } from "./SavesDebugPanel";
 import { BlueprintDebuggerProvider } from "./debugger/BlueprintDebuggerContext";
@@ -197,6 +198,11 @@ function DevModeDebugOverlay(props: {
     const panelRef = useRef<HTMLDivElement | null>(null);
     /** Where the panel is being dragged to right now; `null` whenever no drag is in flight. */
     const [dragPosition, setDragPosition] = useState<FloatPanelPosition>(null);
+    /**
+     * The widget the drawer is currently pointing at, drawn over the stage. Owned here because the
+     * highlight is a sibling of the panel that asks for it, not a child of it.
+     */
+    const [highlightedElementId, setHighlightedElementId] = useState<string | null>(null);
     /** Tears down an in-flight title-bar drag (also on unmount, so no listener outlives the panel). */
     const endDragRef = useRef<(() => void) | null>(null);
     useEffect(() => () => endDragRef.current?.(), []);
@@ -569,6 +575,7 @@ function DevModeDebugOverlay(props: {
                                     projectPath={projectPath}
                                     outputLogLevels={outputLogLevels}
                                     setOutputLogLevels={setOutputLogLevels}
+                                    onHighlightElement={setHighlightedElementId}
                                     className="h-full min-h-0 w-full"
                                     chrome={panelChrome}
                                 />
@@ -683,6 +690,10 @@ function DevModeDebugOverlay(props: {
 
             {/* Over the stage, and over the drawer: while stopped, the graph is the window. */}
             <BlueprintDebuggerOverlay />
+
+            {/* Last, and above everything else here: a highlight that something else can cover is a
+                highlight that fails on exactly the widget worth pointing at. */}
+            <DevModeWidgetHighlight elementId={highlightedElementId} />
         </BlueprintDebuggerProvider>
     );
 }
