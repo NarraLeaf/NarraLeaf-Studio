@@ -58,7 +58,7 @@ export const wizard = {
         name: "项目名称",
         namePlaceholder: "项目名称",
         appIdPlaceholder: "应用标识符",
-        appIdHelper: "仅限小写字母、数字与连字符。创建后不可更改",
+        appIdHelper: "仅限小写字母、数字与连字符；创建后不可更改",
         appIdRequired: "应用 ID 为必填项",
         appIdInvalid: "应用 ID 只能包含小写字母、数字和连字符",
         locationPlaceholder: "项目位置",
@@ -81,7 +81,7 @@ export const wizard = {
         height: "高",
         orientationLandscape: "移动端构建锁定横屏",
         orientationPortrait: "移动端构建锁定竖屏",
-        scriptLocaleHelper: "剧本撰写使用的语言。译文在本地化面板添加",
+        scriptLocaleHelper: "剧本撰写使用的语言；译文在本地化面板添加",
     },
     import: {
         packageLabel: ".nlspkg 文件",
@@ -94,7 +94,7 @@ export const wizard = {
             failedTitle: "导入失败",
             generic: "无法解包该文件",
             notAProjectTitle: "这不是 NarraLeaf Studio 项目",
-            notAProject: "安装包已解包，但其中没有 Studio 项目文件；已解包的内容位于 {path}；请确认该文件是否正确，然后重试",
+            notAProject: "解包完成，但其中没有 Studio 项目文件；已解包的内容位于 {path}",
         },
     },
     source: {
@@ -112,7 +112,7 @@ export const wizard = {
             failedTitle: "克隆失败",
             generic: "无法从服务器获取该项目",
             notAProjectTitle: "这不是 NarraLeaf Studio 项目",
-            notAProject: "复制完成，但其中没有 Studio 项目文件。已复制的内容位于 {path}",
+            notAProject: "复制完成，但其中没有 Studio 项目文件；已复制的内容位于 {path}",
         },
     },
     review: {
