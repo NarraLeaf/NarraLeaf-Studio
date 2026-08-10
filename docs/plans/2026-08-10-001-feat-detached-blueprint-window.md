@@ -50,10 +50,18 @@ field as "delete the selected nodes".
 
 ## Window chrome
 
-A detached window wears the **OS frame**, unlike every other Studio window.
-Studio's custom title bar minimises, maximises and closes "the window that sent
-this IPC", and a popup sends IPC through its opener — those buttons would drive
-the workspace window instead of the one they are drawn in.
+A detached window is **frameless**, like every other Studio window, and the
+editor's own title row is its title bar: it carries `titlebar-drag`, reserves the
+macOS traffic lights the same 90px `TitleBar` does, and off macOS draws the
+minimise / maximise / close buttons itself (`detachedTitleBar.tsx`). It drops the
+help trigger — F1 answers into the help panel, a dock panel of the workspace
+window, so the answer would appear in the window the author is not looking at.
+
+Those buttons cannot use the ordinary window-control IPC. Every call in it means
+"the window that sent this", and a popup sends IPC through its opener, so close
+would close the workspace. `appDetachedWindowControl` takes the window's key
+instead, and the main process resolves it **among the children of the sender** —
+which is also what stops one window from reaching another's.
 
 The popup runs the preload too (Electron gives it the opener's webPreferences),
 so the preload now refuses to expose anything to a blank child document. Its

@@ -87,6 +87,7 @@ export enum IPCEventType {
     getPlatform = "getPlatform",
     appTerminate = "app.terminate",
     appWindowControl = "app.window.setControl",
+    appDetachedWindowControl = "app.window.detachedControl",
     appWindowEditCommand = "app.window.editCommand",
     appWindowClose = "app.window.close",
     appWindowCloseWith = "app.window.closeWith",
@@ -382,6 +383,29 @@ export type IPCEvents = {
      * Used by the renderer when a native Edit-menu command routed to a surface action should
      * fall back to normal text editing because the user is in a text field.
      */
+    /**
+     * Drive one of the sending window's DETACHED windows (see `detachedWindowGuard`).
+     *
+     * A detached window is frameless and wears the editor's own title row as its title bar, so its
+     * minimise / maximise / close buttons are drawn by the renderer - but that renderer is the
+     * opener's, and every other window-control call resolves to "the window that sent this IPC".
+     * Sent blind, those buttons would drive the workspace window instead of the one they are drawn
+     * in. Hence the key: the popup names itself, and the main process looks it up among the
+     * children of the sender, which is also what stops a window from reaching another's.
+     */
+    [IPCEventType.appDetachedWindowControl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** The detached window's key, as given to `window.open`'s frame name. */
+            key: string,
+            /** `status` only reads; the rest act and then report where the window ended up. */
+            control: "status" | "minimize" | "toggleMaximize" | "close",
+        },
+        response: {
+            status: WindowVisibilityStatus,
+        };
+    };
     [IPCEventType.appWindowEditCommand]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,

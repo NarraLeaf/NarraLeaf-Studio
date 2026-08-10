@@ -160,6 +160,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             onFullscreenChanged: (handler: (payload: { isFullscreen: boolean }) => void) =>
                 ipcClient.onMessage(IPCEventType.appWindowFullscreenChanged, handler),
         },
+        /**
+         * The same controls, for a window this one detached part of itself into. Named rather than
+         * implicit: a detached popup sends IPC through its opener, so `control.close()` from the
+         * buttons drawn in it would close this window instead.
+         */
+        detachedControl: (key: string, control: "status" | "minimize" | "toggleMaximize" | "close") =>
+            ipcClient.invoke(IPCEventType.appDetachedWindowControl, { key, control }),
     },
     fs: {
         stat: (path: string) => ipcClient.invoke(IPCEventType.fsStat, { path }),
