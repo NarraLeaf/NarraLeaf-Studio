@@ -38,6 +38,7 @@ import {
 } from "@/lib/ui-editor/runtime/pageAnimation";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
+import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
 
 export type SurfaceBlueprintBindingContext = {
@@ -690,6 +691,7 @@ function NestedSurfaceInstance(props: {
             onBeforeExit={handleBeforeExit}
             onEnterComplete={handleEnterComplete}
         >
+            <SurfaceBackgroundImageLayer surface={targetSurface} />
             <SurfaceElementTree
                 document={document}
                 surface={targetSurface}

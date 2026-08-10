@@ -7,7 +7,6 @@ export const widgetAppearance = {
     variant: {
         nameLabel: "Variant name",
         untitled: "Untitled variant",
-        defaultName: "Variant {index}",
         addTitle: "Add variant (duplicate current)",
         setDefaultTitle: "Set as default variant",
         deleteTitle: "Delete variant",

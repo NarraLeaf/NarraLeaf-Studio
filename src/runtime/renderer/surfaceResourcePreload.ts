@@ -111,6 +111,9 @@ function collectSurfaceAssetIds(ctx: CollectContext, surfaceId: string): void {
     if (!surface) {
         return;
     }
+    // The Surface's own settings, not just its widgets: a background picture is the largest thing on
+    // the page and the first one an author would notice popping in a frame after the reveal.
+    collectAssetIdsFromValue(ctx, surface.settings);
     collectElementTree(ctx, ctx.document.elements[surface.rootElementId], `surface:${surface.id}`);
 }
 

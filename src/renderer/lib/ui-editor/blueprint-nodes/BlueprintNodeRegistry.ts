@@ -4,6 +4,7 @@
  */
 
 import {
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
@@ -111,6 +112,11 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
         return true;
     }
     if (def.type === BLUEPRINT_NODE_TYPE_LOCAL_GET || def.type === BLUEPRINT_NODE_TYPE_LOCAL_SET) {
+        return !def.isLatent;
+    }
+    // Same treatment as Get/Set Var, and for the same reason: an exec node, but a synchronous one
+    // whose whole effect is on the blueprint's own locals.
+    if (def.type === BLUEPRINT_NODE_TYPE_DATA_MEMO) {
         return !def.isLatent;
     }
     if (def.category === "Flow") {

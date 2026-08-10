@@ -145,6 +145,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: {},
             output: null,
         },
+        clearPages: {
+            capabilityId: "navigation.clearPages",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        clearGameOverlay: {
+            capabilityId: "navigation.clearGameOverlay",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
         quitApplication: {
             capabilityId: "navigation.quitApplication",
             purity: "effectful",

@@ -10,6 +10,7 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_PAGE_BACK,
+    BLUEPRINT_NODE_TYPE_PAGE_CLEAR,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
@@ -103,6 +104,28 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         pins: [execIn, execNext],
         async execute(ctx) {
             await requireHostApi(ctx).navigation.closeLayer();
+            return { nextPort: "next" };
+        },
+    },
+    {
+        // Escape, on every page, without the author having to know how deep the player is or whether
+        // they came from the title screen. `Go back` pops one, so Escape over a game two pages deep
+        // lands on the page underneath; `Go Page (None)` empties the stack, which on the title screen
+        // would dismiss the title itself. This clears exactly the pages a running game is wearing.
+        //
+        // Doing nothing outside a game is the useful half: the same handler can be wired everywhere,
+        // and `Clear Page -> Go back` reads as "leave the game if I am in one, otherwise step back" -
+        // Go back is a no-op once the stack is down to its root.
+        type: BLUEPRINT_NODE_TYPE_PAGE_CLEAR,
+        displayName: "Clear Page",
+        category: "App",
+        keywords: ["page", "clear", "close", "dismiss", "overlay", "game", "escape", "resume"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).navigation.clearGameOverlay();
             return { nextPort: "next" };
         },
     },

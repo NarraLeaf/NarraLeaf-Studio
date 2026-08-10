@@ -5,6 +5,7 @@
 
 import {
     BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY,
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN,
     BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE,
     BLUEPRINT_NODE_TYPE_DATA_IS_NULL,
@@ -49,6 +50,7 @@ import {
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { resolveDataPinValue } from "./graphParamResolvers";
+import { writeBlueprintMemoValue } from "../memoValues";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
 const JSON_OBJECT_INPUT_PINS_KEY = "__jsonObjectInputPins";
@@ -122,6 +124,49 @@ function dataNode(input: {
 }
 
 export const dataBlueprintNodes: BlueprintNodeDef[] = [
+    {
+        // The one data output in the system that may feed several consumers. Everything else is
+        // single-consumer because a pure node re-evaluates at every read - wire one Random Float to
+        // three pins and you get three numbers - and because an exec node's output belongs to the
+        // pulse that produced it. A Memo has exactly one writer, itself, so every read returns what
+        // that write left, and fanning it out cannot surprise anyone.
+        //
+        // Synchronous rather than latent on purpose: latent nodes are barred from inline story values,
+        // and there is nothing to await here. Function graphs stay pure, so a Memo cannot go in one.
+        type: BLUEPRINT_NODE_TYPE_DATA_MEMO,
+        displayName: "Memo",
+        category: "Data",
+        keywords: ["memo", "cache", "hold", "keep", "store", "reuse", "fan out", "share"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: false,
+        pins: [
+            { id: "in", kind: "input", semantic: "exec", label: "In" },
+            { id: "value", kind: "input", semantic: "data", valueType: "any", label: "Value" },
+            { id: "next", kind: "output", semantic: "exec", label: "Next" },
+            { id: "result", kind: "output", semantic: "data", valueType: "any", label: "Value" },
+        ],
+        execute(ctx) {
+            const value = resolveDataPinValue(
+                ctx.graph,
+                ctx.node.id,
+                "value",
+                ctx.params,
+                ctx.blueprintLocals,
+                0,
+                {
+                    hostAdapter: ctx.hostAdapter,
+                    eventPayload: ctx.eventPayload,
+                    listItemScope: ctx.listItemScope,
+                    instanceKey: ctx.instanceKey,
+                    executionOwner: ctx.executionOwner,
+                    valueExecution: ctx.valueExecution,
+                },
+            );
+            writeBlueprintMemoValue(ctx.blueprintLocals, ctx.node.id, value);
+            return { nextPort: "next" };
+        },
+    },
     dataNode({
         type: BLUEPRINT_NODE_TYPE_LITERAL,
         displayName: "Literal",

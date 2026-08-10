@@ -882,6 +882,8 @@ export const blueprint = {
         getWrapMode: "获取换行模式",
         goPage: "前往页面",
         goBack: "返回",
+        memo: "暂存",
+        clearPage: "关闭全部页面",
         greaterThan: "大于",
         greaterThanOrEqual: "大于或等于",
         hasJsonField: "是否有 JSON 字段",
