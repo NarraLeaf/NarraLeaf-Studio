@@ -22,7 +22,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
-import { listDevModeBlueprints } from "./blueprintDebugPanelModel";
+import { blueprintWidgetElementId, listDevModeBlueprints } from "./blueprintDebugPanelModel";
 import { formatDebugValue } from "./debugValueFormat";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
 
@@ -58,6 +58,12 @@ type BlueprintRuntimeDebugPanelProps = {
      */
     outputLogLevels: ReadonlySet<BlueprintOutputLogLevel>;
     setOutputLogLevels: Dispatch<SetStateAction<ReadonlySet<BlueprintOutputLogLevel>>>;
+    /**
+     * Point at the widget a listed blueprint is attached to, or `null` for nothing. Owned by
+     * DevModeContent because the box is painted over the stage, which this panel is a sibling of
+     * rather than a parent — and because it must come down when the drawer closes mid-hover.
+     */
+    onHighlightElement: (elementId: string | null) => void;
     className?: string;
     /** Dock/float mode toggle + title-bar drag, owned by DevModeContent. */
     chrome?: DevModePanelChrome;
@@ -74,6 +80,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         projectPath,
         outputLogLevels,
         setOutputLogLevels,
+        onHighlightElement,
         className,
         chrome,
     } = props;
@@ -120,6 +127,10 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
             setWidgetSnap(widgetRuntimeStore.getSnapshot());
         });
     }, [widgetRuntimeStore]);
+
+    // The highlight belongs to the row the pointer is on, so leaving the list by any route takes it
+    // down: another tab, the drawer closing, the session being replaced by a timeline jump.
+    useEffect(() => () => onHighlightElement(null), [tab, onHighlightElement]);
 
     useEffect(() => {
         if (tab !== "output") {
@@ -269,12 +280,25 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         {blueprintsList.length === 0 ? (
                             <p className="text-2xs text-fg-subtle">{t("devMode.blueprints.empty")}</p>
                         ) : (
-                            <ul className="space-y-0.5">
+                            <ul
+                                className="space-y-0.5"
+                                // Per row on the way in, once on the way out: moving between rows is
+                                // an enter on the new one, and the gaps between them are not a reason
+                                // to blink the box off and back on.
+                                onPointerLeave={() => onHighlightElement(null)}
+                                onBlur={() => onHighlightElement(null)}
+                            >
                                 {blueprintsList.map(bp => {
                                     const expanded = expandedBp.has(bp.id);
                                     const canStudio = Boolean(projectPath) && studioPayloadSupported(bp);
+                                    const widgetElementId = blueprintWidgetElementId(bp);
                                     return (
-                                        <li key={bp.id} className="border-b border-edge-subtle pb-1.5 last:border-0">
+                                        <li
+                                            key={bp.id}
+                                            className="border-b border-edge-subtle pb-1.5 last:border-0"
+                                            onPointerEnter={() => onHighlightElement(widgetElementId)}
+                                            onFocus={() => onHighlightElement(widgetElementId)}
+                                        >
                                             <div className="flex items-start gap-1">
                                                 <button
                                                     type="button"
