@@ -8,6 +8,7 @@ import {
     type UIElement,
     getUIComponentLink,
     isUIElementFlowLayoutChild,
+    resolveUIComponentParams,
 } from "@shared/types/ui-editor/document";
 import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
@@ -831,6 +832,12 @@ function renderLinkedComponentInstanceContent(input: {
         },
     };
     const componentInstanceKey = buildUIComponentInstanceKey(input.instanceKey, input.instanceElement.id);
+    // The one point that holds both the instance element and the document, so the one point that can
+    // answer "what does THIS placement supply". Everything below runs the shared definition and can
+    // only be handed the answer. A component that declares nothing passes null rather than an empty
+    // map, so the dispatch options of content without params are byte-for-byte what they were.
+    const resolvedParams = resolveUIComponentParams(component, link);
+    const componentParams = Object.keys(resolvedParams).length > 0 ? resolvedParams : null;
     const viewportStyle: CSSProperties = {
         position: "relative",
         width: "100%",
@@ -870,6 +877,7 @@ function renderLinkedComponentInstanceContent(input: {
                     [...input.componentPath, component.id],
                     input.surfaceLifecycleSignals,
                     input.blueprintLifecycleReady ?? true,
+                    componentParams,
                 )}
             </div>
         </div>
@@ -896,6 +904,8 @@ function renderElementTree(
     componentPath: string[] = [],
     surfaceLifecycleSignals?: SurfaceLifecycleSignals,
     blueprintLifecycleReady = true,
+    /** Resolved params of the component instance this subtree belongs to; null outside one. */
+    componentParams: Record<string, string> | null = null,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
     const runtimePatch = widgetRuntimePatches?.[element.id];
@@ -955,6 +965,7 @@ function renderElementTree(
                 componentPath,
                 surfaceLifecycleSignals,
                 blueprintLifecycleReady,
+                componentParams,
             );
         })
         .filter((node): node is ReactNode => node !== null);
@@ -1051,6 +1062,7 @@ function renderElementTree(
             useAppearanceInspectorPreview={useAppearanceInspectorPreview}
             listItemScope={listItemScope ?? null}
             instanceKey={instanceKey}
+            componentParams={componentParams}
         >
             {blueprintLifecycleReady && hostAdapter.blueprintRuntime ? (
                 <BlueprintWidgetInitLifecycle
@@ -1061,6 +1073,7 @@ function renderElementTree(
                     initBinding={resolved.behavior?.events?.init}
                     hostAdapter={hostAdapter}
                     componentId={componentId}
+                    componentParams={componentParams}
                     listItemScope={listItemScope}
                     instanceKey={instanceKey || undefined}
                     surfaceLifecycleSignals={surfaceLifecycleSignals}

@@ -99,6 +99,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             listItemScope: eventOptions?.listItemScope,
             instanceKey: eventOptions?.instanceKey,
             componentId: eventOptions?.componentId,
+            componentParams: eventOptions?.componentParams,
             eventControl: eventOptions?.eventControl,
             hostAdapter: adapter,
             debug,

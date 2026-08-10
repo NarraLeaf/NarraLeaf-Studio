@@ -16,6 +16,8 @@ type Props = {
     initBinding: UIBehaviorBinding | undefined;
     hostAdapter: UIHostAdapter;
     componentId?: UIComponentId;
+    /** Resolved params of the component instance this element belongs to; null outside one. */
+    componentParams?: Record<string, string> | null;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
@@ -58,6 +60,7 @@ export function BlueprintWidgetInitLifecycle({
     initBinding,
     hostAdapter,
     componentId,
+    componentParams,
     listItemScope,
     instanceKey,
     surfaceLifecycleSignals,
@@ -68,12 +71,14 @@ export function BlueprintWidgetInitLifecycle({
         rt: typeof rt;
         elementId: string;
         componentId?: UIComponentId;
+        componentParams?: Record<string, string> | null;
         listItemScope?: UIListItemScope | null;
         instanceKey?: string;
     }>({
         rt,
         elementId,
         componentId,
+        componentParams,
         listItemScope,
         instanceKey,
     });
@@ -90,6 +95,10 @@ export function BlueprintWidgetInitLifecycle({
     const listItemScopeSig = listItemScope
         ? `${listItemScope.index}:${listItemScope.count}:${listItemScope.key}`
         : "";
+    // The element tree rebuilds the resolved params on every render, so the object identity moves
+    // even when nothing about the instance did. Effects below key off this signature instead: two
+    // renders that resolve to the same values must not re-run an init dispatch or re-subscribe.
+    const componentParamsSig = componentParams ? JSON.stringify(componentParams) : "";
     const beforeSurfaceExitVersion = surfaceLifecycleSignals?.beforeSurfaceExit ?? 0;
     const afterSurfaceEnterVersion = surfaceLifecycleSignals?.afterSurfaceEnter ?? 0;
     const seenBeforeSurfaceExitVersionRef = useRef(beforeSurfaceExitVersion);
@@ -114,6 +123,7 @@ export function BlueprintWidgetInitLifecycle({
             rt,
             elementId,
             componentId,
+            componentParams,
             listItemScope,
             instanceKey,
         };
@@ -135,11 +145,15 @@ export function BlueprintWidgetInitLifecycle({
         if (!rt || !initSig) {
             return;
         }
+        // Params are part of the key for the same reason the list item scope is: an instance whose
+        // save id changed is a different subject, and the widget has to run its init again to show
+        // it. Editing a param in the inspector is what makes that visible while Dev Mode runs.
         const initDispatchKey = [
             runtimeScopeId,
             elementId,
             componentId ?? "",
             instanceKey ?? "",
+            componentParamsSig,
             listItemScopeSig,
             initSig,
         ].join("|");
@@ -154,6 +168,7 @@ export function BlueprintWidgetInitLifecycle({
             dispatchedInitKeyRef.current = initDispatchKey;
             void rt.dispatchElementBlueprintEvent(elementId, "init", undefined, {
                 componentId,
+                componentParams: latestDispatchRef.current.componentParams ?? undefined,
                 instanceKey,
                 listItemScope,
             });
@@ -161,7 +176,7 @@ export function BlueprintWidgetInitLifecycle({
         return () => {
             cancelled = true;
         };
-    }, [componentId, elementId, initSig, instanceKey, listItemScope, listItemScopeSig, rt, runtimeScopeId]);
+    }, [componentId, componentParamsSig, elementId, initSig, instanceKey, listItemScope, listItemScopeSig, rt, runtimeScopeId]);
 
     useEffect(() => {
         if (!rt || beforeSurfaceExitVersion <= seenBeforeSurfaceExitVersionRef.current) {
@@ -170,6 +185,7 @@ export function BlueprintWidgetInitLifecycle({
         seenBeforeSurfaceExitVersionRef.current = beforeSurfaceExitVersion;
         void rt.dispatchElementBlueprintEvent(elementId, "beforeSurfaceExit", undefined, {
             componentId,
+            componentParams: latestDispatchRef.current.componentParams ?? undefined,
             instanceKey,
             listItemScope,
         });
@@ -182,6 +198,7 @@ export function BlueprintWidgetInitLifecycle({
         seenAfterSurfaceEnterVersionRef.current = afterSurfaceEnterVersion;
         void rt.dispatchElementBlueprintEvent(elementId, "afterSurfaceEnter", undefined, {
             componentId,
+            componentParams: latestDispatchRef.current.componentParams ?? undefined,
             instanceKey,
             listItemScope,
         });
@@ -195,6 +212,7 @@ export function BlueprintWidgetInitLifecycle({
             const latest = latestDispatchRef.current;
             void latest.rt?.dispatchElementBlueprintEvent(latest.elementId, "unmount", undefined, {
                 componentId: latest.componentId,
+                componentParams: latest.componentParams ?? undefined,
                 instanceKey: latest.instanceKey,
                 listItemScope: latest.listItemScope,
                 allowClosedScopeExecution: true,

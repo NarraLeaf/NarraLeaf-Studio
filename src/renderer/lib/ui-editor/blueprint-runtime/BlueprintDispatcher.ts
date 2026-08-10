@@ -358,6 +358,8 @@ export async function dispatchBlueprintUiEvent(options: {
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
     componentId?: string;
+    /** Resolved params of the component instance this dispatch came from; see UIHostAdapterElementEventOptions. */
+    componentParams?: Record<string, string>;
     maxSteps?: number;
 } & CancellableDispatchOptions): Promise<void> {
     const {
@@ -376,6 +378,7 @@ export async function dispatchBlueprintUiEvent(options: {
         listItemScope,
         instanceKey,
         componentId,
+        componentParams,
     } = options;
     const el = readDispatchElement(document, elementId, componentId);
     if (!el || eventControl?.isPropagationStopped()) {
@@ -522,7 +525,7 @@ export async function dispatchBlueprintUiEvent(options: {
                     eventControl,
                     listItemScope,
                     instanceKey,
-                    executionOwner: { surfaceId, elementId, blueprintId, componentId },
+                    executionOwner: { surfaceId, elementId, blueprintId, componentId, componentParams },
                     persistentVariables: options.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     signal: execution?.signal,
