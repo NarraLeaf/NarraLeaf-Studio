@@ -1,4 +1,4 @@
-/** `project` - the Project settings sidebar: overview hub plus five slide-in sub-pages. */
+/** `project` - the Project settings sidebar: overview hub plus six slide-in sub-pages. */
 export const project = {
     // A row names what is inside it. These were sentences about what each page was for, which read
     // as claims rather than contents and did not survive the merge: a page holding three parts
@@ -11,6 +11,12 @@ export const project = {
         game: {
             title: "Game",
             description: "Saving, player defaults, and audio tracks",
+        },
+        // Named for the page, not for its one current part: the palette is what is here today, and
+        // typography and the rest of a project's look are meant to join it.
+        design: {
+            title: "Design",
+            description: "Colors, and the controls they paint",
         },
         project: {
             title: "Project",
@@ -34,6 +40,11 @@ export const project = {
         saving: "Saving",
         playerDefaults: "Player defaults",
         audioTracks: "Audio tracks",
+        // The two parts of the Brand sub-page. The colors an author decides, and the slots that
+        // follow them; the rest of that page's words are in the `brand` namespace, beside the model
+        // whose ids they name.
+        brandColors: "Colors",
+        brandControls: "Controls",
         security: "Security",
         signing: "Signing",
         optimization: "Optimization",

@@ -82,6 +82,8 @@ import type {
 } from "@shared/types/blueprint/document";
 import type { VariableRegistry, VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
 import type { AudioTrackChannel, ProjectAudioTrack, ProjectAudioTrackDocument } from "@shared/types/audioTrack";
+import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
+import type { BrandPalette } from "@shared/brand/brandRegistry";
 import type {
     ReadonlyBlueprintSurfaceSummary,
     ReadonlyBlueprintWidgetSummary,
@@ -200,6 +202,8 @@ enum Services {
     VariableRegistry = "variableRegistry",
     /** Project-level audio tracks: the authoring-time mix presets every audio surface points at */
     AudioTracks = "audioTracks",
+    /** The project's own palette: the colours every `nlbrand:` link in the project resolves through */
+    Brand = "brand",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
     SaveStatus = "saveStatus",
     // Texture = "texture",
@@ -511,6 +515,35 @@ interface IAudioTrackService extends IService {
     /** Refuses the three seeded buses; promotes the children of whatever it does delete. */
     deleteTrack(id: string): boolean;
     moveTrack(id: string, beforeId: string | null): void;
+}
+
+/**
+ * The project's palette - the colours a `nlbrand:` link resolves through. See `@shared/types/brand`
+ * for the model and `@shared/brand/brandRegistry` for the resolution.
+ *
+ * Besides owning the document it *publishes*: every mutation pushes the new list to the module-level
+ * active palette, which is what the colour fields themselves read.
+ */
+interface IBrandService extends IService {
+    load(): Promise<BrandColor[]>;
+    save(document: ProjectBrandDocument): Promise<void>;
+    getDocument(): ProjectBrandDocument;
+    listColors(): BrandColor[];
+    getColor(id: string): BrandColor | undefined;
+    /** The resolved palette, for previewing an id. Same object the rest of the window paints from. */
+    getPalette(): BrandPalette;
+    onColorsChanged(handler: (colors: BrandColor[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    createColor(input?: { name?: string; value?: string }): BrandColor;
+    renameColor(id: string, name: string): boolean;
+    updateColor(id: string, patch: { name?: string; value?: string }): void;
+    /** Refuses the seeded slots: the control appearances point at them, so they exist at all times. */
+    deleteColor(id: string): boolean;
+    moveColor(id: string, beforeId: string | null): void;
+    replaceDocument(document: ProjectBrandDocument): void;
+    flushPendingChanges(): Promise<void>;
 }
 
 interface ILocalBlueprintService extends IService {
@@ -1288,7 +1321,8 @@ export {
     IWorkspaceReloadService, IVideoService,
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IPuppetDescriptionService,
+    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IBrandService,
+    IPuppetDescriptionService,
     IMediaSupportService,
     ITestRunService, IRecoveryService,
     Services, WorkspaceContext

@@ -145,6 +145,9 @@ export const ProjectNameConvention = {
     // The project's audio tracks (the authoring-time mix presets story rows, blueprint sound nodes
     // and widgets point at). Cross-cutting like the variable registry, so it sits at editor root.
     EditorAudioTracks: ["editor", "audio-tracks.json"],
+    // The project's brand palette (the colours widgets, scenes and characters link to instead of
+    // storing a hex literal). Cross-cutting like the two above, so it sits at editor root too.
+    EditorBrand: ["editor", "brand.json"],
     EditorStory: ["editor", "story/"],
     EditorStoryStories: ["editor", "story", "stories/"],
     EditorStoryIndex: ["editor", "story", "index.json"],

@@ -84,6 +84,7 @@ import {
     shouldShowEditorSurfaceLowOpacityOutline,
 } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
@@ -154,6 +155,14 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const previewAspectId = usePreviewAspectId(stateService);
     const previewSafeAreaId = usePreviewSafeAreaId(stateService);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
+    /**
+     * A palette edit repaints the canvas for the same reason a document edit does, and is invisible
+     * for the opposite one: `nlbrand:` colours are resolved while the tree is built, so the document
+     * version does not move and the memo below would hand back the tree it built against the old
+     * palette. Measured: editing the primary colour left the canvas on the previous colour until an
+     * unrelated re-render, which reads as "the link does not work".
+     */
+    const brandRevision = useBrandPaletteRevision();
     const widgetModules = useMemo(() => listInsertPaletteModules(surface), [surface]);
     const deferredDocumentVersion = useDeferredValue(documentVersion);
     const deferredGraphVersion = useDeferredValue(graphVersion);
@@ -430,7 +439,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             className: "relative",
             style,
         });
-    }, [documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion]);
+    }, [documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion, brandRevision]);
 
     const applyTool = useCallback(
         (nextTool: UITool) => {

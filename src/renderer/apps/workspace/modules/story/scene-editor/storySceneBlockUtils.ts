@@ -1,4 +1,5 @@
 import { Aperture, Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
+import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
@@ -652,8 +653,8 @@ export function characterRowLookup(characters: Character[]): StoryRowLookups["ch
         if (!character) {
             return null;
         }
-        const color = character.profile.getColor();
-        return color && isReadableAccentColor(color)
+        const color = readableAccentColor(character.profile.getColor());
+        return color
             ? { name: character.profile.getName(), color }
             : { name: character.profile.getName() };
     };
@@ -769,16 +770,38 @@ export function isReadableAccentColor(hex: string): boolean {
 }
 
 /**
+ * What a *stored* character accent paints as in Studio's own chrome, or `undefined` when nothing
+ * should be painted.
+ *
+ * Two steps, and the order is the whole point. A profile's `color` may be a `nlbrand:` link at the
+ * project palette rather than a hex literal, so it is resolved first; only then is the resolved
+ * literal put to {@link isReadableAccentColor}. Asking the band about the link itself would fail —
+ * `nlbrand:primary` is not a hex, and the band is right to say so — and the author would watch a
+ * character they had just given a brand colour go grey in every Studio surface at once.
+ *
+ * Every Studio chrome surface that tints something with a character's accent goes through here
+ * rather than repeating the pair, because "resolve, then band" being two calls is exactly how one
+ * surface ends up a step behind the others.
+ *
+ * A palette entry that is not itself a plain hex (a translucent one such as `button.shadow`) still
+ * comes back `undefined`: the band's question has not changed, and a half-transparent nametag was
+ * never a thing any of these surfaces could honour.
+ */
+export function readableAccentColor(stored: string | null | undefined): string | undefined {
+    const resolved = resolveBrandColorValue(stored);
+    return resolved && isReadableAccentColor(resolved) ? resolved : undefined;
+}
+
+/**
  * The editor accent colour a character carries, or `undefined` when none is set — or when the one set
  * would be unreadable on either theme's surface, in which case the nametag keeps the default ink
- * rather than disappearing into the background (see {@link isReadableAccentColor}).
+ * rather than disappearing into the background (see {@link readableAccentColor}).
  */
 export function getCharacterColor(characters: Character[], characterId: string | undefined): string | undefined {
     if (!characterId) {
         return undefined;
     }
-    const color = characters.find(character => character.profile.getId() === characterId)?.profile.getColor();
-    return color && isReadableAccentColor(color) ? color : undefined;
+    return readableAccentColor(characters.find(character => character.profile.getId() === characterId)?.profile.getColor());
 }
 
 export function selectRange(rows: VisibleStoryRow[], fromId: StoryBlockId, toId: StoryBlockId): Set<StoryBlockId> {

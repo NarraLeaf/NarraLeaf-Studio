@@ -20,7 +20,7 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { Button } from "@/lib/components/elements/Button";
 import { Select } from "@/lib/components/elements/Select";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
-import { parseColorValue, colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { Plus, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import {
     clearEffectKindPatch,
@@ -145,8 +145,9 @@ function ShadowStoredFields({
                 <ColorPickerTrigger
                     value={colorCv}
                     displayMode="icon"
+                    brandPalette
                     allowOpacity
-                    onChange={cv => commitLayer({ ...L, color: colorValueToCss(cv) })}
+                    onChange={cv => commitLayer({ ...L, color: serializeColorValue(cv) })}
                 />
                 <span className="text-2xs text-fg-subtle truncate">{t("widgetChrome.effects.color")}</span>
             </div>
