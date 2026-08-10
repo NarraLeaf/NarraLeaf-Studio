@@ -10,6 +10,7 @@ import type {
     RenderSurfaceOptions,
 } from "../../../ui-editor/runtime/types";
 import { resolveSurfaceRootElementId } from "../../../ui-editor/runtime/resolveSurfaceRoot";
+import { SurfaceBackgroundImageLayer } from "../../../ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { SurfaceElementTree } from "../../../ui-editor/runtime/surface/SurfaceElementTree";
 import { getSurfaceBackgroundColor } from "../../../ui-editor/runtime/surfaceBackground";
 import { Service } from "../Service";
@@ -63,6 +64,7 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
                 data-ui-surface-kind={surface.kind}
                 style={surfaceStyle}
             >
+                <SurfaceBackgroundImageLayer surface={surface} />
                 <SurfaceElementTree
                     document={document}
                     surface={surface}

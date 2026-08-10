@@ -495,6 +495,26 @@ function extractElementAssetReferences(element: UIElement, ownerLabel: string | 
 export function extractUIDocumentAssetReferences(document: UIDocument): AssetReference[] {
     const references: AssetReference[] = [];
 
+    /**
+     * A Surface's background picture is held by the Surface, not by any element in it, so the two
+     * element pools below cannot see it. Left out, the one page-sized image in a project would be
+     * the one asset "where is this used?" swore nothing used.
+     */
+    for (const surface of document.surfaces ?? []) {
+        const assetId = surface.settings?.backgroundImage?.assetId;
+        if (!isLibraryAssetId(assetId)) {
+            continue;
+        }
+        references.push({
+            id: `ui:surface:${surface.id}:backgroundImage`,
+            assetId: assetId.trim(),
+            kind: "uiElement",
+            label: surface.name,
+            field: "backgroundImage",
+            target: { kind: "uiSurface", surfaceId: surface.id },
+        });
+    }
+
     for (const element of Object.values(document.elements)) {
         references.push(...extractElementAssetReferences(element, undefined));
     }
