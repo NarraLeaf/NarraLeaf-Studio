@@ -883,6 +883,7 @@ export const blueprint = {
         getWrapMode: "Get Wrap Mode",
         goPage: "Go Page",
         goBack: "Go back",
+        clearPage: "Clear Page",
         greaterThan: "Greater Than",
         greaterThanOrEqual: "Greater Than Or Equal",
         hasJsonField: "Has JSON Field",

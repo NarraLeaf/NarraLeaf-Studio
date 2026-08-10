@@ -22,6 +22,8 @@ export type NavigationCloseInput = {
     targetSurface: UISurface | null;
     targetHiddenForGame: boolean;
     reducedMotion: boolean | null;
+    /** Land on this stack index instead of the entry directly below the top. See the close update. */
+    targetIndex?: number;
 };
 
 /**
@@ -110,7 +112,7 @@ export class NavigationController {
         return reduction.transition ? this.beginTransitionWait(reduction.transition) : Promise.resolve();
     }
 
-    /** Pop the top layer; resolves immediately when there is nothing to close. */
+    /** Pop to `targetIndex` (default: one layer); resolves immediately when there is nothing to close. */
     public close(input: NavigationCloseInput): Promise<void> {
         const reduction = this.dispatch({ type: "CLOSE", ...input });
         return reduction.transition ? this.beginTransitionWait(reduction.transition) : Promise.resolve();
