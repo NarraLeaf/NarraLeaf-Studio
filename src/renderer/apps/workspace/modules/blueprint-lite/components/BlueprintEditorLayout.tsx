@@ -2,11 +2,12 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { HelpTrigger } from "@/lib/help";
+import { useIsDetachedHost } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 
 type Props = {
     header: ReactNode;
-    /** Controls on the right of the title row, before the help trigger. */
+    /** Controls at the far right of the title row, after the help trigger. */
     headerActions?: ReactNode;
     /** Non-primary clicks on the title row - a middle click there pops the editor out. */
     onHeaderAuxClick?: (event: ReactMouseEvent) => void;
@@ -31,6 +32,7 @@ export function BlueprintEditorLayout({
     onMemberPanelFocusContainedChange,
 }: Props) {
     const { t } = useTranslation();
+    const isDetached = useIsDetachedHost();
     const [uncontrolledLeftCollapsed, setUncontrolledLeftCollapsed] = useState(false);
     const memberPanelScrollRef = useRef<HTMLDivElement>(null);
     const isLeftCollapsed = memberPanelCollapsed ?? uncontrolledLeftCollapsed;
@@ -78,8 +80,11 @@ export function BlueprintEditorLayout({
                 onAuxClick={onHeaderAuxClick}
             >
                 <div className="min-w-0 flex-1">{header}</div>
+                {/* No help in a detached window: F1 opens the help panel, which is a dock panel of
+                    the workspace window, so the answer would appear in the window the author is not
+                    looking at. The editor is one F1 away in the workspace either way. */}
+                {isDetached ? null : <HelpTrigger topic="blueprints" />}
                 {headerActions}
-                <HelpTrigger topic="blueprints" />
             </header>
             <div className="relative flex min-h-0 min-w-0 flex-1">
                 <aside className={leftPanelClasses}>
