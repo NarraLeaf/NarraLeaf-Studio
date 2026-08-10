@@ -16,6 +16,15 @@ export type DevModeEntry =
     | {
           kind: "surface";
           surfaceId: UISurfaceId;
+          /**
+           * Safe-area device preset id to open the window with; omitted / `null` = no overlay.
+           *
+           * Only the UI Surface editor's canvas launch button sets this. Launching from the top bar
+           * is "run it the way a player gets it", so it deliberately carries no design aid. This is
+           * the window's *initial* value only: the Interface panel can change it for the rest of the
+           * session and nothing is ever written back to the project or to Studio settings.
+           */
+          safeAreaId?: string | null;
       }
     | {
           kind: "story";
