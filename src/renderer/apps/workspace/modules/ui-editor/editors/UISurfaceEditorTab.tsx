@@ -26,6 +26,8 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
+import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
+import { uiSurfaceHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { flushUIDocAndGraphIfDirty } from "@/apps/workspace/modules/actions/flushDevModeAssets";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -537,6 +539,32 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         documentService,
         readOnly,
     });
+
+    /**
+     * Say which stack a scope-less undo means while this surface is the one on screen.
+     *
+     * Every other editor claims this on editor focus, through `useHistoryScope`. This one owns its
+     * stack through {@link UIEditorHistoryService} instead and so claimed nothing at all - which the
+     * canvas never noticed, because its own `mod+z` addresses the surface directly, but the Edit
+     * menu and the shell keybinding both read the active scope and were therefore answering for the
+     * project stack whatever the author had open.
+     *
+     * Keyed on `active` rather than on focus: an edit made in the property inspector belongs to the
+     * surface being shown, and by then focus is on the panel rather than on the canvas.
+     */
+    useEffect(() => {
+        if (!historyService || !surfaceId || !active || !context) {
+            return undefined;
+        }
+        const history = context.services.get<HistoryService>(Services.History);
+        const scopeId = uiSurfaceHistoryScope(surfaceId);
+        history.setActiveScope(scopeId);
+        return () => {
+            if (history.getActiveScopeId() === scopeId) {
+                history.setActiveScope(null);
+            }
+        };
+    }, [active, context, historyService, surfaceId]);
 
     useEffect(() => {
         const root = editorRootRef.current;
