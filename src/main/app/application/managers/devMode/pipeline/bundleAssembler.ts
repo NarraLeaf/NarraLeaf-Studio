@@ -29,6 +29,9 @@ import type { GameVoiceBundle } from "@shared/types/voice";
 import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
 import type { AudioClipRegion, GameAudioBundle } from "@shared/types/audio";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
+import type { BrandColor } from "@shared/types/brand";
+import { migrateProjectBrandDocument, normalizeProjectBrandColors } from "@shared/types/brand";
+import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
@@ -63,6 +66,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
+    const brand = await loadProjectBrand(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -81,6 +85,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         audio,
         autoSave,
         preferences,
+        brand,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
@@ -543,6 +548,34 @@ export async function loadPlayerPreferences(projectPath: string): Promise<Player
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizePlayerPreferences(app?.preferences);
+}
+
+/**
+ * The project's palette from `editor/brand.json`, through the same migration + normalizer the
+ * renderer's `BrandService` writes with, so the bundle and the panel can never disagree about what
+ * the document said.
+ *
+ * Dense like the autosave config rather than optional like localization, and for a sharper reason:
+ * a `nlbrand:` link is not a colour until a palette is beside it, so "this project has never opened
+ * the Brand surface" has to arrive as the seeds rather than as a gap - a gap would make every
+ * seeded slot unresolvable in a project that had done nothing wrong. The seeds are exactly what the
+ * service would have written on first open, so the two states are indistinguishable downstream.
+ *
+ * Every failure path lands on that same seed instead of propagating. A hand-corrupted colour file
+ * must not be the reason a preview will not start or a build cannot be produced: booting in the
+ * default palette is a state the author can see and fix, where a refused start is one they can only
+ * guess at. The path comes from the document spec rather than being spelled again here - the spec
+ * is what version control keys on, and two spellings would drift in exactly the way nothing
+ * reports. Exported for tests.
+ */
+export async function loadProjectBrand(projectPath: string): Promise<BrandColor[]> {
+    const brandPath = path.join(projectPath, BRAND_DOCUMENT_PATH);
+    try {
+        const raw = await readOptionalJsonFile<unknown>(brandPath);
+        return migrateProjectBrandDocument(raw ?? {}).colors;
+    } catch {
+        return normalizeProjectBrandColors([]);
+    }
 }
 
 function resolveAssetContentPath(projectPath: string, assetId: string): string | null {

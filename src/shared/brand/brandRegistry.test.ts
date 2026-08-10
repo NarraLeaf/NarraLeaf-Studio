@@ -68,7 +68,13 @@ describe("BrandPalette resolution", () => {
         expect(chainPalette(BRAND_LINK_MAX_DEPTH + 1).resolveCss("l0")).toBeNull();
     });
 
-    it("compounds the alpha of every link it passes through", () => {
+    /**
+     * The alpha ruling, from the id end. Every link in a chain is a number an author set in an
+     * opacity slider - the Brand panel edits the control colours through the same picker as any
+     * other field - so the slider's number has to be the stored number. Multiplying made opening and
+     * closing the panel fade the colour one notch each time.
+     */
+    it("takes the outermost written alpha as final and does not multiply the chain", () => {
         const palette = new BrandPalette([
             color("primary", "#40A8C4"),
             color("half", "nlbrand:primary/0.5"),
@@ -78,12 +84,29 @@ describe("BrandPalette resolution", () => {
         ]);
 
         expect(palette.resolveCss("half")).toBe("rgba(64, 168, 196, 0.5)");
-        expect(palette.resolveCss("quarter")).toBe("rgba(64, 168, 196, 0.25)");
-        // The literal's own alpha is part of the product, not something the link replaces.
-        expect(palette.resolveCss("halfShadow")).toBe("rgba(0, 0, 0, 0.175)");
+        // 0.5, not 0.5 * 0.5: the inner segment is passed over once an outer one has spoken.
+        expect(palette.resolveCss("quarter")).toBe("rgba(64, 168, 196, 0.5)");
+        // 0.5 replaces the literal's own 0.35 rather than scaling it to 0.175.
+        expect(palette.resolveCss("halfShadow")).toBe("rgba(0, 0, 0, 0.5)");
+        // No segment anywhere leaves the literal exactly as the author wrote it.
+        expect(palette.resolveCss("shadow")).toBe("rgba(0, 0, 0, 0.35)");
     });
 
-    it("expands the short and eight-digit hex forms before applying an alpha", () => {
+    /**
+     * A hand-written `/1` is the one way to say "this brand colour, opaque". Studio never writes it
+     * (`formatBrandLink` drops a full-opacity segment), but the grammar accepts it, and replacement
+     * is what makes it mean anything at all.
+     */
+    it("reads a written `/1` as opaque rather than as no opinion", () => {
+        const palette = new BrandPalette([
+            color("shadow", "rgba(0, 0, 0, 0.35)"),
+            color("solidShadow", "nlbrand:shadow/1"),
+        ]);
+
+        expect(palette.resolveCss("solidShadow")).toBe("rgba(0, 0, 0, 1)");
+    });
+
+    it("expands the short and eight-digit hex forms before replacing an alpha", () => {
         const palette = new BrandPalette([
             color("short", "#abc"),
             color("eight", "#00000080"),
@@ -92,7 +115,8 @@ describe("BrandPalette resolution", () => {
         ]);
 
         expect(palette.resolveCss("halfShort")).toBe("rgba(170, 187, 204, 0.5)");
-        expect(palette.resolveCss("halfEight")).toBe("rgba(0, 0, 0, 0.251)");
+        // The eight-digit form's own 0.502 is replaced, not multiplied into 0.251.
+        expect(palette.resolveCss("halfEight")).toBe("rgba(0, 0, 0, 0.5)");
     });
 
     /**
@@ -115,6 +139,79 @@ describe("BrandPalette resolution", () => {
         expect(palette.list().map(entry => entry.id)).toEqual(["b", "a"]);
         expect(palette.get("a")?.value).toBe("#ffffff");
         expect(palette.get("gone")).toBeUndefined();
+    });
+});
+
+/**
+ * The operation the three hosts share: hand it a stored value, get back something paintable.
+ *
+ * These six rows are the whole alpha contract. They are asserted here rather than only through the
+ * callers because the canvas, the shipped game and the shell's pre-boot frame each used to answer
+ * them separately, and the same stored string came out as two different colours.
+ */
+describe("BrandPalette.resolveValueCss", () => {
+    const seeds = new BrandPalette(BUILTIN_BRAND_COLORS);
+    // `button.shadow` is seeded as `rgba(0, 0, 0, 0.35)` and `button.primary` as `nlbrand:primary`.
+
+    it("hands back a value that is not a link untouched", () => {
+        expect(seeds.resolveValueCss("#40A8C4")).toBe("#40A8C4");
+        expect(seeds.resolveValueCss("rgba(1, 2, 3, 0.4)")).toBe("rgba(1, 2, 3, 0.4)");
+        expect(seeds.resolveValueCss("rebeccapurple")).toBe("rebeccapurple");
+        // Not a colour, so not an answer - and notably not the empty string.
+        expect(seeds.resolveValueCss("   ")).toBeNull();
+    });
+
+    it("paints a link with no segment at the entry's own opacity", () => {
+        expect(seeds.resolveValueCss("nlbrand:button.shadow")).toBe("rgba(0, 0, 0, 0.35)");
+    });
+
+    it("lets a written segment replace the entry's own opacity, rather than multiplying it", () => {
+        // 0.5, not 0.5 * 0.35 = 0.175. The slider that wrote this showed 50%.
+        expect(seeds.resolveValueCss("nlbrand:button.shadow/0.5")).toBe("rgba(0, 0, 0, 0.5)");
+    });
+
+    it("follows a chain of links to the literal at the end", () => {
+        expect(seeds.resolveValueCss("nlbrand:button.primary")).toBe("#40A8C4");
+    });
+
+    it("applies a segment to the literal a chain ends at", () => {
+        expect(seeds.resolveValueCss("nlbrand:button.primary/0.5")).toBe("rgba(64, 168, 196, 0.5)");
+    });
+
+    it("takes the stored value's own segment over one written inside the palette", () => {
+        const palette = new BrandPalette([
+            color("primary", "#40A8C4"),
+            color("a", "nlbrand:primary/0.5"),
+        ]);
+
+        // 0.8, not 0.8 * 0.5 = 0.4: the outermost slider is the one the author last touched.
+        expect(palette.resolveValueCss("nlbrand:a/0.8")).toBe("rgba(64, 168, 196, 0.8)");
+        // ...and with nothing written outside, the entry's own segment is the answer.
+        expect(palette.resolveValueCss("nlbrand:a")).toBe("rgba(64, 168, 196, 0.5)");
+    });
+
+    it("answers null for a link that leads nowhere, exactly as resolveCss does", () => {
+        const palette = new BrandPalette([color("a", "nlbrand:a"), color("b", "nlbrand:gone")]);
+
+        expect(palette.resolveValueCss("nlbrand:missing")).toBeNull();
+        expect(palette.resolveValueCss("nlbrand:a")).toBeNull();
+        expect(palette.resolveValueCss("nlbrand:b")).toBeNull();
+    });
+
+    /**
+     * Resolving a value costs the same depth as resolving the id it names. It used to cost one more,
+     * because the only way to ask this question was to park the value in the palette as an entry of
+     * its own and resolve that.
+     */
+    it("spends no depth on the value itself", () => {
+        expect(chainPalette(BRAND_LINK_MAX_DEPTH).resolveValueCss("nlbrand:l0")).toBe("#010203");
+        expect(chainPalette(BRAND_LINK_MAX_DEPTH + 1).resolveValueCss("nlbrand:l0")).toBeNull();
+    });
+
+    it("refuses a malformed link rather than repairing it", () => {
+        // Out of range, so `parseBrandLink` says it is not a link at all - and a value this module
+        // cannot read is handed back as the literal it is not, to fail in the caller's own parser.
+        expect(seeds.resolveValueCss("nlbrand:primary/5")).toBe("nlbrand:primary/5");
     });
 });
 
