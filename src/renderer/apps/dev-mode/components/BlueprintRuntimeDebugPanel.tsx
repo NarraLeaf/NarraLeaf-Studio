@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Frame } from "lucide-react";
 import {
     getBlueprintDebugEventLogLevel,
     type BlueprintDebugEvent,
@@ -22,6 +22,8 @@ import { useTranslation } from "@/lib/i18n";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import { SAFE_AREA_PRESETS } from "@/lib/ui-editor/preview/surfacePreviewFrames";
 import { blueprintWidgetElementId, listDevModeBlueprints } from "./blueprintDebugPanelModel";
 import { formatDebugValue } from "./debugValueFormat";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
@@ -64,6 +66,13 @@ type BlueprintRuntimeDebugPanelProps = {
      * rather than a parent — and because it must come down when the drawer closes mid-hover.
      */
     onHighlightElement: (elementId: string | null) => void;
+    /**
+     * Safe-area device preset drawn over the stage, `null` = off. Owned by DevModeContent for the
+     * same reason as `onHighlightElement`: the overlay is painted on the stage, which this panel is
+     * a sibling of — and closing the drawer must not take the frame down with it.
+     */
+    safeAreaId: string | null;
+    setSafeAreaId: Dispatch<SetStateAction<string | null>>;
     className?: string;
     /** Dock/float mode toggle + title-bar drag, owned by DevModeContent. */
     chrome?: DevModePanelChrome;
@@ -81,6 +90,8 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         outputLogLevels,
         setOutputLogLevels,
         onHighlightElement,
+        safeAreaId,
+        setSafeAreaId,
         className,
         chrome,
     } = props;
@@ -88,10 +99,12 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
     const [tab, setTab] = useState<DebugTabId>("output");
     const [events, setEvents] = useState<BlueprintDebugEvent[]>(() => debug.snapshot());
     const [logLevelMenuOpen, setLogLevelMenuOpen] = useState(false);
+    const [safeAreaMenuOpen, setSafeAreaMenuOpen] = useState(false);
     const [expandedBp, setExpandedBp] = useState<Set<string>>(() => new Set());
     const [studioHint, setStudioHint] = useState<string | null>(null);
     const outputScrollRef = useRef<HTMLDivElement>(null);
     const logLevelMenuRef = useRef<HTMLDivElement>(null);
+    const safeAreaMenuRef = useRef<HTMLDivElement>(null);
 
     const [surfaceSnap, setSurfaceSnap] = useState(() =>
         scopeBridge.getSurfaceStore(activeSurfaceId).getSnapshot(),
@@ -156,6 +169,29 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         window.addEventListener("pointerdown", onPointerDown);
         return () => window.removeEventListener("pointerdown", onPointerDown);
     }, [logLevelMenuOpen]);
+
+    useEffect(() => {
+        if (!safeAreaMenuOpen) {
+            return;
+        }
+        const onPointerDown = (event: PointerEvent) => {
+            const target = event.target as Node | null;
+            if (target && safeAreaMenuRef.current?.contains(target)) {
+                return;
+            }
+            setSafeAreaMenuOpen(false);
+        };
+        window.addEventListener("pointerdown", onPointerDown);
+        return () => window.removeEventListener("pointerdown", onPointerDown);
+    }, [safeAreaMenuOpen]);
+
+    const chooseSafeArea = useCallback(
+        (id: string | null) => {
+            setSafeAreaId(id);
+            setSafeAreaMenuOpen(false);
+        },
+        [setSafeAreaId],
+    );
 
     // "What can I open in the workspace", scoped to the surface on screen — as opposed to the
     // debugger's "what can I set a breakpoint in". Both questions live in one switch; see the model.
@@ -239,7 +275,53 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                 onPointerDown={chrome?.onTitleBarPointerDown}
             >
                 <span className="text-xs font-medium text-fg">{t("devMode.devtools.title")}</span>
-                <DevModePanelModeToggle chrome={chrome} />
+                <div className="flex shrink-0 items-center gap-1">
+                    {/* Session-scoped: what this window shows, not a project or Studio setting.
+                        `onPointerDown` is stopped so opening the menu does not start a panel drag. */}
+                    <div ref={safeAreaMenuRef} className="relative" onPointerDown={e => e.stopPropagation()}>
+                        <ToolbarButton
+                            size="xs"
+                            active={safeAreaId != null || safeAreaMenuOpen}
+                            aria-label={t("uiEditor.preview.safeArea")}
+                            title={t("uiEditor.preview.safeArea")}
+                            aria-haspopup="menu"
+                            aria-expanded={safeAreaMenuOpen}
+                            onClick={() => setSafeAreaMenuOpen(prev => !prev)}
+                        >
+                            <Frame className="h-3.5 w-3.5" aria-hidden />
+                        </ToolbarButton>
+                        {safeAreaMenuOpen ? (
+                            <div
+                                role="menu"
+                                aria-label={t("uiEditor.preview.safeArea")}
+                                // Right-anchored: the panel's right edge is the window's when docked.
+                                className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
+                            >
+                                {[
+                                    { id: null, label: t("uiEditor.preview.off") },
+                                    ...SAFE_AREA_PRESETS.map(preset => ({ id: preset.id, label: preset.reference })),
+                                ].map(option => (
+                                    <button
+                                        key={option.id ?? "off"}
+                                        type="button"
+                                        role="menuitemradio"
+                                        aria-checked={safeAreaId === option.id}
+                                        className="flex w-full cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-left text-2xs text-fg-muted hover:bg-fill hover:text-fg"
+                                        onClick={() => chooseSafeArea(option.id)}
+                                    >
+                                        <span className="grid h-3 w-3 shrink-0 place-items-center">
+                                            {safeAreaId === option.id ? (
+                                                <Check className="h-3 w-3 text-primary" aria-hidden />
+                                            ) : null}
+                                        </span>
+                                        <span className="truncate">{option.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+                    <DevModePanelModeToggle chrome={chrome} />
+                </div>
             </div>
             <div className="flex shrink-0 border-b border-edge bg-surface-sunken" role="tablist" aria-label={t("devMode.devtools.panelsAria")}>
                 {(
