@@ -31,7 +31,7 @@ import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
 import { ComponentLibraryPanel } from "./panel/ComponentLibraryPanel";
-import { getComponentTabId } from "./editors/componentEditorAdapter";
+import { getComponentEditorSurfaceId, getComponentTabId } from "./editors/componentEditorAdapter";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import type { BlueprintEntryTabPayload } from "../blueprint-lite/blueprintEntryTabId";
 import { useBlueprintDocumentRevision } from "../blueprint-lite/hooks/useBlueprintDocumentRevision";
@@ -218,6 +218,23 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         }));
     }, [globalBlueprintId, openEditorTab]);
 
+    /**
+     * Make `subjectId` the properties panel's subject and bring the panel forward.
+     *
+     * Takes an id rather than a surface because a component's subject is its editor's pseudo surface
+     * (`component-editor:<id>`), which is not in `document.surfaces` at all.
+     */
+    const focusSurfaceProperties = useCallback((subjectId: string) => {
+        if (!context) {
+            return;
+        }
+        const uiService = context.services.get<UIService>(Services.UI);
+        uiService.getStore().setSelection({ type: "scene", data: subjectId });
+        uiService.focus.setFocus(FocusArea.LeftPanel, panelId);
+        uiService.panels.show("narraleaf-studio:properties");
+        uiService.focus.setFocus(FocusArea.LeftPanel, panelId, { silent: true });
+    }, [context, panelId]);
+
     const handleOpenComponent = useCallback((component: UIComponentDefinition) => {
         openEditorTab({
             id: getComponentTabId(component.id),
@@ -228,23 +245,16 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             closable: true,
             modified: false,
         });
-    }, [openEditorTab]);
-
-    const focusSceneProperties = useCallback((surface: UISurface) => {
-        if (!context) {
-            return;
-        }
-        const uiService = context.services.get<UIService>(Services.UI);
-        uiService.getStore().setSelection({ type: "scene", data: surface.id });
-        uiService.focus.setFocus(FocusArea.LeftPanel, panelId);
-        uiService.panels.show("narraleaf-studio:properties");
-        uiService.focus.setFocus(FocusArea.LeftPanel, panelId, { silent: true });
-    }, [context, panelId]);
+        // The same bargain a page card makes: opening it also makes it the panel's subject. For a
+        // component that subject is where its params are declared - its root is the outline's root
+        // and so not selectable, leaving nothing inside it to hang them on.
+        focusSurfaceProperties(getComponentEditorSurfaceId(component.id));
+    }, [focusSurfaceProperties, openEditorTab]);
 
     const handleSurfaceClick = useCallback((surface: UISurface) => {
         handleOpenSurface(surface);
-        focusSceneProperties(surface);
-    }, [focusSceneProperties, handleOpenSurface]);
+        focusSurfaceProperties(surface.id);
+    }, [focusSurfaceProperties, handleOpenSurface]);
 
     // Same reason as the canvas: a palette edit changes what a `nlbrand:` colour paints without
     // touching the document, so the thumbnails need their own reason to be rebuilt.

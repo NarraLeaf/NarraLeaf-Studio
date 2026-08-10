@@ -256,6 +256,17 @@ export class ComponentDocumentServiceAdapter {
         throw new Error("Nested linked components are disabled while editing a component definition");
     }
 
+    /**
+     * Delegated rather than omitted. Nothing here can create a nested instance, so nothing inside a
+     * component editor should have params to supply - but the inspector reaches this object through
+     * a cast, so a missing method would be a TypeError rather than a no-op if an instance placed
+     * before that restriction ever got selected. The base looks the element up in the document's own
+     * table, which a component's elements are not in, so it does nothing.
+     */
+    public setComponentInstanceParam(elementId: string, paramId: string, value: string): void {
+        this.base.setComponentInstanceParam(elementId, paramId, value);
+    }
+
     public unlinkComponentInstance(_elementId: string): string[] {
         return [];
     }
