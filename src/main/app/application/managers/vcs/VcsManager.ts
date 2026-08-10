@@ -1035,7 +1035,7 @@ export class VcsManager extends Manager {
      * where it landed and what it cost.
      *
      * Dev Mode's reason for existing: while the workspace shows a past revision, Run has to compile
-     * that revision rather than the working tree (plan 2026-07-28-002 §1). See `revisionSnapshot.ts`
+     * that revision rather than the working tree. See `revisionSnapshot.ts`
      * for where the directory lives, what it deliberately leaves out, and why.
      *
      * Inside the per-project serialization, so a materialisation and a commit cannot interleave on one

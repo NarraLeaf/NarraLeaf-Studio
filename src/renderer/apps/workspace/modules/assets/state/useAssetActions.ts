@@ -1024,7 +1024,7 @@ export function useAssetActions({
     /**
      * The one asset the single-subject actions act on, in the same priority order rename uses:
      * right-clicked row, then a lone selection, then the focused row. Groups resolve to nothing —
-     * replacing contents is per file, and the card rules out a batch version.
+     * replacing contents is per file, and there is deliberately no batch version.
      */
     const resolveSingleAsset = useCallback((): Asset | null => {
         if (contextMenuTarget?.item) {

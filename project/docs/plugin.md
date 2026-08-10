@@ -1,6 +1,6 @@
 # NarraLeaf Studio 插件系统
 
-本文记录 NarraLeaf Studio Plugin System V2 的真实边界、数据协议、加载链路和权限细节。面向插件创建的步骤文档见 [create-plugin.md](./create-plugin.md)，API 参考见 [studio-api.md](./studio-api.md) 与 [runtime-api.md](./runtime-api.md)。架构设计动机见 `docs/plans/2026-07-11-001-feat-plugin-dual-target-architecture.md`。
+本文记录 NarraLeaf Studio Plugin System V2 的真实边界、数据协议、加载链路和权限细节。面向插件创建的步骤文档见 [create-plugin.md](./create-plugin.md)，API 参考见 [studio-api.md](./studio-api.md) 与 [runtime-api.md](./runtime-api.md)。
 
 ## 系统边界
 

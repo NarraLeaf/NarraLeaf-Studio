@@ -283,7 +283,7 @@ describe("getCommandCandidates", () => {
     });
 
     it("offers a generic verb everything it accepts: characters first, then each object kind", () => {
-        // The headline of the generic verbs (bible B3): `/show` is one pick from everything on stage.
+        // The headline of the generic verbs: `/show` is one pick from everything on stage.
         // Puppet characters are in the list like any other: `/show` puts a model on stage the same way
         // it puts a sprite there, and the box is the engine's regardless of who draws its inside.
         expect(values("/show |")).toEqual(["Alice", "Bob", "Doll", "Ghost", "hero", "portrait", "title", "intro", "fx", "rain"]);

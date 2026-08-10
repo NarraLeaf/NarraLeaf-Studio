@@ -10,7 +10,7 @@ import { listCommandSpecs } from "./registry";
 import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, specGroupIds } from "./specSidebar";
 
 /**
- * The `accepts` classification rule (plan §4.2) and the colour contract A1 was warned about (§12.3).
+ * The `accepts` classification rule, and the colour contract behind it.
  *
  * The rule is the whole reason the sidebar could stop being a second catalogue, so it is pinned by the
  * case that motivated it: `/show` is ONE spec that has to appear under five subjects. The colour
@@ -88,7 +88,7 @@ describe("accepts-driven classification (§4.2)", () => {
 });
 
 /**
- * The `/` empty-state browse is the sidebar's projection (task 2026-07-26-003 WI-1), so `/show` shows
+ * The `/` empty-state browse is the sidebar's projection, so `/show` shows
  * up under every subject there too. The catch A1 flagged: the highlight walked by command id, and a
  * verb repeated across subjects would have collided. The stop keys are the fix - one per rendered row -
  * so the invariant interaction-model rule 2 rests on ("the highlight is Enter's pointer") holds: one
@@ -158,7 +158,7 @@ describe("the eight categories (§4.1, §12.3)", () => {
 });
 
 /**
- * The exact hues, pinned - the assertion A1's "zero visual regression" promise actually rests on.
+ * The exact hues, pinned - the assertion the "zero visual regression" promise actually rests on.
  *
  * Everything above only asks that a colour EXIST, so editing any hex would repaint the row's left bar,
  * the badge, the `/` browse menu and the command reference all at once and still pass the whole suite;
@@ -188,7 +188,7 @@ const GROUP_COLORS: Record<StoryCommandGroupId, string> = {
     text: "#9bb7d8",
     layer: "#92b9b0",
     video: "#b59dcc",
-    // A3's addition, and the only hue no group already wore - the palette's remaining gap.
+    // A later addition, and the only hue no group already wore - the palette's remaining gap.
     vfx: "#d3c07c",
     camera: "#d1a176",
     scene: "#8fa9c7",

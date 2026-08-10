@@ -9,7 +9,7 @@ import { deriveObjectName, vfxOperationBlock } from "../payloadHelpers";
  * Sound: `/bgm`, `/sound`, and the control family `/vol` `/rate` `/stop` `/pause` `/resume`
  * `/mute` `/unmute`.
  *
- * The control family is the bible's B4: the target is an omissible leading positional that defaults
+ * The control family: the target is an omissible leading positional that defaults
  * to the reserved name `bgm` - `/vol 0.5` turns the music down, `/vol piano 0.5` a named sound. The
  * compiler reserves `bgm` for the background-music channel, so the default needs no special payload
  * shape: it is just the name.
@@ -38,7 +38,7 @@ function audioControlBlock(
  * The transport verbs that reach past sound: `/stop` `/pause` `/resume` `/rate` also address a video
  * or an ambience overlay.
  *
- * Same dispatch shape as `/show`'s (bible B3): the token names the verb, the resolved target decides
+ * Same dispatch shape as `/show`'s: the token names the verb, the resolved target decides
  * which payload the line writes. Omitting the target still means BGM (B4) - it is only a NAMED target
  * resolving elsewhere that lands in another payload, so `/pause` with nothing after it can never
  * silently pause a clip the author was not thinking about.

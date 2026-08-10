@@ -76,7 +76,7 @@ function normalizeRunMode(value: unknown): RunMode {
  * Which mode is selected persists globally (see `ui.runMode`).
  *
  * **Production Build lives in that dropdown**, not in its own title-bar icon: the version control
- * widget needs the room (plan 2026-07-28-002 §3), and run and build belong to one another anyway.
+ * widget needs the room, and run and build belong to one another anyway.
  * The action itself stays registered (see `buildAction`) because the macOS Dev ▸ Build menu, the
  * command palette and the freeze policy all resolve through the registry; `ActionBar` skips drawing
  * it. This control also carries the build's STATUS and its done/failed notifications, which used to
@@ -214,7 +214,7 @@ export function RunControl() {
      * Preview builds and runs the project the way a player would receive it, and that is the thing a
      * frozen workspace is specifically not claiming to be. Dev Mode runs what is on disk, which while
      * a freeze is manual IS the working tree - correct as it stands. Pointing Dev Mode at the focused
-     * revision instead is U4 (plan 2026-07-28-002 §4); nothing here anticipates it.
+     * revision instead is future work; nothing here anticipates it.
      *
      * Never applied while something is running: whatever the freeze says, a launched process must
      * always be stoppable, and this same button is the stop control.

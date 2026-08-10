@@ -70,8 +70,8 @@ function has(record: Readonly<Record<string, unknown>> | undefined, key: string)
  * removed this key" are the same observation without a base, and an empty base silently reads
  * every one of them the first way. Nor is the document-level story reliable enough to infer from:
  * a missing base is also what an unreadable or absent common ancestor looks like, where removal
- * genuinely did happen. So an add/add is answered as conflicts, which is what plan
- * 2026-07-31-004 §4.5 already lists as permanently unresolvable rather than as a to-do.
+ * genuinely did happen. So an add/add is answered as conflicts, which is one of the cases
+ * that is permanently unresolvable rather than a to-do.
  */
 export function mergeKeyed<V>(
     base: Readonly<Record<string, V>> | undefined,

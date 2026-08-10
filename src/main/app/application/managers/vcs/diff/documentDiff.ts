@@ -28,7 +28,7 @@ import { DocumentCorruptError, type AnyDocumentSpec, type DocumentParseContext }
  * this be tested without a repository and reused by the resolve flow, which will hold
  * three sides rather than two.
  *
- * The four tiers of plan 2026-07-31-004 §2.3, in the order they are tried:
+ * The four resolution tiers, in the order they are tried:
  *
  * | tier | when | what the author gets |
  * |---|---|---|
@@ -59,7 +59,7 @@ export const DOCUMENT_DIFF_CHANGE_LIMIT = 200;
  * Largest single document either side may be before it is diffed as bytes.
  *
  * **Drawn from one data point, not measured across a corpus.** The only real fixture
- * anyone has profiled (plan 2026-07-28-002 §4.2.4) held 50 documents totalling 3.62 MiB
+ * anyone has profiled held 50 documents totalling 3.62 MiB
  * beside 73.78 MiB of assets - so the biggest document ever seen is a rounding error
  * against this, and nobody has yet opened a large story document from a real production.
  * It is a guardrail against parsing something enormous on the main process's only

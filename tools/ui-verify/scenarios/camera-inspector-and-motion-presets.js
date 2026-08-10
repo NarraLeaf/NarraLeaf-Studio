@@ -1,10 +1,10 @@
 /*
- * Acceptance for 2026-07-29-002: the `/camera` property editor, and the Story Motion preset library.
+ * Acceptance: the `/camera` property editor, and the Story Motion preset library.
  *
  *   NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<electron pid> NLS_VERIFY_PROJECT=<project copy> \
  *       node tools/ui-verify/scenarios/camera-inspector-and-motion-presets.js
  *
- * Drives the workspace only (no Dev Mode): everything this card changed is authoring-time UI. What it
+ * Drives the workspace only (no Dev Mode): everything under test here is authoring-time UI. What it
  * has to prove, in this order, because each step is the setup for the next:
  *
  *   1. a `/camera zoom` row commits and its inspector shows the six-way operation picker + viewfinder;

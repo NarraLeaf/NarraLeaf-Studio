@@ -918,7 +918,7 @@ describe("compileStudioStoryToNlr", () => {
 
         it("warns and omits an expression whose character is not on stage", async () => {
             // The image resolves, but char-alice was never shown, so there is no on-stage portrait to
-            // swap - the token would be a silent no-op. WI-0.1: surface it instead of dropping it quietly.
+            // swap - the token would be a silent no-op, so surface it instead of dropping it quietly.
             const compiled = await compileStudioStoryToNlr({
                 document: baseDocument(eventDialogue({ event: { expression: { characterId: "char-alice", pose: "pose-angry" } } }), ["say"]),
                 sceneId: "scene-1",
@@ -1317,7 +1317,7 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.diagnostics).toEqual([]);
     });
 
-    it("validates persistent references against the declared set (bible §3.3)", async () => {
+    it("validates persistent references against the declared set", async () => {
         const persistentDecl: StoryBlock = {
             id: "flag-decl",
             kind: "declaration",
@@ -1710,7 +1710,7 @@ describe("compileStudioStoryToNlr localization", () => {
 
     it("maps {n} placeholders in translations back to the source interpolation words", async () => {
         let locale = "en";
-        // The persistent variable the interpolation reads must be declared (bible §3.3), so a
+        // The persistent variable the interpolation reads must be declared, so a
         // persistent `//persis playerName` row seeds it; the host still supplies the live value.
         const playerNameDecl: StoryBlock = {
             id: "playerName",

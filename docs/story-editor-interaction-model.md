@@ -2,7 +2,7 @@
 
 The rules the scene editor's keyboard and mouse behaviour derive from. Written down because every
 one of them replaced something that did the opposite, and because the slash-command system builds on
-top of them (see `docs/plans/2026-07-16-001-feat-story-command-system.md`).
+top of them.
 
 ## The four rules
 

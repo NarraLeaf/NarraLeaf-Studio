@@ -45,8 +45,7 @@ export const ProjectNameConvention = {
      * `@shared/vcs/serviceStores`.
      *
      * Under `.nlstudio/` because that is what `isVersioned` excludes, and the layout
-     * being versioned is what made freezing the workspace freeze the author's panels
-     * (plan 2026-07-28-002 §4.1).
+     * being versioned is what made freezing the workspace freeze the author's panels.
      */
     StudioServices: [".nlstudio", "services/"],
     /**
@@ -88,7 +87,7 @@ export const ProjectNameConvention = {
     Scripts: ["scripts/"],
     /**
      * Author-supplied drawing runtimes for the engine's puppet seam — one directory per backend,
-     * each with an `index.js`. Studio ships none and is not allowed to (card 2026-07-27-002), so
+     * each with an `index.js`. Studio ships none and is not allowed to, so
      * this is where the author puts theirs, the way Ren'Py and TyranoScript ask for an SDK.
      */
     PuppetRuntimes: ["runtimes", "puppet/"],

@@ -4,11 +4,11 @@
  * React- and engine-free so the row projection, the action↔block reverse lookup, the declared variable
  * listing and the execution context stay unit-testable.
  *
- * The block summary is NOT re-derived here any more. It used to be — the M5 card authorised a
+ * The block summary is NOT re-derived here any more. It used to be — an earlier round allowed a
  * deliberately minimal re-projection because the editor's `describeBlock` was coupled to the workspace
  * `Character` service — and the two readings drifted exactly where it mattered (`Enter Nattou` against
  * `character enter · character`). That authorisation is withdrawn: the sentence now comes from
- * `@/lib/story/storyRowProjection`, the one projection both surfaces read (U4 WI-1).
+ * `@/lib/story/storyRowProjection`, the one projection both surfaces read.
  */
 
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";

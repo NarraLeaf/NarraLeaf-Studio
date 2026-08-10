@@ -24,7 +24,7 @@ export const FAVORITES_SETTING_KEY = "story.actionCreator.starredActionIds";
  * The five nulls are the whole of the loss, and all five are deliberate:
  *  - `conditionIf` was a duplicate of `condition` down to the constructor (D3), removed by §6;
  *  - `narration` has no spec because narration is not a command - a bare line of text IS narration
- *    (bible §2 retired the token), so there is nothing for the entry to point at;
+ *    (the token was retired), so there is nothing for the entry to point at;
  *  - `code` was deleted outright in schema v13 (the block never ran), and its token is reserved, so
  *    there is deliberately nothing for a starred `/code` to land on;
  *  - `declareSavedVariable` / `declarePersistentVariable` went with `/save` and `/global`. A saved or

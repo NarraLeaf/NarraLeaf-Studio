@@ -6,7 +6,7 @@
  * walk of the project's `assets/` directory. Keeping the arithmetic in one React-free file is what
  * makes the numbers testable — and the numbers are the whole point of the page, because v2's
  * opt-in packaging trim is only allowed to exist once these have been audited against a real
- * project (see the overhaul plan §5.5).
+ * project.
  *
  * Two words are used precisely throughout, and mean different things:
  *  - **referenced** — the reference index found at least one site holding this asset's id.

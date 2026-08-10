@@ -43,7 +43,7 @@ const PAN_PLACEMENTS = ["left", "center", "right"] as const;
  * The camera's knobs.
  *
  * What the *shape* of this editor has to carry, because a paragraph of explanation is not the house
- * style (M3 卡 §1):
+ * style:
  *  - the section title says the pose is story-wide, so an author does not expect a scene change to
  *    put the camera back;
  *  - `darken` is labelled as STAGE brightness, which is what tells it apart from `/vignette`'s

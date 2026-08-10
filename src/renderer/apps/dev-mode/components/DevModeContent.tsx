@@ -106,7 +106,7 @@ const FLOAT_PANEL_MARGIN = 16;
 /**
  * How tall a floating panel is: tall enough to read a timeline in, short enough that it can still be
  * moved vertically. `h-full` would be a panel that floats and cannot be dragged out of the way in
- * the one axis that matters, which is the failure this card exists to avoid.
+ * the one axis that matters.
  */
 const FLOAT_PANEL_HEIGHT = `min(560px, calc(100% - ${FLOAT_PANEL_MARGIN * 2}px))`;
 

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { SurfacePreviewRect, SurfacePreviewSize } from "./surfacePreviewFrames";
-import { computeSafeAreaFrameById, computeScreenRatioFrameById } from "./surfacePreviewFrames";
+import { computeSafeAreaFrameById, computeScreenRatioFrameById, computeUnsafeBands } from "./surfacePreviewFrames";
 
 export type SurfacePreviewFramesOverlayProps = {
     /** Surface design size; the design rect is `{x: 0, y: 0, ...designSize}`. */
@@ -23,7 +23,16 @@ export type SurfacePreviewFramesOverlayProps = {
  * The engine letterboxes on every run path, so these frames never show "what gets cut off":
  * the screen-ratio frame shows where the bars land, and the safe-area frame shows how far a
  * device's notch / home indicator reaches into the content *after* the bars absorbed part of it.
- * Deliberately label-free — the active preset name lives in the toolbar menu, not on the canvas.
+ *
+ * The safe area is drawn as **filled bands over the unsafe edges**, not only as an outline. On a
+ * 16:9 design every preset here resolves to left = right = top = 0 and a bottom inset of ~58-63
+ * design px, so an outline alone puts three of its four edges exactly on the surface boundary and
+ * the whole layer reads as "my click did nothing". The bands are the part that is visible at a
+ * glance; the dashed outline stays as the precise boundary.
+ *
+ * Text belongs outside this component — everything here lives inside the zoomed canvas node, so a
+ * label would scale with the zoom. The preset name and the inset numbers are rendered unscaled by
+ * `SurfacePreviewFramesReadout`.
  */
 export function SurfacePreviewFramesOverlay(props: SurfacePreviewFramesOverlayProps) {
     const { designSize, aspectId, safeAreaId, viewportScale } = props;
@@ -43,6 +52,10 @@ export function SurfacePreviewFramesOverlay(props: SurfacePreviewFramesOverlayPr
     const safeFrame = useMemo(
         () => computeSafeAreaFrameById(designSize, safeAreaId),
         [designSize, safeAreaId],
+    );
+    const unsafeBands = useMemo(
+        () => computeUnsafeBands(designSize, safeFrame),
+        [designSize, safeFrame],
     );
 
     if (!screenFrame && !safeFrame) {
@@ -106,6 +119,13 @@ export function SurfacePreviewFramesOverlay(props: SurfacePreviewFramesOverlayPr
                     }}
                 />
             ) : null}
+            {unsafeBands.map((band, i) => (
+                <div
+                    key={`unsafe-band-${i}`}
+                    className="absolute bg-warning/20"
+                    style={{ left: band.x, top: band.y, width: band.width, height: band.height }}
+                />
+            ))}
             {safeFrame ? (
                 // When `fullySafe` the safe rect coincides with the design rect — still drawn, that
                 // is the informative answer ("no risk on this device"), not a case to hide.

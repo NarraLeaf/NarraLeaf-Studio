@@ -70,7 +70,7 @@ function variableEntries(
         });
     }
     // Persistent variables: the merged view of the registry and story `/persis` rows - one scope, two
-    // authoring surfaces (WI-3). Addressed by `storageKey`, the rename-stable key the compiler hands
+    // authoring surfaces. Addressed by `storageKey`, the rename-stable key the compiler hands
     // the host persistence bridge.
     const persistentView = buildMergedVariableView(
         persistentVariables,

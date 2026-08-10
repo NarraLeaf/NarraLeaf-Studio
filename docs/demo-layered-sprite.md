@@ -36,13 +36,13 @@ PSD** → **Choose a PSD…** → pick `demo.psd`.
 
 What the wizard shows, and what each part is telling you:
 
-![the wizard, after the three decisions](plans/reports/assets/l3-demo-wizard.png)
+![the wizard, after the three decisions](assets/l3-demo-wizard.png)
 
 - **`5 layers · ~41 MB`** — what this import will add to the asset library, and what the character
   will cost in decoded memory on stage. Every layer is baked to the full canvas, so this is layers ×
   canvas no matter how little each one draws. It turns amber past 24 layers or 256 MB.
 - **Three blend rows.** `Import` is disabled until each has been answered. There is deliberately no
-  default: the plan forbids importing a non-`normal` layer silently, and pre-selecting an answer
+  default, because importing a non-`normal` layer silently is forbidden and pre-selecting an answer
   would just be doing that with extra steps.
   - `Rim light` (`color`) and `Shade` (`multiply`) can be **merged** — Studio flattens them into the
     pixels using their own blend mode.
@@ -61,13 +61,13 @@ mood — attaching it to the topmost tag alone would make the shadow vanish the 
 
 ## 4. What you get
 
-![Calm](plans/reports/assets/l3-demo-calm.png)
+![Calm](assets/l3-demo-calm.png)
 
 Canvas `1088 × 1984`, one axis (`Mood`), two layers (`Body`, `Mood`). The warm tint and the rim
 light are in the body's pixels and stop at her silhouette — that is the clipping mask. The lower
 half is darkened by the multiply shade.
 
-![Angry](plans/reports/assets/l3-demo-angry.png)
+![Angry](assets/l3-demo-angry.png)
 
 Click **Angry** in the Axes panel. The anger mark appears at her temple — **and the shadow on her
 legs is still there**. Same pixels in both tags: `(91,104,151,98)` at (544,1500), either way.

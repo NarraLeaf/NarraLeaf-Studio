@@ -10,7 +10,7 @@ import { listCommandSpecs, type AnyStoryCommandSpec } from "./registry";
 import { specPaletteCommands } from "./specPalette";
 
 /**
- * The subject × verb menu, derived from the spec registry - A1's one new mechanism (§4.2).
+ * The subject × verb menu, derived from the spec registry.
  *
  * The sidebar cannot be "one spec, one entry": `/show` is a generic verb spanning five subjects, and a
  * single `category` field can only put it in one place, so an author browsing 图片 would not find

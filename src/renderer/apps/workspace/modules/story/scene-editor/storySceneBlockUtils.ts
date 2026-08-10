@@ -23,7 +23,7 @@ import { getCommandSpec } from "./commands/registry";
 import { DECLARATION_COMMANDS } from "./commands/specs/variables";
 
 /**
- * The row projection moved to `@/lib/story/storyRowProjection` (U4 WI-1) so the Dev Mode timeline can
+ * The row projection moved to `@/lib/story/storyRowProjection` so the Dev Mode timeline can
  * read the same sentence the editor shows. What stays here is the editor's own half: the `Character[]`
  * service adapters, the lucide icons, and the reading-layer passes (dialogue groups, visible rows).
  */
@@ -59,7 +59,7 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
                 current.delete(characterId);
             } else if (block.payload.operation === "enter") {
                 // An entrance shows the character and sets the whole appearance, placement included — its
-                // own block is the row the group-header dropdown rewrites (WI-3, M3.1).
+                // own block is the row the group-header dropdown rewrites.
                 current.set(characterId, { pose: block.payload.pose, tags: block.payload.tags, position, positionSourceId: block.id, shown: true });
             } else if (block.payload.operation === "expression") {
                 // An expression changes the appearance but not where the character stands, so the
@@ -253,7 +253,7 @@ export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlock
             return;
         }
         // Disabled propagates down: a disabled container's whole subtree renders muted (and compiles
-        // out), so a row is effectively disabled when it or any ancestor is (WI-3 / schema v7).
+        // out), so a row is effectively disabled when it or any ancestor is (schema v7).
         const disabled = disabledAncestor || Boolean(block.disabled);
         lineNumber += 1;
         if (visible) {
@@ -514,7 +514,7 @@ export function isContainerBlock(block: StoryBlock | undefined): boolean {
  * The badge icons stay here, with the rest of the editor's React. Everything that decides WHICH badge
  * a row wears - its id, its label key and its colour group - is `storyBlockBadge` in the shared row
  * projection, so the editor's left-edge bar and the Dev Mode timeline's hue can never come from two
- * different chains of ifs (U4 WI-1).
+ * different chains of ifs.
  *
  * These are now the FALLBACK: a row that maps to a command wears that command's own glyph
  * ({@link rowCommandId}), so the plate matches the entry in the `/` menu that could have written the

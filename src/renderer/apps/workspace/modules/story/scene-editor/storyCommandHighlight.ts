@@ -57,7 +57,7 @@ const ENTITY_KINDS: ReadonlySet<string> = new Set([
 /**
  * Whether a positional reads as the thing acted on rather than as a value given to it.
  *
- * Only positionals ever qualify (bible B1: an existing object is always addressed positionally, and a
+ * Only positionals ever qualify (an existing object is always addressed positionally, and a
  * `k=v` is always a modifier), and only when the slot names an entity — so `/wait 5` and `/vol 0.5`
  * lead with a value, which is what they are, while `/jump 'Scene Name'` leads with its object.
  */

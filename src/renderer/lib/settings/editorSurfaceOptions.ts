@@ -20,7 +20,7 @@ export const EDITOR_SURFACE_OPACITY_MAX = 100;
 export const EDITOR_SURFACE_OPACITY_STEP = 5;
 
 /**
- * 100, i.e. the behaviour shipped in U0 and the only value that is a no-op for everyone.
+ * 100, i.e. the behaviour that shipped first and the only value that is a no-op for everyone.
  *
  * The workspace wallpaper is opt-in, and so is the seam it creates: without a wallpaper every base
  * surface is already opaque, so this setting is inert and no default other than 100 could be

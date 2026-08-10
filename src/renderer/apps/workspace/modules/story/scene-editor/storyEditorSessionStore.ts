@@ -92,7 +92,7 @@ export type StoryEditorViewState = {
 };
 
 /**
- * Reading-density of the scene editor (WI-6). `compact` is the status quo; the other two open up type
+ * Reading-density of the scene editor. `compact` is the status quo; the other two open up type
  * and row boxes by the amounts in `STORY_DENSITY_METRICS` (storyEditorTextStyle.tsx), which is the one
  * place the numbers live — the row chrome reads them through a CSS variable rather than hard-coding a
  * second copy in the stylesheet.
@@ -107,7 +107,7 @@ function normalizeDensity(value: unknown): StoryEditorDensity {
 }
 
 /**
- * Editor-wide view preferences (WI-6): density and the row filter. Persisted per-project via
+ * Editor-wide view preferences: density and the row filter. Persisted per-project via
  * {@link PanelStateService} (the same store the row view-state uses), so they survive tab switches
  * and restarts. Editor-wide, not per-scene, so they live under their own key rather than the scene map.
  */

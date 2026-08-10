@@ -682,7 +682,7 @@ export class GameBuildManager {
      * Refuses while the workspace is frozen. The Build control is already
      * disabled there, but a build is IPC straight into this method - a
      * keybinding, a plugin, a stale renderer or a second window can still ask,
-     * and this is the only place that can say no (plan 2026-07-28-002 §4.3).
+     * and this is the only place that can say no.
      */
     public start(projectPath: string, entry: GameRuntimeLaunchEntry, request: GameBuildRequest): GameBuildStateSnapshot {
         const normalizedProjectPath = path.resolve(projectPath);

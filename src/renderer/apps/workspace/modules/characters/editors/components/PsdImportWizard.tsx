@@ -40,7 +40,7 @@ const DROP_REASON_KEYS = {
  * The one-shot PSD import.
  *
  * The tree is read first and nothing is baked until the author has seen the mapping and settled
- * every blend mode the engine cannot reproduce — the plan forbids importing one of those silently,
+ * every blend mode the engine cannot reproduce — importing one of those silently is forbidden,
  * so the Import button stays disabled while any is undecided. That gate is the interception.
  *
  * Nothing here is destructive. A PSD Studio still recognises refreshes the layers it made last time
