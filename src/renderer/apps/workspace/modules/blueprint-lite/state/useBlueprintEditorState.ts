@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 
 export type BlueprintEditorGraphView =
@@ -53,6 +53,31 @@ export function useBlueprintEditorState(
         [focusEventId, focusFunctionId, payload.focusFieldId],
     );
 
+    /** Read inside {@link applyGraphFocus}, which must not re-run every time the view moves. */
+    const graphViewRef = useRef(graphView);
+    graphViewRef.current = graphView;
+
+    /**
+     * Take the editor to the graph the payload names.
+     *
+     * Does nothing when the editor is already there and the payload names no node, because this
+     * routine does not only ever run on open: `BlueprintEntryTab` writes the graph an author
+     * navigates to back into the tab payload (so the tab reopens where it was left), which lands
+     * here as a fresh focus request one commit later. Re-applying a graph the editor is already
+     * showing is not a harmless no-op — it would reset the selection, and the selection at that
+     * moment may be the node the navigation was FOR: clicking a diagnostic that names a node in
+     * another graph arrived with the graph switched and nothing selected.
+     */
+    const applyGraphFocus = useCallback((view: BlueprintEditorGraphView, focusNodeId: string | undefined) => {
+        const current = graphViewRef.current;
+        if (!focusNodeId && current?.kind === view.kind && current.graphId === view.graphId) {
+            return;
+        }
+        setGraphView(view);
+        setMemberFocus({ kind: "graph", view });
+        setSelectedNodeIds(focusNodeId ? [focusNodeId] : []);
+    }, []);
+
     const applyPayloadFocus = useCallback(() => {
         if (payload.focusFieldId) {
             setMemberFocus({ kind: "field", fieldId: payload.focusFieldId });
@@ -60,22 +85,16 @@ export function useBlueprintEditorState(
             return;
         }
         if (focusFunctionId) {
-            const view: BlueprintEditorGraphView = { kind: "function", graphId: focusFunctionId };
-            setGraphView(view);
-            setMemberFocus({ kind: "graph", view });
-            setSelectedNodeIds(payload.focusNodeId ? [payload.focusNodeId] : []);
+            applyGraphFocus({ kind: "function", graphId: focusFunctionId }, payload.focusNodeId);
             return;
         }
         if (focusEventId) {
-            const view: BlueprintEditorGraphView = { kind: "event", graphId: focusEventId };
-            setGraphView(view);
-            setMemberFocus({ kind: "graph", view });
-            setSelectedNodeIds(payload.focusNodeId ? [payload.focusNodeId] : []);
+            applyGraphFocus({ kind: "event", graphId: focusEventId }, payload.focusNodeId);
             return;
         }
         setMemberFocus({ kind: "none" });
         setSelectedNodeIds([]);
-    }, [focusEventId, focusFunctionId, payload.focusFieldId, payload.focusNodeId]);
+    }, [applyGraphFocus, focusEventId, focusFunctionId, payload.focusFieldId, payload.focusNodeId]);
 
     useEffect(() => {
         applyPayloadFocus();

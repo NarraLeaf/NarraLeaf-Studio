@@ -1168,6 +1168,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         editor.setSelectedNodeIds([]);
     }, [commitIr, editor, ir]);
 
+    /** The node the diagnostics list last asked the canvas to reveal; see {@link onDiagnosticPick}. */
+    const [diagnosticNodeFocus, setDiagnosticNodeFocus] = useState<{ nodeId: string; nonce: number } | null>(null);
+
     const onDiagnosticPick = useCallback(
         (d: BlueprintGraphEditorDiagnostic) => {
             const t = d.target;
@@ -1189,7 +1192,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     selectFunctionGraph(t.graphId);
                 }
                 if (t.kind === "node" && t.nodeId) {
-                    editor.setSelectedNodeIds([t.nodeId]);
+                    const nodeId = t.nodeId;
+                    editor.setSelectedNodeIds([nodeId]);
+                    // Selecting a node off screen selects something the author cannot see. The nonce
+                    // is what makes clicking the same row twice bring it back after a pan.
+                    setDiagnosticNodeFocus(previous => ({ nodeId, nonce: (previous?.nonce ?? 0) + 1 }));
                 }
                 return;
             }
@@ -1812,6 +1819,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         blueprintSavedVariables={blueprintSavedVariables}
                         selectedNodeIds={editor.selectedNodeIds}
                         onSelectNodeIds={editor.setSelectedNodeIds}
+                        focusNodeId={diagnosticNodeFocus?.nodeId ?? null}
+                        focusNonce={diagnosticNodeFocus?.nonce}
                         onCommitIr={commitIr}
                         onAddNodeAtFlowPosition={onAddGraphNodeAtFlowPosition}
                         dragConnectCreate={dragConnectCreate}

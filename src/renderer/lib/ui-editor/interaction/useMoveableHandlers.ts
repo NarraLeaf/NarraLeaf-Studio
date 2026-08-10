@@ -28,6 +28,7 @@ import {
     applyFinalTransform,
     isHTMLElement,
 } from "./utils";
+import { createGestureDeadzone, type GestureDeadzone } from "./gestureDeadzone";
 import { applyLockedAspectToResizePreview } from "@/lib/ui-editor/layout/aspectRatioLock";
 import { isUIElementFlowLayoutChild, type UILayout } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -174,6 +175,8 @@ export function useMoveableHandlers({
     const resizeStartCache = useRef<Map<string, ResizeStartEntry>>(new Map());
     const rotateCache = useRef<Map<string, number>>(new Map());
     const snapLinesCacheRef = useRef<SnapGuideLine[]>([]);
+    // Moveable runs one able at a time, so drag, resize and rotate can share a single deadzone.
+    const gestureDeadzone = useRef<GestureDeadzone>(createGestureDeadzone());
     const performanceHintCache = useRef<
         Map<HTMLElement, { willChange: string; backfaceVisibility: string; transformOrigin: string }>
     >(new Map());
@@ -488,7 +491,9 @@ export function useMoveableHandlers({
         endTransform();
     }, [clearPerformanceHints, clearSmartSnapGuides, endTransform, scheduleMoveableRectUpdate, selectedTargets]);
 
-    const handleDragStart = useCallback(() => {
+    const handleDragStart = useCallback((e: OnDragStart) => {
+        // Before the group guard: the origin has to be recorded whichever variant Moveable emits.
+        gestureDeadzone.current.begin(e.clientX, e.clientY);
         if (isGroupSelection) {
             return;
         }
@@ -501,6 +506,9 @@ export function useMoveableHandlers({
     const handleDrag = useCallback(
         (e: OnDrag) => {
             if (isGroupSelection) {
+                return;
+            }
+            if (!gestureDeadzone.current.update(e.clientX, e.clientY)) {
                 return;
             }
             let [translateX, translateY] = e.beforeTranslate;
@@ -574,6 +582,7 @@ export function useMoveableHandlers({
 
     const handleDragGroupStart = useCallback(
         (e: OnDragGroupStart) => {
+            gestureDeadzone.current.begin(e.clientX, e.clientY);
             if (!isGroupSelection) {
                 return;
             }
@@ -588,6 +597,9 @@ export function useMoveableHandlers({
     const handleDragGroup = useCallback(
         (e: OnDragGroup) => {
             if (!isGroupSelection) {
+                return;
+            }
+            if (!gestureDeadzone.current.update(e.clientX, e.clientY)) {
                 return;
             }
             const doc = documentService.getDocument();
@@ -670,6 +682,7 @@ export function useMoveableHandlers({
 
     const handleResizeStart = useCallback(
         (e: OnResizeStart) => {
+            gestureDeadzone.current.begin(e.clientX, e.clientY);
             if (isGroupSelection) {
                 return;
             }
@@ -702,6 +715,9 @@ export function useMoveableHandlers({
     const handleResize = useCallback(
         (e: OnResize) => {
             if (isGroupSelection) {
+                return;
+            }
+            if (!gestureDeadzone.current.update(e.clientX, e.clientY)) {
                 return;
             }
             const elementId = e.target.dataset.uiElementId;
@@ -838,7 +854,9 @@ export function useMoveableHandlers({
             if (isGroupSelection) {
                 return;
             }
-            if (!e.isDrag) {
+            // A gesture that never left the deadzone has written nothing to the caches, so
+            // finalizing it would still commit the untouched layout back as an undoable edit.
+            if (!e.isDrag || !gestureDeadzone.current.isArmed) {
                 cancelResize();
                 return;
             }
@@ -849,6 +867,7 @@ export function useMoveableHandlers({
 
     const handleResizeGroupStart = useCallback(
         (e: OnResizeGroupStart) => {
+            gestureDeadzone.current.begin(e.clientX, e.clientY);
             if (!isGroupSelection) {
                 return;
             }
@@ -863,6 +882,9 @@ export function useMoveableHandlers({
     const handleResizeGroup = useCallback(
         (e: OnResizeGroup) => {
             if (!isGroupSelection) {
+                return;
+            }
+            if (!gestureDeadzone.current.update(e.clientX, e.clientY)) {
                 return;
             }
             smartSnap?.setGuides(null);
@@ -905,7 +927,7 @@ export function useMoveableHandlers({
             if (!isGroupSelection) {
                 return;
             }
-            if (!e.isDrag) {
+            if (!e.isDrag || !gestureDeadzone.current.isArmed) {
                 cancelResize();
                 return;
             }
@@ -915,7 +937,8 @@ export function useMoveableHandlers({
     );
 
     const handleRotateStart = useCallback(
-        (_e: OnRotateStart) => {
+        (e: OnRotateStart) => {
+            gestureDeadzone.current.begin(e.clientX, e.clientY);
             if (isGroupSelection) {
                 return;
             }
@@ -929,6 +952,9 @@ export function useMoveableHandlers({
     const handleRotate = useCallback(
         (e: OnRotate) => {
             if (isGroupSelection) {
+                return;
+            }
+            if (!gestureDeadzone.current.update(e.clientX, e.clientY)) {
                 return;
             }
             clearSmartSnapGuides();
@@ -968,7 +994,7 @@ export function useMoveableHandlers({
             if (isGroupSelection) {
                 return;
             }
-            if (!e.isDrag) {
+            if (!e.isDrag || !gestureDeadzone.current.isArmed) {
                 cancelRotate();
                 return;
             }
@@ -978,7 +1004,8 @@ export function useMoveableHandlers({
     );
 
     const handleRotateGroupStart = useCallback(
-        (_e: OnRotateGroupStart) => {
+        (e: OnRotateGroupStart) => {
+            gestureDeadzone.current.begin(e.clientX, e.clientY);
             if (!isGroupSelection) {
                 return;
             }
@@ -992,6 +1019,9 @@ export function useMoveableHandlers({
     const handleRotateGroup = useCallback(
         (e: OnRotateGroup) => {
             if (!isGroupSelection) {
+                return;
+            }
+            if (!gestureDeadzone.current.update(e.clientX, e.clientY)) {
                 return;
             }
             clearSmartSnapGuides();
@@ -1033,7 +1063,7 @@ export function useMoveableHandlers({
             if (!isGroupSelection) {
                 return;
             }
-            if (!e.isDrag) {
+            if (!e.isDrag || !gestureDeadzone.current.isArmed) {
                 cancelRotate();
                 return;
             }
