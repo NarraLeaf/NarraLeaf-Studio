@@ -9,6 +9,7 @@ import type {
 } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
+import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
@@ -324,13 +325,17 @@ export function createTextInputInspector(ctx: InspectorContext) {
                                         id: "textInput.colorPicker",
                                         render: ({ data, onSaving }: InlineRowItemContext<D>) => (
                                             <ColorPickerTrigger
-                                                value={{ hex: getLiveTextInputProps(data).color, alpha: 1 }}
+                                                value={parseColorValue(getLiveTextInputProps(data).color, {
+                                                    hex: "#FFFFFF",
+                                                    alpha: 1,
+                                                })}
                                                 displayMode="icon"
+                                                brandPalette
                                                 allowOpacity={false}
                                                 onChange={(next: ColorValue) => {
                                                     onSaving(true);
                                                     try {
-                                                        patchTextInput(data, { color: next.hex });
+                                                        patchTextInput(data, { color: serializeColorValue(next) });
                                                     } finally {
                                                         onSaving(false);
                                                     }

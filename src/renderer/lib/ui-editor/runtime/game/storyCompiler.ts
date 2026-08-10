@@ -32,6 +32,7 @@ import {
 } from "narraleaf-react";
 import type { MaskPattern } from "narraleaf-react";
 import { blink, vignette } from "narraleaf-react/built-in";
+import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
 import { resolvePoseAssetId, resolveTagSelection } from "@shared/utils/characterVariant";
@@ -3429,10 +3430,20 @@ const CHARACTER_ACCENT_HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
  * Studio surface (the story rows, the Dev Mode timeline), so the one place the two can differ is a
  * colour Studio declines to draw in its own chrome and forwards to the game exactly as authored.
  *
- * The hex is validated, though — a malformed value would land in a CSS declaration.
+ * The summary carries the value exactly as the project stored it — `characterSummaries.ts` trims and
+ * forwards, and it is right not to judge — so a `nlbrand:` link at the project palette arrives here
+ * intact and is resolved against the live palette first. This module is compiled into both hosts and
+ * each publishes its own palette (`BrandService` in the editor, the pack in the shipped game), so
+ * the one summary yields the one colour on either side. Resolving before the test rather than
+ * teaching the test about links is deliberate: `CHARACTER_ACCENT_HEX` answers "is this a hex a CSS
+ * declaration can take", and that question has one answer.
+ *
+ * The hex is validated, though — a malformed value would land in a CSS declaration. So would a link
+ * the palette cannot resolve, or one that lands on a translucent entry; both fail the test and leave
+ * the nametag untinted, which is what every other unusable accent has always done.
  */
 function characterNametagConfig(summary: DevModeCharacterSummary | undefined): { color: `#${string}` } | undefined {
-    const hex = summary?.color?.trim();
+    const hex = resolveBrandColorValue(summary?.color);
     return hex && CHARACTER_ACCENT_HEX.test(hex) ? { color: hex as `#${string}` } : undefined;
 }
 

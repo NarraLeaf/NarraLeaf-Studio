@@ -18,7 +18,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { FolderPlus, MoreVertical, RefreshCw, Tag, User, UserPlus, Users } from "lucide-react";
-import { isReadableAccentColor } from "../story/scene-editor/storySceneBlockUtils";
+import { readableAccentColor } from "../story/scene-editor/storySceneBlockUtils";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
 import { cn } from "@/lib/utils/cn";
 import { syncCharacterEditorTabTitle, useCharacterFocus } from "./state/useCharacterFocus";
@@ -128,7 +128,9 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 thumbnailId: profile.thumbnail,
                 nicknames: profile.nicknames,
                 tags: profile.tags,
-                color: profile.color && isReadableAccentColor(profile.color) ? profile.color : undefined,
+                // Resolved here, once, rather than where the row paints it: the stored value can be
+                // a brand link, and `item.color` is documented downstream as a colour to hand to CSS.
+                color: readableAccentColor(profile.color),
                 source: character,
             };
         });

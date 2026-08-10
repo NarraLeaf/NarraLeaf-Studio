@@ -3,6 +3,7 @@ import { Film, Image as ImageIcon } from "lucide-react";
 import type { UIVideoObjectFit, UIVideoPreload, UIVideoWidgetProps } from "@shared/types/ui-editor/video";
 import type { ColorValue, CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
+import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -356,10 +357,11 @@ export function createVideoInspector(ctx: InspectorContext) {
                                 helpText: t("widgets.video.backdropHint"),
                                 displayMode: "icon-hex",
                                 allowOpacity: false,
-                                getValue: (d: D) => ({ hex: getLiveChromeProps(d).backgroundColor }),
+                                brandPalette: true,
+                                getValue: (d: D) => parseColorValue(getLiveChromeProps(d).backgroundColor, { hex: "#FFFFFF", alpha: 1 }),
                                 setValue: (d: D, value: ColorValue) =>
                                     patchChrome(d, {
-                                        backgroundColor: value.hex,
+                                        backgroundColor: serializeColorValue(value),
                                         fillType: "color",
                                         fillVisible: true,
                                     }),
@@ -401,9 +403,10 @@ export function createVideoInspector(ctx: InspectorContext) {
                                 label: t("widgets.rectangleInspector.borderStyle"),
                                 displayMode: "icon-hex",
                                 allowOpacity: false,
-                                getValue: (d: D) => ({ hex: getLiveChromeProps(d).borderColor }),
+                                brandPalette: true,
+                                getValue: (d: D) => parseColorValue(getLiveChromeProps(d).borderColor, { hex: "#FFFFFF", alpha: 1 }),
                                 setValue: (d: D, value: ColorValue) =>
-                                    patchChrome(d, { borderColor: value.hex, strokeVisible: true }),
+                                    patchChrome(d, { borderColor: serializeColorValue(value), strokeVisible: true }),
                             }),
                         ],
                     }),

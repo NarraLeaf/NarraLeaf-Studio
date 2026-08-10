@@ -2,6 +2,7 @@ import {registerDocumentSpec} from "../registry";
 import {AnyDocumentSpec} from "../types";
 import {assetsMetadataSpec} from "./assetsMetadata";
 import {audioTracksSpec} from "./audioTracks";
+import {brandSpec} from "./brand";
 import {charactersSpec} from "./characters";
 import {localizationDocumentSpec} from "./localization";
 import {localizationKeysSpec} from "./localizationKeys";
@@ -10,6 +11,7 @@ import {variableRegistrySpec} from "./variables";
 import {voiceDocumentSpec} from "./voice";
 
 export {AUDIO_TRACKS_DOCUMENT_PATH, audioTracksSpec} from "./audioTracks";
+export {BRAND_DOCUMENT_PATH, brandSpec} from "./brand";
 export {VARIABLE_REGISTRY_DOCUMENT_PATH, variableRegistrySpec} from "./variables";
 export {VOICE_DOCUMENT_PATH, voiceDocumentSpec} from "./voice";
 export {LOCALIZATION_DOCUMENT_PATH, localizationDocumentSpec} from "./localization";
@@ -39,6 +41,7 @@ export {
  */
 export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
     audioTracksSpec,
+    brandSpec,
     variableRegistrySpec,
     voiceDocumentSpec,
     localizationDocumentSpec,
