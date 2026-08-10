@@ -19,7 +19,7 @@ export const settings = {
         noMatches: "没有匹配的字体",
         loading: "正在读取本机已安装的字体…",
         unavailable: "当前版本无法列出本机字体，上面的预设仍然可用",
-        denied: "Studio 无法读取本机已安装的字体。请将此窗口切换到前台，然后重新展开列表",
+        denied: "Studio 无法读取本机已安装的字体；请将此窗口切换到前台，然后重新展开列表",
         failed: "读取本机字体失败：{message}",
         notInstalled: "未安装",
     },
@@ -114,7 +114,7 @@ export const settings = {
         },
         maxActiveEditors: {
             label: "最大活动编辑器数",
-            description: "同时保持加载并保留滚动位置与焦点的编辑器标签数（{min}-{max}）。其余标签在重新打开时重新加载",
+            description: "同时保持加载并保留滚动位置与焦点的编辑器标签数（{min}-{max}）；其余标签在重新打开时重新加载",
         },
         blueprintDragConnectExecOutput: {
             label: "从执行输出引脚拖拽创建节点",
@@ -134,7 +134,7 @@ export const settings = {
         },
         localizedCommands: {
             label: "指令跟随界面语言",
-            description: "关闭后，动作创建中的指令名、参数名与取值保持英文。无论显示哪种语言，英文写法始终可用",
+            description: "关闭后，动作创建中的指令名、参数名与取值保持英文；无论显示哪种语言，英文写法始终可用",
         },
         hideParamNames: {
             label: "指令只显示参数值",
@@ -142,10 +142,10 @@ export const settings = {
         },
         storyRowHighlight: {
             label: "高亮故事行",
-            description: "给其中一类行加一层底色，使其与其余行区分开。",
+            description: "给其中一类行加一层底色，使其与其余行区分开",
             options: {
                 none: "不高亮",
-                script: "高亮对话行",
+                script: "高亮对白行",
                 command: "高亮指令行",
             },
         },
@@ -182,7 +182,7 @@ export const settings = {
         },
         checkpointInterval: {
             label: "自动检查点间隔",
-            description: "间隔多久记录一个检查点，只在确实有改动时记录。填 0 则关闭",
+            description: "间隔多久记录一个检查点，只在确实有改动时记录；填 0 则关闭",
         },
         checkpointOnClose: {
             label: "关闭工作区时记录检查点",
@@ -210,7 +210,7 @@ export const settings = {
         },
         clearAllStats: {
             label: "清空所有统计数据",
-            description: "清除所有项目的写作历史、活跃时长和构建历史。从项目内容统计得出的数字不受影响",
+            description: "清除所有项目的写作历史、活跃时长和构建历史；从项目内容统计得出的数字不受影响",
             action: "清空",
             confirm: "确认清空",
         },
@@ -239,13 +239,13 @@ export const settings = {
         },
         resetWorkspaceLayout: {
             label: "还原工作区布局",
-            description: "把面板、侧栏和已打开的编辑器标签恢复为初始状态。工程内容不受影响",
+            description: "把面板、侧栏和已打开的编辑器标签恢复为初始状态；工程内容不受影响",
             action: "还原",
             confirm: "还原布局",
         },
         resetAllPreferences: {
             label: "还原所有设置",
-            description: "把所有设置恢复为默认值。工程、工程历史和统计数据不受影响",
+            description: "把所有设置恢复为默认值；工程、工程历史和统计数据不受影响",
             action: "还原",
             confirm: "全部还原",
         },
@@ -294,7 +294,7 @@ export const settings = {
         export: "导出…",
         import: "导入…",
         apply: "应用",
-        exportHint: "把设置写入一份纯 JSON 文件。工作区背景图、提交版本上的署名、最近项目、统计数据和窗口布局仅保留在本机",
+        exportHint: "把设置写入一份纯 JSON 文件；工作区背景图、提交版本上的署名、最近项目、统计数据和窗口布局仅保留在本机",
         exported: "已保存到 {path}",
         imported: "已应用 {count} 项设置",
         exportFailed: "设置保存失败",
@@ -310,7 +310,7 @@ export const settings = {
         probeNoAnswer: "没有响应：{error}",
         probeFailed: "检查未能执行",
         rewrites: {
-            hint: "部分下载地址来自目录文件而不是上述设置，例如插件的安装包。此处的规则替换这类地址的开头部分。",
+            hint: "部分下载地址来自目录文件而不是上述设置，例如插件的安装包；此处的规则替换这类地址的开头部分",
             empty: "没有替换规则，下载使用地址原文",
             add: "添加规则",
             remove: "删除该规则",

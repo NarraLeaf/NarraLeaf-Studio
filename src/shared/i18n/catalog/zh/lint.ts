@@ -112,9 +112,9 @@ export const lint = {
         variablesRandomOutsideAssignment: {
             title: "赋值之外的随机数",
             description: "随机值出现在会被反复重算的位置",
-            message: "{fn}() 在每次判断该条件时都会重新取值，分支结果会在两次判断之间变化。请先用 /set 取值到变量，再判断该变量",
-            messageChoiceOption: "{fn}() 在每次绘制菜单时都会重新取值，该选项会闪烁。请先用 /set 取值到变量，再判断该变量",
-            messageInterpolation: "{fn}() 在每次绘制该行时都会重新取值，显示的值会不断变化。请先用 /set 取值到变量，再显示该变量",
+            message: "{fn}() 在每次判断该条件时都会重新取值，分支结果会在两次判断之间变化；请先用 /set 取值到变量，再判断该变量",
+            messageChoiceOption: "{fn}() 在每次绘制菜单时都会重新取值，该选项会闪烁；请先用 /set 取值到变量，再判断该变量",
+            messageInterpolation: "{fn}() 在每次绘制该行时都会重新取值，显示的值会不断变化；请先用 /set 取值到变量，再显示该变量",
         },
         textOverlong: {
             title: "行太长",
@@ -123,7 +123,7 @@ export const lint = {
         },
         textEmpty: {
             title: "空行",
-            description: "对话行里没有文字",
+            description: "对白行里没有文字",
             message: "这一行没有文字",
         },
         localizationMissing: {

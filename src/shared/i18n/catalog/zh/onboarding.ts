@@ -10,16 +10,16 @@ export const onboarding = {
     windowTitle: "欢迎使用 {name}",
     language: {
         title: "语言",
-        expectation: "Studio 界面使用的语言，之后可在设置中修改。",
+        expectation: "Studio 界面使用的语言，之后可在设置中修改",
         matchedToDevice: "已匹配本机语言",
     },
     appearance: {
         title: "外观",
-        expectation: "Studio 界面的外观，两项设置均即时生效。",
+        expectation: "Studio 界面的外观，两项设置均即时生效",
     },
     done: {
         title: "Studio 设置完成",
-        expectation: "语言和外观在设置中调整。在任意位置按 F1 可查看光标所在处的说明。",
+        expectation: "语言和外观在设置中调整；在任意位置按 F1 可查看光标所在处的说明",
         topics: "帮助主题",
     },
     nav: {

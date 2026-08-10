@@ -745,7 +745,7 @@ function TextEditBox(props: {
     // falls to <body>.
     const lastToolbarInteractRef = useRef(0);
     const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
-    const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false });
+    const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false, canRuby: false });
     const textStyle = useStoryEditorTextStyle();
 
     useEffect(() => {
