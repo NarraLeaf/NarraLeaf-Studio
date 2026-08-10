@@ -10,6 +10,7 @@ export const properties = {
         motionKeyframe: "动效关键帧",
         storyMotion: "故事动效",
         scene: "场景",
+        component: "组件",
         character: "角色",
     },
     scene: {
@@ -46,7 +47,15 @@ export const properties = {
     },
     linkedComponent: {
         missing: "组件缺失",
-        info: "关联实例，解除关联前仅可修改位置、大小和旋转",
+        info: "关联实例，解除关联前仅可修改参数与位置、大小和旋转",
+    },
+    componentParams: {
+        title: "参数",
+        none: "暂无参数",
+        add: "添加参数",
+        remove: "移除参数",
+        namePlaceholder: "名称",
+        defaultPlaceholder: "默认值",
     },
     binding: {
         notReady: "该控件的蓝图尚未就绪",
