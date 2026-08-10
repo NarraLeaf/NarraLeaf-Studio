@@ -7,7 +7,6 @@ export const widgetAppearance = {
     variant: {
         nameLabel: "变体名称",
         untitled: "未命名变体",
-        defaultName: "变体{index}",
         addTitle: "添加变体（复制当前）",
         setDefaultTitle: "设为默认变体",
         deleteTitle: "删除变体",
