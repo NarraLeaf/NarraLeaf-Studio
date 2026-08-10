@@ -144,6 +144,18 @@ export type ColorDisplayMode = "icon" | "icon-hex" | "swatch";
 export interface ColorValue {
     hex: string;
     alpha?: number;
+    /**
+     * The brand id this value points at, when it is a reference to the project palette rather than
+     * a colour of its own (see `@shared/brand/brandLink`).
+     *
+     * **`hex` and `alpha` still hold the resolved colour**, so a consumer that only wants to paint
+     * never has to know links exist - it reads the same two fields it always did. This field is for
+     * the two things that do care: the picker, which draws a ring on the swatch the value points at,
+     * and the write side, which stores the link back rather than the resolved literal
+     * (`serializeColorValue`). A value whose link cannot be resolved carries no `link` at all, so
+     * its presence also means "this resolved".
+     */
+    link?: string;
 }
 
 export interface ColorPickerFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
@@ -156,6 +168,12 @@ export interface ColorPickerFieldDefinition<TData = any> extends BaseFieldDefini
     setValue: (data: TData, value: ColorValue) => void | Promise<void>;
     /** Whether opacity is editable inside the picker */
     allowOpacity?: boolean;
+    /**
+     * Offer the project palette in the picker. Off by default: a field opts in only once its write
+     * side stores what a pick produces, and until then a swatch row would hand the author a link the
+     * field cannot keep.
+     */
+    brandPalette?: boolean;
 }
 
 export interface ColorPickerGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
@@ -164,6 +182,8 @@ export interface ColorPickerGroupFieldDefinition<TData = any> extends BaseFieldD
     colorModes?: ColorMode[];
     getValue: (data: TData) => ColorValue;
     setValue: (data: TData, value: ColorValue) => void | Promise<void>;
+    /** Offer the project palette in the picker. See {@link ColorPickerFieldDefinition.brandPalette}. */
+    brandPalette?: boolean;
 }
 
 export type IconButtonGroupMode = "trigger" | "multiple" | "single" | "multipleExclusivePrimary";

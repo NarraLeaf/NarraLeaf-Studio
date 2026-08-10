@@ -32,6 +32,7 @@ export const documentDiff = {
     count: {
         assets: "素材",
         audioTracks: "音轨",
+        brandColors: "配色",
         characterGroups: "角色分组",
         characters: "角色",
         localizationKeys: "本地化键",
