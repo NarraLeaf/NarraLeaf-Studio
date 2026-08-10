@@ -1,6 +1,7 @@
 import { Locale } from "../locales";
 import { en } from "./en";
 import { zh } from "./zh";
+import { ja } from "./ja";
 import type { LocaleMessages } from "./types";
 
 export type { Messages, LocaleMessages, LocaleNamespace, TranslationKey, PluralKey } from "./types";
@@ -14,4 +15,4 @@ export type { Messages, LocaleMessages, LocaleNamespace, TranslationKey, PluralK
  * of languages (text is tiny next to code). If it ever matters, split catalogs
  * per-namespace and have each app import only the namespaces it renders.
  */
-export const CATALOGS: Record<Locale, LocaleMessages> = { en, zh };
+export const CATALOGS: Record<Locale, LocaleMessages> = { en, zh, ja };
