@@ -19,6 +19,7 @@ import { safeExecuteFn } from "@shared/utils/os";
 import { StringKeyOf } from "@shared/utils/types";
 import path from "path";
 import { MenuManager } from "./managers/menuManager";
+import { TrayManager } from "./managers/trayManager";
 import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
@@ -71,6 +72,15 @@ export class BaseApp {
     public readonly pluginManager: PluginManager;
     public readonly pluginIconCache: PluginIconCache;
     public readonly uiTemplatePosterCache: UITemplatePosterCache;
+    /**
+     * The status-bar item, once `App` has built it. Null on macOS, which deliberately has none,
+     * and null until the app is ready.
+     *
+     * Assigned by the subclass rather than constructed here because its menu drives the launcher
+     * and the Settings window, neither of which this class knows about. What this class does own
+     * is the language, so it is the one that has to ask for a rebuild.
+     */
+    public trayManager: TrayManager | null = null;
 
     private initialized: boolean = false;
     private readyError: Error | null = null;
@@ -84,6 +94,15 @@ export class BaseApp {
         this.electronApp = app;
         this.electronApp.on("before-quit", () => {
             this.quitting = true;
+        });
+        // Studio outlives its windows: closing the last one leaves it in the status bar (Windows,
+        // Linux) or the Dock (macOS), which is what makes "finish this update in the background"
+        // possible at all. Electron's built-in behaviour is the opposite - with no listener at
+        // all it quits the app on non-darwin platforms - so this empty listener is the whole
+        // mechanism, not a placeholder. What actually brings a surface back is
+        // `App.handleLastWindowClosed`.
+        this.electronApp.on("window-all-closed", () => {
+            this.logger.info("[App] Last window closed; staying resident.");
         });
         this.electronApp.setName(APP_DISPLAY_NAME);
         this.electronApp.setAboutPanelOptions({
@@ -200,6 +219,10 @@ export class BaseApp {
         // the main process and must be rebuilt here.
         if (key === "app.language") {
             this.menuManager.updateMenu();
+            // Same reasoning as the native menu, and the same blind spot: the tray menu is built
+            // in the main process from a translator snapshot, so nothing about the renderer-side
+            // language broadcast reaches it.
+            this.trayManager?.rebuildMenu();
         }
 
         // The "Open Recent" submenu is built from this list, so a change here - most
@@ -404,11 +427,45 @@ export class BaseApp {
     }
 
     /**
+     * Claim this profile for this process, or report that another Studio already owns it.
+     *
+     * Matters now that Studio outlives its windows: without it, launching from the Start menu
+     * while a windowless instance sits in the tray would start a *second* Studio - two tray
+     * items, two update checks, and two processes writing the same `globalState.json`.
+     *
+     * Must be called after {@link setupUserDataDir}: Electron keys the lock on the userData
+     * directory, and development redirects that path.
+     *
+     * Development is exempt. `dev-electron.js` restarts this process on every rebuild, and a new
+     * instance starting before the old one has finished exiting would lose the lock and quit -
+     * a dev loop that dies at random, in exchange for behaviour that only an installed app has
+     * any use for.
+     */
+    public acquireSingleInstanceLock(): boolean {
+        if (!this.electronApp.isPackaged) {
+            return true;
+        }
+        return this.electronApp.requestSingleInstanceLock();
+    }
+
+    /**
      * True once the whole app is on its way out (Quit menu item, Cmd+Q, session logout).
      * Window close guards must stand aside in that case, or they would cancel the quit.
      */
     public isQuitting(): boolean {
         return this.quitting;
+    }
+
+    /**
+     * Take back the "we are quitting" flag after a `before-quit` listener cancelled the quit.
+     *
+     * The flag is set by this class's own `before-quit` listener, which has already run by the
+     * time anyone downstream calls `event.preventDefault()`. Leaving it set would be silent and
+     * lasting: `isQuitting()` is what every window close guard checks in order to stand aside, so
+     * an app that stayed open after a cancelled quit would never again ask to save anything.
+     */
+    public cancelQuit(): void {
+        this.quitting = false;
     }
 
     public crash(error: string | Error): void {

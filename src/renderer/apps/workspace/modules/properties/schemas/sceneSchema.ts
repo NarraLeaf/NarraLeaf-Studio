@@ -60,12 +60,19 @@ const getGameUiSlotLabel = (surface: UISurface): string => {
 function SurfacePageAnimationField({ data }: CustomFieldProps<SceneEditorContext>) {
     const settings = normalizeUIPageAnimationSettings(data.surface.settings?.pageAnimation);
     const update = (next: UIPageAnimationSettings) => {
+        // The editor hands back the whole animation record, so the merge key is derived rather than
+        // fixed: typing into "seconds" collapses into one undo entry, while moving on to the
+        // direction beside it starts a new one.
+        const changed = (Object.keys(next) as (keyof UIPageAnimationSettings)[])
+            .filter(key => next[key] !== settings[key])
+            .sort()
+            .join(",");
         data.documentService.updateSurface(data.surface.id, surface => {
             surface.settings = {
                 ...(surface.settings ?? {}),
                 pageAnimation: next,
             };
-        });
+        }, { mergeKey: `surface:${data.surface.id}:pageAnimation:${changed}` });
     };
 
     return createElement(PageAnimationEditor, { settings, onChange: update });
@@ -130,7 +137,9 @@ export const scenePropertySchema = (t: TranslateFn) =>
                         ...(surface.settings ?? {}),
                         backgroundColor: normalizedValue,
                     };
-                });
+                    // Dragged and typed into, so one entry per visit to the colour rather than one
+                    // per intermediate shade the author passed through.
+                }, { mergeKey: `surface:${data.surface.id}:backgroundColor` });
             },
         }),
         defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({

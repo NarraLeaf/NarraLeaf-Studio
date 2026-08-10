@@ -23,6 +23,7 @@ import type {
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
+import type { UpdateState } from "@shared/constants/update";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
@@ -115,6 +116,11 @@ export enum IPCEventType {
     appGlobalStateDelete = "app.globalState.delete",
     appExportSettings = "app.exportSettings",
     appImportSettings = "app.importSettings",
+    appUpdateGetState = "app.update.getState",
+    appUpdateCheck = "app.update.check",
+    appUpdateDownload = "app.update.download",
+    appUpdateInstall = "app.update.install",
+    appUpdateStateChanged = "app.update.stateChanged",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -670,6 +676,45 @@ export type IPCEvents = {
             /** Keys refused because they are not preferences. */
             refused: string[];
         };
+    };
+    /**
+     * The updater's current state. Requested once when a surface mounts; every change after that
+     * arrives on `appUpdateStateChanged` rather than by polling, so a progress bar is showing the
+     * downloader's own byte counts.
+     */
+    [IPCEventType.appUpdateGetState]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { state: UpdateState };
+    };
+    /** Ask whether a newer release exists. Never starts a download - see `appUpdateDownload`. */
+    [IPCEventType.appUpdateCheck]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { state: UpdateState };
+    };
+    /**
+     * Start downloading the offered installer.
+     *
+     * Separate from the check because they are separate decisions: the check is free, the
+     * download is a few hundred megabytes. Only the Settings panel calls this - the notification
+     * that announces an update opens the panel instead, so nobody commits to the transfer from a
+     * toast they were half-reading.
+     */
+    [IPCEventType.appUpdateDownload]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: { state: UpdateState };
+    };
+    /** Quit and apply the downloaded installer. Silent, so the wizard is not walked again. */
+    [IPCEventType.appUpdateInstall]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: void;
     };
     /** Write a settings document to a file the user picks. See `@shared/utils/settingsDocument`. */
     [IPCEventType.appExportSettings]: {
@@ -2417,6 +2462,19 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
         data: { highlight: string },
+        response: never;
+    };
+    /**
+     * Main pushing the updater's state to every open window.
+     *
+     * Broadcast rather than addressed: the Settings panel draws the detail, the launcher shows a
+     * line beside the version number, and a workspace raises a notification - three surfaces that
+     * must not disagree about whether an update is downloading.
+     */
+    [IPCEventType.appUpdateStateChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { state: UpdateState },
         response: never;
     };
 };

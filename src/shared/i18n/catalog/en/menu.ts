@@ -14,6 +14,25 @@ export const menu = {
         unhide: "Show All",
         quit: "Quit {name}",
     },
+    /**
+     * The status-bar item's context menu (Windows and Linux; macOS has none - see
+     * {@link trayManager.ts}). Studio stays running with no windows open, so this menu is the
+     * only way back in, and Quit here is the only way out.
+     */
+    tray: {
+        openLauncher: "Open Launcher",
+        checkForUpdates: "Check for Updates…",
+        quit: "Quit {name}",
+        /**
+         * Shown once, from the tray icon, the first time every window is closed. Windows files a
+         * new notification icon into the overflow flyout, so without this the app looks like it
+         * shut down and left nothing behind.
+         */
+        residencyNotice: {
+            title: "NarraLeaf Studio is still running",
+            body: "It stays in the notification area so downloads and updates can finish. Right-click its icon to reopen or quit.",
+        },
+    },
     file: {
         title: "File",
         new: "New Workspace",

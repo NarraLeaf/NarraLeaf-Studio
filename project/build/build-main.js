@@ -32,7 +32,12 @@ const { rootDir, isDev } = require('./utils');
         // installer bundles the author's Cubism SDK on their machine, because the
         // Cubism Framework ships as TypeScript and nobody may publish a prebuilt
         // adapter. See managers/puppet/live2dRuntimeBuild.ts.
-        external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi'],
+        //   electron-updater is external because it is the one dependency that reads its own
+        // installed layout: it resolves `app-update.yml` next to the running app and hands the
+        // downloaded installer to the OS. Bundling it would work until one of those paths did
+        // not, and the failure would only show up on a real update - the one code path nobody
+        // exercises before shipping. asarUnpack already puts node_modules on disk as real files.
+        external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi', 'electron-updater'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],

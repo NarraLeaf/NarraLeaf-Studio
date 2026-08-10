@@ -7,6 +7,22 @@ date: 2026-08-09
 
 # plan: Studio 安装器改版与 GitHub Release 自动更新
 
+> **进度（2026-08-09）：M0–M3 全部实现，五个 project typecheck 干净、vitest 无新增失败、
+> style ratchet 未上升。真机验收做了能做的那一半，`§7` 逐条标了哪些是实测、哪些还欠。**
+>
+> 实测通过的：更新状态经 IPC 端到端（`checking → idle` 是**推**过来的，不是轮询）；
+> 把版本临时降到 0.3.0 之后，启动检查真的从 GitHub 取到 v0.4.0 并给出 `manual` + 真实
+> release URL；启动器版本号那行变成「更新到 0.4.0」；点它打开设置并**定位到「更新」那一项**；
+> 关掉全部窗口后进程存活、日志写下 `[App] Last window closed; staying resident.`；
+> `ManifestDPIAware true` 编译进 manifest（配了反向对照：不写这条就没有 `dpiAware`）。
+>
+> **验收里发现的一条产品缺陷（已修在本卡内）**：Windows 会把新注册的通知区图标默认收进
+> 溢出区。于是「关掉所有窗口」在第一次看起来就是**应用消失了**——没有窗口、没有任务栏按钮、
+> 图标在一个用户没理由去点开的箭头后面。现在第一次常驻时从托盘图标弹一次气球说明去向，
+> 每个 profile 只弹一次（`app.trayResidencyNoticeShown`）。
+>
+> ---
+
 > 今天的 Windows 安装包按下去就装完了：没有向导、不能选安装位置、窗口在高 DPI 屏上是糊的。
 > 而 Studio 装好之后**永远不会知道自己有新版本**——`publish: null`，没有 `electron-updater`，
 > 一行相关代码都没有。0.3.0 和 0.4.0 发出去了，装了 0.3.0 的人到今天还在用 0.3.0。
@@ -84,6 +100,30 @@ D1 的代价要写明白：**选了「全机」的用户，此后每次自动更
 只是体验上会有提示框。选「仅我」的用户全程无提权。
 
 ---
+
+## 2b. M0 — 常驻与退出（自动更新的地基）
+
+自动更新要能在后台把 270MB 下完，前提是**关掉所有窗口不等于退出**。这一条不是附带需求，
+它是更新体验成立的条件：作者关掉工程之后 Studio 必须还活着。
+
+- `src/main/index.ts` 里那句「最后一个窗口关闭就 `app.quit()`」换成 `App.handleLastWindowClosed()`。
+- `BaseApp` 注册一个**空的** `window-all-closed` 监听器。这不是占位符：Electron 在非 darwin
+  平台上**没有**监听器时的内置行为就是退出，这个空监听器本身就是全部机制。
+- **Windows / Linux**：`TrayManager` 建通知区图标，右键菜单三项——打开启动器 / 检查更新 / 退出。
+- **macOS 不注册状态栏项**。Dock 已经表示「应用在跑但没有窗口」，再加一个状态栏图标是同一件事
+  的第二种说法，而且 mac 用户会把它读成后台代理。常驻本身照旧，Dock 就是它的把手
+  （`activate` 事件把启动器叫回来）。
+- **一个安全网**：Windows/Linux 上托盘没建起来（Linux 没有 StatusNotifier host、图标资源缺失）
+  就**退回旧行为直接退出**。既没有窗口又没有托盘项的进程，用户只能从任务管理器结束。
+- **单实例锁**（`app.requestSingleInstanceLock`）：常驻之后，从开始菜单再点一次会起**第二个**
+  Studio——两个托盘图标、两次更新检查、两个进程写同一份 `globalState.json`。
+  **只在打包版启用**：dev 下 `dev-electron.js` 每次重建都重启进程，新实例可能在旧实例退干净之前
+  抢锁失败，换来一个随机死掉的开发循环。
+- **退出时正在更新**：`before-quit` 里用 `dialog.showMessageBoxSync` 问一句，默认按钮是「继续下载」。
+  系统提示框而不是应用内弹窗，因为这一刻很可能一个窗口都没有——那正是后台下载所处的状态。
+  同步，因为 `before-quit` 不能 await。
+  ⚠ 取消退出时必须调 `BaseApp.cancelQuit()`：`quitting` 标志在本类自己的 `before-quit`
+  监听器里已经置位了，留着它会让**此后整个会话**的窗口关闭守卫全部让路。
 
 ## 3. M1 — 安装器
 
@@ -243,7 +283,22 @@ rewrite 两类，还原 = 删键）。更新源应当接进那套，而不是再
 
 > 这不违反 [[renderer-never-touches-network]]：electron-updater 全程在主进程里跑。
 
-### 5.3 界面
+### 5.3 两次按下，不是一次
+
+通知**宣布**更新，设置面板**开始**更新。通知的动作按钮打开设置并定位到更新那一项，
+它自己不下载任何东西。
+
+理由是这两件事是两个决定：知道有新版本是免费的，下 270MB 不是。第二个决定应该发生在
+一个用户主动导航过去的界面上，版本号和进度就在眼前——而不是一个正要自动消失的 toast 上。
+
+三个宿主面读同一份状态（`useUpdateState`），所以它们不可能对「正在下载吗」有分歧：
+
+- **工作区**：`useUpdateOffer` 弹一条常驻通知，动作是「查看更新」。每个窗口只弹一次。
+  `ready` 不再宣布——安装包已经在盘上说明作者按过下载，他已经见过那个面板了。
+- **启动器**：侧栏版本号那一行换成「更新到 X」，点击打开面板。
+- **托盘**：「检查更新…」直接打开同一个面板。
+
+### 5.4 界面
 
 设置有八个分类（general / appearance / editor / workspace / shortcuts / versionControl /
 network / data，见 [[settings-shortcuts-category]]）。更新是**动作密集**而不是键值型，
@@ -259,7 +314,7 @@ network / data，见 [[settings-shortcuts-category]]）。更新是**动作密�
 界面按 [[design-system-is-mandatory]] 与 [[ui-style-constraints]] 做：
 minimal chrome、不写解释性文字、复用既有组件。
 
-### 5.4 macOS 的降级路径
+### 5.5 macOS 的降级路径
 
 同一个 panel，在 macOS 上只做「查询最新版本号 → 比对 → 给 Release 页面链接」，
 不调 `autoUpdater`。理由见 §6.1。**不要把它做成一个灰掉的按钮**——
@@ -313,22 +368,36 @@ patch 版本之间的差分表现要拿两个真版本比一次才知道。
 安装器这半边**必须真机看**（[[orchestrator-visual-acceptance]]），而且要在
 **高 DPI 屏上截图对比改前改后**——`ManifestDPIAware` 那条改动的全部价值就在那张图里。
 
-| # | 断言 | 手段 |
-|---|---|---|
-| A1 | 向导六页依次出现，页序与 §1.3 一致 | 真机走一遍 |
-| A2 | 150% 缩放下文字与位图都不糊、不错位 | 截图对比 |
-| A3 | 目录页改到 `D:\Temp\NLS` 后真的装在那里 | 装完看盘 |
-| A4 | 「仅我」路径全程无 UAC | 真机 |
-| A5 | 覆盖安装时许可页与目录页被跳过 | 装两次 |
-| A6 | 包内有 `resources/app-update.yml` | 解包看 |
-| A7 | `build/` 下产出 `latest.yml` + `.exe.blockmap` | 构建产物 |
-| A8 | Release 上真的挂了 `latest.yml` 与 `.blockmap` | `gh release view` |
-| A9 | 旧版本能查到、能下、能装，装完版本号真的变了 | **必须端到端做一次**，用两个真 tag |
-| A10 | 差分下载生效，且记下省了多少 | updater 日志 + 字节数 |
-| A11 | mac 上不调 autoUpdater，只给链接 | mac 侧真机或代码复核 |
+| # | 断言 | 手段 | 状态 |
+|---|---|---|---|
+| A1 | 向导六页依次出现，页序与 §1.3 一致 | 真机走一遍 | **欠**（需要真打一次包） |
+| A2 | 150% 缩放下文字与位图都不糊、不错位 | 截图对比 | **欠**（`ManifestDPIAware` 已验证进 manifest，观感未看） |
+| A3 | 目录页改到 `D:\Temp\NLS` 后真的装在那里 | 装完看盘 | **欠** |
+| A4 | 「仅我」路径全程无 UAC | 真机 | **欠** |
+| A5 | 覆盖安装时许可页与目录页被跳过 | 装两次 | **欠** |
+| A6 | 包内有 `resources/app-update.yml` | 解包看 | **欠** |
+| A7 | `build/` 下产出 `latest.yml` + `.exe.blockmap` | 构建产物 | **欠** |
+| A8 | Release 上真的挂了 `latest.yml` 与 `.blockmap` | `gh release view` | **欠** |
+| A9 | 旧版本能查到、能下、能装，装完版本号真的变了 | **必须端到端做一次**，用两个真 tag | **欠** |
+| A10 | 差分下载生效，且记下省了多少 | updater 日志 + 字节数 | **欠** |
+| A11 | mac 上不调 autoUpdater，只给链接 | mac 侧真机或代码复核 | 代码复核 ✓ |
+| A12 | NSIS 层能编译，欢迎/目录/进度/完成四页都在，两个位图与两种语言都进去了 | 用生成脚本形状的 `.nsi` 跑 makensis | ✓ |
+| A13 | `ManifestDPIAware true` 真的写进 exe 的 manifest | 编译两份对拍：不写这条就没有 `dpiAware` | ✓ |
+| A14 | 更新状态是**推**过来的真实数据，不是轮询也不是动画 | CDP 里挂监听器，实测收到 `checking → idle` | ✓ |
+| A15 | 版本比较走真实 GitHub API | 把版本临时降到 0.3.0，实测得到 `manual` + v0.4.0 的真实 release URL | ✓ |
+| A16 | 启动器那行 → 打开设置并定位到「更新」 | CDP 点击 + 截图 | ✓ |
+| A17 | 关掉所有窗口后进程存活 | 关光窗口后 CDP target 为空、browser 仍在、日志有 `staying resident` | ✓ |
+| A18 | 首次常驻只提示一次 | `app.trayResidencyNoticeShown` 落盘为 true | ✓ |
 
-A9 是这张卡的唯一真判据。前面十条全绿而 A9 没做过，等于什么都没验证——
-更新链路的失败模式全部是「看起来一切正常」。
+**A9 仍然是这张卡的唯一真判据**，而它还没做。上面打勾的十几条证明的是「零件是对的」，
+不是「更新链路通了」——更新链路的失败模式全部是「看起来一切正常」。
+A1–A10 都要等一次真正的 `electron-builder --win --x64` 与两个真 tag。
+
+## 7b. 交接：合并后第一件事
+
+`electron-updater` 是**新增的运行时依赖**。合并 develop 之后，任何检出在跑起来之前都要
+`yarn install` 一次——否则打包好的 main 进程会在 `require("electron-updater")` 上当场失败。
+CI 每次都是全新安装，所以只有本地检出会踩到这个。
 
 ---
 

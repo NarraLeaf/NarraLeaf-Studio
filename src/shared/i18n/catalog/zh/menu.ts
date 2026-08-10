@@ -10,6 +10,15 @@ export const menu = {
         unhide: "全部显示",
         quit: "退出 {name}",
     },
+    tray: {
+        openLauncher: "打开启动器",
+        checkForUpdates: "检查更新…",
+        quit: "退出 {name}",
+        residencyNotice: {
+            title: "NarraLeaf Studio 仍在运行",
+            body: "它留在通知区域，以便下载和更新继续完成。右键单击图标可重新打开或退出。",
+        },
+    },
     file: {
         title: "文件",
         new: "新建工作区",
