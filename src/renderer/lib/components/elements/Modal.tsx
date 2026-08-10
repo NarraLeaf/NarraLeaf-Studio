@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { HelpTrigger, type HelpTopicId } from "@/lib/help";
-import { useWindowOverlayHost } from "@/lib/components/layout";
+import { useHostDocument, useWindowOverlayHost } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { CONTROL_HEIGHT_CLASS } from "./controlSize";
 import { cn } from "../../utils/cn";
@@ -45,6 +45,9 @@ export function dialogFooterButtonClass(options: {
  * exactly as it would inside a `Modal`.
  */
 export function useEscapeToClose(active: boolean, onClose: () => void): void {
+    // The document this overlay is drawn in, which is not the renderer's own when the caller sits
+    // inside a detached editor window - and a key pressed over there never reaches this one.
+    const doc = useHostDocument();
     useEffect(() => {
         if (!active) {
             return;
@@ -54,9 +57,9 @@ export function useEscapeToClose(active: boolean, onClose: () => void): void {
                 onClose();
             }
         };
-        document.addEventListener("keydown", handleEscape);
-        return () => document.removeEventListener("keydown", handleEscape);
-    }, [active, onClose]);
+        doc.addEventListener("keydown", handleEscape);
+        return () => doc.removeEventListener("keydown", handleEscape);
+    }, [active, doc, onClose]);
 }
 
 export interface ModalProps {
@@ -106,15 +109,16 @@ export function Modal({
 }: ModalProps) {
     const { t } = useTranslation();
     const overlayHost = useWindowOverlayHost();
+    const doc = useHostDocument();
     useEscapeToClose(isOpen && closeOnEscape, onClose);
     useEffect(() => {
         if (isOpen) {
-            document.body.style.overflow = "hidden";
+            doc.body.style.overflow = "hidden";
         }
         return () => {
-            document.body.style.overflow = "unset";
+            doc.body.style.overflow = "unset";
         };
-    }, [isOpen]);
+    }, [doc, isOpen]);
 
     if (!isOpen) return null;
 

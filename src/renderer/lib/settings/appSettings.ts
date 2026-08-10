@@ -27,6 +27,11 @@ import {
     STORY_ROW_HIGHLIGHT_OPTIONS,
 } from "@/lib/settings/storyRowHighlightOptions";
 import {
+    DETACHED_EDITOR_ON_CLOSE_DEFAULT,
+    DETACHED_EDITOR_ON_CLOSE_KEY,
+    DETACHED_EDITOR_ON_CLOSE_OPTIONS,
+} from "@/lib/settings/detachedEditorCloseOptions";
+import {
     ACCENT_COLOR_DEFAULT,
     ACCENT_PRESETS,
     ACCENT_SWATCHES,
@@ -515,6 +520,26 @@ export const AppSettings: AppSettingDefinition[] = [
             none: "settings.items.storyRowHighlight.options.none",
             script: "settings.items.storyRowHighlight.options.script",
             command: "settings.items.storyRowHighlight.options.command",
+        },
+    },
+    {
+        // Read by the workspace's detached-editor host when a popped-out window goes away. An
+        // editor can be popped out of its tab into a window of its own (the blueprint editor's
+        // title row offers it, and a middle click there does the same); this decides whether
+        // closing that window hands the editor back to the workspace or ends it.
+        key: DETACHED_EDITOR_ON_CLOSE_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "When a detached editor window closes",
+        labelKey: "settings.items.detachedEditorOnClose.label",
+        description: "An editor opened in its own window either returns to the workspace or closes with the window.",
+        descriptionKey: "settings.items.detachedEditorOnClose.description",
+        defaultValue: DETACHED_EDITOR_ON_CLOSE_DEFAULT,
+        options: [...DETACHED_EDITOR_ON_CLOSE_OPTIONS],
+        optionLabelKeys: {
+            restoreTab: "settings.items.detachedEditorOnClose.options.restoreTab",
+            close: "settings.items.detachedEditorOnClose.options.close",
         },
     },
     {
