@@ -364,6 +364,45 @@ export function computeSafeAreaFrame(input: {
     });
 }
 
+/**
+ * The parts of the design rect the device insets cover, as up to four rects in design space.
+ *
+ * Horizontal bands span the full width and the vertical ones only the strip between them, so the
+ * corners are covered exactly once — a translucent fill would otherwise stack there and read as a
+ * darker patch that means nothing.
+ *
+ * Empty for a `fullySafe` frame, which is why the readout has to say so in words: "nothing is
+ * covered" and "the layer is off" look identical on the canvas.
+ */
+export function computeUnsafeBands(
+    designSize: SurfacePreviewSize,
+    frame: SafeAreaFrame | null | undefined,
+): SurfacePreviewRect[] {
+    if (!frame || frame.fullySafe || !isUsableSize(designSize)) {
+        return [];
+    }
+    const dw = designSize.width;
+    const dh = designSize.height;
+    const { top, bottom, left, right } = frame.insets;
+    const middleHeight = Math.max(0, dh - top - bottom);
+    const bands: SurfacePreviewRect[] = [];
+    if (top > 0) {
+        bands.push({ x: 0, y: 0, width: dw, height: Math.min(top, dh) });
+    }
+    if (bottom > 0) {
+        const height = Math.min(bottom, dh);
+        bands.push({ x: 0, y: dh - height, width: dw, height });
+    }
+    if (left > 0 && middleHeight > 0) {
+        bands.push({ x: 0, y: top, width: Math.min(left, dw), height: middleHeight });
+    }
+    if (right > 0 && middleHeight > 0) {
+        const width = Math.min(right, dw);
+        bands.push({ x: dw - width, y: top, width, height: middleHeight });
+    }
+    return bands;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Convenience: id -> frame                                                    */
 /* -------------------------------------------------------------------------- */
