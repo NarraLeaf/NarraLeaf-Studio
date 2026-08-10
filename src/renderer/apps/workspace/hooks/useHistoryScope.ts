@@ -3,6 +3,7 @@ import { useWorkspace } from "../context";
 import { HistoryService, type HistoryScope } from "@/lib/workspace/services/history/HistoryService";
 import type { HistoryLabel, HistoryScopeId } from "@/lib/workspace/services/history/historyModel";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { isEditorOwnedFocus } from "@/lib/workspace/services/history/workspaceUndoTarget";
 import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types";
 import { Services } from "@/lib/workspace/services/services";
 
@@ -77,7 +78,11 @@ export function useHistoryScope<S>(options: {
         const claim = (focus: FocusContext) => {
             if (focus.area === FocusArea.Editor && focus.targetId === tabId) {
                 history.setActiveScope(scopeId);
-            } else if (history.getActiveScopeId() === scopeId) {
+            } else if (history.getActiveScopeId() === scopeId && !isEditorOwnedFocus(focus)) {
+                // Moving into the property inspector is not leaving this editor: everything the
+                // inspector writes lands in this very stack. Disowning the scope there left the
+                // author's own Ctrl+Z, pressed where they had just made the edit, with nothing to
+                // act on.
                 history.setActiveScope(null);
             }
         };

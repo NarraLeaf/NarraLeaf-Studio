@@ -3270,6 +3270,17 @@
                           "y": 450
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 220,
+                          "y": 60
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -3279,14 +3290,14 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
                     {
                       "from": {
-                        "nodeId": "n1",
-                        "port": "value"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -3295,8 +3306,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n1",
-                        "port": "value"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n3",
@@ -3431,6 +3442,26 @@
                       "to": {
                         "nodeId": "n14",
                         "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -5348,6 +5379,17 @@
                           "y": 450
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 220,
+                          "y": 60
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -5357,14 +5399,14 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n3",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
                     {
                       "from": {
-                        "nodeId": "n1",
-                        "port": "value"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -5383,8 +5425,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n1",
-                        "port": "value"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n4",
@@ -5529,6 +5571,26 @@
                       "to": {
                         "nodeId": "n16",
                         "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -5915,6 +5977,17 @@
                           "y": 450
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 220,
+                          "y": 60
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -5924,14 +5997,14 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n3",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
                     {
                       "from": {
-                        "nodeId": "n1",
-                        "port": "value"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -5950,8 +6023,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n1",
-                        "port": "value"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n4",
@@ -6096,6 +6169,26 @@
                       "to": {
                         "nodeId": "n16",
                         "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -6482,6 +6575,17 @@
                           "y": 450
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 220,
+                          "y": 60
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -6491,14 +6595,14 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n3",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
                     {
                       "from": {
-                        "nodeId": "n1",
-                        "port": "value"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -6517,8 +6621,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n1",
-                        "port": "value"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n4",
@@ -6663,6 +6767,26 @@
                       "to": {
                         "nodeId": "n16",
                         "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -7049,6 +7173,17 @@
                           "y": 450
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 220,
+                          "y": 60
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -7058,14 +7193,14 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n3",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
                     {
                       "from": {
-                        "nodeId": "n1",
-                        "port": "value"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -7084,8 +7219,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n1",
-                        "port": "value"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n4",
@@ -7230,6 +7365,26 @@
                       "to": {
                         "nodeId": "n16",
                         "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -13670,6 +13825,28 @@
                           "y": 0
                         }
                       }
+                    },
+                    "nFloor": {
+                      "id": "nFloor",
+                      "type": "blueprint.math.floor",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1260,
+                          "y": 420
+                        }
+                      }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 500,
+                          "y": 60
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -13689,14 +13866,14 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n6",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
                     {
                       "from": {
-                        "nodeId": "n2",
-                        "port": "ids"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n3",
@@ -13755,8 +13932,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n2",
-                        "port": "ids"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n9",
@@ -13765,7 +13942,7 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n8",
+                        "nodeId": "nFloor",
                         "port": "result"
                       },
                       "to": {
@@ -13801,6 +13978,36 @@
                       "to": {
                         "nodeId": "n11",
                         "port": "id"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n8",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nFloor",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n6",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n2",
+                        "port": "ids"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -14916,6 +15123,28 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nFloor": {
+                      "id": "nFloor",
+                      "type": "blueprint.math.floor",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 980,
+                          "y": 1470
+                        }
+                      }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -15051,8 +15280,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -15061,8 +15290,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -15071,8 +15300,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -15115,7 +15344,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -15461,7 +15690,7 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n40",
+                        "nodeId": "nFloor",
                         "port": "result"
                       },
                       "to": {
@@ -15587,6 +15816,36 @@
                       "to": {
                         "nodeId": "n52",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n40",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nFloor",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -16350,6 +16609,28 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nFloor": {
+                      "id": "nFloor",
+                      "type": "blueprint.math.floor",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 980,
+                          "y": 1470
+                        }
+                      }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -16485,8 +16766,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -16495,8 +16776,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -16505,8 +16786,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -16549,7 +16830,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -16895,7 +17176,7 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n40",
+                        "nodeId": "nFloor",
                         "port": "result"
                       },
                       "to": {
@@ -17021,6 +17302,36 @@
                       "to": {
                         "nodeId": "n52",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n40",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nFloor",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -17784,6 +18095,28 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nFloor": {
+                      "id": "nFloor",
+                      "type": "blueprint.math.floor",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 980,
+                          "y": 1470
+                        }
+                      }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -17919,8 +18252,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -17929,8 +18262,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -17939,8 +18272,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -17983,7 +18316,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -18329,7 +18662,7 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n40",
+                        "nodeId": "nFloor",
                         "port": "result"
                       },
                       "to": {
@@ -18455,6 +18788,36 @@
                       "to": {
                         "nodeId": "n52",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n40",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nFloor",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -19218,6 +19581,28 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nFloor": {
+                      "id": "nFloor",
+                      "type": "blueprint.math.floor",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 980,
+                          "y": 1470
+                        }
+                      }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -19353,8 +19738,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -19363,8 +19748,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -19373,8 +19758,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -19417,7 +19802,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -19763,7 +20148,7 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n40",
+                        "nodeId": "nFloor",
                         "port": "result"
                       },
                       "to": {
@@ -19889,6 +20274,36 @@
                       "to": {
                         "nodeId": "n52",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n40",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nFloor",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -20652,6 +21067,28 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nFloor": {
+                      "id": "nFloor",
+                      "type": "blueprint.math.floor",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 980,
+                          "y": 1470
+                        }
+                      }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -20787,8 +21224,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -20797,8 +21234,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -20807,8 +21244,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -20851,7 +21288,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -21197,7 +21634,7 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n40",
+                        "nodeId": "nFloor",
                         "port": "result"
                       },
                       "to": {
@@ -21323,6 +21760,36 @@
                       "to": {
                         "nodeId": "n52",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n40",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nFloor",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -22086,6 +22553,28 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nFloor": {
+                      "id": "nFloor",
+                      "type": "blueprint.math.floor",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 980,
+                          "y": 1470
+                        }
+                      }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -22221,8 +22710,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -22231,8 +22720,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -22241,8 +22730,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -22285,7 +22774,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -22631,7 +23120,7 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n40",
+                        "nodeId": "nFloor",
                         "port": "result"
                       },
                       "to": {
@@ -22757,6 +23246,36 @@
                       "to": {
                         "nodeId": "n52",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n40",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nFloor",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -23413,6 +23932,17 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -23548,8 +24078,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -23558,8 +24088,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -23568,8 +24098,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -23612,7 +24142,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -24004,6 +24534,26 @@
                       "to": {
                         "nodeId": "n46",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -24660,6 +25210,17 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -24795,8 +25356,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -24805,8 +25366,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -24815,8 +25376,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -24859,7 +25420,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -25251,6 +25812,26 @@
                       "to": {
                         "nodeId": "n46",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -25907,6 +26488,17 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -26042,8 +26634,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -26052,8 +26644,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -26062,8 +26654,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -26106,7 +26698,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -26498,6 +27090,26 @@
                       "to": {
                         "nodeId": "n46",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -27154,6 +27766,17 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -27289,8 +27912,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -27299,8 +27922,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -27309,8 +27932,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -27353,7 +27976,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -27745,6 +28368,26 @@
                       "to": {
                         "nodeId": "n46",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -28401,6 +29044,17 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -28536,8 +29190,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -28546,8 +29200,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -28556,8 +29210,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -28600,7 +29254,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -28992,6 +29646,26 @@
                       "to": {
                         "nodeId": "n46",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],
@@ -29648,6 +30322,17 @@
                           "y": 1800
                         }
                       }
+                    },
+                    "nMemo": {
+                      "id": "nMemo",
+                      "type": "blueprint.data.memo",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1900,
+                          "y": 210
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -29783,8 +30468,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n13",
@@ -29793,8 +30478,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n14",
@@ -29803,8 +30488,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n12",
-                        "port": "metadata"
+                        "nodeId": "nMemo",
+                        "port": "result"
                       },
                       "to": {
                         "nodeId": "n15",
@@ -29847,7 +30532,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n19",
+                        "nodeId": "nMemo",
                         "port": "in"
                       }
                     },
@@ -30239,6 +30924,26 @@
                       "to": {
                         "nodeId": "n46",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nMemo",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "metadata"
+                      },
+                      "to": {
+                        "nodeId": "nMemo",
+                        "port": "value"
                       }
                     }
                   ],

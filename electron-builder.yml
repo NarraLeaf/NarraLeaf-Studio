@@ -132,6 +132,34 @@ extraResources:
 mac:
   target: dmg
   icon: resources/app-icon.icns
+  # Studio is never code-signed, on any host. Left unset, `identity` makes
+  # electron-builder search the login keychain and sign with whatever Apple
+  # certificate it finds there — on a maintainer's own Mac that is their
+  # personal "Apple Development" identity, which is neither a distribution
+  # certificate nor a choice anyone made for this build. It also fails: the
+  # embedded preview runner is a second Electron.app under Resources, and
+  # codesign rejects its framework ("unsealed contents present in the root
+  # directory of an embedded framework") because it was never laid out to be
+  # re-signed as a nested bundle.
+  #
+  # CSC_IDENTITY_AUTO_DISCOVERY=false in .github/workflows/release.yml said this
+  # for CI only, where no identity exists anyway. Here it holds for everyone,
+  # including a plain `yarn pack-electron --mac` on a machine that does have
+  # certificates.
+  #
+  # `notarize: false` is the other half of the pair. Notarization is configured
+  # entirely through environment variables, so a maintainer with APPLE_ID
+  # exported for their own tooling would otherwise have every build reach
+  # Apple's service uninvited. Unreachable while `identity` is null — signing
+  # returns before it — but stating one without the other invites the next
+  # person to change one without the other. src/main/buildWorker/desktopSigning.ts
+  # carries the same pair, for the games Studio builds.
+  #
+  # The ad-hoc signature an arm64 binary needs in order to launch at all is a
+  # different thing and stays: electronFuses.resetAdHocDarwinSignature above
+  # re-applies it after the fuses are flipped, with no identity involved.
+  identity: null
+  notarize: false
   # macOS means Apple Silicon here. Studio is not shipped for Intel Macs at all
   # (see .github/workflows/release.yml for the decision), so `--mac --x64` is not
   # a target anyone packages, and both mappings below are arm64-only as a

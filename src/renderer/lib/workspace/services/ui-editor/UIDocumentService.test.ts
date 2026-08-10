@@ -57,9 +57,21 @@ function ownerKeyForTest(owner: BlueprintOwnerRef): string {
     }
 }
 
-function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
+/** What {@link UIDocumentService} asked to be recorded, in the order it asked. */
+type RecordedHistoryCall = { surfaceId: string; mergeKey?: string };
+
+function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: boolean } = {}) {
     let nextId = 0;
     const service = new UIDocumentService();
+    const historyCalls: RecordedHistoryCall[] = [];
+    const historyService = {
+        // Enough of the real service for the recording decision: the snapshots themselves are
+        // `UIEditorHistoryService`'s business and are covered by its own tests.
+        captureSnapshot: (surfaceId: string) => ({ surfaceId }),
+        record: (call: { surfaceId: string; mergeKey?: string }) => {
+            historyCalls.push({ surfaceId: call.surfaceId, mergeKey: call.mergeKey });
+        },
+    };
     const blueprintDocument: any = {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {},
@@ -139,6 +151,9 @@ function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
                 if (options.withLocalBlueprint && serviceId === Services.LocalBlueprint) {
                     return localBlueprintService;
                 }
+                if (options.withHistory && serviceId === Services.UIEditorHistory) {
+                    return historyService;
+                }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
@@ -147,7 +162,7 @@ function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
     const initialDocument = (service as any).createEmptyDocument();
     (service as any).document = initialDocument;
 
-    return { service, initialDocument, blueprintDocument, createGraphBlueprint };
+    return { service, initialDocument, blueprintDocument, createGraphBlueprint, historyCalls };
 }
 
 describe("UIDocumentService surface creation", () => {
@@ -610,6 +625,23 @@ describe("UIDocumentService surface creation", () => {
         (service as any).ensureMainSurface(service.getDocument());
         expect(mainSurface?.id).toBe(MAIN_APP_SURFACE_ID);
         expect(mainSurface?.name).toBe("Start");
+    });
+
+    it("records a surface's own edits in that surface's undo stack", () => {
+        // These were the one kind of edit in the interface editor with no history behind them:
+        // `mutateDocument` records only for a caller that names a surface, and neither of these
+        // did - so Ctrl+Z could not take back a page's name or its background.
+        const { service, historyCalls } = createHarness({ withHistory: true });
+
+        service.renameSurface(MAIN_APP_SURFACE_ID, "Title Screen");
+        service.updateSurface(MAIN_APP_SURFACE_ID, surface => {
+            surface.settings = { ...(surface.settings ?? {}), backgroundColor: "#123456" };
+        }, { mergeKey: "surface:main:backgroundColor" });
+
+        expect(historyCalls).toEqual([
+            { surfaceId: MAIN_APP_SURFACE_ID, mergeKey: `surface:${MAIN_APP_SURFACE_ID}:name` },
+            { surfaceId: MAIN_APP_SURFACE_ID, mergeKey: "surface:main:backgroundColor" },
+        ]);
     });
 
     it("duplicates Pages with independent elements and private blueprints", () => {

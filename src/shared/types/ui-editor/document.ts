@@ -2,6 +2,7 @@ import { isContainerFlowLayoutParent } from "./container";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
+import type { UISurfaceBackgroundImage } from "./surfaceBackgroundImage";
 import { getUISwitchChildSlot } from "./switch";
 
 export const UI_DOCUMENT_SCHEMA_VERSION = 11 as const;
@@ -68,6 +69,11 @@ export type UISurfaceDesignSize = {
 
 export type UISurfaceSettings = {
     backgroundColor?: string;
+    /**
+     * Painted over {@link backgroundColor}, inside the design area only - the letterbox bars around
+     * a scaled Surface keep showing the colour, so the two settings are not alternatives.
+     */
+    backgroundImage?: UISurfaceBackgroundImage;
     pageAnimation?: UIPageAnimationSettings;
 };
 

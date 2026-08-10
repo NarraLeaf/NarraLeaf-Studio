@@ -38,6 +38,7 @@ import {
 } from "@/lib/ui-editor/runtime/pageAnimation";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
+import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
 
 export type SurfaceBlueprintBindingContext = {
@@ -118,6 +119,10 @@ export type SurfaceElementTreeProps = {
 
 /**
  * Shared element-tree renderer for editor preview and Dev Mode runtime (same layout / registry semantics).
+ *
+ * **Not a component in practice: callers invoke it directly** (`SurfaceElementTree({...})`), and its
+ * own tests read the returned tree. So it must stay hook-free - the brand palette is subscribed one
+ * level down, in `EditorNodeWrapper`, which is a real component and wraps every element.
  */
 export function SurfaceElementTree(props: SurfaceElementTreeProps): ReactNode {
     if (props.blueprintBindingContext) {
@@ -686,6 +691,7 @@ function NestedSurfaceInstance(props: {
             onBeforeExit={handleBeforeExit}
             onEnterComplete={handleEnterComplete}
         >
+            <SurfaceBackgroundImageLayer surface={targetSurface} />
             <SurfaceElementTree
                 document={document}
                 surface={targetSurface}

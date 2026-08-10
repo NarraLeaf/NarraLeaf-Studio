@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BlurDissolve, Control, Darkness, DevTools, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
+import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
 import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryConditionRef, StoryDocument, StoryTransitionRef } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
@@ -1089,6 +1091,76 @@ describe("compileStudioStoryToNlr", () => {
             ]);
 
             expect(nametagColor(speaker)).toBeUndefined();
+        });
+
+        /**
+         * The accent pointed at the project palette rather than frozen as a hex.
+         *
+         * This is the seam the whole feature turns on and the one that breaks silently. The summary
+         * carries the stored string unfiltered, so a `nlbrand:` link arrives here intact and has to
+         * be resolved before `CHARACTER_ACCENT_HEX` — which is right to refuse a link — is asked
+         * about it. Miss the resolve and the test would still pass every other row in this describe:
+         * the nametag simply comes back untinted, exactly as it does for a character with no colour,
+         * in the editor's preview *and* in the shipped game, with nothing to say why.
+         */
+        describe("an accent that points at the project palette", () => {
+            beforeEach(() => {
+                setActiveBrandPalette([
+                    ...BUILTIN_BRAND_COLORS,
+                    { id: "cast.alice", value: "#123456" },
+                    { id: "cast.echo", value: "nlbrand:cast.alice" },
+                ]);
+            });
+
+            afterEach(() => {
+                setActiveBrandPalette(BUILTIN_BRAND_COLORS);
+            });
+
+            it.each([
+                ["a seeded id", "nlbrand:primary", "#40A8C4"],
+                ["an author's own colour", "nlbrand:cast.alice", "#123456"],
+                ["a link through a link", "nlbrand:cast.echo", "#123456"],
+            ])("hands the runtime nametag the resolved hex for %s", async (_label, stored, expected) => {
+                const speaker = await compileSpeaker([
+                    { id: "char-alice", name: "Alice", color: stored, appearance: EMPTY_APPEARANCE },
+                ]);
+
+                expect(nametagColor(speaker)).toBe(expected);
+            });
+
+            it("follows the palette rather than the value stored the day it was picked", async () => {
+                setActiveBrandPalette([...BUILTIN_BRAND_COLORS, { id: "cast.alice", value: "#ABCDEF" }]);
+
+                const speaker = await compileSpeaker([
+                    { id: "char-alice", name: "Alice", color: "nlbrand:cast.alice", appearance: EMPTY_APPEARANCE },
+                ]);
+
+                expect(nametagColor(speaker)).toBe("#ABCDEF");
+            });
+
+            it.each([
+                ["names nothing", "nlbrand:gone"],
+                ["lands on a translucent entry no hex can spell", "nlbrand:button.shadow"],
+            ])("leaves the nametag untinted for a link that %s", async (_label, stored) => {
+                const speaker = await compileSpeaker([
+                    { id: "char-alice", name: "Alice", color: stored, appearance: EMPTY_APPEARANCE },
+                ]);
+
+                expect(nametagColor(speaker)).toBeUndefined();
+            });
+
+            /**
+             * The invariant the resolver must not quietly break: an optional field with nothing in
+             * it stays empty. A resolver that answered a default for "no value" would give every
+             * uncoloured character in the project the palette's primary.
+             */
+            it("still leaves a character with no accent untinted", async () => {
+                const speaker = await compileSpeaker([
+                    { id: "char-alice", name: "Alice", appearance: EMPTY_APPEARANCE },
+                ]);
+
+                expect(nametagColor(speaker)).toBeUndefined();
+            });
         });
     });
 

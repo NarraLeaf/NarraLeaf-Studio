@@ -166,6 +166,7 @@ export function BorderStrokeCompactRows({
                             alpha: 1,
                         })}
                         displayMode="icon"
+                        brandPalette
                         allowOpacity={false}
                         onChange={onBorderColorChange}
                     />

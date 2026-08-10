@@ -1583,10 +1583,29 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return;
             }
             surface.name = nextName;
+        }, {
+            // Typed a character at a time, so one entry per name rather than per keystroke.
+            history: { surfaceId, mergeKey: `surface:${surfaceId}:name` },
         });
     }
 
-    public updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void {
+    /**
+     * Edit a surface's own record - its name, its background, its page animation, its slot.
+     *
+     * Recorded in the surface's undo stack like every other edit to that surface. It was not, for as
+     * long as this method existed: `mutateDocument` records only when a caller says which surface the
+     * edit belongs to, and this one never did - so changing a page's background colour was the one
+     * kind of edit in the interface editor that Ctrl+Z could not take back.
+     *
+     * `mergeKey` is the caller's, because only the caller knows which field its updater touched.
+     * Leaving it out is safe - it costs granularity (one entry per change instead of one per field
+     * the author was working on), never the entry itself.
+     */
+    public updateSurface(
+        surfaceId: string,
+        updater: (surface: UISurface) => void,
+        options: { mergeKey?: string } = {},
+    ): void {
         this.mutateDocument(document => {
             const surface = document.surfaces.find(next => next.id === surfaceId);
             if (!surface) {
@@ -1597,6 +1616,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (isMainSurface) {
                 surface.id = MAIN_APP_SURFACE_ID;
             }
+        }, {
+            history: { surfaceId, mergeKey: options.mergeKey },
         });
     }
 

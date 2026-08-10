@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "@/lib/i18n";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { UIElement } from "@shared/types/ui-editor/document";
@@ -229,7 +229,7 @@ export function CompactContainerAppearance({
                     strokeSideRaw={String(getStroke("strokeSide") ?? "all")}
                     onStrokeSideChange={next => patchStroke("strokeSide", next)}
                     borderColorCss={String(getStroke("borderColor") ?? "")}
-                    onBorderColorChange={(next: ColorValue) => patchStroke("borderColor", colorValueToCss(next))}
+                    onBorderColorChange={(next: ColorValue) => patchStroke("borderColor", serializeColorValue(next))}
                     strokeOpacity01={readFiniteNumber(getStroke("strokeOpacity"), 1)}
                     onStrokeOpacity01Change={o => patchStroke("strokeOpacity", o)}
                     moreMenu={buildBorderMoreMenu()}

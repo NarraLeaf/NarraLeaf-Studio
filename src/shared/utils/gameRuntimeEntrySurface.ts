@@ -1,3 +1,5 @@
+import { BrandPalette } from "@shared/brand/brandRegistry";
+import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 
 /**
@@ -20,14 +22,43 @@ export function resolveGameRuntimeEntrySurface(pack: GameRuntimePackV1) {
  * Mirrors the renderer's surface background defaults: app surfaces are white
  * unless configured, stage surfaces are transparent - which has no opaque
  * equivalent and falls back to black, as does anything unparseable.
+ *
+ * A configured colour is resolved through the pack's brand palette first,
+ * because "unparseable" would otherwise include every `nlbrand:` link - and
+ * the visible result of that is precisely the flash this function exists to
+ * prevent, on the projects most likely to hit it (an author who set the entry
+ * surface to the brand background is an author with a light game).
  */
 export function resolveGameRuntimeInitialBackgroundColor(pack: GameRuntimePackV1): string {
     const surface = resolveGameRuntimeEntrySurface(pack);
     const configured = surface?.settings?.backgroundColor;
     if (typeof configured === "string" && configured.trim()) {
-        return normalizeOpaqueBackgroundColor(configured) ?? "#000000";
+        return normalizeOpaqueBackgroundColor(resolvePackBrandValue(pack, configured)) ?? "#000000";
     }
     return surface?.kind === "appSurface" ? "#ffffff" : "#000000";
+}
+
+/**
+ * A stored colour with its brand link followed, or the string unchanged when it is not a link.
+ *
+ * **A local palette, not the module-level active one.** Every caller of this file runs in a MAIN
+ * process - the desktop shell sizing its BrowserWindow, the packaged runtime's own main, the web
+ * exporter writing index.html - where reading a pack must not publish anything: `setActiveBrandPalette`
+ * is global state, and a build of one project would leave its colours standing for whatever ran
+ * next. Resolving a colour is a read, so it is written as one.
+ *
+ * `resolveValueCss` takes the whole stored value, which is the point: the pre-boot frame, the canvas
+ * and the shipped game's first painted frame all ask the same method the same question, so
+ * `nlbrand:primary/0.5` cannot mean one opacity here and another one there.
+ *
+ * A link that resolves to nothing (an id the palette lost, a ring) comes back unchanged and goes on
+ * to fail `normalizeOpaqueBackgroundColor` exactly as it did before this existed, landing on the
+ * same fallback. A pack with no `brand` - one built before the feature - reads the seeds, which is
+ * the palette its project would have had.
+ */
+function resolvePackBrandValue(pack: GameRuntimePackV1, value: string): string {
+    const palette = new BrandPalette(pack.bundle.brand ?? BUILTIN_BRAND_COLORS);
+    return palette.resolveValueCss(value) ?? value;
 }
 
 /**
