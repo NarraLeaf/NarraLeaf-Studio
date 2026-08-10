@@ -15,7 +15,7 @@ export const pluginPermission = {
         type: "插件安装请求",
         title: "{requester} 请求安装 {plugin}",
         body1: "Studio 已识别出本次安装将授予的内容：",
-        body2: "同意安装即向该插件版本授予下列全部权限。请只安装可信来源的插件",
+        body2: "同意安装即向该插件版本授予下列全部权限；请只安装可信来源的插件",
         source: "来源：{source}",
     },
     filesystem: {
@@ -62,7 +62,7 @@ export const pluginPermission = {
         buildDependencyHosts: "下载来源：{hosts}",
         runtimeCapability: {
             store: "在玩家的存档旁保存自己的数据",
-            events: "获知游戏进程（场景、对话、选项、存档）",
+            events: "获知游戏进程（场景、对白、选项、存档）",
             stateRead: "读取剧情变量",
             stateWrite: "修改剧情变量",
             savesRead: "读取玩家的存档列表与存档信息",

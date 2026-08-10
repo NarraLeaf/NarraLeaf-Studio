@@ -12,8 +12,10 @@ import {
     normalizeRuns,
     rangeHasMark,
     rangeMarkColor,
+    rangeMarkRuby,
     renderRunsToElement,
     richRunsToPlain,
+    rubyRunAt,
     setSelectionUnitRange,
     spliceRuns,
     totalUnits,
@@ -25,7 +27,21 @@ import {
 } from "./richText";
 import { editKindForInputType, RichTextHistory, type RichTextSnapshot } from "./richTextHistory";
 
-export type ActiveMarks = { bold: boolean; italic: boolean; color?: string };
+export type ActiveMarks = {
+    bold: boolean;
+    italic: boolean;
+    color?: string;
+    /**
+     * The reading the ruby control would edit, and whether there is anything for it to act on.
+     *
+     * `ruby` is the reading shared by the selection, or — with a collapsed caret — the reading of
+     * the annotated run the caret sits in. `canRuby` is separate because those are two different
+     * questions: a selection can be annotated even when it carries no reading yet, and a caret
+     * outside any annotated run can do nothing at all, which is what leaves the control inert.
+     */
+    ruby?: string;
+    canRuby: boolean;
+};
 
 export type PauseClickInfo = {
     unit: number;
@@ -49,6 +65,11 @@ export type RichTextInputHandle = {
     focus: () => void;
     toggleMark: (mark: "bold" | "italic") => void;
     setColor: (color: string) => void;
+    /**
+     * Set or clear the reading over the selection, or over the annotated run holding a collapsed
+     * caret. Pass `null` to remove it. A no-op when there is nothing to annotate — see `canRuby`.
+     */
+    setRuby: (ruby: string | null) => void;
     insertPause: (pause: number | true) => void;
     updatePauseAt: (unit: number, pause: number | true) => void;
     removePauseAt: (unit: number) => void;
@@ -269,6 +290,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             }
             let bold = globalThis.document.queryCommandState("bold");
             let italic = globalThis.document.queryCommandState("italic");
+            // Ruby has no execCommand of its own, so both answers come off the unit model. A selection
+            // is always annotatable; a collapsed caret only when it is standing in a reading already.
+            let ruby: string | undefined;
+            let canRuby = false;
             if (el && range && range.start !== range.end) {
                 // A selection can include inline value chips (contentEditable=false), which execCommand's
                 // query state ignores — derive the active marks from the unit model instead.
@@ -276,11 +301,27 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 bold = rangeHasMark(runs, range.start, range.end, "bold");
                 italic = rangeHasMark(runs, range.start, range.end, "italic");
                 color = rangeMarkColor(runs, range.start, range.end);
+                ruby = rangeMarkRuby(runs, range.start, range.end);
+                canRuby = true;
+            } else if (el && selection) {
+                // Read off the DOM, not the unit model. This branch runs on every caret move, and
+                // `domToRuns` walks and normalizes the whole row to answer a question the span the
+                // caret is standing in already carries.
+                const node = selection.focusNode;
+                const from = node?.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node?.parentElement ?? null;
+                const host = from && el.contains(from) ? from.closest<HTMLElement>("[data-ruby]") : null;
+                ruby = host && el.contains(host) ? host.dataset.ruby || undefined : undefined;
+                canRuby = ruby !== undefined;
             }
             const previousMarks = lastMarksRef.current;
-            if (!previousMarks || previousMarks.bold !== bold || previousMarks.italic !== italic || previousMarks.color !== color) {
-                lastMarksRef.current = { bold, italic, color };
-                onActiveRef.current?.({ bold, italic, color });
+            if (!previousMarks
+                || previousMarks.bold !== bold
+                || previousMarks.italic !== italic
+                || previousMarks.color !== color
+                || previousMarks.ruby !== ruby
+                || previousMarks.canRuby !== canRuby) {
+                lastMarksRef.current = { bold, italic, color, ruby, canRuby };
+                onActiveRef.current?.({ bold, italic, color, ruby, canRuby });
             }
             setCaretColor(color ?? null);
         } catch {
@@ -604,6 +645,51 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         emitChange();
     }, [emitChange, recordStructural, saveSelection, scheduleReportActive]);
 
+    /**
+     * Set or clear the reading over the selection, or over the whole annotated run when the caret is
+     * collapsed inside one. `null` removes it.
+     *
+     * Unlike {@link applyMark} this must never focus the editor: the reading is typed in a popover,
+     * and dragging focus back here would end the author's typing at the first character. The range
+     * comes from `savedRange` — the selection as it stood when the popover opened — and the caret is
+     * only restored when the editor still holds focus.
+     *
+     * `textOnly` because a reading belongs to characters the author wrote. See
+     * {@link applyMarkToRange}.
+     */
+    const setRuby = useCallback((ruby: string | null) => {
+        const el = editorRef.current;
+        if (!el) {
+            return;
+        }
+        const selection = getSelectionUnitRange(el) ?? savedRange.current;
+        if (!selection) {
+            return;
+        }
+        const runs = domToRuns(el);
+        const target = selection.start === selection.end ? rubyRunAt(runs, selection.start) : selection;
+        if (!target) {
+            return;
+        }
+        const value = ruby?.trim() || undefined;
+        if (value === rangeMarkRuby(runs, target.start, target.end)) {
+            // Closing the popover having changed nothing is the common exit. Rendering anyway would
+            // cost an undo entry for an edit that never happened.
+            return;
+        }
+        recordStructural();
+        const next = applyMarkToRange(runs, target.start, target.end, marks => ({ ...marks, ruby: value }), { textOnly: true });
+        renderRunsToElement(el, next, renderOptionsRef.current);
+        if (globalThis.document.activeElement === el) {
+            setSelectionUnitRange(el, target.start, target.end);
+            saveSelection();
+        } else {
+            savedRange.current = { start: target.start, end: target.end };
+        }
+        scheduleReportActive(true);
+        emitChange();
+    }, [emitChange, recordStructural, saveSelection, scheduleReportActive]);
+
     // Splice by explicit unit range without focusing the editor (so a pause popover's input keeps
     // focus). Caret is only restored when the editor already holds focus.
     const spliceUnits = useCallback((start: number, deleteCount: number, insert: StoryRichRun[], caretAfter: boolean) => {
@@ -685,6 +771,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         },
         toggleMark: (mark) => applyMark(mark),
         setColor: (color) => applyMark("color", color),
+        setRuby,
         insertPause,
         updatePauseAt: (unit, pause) => spliceUnits(unit, 1, [{ pause }], true),
         removePauseAt: (unit) => spliceUnits(unit, 1, [], false),
@@ -695,7 +782,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         updateEventAt: (unit, event) => spliceUnits(unit, 1, [{ event }], true),
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, setRuby, spliceUnits]);
 
     return (
         <div

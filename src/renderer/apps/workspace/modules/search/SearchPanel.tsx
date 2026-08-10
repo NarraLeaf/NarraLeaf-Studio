@@ -105,8 +105,8 @@ function editKey(storyId: string, sceneId: string, blockId: string): string {
  *    expanded) because the list renders eagerly, and one line can contain the query twice. A button
  *    reading "Replace all 20" over a query that will change 340 things is a number the author acts
  *    on, and it is a lie. It comes from `plan.occurrences`, computed over the uncapped candidate set.
- *  - **planning is opt-in.** Nothing here runs until the author engages the replace field, so an
- *    author who only ever searches pays for nothing.
+ *  - **planning is opt-in.** The replace row is folded away behind the replace switch, and nothing
+ *    here runs while it is, so an author who only ever searches pays for nothing.
  *  - **no confirmation dialog.** Undo is the safety net, and it is one press for the whole sweep.
  */
 export function SearchPanel() {
@@ -124,14 +124,16 @@ export function SearchPanel() {
     const [wholeWord, setWholeWord] = useState(false);
     const [useRegex, setUseRegex] = useState(false);
     /**
-     * Whether the author has reached for replace at all.
+     * Whether the replace row is showing.
      *
-     * Sticky, and never cleared: planning walks the index and rewrites segments, and doing that on
-     * every keystroke of every search - including the searches that were only ever going to be read -
-     * is exactly the cost the index's precomputed haystacks exist to avoid. Focusing the field counts,
-     * not just typing in it, so replacing a word with nothing stays reachable.
+     * Searching is the common errand and replacing is the rare one, so the panel opens as a search
+     * box and nothing else; the switch at the end of the row brings the second row in. It doubles as
+     * the opt-in signal for planning: planning walks the index and rewrites segments, and doing that
+     * on every keystroke of every search - including the searches that were only ever going to be
+     * read - is exactly the cost the index's precomputed haystacks exist to avoid. Opening the row
+     * counts, rather than typing in it, so replacing a word with nothing stays reachable.
      */
-    const [replaceEngaged, setReplaceEngaged] = useState(false);
+    const [showReplace, setShowReplace] = useState(false);
     const [plan, setPlan] = useState<ReplacePlan | null>(null);
     /** Bumped after a write, so the plan refreshes without waiting for the index rebuild. */
     const [planNonce, setPlanNonce] = useState(0);
@@ -214,7 +216,7 @@ export function SearchPanel() {
      * the document as it now stands.
      */
     useEffect(() => {
-        if (!context || !replaceEngaged || !parsed.text) {
+        if (!context || !showReplace || !parsed.text) {
             setPlan(null);
             return;
         }
@@ -222,7 +224,7 @@ export function SearchPanel() {
             setPlan(planStoryReplace(context, { matcher, replacement, filters: parsed.filters }));
         }, QUERY_DEBOUNCE_MS);
         return () => clearTimeout(timer);
-    }, [context, replaceEngaged, parsed, matcher, replacement, results, planNonce]);
+    }, [context, showReplace, parsed, matcher, replacement, results, planNonce]);
 
     const handleJump = useCallback(
         (target: Parameters<typeof jumpToSearchTarget>[0]) => {
@@ -325,41 +327,58 @@ export function SearchPanel() {
                     >
                         <Regex className="h-3.5 w-3.5" />
                     </ToolbarButton>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <input
-                        value={replacement}
-                        onChange={event => {
-                            setReplaceEngaged(true);
-                            setReplacement(event.target.value);
-                        }}
-                        onFocus={() => setReplaceEngaged(true)}
-                        placeholder={t("workspace.shell.search.replacePlaceholder")}
-                        aria-label={t("workspace.shell.search.replacePlaceholder")}
-                        {...freeze.writes()}
-                        className={cn(
-                            "min-w-0 flex-1 rounded-md border border-edge bg-fill-subtle text-fg outline-none placeholder:text-fg-subtle",
-                            "focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed",
-                            CONTROL_SIZE_CLASS.md,
-                        )}
-                    />
-                    <button
-                        type="button"
-                        onClick={() => applyPlan(plan)}
-                        {...freeze.writes(!replaceReady, replaceTitle)}
-                        className={cn(
-                            "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md",
-                            "border border-edge bg-fill-subtle text-fg-muted transition-colors",
-                            "hover:bg-fill hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed",
-                            CONTROL_SIZE_CLASS.md,
-                        )}
+                    {/*
+                     * Last in the row, and wearing the same on/off treatment as the three matching
+                     * switches: it is a switch too, and the row is where an author already looks for
+                     * "what is this box doing".
+                     */}
+                    <ToolbarButton
+                        size="md"
+                        onClick={() => setShowReplace(value => !value)}
+                        title={t("workspace.shell.search.toggleReplace")}
+                        aria-label={t("workspace.shell.search.toggleReplace")}
+                        aria-pressed={showReplace}
+                        aria-expanded={showReplace}
+                        active={showReplace}
+                        className={cn(showReplace && ACTIVE_TOGGLE_CLASS)}
                     >
-                        {t("workspace.shell.search.replaceAll")}
-                        {plan && plan.occurrences > 0 ? (
-                            <span className="ml-1.5 tabular-nums text-fg-subtle">{plan.occurrences}</span>
-                        ) : null}
-                    </button>
+                        <Replace className="h-3.5 w-3.5" />
+                    </ToolbarButton>
                 </div>
+                {showReplace && (
+                    <div className="flex items-center gap-1.5">
+                        <input
+                            // Autofocused: the only way this row appears is the author asking for it.
+                            autoFocus
+                            value={replacement}
+                            onChange={event => setReplacement(event.target.value)}
+                            placeholder={t("workspace.shell.search.replacePlaceholder")}
+                            aria-label={t("workspace.shell.search.replacePlaceholder")}
+                            {...freeze.writes()}
+                            className={cn(
+                                "min-w-0 flex-1 rounded-md border border-edge bg-fill-subtle text-fg outline-none placeholder:text-fg-subtle",
+                                "focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed",
+                                CONTROL_SIZE_CLASS.md,
+                            )}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => applyPlan(plan)}
+                            {...freeze.writes(!replaceReady, replaceTitle)}
+                            className={cn(
+                                "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md",
+                                "border border-edge bg-fill-subtle text-fg-muted transition-colors",
+                                "hover:bg-fill hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed",
+                                CONTROL_SIZE_CLASS.md,
+                            )}
+                        >
+                            {t("workspace.shell.search.replaceAll")}
+                            {plan && plan.occurrences > 0 ? (
+                                <span className="ml-1.5 tabular-nums text-fg-subtle">{plan.occurrences}</span>
+                            ) : null}
+                        </button>
+                    </div>
+                )}
                 {invalidPattern && (
                     <div className="text-2xs text-danger">{t("workspace.shell.search.invalidPattern")}</div>
                 )}

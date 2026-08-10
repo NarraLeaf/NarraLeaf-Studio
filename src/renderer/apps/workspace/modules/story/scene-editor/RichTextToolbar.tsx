@@ -1,13 +1,14 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import { createPortal } from "react-dom";
-import { Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Smile, Type } from "lucide-react";
+import { Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Smile, Superscript, Type } from "lucide-react";
 import { ProjectPalette } from "@/apps/workspace/modules/properties/framework/fields/ProjectPalette";
 import { addRecentColor, useRecentColors } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useTranslation } from "@/lib/i18n";
 import { useRichToolbarExpanded } from "./storyEditorSessionStore";
 import { defaultInterpolationForKind, getLastInterpolationKind } from "./storyInterpolation";
+import { RubyPopover } from "./RubyPopover";
 import type { ActiveMarks, RichTextInputHandle } from "./RichTextInput";
 
 /** Fallback quick colors shown until the author has built up a recent-colors history. */
@@ -32,6 +33,18 @@ const FOCUS_RING = "nl-focus-ring";
 const STRIP_KEYS = new Set(["Tab", "Escape", "Enter", " ", "Spacebar"]);
 const BTN = `grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg ${FOCUS_RING}`;
 const BTN_ACTIVE = `grid h-6 w-6 place-items-center rounded-md bg-primary/25 text-primary ${FOCUS_RING}`;
+/**
+ * A control with nothing in reach to act on. Kept in the strip rather than hidden - the strip is the
+ * list of what this editor can do to a line, and a tool that comes and goes with the selection has
+ * to be hunted for every time.
+ *
+ * `aria-disabled` and an inert handler rather than the `disabled` attribute, which is what carries
+ * the hint: a disabled control takes no pointer events, so its `title` never appears, and the one
+ * thing an author standing in front of an unavailable tool needs is the sentence saying what would
+ * make it available. It also stays in the strip's Tab cycle, so the keyboard reaches that sentence
+ * on the same terms the pointer does.
+ */
+const BTN_INERT = `grid h-6 w-6 place-items-center rounded-md text-fg-subtle ${FOCUS_RING}`;
 /** Rendered heights of the two strips, and the breathing room between strip and row. */
 const TOOLBAR_HEIGHT = 24;
 const TOOLBAR_HEIGHT_EXPANDED = 30;
@@ -106,7 +119,14 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
     const [palette, setPalette] = useState<{ top: number; left: number } | null>(null);
     const paletteBtnRef = useRef<HTMLButtonElement | null>(null);
     const palettePanelRef = useRef<HTMLDivElement | null>(null);
-    const active = props.active ?? { bold: false, italic: false };
+    /**
+     * The ruby popover's anchor, and the reading it opened on. The reading is captured at open time
+     * rather than read live: writing it re-renders the strip, and a popover reading `active.ruby`
+     * would reset its own field to what it had just written.
+     */
+    const [ruby, setRuby] = useState<{ top: number; left: number; bottom: number; value?: string } | null>(null);
+    const rubyBtnRef = useRef<HTMLButtonElement | null>(null);
+    const active = props.active ?? { bold: false, italic: false, canRuby: false };
     const recent = useRecentColors();
     // Quick swatches favour the author's recently used colors, padded with defaults so the strip
     // always stays full and stable-width.
@@ -279,6 +299,36 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
         }
     };
 
+    /**
+     * The ruby popover is a rung of the same Escape ladder as the palette, but it owns its own
+     * Escape: it holds a draft to discard, which no other rung has, and its field takes the focus,
+     * so the key never reaches `onStripKeyDown` at all.
+     */
+    const openRuby = () => {
+        const rect = rubyBtnRef.current?.getBoundingClientRect();
+        if (props.commitGuard) {
+            props.commitGuard.current = true;
+        }
+        setRuby({
+            top: rect?.top ?? 120,
+            left: rect?.left ?? 120,
+            bottom: rect?.bottom ?? 140,
+            value: active.ruby,
+        });
+    };
+    /**
+     * Always back to the line, where the palette splits by how it was left. There is no split to
+     * make: the popover autofocuses its field, so by the time it closes the author is standing in
+     * the popover and not in the strip, whichever way they arrived.
+     */
+    const closeRuby = () => {
+        if (props.commitGuard) {
+            props.commitGuard.current = false;
+        }
+        setRuby(null);
+        props.editor.current?.focus();
+    };
+
     const applyColor = (color: string) => {
         props.editor.current?.setColor(color);
         addRecentColor(color);
@@ -356,6 +406,32 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             </button>
             <button type="button" className={active.italic ? BTN_ACTIVE : BTN} aria-pressed={active.italic} onClick={() => keepKeyboard(() => props.editor.current?.toggleMark("italic"))} title={t("story.richText.italic")}>
                 <Italic className="h-3.5 w-3.5" />
+            </button>
+            {/*
+              * NOT wrapped in `keepKeyboard`: like the expression button this one hands the author to a
+              * popover, and that popover's field wants the focus. Dragging it back to the strip a frame
+              * later would put the caret somewhere other than the reading being typed.
+              */}
+            <button
+                ref={rubyBtnRef}
+                type="button"
+                className={!active.canRuby ? BTN_INERT : active.ruby || ruby ? BTN_ACTIVE : BTN}
+                aria-disabled={!active.canRuby}
+                aria-pressed={Boolean(active.ruby)}
+                aria-expanded={Boolean(ruby)}
+                onClick={() => {
+                    if (!active.canRuby) {
+                        return;
+                    }
+                    if (ruby) {
+                        closeRuby();
+                        return;
+                    }
+                    openRuby();
+                }}
+                title={active.canRuby ? t("story.richText.ruby") : t("story.richText.rubyHint")}
+            >
+                <Superscript className="h-3.5 w-3.5" />
             </button>
             <div className="mx-0.5 h-4 w-px bg-fill" />
             {swatches.map(color => {
@@ -455,6 +531,18 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                         }}
                     />
                 </div>
+            ) : null}
+            {ruby ? (
+                <RubyPopover
+                    anchor={ruby}
+                    value={ruby.value}
+                    onCommit={value => props.editor.current?.setRuby(value)}
+                    onRemove={() => {
+                        props.editor.current?.setRuby(null);
+                        closeRuby();
+                    }}
+                    onClose={() => closeRuby()}
+                />
             ) : null}
         </>,
         document.body,
