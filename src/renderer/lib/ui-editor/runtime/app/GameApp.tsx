@@ -666,6 +666,66 @@ export function GameApp(props: GameAppProps): ReactNode {
         resetSurfaceInteractionReadiness,
     ]);
 
+    /**
+     * Close down to `targetIndex` in one transition. `closeLayer` is this with the default index;
+     * `clearPages` and `clearGameOverlay` name a lower one.
+     */
+    const closeToIndex = useCallback((targetIndex: number): Promise<void> => {
+        const currentStack = navigation.getState().navStack;
+        if (currentStack.length <= 1 || targetIndex >= currentStack.length - 1) {
+            return Promise.resolve();
+        }
+        const nextEntryBase = currentStack[targetIndex]!;
+        const currentEntry = currentStack[currentStack.length - 1]!;
+        const from = findSurface(bundle, currentEntry.surfaceId);
+        const target = findSurface(bundle, nextEntryBase.surfaceId);
+        const targetHiddenForGame = isGameHiddenEntry(nextEntryBase);
+        resetSurfaceInteractionReadiness();
+        return navigation.close({
+            fromSurface: from,
+            targetSurface: target,
+            targetHiddenForGame,
+            reducedMotion: prefersReducedMotion,
+            targetIndex,
+        });
+    }, [
+        bundle,
+        isGameHiddenEntry,
+        navigation,
+        prefersReducedMotion,
+        resetSurfaceInteractionReadiness,
+    ]);
+
+    /**
+     * Empty the page stack down to its root. This is what `Go Page` with no page selected means: the
+     * dropdown offers "None", and choosing to show no page has to mean no page, not one page fewer.
+     * The root itself stays - it is the title screen, or the entries the game hid when it started, and
+     * an empty stack would render nothing at all.
+     */
+    const clearPages = useCallback((): Promise<void> => closeToIndex(0), [closeToIndex]);
+
+    /**
+     * Dismiss everything the player opened over a running game, and do nothing at all when no game is
+     * running. The entries hidden when the game started are a prefix of the stack (they were the whole
+     * stack at that moment), so the landing spot is the last one of those.
+     */
+    const clearGameOverlay = useCallback((): Promise<void> => {
+        if (!studioPageHiddenForGameRef.current) {
+            return Promise.resolve();
+        }
+        const currentStack = navigation.getState().navStack;
+        let lastHidden = -1;
+        for (let i = 0; i < currentStack.length; i++) {
+            if (gameHiddenNavKeysRef.current.has(currentStack[i]!.key)) {
+                lastHidden = i;
+            }
+        }
+        if (lastHidden < 0) {
+            return Promise.resolve();
+        }
+        return closeToIndex(lastHidden);
+    }, [closeToIndex, navigation]);
+
     const closeLayer = useCallback((): Promise<void> => {
         const currentStack = navigation.getState().navStack;
         if (currentStack.length <= 1) {
@@ -1760,6 +1820,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             emit: event => core.debug.emit(event),
             onOpenSurface: openSurface,
             onCloseLayer: closeLayer,
+            onClearPages: clearPages,
+            onClearGameOverlay: clearGameOverlay,
             onQuitApplication: host.quitApplication,
             onGetFullscreen: host.getFullscreen,
             onSetFullscreen: host.setFullscreen,
@@ -2025,6 +2087,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     emit: event => core.debug.emit(event),
                     onOpenSurface: openSurface,
                     onCloseLayer: closeLayer,
+                    onClearPages: clearPages,
+                    onClearGameOverlay: clearGameOverlay,
                     onQuitApplication: host.quitApplication,
                     onGetFullscreen: host.getFullscreen,
                     onSetFullscreen: host.setFullscreen,

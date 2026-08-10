@@ -251,6 +251,8 @@ export type BlueprintHostApiRuntime = {
         openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
         getPageProps: () => Record<string, unknown>;
         closeLayer: () => Promise<void>;
+        clearPages: () => Promise<void>;
+        clearGameOverlay: () => Promise<void>;
         quitApplication: () => Promise<void>;
         getFullscreen: () => Promise<boolean>;
         setFullscreen: (fullscreen: boolean) => Promise<void>;
@@ -627,6 +629,10 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
+    /** Empty the page stack down to its root. Hosts without a page stack leave it unset. */
+    onClearPages?: () => void | Promise<void>;
+    /** Dismiss pages opened over a running game; a no-op when no game is running. */
+    onClearGameOverlay?: () => void | Promise<void>;
     onQuitApplication?: () => void | Promise<void>;
     /** Hosts without a real application window (story preview) leave these unset. */
     onGetFullscreen?: () => boolean | Promise<boolean>;
@@ -1773,6 +1779,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         emit,
         onOpenSurface,
         onCloseLayer,
+        onClearPages,
+        onClearGameOverlay,
         onQuitApplication,
         onGetFullscreen,
         onSetFullscreen,
@@ -1931,7 +1939,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 const targetSurfaceId = String(surfaceId ?? "").trim();
                 if (!targetSurfaceId) {
-                    await onCloseLayer();
+                    // "None" in the page dropdown means no page, not one page fewer. This used to
+                    // alias Go back, so an author who picked None to dismiss an overlay two layers
+                    // deep landed on the layer underneath and had no way to say what they meant.
+                    await (onClearPages ?? onCloseLayer)();
                     emitHostCall(emit, cap, "return");
                     return;
                 }
@@ -1954,6 +1965,20 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "navigation.closeLayer";
                 emitHostCall(emit, cap, "call");
                 await onCloseLayer();
+                emitHostCall(emit, cap, "return");
+            },
+            clearPages: async () => {
+                const cap = "navigation.clearPages";
+                emitHostCall(emit, cap, "call");
+                await (onClearPages ?? onCloseLayer)();
+                emitHostCall(emit, cap, "return");
+            },
+            clearGameOverlay: async () => {
+                const cap = "navigation.clearGameOverlay";
+                emitHostCall(emit, cap, "call");
+                // Hosts with no game behind their pages (the story preview) have nothing to clear,
+                // which is the same answer this gives when a game is running but nothing is over it.
+                await onClearGameOverlay?.();
                 emitHostCall(emit, cap, "return");
             },
             quitApplication: async () => {
