@@ -19,7 +19,7 @@ import type { FontAssetFieldDefinition } from "@/apps/workspace/modules/properti
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { FontAssetField } from "@/apps/workspace/modules/properties/framework/fields/FontAssetField";
-import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { Select } from "@/lib/components/elements/Select";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
@@ -241,8 +241,9 @@ export function CompactTextAppearance({
                         <ColorPickerTrigger
                             value={colorValue}
                             displayMode="icon"
+                            brandPalette
                             allowOpacity={false}
-                            onChange={(next: ColorValue) => patchTypography("color", colorValueToCss(next))}
+                            onChange={(next: ColorValue) => patchTypography("color", serializeColorValue(next))}
                         />
                         {typographyMotionVisible ? (
                             <AppearanceFieldMotionButton

@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { AppWindow, Boxes, ChevronRight, Gamepad2, ListChecks, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { AppWindow, Boxes, ChevronRight, Gamepad2, ListChecks, Palette, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { InteractiveCard } from "@/lib/components/elements";
 import type { ProjectConfig } from "@/lib/workspace/project/project";
 
-export type ProjectSectionId = "app" | "game" | "project" | "runtimes" | "settings";
+export type ProjectSectionId = "app" | "game" | "brand" | "project" | "runtimes" | "settings";
 
 export type ProjectNavItem = {
     id: ProjectSectionId;
@@ -16,21 +16,24 @@ export type ProjectNavItem = {
 const PROJECT_NAV_ICONS: Record<ProjectSectionId, LucideIcon> = {
     app: AppWindow,
     game: Gamepad2,
+    brand: Palette,
     project: ListChecks,
     runtimes: Boxes,
     settings: SlidersHorizontal,
 };
 
-// Five rows, where there were nine. The nine were one row per surface, and the surfaces had grown
+// Six rows, where there were nine. The nine were one row per surface, and the surfaces had grown
 // out of each other: Details and Assets both answered "what is this application called and what
 // does it look like in a launcher", Game and Preferences both answered "what does the player get",
 // and a reader had to open three of them to find out where a volume is set. Each row here is a
 // question an author actually arrives with, and the parts inside it are told apart by headings.
 //
 // The order is how far the answer is from the player. App is the application's own identity, Game
-// is what the player meets, Project is what the project is checked against, Runtimes and Settings
-// are what it is built with and how it ships.
-const PROJECT_NAV_ORDER: ProjectSectionId[] = ["app", "game", "project", "runtimes", "settings"];
+// is what the player meets, and Brand follows it because the palette is what the player sees first:
+// the colour of a screen registers before a word of it has been read, so it belongs on the player's
+// side of the list rather than beside the settings that produce a build. Project is what the
+// project is checked against, Runtimes and Settings are what it is built with and how it ships.
+const PROJECT_NAV_ORDER: ProjectSectionId[] = ["app", "game", "brand", "project", "runtimes", "settings"];
 
 /**
  * The project navigation rows, with localized title/description. Shared by the

@@ -8,7 +8,7 @@ import type {
 } from "@shared/types/ui-editor/document";
 import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DEFAULT_UI_STAGE_SLOT_ID, UI_STAGE_SLOT_IDS, UI_STAGE_SLOT_LABELS } from "@shared/types/ui-editor/stageSlots";
-import { colorValueToCss, parseColorValue } from "../framework/utils/colorUtils";
+import { parseColorValue, serializeColorValue } from "../framework/utils/colorUtils";
 import type {
     ColorPickerFieldDefinition,
     CustomFieldDefinition,
@@ -112,15 +112,17 @@ export const scenePropertySchema = (t: TranslateFn) =>
             type: "colorPicker",
             label: t("properties.scene.backgroundColor"),
             allowOpacity: true,
+            brandPalette: true,
             getValue: data =>
                 parseColorValue(data.surface.settings?.backgroundColor, {
                     hex: "#000000",
                     alpha: 1,
                 }),
             setValue: (data, value) => {
-                const normalizedValue = colorValueToCss({
+                const normalizedValue = serializeColorValue({
                     hex: value.hex,
                     alpha: value.alpha ?? 1,
+                    ...(value.link ? { link: value.link } : {}),
                 });
                 data.documentService.updateSurface(data.surface.id, surface => {
                     surface.settings = {

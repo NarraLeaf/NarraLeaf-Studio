@@ -3,26 +3,49 @@ import { BRAND_LINK_SCHEME, formatBrandLink, isBrandLink, parseBrandLink } from 
 import { normalizeOpaqueBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 
 describe("brand link", () => {
-    it("reads a link with no alpha as fully opaque", () => {
-        expect(parseBrandLink("nlbrand:primary")).toEqual({ id: "primary", alpha: 1 });
-        expect(parseBrandLink("nlbrand:button.border")).toEqual({ id: "button.border", alpha: 1 });
+    it("reads a link with no alpha as the colour at its own opacity", () => {
+        expect(parseBrandLink("nlbrand:primary"))
+            .toEqual({ id: "primary", alpha: 1, alphaExplicit: false });
+        expect(parseBrandLink("nlbrand:button.border"))
+            .toEqual({ id: "button.border", alpha: 1, alphaExplicit: false });
         // A seeded slot is named after its widget, and one of those widgets is `textInput`.
         expect(parseBrandLink("nlbrand:textInput.background"))
-            .toEqual({ id: "textInput.background", alpha: 1 });
+            .toEqual({ id: "textInput.background", alpha: 1, alphaExplicit: false });
         // The generated ids an author's own colours get, in the same character set as the seeds.
-        expect(parseBrandLink("nlbrand:c7f3a1b2")).toEqual({ id: "c7f3a1b2", alpha: 1 });
+        expect(parseBrandLink("nlbrand:c7f3a1b2"))
+            .toEqual({ id: "c7f3a1b2", alpha: 1, alphaExplicit: false });
     });
 
     it("reads the alpha segment", () => {
-        expect(parseBrandLink("nlbrand:primary/0.5")).toEqual({ id: "primary", alpha: 0.5 });
-        expect(parseBrandLink("nlbrand:primary/0")).toEqual({ id: "primary", alpha: 0 });
-        expect(parseBrandLink("nlbrand:primary/1")).toEqual({ id: "primary", alpha: 1 });
-        expect(parseBrandLink("nlbrand:text.muted/.25")).toEqual({ id: "text.muted", alpha: 0.25 });
+        expect(parseBrandLink("nlbrand:primary/0.5"))
+            .toEqual({ id: "primary", alpha: 0.5, alphaExplicit: true });
+        expect(parseBrandLink("nlbrand:primary/0"))
+            .toEqual({ id: "primary", alpha: 0, alphaExplicit: true });
+        expect(parseBrandLink("nlbrand:text.muted/.25"))
+            .toEqual({ id: "text.muted", alpha: 0.25, alphaExplicit: true });
+    });
+
+    /**
+     * The distinction the resolver runs on. Both spellings carry alpha 1, and they do not mean the
+     * same thing: `/1` is an author saying "this colour, opaque", which replaces the opacity of a
+     * translucent palette entry, while no segment at all is "this colour as it stands". Collapse the
+     * two and `nlbrand:button.shadow` starts painting solid black.
+     */
+    it("tells a written `/1` apart from no segment at all", () => {
+        expect(parseBrandLink("nlbrand:primary/1"))
+            .toEqual({ id: "primary", alpha: 1, alphaExplicit: true });
+        expect(parseBrandLink("nlbrand:primary")?.alphaExplicit).toBe(false);
     });
 
     it("round-trips whatever it formats", () => {
         for (const [id, alpha] of [["primary", undefined], ["button.text", 0.5], ["c7f3a1b2", 0]] as const) {
-            expect(parseBrandLink(formatBrandLink(id, alpha))).toEqual({ id, alpha: alpha ?? 1 });
+            expect(parseBrandLink(formatBrandLink(id, alpha))).toEqual({
+                id,
+                alpha: alpha ?? 1,
+                // Full opacity is written as no segment, so a formatted link is explicit exactly when
+                // the alpha it was given was worth writing down.
+                alphaExplicit: alpha !== undefined,
+            });
         }
     });
 
@@ -43,6 +66,24 @@ describe("brand link", () => {
         expect(formatBrandLink("primary", -1)).toBe("nlbrand:primary/0");
         // Rounding up to a whole one drops the segment rather than writing `/1`.
         expect(formatBrandLink("primary", 0.999)).toBe("nlbrand:primary");
+    });
+
+    it("writes `/1` only when the caller says opaque is a choice, not an omission", () => {
+        // No segment means "inherit the entry's alpha", which for a translucent entry is not the
+        // same thing as opaque. The serializer asks for the long form in exactly that case.
+        expect(formatBrandLink("button.shadow", 1, { writeOpaqueSegment: true })).toBe("nlbrand:button.shadow/1");
+        expect(formatBrandLink("button.shadow", 0.999, { writeOpaqueSegment: true })).toBe("nlbrand:button.shadow/1");
+        // The flag changes nothing below full opacity, and asking for no alpha still writes none.
+        expect(formatBrandLink("button.shadow", 0.5, { writeOpaqueSegment: true })).toBe("nlbrand:button.shadow/0.5");
+        expect(formatBrandLink("button.shadow", undefined, { writeOpaqueSegment: true })).toBe("nlbrand:button.shadow");
+    });
+
+    it("reads `/1` back as an alpha the author chose", () => {
+        expect(parseBrandLink("nlbrand:button.shadow/1")).toEqual({
+            id: "button.shadow",
+            alpha: 1,
+            alphaExplicit: true,
+        });
     });
 
     it("refuses anything that is not a link", () => {
@@ -75,7 +116,8 @@ describe("brand link", () => {
     });
 
     it("tolerates the whitespace a stored value can pick up", () => {
-        expect(parseBrandLink("  nlbrand:primary  ")).toEqual({ id: "primary", alpha: 1 });
+        expect(parseBrandLink("  nlbrand:primary  "))
+            .toEqual({ id: "primary", alpha: 1, alphaExplicit: false });
     });
 });
 
