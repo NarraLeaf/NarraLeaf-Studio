@@ -33,7 +33,8 @@ export type LintCategory =
     | "variables"
     | "text"
     | "localization"
-    | "voice";
+    | "voice"
+    | "brand";
 
 /** Fixed presentation (and sort) order of categories. */
 export const LINT_CATEGORY_ORDER: readonly LintCategory[] = [
@@ -45,6 +46,7 @@ export const LINT_CATEGORY_ORDER: readonly LintCategory[] = [
     "text",
     "localization",
     "voice",
+    "brand",
 ] as const;
 
 /** Error first, info last - the order findings are reported and rendered in. */
@@ -88,7 +90,8 @@ export type LintRuleId =
     | "localization/orphan"
     | "voice/missing"
     | "voice/stale"
-    | "voice/orphan";
+    | "voice/orphan"
+    | "brand/broken-link";
 
 /**
  * Where a finding lives.

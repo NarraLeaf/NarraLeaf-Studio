@@ -14,7 +14,8 @@ import { parseBrandLink } from "@shared/brand/brandLink";
 describe("the seeded palette", () => {
     it("gives every seed an id a link can address", () => {
         for (const seed of BUILTIN_BRAND_COLORS) {
-            expect(parseBrandLink(`nlbrand:${seed.id}`), seed.id).toEqual({ id: seed.id, alpha: 1 });
+            expect(parseBrandLink(`nlbrand:${seed.id}`), seed.id)
+                .toEqual({ id: seed.id, alpha: 1, alphaExplicit: false });
         }
     });
 

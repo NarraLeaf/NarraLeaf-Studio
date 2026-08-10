@@ -10,6 +10,8 @@ import {
 import { createPortal } from "react-dom";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { useTranslation } from "@/lib/i18n";
+import { formatBrandLink } from "@shared/brand/brandLink";
+import type { BrandColor } from "@shared/types/brand";
 import {
     ColorPickerFieldDefinition,
     ColorPickerGroupFieldDefinition,
@@ -18,12 +20,14 @@ import {
     ColorDisplayMode,
 } from "../types";
 import { FieldLayout } from "./FieldLayout";
+import { useBrandColorLabel, useBrandPalette } from "./brandPalette";
 import {
     clamp,
     colorValueToCss,
     hexToRgb,
     normalizeHex,
     normalizeHexInputDraft,
+    parseColorValue,
     rgbToHex,
 } from "../utils/colorUtils";
 
@@ -57,10 +61,31 @@ interface ColorPickerTriggerProps {
     colorModes?: ColorMode[];
     allowOpacity?: boolean;
     disabled?: boolean;
+    /**
+     * Look, do not touch. The panel still opens - a swatch shows a colour but does not tell you
+     * which colour, and a frozen project has to stay readable - but every control inside it is
+     * clamped. Use `disabled` for a trigger that should not respond at all.
+     */
     readOnly?: boolean;
+    /**
+     * Accessible name for the trigger. Worth passing in `swatch` mode especially: that one renders
+     * a bare coloured button with no text in it, so without this it is announced as "button".
+     */
+    ariaLabel?: string;
     onChange: (value: ColorValue) => void;
     /** Fired once when the picker panel closes, with the final settled color. */
     onCommit?: (value: ColorValue) => void;
+    /**
+     * Show the project palette as a row of swatches at the bottom of the panel. Off by default, and
+     * each call site turns it on for itself: picking one emits a `ColorValue` carrying a `link`, and
+     * a field whose write side still stores the literal would drop it silently.
+     */
+    brandPalette?: boolean;
+    /**
+     * Brand ids this picker must not offer. For the Brand panel editing the palette itself, where
+     * an entry may not point at itself or at anything that would close a ring.
+     */
+    brandExclude?: string[];
 }
 
 function rgbToHsl(r: number, g: number, b: number) {
@@ -238,10 +263,23 @@ export function ColorPickerTrigger({
     allowOpacity = true,
     disabled = false,
     readOnly = false,
+    ariaLabel,
     onChange,
     onCommit,
+    brandPalette = false,
+    brandExclude,
 }: ColorPickerTriggerProps) {
     const { t } = useTranslation();
+    // Subscribed unconditionally (hooks are), so a palette edit repaints an open picker's swatches.
+    const palette = useBrandPalette();
+    const brandColorLabel = useBrandColorLabel();
+    const brandColors = useMemo(() => {
+        if (!brandPalette) {
+            return [];
+        }
+        const excluded = new Set(brandExclude ?? []);
+        return palette.list().filter((color) => !excluded.has(color.id));
+    }, [brandExclude, brandPalette, palette]);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [isOpen, setIsOpen] = useState(false);
@@ -254,6 +292,12 @@ export function ColorPickerTrigger({
     const [colorState, setColorState] = useState(() => deriveColorState(value));
     const [hexDraft, setHexDraft] = useState(() => colorState.hex);
     const [isEditingHex, setIsEditingHex] = useState(false);
+    // The brand entry this value points at, if any. Kept beside `colorState` rather than inside it
+    // because it is not part of the colour: every edit in the map, the hue bar or the numeric inputs
+    // drops it, and only the opacity slider and a swatch pick carry it forward.
+    const [activeBrandLink, setActiveBrandLink] = useState<string | undefined>(value.link);
+    const activeBrandLinkRef = useRef(activeBrandLink);
+    activeBrandLinkRef.current = activeBrandLink;
     const colorStateRef = useRef(colorState);
     const onCommitRef = useRef(onCommit);
     onCommitRef.current = onCommit;
@@ -325,6 +369,12 @@ export function ColorPickerTrigger({
         colorStateRef.current = colorState;
     }, [colorState]);
 
+    // What the field actually kept. A call site whose write side stores the resolved literal rather
+    // than the link hands back a value with no link, and the ring clears - which is the truth.
+    useEffect(() => {
+        setActiveBrandLink(value.link);
+    }, [value.link]);
+
     useEffect(() => {
         if (activeMode !== "hex") {
             if (isEditingHex) {
@@ -343,15 +393,31 @@ export function ColorPickerTrigger({
     }, [isDragging]);
 
     const notifyChange = useCallback(
-        (state: ColorState) => {
+        (state: ColorState, link?: string) => {
             pendingPushHexRef.current = state.hex;
             onChange({
                 hex: state.hex,
                 alpha: state.alpha,
+                ...(link ? { link } : {}),
             });
         },
         [onChange]
     );
+
+    /**
+     * Forget the brand link, because the author just made a colour of their own.
+     *
+     * Every path that moves the hue, saturation, lightness or the numeric inputs calls this: the
+     * value stops being "the brand colour" the moment it stops being that colour. The opacity slider
+     * does not - a link at an opacity is a thing the link grammar can say.
+     */
+    const dropBrandLink = useCallback(() => {
+        if (activeBrandLinkRef.current === undefined) {
+            return;
+        }
+        activeBrandLinkRef.current = undefined;
+        setActiveBrandLink(undefined);
+    }, []);
 
     const mapDragNotifyRafRef = useRef<number | null>(null);
 
@@ -378,7 +444,11 @@ export function ColorPickerTrigger({
     }, [notifyChange]);
 
     const applyColorState = useCallback(
-        (change: (prev: ColorState) => Partial<ColorState>) => {
+        (change: (prev: ColorState) => Partial<ColorState>, keepBrandLink = false) => {
+            const link = keepBrandLink ? activeBrandLinkRef.current : undefined;
+            if (!keepBrandLink) {
+                dropBrandLink();
+            }
             setColorState((prev) => {
                 const intermediate = {
                     ...prev,
@@ -395,11 +465,11 @@ export function ColorPickerTrigger({
                 };
                 colorStateRef.current = normalized;
                 lastMapInteractionRef.current = false;
-                notifyChange(normalized);
+                notifyChange(normalized, link);
                 return normalized;
             });
         },
-        [notifyChange]
+        [dropBrandLink, notifyChange]
     );
 
     const syncAnchorRect = useCallback(() => {
@@ -411,11 +481,22 @@ export function ColorPickerTrigger({
         setAnchorRect(rect);
     }, []);
 
+    /**
+     * Read-only opens the panel; it does not refuse to.
+     *
+     * Refusing was the old behaviour and it broke the rule the freeze pass is built on: a frozen
+     * project must still be readable (`fieldReadOnlyStrategy.ts` makes the same exception for the
+     * blueprint preview, for the same reason). A swatch is a colour you can see but not a value you
+     * can read - "is this #40A8C4 or #3FA7C3" is answerable only inside the panel - and a Brand page
+     * that is nothing but swatches would otherwise say nothing at all while frozen.
+     *
+     * Every control inside the panel is clamped instead; see `readOnly` below the map.
+     */
     const openPicker = useCallback(() => {
-        if (disabled || readOnly) return;
+        if (disabled) return;
         syncAnchorRect();
         setIsOpen(true);
-    }, [disabled, readOnly, syncAnchorRect]);
+    }, [disabled, syncAnchorRect]);
 
     const closePicker = useCallback(() => {
         if (mapDragNotifyRafRef.current != null || isDraggingMapRef.current) {
@@ -425,7 +506,11 @@ export function ColorPickerTrigger({
         setIsDragging(false);
         setIsOpen(false);
         setAnchorRect(null);
-        onCommitRef.current?.({ hex: colorStateRef.current.hex, alpha: colorStateRef.current.alpha });
+        onCommitRef.current?.({
+            hex: colorStateRef.current.hex,
+            alpha: colorStateRef.current.alpha,
+            ...(activeBrandLinkRef.current ? { link: activeBrandLinkRef.current } : {}),
+        });
     }, [flushPendingMapDragNotify]);
 
     useEffect(() => {
@@ -560,6 +645,7 @@ export function ColorPickerTrigger({
         (clientX: number, clientY: number) => {
             const rect = panelRef.current?.querySelector("[data-color-map]")?.getBoundingClientRect();
             if (!rect) return;
+            dropBrandLink();
             const saturation = clamp((clientX - rect.left) / rect.width, 0, 1);
             const v = clamp(1 - (clientY - rect.top) / rect.height, 0, 1);
             setColorState((prev) => {
@@ -581,7 +667,7 @@ export function ColorPickerTrigger({
             });
             scheduleMapDragNotify();
         },
-        [scheduleMapDragNotify]
+        [dropBrandLink, scheduleMapDragNotify]
     );
 
     useEffect(() => {
@@ -708,11 +794,49 @@ export function ColorPickerTrigger({
         (event: ChangeEvent<HTMLInputElement>) => {
             const parsed = Number.parseFloat(event.target.value);
             if (!Number.isFinite(parsed)) return;
-            applyColorState(() => ({
-                alpha: clamp(parsed, 0, 1),
-            }));
+            // Opacity alone keeps the link: `nlbrand:<id>/<alpha>` is a thing the grammar can store,
+            // and dimming the brand colour is not choosing a different one.
+            applyColorState(
+                () => ({
+                    alpha: clamp(parsed, 0, 1),
+                }),
+                true,
+            );
         },
         [applyColorState]
+    );
+
+    const handleBrandPick = useCallback(
+        (color: BrandColor) => {
+            // Resolved through the same parser the field reads with, so the swatch and whatever the
+            // value paints as later can never disagree. No link on the result means the entry is
+            // broken or circular; picking it would store a reference to a colour that does not exist.
+            const picked = parseColorValue(formatBrandLink(color.id), colorStateRef.current);
+            if (!picked.link) {
+                return;
+            }
+            const { r, g, b } = hexToRgb(picked.hex);
+            const { h, s, l } = rgbToHsl(r, g, b);
+            activeBrandLinkRef.current = color.id;
+            setActiveBrandLink(color.id);
+            setColorState((prev) => {
+                const next: ColorState = {
+                    // The map's hue bar has nowhere to point for a grey, so it keeps the one it had.
+                    hue: isAchromaticHsl(s, l) ? prev.hue : h,
+                    saturation: s,
+                    lightness: l,
+                    // The author's opacity survives the pick: they chose which colour, not how much
+                    // of it.
+                    alpha: prev.alpha,
+                    hex: picked.hex,
+                };
+                colorStateRef.current = next;
+                lastMapInteractionRef.current = false;
+                notifyChange(next, color.id);
+                return next;
+            });
+        },
+        [notifyChange],
     );
 
     const renderModeInputs = () => {
@@ -724,6 +848,7 @@ export function ColorPickerTrigger({
                     onFocus={() => setIsEditingHex(true)}
                     onBlur={handleHexBlur}
                     inputMode="text"
+                    readOnly={readOnly}
                     className="mt-3"
                 />
             );
@@ -743,6 +868,7 @@ export function ColorPickerTrigger({
                                 value={String(value)}
                                 onChange={(next) => handleRgbChange(channel as "r" | "g" | "b", next)}
                                 inputMode="numeric"
+                                readOnly={readOnly}
                             />
                         </div>
                     ))}
@@ -765,6 +891,7 @@ export function ColorPickerTrigger({
                                 handleHslChange(channel as "h" | "s" | "l", next)
                             }
                             inputMode="decimal"
+                            readOnly={readOnly}
                         />
                     </div>
                 ))}
@@ -790,9 +917,11 @@ export function ColorPickerTrigger({
             onWheel={stopPickerPointerBubble}
         >
             <div
-                className="relative h-32 rounded-xl border border-edge overflow-hidden cursor-crosshair"
+                className={`relative h-32 rounded-xl border border-edge overflow-hidden ${
+                    readOnly ? "cursor-default" : "cursor-crosshair"
+                }`}
                 data-color-map
-                onPointerDown={(event) => {
+                onPointerDown={readOnly ? undefined : (event) => {
                     event.preventDefault();
                     event.stopPropagation();
                     event.currentTarget.setPointerCapture(event.pointerId);
@@ -837,10 +966,11 @@ export function ColorPickerTrigger({
                     min={0}
                     max={360}
                     value={colorState.hue}
+                    disabled={readOnly}
                     onChange={(event) =>
                         applyColorState(() => ({ hue: Number(event.target.value) }))
                     }
-                    className="w-full h-2 rounded-full appearance-none accent-transparent"
+                    className="w-full h-2 rounded-full appearance-none accent-transparent disabled:cursor-not-allowed"
                     style={{
                         background: `linear-gradient(90deg, ${HUE_GRADIENT_STOPS.join(", ")})`,
                     }}
@@ -878,10 +1008,44 @@ export function ColorPickerTrigger({
                         max={1}
                         step={0.01}
                         value={colorState.alpha}
+                        disabled={readOnly}
                         onChange={handleAlphaChange}
-                        className="w-full h-2 rounded-full appearance-none accent-transparent"
+                        className="w-full h-2 rounded-full appearance-none accent-transparent disabled:cursor-not-allowed"
                         style={{ background: opacityGradient }}
                     />
+                </div>
+            )}
+
+            {/* The project palette, last: the colour above is what the author is building, and these
+                are the shortcut to stop building it. Same swatch shape as ProjectPalette's, copied
+                rather than shared - that component is the rich-text toolbar's quick palette and has
+                its own reasons to change. The hover name is a native `title`: this panel scrolls
+                (`overflow-y: auto`), and the shared CSS Tooltip is clipped inside such a container. */}
+            {brandColors.length > 0 && (
+                <div className="mt-3 border-t border-edge pt-2">
+                    <div className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">
+                        {t("brand.picker.section")}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                        {brandColors.map((color) => (
+                            <button
+                                key={color.id}
+                                type="button"
+                                disabled={readOnly}
+                                className={`h-5 w-5 rounded-md border transition-transform disabled:cursor-not-allowed ${
+                                    readOnly ? "" : "hover:scale-110"
+                                } ${
+                                    activeBrandLink === color.id
+                                        ? "border-fg ring-2 ring-fg/80 ring-offset-1 ring-offset-surface-raised"
+                                        : "border-edge-strong"
+                                }`}
+                                // Author data, not a theme colour - raw values are what this row is for.
+                                style={{ backgroundColor: palette.resolveCss(color.id) ?? "transparent" }}
+                                title={brandColorLabel(color)}
+                                onClick={() => handleBrandPick(color)}
+                            />
+                        ))}
+                    </div>
                 </div>
             )}
         </div>
@@ -893,7 +1057,11 @@ export function ColorPickerTrigger({
             ref={triggerRef}
             type="button"
             onClick={isOpen ? closePicker : openPicker}
-            disabled={disabled || readOnly}
+            // `readOnly` deliberately does NOT disable this: it has to stay clickable to open the
+            // panel, which is the only place the value is legible. `disabled` still does.
+            disabled={disabled}
+            aria-readonly={readOnly || undefined}
+            aria-label={ariaLabel}
             className={
                 isBareSwatch
                     // No box, no padding: the caller frames this one itself. It still needs a focus
@@ -971,6 +1139,7 @@ export function ColorPickerField<TData>({ field, data, onSaving }: ColorPickerFi
                 allowOpacity={field.allowOpacity}
                 disabled={field.disabled}
                 readOnly={field.readOnly}
+                brandPalette={field.brandPalette}
                 onChange={handleChange}
             />
         </FieldLayout>
@@ -1013,9 +1182,12 @@ export function ColorPickerGroupField<TData>({
             setColor({
                 hex: currentValue.hex,
                 alpha: next,
+                // Opacity does not change which colour this is, so a brand link survives the row's
+                // α input for the same reason it survives the picker's opacity slider.
+                ...(currentValue.link ? { link: currentValue.link } : {}),
             });
         },
-        [currentValue.hex, setColor]
+        [currentValue.hex, currentValue.link, setColor]
     );
 
     return (
@@ -1028,6 +1200,7 @@ export function ColorPickerGroupField<TData>({
                     allowOpacity={false}
                     disabled={field.disabled}
                     readOnly={field.readOnly}
+                    brandPalette={field.brandPalette}
                     onChange={setColor}
                 />
                 <EnhancedInput
@@ -1038,6 +1211,8 @@ export function ColorPickerGroupField<TData>({
                     type="number"
                     min={0}
                     max={100}
+                    disabled={field.disabled}
+                    readOnly={field.readOnly}
                     leftIcon={<span className="text-xs text-fg-muted">α</span>}
                     className="flex-1"
                 />

@@ -2,8 +2,8 @@
  * The link a stored colour uses to point at the project's brand palette.
  *
  * ```
- * nlbrand:<id>            the palette entry, fully opaque
- * nlbrand:<id>/<alpha>    the palette entry at `alpha`, 0..1
+ * nlbrand:<id>            the palette entry as it stands, whatever opacity it carries
+ * nlbrand:<id>/<alpha>    the palette entry at exactly `alpha`, 0..1
  * ```
  *
  * **Why this shape is safe to store in fields nothing has been taught about yet.** Studio has three
@@ -47,6 +47,15 @@ export type BrandLink = {
     id: string;
     /** 0..1. A link with no alpha segment means 1, i.e. the palette colour as it is. */
     alpha: number;
+    /**
+     * Whether a `/<alpha>` segment was actually written.
+     *
+     * `alpha` on its own cannot say so - `nlbrand:primary` and `nlbrand:primary/1` both read as 1 -
+     * and the resolver has to tell the two apart, because a written segment *replaces* the opacity
+     * of the literal the chain ends at while an absent one leaves it standing. See
+     * `BrandPalette.resolveValueCss` for why that is the rule.
+     */
+    alphaExplicit: boolean;
 };
 
 /**
@@ -73,13 +82,13 @@ export function parseBrandLink(raw: string | null | undefined): BrandLink | null
     }
     const [, id, rawAlpha] = match;
     if (rawAlpha === undefined) {
-        return {id, alpha: 1};
+        return {id, alpha: 1, alphaExplicit: false};
     }
     const alpha = Number(rawAlpha);
     if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
         return null;
     }
-    return {id, alpha};
+    return {id, alpha, alphaExplicit: true};
 }
 
 export function isBrandLink(raw: string | null | undefined): boolean {
@@ -95,13 +104,25 @@ export function isBrandLink(raw: string | null | undefined): boolean {
  *
  * Two decimals, trailing zeros dropped. An alpha slider produces far more precision than a colour
  * can carry, and `0.5000000000000001` in a versioned document is a diff row about nothing.
+ *
+ * `writeOpaqueSegment` is the one case where the short form is wrong: a link to an entry that is
+ * *itself* translucent, whose author has just dragged the opacity to 100%. Dropping the segment
+ * there does not mean "opaque", it means "inherit", so the field would read back at the entry's own
+ * opacity and the slider would refuse to stay where it was put. Only the serializer knows the
+ * entry's alpha, so only the serializer can tell the two apart - hence a flag at the call site
+ * rather than a rule in here.
  */
-export function formatBrandLink(id: string, alpha?: number): string {
-    if (alpha === undefined || !Number.isFinite(alpha) || alpha >= 1) {
+export function formatBrandLink(
+    id: string,
+    alpha?: number,
+    options?: {writeOpaqueSegment?: boolean},
+): string {
+    if (alpha === undefined || !Number.isFinite(alpha)) {
         return `${BRAND_LINK_SCHEME}${id}`;
     }
-    const rounded = Math.round(Math.max(0, alpha) * 100) / 100;
-    return rounded >= 1
-        ? `${BRAND_LINK_SCHEME}${id}`
-        : `${BRAND_LINK_SCHEME}${id}/${rounded}`;
+    const rounded = Math.round(Math.min(1, Math.max(0, alpha)) * 100) / 100;
+    if (rounded >= 1 && !options?.writeOpaqueSegment) {
+        return `${BRAND_LINK_SCHEME}${id}`;
+    }
+    return `${BRAND_LINK_SCHEME}${id}/${rounded}`;
 }

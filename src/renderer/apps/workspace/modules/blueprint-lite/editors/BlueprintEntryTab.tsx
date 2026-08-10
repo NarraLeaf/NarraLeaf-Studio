@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
 import { EditorComponentProps } from "../../types";
@@ -430,7 +431,12 @@ function ElementLiteralSurfacePreview({
                 style={{
                     width: frameWidth,
                     height: frameHeight,
-                    backgroundColor: surface.settings?.backgroundColor ?? "#ffffff",
+                    // Resolved rather than used as stored: a surface background can be a brand link,
+                    // and an `nlbrand:` token in a CSS declaration paints nothing at all. The white
+                    // default stays this thumbnail's own - `getSurfaceBackgroundColor` answers
+                    // `transparent` for an unset stage surface, which is right on the canvas and
+                    // would leave a hole here.
+                    backgroundColor: getActiveBrandPalette().resolveValueCss(surface.settings?.backgroundColor ?? "") ?? "#ffffff",
                 }}
             >
                 <div

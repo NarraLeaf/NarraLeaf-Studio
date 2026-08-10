@@ -1,7 +1,7 @@
 import { useTranslation } from "@/lib/i18n";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { ImageFillField } from "@/apps/workspace/modules/properties/framework/fields/ImageFillField";
-import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue, ImageFillFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
@@ -48,14 +48,20 @@ export type CompactBackgroundAppearanceProps = {
     setFieldTransition: (groupKey: AppearancePropertyKey, transition: AppearanceFieldTransition | null) => void;
 };
 
-/** Solid RGB for the picker; layer transparency uses `fillOpacity` / `fillVisible`, not color alpha. */
+/**
+ * Solid RGB for the picker; layer transparency uses `fillOpacity` / `fillVisible`, not color alpha.
+ *
+ * The brand link, if the row holds one, is carried through untouched. Only the *alpha* is this
+ * module's business to override - which colour the row points at is not - and dropping the link here
+ * would leave the picker unable to ring the swatch the row is actually following.
+ */
 function backgroundColorPickerValue(raw: AppearanceRowValue | undefined): ColorValue {
     const s = String(raw ?? "").trim();
     if (!s || s.toLowerCase() === "transparent") {
         return { hex: "#ffffff", alpha: 1 };
     }
     const parsed = parseColorValue(s, { hex: "#ffffff", alpha: 1 });
-    return { hex: parsed.hex, alpha: 1 };
+    return { hex: parsed.hex, alpha: 1, ...(parsed.link ? { link: parsed.link } : {}) };
 }
 
 function patchManyBackground(
@@ -154,9 +160,16 @@ export function CompactBackgroundAppearance({
                         <ColorPickerTrigger
                             value={backgroundColorPickerValue(getBg("backgroundColor"))}
                             displayMode="icon"
+                            brandPalette
                             allowOpacity={false}
                             onChange={(next: ColorValue) =>
-                                patchBg("backgroundColor", colorValueToCss({ hex: next.hex, alpha: 1 }))
+                                // Alpha pinned to 1 for the same reason the picker hides the slider:
+                                // this row's transparency is `fillOpacity`. A link survives that -
+                                // `serializeColorValue` writes the id, not the colour it resolves to.
+                                patchBg(
+                                    "backgroundColor",
+                                    serializeColorValue({ hex: next.hex, alpha: 1, ...(next.link ? { link: next.link } : {}) })
+                                )
                             }
                         />
                         {motionVisible ? (

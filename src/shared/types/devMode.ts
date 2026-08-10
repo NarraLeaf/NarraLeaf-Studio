@@ -1,5 +1,6 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
+import type { BrandColor } from "./brand";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle } from "./localization";
 import type { PlayerPreferences } from "./preference";
@@ -293,6 +294,23 @@ export type DevModeBundle = {
      * defaults" - i.e. exactly how those bundles already behaved.
      */
     preferences?: PlayerPreferences;
+    /**
+     * The project's own palette, baked from `editor/brand.json`.
+     *
+     * Carried by the bundle for the reason localization and audio are: Dev Mode and the packaged
+     * runtime are one code path fed by one channel, so a colour that resolves in a preview has to
+     * resolve the same way in a shipped game without a second pipeline agreeing to it. And it has
+     * to travel *with* the documents rather than be read separately, because a stored colour
+     * anywhere in the UI document may be a `nlbrand:<id>` link (see `@shared/brand/brandLink`) -
+     * a link is not a colour until there is a palette beside it, and a bundle carrying one without
+     * the other is a game whose buttons paint their own fallback.
+     *
+     * Absent means the bundle predates the feature, which every consumer reads as
+     * `BUILTIN_BRAND_COLORS` - the same seed a project that has never opened the Brand surface
+     * holds on disk, so an old bundle and a fresh project answer identically. Every bundle this
+     * Studio assembles carries it.
+     */
+    brand?: BrandColor[];
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

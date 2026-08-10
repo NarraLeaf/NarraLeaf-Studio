@@ -156,6 +156,15 @@ export const lint = {
             description: "对应的台词已经不存在",
             message: "{count} 条 {locale} 录音找不到对应的行",
         },
+        brandBrokenLink: {
+            title: "断开的颜色链接",
+            description: "颜色指向了解析不出结果的配色条目",
+            // 这三条和多数规则相反，会在句子里点出自己的出处：这类问题挂在工程上，
+            // 旁边那一列位置是空的，{where} 是几十条同类问题之间唯一的区分。
+            message: "{where} 用的 {color} 不在配色方案里",
+            messageChain: "{where} 用的 {color} 又指向了 {missing}，而配色方案里没有这个颜色",
+            messageCycle: "{where} 用的 {color}，它的链接绕回了自己",
+        },
     },
     message: {
         ruleFailed: "{rule} 没能运行",
@@ -170,6 +179,8 @@ export const lint = {
         text: "文本",
         localization: "本地化",
         voice: "语音",
+        // 跟着面板叫，作者要改的就是那个面板，不叫链接协议的名字。
+        brand: "配色方案",
     },
     severity: {
         error: "错误",
