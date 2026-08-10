@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 /**
  * Which window a subtree is actually drawn in.
@@ -18,10 +18,25 @@ import { createContext, useContext, type ReactNode } from "react";
  * So anything that reaches past its own subtree - portals, document/window listeners, focus and
  * geometry reads - asks here which document it is really in. See `DetachedWindow`.
  */
-const HostWindowContext = createContext<Window | null>(null);
+type HostWindow = {
+    window: Window;
+    /**
+     * The detached window's key, which is how the main process addresses it - the buttons this
+     * subtree draws for its own title bar have to name the window they mean, because the IPC they
+     * send goes out through the opener. See `appDetachedWindowControl`.
+     */
+    key: string;
+};
 
-export function HostWindowProvider({ window: hostWindow, children }: { window: Window; children: ReactNode }) {
-    return <HostWindowContext.Provider value={hostWindow}>{children}</HostWindowContext.Provider>;
+const HostWindowContext = createContext<HostWindow | null>(null);
+
+export function HostWindowProvider({ window: hostWindow, windowKey, children }: {
+    window: Window;
+    windowKey: string;
+    children: ReactNode;
+}) {
+    const value = useMemo(() => ({ window: hostWindow, key: windowKey }), [hostWindow, windowKey]);
+    return <HostWindowContext.Provider value={value}>{children}</HostWindowContext.Provider>;
 }
 
 /**
@@ -33,7 +48,12 @@ export function HostWindowProvider({ window: hostWindow, children }: { window: W
  * code that does runs in effects, which a server render does not run.
  */
 export function useHostWindow(): Window {
-    return useContext(HostWindowContext) ?? (globalThis as { window?: Window }).window as Window;
+    return useContext(HostWindowContext)?.window ?? (globalThis as { window?: Window }).window as Window;
+}
+
+/** The detached window's key, or null in a subtree drawn in the renderer's own window. */
+export function useDetachedWindowKey(): string | null {
+    return useContext(HostWindowContext)?.key ?? null;
 }
 
 /** The document this subtree is drawn in. Portal targets and listener targets belong to it. */

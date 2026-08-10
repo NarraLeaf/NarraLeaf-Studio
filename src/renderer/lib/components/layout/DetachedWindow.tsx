@@ -39,6 +39,17 @@ export type DetachedWindowProps = {
 const DEFAULT_WIDTH = 1100;
 const DEFAULT_HEIGHT = 760;
 
+/**
+ * How long a teardown waits before it actually closes the window.
+ *
+ * Long enough to cover React's StrictMode remount, which arrives after a macrotask rather than
+ * synchronously with the cleanup - at 0ms the throwaway first mount really did open a window and
+ * close it again, which is a native window flashing on screen every time an editor is popped out.
+ * The cost is that a genuine close (re-dock, window gone) happens a quarter second late, which
+ * nobody can see.
+ */
+const CLOSE_DEFERRAL_MS = 250;
+
 /** Marks a re-dispatched key event so the forwarder never picks up its own echo. */
 const FORWARDED_KEY_FLAG = "__nlsForwardedFromDetachedWindow";
 
@@ -49,6 +60,17 @@ type OpenDetachedWindow = {
     dispose: () => void;
     /** Pending teardown, cancelled if the same key is re-opened in the same tick (see below). */
     closeTimer: ReturnType<typeof setTimeout> | null;
+    /**
+     * True while WE are the ones closing the window.
+     *
+     * A window closing is normally the author's decision and gets reported as one - the editor
+     * comes back to the workspace, or ends, per their setting. But this component closes windows
+     * too (StrictMode's throwaway first mount, a re-dock, the opener navigating away), and those
+     * closes must not be mistaken for that decision: reporting one releases the detached entry,
+     * which unmounts this component, which closes the window that was actually alive. That cascade
+     * is exactly how a pop-out ended up leaving no window and no tab.
+     */
+    selfClosing: boolean;
 };
 
 /**
@@ -56,9 +78,9 @@ type OpenDetachedWindow = {
  *
  * Module-level rather than per-component because React's StrictMode mounts every effect twice in
  * development: open, tear down, open again. Tearing a native window down and building it back is a
- * visible flash and loses the size the author just gave it, so teardown is deferred by a tick and
- * cancelled if the same key comes back - which, under StrictMode's synchronous remount, it always
- * does.
+ * visible flash and loses the size the author just gave it, so teardown is deferred
+ * (`CLOSE_DEFERRAL_MS`) and cancelled if the same key comes back - which, on a StrictMode remount,
+ * it always does.
  */
 const openWindows = new Map<string, OpenDetachedWindow>();
 
@@ -102,10 +124,14 @@ export function DetachedWindow({
             if (openWindows.get(windowKey) === created) {
                 openWindows.delete(windowKey);
             }
+            const wasSelfClosing = created.selfClosing;
             created.dispose();
-            onClosedRef.current();
+            if (!wasSelfClosing) {
+                onClosedRef.current();
+            }
         };
         created.win.addEventListener("pagehide", onGone);
+        created.dispose = chain(created.dispose, () => created.win.removeEventListener("pagehide", onGone));
         // A window closed by its OS button fires `pagehide` in every browser Studio ships on, but
         // the poll is the backstop for the paths that do not (the opener being told to close it,
         // a crash of the popup's own frame): a detached editor that has silently lost its window
@@ -136,7 +162,7 @@ export function DetachedWindow({
     }
 
     return createPortal(
-        <HostWindowProvider window={opened.win}>{children}</HostWindowProvider>,
+        <HostWindowProvider window={opened.win} windowKey={windowKey}>{children}</HostWindowProvider>,
         opened.container,
     );
 }
@@ -166,9 +192,10 @@ function scheduleClose(windowKey: string): void {
         if (openWindows.get(windowKey) === entry) {
             openWindows.delete(windowKey);
         }
+        entry.selfClosing = true;
         entry.dispose();
         entry.win.close();
-    }, 0);
+    }, CLOSE_DEFERRAL_MS);
 }
 
 function openDetachedWindow(
@@ -185,22 +212,25 @@ function openDetachedWindow(
     doc.title = options.title;
     doc.documentElement.lang = document.documentElement.lang;
 
-    const disposers: Array<() => void> = [];
-    disposers.push(adoptStyles(doc));
-    disposers.push(mirrorRootAttributes(doc));
-    disposers.push(forwardKeyEvents(doc));
-    disposers.push(closeWithOpenerDocument(win));
-
     const container = doc.createElement("div");
     container.className = "h-screen w-screen overflow-hidden";
     doc.body.appendChild(container);
 
-    return {
+    const disposers: Array<() => void> = [];
+    const entry: OpenDetachedWindow = {
         win,
         container,
         dispose: () => disposers.forEach(fn => fn()),
         closeTimer: null,
+        selfClosing: false,
     };
+
+    disposers.push(adoptStyles(doc));
+    disposers.push(mirrorRootAttributes(doc));
+    disposers.push(forwardKeyEvents(doc));
+    disposers.push(closeWithOpenerDocument(entry));
+
+    return entry;
 }
 
 /** Must match `detachedWindowFrameName` in the main process, which gates the popup. */
@@ -218,8 +248,13 @@ function detachedFrameName(windowKey: string): string {
  * so the editor is neither a tab nor a window. Closing it hands the editor back through the normal
  * path instead.
  */
-function closeWithOpenerDocument(win: Window): () => void {
-    const close = () => win.close();
+function closeWithOpenerDocument(entry: OpenDetachedWindow): () => void {
+    const close = () => {
+        // Ours, not the author's: nobody is left to hear a report anyway, and the flag is what
+        // keeps the closing window from being read as a decision to put the editor back.
+        entry.selfClosing = true;
+        entry.win.close();
+    };
     window.addEventListener("pagehide", close);
     return () => window.removeEventListener("pagehide", close);
 }

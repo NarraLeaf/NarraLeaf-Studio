@@ -11,7 +11,7 @@ import { WindowUserHandlers } from "./windowUserHandlers";
 import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults, WindowControlPolicy } from "@shared/types/window";
 import { getWindowBackgroundColor } from "@/app/application/theme";
 import { applyTrafficLightPositionForZoom, applyZoomFactorToWebContents, windowTypeUsesZoom } from "@/app/application/zoom";
-import { ZOOM_PERCENT_DEFAULT, nextZoomPercent, normalizeZoomPercent } from "@shared/constants/zoom";
+import { ZOOM_PERCENT_DEFAULT, nextZoomPercent, normalizeZoomPercent, trafficLightPositionForZoom } from "@shared/constants/zoom";
 import { decideWindowNavigation } from "./navigationGuard";
 import { decideDetachedWindowOpen } from "./detachedWindowGuard";
 
@@ -49,13 +49,15 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     private closeGuard?: (window: AppWindow<T>) => boolean;
     private closeGuardBypassed: boolean = false;
     /**
-     * Popups this window detached part of itself into (see `detachedWindowGuard`).
+     * Popups this window detached part of itself into (see `detachedWindowGuard`), by their key.
      *
-     * Tracked only so window-wide settings reach them: they are Chromium-owned child windows, not
-     * `AppWindow`s, so nothing else in the app iterates over them. Chromium closes them with their
-     * opener, hence no teardown here beyond forgetting the entry.
+     * They are Chromium-owned child windows, not `AppWindow`s, so nothing else in the app iterates
+     * over them - this map is what carries window-wide settings (zoom, traffic lights) across, and
+     * what `controlDetachedWindow` resolves against, which is also the reason it is scoped to one
+     * opener: a window can only drive the popups it opened. Chromium closes them with their opener,
+     * hence no teardown here beyond forgetting the entry.
      */
-    private detachedWebContents: Set<Electron.WebContents> = new Set();
+    private detachedWindows: Map<string, Electron.BrowserWindow> = new Map();
 
     constructor(app: App, config: WindowConfig<T>, props: WindowProps[T]) {
         const windowConfig: WindowConfig<T> = {
@@ -337,6 +339,46 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         this.prepareEvents();
     }
 
+    /**
+     * Drive one of this window's detached popups, and report where it ended up.
+     *
+     * Keyed rather than implicit because the renderer drawing that popup's buttons is THIS
+     * window's - see `appDetachedWindowControl`. Returns null for a key this window did not open,
+     * which is both the "window already gone" case and the refusal of a key belonging to someone
+     * else.
+     */
+    public controlDetachedWindow(
+        key: string,
+        control: "status" | "minimize" | "toggleMaximize" | "close",
+    ): WindowVisibilityStatus | null {
+        const detached = this.detachedWindows.get(key);
+        if (!detached || detached.isDestroyed()) {
+            return null;
+        }
+
+        switch (control) {
+            case "minimize":
+                detached.minimize();
+                break;
+            case "toggleMaximize":
+                if (detached.isMaximized()) {
+                    detached.unmaximize();
+                } else {
+                    detached.maximize();
+                }
+                break;
+            case "close":
+                detached.close();
+                // Reporting the state of a window that is on its way out would be a lie either
+                // way; the renderer only uses this to draw a button it is about to unmount.
+                return "normal";
+            case "status":
+                break;
+        }
+
+        return detachedWindowStatus(detached);
+    }
+
     /** Re-read `ui.zoomPercent` and apply it. No-op for windows that don't zoom. */
     public applyStoredZoom(): void {
         if (!windowTypeUsesZoom(this.getWindowType())) {
@@ -347,10 +389,14 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             applyZoomFactorToWebContents(this.getWebContents(), percent);
             // A detached editor is the same interface at a different zoom otherwise: zoom is a
             // per-webContents property and the popup has its own, which no broadcast reaches.
-            for (const contents of this.detachedWebContents) {
-                if (!contents.isDestroyed()) {
-                    applyZoomFactorToWebContents(contents, percent);
+            for (const detached of this.detachedWindows.values()) {
+                if (detached.isDestroyed()) {
+                    continue;
                 }
+                applyZoomFactorToWebContents(detached.webContents, percent);
+                // Frameless like its opener, and wearing the editor's own title row: the OS-drawn
+                // buttons have to be re-centred in a bar that just changed height.
+                applyTrafficLightPositionForZoom(detached, WindowControlPolicy.Standard, percent);
             }
             // The traffic lights are drawn by macOS and ignore the zoom, so the CSS
             // titlebar would otherwise grow or shrink out from under them.
@@ -490,13 +536,22 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
             return {
                 action: "allow",
-                // A detached editor wears the OS frame, unlike every other Studio window. The
-                // custom title bar minimises, maximises and closes "the window that sent this
-                // IPC" - and a popup shares its opener's webContents for IPC, so those buttons
-                // would drive the workspace window instead of the one they are drawn in.
+                // Frameless, like every other Studio window: the detached editor's own title row
+                // is the title bar (it carries `titlebar-drag`, reserves the traffic lights their
+                // space, and draws the buttons where the OS draws none). The buttons it draws
+                // cannot use the ordinary window-control IPC - a popup sends IPC through its
+                // opener, so "close this window" would close the workspace - hence
+                // `appDetachedWindowControl`, which names the window it means.
                 overrideBrowserWindowOptions: {
-                    frame: true,
-                    titleBarStyle: "default",
+                    frame: false,
+                    ...(process.platform === "darwin"
+                        ? {
+                            titleBarStyle: "hidden" as const,
+                            trafficLightPosition: trafficLightPositionForZoom(
+                                this.getApp().globalState.get("ui.zoomPercent"),
+                            ),
+                        }
+                        : {}),
                     backgroundColor: getWindowBackgroundColor(),
                     minWidth: DETACHED_WINDOW_MIN_WIDTH,
                     minHeight: DETACHED_WINDOW_MIN_HEIGHT,
@@ -508,13 +563,30 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         });
 
         webContents.on("did-create-window", (child, details) => {
+            const decision = decideDetachedWindowOpen({
+                url: details.url,
+                frameName: details.frameName,
+                windowType: this.getWindowType(),
+            });
+            if (!decision.allowed) {
+                // Unreachable through the handler above, which is the only way a window gets made;
+                // an unkeyed child would be one nothing can address, so refuse rather than keep it.
+                this.getApp().logger.error(`[Window] Detached window arrived unkeyed: ${details.frameName}`);
+                child.destroy();
+                return;
+            }
+
             this.getApp().logger.info(`[Window] Detached window opened from ${this.getWindowType()}: ${details.frameName}`);
             // Held as its own reference: `closed` fires after the BrowserWindow is destroyed, and
             // reading `child.webContents` from there throws "Object has been destroyed" - out of a
             // native event handler, which takes the whole main process down with it.
             const contents = child.webContents;
-            this.detachedWebContents.add(contents);
-            child.on("closed", () => this.detachedWebContents.delete(contents));
+            this.detachedWindows.set(decision.key, child);
+            child.on("closed", () => {
+                if (this.detachedWindows.get(decision.key) === child) {
+                    this.detachedWindows.delete(decision.key);
+                }
+            });
 
             // Same restrictions the parent lives under. A blank popup has no URL to navigate from,
             // but it does have a renderer that could be talked into acquiring one.
@@ -572,4 +644,11 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     public get app(): App {
         return this.getApp();
     }
+}
+
+function detachedWindowStatus(window: Electron.BrowserWindow): WindowVisibilityStatus {
+    if (window.isMinimized()) {
+        return "minimized";
+    }
+    return window.isMaximized() ? "maximized" : "normal";
 }
