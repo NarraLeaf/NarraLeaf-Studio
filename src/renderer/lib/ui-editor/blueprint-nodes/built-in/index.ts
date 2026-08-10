@@ -8,6 +8,7 @@ import { backlogBlueprintNodes } from "./backlogNodes";
 import { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 import { broadcastBlueprintNodes } from "./broadcastNodes";
 import { collectionBlueprintNodes } from "./collectionNodes";
+import { componentBlueprintNodes } from "./componentNodes";
 import { controlFlowBlueprintNodes } from "./controlFlowNodes";
 import { dataBlueprintNodes } from "./dataNodes";
 import { devtoolsBlueprintNodes } from "./devtoolsNodes";
@@ -38,6 +39,7 @@ export { backlogBlueprintNodes } from "./backlogNodes";
 export { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 export { broadcastBlueprintNodes } from "./broadcastNodes";
 export { collectionBlueprintNodes } from "./collectionNodes";
+export { componentBlueprintNodes, BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "./componentNodes";
 export { controlFlowBlueprintNodes } from "./controlFlowNodes";
 export { dataBlueprintNodes } from "./dataNodes";
 export { devtoolsBlueprintNodes } from "./devtoolsNodes";
@@ -71,6 +73,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...broadcastBlueprintNodes,
     ...fnBlueprintNodes,
     ...frameBlueprintNodes,
+    ...componentBlueprintNodes,
     ...gameBlueprintNodes,
     ...visitedBlueprintNodes,
     ...backlogBlueprintNodes,
