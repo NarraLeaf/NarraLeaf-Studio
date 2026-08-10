@@ -182,6 +182,96 @@ mac:
       to: resources/codesign/darwin
     - from: ./resources/ffmpeg/darwin
       to: resources/ffmpeg/darwin
+# The DMG window *is* the background image: dmg-builder measures the file with
+# `sips` and hands that size to dmgbuild as the window size, which also means
+# `dmg.window` is silently ignored whenever `background` is set (dmg-builder's
+# customizeDmg only populates the window key in the backgroundColor branch). So
+# the 560x326 the images carry is load-bearing — resizing them moves the window
+# without moving the icon coordinates below, and vice versa. (The artboard is
+# 560x380; project/dmg holds it cropped, for the reason spelled out further
+# down.)
+#
+# background@2x.png (1120x652) sits next to background.png and is never named
+# here: electron-builder finds it by that suffix, runs `tiffutil -cathidpicheck`
+# on the pair, and ships a multi-representation tiff so the window is crisp on
+# Retina. That pairing is checked, not merely conventional: the @2x file must be
+# exactly twice the @1x or tiffutil fails the build outright. Delete it and the
+# DMG silently drops to 1x instead.
+#
+# The path is project-relative on purpose. `getResource` searches
+# `directories.buildResources` before the project dir, and that is
+# `project/installer` — the NSIS wizard's assets, which these are not. Naming
+# the file explicitly puts it in `project/dmg` and lets the project-dir fallback
+# find it, rather than filing macOS window art under the Windows installer or
+# reviving the bare `background.png` convention, which would resolve against
+# `project/installer` and quietly pick up nothing.
+#
+# Coordinates are icon *centres* in 1x pixels, with y measured downwards from
+# the top of the window's *icon view*. (Verified against the stock 540x380
+# template: its default (130,220)/(410,220) land exactly on the dashed arrow
+# drawn at x~265, y~225.) Centres, not corners — the art was laid out against
+# the Applications icon's top-left at (360, 94), which is why the value below is
+# that plus half of iconSize rather than the number the artboard carries.
+#
+# The character is mirrored to face right and her fingertip lands at (337, 138),
+# which is what aims her at the folder: 4px off its vertical centre, no arrow
+# drawn. Left-to-right drag order still holds — the app icon sits in her arms on
+# the left, /Applications on the right. Moving either icon without moving her
+# breaks the only thing connecting them.
+#
+# The height is *not* all usable: the size derived from the image is the whole
+# Finder window frame, and the title bar plus whatever bars the user has
+# enabled are subtracted from it before the icon view (and therefore the
+# background) gets any. Measured on macOS 14 at two image heights, so the
+# overhead is constant rather than proportional:
+#   title bar 27.5 + borders ~2.5              -> icon view = H - 30
+#   ...plus path bar 27 (View > Show Path Bar)  -> icon view = H - 57
+#   ...plus status bar 27                       -> icon view = H - 84
+# A one-line 12pt label's ink ends 69px below the icon centre, so keeping the
+# filename visible for a user with every bar switched on wants
+# `y <= H - 161`. Miss it and the labels are not clipped in an obvious way —
+# they render *underneath* the path bar and simply look absent, on that user's
+# machine only.
+#
+# Both rows clear that: the lower one (the app icon, y 200) ends its label at
+# 269 against an icon view of 296 in the worst case.
+#
+# That bound constrains where *icons* go. The background is the opposite case
+# and the two are easy to confuse: because the icon view's height varies by 54px
+# across those three configurations while the image does not, art that stops
+# short is not cropped on the roomier ones — the window reveals blank background
+# below it. The 560x380 artboard ends the character at row 296, which showed as
+# 54px of empty white for a user with no extra bars (the default), and 27px for
+# one with the path bar.
+#
+# Hence the crop to 326: 296 (where the art actually ends) + 30 (title bar and
+# borders, the smallest chrome any configuration can have). The default window
+# then reveals the art exactly to its last row and no further, and every other
+# configuration crops the character rather than running out of her. The app icon
+# moved to y 165 to fit under the shortened window — 326 - 84 - 69 - 8 — which
+# is why it sits at her chest rather than in her arms as the artboard intends.
+# Redrawing the character down to row 380 would undo both compromises: the image
+# could stay 380 tall and the icon could go back to 200.
+dmg:
+  title: ${productName}
+  background: project/dmg/background.png
+  iconSize: 96
+  iconTextSize: 12
+  # lzfse — smaller and faster to decompress than the default UDZO, and
+  # mountable by every macOS that can run Studio (10.11+).
+  format: ULFO
+  contents:
+    # `path` omitted: dmg-builder substitutes the packaged app (`c.path || appPath`).
+    # On her chest; its label lands on the white hoodie, which is the only patch
+    # of her light enough for 12pt dark text.
+    - x: 150
+      y: 165
+      type: file
+    # (360, 94) top-left + 48 = the centre dmgbuild actually wants.
+    - x: 408
+      y: 142
+      type: link
+      path: /Applications
 # The Windows installer. Every value here was a default until now, and the defaults add up to a
 # one-click installer: no wizard, no way to choose a location, and a window Windows stretches from
 # 96 DPI because NSIS is not DPI-aware unless asked (see project/installer/installer.nsh).
