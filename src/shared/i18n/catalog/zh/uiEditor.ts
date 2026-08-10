@@ -4,8 +4,8 @@ export const uiEditor = {
     surfaceKind: {
         page: "页面",
         gameUi: "游戏 UI",
-        pageDescription: "页面是完整的屏幕，例如标题、设置、存档、历史或画廊",
-        gameUiDescription: "游戏界面属于进行中的游戏，例如对话、选项、HUD、快捷菜单和通知",
+        pageDescription: "页面是完整的屏幕，例如标题、设置、存档、回想或画廊",
+        gameUiDescription: "游戏界面属于进行中的游戏，例如对白、选项、HUD、快捷菜单和通知",
     },
     panel: {
         interfaceType: "界面类型",
@@ -166,7 +166,7 @@ export const uiEditor = {
         },
         slot: {
             onStage: "舞台",
-            dialog: "对话",
+            dialog: "对白",
             notification: "通知",
             choice: "选项",
             nvl: "NVL",

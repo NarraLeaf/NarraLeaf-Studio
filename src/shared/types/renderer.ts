@@ -321,6 +321,8 @@ export interface RendererPreloadedInterface {
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
         /** Removes by path; the main process owns the read-modify-write. */
         removeRecentProject(path: string): Promise<RequestStatus<void>>;
+        /** Shows a remembered project's folder in the OS file manager. Paths outside the history are refused. */
+        revealRecentProject(path: string): Promise<RequestStatus<void>>;
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
         getSystemPath(name: "desktop" | "home"): Promise<RequestStatus<{ path: string }>>;

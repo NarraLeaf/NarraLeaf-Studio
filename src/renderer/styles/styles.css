@@ -956,6 +956,44 @@ input[type="radio"]:focus {
 }
 
 /*
+ * Ruby readings in the story editor, drawn from `data-ruby` rather than from an `<rt>` element.
+ *
+ * That choice is load-bearing, not cosmetic. The rich-text unit model counts the characters in text
+ * nodes, and a reading that owned a text node of its own would add units the runs never had — every
+ * caret position, selection and mark applied after the first annotation would land somewhere else
+ * (see `RUBY_CLASS` in richText.ts). A pseudo-element carries no text node and is invisible to
+ * `Selection`, so the reading can be visible and weightless at the same time.
+ *
+ * The span stays a plain inline box and the reading is taken out of flow above it, so a row that
+ * carries a reading is exactly as tall as one that does not. Reserving room for the reading instead
+ * — padding on an inline-block — was tried and rejected: it made the row grow the moment a reading
+ * was written, which moves every line below it and turns annotating one word into a change the
+ * whole scene can see.
+ *
+ * The reading therefore lives in the leading above the line. `line-height: 1` keeps its box to the
+ * glyphs, and half the base size keeps those glyphs inside the space the line already had.
+ *
+ * Everything but the size is inherited on purpose: a bold, coloured word carries a bold, coloured
+ * reading, which is what the game draws.
+ */
+.story-rt-ruby {
+    position: relative;
+}
+
+.story-rt-ruby::before {
+    content: attr(data-ruby);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.5em;
+    line-height: 1;
+    white-space: nowrap;
+    /* The reading is a label, not a target: a click there belongs to the word underneath. */
+    pointer-events: none;
+}
+
+/*
  * Speaker colours for the story editor's gutter (gutter 规范 §4).
  *
  * One hue per character, carried in from JS as `--nl-speaker-h` (see storySpeakerIdentity.ts) and

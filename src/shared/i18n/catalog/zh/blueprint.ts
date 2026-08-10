@@ -24,9 +24,9 @@ export const blueprint = {
         conditionValue: "值",
         always: "始终",
         opContains: "包含",
-        noVariables: "该蓝图没有可用于判断的变量。",
+        noVariables: "该蓝图没有可用于判断的变量",
         hitCountLabel: "忽略前几次命中",
-        hitCountHint: "从第几次命中开始才暂停。每次运行重新计数。",
+        hitCountHint: "从第几次命中开始才暂停；每次运行重新计数",
     },
     panelLabel: "蓝图",
     sidePanel: {
@@ -72,7 +72,7 @@ export const blueprint = {
         },
         layout: {
             outOfBounds: "元素“{name}”超出了画面设计边界",
-            outOfBoundsHint: "设计尺寸为 {width}×{height}。请移动或调整该元素的大小",
+            outOfBoundsHint: "设计尺寸为 {width}×{height}；请移动或调整该元素的大小",
         },
         resource: {
             imageMissing: "图片控件“{name}”没有图片资源",
@@ -84,7 +84,7 @@ export const blueprint = {
             puppetBackendMissing: "模型控件“{name}”没有指定运行时",
             puppetBackendMissingHint: "在检查器中从本工程的 runtimes/puppet 目录选择一个运行时",
             puppetBudget: "本画面同时要绘制 {count} 个模型，但只能画出 {limit} 个",
-            puppetBudgetHint: "超出 {limit} 的控件显示提示文字而不是模型。",
+            puppetBudgetHint: "超出 {limit} 的控件显示提示文字而不是模型",
             containerImageMissing: "容器“{name}”使用了图片填充但缺少资源",
             containerImageMissingHint: "选择一个图片资源或切换填充类型",
             buttonImageMissing: "按钮“{name}”使用了图片背景但缺少资源",
@@ -190,7 +190,7 @@ export const blueprint = {
         deleteVariableDetail: "引用了此变量的节点将失去其选择项，此操作无法撤销",
         deletePersistentVariableLabel: "删除持久化变量“{name}”",
         deletePersistentVariableConfirm: "删除持久化变量“{name}”？",
-        deletePersistentVariableDetail: "引用该持久变量的节点将失去所选项。该键对应的玩家存档数据不会被删除",
+        deletePersistentVariableDetail: "引用该持久变量的节点将失去所选项；该键对应的玩家存档数据不会被删除",
         pageVariables: "页面变量",
         pageScope: "页面",
         pageEmpty: "暂无页面变量",
