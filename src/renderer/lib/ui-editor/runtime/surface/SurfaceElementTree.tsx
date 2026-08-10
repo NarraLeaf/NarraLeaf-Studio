@@ -9,6 +9,7 @@ import {
     getUIComponentLink,
     isUIElementFlowLayoutChild,
 } from "@shared/types/ui-editor/document";
+import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -829,9 +830,7 @@ function renderLinkedComponentInstanceContent(input: {
             [root.id]: rootSnapshot,
         },
     };
-    const componentInstanceKey = input.instanceKey
-        ? `${input.instanceKey}\0component:${input.instanceElement.id}`
-        : `component:${input.instanceElement.id}`;
+    const componentInstanceKey = buildUIComponentInstanceKey(input.instanceKey, input.instanceElement.id);
     const viewportStyle: CSSProperties = {
         position: "relative",
         width: "100%",
