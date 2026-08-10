@@ -20,12 +20,8 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
         );
     }
 
-    const Row = ({ d }: { d: BlueprintGraphEditorDiagnostic }) => (
-        <button
-            type="button"
-            className="flex w-full gap-2 rounded-md px-2 py-1 text-left hover:bg-fill-subtle"
-            onClick={() => onPick(d)}
-        >
+    const Row = ({ d }: { d: BlueprintGraphEditorDiagnostic }) => {
+        const severity = (
             <span
                 className={
                     d.severity === "error"
@@ -37,10 +33,29 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
             >
                 {d.severity}
             </span>
-            <span className="flex-1 text-fg-muted">{d.message}</span>
-            {d.code ? <span className="font-mono text-2xs text-fg-subtle">{d.code}</span> : null}
-        </button>
-    );
+        );
+        const body = (
+            <>
+                {severity}
+                <span className="flex-1 text-fg-muted">{d.message}</span>
+                {d.code ? <span className="font-mono text-2xs text-fg-subtle">{d.code}</span> : null}
+            </>
+        );
+        // A diagnostic that names nowhere — one about the blueprint as a whole — has nothing to go
+        // to, so it is not offered as something to click.
+        if (!d.target) {
+            return <div className="flex w-full gap-2 px-2 py-1 text-left">{body}</div>;
+        }
+        return (
+            <button
+                type="button"
+                className="flex w-full cursor-default gap-2 rounded-md px-2 py-1 text-left hover:bg-fill-subtle"
+                onClick={() => onPick(d)}
+            >
+                {body}
+            </button>
+        );
+    };
 
     return (
         <div className="max-h-32 shrink-0 overflow-y-auto border-t border-edge bg-surface-sunken px-2 py-1.5">

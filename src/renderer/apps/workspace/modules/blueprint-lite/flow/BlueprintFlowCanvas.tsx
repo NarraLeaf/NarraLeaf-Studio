@@ -166,6 +166,14 @@ type BlueprintFlowCanvasInnerProps = {
     blueprintSavedVariables: NonNullable<BlueprintFlowNodeData["savedVariables"]>;
     selectedNodeIds: readonly string[];
     onSelectNodeIds: (ids: string[]) => void;
+    /**
+     * A node to bring into view, on top of selecting it — what the diagnostics list asks for when an
+     * error is clicked. Selection alone leaves the node wherever it was, which on a graph bigger
+     * than the viewport is off screen.
+     */
+    focusNodeId?: string | null;
+    /** Bumped by the caller to re-centre on the same node; ignored while unchanged. */
+    focusNonce?: number;
     onCommitIr: (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => void;
     /**
      * When set, right-click on the pane opens a compact search menu. After picking a type, a preview follows
@@ -311,6 +319,8 @@ function BlueprintFlowCanvasInner({
     blueprintSavedVariables,
     selectedNodeIds,
     onSelectNodeIds,
+    focusNodeId,
+    focusNonce,
     onCommitIr,
     onAddNodeAtFlowPosition,
     dragConnectCreate,
@@ -340,7 +350,7 @@ function BlueprintFlowCanvasInner({
     // starts; see `components/ui/freezeGuard`.
     const freeze = useFreezeGuard();
     const { t } = useTranslation();
-    const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport } = useReactFlow();
+    const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport, setCenter } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const nodeDiagnosticsByNodeId = useMemo(
@@ -881,8 +891,22 @@ function BlueprintFlowCanvasInner({
         setNodes,
     ]);
 
+    /**
+     * The focus request currently owed, keyed so that clicking the same diagnostic again re-centres
+     * after the author has panned away — and so that a request is only owed while the node it names
+     * is actually in this graph. Read off the IR rather than off `nodes`, which still holds the
+     * previous graph's nodes for the render in which the graph is switched.
+     */
+    const focusRequestKey =
+        focusNodeId && ir.nodes?.[focusNodeId] ? `${graphKey}:${focusNodeId}:${focusNonce ?? 0}` : null;
+    const appliedFocusKeyRef = useRef<string | null>(null);
+    const focusPendingRef = useRef(false);
+    focusPendingRef.current = focusRequestKey !== null && focusRequestKey !== appliedFocusKeyRef.current;
+
     useEffect(() => {
-        if (initialViewport) {
+        // Opening a graph to reveal one node in it: fitting the whole graph first would be a jump
+        // to somewhere the author did not ask to look, followed immediately by another one.
+        if (initialViewport || focusPendingRef.current) {
             return undefined;
         }
         let secondFrame = 0;
@@ -898,6 +922,33 @@ function BlueprintFlowCanvasInner({
             }
         };
     }, [fitView, graphKey, initialViewport]);
+
+    /**
+     * Centre on the requested node, keeping the author's zoom: `setCenter` defaults to `maxZoom`,
+     * which would slam the canvas to full size on every error clicked.
+     *
+     * Waits for React Flow to have measured the node. On a graph switch it has not: the effect first
+     * runs against the previous graph's `nodes`, then against freshly built ones that carry no
+     * dimensions yet, and centring on a node of size 0 lands its top-left corner where its middle
+     * belongs — half a card off, which on a wide node reads as "it did not centre". The dimensions
+     * arrive as a node change, which puts this effect back on its feet.
+     */
+    useEffect(() => {
+        if (!focusRequestKey || !focusNodeId || focusRequestKey === appliedFocusKeyRef.current) {
+            return;
+        }
+        const node = nodes.find(entry => entry.id === focusNodeId);
+        const width = node?.measured?.width ?? 0;
+        const height = node?.measured?.height ?? 0;
+        if (!node || width <= 0 || height <= 0) {
+            return;
+        }
+        appliedFocusKeyRef.current = focusRequestKey;
+        void setCenter(node.position.x + width / 2, node.position.y + height / 2, {
+            zoom: getViewport().zoom,
+            duration: 220,
+        });
+    }, [focusRequestKey, focusNodeId, nodes, getViewport, setCenter]);
 
     const onSelectionChange = useCallback(
         ({ nodes: sel }: { nodes: Node[] }) => {
