@@ -2,6 +2,9 @@
 export const blueprint = {
     header: {
         title: "Blueprint",
+        /** The pop-out control on the title row, and what a middle click there does. */
+        detach: "Open in a separate window",
+        detachFailed: "The separate window could not be opened. The blueprint stayed in the workspace.",
     },
     tab: {
         title: "Blueprint",

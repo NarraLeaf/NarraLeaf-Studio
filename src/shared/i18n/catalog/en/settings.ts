@@ -157,6 +157,14 @@ export const settings = {
                 command: "Highlight commands",
             },
         },
+        detachedEditorOnClose: {
+            label: "When a detached editor window closes",
+            description: "An editor opened in its own window either returns to the workspace or closes with the window.",
+            options: {
+                restoreTab: "Return it to the workspace",
+                close: "Close the editor",
+            },
+        },
         editorLineNumbers: {
             label: "Show line numbers",
             description: "In the built-in text editor, for files opened from the asset library.",

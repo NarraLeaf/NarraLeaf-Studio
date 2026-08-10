@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { HelpTrigger } from "@/lib/help";
@@ -6,6 +6,10 @@ import { useTranslation } from "@/lib/i18n";
 
 type Props = {
     header: ReactNode;
+    /** Controls on the right of the title row, before the help trigger. */
+    headerActions?: ReactNode;
+    /** Non-primary clicks on the title row - a middle click there pops the editor out. */
+    onHeaderAuxClick?: (event: ReactMouseEvent) => void;
     memberTree: ReactNode;
     canvas: ReactNode;
     diagnostics: ReactNode;
@@ -17,6 +21,8 @@ type Props = {
 
 export function BlueprintEditorLayout({
     header,
+    headerActions,
+    onHeaderAuxClick,
     memberTree,
     canvas,
     diagnostics,
@@ -67,8 +73,12 @@ export function BlueprintEditorLayout({
         // The whole editor answers with one topic: `F1` anywhere in it - the canvas, the member
         // tree, the diagnostics list - is the same question about the same thing.
         <div className="flex h-full min-h-0 flex-col bg-surface text-sm text-fg" data-help-topic="blueprints">
-            <header className="group/help flex shrink-0 items-center border-b border-edge px-3 py-2">
+            <header
+                className="group/help flex shrink-0 items-center gap-1 border-b border-edge px-3 py-2"
+                onAuxClick={onHeaderAuxClick}
+            >
                 <div className="min-w-0 flex-1">{header}</div>
+                {headerActions}
                 <HelpTrigger topic="blueprints" />
             </header>
             <div className="relative flex min-h-0 min-w-0 flex-1">

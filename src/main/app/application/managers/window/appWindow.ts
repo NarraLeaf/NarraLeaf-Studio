@@ -13,6 +13,14 @@ import { getWindowBackgroundColor } from "@/app/application/theme";
 import { applyTrafficLightPositionForZoom, applyZoomFactorToWebContents, windowTypeUsesZoom } from "@/app/application/zoom";
 import { ZOOM_PERCENT_DEFAULT, nextZoomPercent, normalizeZoomPercent } from "@shared/constants/zoom";
 import { decideWindowNavigation } from "./navigationGuard";
+import { decideDetachedWindowOpen } from "./detachedWindowGuard";
+
+/**
+ * Floor for a detached editor window. Small enough to park beside the workspace on one screen,
+ * large enough that the editor inside it still has a canvas next to its side panels.
+ */
+const DETACHED_WINDOW_MIN_WIDTH = 640;
+const DETACHED_WINDOW_MIN_HEIGHT = 420;
 
 export interface WindowConfig<T extends WindowAppType> {
     windowType: T;
@@ -40,6 +48,14 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     private config: WindowConfig<T>;
     private closeGuard?: (window: AppWindow<T>) => boolean;
     private closeGuardBypassed: boolean = false;
+    /**
+     * Popups this window detached part of itself into (see `detachedWindowGuard`).
+     *
+     * Tracked only so window-wide settings reach them: they are Chromium-owned child windows, not
+     * `AppWindow`s, so nothing else in the app iterates over them. Chromium closes them with their
+     * opener, hence no teardown here beyond forgetting the entry.
+     */
+    private detachedWebContents: Set<Electron.WebContents> = new Set();
 
     constructor(app: App, config: WindowConfig<T>, props: WindowProps[T]) {
         const windowConfig: WindowConfig<T> = {
@@ -329,6 +345,13 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         const percent = this.getApp().globalState.get("ui.zoomPercent");
         try {
             applyZoomFactorToWebContents(this.getWebContents(), percent);
+            // A detached editor is the same interface at a different zoom otherwise: zoom is a
+            // per-webContents property and the popup has its own, which no broadcast reaches.
+            for (const contents of this.detachedWebContents) {
+                if (!contents.isDestroyed()) {
+                    applyZoomFactorToWebContents(contents, percent);
+                }
+            }
             // The traffic lights are drawn by macOS and ignore the zoom, so the CSS
             // titlebar would otherwise grow or shrink out from under them.
             if (this.getConfig().options?.frame === false) {
@@ -453,8 +476,53 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         });
 
         webContents.setWindowOpenHandler((details) => {
-            this.getApp().logger.warn(`[Window] Blocked new window for ${this.getWindowType()}: ${details.url}`);
-            return { action: "deny" };
+            const decision = decideDetachedWindowOpen({
+                url: details.url,
+                frameName: details.frameName,
+                windowType: this.getWindowType(),
+            });
+            if (!decision.allowed) {
+                this.getApp().logger.warn(
+                    `[Window] Blocked new window for ${this.getWindowType()}: ${details.url} (${decision.reason})`,
+                );
+                return { action: "deny" };
+            }
+
+            return {
+                action: "allow",
+                // A detached editor wears the OS frame, unlike every other Studio window. The
+                // custom title bar minimises, maximises and closes "the window that sent this
+                // IPC" - and a popup shares its opener's webContents for IPC, so those buttons
+                // would drive the workspace window instead of the one they are drawn in.
+                overrideBrowserWindowOptions: {
+                    frame: true,
+                    titleBarStyle: "default",
+                    backgroundColor: getWindowBackgroundColor(),
+                    minWidth: DETACHED_WINDOW_MIN_WIDTH,
+                    minHeight: DETACHED_WINDOW_MIN_HEIGHT,
+                },
+                // Left at the default (false): the popup is a view onto the opener's React tree,
+                // so outliving the opener would leave a window whose contents can never update.
+                outlivesOpener: false,
+            };
+        });
+
+        webContents.on("did-create-window", (child, details) => {
+            this.getApp().logger.info(`[Window] Detached window opened from ${this.getWindowType()}: ${details.frameName}`);
+            // Held as its own reference: `closed` fires after the BrowserWindow is destroyed, and
+            // reading `child.webContents` from there throws "Object has been destroyed" - out of a
+            // native event handler, which takes the whole main process down with it.
+            const contents = child.webContents;
+            this.detachedWebContents.add(contents);
+            child.on("closed", () => this.detachedWebContents.delete(contents));
+
+            // Same restrictions the parent lives under. A blank popup has no URL to navigate from,
+            // but it does have a renderer that could be talked into acquiring one.
+            contents.setWindowOpenHandler(() => ({ action: "deny" }));
+            contents.on("will-navigate", (event) => event.preventDefault());
+            contents.on("will-attach-webview", (event) => event.preventDefault());
+
+            this.applyStoredZoom();
         });
 
         webContents.on("will-attach-webview", (event, _webPreferences, params) => {

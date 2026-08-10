@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
+import { detachEditor, updateDetachedEditorPayload } from "@/apps/workspace/detached/detachedEditors";
+import { useIsDetachedHost } from "@/lib/components/layout";
 import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -103,7 +105,7 @@ import {
     readBlueprintElementRefParams,
 } from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { UISurfaceEditorTab } from "@/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab";
-import { PanelsTopLeft } from "lucide-react";
+import { PanelsTopLeft, SquareArrowOutUpRight } from "lucide-react";
 import {
     clearElementBindingCompletion,
     readElementBindingCompletion,
@@ -217,6 +219,14 @@ function findEditorGroupIdForTab(layout: Readonly<EditorLayout>, tabId: string):
         return layout.tabs.some(tab => tab.id === tabId) ? layout.id : null;
     }
     return findEditorGroupIdForTab(layout.first, tabId) ?? findEditorGroupIdForTab(layout.second, tabId);
+}
+
+/** The tab strip's own name for a tab, so a detached editor can be restored under it. */
+function findEditorTabTitle(layout: Readonly<EditorLayout>, tabId: string): string | null {
+    if ("tabs" in layout) {
+        return layout.tabs.find(tab => tab.id === tabId)?.title ?? null;
+    }
+    return findEditorTabTitle(layout.first, tabId) ?? findEditorTabTitle(layout.second, tabId);
 }
 
 function buildBlueprintPayloadWithGraphFocus(
@@ -494,6 +504,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
+    /** Already in a window of its own: the pop-out control has nothing left to offer. */
+    const isDetachedHost = useIsDetachedHost();
     const revision = useBlueprintDocumentRevision();
     // The canvas and its cards carry their own clamp (`BlueprintFlowCanvas`, `BlueprintFlowNode`);
     // what is left in this file is the keyboard, the empty state and one on-open normalisation.
@@ -867,6 +879,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             if (hasSameBlueprintGraphFocus(payload, nextPayload)) {
                 return;
             }
+            // Detached, this editor has no tab to write to; its restore payload takes the state
+            // instead, so which graph was open survives the trip back to the workspace.
+            if (updateDetachedEditorPayload(tabId, nextPayload)) {
+                return;
+            }
             const store = uiService.getStore();
             const groupId = findEditorGroupIdForTab(store.getEditorLayout(), tabId);
             if (!groupId) {
@@ -875,6 +892,52 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             store.updateEditorTabPayload<BlueprintEntryTabPayload>(tabId, nextPayload, groupId);
         },
         [payload, tabId, uiService],
+    );
+
+    /**
+     * Move this editor out of the tab strip and into a window of its own.
+     *
+     * The entry goes in first and the tab closes second: the detached host mounts the window from
+     * that entry, and closing the tab is what unmounts this component, so the other order would
+     * tear the editor down before anything had been asked to rebuild it elsewhere.
+     */
+    const detachToOwnWindow = useCallback(() => {
+        if (isDetachedHost) {
+            return;
+        }
+        const store = uiService.getStore();
+        const layout = store.getEditorLayout();
+        detachEditor({
+            kind: "blueprint",
+            tabId,
+            // The same two words the editor's own title row shows, so the window in the dock is
+            // recognisable as the blueprint it holds.
+            title: `${t("blueprint.header.title")} ${bp.name}`,
+            // Carried across so closing the window puts back the tab that was here, name included -
+            // this editor is opened under several names (the blueprint's own, the widget it belongs
+            // to), and re-deriving one would rename it on the way back.
+            tabTitle: findEditorTabTitle(layout, tabId) ?? t("blueprint.tab.title"),
+            payload,
+        });
+        const groupId = findEditorGroupIdForTab(layout, tabId);
+        store.closeEditorTabInGroup(tabId, groupId ?? undefined);
+    }, [bp.name, isDetachedHost, payload, t, tabId, uiService]);
+
+    /**
+     * Middle click on the title row detaches, matching the control beside it.
+     *
+     * Only on the title row: the canvas already spends the middle button on panning, and a stray
+     * click there while panning would throw the editor into a window the author never asked for.
+     */
+    const onHeaderAuxClick = useCallback(
+        (event: ReactMouseEvent) => {
+            if (event.button !== 1 || isDetachedHost) {
+                return;
+            }
+            event.preventDefault();
+            detachToOwnWindow();
+        },
+        [detachToOwnWindow, isDetachedHost],
     );
 
     const selectEventGraph = useCallback(
@@ -1787,6 +1850,24 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         [panelStateService],
     );
 
+    /**
+     * The pop-out control, absent once the editor is already in its own window.
+     *
+     * Its middle-click twin is on the whole title row (`onHeaderAuxClick`), so the gesture works
+     * anywhere along the row rather than only on this 24px square.
+     */
+    const detachAction = isDetachedHost ? null : (
+        <button
+            type="button"
+            className="flex h-6 w-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+            onClick={detachToOwnWindow}
+            title={t("blueprint.header.detach")}
+            aria-label={t("blueprint.header.detach")}
+        >
+            <SquareArrowOutUpRight className="h-4 w-4" />
+        </button>
+    );
+
     if (bp.program.kind === "scriptModule") {
         const src = bp.program.source.code;
         return (
@@ -1796,6 +1877,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 onFocusCapture={focusBlueprintEditor}
             >
                 <BlueprintEditorLayout
+                    headerActions={detachAction}
+                    onHeaderAuxClick={onHeaderAuxClick}
                     header={
                         <div
                             className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5"
@@ -1906,6 +1989,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         >
             <BlueprintEditorLayout
                 header={header}
+                headerActions={detachAction}
+                onHeaderAuxClick={onHeaderAuxClick}
                 memberPanelCollapsed={memberPanelState.memberPanelCollapsed}
                 onMemberPanelCollapsedChange={setMemberPanelCollapsed}
                 onMemberPanelFocusContainedChange={setMemberPanelFocusContained}

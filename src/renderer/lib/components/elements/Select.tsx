@@ -7,6 +7,7 @@ import { Button } from "./Button";
 import { InspectOnlyButton } from "./InspectOnlyButton";
 import { CONTROL_SIZE_CLASS, type ControlSize } from "./controlSize";
 import { cn } from "../../utils/cn";
+import { useHostWindow } from "../layout/hostWindow";
 
 export interface SelectOption {
     value: string | number;
@@ -107,11 +108,14 @@ const SELECT_MENU_MAX_HEIGHT_PX = 240;
  * rightwards is cut off, or grows a horizontal scrollbar, long before it reaches the window edge.
  */
 function clippingBounds(node: HTMLElement): { left: number; right: number } {
+    // Measured in the node's OWN window: a menu inside a detached editor is clipped by that
+    // window's viewport, and this module's `window` is the one it was loaded in.
+    const view = node.ownerDocument.defaultView ?? window;
     let left = 0;
-    let right = window.innerWidth;
+    let right = view.innerWidth;
     let parent = node.parentElement;
     while (parent) {
-        const style = window.getComputedStyle(parent);
+        const style = view.getComputedStyle(parent);
         if (style.overflowX !== "visible" || style.overflowY !== "visible") {
             const rect = parent.getBoundingClientRect();
             left = Math.max(left, rect.left);
@@ -166,6 +170,9 @@ export function Select({
     // Both modes render the trigger as a span so an ancestor read-only clamp cannot reach it; only
     // `inspectOnly` leaves the rows live.
     const spanTrigger = inspectOnly || readOnly;
+    // Menus, outside-click and viewport measurements all belong to the window this control is
+    // drawn in, which is a detached editor's when the control sits inside one.
+    const hostWindow = useHostWindow();
     const { t } = useTranslation();
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.placeholder");
     const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
@@ -196,8 +203,8 @@ export function Select({
             setIsOpen(false);
         };
 
-        document.addEventListener("mousedown", handleClickOutside, true);
-        return () => document.removeEventListener("mousedown", handleClickOutside, true);
+        hostWindow.document.addEventListener("mousedown", handleClickOutside, true);
+        return () => hostWindow.document.removeEventListener("mousedown", handleClickOutside, true);
     }, []);
 
     useEffect(() => {
@@ -222,7 +229,7 @@ export function Select({
             const dropdownRect = dropdownRef.current.getBoundingClientRect();
 
             if (menuPlacement === "auto") {
-                const spaceBelow = window.innerHeight - triggerRect.bottom;
+                const spaceBelow = hostWindow.innerHeight - triggerRect.bottom;
                 const spaceAbove = triggerRect.top;
                 const shouldOpenUp =
                     dropdownRect.height > spaceBelow && spaceAbove >= dropdownRect.height;
@@ -247,11 +254,11 @@ export function Select({
         };
 
         updatePlacement();
-        window.addEventListener("resize", updatePlacement);
-        window.addEventListener("scroll", updatePlacement, true);
+        hostWindow.addEventListener("resize", updatePlacement);
+        hostWindow.addEventListener("scroll", updatePlacement, true);
         return () => {
-            window.removeEventListener("resize", updatePlacement);
-            window.removeEventListener("scroll", updatePlacement, true);
+            hostWindow.removeEventListener("resize", updatePlacement);
+            hostWindow.removeEventListener("scroll", updatePlacement, true);
         };
     }, [isOpen, portalMenu, menuPlacement, options.length, value]);
 
@@ -269,7 +276,7 @@ export function Select({
             }
 
             const menuHeight = menuEl.getBoundingClientRect().height;
-            const spaceBelow = window.innerHeight - trigger.bottom - SELECT_MENU_GAP_PX;
+            const spaceBelow = hostWindow.innerHeight - trigger.bottom - SELECT_MENU_GAP_PX;
             const spaceAbove = trigger.top - SELECT_MENU_GAP_PX;
 
             let openAbove: boolean;
@@ -296,10 +303,10 @@ export function Select({
             } else {
                 top = trigger.bottom + SELECT_MENU_GAP_PX;
                 const bottom = top + Math.min(menuHeight || maxHeight, maxHeight);
-                if (bottom > window.innerHeight - SELECT_MENU_GAP_PX) {
+                if (bottom > hostWindow.innerHeight - SELECT_MENU_GAP_PX) {
                     top = Math.max(
                         SELECT_MENU_GAP_PX,
-                        window.innerHeight - SELECT_MENU_GAP_PX - Math.min(menuHeight, maxHeight)
+                        hostWindow.innerHeight - SELECT_MENU_GAP_PX - Math.min(menuHeight, maxHeight)
                     );
                 }
             }
@@ -310,7 +317,7 @@ export function Select({
             if (naturalMenuWidthRef.current === null) {
                 naturalMenuWidthRef.current = measureNaturalWidth(menuEl);
             }
-            const roomRight = window.innerWidth - trigger.left - SELECT_MENU_GAP_PX;
+            const roomRight = hostWindow.innerWidth - trigger.left - SELECT_MENU_GAP_PX;
             const roomLeft = trigger.right - SELECT_MENU_GAP_PX;
             const alignLeft = naturalMenuWidthRef.current <= roomRight || roomRight >= roomLeft;
             const width = Math.max(
@@ -336,13 +343,13 @@ export function Select({
         const raf1 = requestAnimationFrame(() => {
             raf2 = requestAnimationFrame(positionPortalMenu);
         });
-        window.addEventListener("resize", positionPortalMenu);
-        window.addEventListener("scroll", positionPortalMenu, true);
+        hostWindow.addEventListener("resize", positionPortalMenu);
+        hostWindow.addEventListener("scroll", positionPortalMenu, true);
         return () => {
             cancelAnimationFrame(raf1);
             cancelAnimationFrame(raf2);
-            window.removeEventListener("resize", positionPortalMenu);
-            window.removeEventListener("scroll", positionPortalMenu, true);
+            hostWindow.removeEventListener("resize", positionPortalMenu);
+            hostWindow.removeEventListener("scroll", positionPortalMenu, true);
         };
     }, [isOpen, portalMenu, menuPlacement, menuZIndex, options.length, value]);
 
@@ -548,7 +555,7 @@ export function Select({
             )}
 
             {dropdownPanel &&
-                (portalMenu ? createPortal(dropdownPanel, document.body) : dropdownPanel)}
+                (portalMenu ? createPortal(dropdownPanel, hostWindow.document.body) : dropdownPanel)}
         </div>
     );
 }
@@ -570,6 +577,7 @@ export function Combobox({
 }: SelectProps & {
     filterOptions?: boolean;
 }) {
+    const hostWindow = useHostWindow();
     const { t } = useTranslation();
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.searchPlaceholder");
     const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
@@ -600,8 +608,8 @@ export function Combobox({
             }
         };
 
-        document.addEventListener("mousedown", handleClickOutside, true);
-        return () => document.removeEventListener("mousedown", handleClickOutside, true);
+        hostWindow.document.addEventListener("mousedown", handleClickOutside, true);
+        return () => hostWindow.document.removeEventListener("mousedown", handleClickOutside, true);
     }, []);
 
     useEffect(() => {
@@ -623,7 +631,7 @@ export function Combobox({
             if (!selectRef.current || !dropdownRef.current) return;
             const triggerRect = selectRef.current.getBoundingClientRect();
             const dropdownRect = dropdownRef.current.getBoundingClientRect();
-            const spaceBelow = window.innerHeight - triggerRect.bottom;
+            const spaceBelow = hostWindow.innerHeight - triggerRect.bottom;
             const spaceAbove = triggerRect.top;
             const shouldOpenUp =
                 dropdownRect.height > spaceBelow && spaceAbove >= dropdownRect.height;
@@ -631,11 +639,11 @@ export function Combobox({
         };
 
         updateDirection();
-        window.addEventListener("resize", updateDirection);
-        window.addEventListener("scroll", updateDirection, true);
+        hostWindow.addEventListener("resize", updateDirection);
+        hostWindow.addEventListener("scroll", updateDirection, true);
         return () => {
-            window.removeEventListener("resize", updateDirection);
-            window.removeEventListener("scroll", updateDirection, true);
+            hostWindow.removeEventListener("resize", updateDirection);
+            hostWindow.removeEventListener("scroll", updateDirection, true);
         };
     }, [isOpen, filteredOptions.length, searchTerm, value]);
 
