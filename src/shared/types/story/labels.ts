@@ -3,7 +3,7 @@ import { listSceneBlocksInDocumentOrder } from "./order";
 
 /**
  * The label table of a scene - one scan, read by everything that needs to know what `/goto` may
- * address (plan 2026-07-24-006 §12.9).
+ * address.
  *
  * Deliberately shaped like the declaration scans next door, and for the same reason: the row IS the
  * label, scanning the scene is how the table is built, and deleting the row deletes the label. Both

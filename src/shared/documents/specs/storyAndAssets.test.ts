@@ -172,7 +172,7 @@ describe("story spec: diff", () => {
      * An ordered array gets ONE row for the whole array. Reported element by element, a scene whose
      * rows were resequenced reads as every row after the first change having moved - and when this
      * same list becomes a resolution it would offer to interleave two orderings into a third nobody
-     * wrote (plan 2026-07-31-004 §4.3).
+     * wrote.
      */
     it("reports a reordered scene as one row about the order", () => {
         const rows = [block("b1", "one"), block("b2", "two"), block("b3", "three")];

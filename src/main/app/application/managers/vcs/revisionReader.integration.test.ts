@@ -260,7 +260,7 @@ describe.skipIf(!supported)("revisionReader", () => {
 /**
  * The §4.30 regression, on a real two-branch repository.
  *
- * Measured during D0 and recorded in docs/version-control.md §4.30: `readRevisionGraph` reads
+ * Measured during the spikes and recorded in docs/version-control.md §4.30: `readRevisionGraph` reads
  * `history` with no branch, so it only ever held the CURRENT branch. On a main/feature merge the
  * incoming tip was therefore not in the graph at all, `mergeBase` answered nothing, and `threeWay`
  * reported `base: undefined` - which its own contract defines as add/add. Every ordinary

@@ -1,6 +1,5 @@
 /*
  * Acceptance — text editor status-bar migration, EOL switching, encoding persistence, surface match.
- * Card: docs/plans/2026-07-31-002-plan-text-editor-status-bar.md §6
  *
  *   NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<electron pid> NLS_VERIFY_PROJECT=<project copy> \
  *     node tools/ui-verify/scenarios/text-editor-status-bar.js \
@@ -54,7 +53,7 @@ const INSTALL_SERVICES = function () {
  *
  * Cluster membership is read geometrically rather than from the DOM tree, because the two clusters
  * are plain sibling divs with no identifying attribute: an entry belongs to whichever cluster
- * element contains it. Position within a cluster is what the card actually specifies, so the raw
+ * element contains it. Position within a cluster is what actually matters, so the raw
  * x ordering is what gets asserted — not the array order in the source, which is reversed on the
  * right and would let a wrong implementation pass by matching the code instead of the screen.
  */

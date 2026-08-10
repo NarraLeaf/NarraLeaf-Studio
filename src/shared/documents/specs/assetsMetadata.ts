@@ -15,14 +15,14 @@ import {isJsonObject, parameterFromPath, requireDocumentObject} from "./parseHel
  * `assets/assets.metadata.<type>.json` - one shard per asset type, holding the author's metadata for
  * every asset of that type: its name, its content hash, its tags, its folder, its description.
  *
- * The shard is a flat map keyed by asset id, which is what makes the collaboration case in plan
- * 2026-07-31-004 §4.3 come out right for free: **two people importing different assets are two
+ * The shard is a flat map keyed by asset id, which is what makes the collaboration case come
+ * out right for free: **two people importing different assets are two
  * independent additions**, not a conflict. Nothing here aligns anything positionally, so nothing
  * here can decide that two unrelated imports touched the same thing.
  *
  * **Read-side only, like the story spec.** `AssetsService.writeAssetsMetadata` still owns writing
  * (`AssetsService.ts:551`, `JSON.stringify` with no indent), and the asset services still carry
- * unaudited `undefined` assignments (plan 2026-07-27-001 §3.3.2 names `RemoteAssetsManager.ts:38`
+ * unaudited `undefined` assignments (`RemoteAssetsManager.ts:38`
  * and `LocalAssetsManager.ts:283`), which the canonical encoder rejects by name. So `serialize`
  * refuses rather than quietly producing bytes nothing writes and nothing checks.
  *

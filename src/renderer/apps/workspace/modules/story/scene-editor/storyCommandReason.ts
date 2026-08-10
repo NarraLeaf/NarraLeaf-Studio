@@ -57,7 +57,7 @@ export function getCommandLineReason(source: string, context: StoryCommandContex
  * Why this line landed as a draft instead of a row - the reason a draft row shows.
  *
  * A superset of {@link getCommandLineReason}: an error-free line can still be missing its required
- * core (bible B9), which is not worth a red line while typing (the ghost hint already names the next
+ * core, which is not worth a red line while typing (the ghost hint already names the next
  * slot) but is exactly what the draft row must say. `paramHintKey` names the missing slot's hint for
  * the caller to translate.
  */

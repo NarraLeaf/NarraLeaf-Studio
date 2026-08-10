@@ -317,7 +317,7 @@ export class DevModeForwardStoryRowHandler extends IPCHandler<IPCEventType.devMo
         }
 
         // Deliberately no show()/focus(): the play head follows execution in place, it does not
-        // yank the workspace forward (see the M5 card WI-2).
+        // yank the workspace forward.
         workspaceWindow.sendIpcEvent(IPCEventType.workspaceStoryRowHighlight, {
             storyId: data.storyId,
             sceneId: data.sceneId,

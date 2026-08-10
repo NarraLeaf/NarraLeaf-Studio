@@ -8,7 +8,7 @@ import {normalizeDocumentPath} from "./documentPath";
  * while the author is browsing history, a revision. Everything downstream - the eight
  * document services, their migrations, their "this file does not exist yet" branches -
  * is the same code either way. That is the whole reason history can be rendered by the
- * real editors instead of by eight bespoke diff views (plan 2026-07-28-002 §intro), and
+ * real editors instead of by eight bespoke diff views, and
  * it only holds if there is exactly one seam between "read a document" and "read a
  * file". This is that seam.
  *

@@ -20,7 +20,7 @@ Mechanical CDP driver for UI verification runs. Drive only — no assertions, no
 node tools/ui-verify/drive.js targets
 node tools/ui-verify/drive.js eval "location.href" --target dev-mode
 node tools/ui-verify/drive.js click 700 450 --target dev-mode
-node tools/ui-verify/drive.js shot before-panel --target dev-mode --out docs/plans/reports/assets --prefix 2026-07-26-U0-
+node tools/ui-verify/drive.js shot before-panel --target dev-mode --out ./shots --prefix before-
 ```
 
 ## Starting where the run actually begins

@@ -66,8 +66,8 @@ export function revisionSnapshotDirectory(projectPath: string, revision: Revisio
  *    So the copy would cost the whole art budget of the project on every launch and change nothing -
  *    on the two-revision fixture that is 74MB of media against 1.6MB of documents.
  *
- * The consequence is the same one the editor already documents for a revision view (plan
- * 2026-07-28-002 §4.2.3, point 3): **the documents are historical and the asset bytes are current.**
+ * The consequence is the same one the editor already documents for a revision view:
+ * **the documents are historical and the asset bytes are current.**
  * A sprite the author has since replaced shows its new art. Making that historical too means routing
  * asset resolution through the revision, which is a renderer change and a milestone of its own.
  */

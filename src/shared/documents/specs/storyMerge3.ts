@@ -14,7 +14,7 @@ import {countConflicts, KeyedMergeRow, mergeKeyed} from "./mergeHelpers";
  *
  * Everything that works here rests on the same fact the semantic diff rests on: **scenes and blocks
  * are keyed by id**, so "the same thing on both sides" is already written down and matching is exact
- * and free. Plan 2026-07-31-004 §4.3 spells the rules out and they fall out of that one property:
+ * and free. The rules fall out of that one property:
  * different scenes merge, the same scene's different rows merge, the same row's different fields
  * merge, and the same field on both sides is a leaf conflict.
  *
@@ -54,7 +54,7 @@ export type StoryMergeRefusalReason =
 
 /**
  * Labels reused verbatim from the semantic diff (`storyDiff.ts`), and reused rather than invented
- * because a decision and a change are the same row seen twice - plan §0 - so they must read the
+ * because a decision and a change are the same row seen twice, so they must read the
  * same. Every key here is already in both catalogues; `documentDiffKeys.test.ts` is what enforces
  * that, and a new key would have to be added to en and zh in the same commit.
  */
@@ -339,7 +339,7 @@ function withShape(block: StoryBlock, shape: StoryBlock | undefined): StoryBlock
  * and this returns nothing. When `kind` agrees, `payload` is compared whole (descending into it
  * would need a merge that knows what every action's parameters mean) and `disabled` /
  * `diagnosticsMeta` merge beside it independently - which is the "same block, different fields"
- * case plan §4.3 asks for: I disabled the row, you fixed its text, both land.
+ * case that matters most: I disabled the row, you fixed its text, both land.
  */
 function refineBlock(
     path: readonly string[],

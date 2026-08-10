@@ -1080,7 +1080,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (!found) return;
             // Reassign the payload rather than mutating it in place, so a fresh reference marks the edit:
             // `updateBlockPayload` (the other write path) already reassigns, and the inspector bridge's
-            // republish gate (WI-0) compares payload identity — an in-place mutation would slip past it,
+            // republish gate compares payload identity — an in-place mutation would slip past it,
             // leaving an open declaration inspector stale after a rename/retype from the Variables panel.
             const nextPayload = { ...found.block.payload };
             mutate(nextPayload);

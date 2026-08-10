@@ -2,8 +2,8 @@
  * The 2D model runtimes Studio knows by name.
  *
  * Studio ships none of their code and is not allowed to: the renderers authors want for animated
- * characters are licensed in terms a source-available, freely modifiable application cannot meet
- * (card 2026-07-27-002). What Studio *can* do is stop pretending it has never heard of them. Before
+ * characters are licensed in terms a source-available, freely modifiable application cannot meet.
+ * What Studio *can* do is stop pretending it has never heard of them. Before
  * this table the only authoring surface was a folder name typed into a free-text field and a menu
  * entry reading "External runtime", which told an author nothing about which runtimes exist or how
  * to get one.

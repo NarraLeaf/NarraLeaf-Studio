@@ -9,7 +9,7 @@ import {merge3Story} from "./storyMerge3";
  * `editor/story/stories/<storyId>/storydoc.json` - one story: its chapters, its scenes, its rows.
  *
  * **This spec is read-side only, and deliberately so.** It exists to give version control a semantic
- * diff of the biggest documents in a project (plan 2026-07-31-004 D4); it does not adopt the format
+ * diff of the biggest documents in a project; it does not adopt the format
  * the way the wave-1 specs adopted theirs, and `StoryService` still owns reading and writing.
  *
  * Two things follow, and both are stated in code rather than left to be discovered:
@@ -17,7 +17,7 @@ import {merge3Story} from "./storyMerge3";
  *  - **`parse` does not migrate.** `migrateStoryDocumentToLatest` and `normalizeStoryDocument` live
  *    in the renderer's `services/story/storyModel.ts`, which shared code cannot import, and moving
  *    them is a milestone of its own - the same file holds a dozen `undefined` assignments that the
- *    canonical encoder rejects (plan 2026-07-27-001 §3.3.2). So an older document is returned as it
+ *    canonical encoder rejects. So an older document is returned as it
  *    was read. That is a real departure from {@link import("../types").DocumentSpec.parse}'s
  *    contract, and the whole reason `serialize` below refuses: a document that was not migrated must
  *    never be written back, because writing it is what would turn "read as v11" into "saved as v12
@@ -81,7 +81,7 @@ export const storyDocumentSpec = defineDocumentSpec<StoryDocument>({
      *
      * `merge3` is a pure function over two parsed documents: it is correct, it is testable, and the
      * decision list it produces is what a resolve surface draws. What it cannot do yet is finish -
-     * the write-back step (plan 2026-07-31-004 §4.4) calls `serialize`, which throws here until the
+     * the write-back step calls `serialize`, which throws here until the
      * story format is adopted for writing. So the second tier can COMPARE and DECIDE a story today
      * and cannot COMMIT one; whoever lifts that has to run the story migration in shared code first,
      * which is what the note on this module is about.

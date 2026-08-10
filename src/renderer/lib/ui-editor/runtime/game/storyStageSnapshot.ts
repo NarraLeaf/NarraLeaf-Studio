@@ -66,7 +66,7 @@ export type StageSnapshotEffects = {
  *
  * Scope caveat: the camera is a story-level singleton whose pose persists across scenes, but this
  * snapshot is computed per scene, so only the launch scene's own `/camera` rows are reconstructed -
- * a pose set in an earlier scene and carried across a `jump` is not (see the WI-2 report).
+ * a pose set in an earlier scene and carried across a `jump` is not.
  */
 export type StageSnapshotCamera = {
     /**
@@ -134,7 +134,7 @@ function finiteOr(value: number | undefined, fallback: number): number {
 
 /**
  * "Every saved variable" for a runtime consumer: the project registry's `saved` entries unioned with
- * the story's own `/save` declaration rows (M-VAR WI-3). The view also carries the cross-surface name
+ * the story's own `/save` declaration rows. The view also carries the cross-surface name
  * collisions, which the compiler reports as diagnostics.
  *
  * Lives in this module rather than in the compiler because the compiler and this snapshot walk must

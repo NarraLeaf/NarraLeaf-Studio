@@ -12,7 +12,7 @@ import { versionedProjectRelativePath } from "./writeFreeze";
  * surface for resolving it was unreachable. Reopening mid-merge is not an edge case; it is the case
  * the whole sidecar-based `readMergeState` exists to serve.
  *
- * The principle it is fixed by is the plan's (2026-07-31-004 §6): **a document that is unparseable
+ * The principle it is fixed by: **a document that is unparseable
  * because a merge is open is not corrupt**, and quarantining it - filing it away under a name that
  * says it is broken - would be recording a good file as a bad one. An open merge is knowable before
  * any document is parsed: `readMergeState` needs only the status header and a walk for sidecars.

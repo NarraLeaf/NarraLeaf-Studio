@@ -37,8 +37,8 @@ export type InsertChooser = "none" | "action" | "character";
  * opens the action creator, a "#" line the speaker picker, anything else is prose with no menu. The
  * caret decides *which* part of an action line is being completed (command name vs argument), but that
  * runs through the cursor, not this. The insert state deliberately does not store this - a stored copy
- * drifted out of sync, which is how a reopened draft row kept a stale "none" and lost its completion
- * (bible M3). Escape's one-shot suppression is the one thing text cannot express; it rides a separate
+ * drifted out of sync, which is how a reopened draft row kept a stale "none" and lost its completion.
+ * Escape's one-shot suppression is the one thing text cannot express; it rides a separate
  * `chooserDismissed` flag that the next keystroke clears.
  */
 export function insertChooserType(value: string, aliasEnabled: boolean): InsertChooser {

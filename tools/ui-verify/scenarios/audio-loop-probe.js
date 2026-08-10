@@ -1,5 +1,5 @@
 /*
- * Card 2026-07-31-001 — measure what the engine is ACTUALLY doing to a looping clip.
+ * Measure what the engine is ACTUALLY doing to a looping clip.
  *
  * Audio cannot be screenshotted, so this wraps the Web Audio constructor in the Dev Mode window and
  * reads the nodes back afterwards. It is the only evidence that these three ever worked:

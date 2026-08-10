@@ -13,7 +13,7 @@ import type { LabelTranslator } from "./documentChangeView";
  * which sentence a refusal gets - lives in functions that can be called without mounting anything.
  *
  * One rule runs through all of it. **A `conflict` with no recorded choice is not "mine" and not
- * "theirs" and must never resolve to either** (plan 2026-07-31-004 §6, decision 4). Two hundred
+ * "theirs" and must never resolve to either**. Two hundred
  * conflicts to click through is tedious; one mis-aimed press that silently discarded a
  * collaborator's day is worse, and unlike the tedium it leaves no trace.
  */

@@ -44,7 +44,7 @@ import {
  * scene, generated from the same spec the parser reads, with the insert action on the page you are
  * reading. Nothing here is hand-written per command, so nothing here can go stale.
  *
- * Filing is A1's: a spec with a target param belongs to every subject its `accepts` names. Which of
+ * The filing rule: a spec with a target param belongs to every subject its `accepts` names. Which of
  * those subjects a list *shows* depends on what the list is:
  *
  *  - Pick a subject and the full filing applies — "everything I can do to an Image" has to list
@@ -91,7 +91,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
             return;
         }
         const stored = settingsService.getSync<string[]>(FAVORITES_SETTING_KEY, []) ?? [];
-        // Favourites persist palette ids, and A1 changed which catalogue those come from. Rewriting
+        // Favourites persist palette ids, and the catalogue those come from changed. Rewriting
         // them here - and writing the result straight back - is what keeps a starred "Image show"
         // showing up as a starred `/show` instead of quietly disappearing.
         const migrated = migrateStarredActionIds(stored.filter(id => typeof id === "string"));

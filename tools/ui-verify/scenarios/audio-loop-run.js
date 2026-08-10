@@ -1,5 +1,5 @@
 /*
- * Card 2026-07-31-001 — the three audio measurements, in one connection.
+ * The three audio measurements, in one connection.
  *
  * The dev-mode window RELOADS on every "play from this row", so a probe installed with
  * Runtime.evaluate is wiped before the clip plays. Page.addScriptToEvaluateOnNewDocument is the

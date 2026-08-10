@@ -139,8 +139,7 @@ Policy: Code Signing
  * above judges captured text, which cannot catch the command itself changing.
  *
  * Skips off macOS. `NLS_MAC_IDENTITY_KEYCHAIN` points it at a throwaway keychain
- * (see the plan for the setup commands) so a developer with no certificates can
- * still exercise the populated path; without it the default keychains are read,
+ * so a developer with no certificates can still exercise the populated path; without it the default keychains are read,
  * which is a valid run either way - an empty list is the correct answer on a
  * machine with no identities, and the assertions below are about shape.
  */

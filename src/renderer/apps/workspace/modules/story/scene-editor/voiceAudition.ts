@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * A single, app-wide voice audition player (WI-4). Only one take plays at a time, wherever the play
+ * A single, app-wide voice audition player. Only one take plays at a time, wherever the play
  * button lives — a story row, the inspector, or the voice table — so starting one always stops the
  * last. The bytes are loaded lazily (the caller fetches the audio only when a play actually begins),
  * and the object URL is revoked on stop, mirroring the voice table's own audition (VoiceEditorTab).

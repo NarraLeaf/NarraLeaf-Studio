@@ -6,7 +6,7 @@
  * mattered the moment version control arrived: freezing the workspace froze the
  * panel layout too, so merely opening a tab right after freezing raised "Nothing is
  * being saved right now" before the author had done anything - measured in the real
- * app, see plan 2026-07-28-002 §4.1. Editor state is not project state, and the fix
+ * app. Editor state is not project state, and the fix
  * is to stop storing it in the versioned tree, not to carve exceptions into the
  * freeze latch.
  *

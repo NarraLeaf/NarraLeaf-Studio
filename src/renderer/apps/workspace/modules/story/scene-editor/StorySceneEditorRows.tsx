@@ -120,7 +120,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     textInputRef: RefObject<RichTextInputHandle | null>;
     tempSpeakers: TempSpeakerRef[];
     /**
-     * Reading density (U1). The row itself reads nothing from it any more — every length it needs
+     * Reading density. The row itself reads nothing from it any more — every length it needs
      * arrives as a CSS variable on the editor root — but it stays a prop so a density switch still
      * crosses the memo boundary and re-renders the rows at the new metrics.
      */
@@ -218,8 +218,8 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      * paragraph was named once, at its head — and its gutter carries the run's rule instead of a mark.
      */
     const continuationRow = row.groupRole === "member";
-    // A dialogue group head backed by a real character carries the hover-reveal placement dropdown
-    // (WI-3): a standalone line is a run of one, so it counts too. A bare-name speaker has no character
+    // A dialogue group head backed by a real character carries the hover-reveal placement dropdown:
+    // a standalone line is a run of one, so it counts too. A bare-name speaker has no character
     // to place, so it gets none.
     const dialogueHead = isDialogue && !continuationRow
         && block.kind === "nodeAction" && block.payload.action === "dialogue" && Boolean(block.payload.characterId);
@@ -300,7 +300,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                 // is load-bearing: a wrapped line keeps its first line aligned with its mark.
                 "group relative grid min-h-[calc(var(--nl-story-row-box)+0.5rem)] grid-cols-[var(--nl-story-gutter)_1fr] items-start border-l-2 pr-3",
                 selected ? "border-primary bg-primary/20" : active ? "border-primary bg-fill-subtle" : "border-transparent hover:bg-fill-subtle",
-                // A disabled row (WI-3) dims whole — muted content, kept line number — but no invented
+                // A disabled row dims whole — muted content, kept line number — but no invented
                 // chrome; the runtime treats it as absent.
                 row.disabled ? "opacity-45" : "",
             ].join(" ")}
@@ -1003,7 +1003,7 @@ const STAGE_PLACEMENTS: { value: StoryStagePlacement; icon: typeof AlignLeft }[]
 ];
 
 /**
- * The dialogue group head's placement control (WI-3, M3.1): a hover-reveal dropdown that reads the
+ * The dialogue group head's placement control: a hover-reveal dropdown that reads the
  * speaker's current `at=` and writes it back. It is a declarative shell — the controller keeps the
  * document as command lines (rewrites the enter/move `at=`, or inserts a `/move`), so this only ever
  * shows and picks left/center/right. Absent placement reads as the runtime default, center.
@@ -1679,7 +1679,7 @@ function ContainerHeaderWord({ info, textStyle }: { info: StoryContainerHeaderIn
     );
 }
 
-/** The engine-mode badge on a parallel/race header (WI-3): `all` / `allAsync` / `any`, in control colour. */
+/** The engine-mode badge on a parallel/race header: `all` / `allAsync` / `any`, in control colour. */
 function ContainerModeBadge({ mode }: { mode: "all" | "allAsync" | "any" }) {
     const color = getCommandCategory("flow").iconColor;
     return (
@@ -1809,7 +1809,7 @@ function CommandGhostHint(props: { value: string; source: string; caret: number;
                 hidden, and it still has to occupy its exact width to push what follows into place. */}
             <span className="invisible">{props.value}</span>
             {props.confirmation ? (
-                // The just-declared line's receipt (bible §3.5). It only ever rides an empty slot (the
+                // The just-declared line's receipt. It only ever rides an empty slot (the
                 // commit clears the value and the next edit strips it), so it renders flush at the start.
                 <span className="not-italic text-success/80">{props.confirmation}</span>
             ) : reason ? (
@@ -1881,7 +1881,7 @@ export function InsertRow(props: {
     // Drop the trigger character (either "/" or "@") to get the query the menus rank against.
     const chooserQuery = value.slice(1);
     // The menu is derived from the text, never stored - so a reopened draft row always has its
-    // completion (bible M3). Escape is the one thing text cannot express: `chooserDismissed` shuts the
+    // completion. Escape is the one thing text cannot express: `chooserDismissed` shuts the
     // menu until the next keystroke clears it (see the controller), so it forces "none" here.
     const chooser = props.mode.chooserDismissed ? "none" : insertChooserType(value, props.slashAtAlias);
     // The trigger this line is actually wearing — the author's own key, not the canonical "/".
@@ -1914,8 +1914,8 @@ export function InsertRow(props: {
         },
         [chooserQuery, ct, pluginCommands, scopeName],
     );
-    // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification
-    // (WI-1). Handed over undeduped, because the menu's category column needs both readings of it —
+    // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
+    // Handed over undeduped, because the menu's category column needs both readings of it —
     // 全部 collapses to one row per command (a verb repeated under six subjects with the same sentence
     // each time reads as six commands, not as one that reaches six places), while a chosen category
     // wants the full filing, where `/show` under 图片 is the answer rather than a repeat.
@@ -2412,7 +2412,7 @@ type MenuCategory = typeof ALL_MENU_CATEGORY | StoryCommandCategoryId;
  *    sidebar shows (`buildSpecSidebarGroups`) — a generic verb appears under every subject its
  *    `accepts` names, so an author browsing 图片 finds "显示" exactly where the sidebar puts it. The two
  *    menus are one source now; the `/` browse is no longer a second catalogue filed single-point by
- *    `category` (plan 2026-07-26-003 WI-1).
+ *    `category`.
  *  - **filter** (a query): under 全部, the matcher's ranked hits, flat across categories, best match
  *    first — the ranking is the point, so headers (and the multi-subject repetition) would only get in
  *    its way. Under a chosen category the sections stay and the query ranks *within* them, which is
@@ -3212,7 +3212,7 @@ function BlockPreview(props: {
     document: StoryDocument;
     characters: Character[];
     commandContext: StoryCommandContext;
-    /** Commit an inline quick-param edit (WI-2) through the same history path the inspector uses. */
+    /** Commit an inline quick-param edit through the same history path the inspector uses. */
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
     const block = props.block;

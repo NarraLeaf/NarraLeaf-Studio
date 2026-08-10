@@ -421,7 +421,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // write, and is gated on the guard in both the bar and the callbacks (`replaceCurrentMatch`).
     const freeze = useFreezeGuard();
     const editor = useStorySceneEditorController(tabId, payload);
-    // The command reference overlay (WI-2), opened from the header. Local state, not a panel — it is a
+    // The command reference overlay, opened from the header. Local state, not a panel — it is a
     // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -764,7 +764,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // stale scene snapshot. The republish gate below fires only when the inspected block changes, so
     // between republishes an untracked scene change (a quickParam click or a drag on another row) would
     // otherwise leave the panel's callbacks closed over the pre-change scene — the next panel edit would
-    // then record that stale scene as its undo snapshot, so one Ctrl+Z silently reverts two edits (WI-0).
+    // then record that stale scene as its undo snapshot, so one Ctrl+Z silently reverts two edits.
     const editorRef = useRef(editor);
     editorRef.current = editor;
 
@@ -974,7 +974,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }, [active, editor.activeBlockId, editor.editorMode.kind, editor.scrollContainerRef, scrollRowIntoView]);
 
     /**
-     * The right rail follows the selected row (U2 WI-1).
+     * The right rail follows the selected row.
      *
      * Two things are published from here, and the split matters:
      *
@@ -1342,7 +1342,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, [active, draftJump, rowCount, scrollContainerRef, editor.scene, editor.startJumpDraft]);
 
-    // Dev Mode play head (WI-2): follow the running row in place when this editor owns the scene.
+    // Dev Mode play head: follow the running row in place when this editor owns the scene.
     // Uses the plain row-select visual — never `revealBlock` (which would flip the author's
     // "narrative only" filter) and never `focusRoot` — so watching the game neither reshapes the
     // author's view nor pulls keyboard focus. Only rows the author is currently showing react: a row
@@ -1509,7 +1509,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         });
     }, [editor.context, payload?.storyId, payload?.sceneId, panelStateService, t]);
 
-    // Row context menu (WI-3). Right-clicking a row outside the current selection selects just it first,
+    // Row context menu. Right-clicking a row outside the current selection selects just it first,
     // so the menu's selection-scoped actions act on exactly what the author pointed at; inside the
     // selection, the whole selection is kept.
     const rowMenu = useContextMenu();
@@ -1858,7 +1858,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     /** What this row's grip says it will move: the selection it belongs to, or just itself. */
     const dragGroupSizeFor = (blockId: StoryBlockId) => (editor.selectedBlockIds.has(blockId) ? selectionDragSize : 1);
 
-    // Row context-menu items (WI-3). Insert / play / inspector act on the pointed-at row; duplicate /
+    // Row context-menu items. Insert / play / inspector act on the pointed-at row; duplicate /
     // disable / delete act on the whole selection (which the right-click already normalized). The
     // disable rung reads "Enable" when every targeted root is already disabled, so one action toggles.
     const densityMenuItems: ContextMenuDef = STORY_EDITOR_DENSITIES.map(density => ({
@@ -2064,7 +2064,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                 // pushes every row down by the height of the scene overview above it.
                                 style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start - rowListMargin}px)` }}
                             >
-                                {/* "Insert above" (WI-3): a before-target slot renders in front of this row at
+                                {/* "Insert above": a before-target slot renders in front of this row at
                                     its own depth, so the new line lands above it whether or not it has a
                                     previous sibling. */}
                                 {editor.editorMode.kind === "insert" && !editor.editorMode.slot.replaceBlockId && editor.editorMode.slot.afterBlockId === null && editor.editorMode.slot.target?.beforeBlockId === row.block.id ? (

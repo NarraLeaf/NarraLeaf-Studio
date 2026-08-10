@@ -127,6 +127,15 @@ export const uiEditor = {
         aspect: "Aspect ratio",
         safeArea: "Safe area",
         off: "Off",
+        /** Shown when the letterbox bars swallow every inset — the device is genuinely clear. */
+        noOverlap: "No overlap",
+        /** Edge names for the inset readout, e.g. "bottom 58". Lowercase: they sit mid-line. */
+        inset: {
+            top: "top",
+            right: "right",
+            bottom: "bottom",
+            left: "left",
+        },
     },
     templateStore: {
         open: "Start from a template",

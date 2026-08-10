@@ -34,7 +34,7 @@ import { blobAt, listFilesAt, mergeBase, readEntryBytes, readRevisionGraph, thre
 import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote";
 
 /**
- * D0 round two. Round one is `mergeSpike.integration.test.ts`; this file exists because
+ * Measurement round two. Round one is `mergeSpike.integration.test.ts`; this file exists because
  * three of its answers were unusable and one experiment deadlocked.
  *
  * What round one settled, and this file does not repeat: an automerge of the same key
@@ -468,8 +468,8 @@ async function resolveExperiment(
             .filter((suffix) => fs.existsSync(`${fixture.document}${suffix}`)),
     };
 
-    // The plan's §4.4 pipeline: confirm with the pure-read status form (§4.17), commit,
-    // flush (§4.11). Deliberately without `fileStageMerge` first - whether a merge commit
+    // The intended pipeline: confirm with the pure-read status form, commit, then
+    // flush. Deliberately without `fileStageMerge` first - whether a merge commit
     // needs its own staging step is one of the things being measured.
     observations.beforeCommit = await observe(async () => {
         const status = await repositoryStatus(fixture.globals, { scan: false, revisionOnly: true });
