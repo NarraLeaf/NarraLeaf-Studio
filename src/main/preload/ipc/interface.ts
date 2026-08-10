@@ -26,6 +26,7 @@ import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/
 import type { PrivilegedActor } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
 import type { AssetExportEntry } from "@shared/types/assetExport";
+import type { UpdateState } from "@shared/constants/update";
 import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
@@ -289,6 +290,14 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appExportSettings, { defaultFileName, content }),
         importSettings: () =>
             ipcClient.invoke(IPCEventType.appImportSettings, {}),
+        update: {
+            getState: () => ipcClient.invoke(IPCEventType.appUpdateGetState, {}),
+            check: () => ipcClient.invoke(IPCEventType.appUpdateCheck, {}),
+            download: () => ipcClient.invoke(IPCEventType.appUpdateDownload, {}),
+            install: () => ipcClient.invoke(IPCEventType.appUpdateInstall, {}),
+            onStateChanged: (handler: (state: UpdateState) => void) =>
+                ipcClient.onMessage(IPCEventType.appUpdateStateChanged, (data) => handler(data.state)),
+        },
     },
 
     devMode: {

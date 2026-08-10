@@ -2,6 +2,11 @@ appId: com.narraleaf.studio
 productName: NarraLeaf Studio
 directories:
   output: build
+  # Must be set explicitly. It defaults to `build`, which is also `output` above and is
+  # gitignored - so the conventional home for `installer.nsh` and the installer bitmaps would be
+  # inside the build output, deleted by the next pack and never committed. (It also explains the
+  # two identical `!build{,/**/*}` entries that show up in builder-debug.yml.)
+  buildResources: project/installer
 files:
   - dist/**/*
   - package.json
@@ -87,7 +92,23 @@ electronFuses:
   enableEmbeddedAsarIntegrityValidation: false
   onlyLoadAppFromAsar: true
   resetAdHocDarwinSignature: true
-publish: null
+# Configuring this is what makes electron-builder emit the update metadata: `latest.yml` (the feed
+# electron-updater reads) and a `.blockmap` beside each installer (which is how a 270 MB update
+# downloads as a delta rather than in full). It also writes `app-update.yml` into the packaged
+# resources, which is where the running app learns which repository to ask.
+#
+# It does NOT make packaging upload anything: `release.yml` passes `--publish never` and attaches
+# the artifacts itself, so no token is ever handed to electron-builder. The metadata is still
+# produced - `createUpdateInfoTasks` is gated on the publish config existing, not on publishing
+# (app-builder-lib/out/publish/PublishManager.js).
+#
+# The half that is easy to forget is on the other side: release.yml has to *attach* `*.yml` and
+# `*.blockmap`. Without them the release looks complete and every installed Studio checks forever
+# against a 404.
+publish:
+  provider: github
+  owner: NarraLeaf
+  repo: NarraLeaf-Studio
 extraResources:
   - from: ./resources
     to: resources
@@ -133,6 +154,44 @@ mac:
       to: resources/codesign/darwin
     - from: ./resources/ffmpeg/darwin
       to: resources/ffmpeg/darwin
+# The Windows installer. Every value here was a default until now, and the defaults add up to a
+# one-click installer: no wizard, no way to choose a location, and a window Windows stretches from
+# 96 DPI because NSIS is not DPI-aware unless asked (see project/installer/installer.nsh).
+#
+# Note this block is `nsis:`, not `files:` - a `files` key under a platform block silently drops
+# the global patterns and packs the whole repository into the asar. See the comment on `files`
+# above; it is worth re-reading builder-debug.yml's firstOrDefaultFilePatterns after any change
+# here, because that failure is silent.
+nsis:
+  # The wizard. `allowToChangeInstallationDirectory` has no effect without it.
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # Per-user by default, with the "anyone who uses this computer" option still on the install-mode
+  # page (allowElevation). This is the choice that decides what updating feels like: a per-user
+  # install updates silently, while an all-users one needs elevation on every update, which the
+  # template already handles by re-launching elevated (templates/nsis/installer.nsi).
+  perMachine: false
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: NarraLeaf Studio
+  runAfterFinish: true
+  # Studio's projects and settings live outside the install directory, and an uninstaller that
+  # took them would be taking the user's work. Explicit because it is worth being sure about.
+  deleteAppDataOnUninstall: false
+  # Studio itself ships in English and Chinese, so its installer does too rather than defaulting
+  # to whatever NSIS picks. The selector appears before the first page.
+  multiLanguageInstaller: true
+  displayLanguageSelector: true
+  installerLanguages:
+    - en_US
+    - zh_CN
+  # Resolved against directories.buildResources. Baked from the app icon by
+  # `node project/build/prepare-installer-bitmaps.js`; see that script for why they are 2x.
+  installerHeader: header.bmp
+  installerSidebar: sidebar.bmp
+  uninstallerSidebar: sidebar.bmp
+  include: installer.nsh
 win:
   target: nsis
   icon: resources/app-icon.ico
