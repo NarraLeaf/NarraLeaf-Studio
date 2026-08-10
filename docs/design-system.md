@@ -2,8 +2,6 @@
 
 Studio 是**双主题**应用（暗色 / 亮色,由 `ui.themeMode` 设置驱动,默认跟随系统）。本文件是 UI 的**唯一样式事实来源**——写任何组件前先看这里,不要就地发明颜色、圆角或字号。
 
-配套：分阶段收敛计划见 [plans/2026-07-08-001-refactor-design-system-consolidation.md](plans/2026-07-08-001-refactor-design-system-consolidation.md)。
-
 ## 0. 主题机制
 
 **整条链路是纯 CSS,没有一行 JS。**

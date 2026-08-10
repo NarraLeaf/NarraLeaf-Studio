@@ -38,7 +38,7 @@ import { EventEmitter } from "../ui/EventEmitter";
  * see a past version, so the editors re-read from that revision and the disk is not touched at all.
  * Told apart from `restore` on purpose - restore puts a past version ON the disk and then re-reads
  * the working tree, which is why it takes a checkpoint first and why browsing history does not
- * (plan §1: browsing has zero side effects).
+ * (browsing has zero side effects).
  */
 export type WorkspaceReloadCause = "thaw" | "restore" | "external" | "revision";
 
@@ -187,7 +187,7 @@ type WorkspaceReloadEvents = {
  * revision and the first save after leaving writes it over the working tree. That is the loss the
  * gate exists to prevent, arriving one step later.
  *
- * The second caller is restore (plan 2026-07-27-001 §4.4, `vcs:working-tree-changed`), where the
+ * The second caller is restore (`vcs:working-tree-changed`), where the
  * bytes on disk change under the editors without the renderer having written them. Same mechanism,
  * because it is the same failure; that is why this is a service and not a branch inside `thaw`.
  *

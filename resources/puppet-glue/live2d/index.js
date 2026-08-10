@@ -10,12 +10,11 @@
  * that second licence forbids letting a "source distributed or third-party modifiable" licence cover
  * its code — which is exactly what NarraLeaf's MPL-2.0 is. So the SDK cannot enter this repository,
  * and Studio must never download it either, because fetching it on the author's behalf would be
- * distributing it. See `docs/plans/2026-07-27-002-plan-live2d-and-spine-posture.md`.
+ * distributing it.
  *
  * The consequence is that this file is *source*, not a shipped module: Studio's runtime installer
  * unpacks the author's own Cubism SDK for Web archive next to it and bundles the two together on the
- * author's machine, producing `<project>/runtimes/puppet/live2d/index.js`. This is the same posture
- * Ren'Py and TyranoScript take, and the reason no free engine bundles Cubism Core.
+ * author's machine, producing `<project>/runtimes/puppet/live2d/index.js`.
  *
  * # What it implements
  *

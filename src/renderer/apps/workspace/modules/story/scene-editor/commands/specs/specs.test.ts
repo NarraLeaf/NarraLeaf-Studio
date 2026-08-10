@@ -113,7 +113,7 @@ describe("scene commands", () => {
     });
 });
 
-describe("generic verbs (bible B3)", () => {
+describe("generic verbs", () => {
     it("/show dispatches on the target: a character enters", () => {
         // `at=` wins the preset when both are given — a transform holds one, and a placement is the
         // more specific instruction. The rule `/image` already followed.
@@ -324,7 +324,7 @@ describe("media objects", () => {
         });
     });
 
-    it("/video reads the bare muted flag (bible B5)", () => {
+    it("/video reads the bare muted flag", () => {
         expect(build("/video intro muted")).toMatchObject({
             payload: { action: "video", operation: "create", objectName: "intro", assetId: "v1", muted: true },
         });
@@ -337,7 +337,7 @@ describe("media objects", () => {
     });
 });
 
-describe("sound (bible B4: target defaults to bgm)", () => {
+describe("sound (target defaults to bgm)", () => {
     it("/bgm sets the music with its flags", () => {
         expect(build("/bgm theme fade=1 loop")).toMatchObject({
             payload: { action: "audio", operation: "setBgm", assetId: "a1", fadeMs: 1000, loop: true },
@@ -733,7 +733,7 @@ describe("logic and effects", () => {
         expect(build("/camera darken 0.6")).toMatchObject({ payload: { operation: "darken", darkness: 0.6 } });
         expect(build("/camera rotate -15")).toMatchObject({ payload: { operation: "rotate", rotation: -15 } });
         expect(build("/camera reset d=0.6")).toMatchObject({ payload: { operation: "reset", durationMs: 600 } });
-        // `/cam` is the same command, and an alias resolves to the canonical operation (bible B6).
+        // `/cam` is the same command, and an alias resolves to the canonical operation.
         expect(build("/cam dim 0.4")).toMatchObject({ payload: { action: "camera", operation: "darken", darkness: 0.4 } });
     });
 
@@ -760,7 +760,7 @@ describe("logic and effects", () => {
         expect(opensInspectorAfterCommit(spec, shot)).toBe(true);
         expect(opensInspectorAfterCommit(spec, build("/camera zoom 1.5"))).toBe(false);
         expect(opensInspectorAfterCommit(spec, build("/camera reset"))).toBe(false);
-        // `/camera shot` is the alias, and it resolves to the canonical operation (bible B6).
+        // `/camera shot` is the alias, and it resolves to the canonical operation.
         expect(build("/cam shot")).toMatchObject({ payload: { action: "camera", operation: "motion" } });
     });
 

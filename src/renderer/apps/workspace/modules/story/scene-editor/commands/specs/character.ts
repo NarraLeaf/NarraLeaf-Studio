@@ -26,7 +26,7 @@ import { supportedTransitionWords, transformPresetFor, transitionOptions } from 
  * The generic verbs and the character commands: `/show`, `/hide`, `/move`, `/face`, `/motion`,
  * `/skin`, `/param`, `/say`.
  *
- * `/show` and `/hide` are the bible's B3 in action: one verb, any subject. The target resolves to a
+ * `/show` and `/hide` are the generic-verb rule in action: one verb, any subject. The target resolves to a
  * character or a stage object and the build dispatches on what it found - the author never memorizes
  * an "object type × verb" matrix of tokens.
  *
@@ -232,7 +232,7 @@ export const show = defineStoryCommand({
     category: "character",
     icon: Eye,
     examples: ["/show Alice", "/show Alice smile at=left", "/show hero t=fade d=0.3"],
-    // Inline quick-edit (WI-2): how long the entrance takes - the duration this line writes onto the
+    // Inline quick-edit: how long the entrance takes - the duration this line writes onto the
     // show transform, which is what drives a character's entrance (the placement `at=` stays a word).
     quickParams: ["d"],
     params: {
@@ -256,7 +256,7 @@ export const hide = defineStoryCommand({
     category: "character",
     icon: EyeOff,
     examples: ["/hide Alice", "/hide hero t=fade d=0.3"],
-    // Inline quick-edit (WI-2): how long the exit takes - the same transform duration `hide()` reads.
+    // Inline quick-edit: how long the exit takes - the same transform duration `hide()` reads.
     quickParams: ["d"],
     params: {
         target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),

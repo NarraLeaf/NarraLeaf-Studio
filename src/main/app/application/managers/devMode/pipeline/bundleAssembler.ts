@@ -248,7 +248,7 @@ async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrar
 const NAMED_ASSET_TYPES = ["image", "audio", "video", "model"] as const;
 
 /**
- * `assetId → name` for the media a story row names (U4 WI-1).
+ * `assetId → name` for the media a story row names.
  *
  * Read from the same flat `assets/assets.metadata.<type>.json` shards the renderer's asset service
  * owns — `{ id: { id, name, ... } }` — and reduced to names alone: this table exists so a Dev Mode

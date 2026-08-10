@@ -4,7 +4,7 @@ import { asDurationMs, asNumber, asText, defineStoryCommand, secondsParam } from
 import { deriveObjectName } from "../payloadHelpers";
 
 /**
- * `/vfx` - a full-screen ambience overlay (plan 2026-07-24-006 §5.6, §7.2).
+ * `/vfx` - a full-screen ambience overlay.
  *
  * A `Vfx` is a looping video composited over the whole stage: falling petals, rain, drifting dust,
  * light flares. It is an engine `Actionable`, **not** a Displayable - it has no transform pipeline, so

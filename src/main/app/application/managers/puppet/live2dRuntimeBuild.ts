@@ -5,11 +5,13 @@
  * the Core is redistributable, so a prebuilt Live2D adapter cannot legally be published — not by
  * NarraLeaf, not by anyone. The author is the only party who may hold the SDK and the produced module
  * at the same time, which makes "Studio compiles it here, from the archive you downloaded" the only
- * route that ends with a working Live2D character. See `docs/plans/2026-07-27-002`.
+ * route that ends with a working Live2D character.
  *
- * The recipe is not invented here; it is the one that was brought up by hand and verified end to end
- * against a real model, and the two generated files below are the two things that make an as-shipped
- * SDK unusable in a browser module. Deviating from it means rediscovering both.
+ * Two properties of the as-shipped SDK make it unusable as a browser module, and the two generated
+ * files below exist only to work around them: {@link coreModule} republishes the Core's global, and
+ * {@link shaderModule} inlines the shader sources the WebGL renderer would otherwise `fetch()`. Both
+ * failure modes are silent — a wrong result draws nothing rather than raising — so neither step is
+ * optional.
  *
  * Deliberately electron-free — `userDataDir` and `glueDir` are passed in — so the whole build can be
  * exercised from a test.

@@ -1,6 +1,5 @@
 /*
- * U5 acceptance — language, empty states, number tiles, reading surfaces, accessible names.
- * Card: docs/plans/2026-07-26-021-task-ui-u5-language-and-empty-states.md
+ * Acceptance — language, empty states, number tiles, reading surfaces, accessible names.
  *
  *   NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<electron pid> \
  *     node tools/ui-verify/scenarios/u5-language-and-empty-states.js [--phase catalogue|inspector|dashboard|surface|names|timeline|all]
@@ -19,7 +18,7 @@ const D = require('./_drive');
 const REPO = path.join(__dirname, '..', '..', '..');
 const run = A.createRun();
 
-/** The two sentences the card deliberately keeps: a destructive-action warning, and a diagnostic. */
+/** The two sentences deliberately kept: a destructive-action warning, and a diagnostic. */
 const KEEP = [
     'Removing only updates this list. Nothing on disk is deleted.',
     'Nothing on stage is named',

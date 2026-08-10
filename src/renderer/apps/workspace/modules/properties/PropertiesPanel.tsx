@@ -1176,7 +1176,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
      * photograph. It goes on both the panel root and the scroller so the whole plane paints as one,
      * header included.
      *
-     * U2 scoped this to story rows only, which left the asset, character, interface and
+     * An earlier version scoped this to story rows only, which left the asset, character, interface and
      * (empty, on a Dashboard tab) inspectors reading over the wallpaper. A field label is a field
      * label whatever produced it, so the plate is unconditional — the empty branch above included,
      * since that is the one the Dashboard tab shows.

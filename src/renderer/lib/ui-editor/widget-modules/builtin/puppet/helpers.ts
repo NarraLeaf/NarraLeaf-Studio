@@ -52,9 +52,9 @@ export function puppetWidgetState(props: UIPuppetWidgetProps): PuppetState {
  * asking", which costs no module load and no WebGL context, and is the state most puppet widgets are
  * in for most of their authoring life.
  *
- * `entry` is always null. The plan's schema for this widget has no entry override, so a bundle whose
+ * `entry` is always null. This widget's schema has no entry override, so a bundle whose
  * entry file cannot be resolved unambiguously reaches `no-model` here where a *character* could point
- * past it - see the note in the card.
+ * past it.
  */
 export function puppetWidgetRequest(props: UIPuppetWidgetProps): SurfacePuppetRequest | null {
     if (!isPuppetWidgetConfigured(props)) {

@@ -1,6 +1,5 @@
 /*
  * Acceptance - translation exchange formats (CSV / XLIFF / PO / JSON).
- * Card: docs/plans/2026-08-05-002-feat-localization-exchange-formats.md
  *
  *   NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<electron pid> NLS_VERIFY_PROJECT=<project copy> \
  *   NLS_VERIFY_OUT=<empty dir> node tools/ui-verify/scenarios/localization-exchange-formats.js

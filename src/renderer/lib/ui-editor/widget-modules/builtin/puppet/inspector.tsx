@@ -73,8 +73,8 @@ function describeStatusKey(reason: PuppetDescriptionUnavailableReason | null | u
  * What this widget is, in the one place an author is looking when it draws nothing.
  *
  * Studio ships no renderer and is not allowed to: Live2D's "excluded license" clause collides
- * head-on with MPL-2.0, and Spine's terms require the integrator to hold an Editor licence (card
- * 2026-07-27-002). So the widget loads a module the *author* put in their project, and saying that
+ * head-on with MPL-2.0, and Spine's terms require the integrator to hold an Editor licence.
+ * So the widget loads a module the *author* put in their project, and saying that
  * out loud here is the difference between an unconfigured widget and one that looks broken.
  */
 function PuppetRuntimeNotice(_props: CustomFieldProps<UIInspectorData>) {
@@ -477,7 +477,7 @@ export function createPuppetInspector(ctx: InspectorContext) {
                     /**
                      * The widget paints through `RectangleChromeRenderer`, so these are the same flat
                      * chrome props every other rectangle-like widget stores. There is no
-                     * appearance-variant model on this widget - see the card's WI-1 correction.
+                     * appearance-variant model on this widget.
                      */
                     defineField<D, any>({
                         id: "section.puppetBox",

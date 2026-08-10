@@ -17,7 +17,7 @@ import { WorkspaceMenuAction } from "@shared/types/menu";
  * Registered actions the Run split-button draws itself, so this bar must not draw them a second time.
  *
  * Currently just Production Build, folded into the Run dropdown to free the room version control
- * needed in the title bar (plan 2026-07-28-002 §3). A table of ids here rather than a flag on the
+ * needed in the title bar. A table of ids here rather than a flag on the
  * definition, for `freezeActionPolicy`'s reason: the decision is Studio's, and a registrant - a
  * plugin above all - has no business declaring that some other control renders it.
  *

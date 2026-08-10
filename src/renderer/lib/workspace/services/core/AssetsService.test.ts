@@ -324,7 +324,7 @@ describe("AssetsService delete guard", () => {
     });
 
     /**
-     * The bypass this card exists to close: deleting a *group* used to walk its contents straight
+     * The bypass this closes: deleting a *group* used to walk its contents straight
      * into `deleteAsset` without ever consulting the index, because the check lived in the panel's
      * hook. A folder of referenced backgrounds went quietly.
      */

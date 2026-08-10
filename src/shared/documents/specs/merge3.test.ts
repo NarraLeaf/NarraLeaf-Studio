@@ -276,9 +276,9 @@ describe("assets-metadata merge3", () => {
     });
 
     it("still refuses to serialize through the spec, so the write-back path cannot use it yet", () => {
-        // Pinned rather than assumed: D4 made `serialize` throw because `AssetsService` owns
+        // Pinned rather than assumed: `serialize` throws because `AssetsService` owns
         // writing this file, and a merge write-back that reached for it would fail at the last
-        // step. Whoever adopts the shard for writing has to revisit this test and D6's pipeline.
+        // step. Whoever adopts the shard for writing has to revisit this test and the merge pipeline.
         const merged = assetsMetadataSpec.merge3!(base, base, base);
         expect(() => assetsMetadataSpec.serialize(merged.document)).toThrow(/read-only/);
     });

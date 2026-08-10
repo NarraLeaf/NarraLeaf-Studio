@@ -115,7 +115,7 @@ export interface DockEnv {
      * field exists to prevent: the sidebars would size themselves as if the space were theirs, push
      * the editor below {@link EDITOR_FLOOR}, and the editor's CSS floor would then overflow its
      * container - which produces a scrollbar, which shrinks the container, which re-clamps the
-     * overlay, which loops (docs/plans/2026-07-28-002 §3). Making it optional would let a future
+     * overlay, which loops. Making it optional would let a future
      * caller reintroduce that silently; making it required means the compiler asks.
      */
     versionRailWidth: number;

@@ -48,7 +48,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  *
  * The entry `id` takes over the old `storageKey` (not the old blueprint `id`) so that the story
  * document's `StoryVariableRef` persistent arm - which addresses by `storageKey` - resolves to this
- * entry directly, and WI-4's later storageKey→variableId symmetrization is a no-op rename. In
+ * entry directly, and a later storageKey→variableId symmetrization would be a no-op rename. In
  * practice `id === storageKey` already (the blueprint factory sets `storageKey: id`), so this only
  * matters for hand-edited documents where they diverged.
  */

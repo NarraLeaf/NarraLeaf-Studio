@@ -5,7 +5,7 @@ import { evaluateStoryExpression, strictEquals } from "./storyExpressionEval";
 
 /**
  * `strictEquals` is the one equality rule shared by `/if` expressions and the compiler's persistent
- * conditions (bible §3.3). It is strict (no coercion) and structural (json/arrays by shape). These
+ * conditions. It is strict (no coercion) and structural (json/arrays by shape). These
  * lock both halves so a future change cannot quietly reintroduce reference identity or coercion.
  */
 describe("strictEquals", () => {

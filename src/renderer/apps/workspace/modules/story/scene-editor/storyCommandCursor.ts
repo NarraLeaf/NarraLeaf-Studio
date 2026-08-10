@@ -9,7 +9,7 @@ import { tokenizeCommandLine, type StoryCommandSpan, type StoryCommandToken } fr
  *
  * A pure function of (text, caret) - the editor's chooser state is derived, never stored. The one
  * thing it cannot derive is whether the author pressed Escape: `EditorMode.insert.chooserDismissed`
- * stays on the slot, because "the menu was dismissed" is not in the text (see the plan's §4.1).
+ * stays on the slot, because "the menu was dismissed" is not in the text.
  */
 
 export type StoryCommandCursor =

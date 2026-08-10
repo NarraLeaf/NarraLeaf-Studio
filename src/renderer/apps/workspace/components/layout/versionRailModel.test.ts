@@ -56,7 +56,7 @@ describe("versionRailWidth", () => {
         expect(VERSION_RAIL_COLLAPSED_WIDTH).toBe(RAIL_SELECTOR_WIDTH);
     });
 
-    it("is the plan's 320px as a panel", () => {
+    it("is 320px as a panel", () => {
         expect(versionRailWidth("panel")).toBe(VERSION_RAIL_EXPANDED_WIDTH);
         expect(VERSION_RAIL_EXPANDED_WIDTH).toBe(320);
     });

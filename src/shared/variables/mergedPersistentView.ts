@@ -1,5 +1,5 @@
 /**
- * The merged project-variable view (M-VAR WI-3).
+ * The merged project-variable view.
  *
  * Both project-level scopes - `saved` and `persistent` - come from two authoring surfaces: the
  * project-level registry (`editor/variables.json`, created from the variables panel) and story
