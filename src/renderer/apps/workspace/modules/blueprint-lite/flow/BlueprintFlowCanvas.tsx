@@ -610,6 +610,20 @@ function BlueprintFlowCanvasInner({
     const suppressSelectionEventsRef = useRef(false);
     const selectedNodeIdsRef = useRef(selectedNodeIds);
     selectedNodeIdsRef.current = selectedNodeIds;
+    /**
+     * The graph whose nodes React Flow has actually been handed. It lags `graphKey` by one commit,
+     * and the gap is not cosmetic: `<ReactFlow>` is a child, so React runs its selection listener
+     * BEFORE the effect below hands over the new graph — and that first event still describes the
+     * graph being left. On a switch that carries a selection (the diagnostics list naming a node in
+     * another graph) it says "nothing is selected", which used to be written straight back over the
+     * node the author had just asked to be taken to.
+     *
+     * The suppression flag alone cannot cover this: it is raised in that same parent effect, which
+     * is to say one beat too late. It still covers the beat after, so the two run in sequence.
+     */
+    const syncedGraphKeyRef = useRef<string | null>(null);
+    const graphKeyRef = useRef(graphKey);
+    graphKeyRef.current = graphKey;
 
     /**
      * Replacing the nodes array during a drag (e.g. IR revision from inline literal edit) drops React Flow's
@@ -770,6 +784,7 @@ function BlueprintFlowCanvasInner({
     useEffect(() => {
         const snap = irRef.current;
         suppressSelectionEventsRef.current = true;
+        syncedGraphKeyRef.current = graphKey;
 
         const prevStruct = lastStructuralRef.current;
         const catalogChanged = lastNodeCatalogRef.current !== nodeCatalog;
@@ -952,7 +967,7 @@ function BlueprintFlowCanvasInner({
 
     const onSelectionChange = useCallback(
         ({ nodes: sel }: { nodes: Node[] }) => {
-            if (suppressSelectionEventsRef.current) {
+            if (suppressSelectionEventsRef.current || syncedGraphKeyRef.current !== graphKeyRef.current) {
                 return;
             }
             const nextIds = sel.map(n => n.id);
