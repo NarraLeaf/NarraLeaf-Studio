@@ -9,7 +9,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useRichToolbarExpanded } from "./storyEditorSessionStore";
 import { defaultInterpolationForKind, getLastInterpolationKind } from "./storyInterpolation";
 import { RubyPopover } from "./RubyPopover";
-import type { ActiveMarks, RichTextInputHandle } from "./RichTextInput";
+import type { ActiveMarks, RichTextInputHandle, RubyTarget } from "./RichTextInput";
 
 /** Fallback quick colors shown until the author has built up a recent-colors history. */
 const DEFAULT_SWATCHES = ["#ffffff", "#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
@@ -120,11 +120,14 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
     const paletteBtnRef = useRef<HTMLButtonElement | null>(null);
     const palettePanelRef = useRef<HTMLDivElement | null>(null);
     /**
-     * The ruby popover's anchor, and the reading it opened on. The reading is captured at open time
-     * rather than read live: writing it re-renders the strip, and a popover reading `active.ruby`
-     * would reset its own field to what it had just written.
+     * The ruby popover's anchor, and the words it opened on.
+     *
+     * Both are captured at open time rather than read live. The reading, because writing it
+     * re-renders the strip and a popover reading `active.ruby` would reset its own field to what it
+     * had just written. The range, because the draft is written when the popover closes and the
+     * ordinary way to close it is a click back into the sentence, which moves the caret first.
      */
-    const [ruby, setRuby] = useState<{ top: number; left: number; bottom: number; value?: string } | null>(null);
+    const [ruby, setRuby] = useState<{ top: number; left: number; bottom: number; target: RubyTarget } | null>(null);
     const rubyBtnRef = useRef<HTMLButtonElement | null>(null);
     const active = props.active ?? { bold: false, italic: false, canRuby: false };
     const recent = useRecentColors();
@@ -305,6 +308,13 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
      * so the key never reaches `onStripKeyDown` at all.
      */
     const openRuby = () => {
+        // The range is settled here, while the caret is still where the author left it. `active.ruby`
+        // would answer the same question, but reading both off one resolution keeps the field, the
+        // remove button and the eventual write talking about the same words.
+        const target = props.editor.current?.getRubyTarget();
+        if (!target) {
+            return;
+        }
         const rect = rubyBtnRef.current?.getBoundingClientRect();
         if (props.commitGuard) {
             props.commitGuard.current = true;
@@ -313,7 +323,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             top: rect?.top ?? 120,
             left: rect?.left ?? 120,
             bottom: rect?.bottom ?? 140,
-            value: active.ruby,
+            target,
         });
     };
     /**
@@ -535,10 +545,11 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             {ruby ? (
                 <RubyPopover
                     anchor={ruby}
-                    value={ruby.value}
-                    onCommit={value => props.editor.current?.setRuby(value)}
+                    anchorRef={rubyBtnRef}
+                    value={ruby.target.ruby}
+                    onCommit={value => props.editor.current?.setRuby(value, ruby.target)}
                     onRemove={() => {
-                        props.editor.current?.setRuby(null);
+                        props.editor.current?.setRuby(null, ruby.target);
                         closeRuby();
                     }}
                     onClose={() => closeRuby()}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import { Input } from "@/lib/components/elements/Input";
@@ -23,6 +23,12 @@ import { useTranslation } from "@/lib/i18n";
  */
 export function RubyPopover(props: {
     anchor: { top: number; left: number; bottom: number };
+    /**
+     * The button this opened from. It counts as inside for light dismiss, the way the palette's
+     * trigger does: without that, pressing it to close fires the outside-pointerdown first, and the
+     * button's own handler then finds the popover already gone and opens a second one.
+     */
+    anchorRef?: RefObject<HTMLElement | null>;
     /** The reading already on the text, or undefined when there is none yet. */
     value?: string;
     /** Write the draft. Trimmed, or null when the author emptied the field. */
@@ -69,10 +75,12 @@ export function RubyPopover(props: {
     }, [props]);
 
     // Light dismiss: close on any pointerdown outside the panel, letting the event through to
-    // whatever was clicked so leaving the popover keeps the author's place.
+    // whatever was clicked so leaving the popover keeps the author's place. The trigger counts as
+    // inside - closing from there is the button's job, and doing it twice reopens the popover.
     useEffect(() => {
         const onDown = (event: MouseEvent) => {
-            if (panelRef.current?.contains(event.target as Node)) {
+            const target = event.target as Node;
+            if (panelRef.current?.contains(target) || props.anchorRef?.current?.contains(target)) {
                 return;
             }
             props.onClose();

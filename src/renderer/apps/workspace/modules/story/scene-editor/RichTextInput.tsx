@@ -43,6 +43,13 @@ export type ActiveMarks = {
     canRuby: boolean;
 };
 
+/**
+ * The unit range the ruby control addresses, and the reading already on it.
+ *
+ * Resolved once, when the popover opens, and handed back at commit time - see `getRubyTarget`.
+ */
+export type RubyTarget = { start: number; end: number; ruby?: string };
+
 export type PauseClickInfo = {
     unit: number;
     value: number | true;
@@ -66,10 +73,18 @@ export type RichTextInputHandle = {
     toggleMark: (mark: "bold" | "italic") => void;
     setColor: (color: string) => void;
     /**
-     * Set or clear the reading over the selection, or over the annotated run holding a collapsed
-     * caret. Pass `null` to remove it. A no-op when there is nothing to annotate — see `canRuby`.
+     * The range the ruby control would act on, read at the moment the popover opens. `null` when
+     * there is nothing to annotate — see `canRuby`.
      */
-    setRuby: (ruby: string | null) => void;
+    getRubyTarget: () => RubyTarget | null;
+    /**
+     * Set or clear the reading. Pass `null` to remove it.
+     *
+     * `target` is the range `getRubyTarget` gave the caller when the popover opened, and passing it
+     * is how a commit stays pinned to the words it was typed for. Omitting it resolves the range
+     * afresh, which is only right when nothing can have moved the caret in between.
+     */
+    setRuby: (ruby: string | null, target?: { start: number; end: number }) => void;
     insertPause: (pause: number | true) => void;
     updatePauseAt: (unit: number, pause: number | true) => void;
     removePauseAt: (unit: number) => void;
@@ -646,49 +661,70 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     }, [emitChange, recordStructural, saveSelection, scheduleReportActive]);
 
     /**
-     * Set or clear the reading over the selection, or over the whole annotated run when the caret is
-     * collapsed inside one. `null` removes it.
+     * The words the ruby control is addressing: the selection, or — with a collapsed caret — the
+     * whole annotated run the caret is standing in. `null` when there is nothing to annotate.
+     *
+     * The popover reads this once, on the way in, and hands it back on the way out. Deriving it
+     * again at commit time would read the selection as it stands *then*, and the ordinary exit is a
+     * click back into the sentence: the caret has moved by the time the draft lands, so the reading
+     * would be written over whatever was clicked, or — a caret outside any annotated run — dropped
+     * without a word, which is the one outcome a draft popover exists to prevent.
+     */
+    const resolveRubyTarget = useCallback((): RubyTarget | null => {
+        const el = editorRef.current;
+        if (!el) {
+            return null;
+        }
+        const selection = getSelectionUnitRange(el) ?? savedRange.current;
+        if (!selection) {
+            return null;
+        }
+        const runs = domToRuns(el);
+        if (selection.start !== selection.end) {
+            return { ...selection, ruby: rangeMarkRuby(runs, selection.start, selection.end) };
+        }
+        return rubyRunAt(runs, selection.start);
+    }, []);
+
+    /**
+     * Set or clear the reading over `target`, or over whatever {@link resolveRubyTarget} finds when
+     * the caller has none. `null` removes it.
      *
      * Unlike {@link applyMark} this must never focus the editor: the reading is typed in a popover,
-     * and dragging focus back here would end the author's typing at the first character. The range
-     * comes from `savedRange` — the selection as it stood when the popover opened — and the caret is
-     * only restored when the editor still holds focus.
+     * and dragging focus back here would end the author's typing at the first character. The caret
+     * is only restored when the editor still holds focus.
      *
      * `textOnly` because a reading belongs to characters the author wrote. See
      * {@link applyMarkToRange}.
      */
-    const setRuby = useCallback((ruby: string | null) => {
+    const setRuby = useCallback((ruby: string | null, target?: { start: number; end: number }) => {
         const el = editorRef.current;
         if (!el) {
             return;
         }
-        const selection = getSelectionUnitRange(el) ?? savedRange.current;
-        if (!selection) {
+        const range = target ?? resolveRubyTarget();
+        if (!range) {
             return;
         }
         const runs = domToRuns(el);
-        const target = selection.start === selection.end ? rubyRunAt(runs, selection.start) : selection;
-        if (!target) {
-            return;
-        }
         const value = ruby?.trim() || undefined;
-        if (value === rangeMarkRuby(runs, target.start, target.end)) {
+        if (value === rangeMarkRuby(runs, range.start, range.end)) {
             // Closing the popover having changed nothing is the common exit. Rendering anyway would
             // cost an undo entry for an edit that never happened.
             return;
         }
         recordStructural();
-        const next = applyMarkToRange(runs, target.start, target.end, marks => ({ ...marks, ruby: value }), { textOnly: true });
+        const next = applyMarkToRange(runs, range.start, range.end, marks => ({ ...marks, ruby: value }), { textOnly: true });
         renderRunsToElement(el, next, renderOptionsRef.current);
         if (globalThis.document.activeElement === el) {
-            setSelectionUnitRange(el, target.start, target.end);
+            setSelectionUnitRange(el, range.start, range.end);
             saveSelection();
         } else {
-            savedRange.current = { start: target.start, end: target.end };
+            savedRange.current = { start: range.start, end: range.end };
         }
         scheduleReportActive(true);
         emitChange();
-    }, [emitChange, recordStructural, saveSelection, scheduleReportActive]);
+    }, [emitChange, recordStructural, resolveRubyTarget, saveSelection, scheduleReportActive]);
 
     // Splice by explicit unit range without focusing the editor (so a pause popover's input keeps
     // focus). Caret is only restored when the editor already holds focus.
@@ -771,6 +807,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         },
         toggleMark: (mark) => applyMark(mark),
         setColor: (color) => applyMark("color", color),
+        getRubyTarget: resolveRubyTarget,
         setRuby,
         insertPause,
         updatePauseAt: (unit, pause) => spliceUnits(unit, 1, [{ pause }], true),
@@ -782,7 +819,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         updateEventAt: (unit, event) => spliceUnits(unit, 1, [{ event }], true),
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, setRuby, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, resolveRubyTarget, setRuby, spliceUnits]);
 
     return (
         <div
