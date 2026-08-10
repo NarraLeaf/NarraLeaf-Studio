@@ -20,6 +20,7 @@ export const properties = {
         typeGameUi: "游戏界面",
         typePage: "页面",
         backgroundColor: "背景颜色",
+        backgroundImage: "背景图片",
         animation: "动画",
         logic: "逻辑",
     },

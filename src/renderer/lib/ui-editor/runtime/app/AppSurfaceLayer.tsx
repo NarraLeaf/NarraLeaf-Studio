@@ -18,7 +18,10 @@ import {
     resolvePageAnimationMotion,
     type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
-import { getSurfaceLayerBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import {
+    getSurfaceLayerBackgroundColor,
+    getSurfaceLayerBackgroundImageOpacity,
+} from "@/lib/ui-editor/runtime/surfaceBackground";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -292,6 +295,10 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
                         // applied. Painting the authored colour again here would lay an opaque
                         // sheet back over a thinned overlay.
                         backgroundColor="transparent"
+                        // The picture, unlike the colour, cannot be hoisted onto the animation layer:
+                        // it belongs to the design box, which is this level down. Only the
+                        // presentation's thinning comes from up here.
+                        backgroundImageOpacity={getSurfaceLayerBackgroundImageOpacity(entry.presentation)}
                         hostAdapter={hostAdapterBundle.hostAdapter}
                         blueprintBindingContext={hostAdapterBundle.bindingContext}
                         widgetRuntimePatches={widgetRuntimePatches}
