@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import { getInterface } from "@/lib/app/bridge";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
@@ -53,6 +55,21 @@ export function useDevModePayload(): UseDevModePayloadResult {
 
     useEffect(() => {
         const payloadToken = getInterface().devMode.onPayloadUpdate(({ bundle }) => {
+            /**
+             * Dev Mode is the third host of the active brand palette, and it has to publish one.
+             *
+             * The other two are obvious about it - the editor pushes from `BrandService`, the shipped
+             * game from its pack - but this window is its own renderer entry with no workspace
+             * services in it, so nothing here had been publishing at all and every `nlbrand:` link
+             * in the bundle resolved against the built-in seeds. A project colour the author added
+             * simply had no entry, so it painted nothing: a character accent, a widget fill and a
+             * surface background would each be right in the editor beside it and wrong here.
+             *
+             * Published before `setState`, for the reason `GameRuntimeApp` gives at its own call:
+             * surfaces resolve their colours while they render, so an effect would paint the first
+             * frame against the seeds and jump one commit later.
+             */
+            setActiveBrandPalette(bundle.brand ?? BUILTIN_BRAND_COLORS);
             setState(prev => ({
                 ...prev,
                 bundle,

@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import { deleteBlockFromScene, insertBlockInScene, moveBlocksInScene } from "@/lib/workspace/services/story/storyModel";
-import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge } from "./storySceneBlockUtils";
+import { annotateDialogueGroups, annotateNestingBranches, buildDialogueAppearances, buildVisibleRows, getContainerHeaderInfo, isContainerBlock, isReadableAccentColor, nextSelectionAfterDelete, planBlockGroupMove, planRowBackspaceReplacement, planSelectionNudge, readableAccentColor } from "./storySceneBlockUtils";
 import { dialogueOnlyStoryRowFilter, storyRowPassesFilter } from "./storyRowFilter";
 import type { VisibleStoryRow } from "./storySceneEditorTypes";
 
@@ -312,6 +314,54 @@ describe("isReadableAccentColor", () => {
         expect(isReadableAccentColor("#ffffff")).toBe(false); // washes on light
         expect(isReadableAccentColor("#ffff00")).toBe(false); // bright yellow, unreadable on light
         expect(isReadableAccentColor("not-a-color")).toBe(false);
+    });
+
+    /**
+     * A brand link is not a hex, and the band above is right to refuse it. What must not happen is
+     * the refusal reaching a surface: every Studio chrome reader goes through `readableAccentColor`,
+     * which unwraps the link first, so that an author who points a character at the project palette
+     * does not watch them go grey in the story rows, the character list and the Dev Mode timeline at
+     * the same moment.
+     */
+    describe("readableAccentColor", () => {
+        beforeEach(() => {
+            setActiveBrandPalette([
+                ...BUILTIN_BRAND_COLORS,
+                { id: "cast.alice", value: "#40a8c4" },
+                { id: "cast.pale", value: "#ffffff" },
+            ]);
+        });
+
+        afterEach(() => {
+            setActiveBrandPalette(BUILTIN_BRAND_COLORS);
+        });
+
+        it("resolves a link before banding it", () => {
+            expect(readableAccentColor("nlbrand:cast.alice")).toBe("#40a8c4");
+            expect(readableAccentColor("nlbrand:primary")).toBe("#40A8C4");
+        });
+
+        it("leaves a literal exactly as it was", () => {
+            expect(readableAccentColor("#40a8c4")).toBe("#40a8c4");
+        });
+
+        it("still bands the colour a link resolves to", () => {
+            // Near-white through the palette is as unreadable as near-white written by hand.
+            expect(readableAccentColor("nlbrand:cast.pale")).toBeUndefined();
+            // A translucent entry is not a hex the band can read, so it is refused like any other.
+            expect(readableAccentColor("nlbrand:button.shadow")).toBeUndefined();
+        });
+
+        it("says nothing for a link the palette cannot answer for", () => {
+            expect(readableAccentColor("nlbrand:gone")).toBeUndefined();
+        });
+
+        /** No accent stays no accent — the resolver must not manufacture a default. */
+        it("says nothing for a value that was never set", () => {
+            expect(readableAccentColor(undefined)).toBeUndefined();
+            expect(readableAccentColor(null)).toBeUndefined();
+            expect(readableAccentColor("")).toBeUndefined();
+        });
     });
 });
 

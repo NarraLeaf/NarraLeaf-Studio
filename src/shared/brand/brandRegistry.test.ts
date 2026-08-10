@@ -4,6 +4,7 @@ import {
     BrandPalette,
     getActiveBrandPalette,
     getActiveBrandPaletteRevision,
+    resolveBrandColorValue,
     setActiveBrandPalette,
     subscribeActiveBrandPalette,
 } from "./brandRegistry";
@@ -299,3 +300,93 @@ describe("the active palette", () => {
         expect(getActiveBrandPalette().get("secondary")).toBeUndefined();
     });
 });
+
+/**
+ * The named entry point the readers use, and the reason it has a name at all.
+ *
+ * Every caller of this is a surface with a colour guard of its own - `isReadableAccentColor`,
+ * `CHARACTER_ACCENT_HEX`, `normalizeHex` - and all three correctly refuse `nlbrand:primary`, which is
+ * the safety net an un-migrated field is rolled out behind. This is the one call that comes *before*
+ * such a guard, so what these rows pin is that it hands the guard a literal and never anything the
+ * guard has to have been taught about.
+ */
+describe("resolveBrandColorValue", () => {
+    beforeEach(() => {
+        setActiveBrandPalette(BUILTIN_BRAND_COLORS);
+    });
+
+    it("hands back a value that is not a link, so an ordinary field is unaffected", () => {
+        expect(resolveBrandColorValue("#40A8C4")).toBe("#40A8C4");
+        expect(resolveBrandColorValue("rgba(1, 2, 3, 0.4)")).toBe("rgba(1, 2, 3, 0.4)");
+        // Trimmed, because the guard downstream is anchored and a stray space would fail it.
+        expect(resolveBrandColorValue("  #40A8C4  ")).toBe("#40A8C4");
+    });
+
+    it("follows a link, and a chain of them, into the live palette", () => {
+        expect(resolveBrandColorValue("nlbrand:primary")).toBe("#40A8C4");
+        // `button.primary` is itself `nlbrand:primary`.
+        expect(resolveBrandColorValue("nlbrand:button.primary")).toBe("#40A8C4");
+
+        setActiveBrandPalette([...BUILTIN_BRAND_COLORS, color("cast.alice", "nlbrand:primary")]);
+
+        expect(resolveBrandColorValue("nlbrand:cast.alice")).toBe("#40A8C4");
+    });
+
+    it("reads the palette on every call rather than the one that was live at import", () => {
+        setActiveBrandPalette([color("primary", "#FF0000")]);
+        expect(resolveBrandColorValue("nlbrand:primary")).toBe("#FF0000");
+
+        setActiveBrandPalette([color("primary", "#00FF00")]);
+        expect(resolveBrandColorValue("nlbrand:primary")).toBe("#00FF00");
+    });
+
+    /**
+     * Null for every way there is no colour, so a caller's `?? fallback` covers the lot. Notably
+     * *not* the link text: handing `nlbrand:gone` back would put the token itself into whatever CSS
+     * declaration the caller is filling, which paints nothing and says nothing.
+     */
+    it("answers null for a broken link, a ring, and a chain that runs too deep", () => {
+        setActiveBrandPalette([
+            color("selfish", "nlbrand:selfish"),
+            color("a", "nlbrand:b"),
+            color("b", "nlbrand:a"),
+            color("dangling", "nlbrand:gone"),
+        ]);
+
+        expect(resolveBrandColorValue("nlbrand:missing")).toBeNull();
+        expect(resolveBrandColorValue("nlbrand:selfish")).toBeNull();
+        expect(resolveBrandColorValue("nlbrand:a")).toBeNull();
+        expect(resolveBrandColorValue("nlbrand:dangling")).toBeNull();
+        expect(resolveBrandColorValue(chainedLinkValue(BRAND_LINK_MAX_DEPTH + 1))).toBeNull();
+    });
+
+    /**
+     * The states that mean "this field holds no colour". They must stay null rather than acquiring a
+     * default: the callers that read a character's optional accent tell "unset" from "set to
+     * something" by exactly this answer, and a resolver that invented a colour here would give every
+     * uncoloured character one.
+     */
+    it("answers null for absent, empty and non-string values", () => {
+        expect(resolveBrandColorValue(undefined)).toBeNull();
+        expect(resolveBrandColorValue(null)).toBeNull();
+        expect(resolveBrandColorValue("")).toBeNull();
+        expect(resolveBrandColorValue("   ")).toBeNull();
+    });
+
+    it("carries the alpha rule through unchanged, rather than restating it", () => {
+        // `button.shadow` is seeded as `rgba(0, 0, 0, 0.35)`; a written segment replaces that.
+        expect(resolveBrandColorValue("nlbrand:button.shadow")).toBe("rgba(0, 0, 0, 0.35)");
+        expect(resolveBrandColorValue("nlbrand:button.shadow/0.5")).toBe("rgba(0, 0, 0, 0.5)");
+    });
+});
+
+/** `nlbrand:l0` against a palette `links` deep, published as a side effect. */
+function chainedLinkValue(links: number): string {
+    const colors: BrandColor[] = [];
+    for (let index = 0; index < links; index += 1) {
+        colors.push(color(`l${index}`, `nlbrand:l${index + 1}`));
+    }
+    colors.push(color(`l${links}`, "#010203"));
+    setActiveBrandPalette(colors);
+    return "nlbrand:l0";
+}
