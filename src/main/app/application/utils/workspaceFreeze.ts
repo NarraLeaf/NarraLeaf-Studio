@@ -14,8 +14,8 @@ import type { RevisionId } from "@shared/types/vcs";
  * still ask, and main is the only place that can answer no.
  *
  * The refusal is a **consistency** guard, not a data-safety one. The working tree still holds the
- * author's current content while frozen (browsing history does not touch it, see plan
- * 2026-07-28-002 §1), so a build that slipped through would package the project correctly. What is
+ * author's current content while frozen (browsing history does not touch it), so a build that
+ * slipped through would package the project correctly. What is
  * wrong is that the author is reading a past revision and would have no way to know that is not what
  * they just built or ran.
  *
@@ -95,7 +95,7 @@ export function getWorkspaceFreeze(projectPath: string): WorkspaceFreezeKind | n
 
 /**
  * The whole record, for the one caller that needs more than the reason: Dev Mode, which compiles the
- * revision the author is looking at instead of refusing (plan 2026-07-28-002 §1).
+ * revision the author is looking at instead of refusing.
  *
  * Separate from {@link getWorkspaceFreeze} so the two refusals that only need the reason keep reading
  * a `WorkspaceFreezeKind` and cannot accidentally start depending on a field that is allowed to be

@@ -20,7 +20,7 @@
  *
  *   a  pointer parked off the row          (cold)
  *   b  pointer hovering the row            (b-a is the hover shift — a fixed defect; guards it)
- *   c  editing, pointer still on the row   (c-b is THE number this card is about)
+ *   c  editing, pointer still on the row   (c-b is THE number this measures)
  *   d  after Escape, still hovering        (d-b: does it come back?)
  *   e  pointer parked off again            (e-a: does the row end where it started?)
  *
@@ -243,7 +243,7 @@ function print(report) {
     console.log('');
 }
 
-/** Every assertion this card makes, over one phase's samples. */
+/** Every assertion this scenario makes, over one phase's samples. */
 function checkPhase(phase, report) {
     const measured = report.filter(entry => entry.a && entry.a.glyph && entry.c && entry.c.glyph);
     const worst = pick => round(Math.max(0, ...measured.map(entry => Math.abs(pick(entry)))));

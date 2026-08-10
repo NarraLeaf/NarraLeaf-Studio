@@ -4,7 +4,7 @@ import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
 /**
- * The two `/fx` operations A4 added (task 2026-07-26-003 WI-2): `backdrop` (CSS backdrop-filter, the
+ * The two `/fx` operations: `backdrop` (CSS backdrop-filter, the
  * frosted-glass knob) and `blend` (mix-blend-mode, restricted to NLR's six curated modes). Both reuse
  * the existing `displayableEffect` shape, so this only pins their compiled OUTPUT: the property the
  * engine call carries, and the shared duration floor every effect option passes through.

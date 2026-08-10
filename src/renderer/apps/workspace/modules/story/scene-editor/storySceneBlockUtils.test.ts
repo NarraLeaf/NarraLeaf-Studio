@@ -386,7 +386,7 @@ describe("buildDialogueAppearances", () => {
         expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).has("d1")).toBe(false);
     });
 
-    it("tracks the placement (WI-3): an enter sets it and names its own block as the source", () => {
+    it("tracks the placement: an enter sets it and names its own block as the source", () => {
         const blocks = [
             characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "left" } }),
             dialogue("d1", { characterId: "c1" }),
@@ -425,7 +425,7 @@ describe("buildDialogueAppearances", () => {
         expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1")?.shown).toBe(true);
     });
 
-    it("reads back a placement move on a never-shown speaker without inventing a shown avatar (WI-3 round-trip)", () => {
+    it("reads back a placement move on a never-shown speaker without inventing a shown avatar", () => {
         // The group-header dropdown authors this /move for a speaker with no /show; the scan must read it
         // back so a second pick rewrites it rather than stacking a duplicate — but must not mark it shown.
         const blocks = [

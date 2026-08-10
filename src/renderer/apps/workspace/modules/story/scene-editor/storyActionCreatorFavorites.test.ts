@@ -3,9 +3,10 @@ import { getCommandSpec } from "./commands/registry";
 import { LEGACY_FAVORITE_TO_SPEC_ID, migrateStarredActionIds } from "./storyActionCreatorFavorites";
 
 /**
- * The favourites migration (WI-4) - A1's only real data migration.
+ * The favourites migration - the one place the command-catalogue convergence needed a real
+ * data migration.
  *
- * `story.actionCreator.starredActionIds` stores palette ids, and A1 deleted the catalogue those came
+ * `story.actionCreator.starredActionIds` stores palette ids, and the convergence deleted the catalogue those came
  * from. The requirement is blunt: do not silently empty a user's favourites. So every id the old
  * sidebar could star has to land on a live spec, and the only ones allowed to disappear are the two
  * whose commands genuinely no longer exist.

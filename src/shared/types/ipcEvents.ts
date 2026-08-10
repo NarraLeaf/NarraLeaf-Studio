@@ -1536,7 +1536,7 @@ export type IPCWorkspaceEvents = {
      *
      * Main refuses the production build and the Preview runtime while it is - both are started in
      * main and reached by IPC, so a disabled button in the top bar does not stop them. Dev Mode is
-     * allowed and runs the revision instead (plan 2026-07-28-002 §1), which is why `revision`
+     * allowed and runs the revision instead, which is why `revision`
      * travels with the kind.
      *
      * A message rather than a request: the renderer has nothing to do with the answer, and the
@@ -1555,7 +1555,7 @@ export type IPCWorkspaceEvents = {
              * author is looking at, so main needs the id and not only the fact of a freeze. A
              * `"revision"` freeze that arrives without one makes main REFUSE the launch rather than
              * fall back to the working tree - running the current game while the author is reading
-             * version #1 is the failure U4 exists to prevent.
+             * version #1 is the failure this exists to prevent.
              */
             revision?: RevisionId;
         };

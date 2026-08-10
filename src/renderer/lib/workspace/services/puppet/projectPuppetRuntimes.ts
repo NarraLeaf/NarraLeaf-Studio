@@ -1,7 +1,7 @@
 /**
  * Finding the drawing runtimes an author put in their project, from the workspace window.
  *
- * Studio ships no puppet backend and is not allowed to (card 2026-07-27-002), so the only authority
+ * Studio ships no puppet backend and is not allowed to, so the only authority
  * on what is installed is the folder itself: one directory per backend under `runtimes/puppet/`,
  * each with an `index.js`. Dev Mode already reads it this way to feed the running game; this is the
  * same reading, done from the editor, so an inspector can load a backend without a game being open.

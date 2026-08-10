@@ -15,7 +15,7 @@ const VCS_CHANGES_TAB_PREFIX = "narraleaf-studio:vcs-changes";
  * Which comparison a tab shows.
  *
  * **Three members, and the third is why the tab exists at editor width** rather than living in the
- * 320px rail (plan 2026-07-31-004 §3.2): a conflict needs room for "what the two sides are and
+ * 320px rail: a conflict needs room for "what the two sides are and
  * which one you want". Every place that switches on `mode` does so exhaustively and without a
  * `default`, so a fourth member produces a compile error at each of them rather than a silently
  * mishandled case - which is how this one was added.

@@ -1,5 +1,5 @@
 # Make one window of the isolated instance MEASURABLE, with the smallest possible effect on whoever
-# is using the machine. Acceptance needs `document.hidden === false` (handoff 6.8); it does not need
+# is using the machine. Acceptance needs `document.hidden === false`; it does not need
 # the window in front, and it never needs the window pinned there.
 #
 # Default mode restores a minimized window WITHOUT activating it and does nothing else. That is

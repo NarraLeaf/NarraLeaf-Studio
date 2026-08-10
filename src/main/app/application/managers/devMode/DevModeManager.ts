@@ -23,7 +23,7 @@ type DevModeSession = {
      * The directory the compile path reads, which is NOT always the project.
      *
      * While the workspace is showing a past revision, this is a snapshot of that revision and the
-     * author's own files are left alone (plan 2026-07-28-002 §1). Everything that identifies the
+     * author's own files are left alone. Everything that identifies the
      * session - the key in `sessions`, which workspace window gets its console output, which project's
      * freeze is consulted - stays `projectPath`; only reads move.
      */
@@ -345,7 +345,7 @@ export class DevModeManager {
         try {
             let started = Date.now();
             this.emitVerbose(session, "nlang compile started");
-            // `sourcePath`, not `projectPath`, for all three stages below: this is the whole of U4.
+            // `sourcePath`, not `projectPath`, for all three stages below — that is the whole of it.
             // The compile path is path-driven end to end, so running a past revision is a matter of
             // which directory it reads - see `revisionLaunchSource.ts`.
             const compileResult = await this.compiler.compile({ projectPath: session.sourcePath });

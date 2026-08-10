@@ -21,13 +21,13 @@ import { blobAt, listFilesAt } from "./revisionReader";
 import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote";
 
 /**
- * D0 follow-up, in two processes.
+ * Measurement follow-up, in two processes.
  *
  * `mergeSpike2`'s R2 established that after ANY `revisionSync` - conflicted or not -
  * `storageGet` fails for every content address in that repository, including revisions
  * committed locally before the sync ever happened. The revision tree still reads: paths,
  * sizes and content addresses all come back, only the bytes do not. That breaks history
- * browsing, `readRevisionDocuments`, `getThreeWay`, V4 restore and every diff this card
+ * browsing, `readRevisionDocuments`, `getThreeWay`, V4 restore and every diff this work
  * is about, on exactly the projects that have collaborators.
  *
  * What R2 could not say is whether the damage is to the repository or only to the

@@ -297,7 +297,7 @@ function candidatesForType(
             return contentCandidates(type, query, context, resolved);
         case "enum":
             // Completion inserts the word it is SHOWING — this locale's spelling when it has one that
-            // parses, the canonical value otherwise. Storage is unaffected (bible B6): resolution
+            // parses, the canonical value otherwise. Storage is unaffected: resolution
             // normalizes either spelling to the canonical value, so what is banked never moves.
             //
             // The filter has to see the translated spelling too, or the list empties the moment the

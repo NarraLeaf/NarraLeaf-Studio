@@ -25,7 +25,7 @@ type WorkspaceFreezeEvents = {
  * Tell main what the workspace is showing.
  *
  * The revision travels with the kind because main does not refuse everything while frozen: Dev Mode
- * **runs the focused revision** (plan 2026-07-28-002 §1), and it cannot find one from the kind alone.
+ * **runs the focused revision**, and it cannot find one from the kind alone.
  * Main refuses the launch if a `"revision"` freeze arrives without an id, so a caller that drops this
  * argument loses the feature rather than silently running the working tree under a past version's name.
  */
@@ -137,7 +137,7 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
      * fragments over the network (docs/version-control.md §6). The caller shows progress.
      *
      * Nothing here touches the working tree, so nothing here takes a checkpoint. Browsing history has
-     * zero side effects (plan §1) - a checkpoint per look would mean the author's timeline grew three
+     * zero side effects - a checkpoint per look would mean the author's timeline grew three
      * revisions they never made because they read it three times.
      */
     public async showRevision(source: DocumentSource, label?: string): Promise<WorkspaceReloadResult> {

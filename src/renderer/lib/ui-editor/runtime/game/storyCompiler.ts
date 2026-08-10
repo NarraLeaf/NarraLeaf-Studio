@@ -183,7 +183,7 @@ function collectPersistentDefaults(view: MergedPersistentView): Record<string, S
 
 /**
  * Every declared persistent variable's storage key - the set a persistent reference is validated
- * against (bible §3.3). Persistent variables come from two authoring surfaces until the project-level
+ * against. Persistent variables come from two authoring surfaces until the project-level
  * registry lands: story `//persis` declaration rows and the blueprint document's own persistent
  * variables. Both key host persistence by `storageKey`, so the reference (also keyed by storageKey)
  * checks membership here; a miss is an undeclared variable and gets the same diagnostic as a missing
@@ -191,7 +191,7 @@ function collectPersistentDefaults(view: MergedPersistentView): Record<string, S
  */
 /**
  * The merged persistent view for a compile: the registry (blueprint-declared, baked into the bundle)
- * unioned with the story `/persis` declaration rows (WI-3). Reference validation reads its storage
+ * unioned with the story `/persis` declaration rows. Reference validation reads its storage
  * keys; a display name declared in both surfaces is reported as a collision diagnostic.
  */
 function collectPersistentView(document: StoryDocument, persistentVariables?: PersistentVariableRuntimeTable): MergedPersistentView {
@@ -1620,7 +1620,7 @@ async function createNlrScenes(input: {
     };
     // Two scenes with the same runtime name share one `Scene.local` namespace, so their scene-local
     // variables would silently read and write each other's values. The name keys the namespace
-    // (`DevTools.getNamespaceName`), so a collision is a real data hazard, not cosmetic (bible §3.3).
+    // (`DevTools.getNamespaceName`), so a collision is a real data hazard, not cosmetic.
     // Document order decides WHICH of the two colliding scenes gets blamed - the later one, as with
     // duplicate labels. Reading the record would hand that verdict to whichever id sorts lower.
     const namesSeen = new Set<string>();
@@ -3995,7 +3995,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
         return { kind: "storable", namespace: DevTools.getNamespaceName(ctx.savedPersistent), key: def.storageKey };
     }
     // Existence is checked before host availability: an undeclared persistent variable is a fault the
-    // author must fix regardless of whether Dev Mode host persistence is up (bible §3.3, same diagnostic
+    // author must fix regardless of whether Dev Mode host persistence is up (same diagnostic
     // as a missing scene/saved variable).
     if (!ctx.persistentKeys.has(ref.variableId)) {
         diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
@@ -4114,7 +4114,7 @@ function setVariable(
         return ctx.savedPersistent.set(def.storageKey, value as any);
     }
     // Persistent (app-level, host-managed, shared with UI blueprints). Existence is checked first, so
-    // an undeclared persistent target faults regardless of host availability (bible §3.3).
+    // an undeclared persistent target faults regardless of host availability.
     if (!ctx.persistentKeys.has(target.variableId)) {
         diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
         return null;
@@ -4258,7 +4258,7 @@ function persistentCondition(
     const persistentDefaults = ctx.persistentDefaults;
     // Structural equality (`strictEquals`), the same rule `/if` expressions use — so a json/array
     // persistent variable compares by shape, not by reference identity, matching scene/saved conditions
-    // which go through NLR's `persistent.equals()` (bible §3.3). The undefined guard keeps the old
+    // which go through NLR's `persistent.equals()`. The undefined guard keeps the old
     // "both absent" behaviour: a not-yet-stored, default-less variable equals only an undefined target.
     const equals = (a: StoryLiteralValue | undefined, b: StoryLiteralValue | undefined): boolean =>
         a === undefined || b === undefined ? a === b : strictEquals(a, b);

@@ -8,7 +8,7 @@ import { paramHintKey, paramTypes, type StoryCommandParamType } from "./storyCom
 import { STORY_COMMAND_PINYIN } from "./storyCommandPinyin.generated";
 
 /**
- * The command manual, projected straight from the spec registry (WI-2). Every entry — signature,
+ * The command manual, projected straight from the spec registry. Every entry — signature,
  * parameters, aliases, label, detail — is derived from the same spec the parser and the menu read, so
  * the manual can never drift from the real grammar and needs no hand-maintenance: a new spec appears
  * here for free.
@@ -36,7 +36,7 @@ export type StoryCommandManualParam = {
     slot: string;
     /** Human description of the accepted values, derived from the param's type(s). */
     accepts: string;
-    /** Part of the command's required core — Enter will not commit the line without it (bible B9). */
+    /** Part of the command's required core — Enter will not commit the line without it. */
     required: boolean;
     /** Consumes the rest of the line, spaces included. */
     greedy: boolean;
@@ -49,7 +49,7 @@ export type StoryCommandManualEntry = {
     group: StoryCommandGroupId;
     /** The `/token` an author types, in the command language - `/背景` where that word parses. */
     token: string;
-    /** The bible-notation signature, e.g. `/bg <Image or Color> [t=] [d=]`. */
+    /** The signature, e.g. `/bg <Image or Color> [t=] [d=]`. */
     signature: string;
     /**
      * Every other `/`-spelling that reaches this command, e.g. `["/background"]`. The canonical
@@ -70,7 +70,7 @@ export type StoryCommandManualEntry = {
  * Enum and keyword values are printed literally - they are words the author types, not descriptions of
  * words. Which spelling gets printed is the one that will be accepted back: an enum value goes through
  * `localizedEnumValue`, the same call the candidate menu shows and inserts, so the page can never
- * document a word the parser does not speak (bible B11). A keyword has no alias table, so it stays as
+ * document a word the parser does not speak. A keyword has no alias table, so it stays as
  * it is written in the grammar. Everything else names its kind through a key.
  */
 function describeType(type: StoryCommandParamType, t: ManualTranslate): string {
@@ -139,7 +139,7 @@ function paramHint(name: string, param: StoryCommandParamSpec, t: ManualTranslat
 /**
  * One param's slot in a signature: a positional shows its localized hint (the same word the ghost
  * names it by), a named param shows `key=`. Core slots are `<…>`, optional slots `[…]`, and a greedy
- * value trails an ellipsis — the bible's own notation (§2).
+ * value trails an ellipsis.
  */
 function paramSlot(name: string, param: StoryCommandParamSpec, t: ManualTranslate): string {
     if (param.positional) {

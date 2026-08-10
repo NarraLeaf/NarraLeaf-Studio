@@ -13,7 +13,7 @@ export enum AssetSource {
  * reference*: the snapshot lives at the same content shard as any local asset and travels with the
  * project under version control, and this record is what makes a later "check for updates" possible.
  * Everything downstream - the build, the lint rules, thumbnails, the overview - therefore treats a
- * remote asset as an ordinary one. See docs/plans/2026-08-05-003-plan-remote-asset-pinning.md.
+ * remote asset as an ordinary one.
  */
 export type AssetResolveMeta<Source extends AssetSource> = Source extends AssetSource.Local ? {} : Source extends AssetSource.Remote ? {
     /** The address the author gave, verbatim. The only field a refresh sends a request to. */

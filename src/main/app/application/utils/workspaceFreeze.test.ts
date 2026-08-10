@@ -93,14 +93,14 @@ describe("workspaceFrozenMessage", () => {
 
 describe("who consults the freeze record", () => {
     it("is refused by the build, the preview and a test's game - Dev Mode reads it to run the revision", async () => {
-        // The decision (plan 2026-07-28-002 §1) is that a frozen workspace still runs Dev Mode, and
+        // The decision is that a frozen workspace still runs Dev Mode, and
         // that Dev Mode runs the FOCUSED REVISION rather than the working tree. So the list below has
         // two kinds of entry on it and they must not be confused: managers that refuse, and one
         // reader that asks which revision so it can compile that one. A `workspaceFrozenMessage` call
         // appearing in the Dev Mode entry would mean Run had been turned into a refusal, which
         // would take away the only runtime an author browsing a revision is left with.
         //
-        // `GameTestManager` joined the refusers with the test pipeline (plan 2026-08-01-002 R9): a
+        // `GameTestManager` joined the refusers with the test pipeline: a
         // test that launches a game goes through the same gate Preview does, or picking a windowed
         // test would be a way around it. Headless tests are unaffected - they never come here, which
         // is why a frozen workspace can still run project diagnostics.

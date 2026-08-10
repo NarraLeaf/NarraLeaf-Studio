@@ -2,7 +2,7 @@ import type { StoryTransformRef, StoryTransitionRef } from "@shared/types/story"
 import type { StoryCommandEnumOption } from "../storyCommandGrammar";
 
 /**
- * The unified transition vocabulary (bible §1.3).
+ * The unified transition vocabulary.
  *
  * The author has ONE word list; `t=fade` means "appear/disappear/change softly" everywhere. Which
  * payload field and which engine value that becomes is this module's job, decided per command
@@ -80,7 +80,7 @@ const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> 
     character: ["fade", "slide", "circle", "wipe", "blur", "none"],
     // Every preset the inspector's own dropdown offers, so the two surfaces reach the same set of
     // looks — `left` / `center` / `right` excepted: those are the SAME field written through `at=`,
-    // which is the slot the vocabulary already gives a placement (bible §1.2).
+    // which is the slot the vocabulary already gives a placement.
     reveal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "scale", "rotate", "opacity", "darken", "circle", "wipe", "none"],
     conceal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "scale", "rotate", "opacity", "darken", "circle", "wipe", "none"],
     nvl: ["fade", "none"],

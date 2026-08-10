@@ -25,14 +25,14 @@ import { storyActionRowFragments, type StoryRowFragment, type StoryRowLookups } 
 import type { Character } from "@/lib/workspace/services/character/Character";
 
 /**
- * Inline quick-edit params (WI-2). A small, high-frequency subset of a committed row's params —
+ * Inline quick-edit params. A small, high-frequency subset of a committed row's params —
  * declared per command via `StoryCommandSpec.quickParams` — surfaced in the row summary as clickable
  * tokens so a tweak never has to open the inspector. There is no block→command parser, so the value
  * is read straight from the payload here and written back through the same history path the inspector
  * uses (`onUpdatePayload`), which keeps every quick edit undoable.
  *
  * The model half (which params a block has, and what each one reads as) moved to
- * `@/lib/story/storyQuickParamsModel` with U4 WI-1: the tokens are fragments of the row's *sentence*,
+ * `@/lib/story/storyQuickParamsModel`: the tokens are fragments of the row's *sentence*,
  * and the Dev Mode timeline has to print that sentence without mounting any of these popovers.
  */
 
@@ -41,17 +41,17 @@ export { getQuickParams, type QuickParam, type QuickParamValue };
 const TOKEN_CLASS = "cursor-pointer rounded-md px-0.5 underline decoration-dotted decoration-fg-subtle/60 underline-offset-2 transition-colors hover:bg-fill hover:text-fg";
 
 /**
- * One piece of a committed row's overview projection (WI-2 / bible M5): either a run of plain text
+ * One piece of a committed row's overview projection: either a run of plain text
  * (the target name and any modifiers the tokens do not own) or a clickable quick-edit token. The
  * tokens ARE fragments in the same stream, not a second layer appended after a finished string.
  */
 export type OverviewFragment = StoryRowFragment;
 
 /**
- * The structured overview of a committed action row (bible M5): `[target · modifiers]` with the
+ * The structured overview of a committed action row: `[target · modifiers]` with the
  * quick-edit params spliced in as first-class fragments.
  *
- * A thin `Character[]` adapter over the shared `storyActionRowFragments` (U4 WI-1) — the projection
+ * A thin `Character[]` adapter over the shared `storyActionRowFragments` — the projection
  * itself is what the Dev Mode timeline reads, so the two surfaces cannot drift.
  */
 export function blockOverview(
@@ -72,7 +72,7 @@ export function blockOverview(
 
 /**
  * Render a committed row's overview: the structured `[target][modifiers]` fragment stream, with any
- * quick-edit params inline as clickable tokens (WI-2). The single summary path for every action row —
+ * quick-edit params inline as clickable tokens. The single summary path for every action row —
  * a plain-`describeBlock` row is just an overview with no token fragments.
  */
 export function BlockOverview(props: {

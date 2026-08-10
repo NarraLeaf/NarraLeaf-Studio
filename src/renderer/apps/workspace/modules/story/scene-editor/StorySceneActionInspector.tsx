@@ -1364,8 +1364,8 @@ const vfxOperationOptions = (t: TFunc): SelectOption[] => [
  *
  * An author picking here is not expressing a preference, they are declaring which of two production
  * routes their clip came down: a true-alpha WebM composites plainly, glow rendered on black has to be
- * added. Naming the routes is what makes the choice answerable without a paragraph of explanation
- * (M3 card §1) - the keyword alone tells someone who already knows the answer.
+ * added. Naming the routes is what makes the choice answerable without a paragraph of explanation -
+ * the keyword alone tells someone who already knows the answer.
  */
 const vfxBlendOptions = (t: TFunc): SelectOption[] => [
     { value: "normal", label: t("storyInspector.vfxBlend.normal") },
@@ -2949,7 +2949,7 @@ function LabeledTextarea(props: { label: string; value: string; onChange: (value
  * sections (Basics / Appearance / Motion / Transition / Timing / ...).
  */
 /**
- * The inspector's voice region (WI-4): the current take's state in the primary locale, an audition
+ * The inspector's voice region: the current take's state in the primary locale, an audition
  * play/stop button when a take exists, and a jump to the voice table where binding lives. Assignment
  * stays import-first in the voice table (no inline assignment, `dialogue.voiceAssetId` is not revived).
  * Hidden when the project has no voiced language or the block carries no voiceable line.

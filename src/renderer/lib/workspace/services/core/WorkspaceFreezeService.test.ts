@@ -326,7 +326,7 @@ describe("WorkspaceFreezeService", () => {
 
     /**
      * Main starts the production build and the Preview runtime itself, so a greyed-out control cannot
-     * stop them - it refuses both while frozen and has to be told (plan 2026-07-28-002 §4.3).
+     * stop them - it refuses both while frozen and has to be told.
      *
      * Told on both edges, and once at startup: this latch is module-level and never persisted, so a
      * window that reloads mid-freeze comes back writable while main would still believe it is frozen
@@ -345,7 +345,7 @@ describe("WorkspaceFreezeService", () => {
         // one down), so they all echo the same value.
         await service.freeze({ kind: "revision", revision: "aa" });
         // The revision travels with the kind because main does not refuse everything while frozen: Dev
-        // Mode compiles that revision, and it cannot find one from the kind alone (plan §4 U4).
+        // Mode compiles that revision, and it cannot find one from the kind alone.
         expect(reportWriteFreeze).toHaveBeenLastCalledWith("revision", "aa");
 
         service.thaw();
@@ -405,7 +405,7 @@ describe("WorkspaceFreezeService", () => {
     });
 
     /**
-     * Editor state is not the author's project (plan §1), and it is not versioned either - so it goes
+     * Editor state is not the author's project, and it is not versioned either - so it goes
      * on reading and writing the disk while a revision is shown. A revision view that also showed the
      * panel layout from that revision would look like a broken application.
      */

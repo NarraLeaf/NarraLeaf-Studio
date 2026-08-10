@@ -17,7 +17,7 @@ import type { MediaConvertRequest, MediaConvertTarget } from "@shared/types/medi
  * The command line, the progress stream, and the failure arms.
  *
  * Nothing here runs ffmpeg. What ffmpeg does with these arguments is proven by the real-sample
- * check described in the card - a produced file fed back through the probe and the classifier - and
+ * check against real samples - a produced file fed back through the probe and the classifier - and
  * that is the only evidence that means anything about playability. What *is* worth pinning down
  * here is everything a real run cannot distinguish: a remux that quietly re-encoded would still exit
  * zero, an image path with a quality knob would still produce a PNG, and a cancellation that left

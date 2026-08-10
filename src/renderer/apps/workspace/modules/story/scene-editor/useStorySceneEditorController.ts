@@ -182,7 +182,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<StoryBlockId>>(() => new Set());
     /** Counts explicit select gestures — see {@link selectRow}. Read by the tab to re-claim the right rail. */
     const [selectionRevision, setSelectionRevision] = useState(0);
-    // Editor-wide view preferences (WI-6). PanelStateService loads from disk before the editor renders,
+    // Editor-wide view preferences. PanelStateService loads from disk before the editor renders,
     // so the synchronous read below sees the persisted value; the setters write it back.
     const [rowFilter, setRowFilterState] = useState<StoryRowFilter>(() => {
         const prefs = panelStateService ? getStoryEditorViewPrefs(panelStateService) : null;
@@ -484,7 +484,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }),
         [assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
-    // Each dialogue speaker's accumulated appearance (WI-3), so a dialogue row's avatar can follow the
+    // Each dialogue speaker's accumulated appearance, so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
     const dialogueAppearances = useMemo(() => (scene ? buildDialogueAppearances(scene) : null), [document, scene]);
     /**
@@ -548,7 +548,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 return appearance ? { ...row, appearance } : row;
             });
         }
-        // Grouping runs last, over the exact rows that will render (WI-5); the branch lookahead runs
+        // Grouping runs last, over the exact rows that will render; the branch lookahead runs
         // after it, over the same final list, so "the next row" means the next row on screen.
         return annotateNestingBranches(annotateDialogueGroups(rows, characters));
     }, [characterIdByName, characters, dialogueAppearances, rowFilter, scene, unfilteredRows]);
@@ -1021,7 +1021,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return block.id;
     }, [recordHistory, scene, sceneId, storyId, storyService, uuidService]);
 
-    // `confirmation` is the just-declared line's ghost receipt (bible §3.5): the slot that opens after a
+    // `confirmation` is the just-declared line's ghost receipt: the slot that opens after a
     // declaration commits carries it so `✓ Var gold: number = 0` greets the caret, then the next edit
     // strips it. Every other caller opens a clean slot (no argument), so the receipt is scoped to exactly
     // the one slot that earned it — no separate state, and nothing to clear when the author moves on.
@@ -1086,7 +1086,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 replaceBlockId: block.id,
             },
             initialValue: insertDraftRef.current,
-            // Reopening a draft row lands with its completion menu open (bible M3): the author is here
+            // Reopening a draft row lands with its completion menu open: the author is here
             // to fix the line, so the candidates it needs are what should greet them - not the suppressed
             // slot the old `chooserDismissed: true` left, which gave a returned-to line no menu at all.
         });
@@ -1666,7 +1666,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // Typing with nothing to strip must NOT produce a new mode object: returning `current`
             // is what makes React bail out, and that bail-out is the difference between a keystroke
             // costing one field's render and costing the whole document's. The declaration receipt
-            // (bible §3.5) is one-shot the same way `chooserDismissed` is.
+            // is one-shot the same way `chooserDismissed` is.
             if (current.chooserDismissed === undefined && current.confirmation === undefined) {
                 return current;
             }
@@ -1699,9 +1699,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // row leaves the visible set while the slot is open — the author toggled the "narrative only" filter
     // or collapsed the anchor's container — the slot has nowhere on screen to render and the editor is
     // stranded in an invisible insert state. Close it so the surface is never stuck where the author
-    // cannot see it (WI-0 #3). A replace slot (a re-opened draft row) renders in place of `replaceBlockId`,
+    // cannot see it. A replace slot (a re-opened draft row) renders in place of `replaceBlockId`,
     // so that row is its anchor and must be checked directly — its draft row is invalid, so the narrative
-    // filter hides it while the slot is open (WI-0 M3.1). A top-of-scene slot (no anchor row) is left alone.
+    // filter hides it while the slot is open. A top-of-scene slot (no anchor row) is left alone.
     useEffect(() => {
         if (editorMode.kind !== "insert") {
             return;
@@ -1829,7 +1829,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (line.kind !== "command" || !line.def) {
             return false;
         }
-        // One gate, one path: parser issues and an unfilled required core block here (bible B9), and
+        // One gate, one path: parser issues and an unfilled required core block here, and
         // every command - paramless containers included - commits through its spec. The old paramless
         // fall-through to the menu path is gone with the dual behaviour it carried.
         if (!canCommit(line)) {
@@ -1898,7 +1898,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         // A declaration's row IS its result, but the caret has already moved on to the fresh slot below,
         // so the receipt travels with that slot: `✓ @local gold 0 type=number`, fading on the next
-        // keystroke (bible §3.5). No toast — the ghost zone is the quietest place to say "it worked"
+        // keystroke. No toast — the ghost zone is the quietest place to say "it worked"
         // without stealing the line the author is about to type.
         //
         // The receipt IS the row's own line, off the same projection, so the two cannot drift — and
@@ -1992,9 +1992,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [createBlock, editorMode, insertBlock]);
 
     /**
-     * A pick from the sidebar. Since A1 the sidebar lists SPECS, so this is the same build the typed
-     * line runs - only with no args at all: `build({})` returns the command's default block (the bible
-     * requires every spec to survive empty args), and whatever the line would have said, including the
+     * A pick from the sidebar. The sidebar lists SPECS, so this is the same build the typed
+     * line runs - only with no args at all: `build({})` returns the command's default block (every
+     * spec must survive empty args), and whatever the line would have said, including the
      * target, is bound in the inspector. That is what lets one `/show` entry stand under five subjects
      * instead of ten catalogue entries standing for one verb.
      */
@@ -2040,7 +2040,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [updateBlockPayloadFor]);
 
     /**
-     * Set where a dialogue group's speaker stands (WI-3, M3.1). The document always stays command lines
+     * Set where a dialogue group's speaker stands. The document always stays command lines
      * (P3): the dropdown is a declarative shell over `/show … at=` and `/move … at=`. Reading is the
      * appearance scan's job (`buildDialogueAppearances` tracks the placement + the block that set it);
      * writing rewrites that block's `at=` in place, or — when the character has no enter/move to edit —

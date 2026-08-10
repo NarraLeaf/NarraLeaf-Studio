@@ -95,13 +95,13 @@ type StoryRuntimeDebugPanelProps = {
 };
 
 const SCOPE_LABEL: Record<StoryRuntimeVariableScope, string> = {
-    // Editor command-token vocabulary (/local, /var, /persis) — see the M5 card WI-1.
+    // Editor command-token vocabulary (/local, /var, /persis).
     scene: "Local",
     saved: "Var",
     persistent: "Persis",
 };
 
-/** Coalesce the play-head stream to at most one re-read per frame (WI-2: throttle high-frequency). */
+/** Coalesce the play-head stream to at most one re-read per frame. */
 function useStoryRuntimeTick(storyRuntime: GameAppStoryRuntimeBridge): number {
     const [tick, setTick] = useState(0);
     useEffect(() => {
@@ -1033,7 +1033,7 @@ function SceneTab(props: {
     const [focusKey, setFocusKey] = useState("");
     const [persistTick, setPersistTick] = useState(0);
 
-    // Reuse the workspace scene-flow projection (no second node graph — see the M5 card WI-5 / §8).
+    // Reuse the workspace scene-flow projection (no second node graph).
     // The SAME set goes to the builder and to the canvas: the builder packs the column against the
     // taller boxes, and a canvas drawing rows the layout did not budget for overlaps its neighbours.
     const graph = useMemo(

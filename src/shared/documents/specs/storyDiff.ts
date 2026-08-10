@@ -17,7 +17,7 @@ import {authoredName, byId, change, diffKeyed, fromToParams, previewValue, sameJ
  * of a scene as every row after it changing. Nothing is guessed at and no sequence is aligned by
  * similarity: either the id is on both sides or it is not.
  *
- * Two rules the shape of the output follows from, both from plan 2026-07-31-004 §4.3:
+ * Two rules the shape of the output follows from:
  *
  *  - **Different scenes are different rows.** A scene is the unit an author holds in their head and
  *    the unit a resolution will eventually be taken on, so it is the group; a row inside it is a

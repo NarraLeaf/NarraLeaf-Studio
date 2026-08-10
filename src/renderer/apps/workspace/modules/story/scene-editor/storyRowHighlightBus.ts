@@ -1,7 +1,7 @@
 import type { DevModeStoryRowHighlight } from "@shared/types/devMode";
 
 /**
- * Renderer-local fan-out for the Dev Mode play head (WI-2 editor sync). A single bridge subscribes
+ * Renderer-local fan-out for the Dev Mode play head. A single bridge subscribes
  * to the IPC channel and publishes here; every open story-scene editor tab subscribes and reveals
  * the row only when it owns that story + scene. Kept out of the IPC layer so multiple tabs can all
  * react without contending over a single `onMessage` handler.

@@ -364,7 +364,7 @@ export function NotificationsEntry() {
  * What it says comes from `versionFace`, shared with the switcher menu and the rail's focused
  * block - the three of them naming one version three ways is a contradiction an author reads as a
  * broken feature, and it has happened here before. Merges and ahead/behind markers are still
- * undecided (plan 2026-07-28-002 §6); when they land, they land in that function.
+ * undecided; when they land, they land in that function.
  *
  * The width cap is a MAXIMUM, so it costs nothing in the ordinary case: `#12` is three characters
  * wide whatever the cap says. It only becomes real on a branch, and it is there to stop a long

@@ -15,7 +15,7 @@ import {
 } from "./lore";
 
 /**
- * Not a test: a fixture builder for the orchestrator's real-app acceptance of D6.
+ * Not a test: a fixture builder for real-app acceptance of conflict resolution.
  *
  * Studio can only produce a conflict by syncing, and a sync needs a server, a collaborator
  * who pushed, and a local commit touching the same file. That is several minutes of setup

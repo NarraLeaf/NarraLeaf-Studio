@@ -23,11 +23,11 @@ import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
  * Strip width. The same 48px as the sidebar selector rail, and that is a product decision rather
  * than a coincidence: the strip IS the persistent "you are looking at a historical version"
  * indicator, and it reads as part of the window's left edge only if it lines up with the rail beside
- * it (plan 2026-07-28-002 §1). Derived from {@link RAIL_SELECTOR_WIDTH} so the two cannot drift.
+ * it. Derived from {@link RAIL_SELECTOR_WIDTH} so the two cannot drift.
  */
 export const VERSION_RAIL_COLLAPSED_WIDTH = RAIL_SELECTOR_WIDTH;
 
-/** Expanded width, from the plan's layout diagram (§3). */
+/** Expanded width, when the rail is a panel rather than a strip. */
 export const VERSION_RAIL_EXPANDED_WIDTH = 320;
 
 /**
@@ -287,7 +287,7 @@ export interface FlatHistoryEntry {
  *
  * `VcsHistoryEntry.parents` is an array and stays one - the flattening lives HERE, in the view
  * model, and never in the service, because collaboration (V5) makes side branches real and a data
- * layer that had assumed a chain would have to be rebuilt rather than extended (plan §5.6).
+ * layer that had assumed a chain would have to be rebuilt rather than extended.
  *
  * Starts at the newest entry and follows `parents[0]`. Revisions reachable only through a second
  * parent are dropped: they belong to the branch that was merged IN, and showing them inline would

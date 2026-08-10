@@ -18,7 +18,7 @@
  * Anything more here would be a second implementation of the order, in the one place the type checker
  * cannot compare it against the first — see the guard at the bottom.
  *
- * Nothing here names a renderer and nothing here may — card 2026-07-27-002.
+ * Nothing here names a renderer and nothing here may.
  */
 
 import { useSurfacePuppetOpener } from "@/lib/ui-editor/runtime/game/surfacePuppetHosts";

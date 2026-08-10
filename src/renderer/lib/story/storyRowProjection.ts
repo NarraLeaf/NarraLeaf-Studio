@@ -33,10 +33,10 @@ import { storyAppearanceLabel } from "@/apps/workspace/modules/story/scene-edito
 
 /**
  * "What sentence is this row" — one projection, consumed by the story editor and by the Dev Mode
- * timeline / execution context (U4 WI-1).
+ * timeline / execution context.
  *
  * There used to be two: the editor's, assembled across `blockOverview` + `BackgroundBlockPreview` +
- * `RichTextView`, and a weaker re-projection in `storyRuntimeDebugModel` that the M5 card authorised
+ * `RichTextView`, and a weaker re-projection in `storyRuntimeDebugModel` kept
  * as a stopgap. They disagreed on the rows that matter most — `Enter Nattou` against
  * `character enter · character`, `Set background outside_s.jpg d 5s` against `setBackground` — so the
  * debug panel was quietly a different reading of the same story than the editor beside it.
@@ -775,7 +775,7 @@ const defaultRowLabel: StoryRowLabel = key => translate(key);
  * The fragment stream a committed *action* row reads as: `[target · modifiers]` with the quick-edit
  * params spliced in.
  *
- * Keyed on payload shape, not a command spec: a committed block carries no command id (bible B11 —
+ * Keyed on payload shape, not a command spec: a committed block carries no command id (there is
  * no reverse edit) and generic verbs make payload→spec many-to-one, so a payload-shape projection is
  * the honest home — the same shape `describeStoryBlock` / `storyBlockBadge` / `getQuickParams` take.
  */

@@ -2,16 +2,16 @@ import type { StoryBlock } from "@shared/types/story";
 import { formatStorySecondsValue } from "@shared/utils/storyTime";
 
 /**
- * The pure half of the row's inline quick-edit params (bible M5 / WI-2): which params a committed
+ * The pure half of the row's inline quick-edit params: which params a committed
  * block exposes, what each one reads as, and how to write it back.
  *
  * Split out of `storyQuickParams.tsx` because the params are *fragments of the row's sentence*, not
  * decoration on top of it — `Set background outside_s.jpg d 5s` is one sentence, and the `d 5s` half
  * of it lives here. The Dev Mode timeline has to print the same sentence without mounting any of the
- * editor's popovers, so the model has to be reachable without the components (U4 WI-1).
+ * editor's popovers, so the model has to be reachable without the components.
  */
 
-/** Wait presets, in ms — the bible's B10 "high-frequency" set. */
+/** Wait presets, in ms — the "high-frequency" set. */
 const WAIT_PRESETS_MS = [200, 500, 1000, 2000, 3000];
 /** Audio operations that carry a meaningful volume / loop. */
 const VOLUME_OPS = new Set(["setBgm", "playSound", "setVolume"]);

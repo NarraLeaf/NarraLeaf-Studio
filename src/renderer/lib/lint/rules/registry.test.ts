@@ -113,7 +113,7 @@ describe("lint rule registry", () => {
         }
     });
 
-    it("declares option specs only where the plan calls for them", () => {
+    it("declares option specs only where they are called for", () => {
         const withOptions = LINT_RULES.filter(rule => rule.options).map(rule => rule.id);
         expect(withOptions).toEqual(["text/overlong"]);
         const overlong = getLintRule("text/overlong");
