@@ -1023,6 +1023,87 @@ describe("UIDocumentService component library", () => {
             .toEqual({ saveId: "7", label: "" });
     });
 
+    // A component that arrives inert is worth placing once, which is why every component in the
+    // bundled template had exactly one instance. Extraction now carries the logic across, remapped so
+    // it drives the copy rather than the elements still sitting on the surface.
+    it("carries a widget blueprint into the component it extracts", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+        const surface = service.createSurface({ kind: "appSurface", host: "app", name: "Save" });
+        const doc = service.getDocument();
+        const rootId = surface.rootElementId;
+        const hit: UIElement = {
+            id: "hit-area",
+            type: "nl.container",
+            name: "Hit area",
+            parentId: rootId,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 200, height: 60 },
+            behavior: { events: { mouseClick: { kind: "blueprintEvent", blueprintId: "bp-hit", eventId: "click" } } },
+        } as unknown as UIElement;
+        doc.elements[rootId]!.childrenIds.push(hit.id);
+        doc.elements[hit.id] = hit;
+
+        blueprintDocument.blueprints["bp-hit"] = {
+            id: "bp-hit",
+            name: "Hit area",
+            owner: { kind: "widgetMain", surfaceId: surface.id, elementId: hit.id },
+            frontend: "visual",
+            programKind: "graph",
+            members: { variables: {}, fields: {}, functions: {} },
+            bindings: {},
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        click: {
+                            id: "click",
+                            graph: {
+                                nodes: {
+                                    ref: {
+                                        id: "ref",
+                                        type: "blueprint.element.ref",
+                                        params: { surfaceId: surface.id, elementId: hit.id, elementType: "nl.container" },
+                                    },
+                                },
+                                edges: [],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        } as never;
+        blueprintDocument.ownerRecords[`widgetMain:${surface.id}:${hit.id}`] = {
+            activeBlueprintId: "bp-hit",
+            privateBlueprintIds: ["bp-hit"],
+            initializedFrontend: "visual",
+        } as never;
+
+        const component = service.createComponentFromElements(surface.id, [hit.id], "Save slot")!;
+        const copy = component.elements[component.rootElementId]!;
+
+        // The binding survives, and names the clone rather than the surface's blueprint.
+        const boundId = (copy.behavior?.events?.mouseClick as { blueprintId?: string } | undefined)?.blueprintId;
+        expect(boundId).toBeTruthy();
+        expect(boundId).not.toBe("bp-hit");
+
+        const cloned = blueprintDocument.blueprints[boundId!]!;
+        expect(cloned.owner).toMatchObject({ kind: "componentWidgetMain", componentId: component.id, elementId: copy.id });
+        expect(blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${copy.id}`]?.activeBlueprintId).toBe(boundId);
+
+        // The whole point of the remap: an element ref inside the clone points at the component's
+        // copy. Left alone it would reach back out and drive the element still on the surface.
+        const refParams = (cloned.program as never as {
+            graphs: { events: Record<string, { graph: { nodes: Record<string, { params: Record<string, string> }> } }> };
+        }).graphs.events.click.graph.nodes.ref.params;
+        expect(refParams.elementId).toBe(copy.id);
+        expect(refParams.elementId).not.toBe(hit.id);
+
+        // The original is untouched: extraction copies into the library, it does not move.
+        expect(service.getDocument().elements[hit.id]).toBeTruthy();
+        expect(blueprintDocument.blueprints["bp-hit"]).toBeTruthy();
+    });
+
     it("wraps multi-selection components in a relative container root", () => {
         const { service } = createHarness();
         const doc = service.getDocument();
