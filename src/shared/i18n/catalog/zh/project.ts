@@ -12,6 +12,12 @@ export const project = {
             title: "游戏",
             description: "存档、玩家默认值与音频轨道",
         },
+        // 按这一页最终要装的东西命名，而不是按它现在只有的那一块：目前只有配色，字体等其余外观
+        // 设定要放到它旁边。
+        design: {
+            title: "设计",
+            description: "颜色，以及由它们上色的控件",
+        },
         project: {
             title: "工程",
             description: "工程检查的规则，以及什么会拦下构建",
@@ -33,6 +39,10 @@ export const project = {
         saving: "存档",
         playerDefaults: "玩家默认值",
         audioTracks: "音频轨道",
+        // 「配色」子页的两块内容：作者自己定的颜色，以及跟随它们的槽位。该页其余文案都在 `brand`
+        // 命名空间里，与它们命名的那份模型放在一起。
+        brandColors: "颜色",
+        brandControls: "控件",
         security: "安全",
         signing: "签名",
         optimization: "优化",

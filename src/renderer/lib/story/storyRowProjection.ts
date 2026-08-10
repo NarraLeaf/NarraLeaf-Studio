@@ -59,7 +59,13 @@ import { storyAppearanceLabel } from "@/apps/workspace/modules/story/scene-edito
 export type StoryRowCharacter = {
     /** Author-facing name. May be empty (an unnamed character); never an id. */
     name: string;
-    /** Editor accent colour, when the surface has one and it is readable. */
+    /**
+     * Editor accent colour, when the surface has one and it is readable.
+     *
+     * A literal ready for CSS, never the stored value: a profile's accent may be a `nlbrand:` link
+     * at the project palette, and both lookups that fill this in resolve it before applying the
+     * readability band (`readableAccentColor`). The projection is pure and has no palette to reach.
+     */
     color?: string;
 };
 
