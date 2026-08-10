@@ -16,6 +16,10 @@ import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
+import { TRAY_RESIDENCY_NOTICE_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
+import { getMainTranslator } from "./application/i18n";
+import { TrayManager } from "./application/managers/trayManager";
+import { UpdateManager } from "./application/managers/updateManager";
 import { resolveStartupProject } from "./application/startupProject";
 
 export interface AppConfig extends BaseAppConfig {
@@ -77,6 +81,26 @@ export class App extends BaseApp {
                 await this.flushWorkspacePendingSaves(workspace);
             }
         });
+
+        this.updateManager = new UpdateManager(this);
+
+        // Built as soon as there is an Electron app to attach it to, because from here on it is
+        // the only handle a windowless Studio has - see handleLastWindowClosed, which reads
+        // `isActive()` and refuses to go resident without it. macOS is excluded inside
+        // TrayManager and keeps the Dock instead.
+        //
+        // The tray comes first: the updater rebuilds the tray menu on every state change, and
+        // its launch check is scheduled by `initialize()`.
+        this.onReady(() => {
+            const tray = new TrayManager(this, {
+                openLauncher: () => this.revealLauncher(),
+                openUpdateSettings: () => this.revealSettings({ highlight: UPDATE_PANEL_SETTING_KEY }),
+            });
+            tray.initialize();
+            this.trayManager = tray;
+
+            this.updateManager.initialize();
+        });
     }
 
     private readonly devModeManager: DevModeManager;
@@ -85,6 +109,7 @@ export class App extends BaseApp {
     private readonly gameBuildManager: GameBuildManager;
     private readonly mediaConvertManager: MediaConvertManager;
     private readonly vcsManager: VcsManager;
+    private readonly updateManager: UpdateManager;
 
     public getDevModeManager(): DevModeManager {
         return this.devModeManager;
@@ -110,6 +135,11 @@ export class App extends BaseApp {
 
     public getVcsManager(): VcsManager {
         return this.vcsManager;
+    }
+
+    /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */
+    public getUpdateManager(): UpdateManager {
+        return this.updateManager;
     }
 
     private applyWindowIcon(window: AppWindow): void {
@@ -227,6 +257,124 @@ export class App extends BaseApp {
         });
 
         return this.launcherStartup;
+    }
+
+    /**
+     * Bring the home screen in front of the user, opening it if they closed everything.
+     *
+     * The entry point for every "get me back into Studio" gesture now that closing the last
+     * window no longer ends the session: the tray item and its Open Launcher row, macOS's dock
+     * `activate`, and a second launch handing its intent to the running instance.
+     *
+     * Restores before focusing because a minimized window is the common case for the tray - and
+     * `focus()` alone leaves a minimized window minimized.
+     */
+    public async revealLauncher(): Promise<void> {
+        const existing = this.findLauncher();
+        if (existing) {
+            if (existing.win.isMinimized()) {
+                existing.win.restore();
+            }
+            existing.focus();
+            return;
+        }
+        await this.ensureLauncher();
+        this.findLauncher()?.focus();
+    }
+
+    /**
+     * Open Settings on a particular entry - or move the open Settings window to it.
+     *
+     * One implementation for both callers (the IPC handler renderers use, and the tray's Check
+     * for Updates row), because "open settings at X" has to be idempotent from either: launching
+     * unconditionally would leave two Settings windows disagreeing about what is selected.
+     *
+     * `opener` is who asked, and becomes the new window's parent. The tray has no window to offer,
+     * so the launcher is brought back first - which is also the right thing to look at behind a
+     * Settings window that was opened from an empty desktop.
+     */
+    public async revealSettings(
+        props: WindowProps[WindowAppType.Settings],
+        opener?: AppWindow,
+    ): Promise<void> {
+        const existing = this.windowManager.getWindows()
+            .find(candidate => !candidate.isClosed() && candidate.getWindowType() === WindowAppType.Settings);
+        if (existing) {
+            if (props?.highlight) {
+                existing.sendIpcEvent(IPCEventType.settingsHighlight, { highlight: props.highlight });
+            }
+            if (existing.win.isMinimized()) {
+                existing.win.restore();
+            }
+            existing.focus();
+            return;
+        }
+
+        let parent = opener;
+        if (!parent || parent.isClosed()) {
+            await this.revealLauncher();
+            parent = this.findLauncher();
+        }
+        if (!parent) {
+            this.logger.warn("[Settings] No window to open Settings from.");
+            return;
+        }
+
+        await this.launchSettings(parent as AppWindow<WindowAppType.Launcher>, props, {
+            parent: parent.win,
+            minWidth: 800,
+            minHeight: 500,
+            width: 1200,
+            height: 800,
+            center: true,
+            x: undefined,
+            y: undefined,
+        });
+    }
+
+    /**
+     * What happens when the user closes the last window.
+     *
+     * Studio used to quit here. It now stays resident, because an update that is still
+     * downloading has to be allowed to finish, and because closing a project is not the same
+     * gesture as quitting the editor.
+     *
+     * The exception is the one that matters: on Windows and Linux, residency without a status-bar
+     * item leaves a process with no handle at all - not in the taskbar, not in the tray, ending
+     * only from Task Manager. A tray that failed to appear (no StatusNotifier host on Linux, a
+     * missing icon resource) therefore falls back to the old behaviour rather than stranding it.
+     * macOS always has the Dock, so it never needs the fallback.
+     */
+    public handleLastWindowClosed(): void {
+        if (process.platform === "darwin") {
+            return;
+        }
+        if (this.trayManager?.isActive()) {
+            this.announceResidencyOnce();
+            return;
+        }
+        this.logger.warn("[App] No window and no status-bar item; quitting rather than going headless.");
+        this.quit();
+    }
+
+    /**
+     * Tell the user where Studio went, the first time it goes resident on this machine.
+     *
+     * Once per profile, because it is an explanation rather than a status: after the first time,
+     * the tray item is somewhere they have already been shown. Recorded before the balloon is
+     * shown - a balloon that failed to appear is not worth repeating the notice forever over, and
+     * `displayBalloon` reports nothing either way.
+     */
+    private announceResidencyOnce(): void {
+        if (this.globalState.get(TRAY_RESIDENCY_NOTICE_KEY) === true) {
+            return;
+        }
+        this.setGlobalStateAndBroadcast(TRAY_RESIDENCY_NOTICE_KEY, true);
+        const { t } = getMainTranslator(this);
+        this.trayManager?.announceResidency(
+            t("menu.tray.residencyNotice.title"),
+            t("menu.tray.residencyNotice.body"),
+        );
     }
 
     /**

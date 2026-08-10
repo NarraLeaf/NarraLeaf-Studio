@@ -5,6 +5,12 @@ name: Release
 # Apple Silicon — and attaches them to a Release named for the tag, marked as
 # the latest stable.
 #
+# This release is also what installed copies of Studio update from: alongside the installers it
+# carries `latest.yml` and the `.blockmap` files electron-updater reads (see the Upload step).
+# Two consequences for whoever cuts a release: the tag must match `version` in package.json
+# exactly, and the release must not be left as a draft — an installed Studio cannot see either
+# one, and fails quietly rather than loudly.
+#
 # There is deliberately no macOS x64 installer: Studio is not shipped for Intel
 # Macs. Three of its subsystems have no Intel-Mac implementation and two of them
 # are not ours to fix — @lore-vcs publishes only sdk-arm64-apple-darwin (version
@@ -111,9 +117,15 @@ jobs:
         shell: bash
         run: bash project/build/verify-packaged-ffmpeg.sh
 
-      # Only the installers — the unpacked app directories in build/ are hundreds
-      # of megabytes of intermediate output. if-no-files-found: error because a
+      # Only the installers and the update metadata — the unpacked app directories in build/ are
+      # hundreds of megabytes of intermediate output. if-no-files-found: error because a
       # packaging step that silently produces nothing must not read as a pass.
+      #
+      # The *.yml and *.blockmap lines are the auto-updater's half of a release. `latest.yml` is
+      # the feed an installed Studio polls, and the blockmap is what turns a 270 MB update into a
+      # delta. Dropping them does not fail anything here or look wrong on the release page — it
+      # just means every installed copy checks for updates against a 404, forever, and says so
+      # only in its log. This is the one step in the chain with no visible failure.
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
@@ -122,6 +134,8 @@ jobs:
             build/*.exe
             build/*.dmg
             build/*.zip
+            build/*.yml
+            build/*.blockmap
           if-no-files-found: error
 
   # Collect every platform's installers and publish them as one Release for the
@@ -149,7 +163,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t files < <(find dist-artifacts -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' \) | sort)
+          mapfile -t files < <(find dist-artifacts -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' -o -name '*.blockmap' \) | sort)
           test "${#files[@]}" -gt 0 || { echo "::error::no installers found to attach"; exit 1; }
           printf 'attaching:\n'; printf '  %s\n' "${files[@]}"
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
