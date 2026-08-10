@@ -6,6 +6,10 @@ export const blueprint = {
         detach: "Open in a separate window",
         detachFailed: "The separate window could not be opened. The blueprint stayed in the workspace.",
     },
+    /** Shared by every blueprint entry: the card or button that leads into a blueprint. */
+    entry: {
+        openInWindow: "Right click to open in a separate window",
+    },
     tab: {
         title: "Blueprint",
         invalid: "Blueprint tab is invalid.",
