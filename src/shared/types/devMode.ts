@@ -25,6 +25,13 @@ export type DevModeEntry =
            * session and nothing is ever written back to the project or to Studio settings.
            */
           safeAreaId?: string | null;
+          /**
+           * The project's `app.mobile.orientation`, so the window resolves a device inset onto the
+           * same edge the editor did. Unlike `safeAreaId` this is not a design aid but plain
+           * project context, so BOTH launch paths send it — the Interface panel's picker has to be
+           * able to answer correctly in a window the top bar opened.
+           */
+          mobileOrientation?: "landscape" | "portrait" | "auto";
       }
     | {
           kind: "story";
