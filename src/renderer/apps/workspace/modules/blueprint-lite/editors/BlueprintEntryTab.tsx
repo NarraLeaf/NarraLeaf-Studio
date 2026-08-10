@@ -21,6 +21,7 @@ import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
+import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/componentNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
@@ -29,6 +30,7 @@ import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/docume
 import type { StoryDocument } from "@shared/types/story";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import { getUIComponentParams } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { getUIListChildSlot, isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import {
@@ -1601,6 +1603,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }),
             ...nodeCatalog.getDynamicSelectOptions(),
         };
+        // The params of the component this blueprint belongs to, for `Get Component Param`. Ids, not
+        // names: the id is what the node stores, so renaming a param must not unpoint a graph.
+        if (payload.ownerKind === "componentWidgetMain" && payload.componentId) {
+            const component = uiDocument.components?.find(item => item.id === payload.componentId);
+            opts[BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE] = getUIComponentParams(component).map(param => ({
+                value: param.id,
+                label: param.name.trim() || param.id,
+            }));
+        }
         if (
             (payload.ownerKind === "widgetMain" || payload.ownerKind === "componentWidgetMain") &&
             payload.surfaceId
@@ -1629,6 +1640,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         revision,
         payload.ownerKind,
         payload.surfaceId,
+        payload.componentId,
         storyService,
         storyDocumentsById,
         storyLibraryRevision,

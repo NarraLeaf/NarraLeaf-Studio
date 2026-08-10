@@ -97,6 +97,7 @@ import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE,
+    BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
@@ -350,6 +351,8 @@ export type DataPinResolveRuntime = {
         elementId?: string;
         blueprintId?: string;
         componentId?: string;
+        /** Resolved params of the component instance this execution belongs to, by param id. */
+        componentParams?: Record<string, string>;
     };
     valueExecution?: BehaviorGraphValueExecution;
 };
@@ -1365,6 +1368,30 @@ function resolveFrameNodeOutput(
     }
     const key = toBlueprintString(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime)).trim();
     return key ? api.frame.getParam(key) : null;
+}
+
+/**
+ * What `Get Component Param` publishes: the value the placement supplied, or the empty string.
+ *
+ * Empty rather than undefined in all three miss cases - no instance behind this execution, no param
+ * chosen on the node yet, a param that was removed out from under a graph that still points at it.
+ * Blueprints have one empty value, and a node that returns undefined would make the difference
+ * between "blank" and "broken" show up as a crash somewhere downstream instead of here.
+ */
+function resolveComponentParamNodeOutput(
+    portId: string,
+    params: Record<string, unknown>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (portId !== "value") {
+        return undefined;
+    }
+    const paramId = String(params.paramId ?? "").trim();
+    if (!paramId) {
+        return "";
+    }
+    const supplied = runtime?.executionOwner?.componentParams?.[paramId];
+    return typeof supplied === "string" ? supplied : "";
 }
 
 function resolvePageNodeOutput(portId: string, runtime?: DataPinResolveRuntime): unknown {
@@ -2690,6 +2717,9 @@ function resolveSelfOutput(
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
         return resolveFrameNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM) {
+        return resolveComponentParamNodeOutput(portId, selfNode.params ?? {}, runtime);
     }
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS ||

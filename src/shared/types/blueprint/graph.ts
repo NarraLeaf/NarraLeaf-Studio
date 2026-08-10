@@ -974,6 +974,14 @@ export const BLUEPRINT_NODE_TYPE_VOICE_SET_LANGUAGE = "blueprint.voice.setLangua
 export const BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES = "blueprint.voice.getAvailableLanguages" as const;
 export const BLUEPRINT_NODE_TYPE_VOICE_PLAY = "blueprint.voice.play" as const;
 
+/**
+ * Reads one value the placement supplied to the component this blueprint belongs to.
+ *
+ * Instances of a component share its blueprint, so a literal baked into that blueprint is the same
+ * literal for every placement. This node is what makes two placements differ.
+ */
+export const BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM = "blueprint.component.getParam" as const;
+
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE = "blueprint.frameWidget.setTargetPage" as const;
