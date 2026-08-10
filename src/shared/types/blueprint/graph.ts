@@ -790,6 +790,12 @@ export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
  * since the stack existed; until this node there was no way for an author to reach it.
  */
 export const BLUEPRINT_NODE_TYPE_PAGE_BACK = "blueprint.page.back" as const;
+/**
+ * Dismiss whatever the player opened over a running game, and do nothing when no game is running.
+ * `Go Page (None)` empties the stack unconditionally, which from the title screen would throw away
+ * the screen the player is standing on; this is the node an Escape handler can hold on every page.
+ */
+export const BLUEPRINT_NODE_TYPE_PAGE_CLEAR = "blueprint.page.clear" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS = "blueprint.page.getProps" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSurfaceExiting" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING = "blueprint.page.isSurfaceEntering" as const;

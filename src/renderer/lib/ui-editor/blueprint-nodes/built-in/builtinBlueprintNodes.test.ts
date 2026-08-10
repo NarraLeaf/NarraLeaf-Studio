@@ -331,6 +331,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     openSurface: async () => undefined,
                     getPageProps: () => ({}),
                     closeLayer: async () => undefined,
+                    clearPages: async () => undefined,
+                    clearGameOverlay: async () => undefined,
                     quitApplication: async () => undefined,
                     getFullscreen: async () => false,
                     setFullscreen: async () => undefined,
@@ -445,6 +447,8 @@ function createPageNavigationHostAdapter(
                     },
                     getPageProps: () => pageProps,
                     closeLayer: async () => undefined,
+                    clearPages: async () => undefined,
+                    clearGameOverlay: async () => undefined,
                     quitApplication: async () => {
                         quitApplicationCalls.push(true);
                     },
@@ -598,6 +602,8 @@ function createGameSaveHostAdapter(options: {
                     openSurface: async () => undefined,
                     getPageProps: () => ({}),
                     closeLayer: async () => undefined,
+                    clearPages: async () => undefined,
+                    clearGameOverlay: async () => undefined,
                     quitApplication: async () => undefined,
                     getFullscreen: async () => false,
                     setFullscreen: async () => undefined,

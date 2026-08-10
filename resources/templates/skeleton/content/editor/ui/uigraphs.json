@@ -164,7 +164,18 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nClear": {
+                      "id": "nClear",
+                      "type": "blueprint.page.clear",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 140,
                           "y": 0
                         }
                       }
@@ -175,6 +186,16 @@
                       "from": {
                         "nodeId": "n1",
                         "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nClear",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nClear",
+                        "port": "next"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -1061,7 +1082,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -1515,6 +1536,17 @@
                           "y": 1300
                         }
                       }
+                    },
+                    "nClear": {
+                      "id": "nClear",
+                      "type": "blueprint.page.clear",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 140,
+                          "y": 0
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -1524,7 +1556,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "nClear",
                         "port": "in"
                       }
                     },
@@ -1835,6 +1867,16 @@
                       },
                       "to": {
                         "nodeId": "init.fsOffSel.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nClear",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n2",
                         "port": "in"
                       }
                     }
@@ -8937,7 +8979,18 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nClear": {
+                      "id": "nClear",
+                      "type": "blueprint.page.clear",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 140,
                           "y": 0
                         }
                       }
@@ -8948,6 +9001,16 @@
                       "from": {
                         "nodeId": "n1",
                         "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nClear",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nClear",
+                        "port": "next"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -11624,7 +11687,18 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nClear": {
+                      "id": "nClear",
+                      "type": "blueprint.page.clear",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 140,
                           "y": 0
                         }
                       }
@@ -11635,6 +11709,16 @@
                       "from": {
                         "nodeId": "n1",
                         "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nClear",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nClear",
+                        "port": "next"
                       },
                       "to": {
                         "nodeId": "n2",

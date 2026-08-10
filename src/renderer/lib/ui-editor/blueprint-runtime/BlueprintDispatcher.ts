@@ -182,6 +182,14 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.call", functionId: "navigation.closeLayer" });
                     input.debug.emit({ type: "function.return", functionId: "navigation.closeLayer" });
                 },
+                clearPages: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.clearPages" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.clearPages" });
+                },
+                clearGameOverlay: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.clearGameOverlay" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.clearGameOverlay" });
+                },
                 quitApplication: async () => {
                     input.debug.emit({ type: "function.call", functionId: "navigation.quitApplication" });
                     input.debug.emit({ type: "function.return", functionId: "navigation.quitApplication" });
