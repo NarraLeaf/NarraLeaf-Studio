@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "colors": [
+    { "id": "primary", "value": "#40A8C4", "builtin": true },
+    { "id": "secondary", "value": "#2E6E80", "builtin": true },
+    { "id": "background", "value": "#101317", "builtin": true },
+    { "id": "foreground", "value": "#F2F4F7", "builtin": true },
+
+    { "id": "button.primary", "value": "nlbrand:primary", "builtin": true },
+    { "id": "button.secondary", "value": "nlbrand:secondary", "builtin": true },
+    { "id": "button.border", "value": "nlbrand:secondary/0.5", "builtin": true },
+    { "id": "button.text", "value": "nlbrand:foreground", "builtin": true },
+    { "id": "button.shadow", "value": "rgba(0, 0, 0, 0.35)", "builtin": true },
+
+    { "id": "container.background", "value": "nlbrand:background", "builtin": true },
+    { "id": "container.border", "value": "nlbrand:secondary/0.5", "builtin": true },
+    { "id": "container.shadow", "value": "rgba(0, 0, 0, 0.35)", "builtin": true },
+
+    { "id": "text.primary", "value": "nlbrand:foreground", "builtin": true },
+    { "id": "text.muted", "value": "#9AA3AE", "builtin": true },
+
+    { "id": "textInput.background", "value": "nlbrand:background", "builtin": true },
+    { "id": "textInput.border", "value": "nlbrand:secondary/0.5", "builtin": true },
+    { "id": "textInput.text", "value": "nlbrand:foreground", "builtin": true },
+
+    { "id": "surface.sunken", "name": "Page background", "value": "#0A090D" },
+    { "id": "surface.raised", "name": "Panel", "value": "#15171D" },
+    { "id": "surface.overlay", "name": "Raised fill", "value": "#222630" },
+    { "id": "text.subtle", "name": "Subtle text", "value": "#6E7681" },
+    { "id": "border.strong", "name": "Selected border", "value": "nlbrand:primary/0.7" }
+  ]
+}
