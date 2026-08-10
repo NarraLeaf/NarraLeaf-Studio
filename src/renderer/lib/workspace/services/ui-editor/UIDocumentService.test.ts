@@ -1102,6 +1102,53 @@ describe("UIDocumentService component library", () => {
         // The original is untouched: extraction copies into the library, it does not move.
         expect(service.getDocument().elements[hit.id]).toBeTruthy();
         expect(blueprintDocument.blueprints["bp-hit"]).toBeTruthy();
+
+        // Exactly one clone. Selecting an element is enough to give it a blueprint, so most elements
+        // own an empty one; carrying those put a shell in the library for every box in the selection.
+        const clones = Object.values(blueprintDocument.blueprints).filter(
+            b => (b as { owner?: { kind?: string; componentId?: string } }).owner?.kind === "componentWidgetMain"
+                && (b as { owner?: { componentId?: string } }).owner?.componentId === component.id,
+        );
+        expect(clones).toHaveLength(1);
+    });
+
+    it("leaves an empty blueprint behind when it extracts", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+        const surface = service.createSurface({ kind: "appSurface", host: "app", name: "Save" });
+        const doc = service.getDocument();
+        const rootId = surface.rootElementId;
+        const box: UIElement = {
+            id: "plain-box",
+            type: "nl.container",
+            name: "Box",
+            parentId: rootId,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 40, height: 40 },
+        };
+        doc.elements[rootId]!.childrenIds.push(box.id);
+        doc.elements[box.id] = box;
+        blueprintDocument.blueprints["bp-empty"] = {
+            id: "bp-empty",
+            name: "Box",
+            owner: { kind: "widgetMain", surfaceId: surface.id, elementId: box.id },
+            frontend: "visual",
+            programKind: "graph",
+            members: { variables: {}, fields: {}, functions: {} },
+            bindings: {},
+            program: { kind: "graph", graphs: { events: { click: { id: "click", graph: { nodes: {}, edges: [] } } }, functions: {} } },
+        } as never;
+        blueprintDocument.ownerRecords[`widgetMain:${surface.id}:${box.id}`] = {
+            activeBlueprintId: "bp-empty",
+            privateBlueprintIds: ["bp-empty"],
+            initializedFrontend: "visual",
+        } as never;
+
+        const component = service.createComponentFromElements(surface.id, [box.id], "Box")!;
+        const clones = Object.values(blueprintDocument.blueprints).filter(
+            b => (b as { owner?: { kind?: string; componentId?: string } }).owner?.kind === "componentWidgetMain"
+                && (b as { owner?: { componentId?: string } }).owner?.componentId === component.id,
+        );
+        expect(clones).toHaveLength(0);
     });
 
     it("wraps multi-selection components in a relative container root", () => {

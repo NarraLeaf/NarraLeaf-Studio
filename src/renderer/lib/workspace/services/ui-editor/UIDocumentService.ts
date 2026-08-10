@@ -466,6 +466,18 @@ function sanitizeComponentName(name: string | undefined, fallback: string): stri
     return trimmed.length > 0 ? trimmed : fallback;
 }
 
+/** Whether a blueprint holds anything an author wrote, as opposed to the empty shell selecting an element creates. */
+function blueprintHasAuthoredGraph(blueprint: Blueprint): boolean {
+    if (blueprint.program.kind !== "graph") {
+        return true;
+    }
+    const graphs = blueprint.program.graphs;
+    const collections = [graphs.events ?? {}, graphs.functions ?? {}];
+    return collections.some(collection =>
+        Object.values(collection).some(entry => Object.keys(entry?.graph?.nodes ?? {}).length > 0),
+    );
+}
+
 /**
  * An element as it goes into a component definition.
  *
@@ -2486,7 +2498,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             for (const oldElementId of Object.keys(elementIdMap)) {
                 const ownerKey = widgetMainOwnerKey(surfaceId, oldElementId);
                 const sourceBlueprintId = blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
-                if (sourceBlueprintId && blueprintDocument.blueprints[sourceBlueprintId]) {
+                const sourceBlueprint = sourceBlueprintId ? blueprintDocument.blueprints[sourceBlueprintId] : undefined;
+                // Selecting an element is enough to give it a blueprint, so most elements own an empty
+                // one. Cloning those would put a shell in the library for every box in the selection -
+                // extracting one save slot carried eighteen blueprints, seventeen of them empty.
+                if (sourceBlueprintId && sourceBlueprint && blueprintHasAuthoredGraph(sourceBlueprint)) {
                     blueprintIdMap[sourceBlueprintId] = uuidService.generate();
                 }
             }
