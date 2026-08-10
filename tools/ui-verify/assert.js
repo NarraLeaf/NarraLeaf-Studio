@@ -3,7 +3,7 @@
  *
  * `drive.js` is mechanical — connect, click, screenshot, evaluate — and decides nothing. This layer
  * is the part that decides, and everything in it exists because a measurement lied at least once
- * during the U0–U5 round. The comments say which, because the shape of each mistake is more useful
+ * during an earlier acceptance round. The comments say which, because the shape of each mistake is more useful
  * than the rule it produced.
  *
  * The rules, in short:

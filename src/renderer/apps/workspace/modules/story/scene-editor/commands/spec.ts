@@ -35,7 +35,7 @@ export type StoryCommandParamsShape = Readonly<Record<string, StoryCommandParamS
 
 /**
  * The resolved-args object a spec's `build`/`validate` receive: same keys as the spec's params, each
- * possibly undefined (an unfilled arg is not an error - see the bible's B9 for what "core" gates).
+ * possibly undefined (an unfilled arg is not an error - see `core` for what an unfilled one gates).
  */
 export type ResolvedArgsOf<P extends StoryCommandParamsShape> = {
     readonly [K in keyof P]?: StoryCommandValue;
@@ -59,7 +59,7 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
     /** Stable identity: keys `story.command.<id>.label` / `.detail` and telemetry. Never shown raw. */
     id: string;
     /**
-     * The canonical keyword. English, and always accepted (bible B11).
+     * The canonical keyword. English, and always accepted.
      *
      * Not the only accepted spelling: the active command locale's menu label is derived into an alias
      * table (`registry.ts`), so `/背景` reaches `bg` too. This one never moves, which is what keeps a
@@ -98,7 +98,7 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * declaration a row like any other.
      *
      * Receives every arg possibly-undefined and must return a valid block regardless - the menu path
-     * calls it with `{}` to get the default block, and the bible's core gating (not this function)
+     * calls it with `{}` to get the default block, and the core gating (not this function)
      * is what decides whether an unfilled line commits.
      */
     build?: (args: ResolvedArgsOf<P>, ctx: StoryCommandBuildContext) => StoryBlock;
@@ -124,8 +124,8 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      */
     scaffold?: "condition" | "choice";
     /**
-     * The high-frequency param keys surfaced as inline quick-edit tokens on a committed row (WI-2) —
-     * the bible's B10 "inline high-frequency" half. A subset of `params`. There is no block→args
+     * The high-frequency param keys surfaced as inline quick-edit tokens on a committed row —
+     * the "inline high-frequency" half. A subset of `params`. There is no block→args
      * parser, so the row's render path (`getQuickParams`) reads these values straight from the payload;
      * this declaration keeps the intended set discoverable in one place alongside the rest of the spec.
      */
@@ -134,7 +134,7 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      * Working lines for the manual, written exactly as an author would type them.
      *
      * Written in the canonical English spellings, and left that way in every locale. A locale may add
-     * spellings for the command and its params (bible B11), but the canonical ones are the spellings
+     * spellings for the command and its params, but the canonical ones are the spellings
      * that work everywhere — which is exactly what an example should teach — and enum values have no
      * localized form at all, so a translated example would be part real and part invented.
      *
@@ -214,7 +214,7 @@ export function asTarget(value: StoryCommandValue | undefined): Extract<StoryCom
 }
 
 // ---------------------------------------------------------------------------
-// Shared param fragments - the vocabulary table of the bible (§1.2). One key, one meaning.
+// Shared param fragments - the shared vocabulary table. One key, one meaning.
 // ---------------------------------------------------------------------------
 
 /**
@@ -231,7 +231,7 @@ export function secondsParam(hint = "duration"): StoryCommandParamSpec {
     return { aliases: ["duration"], hint, type: SECONDS_TYPE };
 }
 
-/** The `at=` word list (bible §1.2). Exported so a positional placement slot spells the same three words. */
+/** The `at=` word list. Exported so a positional placement slot spells the same three words. */
 export const PLACEMENT_OPTIONS = [{ value: "left" }, { value: "center" }, { value: "right" }] as const;
 
 /**

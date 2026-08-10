@@ -7,7 +7,7 @@ import { transformPresetFor, transitionKindFor } from "./transitions";
  * Shared "modifier args → payload fragment" writers.
  *
  * Every spec that takes `t=` / `d=` / `at=` folds them through here, so the vocabulary table
- * (bible §1.2) has exactly one implementation per key. All writers return the current value
+ * has exactly one implementation per key. All writers return the current value
  * untouched when no relevant arg is present - a spec's build only ever *narrows* the default block.
  */
 

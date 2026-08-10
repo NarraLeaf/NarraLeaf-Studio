@@ -41,7 +41,7 @@ const READ_ONLY_STORY_ROW_ACTIONS: ReadonlySet<keyof StoryRowActions> = new Set<
     // nothing if the rail holding them is collapsed and the gesture that opens it has been switched
     // off.
     "revealInspectorPanel",
-    // Dev Mode from a row. Not a project-data write; running a frozen version is U4's problem and is
+    // Dev Mode from a row. Not a project-data write; running a frozen version is a separate concern and is
     // gated in the main process, not here.
     "playFromRow",
 ]);

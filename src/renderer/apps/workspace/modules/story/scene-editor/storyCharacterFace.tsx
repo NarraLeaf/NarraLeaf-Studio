@@ -34,7 +34,7 @@ export type StoryFaceSurface = "plate" | "inline";
  * differential-specific sprite (vs. fall straight through to the profile thumbnail).
  *
  * A character action row (`/show`, `/face`…) pictures its own payload's form/variants — inline only. A
- * dialogue row pictures the speaker's accumulated appearance (WI-3) — on its plate only, and only when
+ * dialogue row pictures the speaker's accumulated appearance — on its plate only, and only when
  * one exists; a speaker who has not been shown keeps the plain thumbnail, so a line before any `/show`
  * does not invent a look.
  */
@@ -50,14 +50,14 @@ function getFaceSpec(
     }
     if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
         // Only a *shown* appearance pictures an avatar — a placement-only appearance (a `/move` on a
-        // never-shown speaker, used by the group-header dropdown) must not invent a look (WI-3, M3.1).
+        // never-shown speaker, used by the group-header dropdown) must not invent a look.
         return { characterId: block.payload.characterId, pose: appearance?.pose, tags: appearance?.tags, resolveVariant: appearance?.shown === true };
     }
     return null;
 }
 
 /**
- * Longest edge of a composited face sprite. The plate itself tops out at 40px (U1's comfortable
+ * Longest edge of a composited face sprite. The plate itself tops out at 40px (the comfortable
  * density) and the head crop reads a sub-rectangle of it, so this is the largest useful size at 2x.
  */
 const FACE_COMPOSITE_PX = 96;
@@ -117,7 +117,7 @@ export function useCharacterFace(
  * a candidate list is asking "who is this", and the author-chosen avatar answers that better than a
  * head cropped out of a full-body sprite. It stays opt-in, because on a row it would be wrong twice
  * over — a `/show Alice angry` must picture *angry*, and a speaker who has never been shown must not
- * be given a look they do not have (WI-3, M3.1).
+ * be given a look they do not have.
  */
 export function useCharacterAvatar(
     character: Character | null | undefined,

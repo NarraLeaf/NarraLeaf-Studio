@@ -12,7 +12,7 @@ import type { TranslationKey } from "@shared/i18n";
  * says the word its author would type, in the command language, or it says nothing new.
  *
  * **Why a table at all.** The payload does not record which command built it — and cannot, since the
- * generic verbs (bible B3) dispatch on the target: `/show` lands on a character, an image, a text, a
+ * generic verbs dispatch on the target: `/show` lands on a character, an image, a text, a
  * video, a layer or an ambience overlay, and `/hide` mirrors it. The relation is genuinely many-to-one
  * in that direction, so it has to be stated somewhere. Stated ONCE, here, rather than spelled out
  * again in each of `describeStoryBlock`'s ten branches.

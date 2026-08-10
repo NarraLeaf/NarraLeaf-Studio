@@ -31,8 +31,8 @@ import { VcsManager } from "./VcsManager";
 /**
  * The merge surface, held against the behaviour that was measured before it was written.
  *
- * **These are specifications, not probes.** `mergeSpike*.integration.test.ts` are the D0
- * experiments: they print what the backend does and assert nothing, which is right for
+ * **These are specifications, not probes.** `mergeSpike*.integration.test.ts` are the
+ * measurement experiments: they print what the backend does and assert nothing, which is right for
  * finding something out and useless for keeping it true. Every expectation below is one of
  * the findings recorded in docs/version-control.md §4.23-§4.30, written so that a backend
  * upgrade which changes it fails the build rather than silently changing what Studio shows
@@ -77,7 +77,7 @@ const THIRD_TEXT = `${JSON.stringify({ id: "scene", title: "Prologue (agreed)", 
  *
  * `doc.json` above is deliberately format-less - tier one never looks inside a file - but tier two
  * is only reachable through a registered spec's `merge3`, so it needs a path the registry claims.
- * A translation library is the case plan 2026-07-31-004 §4.3 puts first: translators do not
+ * A translation library is the case that comes first: translators do not
  * partition a file, they take the keys they can do, so almost every unit is touched by exactly one
  * side and the handful both touched is the whole question.
  */
@@ -381,7 +381,7 @@ describe.skipIf(!supported)("settling a merge", () => {
      * The only observation that separates a settled path from an unsettled one - and the
      * reason `conflicts` cannot claim to be a to-do list.
      *
-     * It is a WRITE, so nothing may run it to answer a question. What it buys is that D6's
+     * It is a WRITE, so nothing may run it to answer a question. What it buys is that the
      * commit cannot silently record a half-settled merge: the refusal names the path, so an
      * author who missed a file is told which one.
      */

@@ -11,7 +11,7 @@
  * preview can reach; every file becomes a single-use `app://fs/{hash}` URL, the same currency assets
  * travel in.
  *
- * Studio ships no renderer and is not allowed to (card 2026-07-27-002). `<project>/runtimes/puppet/<name>/index.js`
+ * Studio ships no renderer and is not allowed to. `<project>/runtimes/puppet/<name>/index.js`
  * is the author's own file, installed the way Ren'Py and TyranoScript have authors install the SDKs.
  */
 

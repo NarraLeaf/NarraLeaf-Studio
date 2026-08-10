@@ -114,7 +114,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
      * What deliberately does NOT come back into scope: the story lines that referenced this
      * character. They keep the id and dangle, exactly as they do today - deleting a referenced thing
      * warns rather than rewrites, so undo only has to put the thing back for the references to
-     * resolve again. See `docs/plans/2026-08-05-001-plan-unified-undo.md`.
+     * resolve again.
      */
     public async deleteCharacter(id: string): Promise<boolean> {
         const character = this.characters[id];

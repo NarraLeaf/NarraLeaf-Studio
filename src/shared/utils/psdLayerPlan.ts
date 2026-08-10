@@ -101,7 +101,7 @@ export type ImportPlan = {
 /**
  * Turn a PSD tree plus the author's blend decisions into what Studio will build.
  *
- * The default mapping the plan asks for: a top-level group is an axis and the layers inside it are
+ * The default mapping: a top-level group is an axis and the layers inside it are
  * its tags; a layer outside any group is a constant layer. A group holding a single layer is *not*
  * made an axis — a one-tag axis drives nothing and the engine would reject the empty group.
  *

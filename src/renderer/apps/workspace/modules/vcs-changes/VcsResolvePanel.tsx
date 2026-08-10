@@ -31,7 +31,7 @@ import { splitChangePath } from "../../components/layout/versionRailModel";
  * Finishing a merge: whole files from one side, and - where the format allows it - one change
  * at a time.
  *
- * **Tier one is the pass mark and it is still what every row offers** (plan 2026-07-31-004 §4.2).
+ * **Tier one is the pass mark and it is still what every row offers**.
  * It works for any file - binaries, documents with no spec, anything over the comparison budget -
  * because it never looks inside one. Tier two is an improvement layered on top of it, available
  * only for formats whose spec implements `merge3` AND can write itself back, and **a file that
@@ -58,7 +58,7 @@ import { splitChangePath } from "../../components/layout/versionRailModel";
  * starts the choosing again.
  *
  * **Neither side is selected by default, at either tier.** Two hundred conflicts is tedious to
- * click through, and that was weighed (plan §6, decision 4): one mis-aimed press that silently
+ * click through, and that was weighed: one mis-aimed press that silently
  * discarded a collaborator's work is worse. The two "take all" links are the concession, and they
  * are safe for the same reason the rows are - they select, they do not apply. Inside a file the
  * same rule holds one level down: a `conflict` row starts on neither side, while an `auto-*` row is

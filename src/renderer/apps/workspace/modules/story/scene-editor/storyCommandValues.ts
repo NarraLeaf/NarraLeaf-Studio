@@ -57,7 +57,7 @@ export const EMPTY_STORY_COMMAND_STAGE_OBJECTS: StoryCommandStageObjects = {
 };
 
 /**
- * The reserved audio-object name addressing the background-music channel (bible B4). The sound
+ * The reserved audio-object name addressing the background-music channel. The sound
  * control family defaults its omitted target to this, and the compiler routes it to the BGM handle
  * rather than a named `Sound`.
  */

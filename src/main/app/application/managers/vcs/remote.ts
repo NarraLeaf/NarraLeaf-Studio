@@ -36,10 +36,9 @@ import {
  * anything on the path of opening a project - which is why nothing here is ever called
  * on its own initiative.
  *
- * See docs/plans/2026-07-31-003-plan-vcs-remote-server.md §1 for the full measurement
- * record, including the three findings that shaped this file: creating a repository
- * while online creates it ON THE SERVER, the backend stores only the origin of a remote
- * URL, and a diverged push refuses itself with a sentence the author can act on.
+ * Three measured behaviours of the backend shape this file: creating a repository while
+ * online creates it ON THE SERVER, the backend stores only the origin of a remote URL,
+ * and a diverged push refuses itself with a sentence the author can act on.
  */
 
 /** Lore's own marker directory, and the config file it keeps inside it. */

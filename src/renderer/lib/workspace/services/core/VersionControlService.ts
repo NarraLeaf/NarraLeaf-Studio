@@ -222,7 +222,7 @@ export class CheckpointScheduler {
      * set BEFORE the freeze: without it, an author who edits and then opens a past
      * revision gets a checkpoint appended to their timeline for the act of reading
      * history - and "browsing history has zero side effects" is the decision that
-     * shapes the whole feature (docs/plans/2026-07-28-002 §1).
+     * shapes the whole feature.
      */
     public async tick(): Promise<void> {
         const minutes = this.deps.intervalMinutes();

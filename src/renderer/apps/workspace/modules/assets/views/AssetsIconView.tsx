@@ -46,7 +46,7 @@ function subtreeGroupIds(groups: readonly AssetGroup[], rootId: string): Set<str
  * Every asset a group holds, however deep.
  *
  * The header used to print only the assets sitting loose at this level, which reads `0 assets` for a
- * category whose every file is filed in a group — the count that sent this card into existence.
+ * category whose every file is filed in a group.
  */
 function assetsInSubtree(
     assets: readonly Asset[],
@@ -272,7 +272,7 @@ export function AssetsIconView({
 
                             {/* An empty category prints nothing under its header. The header's own import
                                 buttons are the way in; a sentence saying there is nothing here is the
-                                thing this card removes. */}
+                                thing this deliberately omits. */}
                             {hasItems && (
                                 <div
                                     className="mt-3 grid gap-3"

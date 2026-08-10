@@ -1,5 +1,5 @@
 /*
- * Acceptance for the `nl.switch` widget (card 2026-08-07-002).
+ * Acceptance for the `nl.switch` widget.
  *
  * Written BEFORE the implementation landed, so the checks cannot be reverse-defined by whatever
  * the code happens to do. The four things this has to prove, and why each one is here:
