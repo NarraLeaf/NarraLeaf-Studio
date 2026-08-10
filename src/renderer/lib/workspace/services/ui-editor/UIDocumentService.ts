@@ -21,6 +21,7 @@ import {
     uiElementTypeAcceptsChildren,
     getUIComponentLink,
     isLinkedUIComponentElement,
+    type UIComponentParam,
 } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
@@ -2464,6 +2465,60 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             component.name = nextName;
             component.updatedAt = new Date().toISOString();
         }, { history: false });
+    }
+
+    /**
+     * Replace a component's declared params.
+     *
+     * Instances keep values for ids that survive: a param is identified by `id`, so renaming one in
+     * the inspector does not unset it anywhere. Values for ids that were removed are left on their
+     * instances rather than swept - re-adding a param by the same id is how an author undoes a
+     * deletion, and sweeping would make that a data loss with no warning.
+     */
+    public setComponentParams(componentId: string, params: UIComponentParam[]): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            if (!component) {
+                return;
+            }
+            const seen = new Set<string>();
+            component.params = params
+                .map(param => ({
+                    id: param.id.trim(),
+                    name: param.name.trim(),
+                    type: "string" as const,
+                    defaultValue: typeof param.defaultValue === "string" ? param.defaultValue : "",
+                }))
+                .filter(param => {
+                    if (!param.id || seen.has(param.id)) {
+                        return false;
+                    }
+                    seen.add(param.id);
+                    return true;
+                });
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    /** Set one param value on one instance. An empty string is a value, not a reset. */
+    public setComponentInstanceParam(elementId: string, paramId: string, value: string): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            const link = getUIComponentLink(element);
+            if (!element || !link) {
+                return;
+            }
+            element.extra = {
+                ...(element.extra ?? {}),
+                componentLink: {
+                    ...link,
+                    params: { ...(link.params ?? {}), [paramId]: value },
+                },
+            };
+        }, {
+            history: surfaceId ? { surfaceId, mergeKey: `component-param:${elementId}:${paramId}` } : false,
+        });
     }
 
     public deleteComponents(componentIds: string[]): void {
