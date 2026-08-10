@@ -350,7 +350,11 @@ interface IUIDocumentService extends IService {
     }): UISurface;
     deleteSurface(surfaceId: string): void;
     renameSurface(surfaceId: string, name: string): void;
-    updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void;
+    updateSurface(
+        surfaceId: string,
+        updater: (surface: UISurface) => void,
+        options?: { mergeKey?: string },
+    ): void;
     duplicateSurface(surfaceId: string, name?: string): UISurface | null;
     getComponent(componentId: string): UIComponentDefinition | undefined;
     getComponentUsageCount(componentId: string): number;
