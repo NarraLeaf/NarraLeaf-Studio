@@ -90,6 +90,8 @@ export type UIComponentDefinition = {
     name: string;
     rootElementId: UIElementId;
     elements: Record<UIElementId, UIElement>;
+    /** Declared in the component's own inspector; each instance supplies its own values. */
+    params?: UIComponentParam[];
     previewMeta?: {
         width?: number;
         height?: number;
@@ -98,9 +100,33 @@ export type UIComponentDefinition = {
     updatedAt?: string;
 };
 
+/**
+ * A value an instance supplies to the component it is an instance of.
+ *
+ * Without these a component is only worth placing once. Twelve save slots differ by one string - the
+ * save id - and sharing a definition means sharing its blueprint, so twelve instances would read the
+ * one literal baked into it and every slot would show the same save. The repeated thing is exactly
+ * the thing worth making a component of, so the difference has to live on the instance.
+ *
+ * `string` is the only type: it is what a text field gives back, and every other kind an author
+ * needs so far (an index, an id, a label) is written as one anyway. Adding a type later is additive
+ * as long as `type` stays required.
+ */
+export type UIComponentParam = {
+    /** Stable identity. Blueprints and instance values reference this, so renaming `name` is free. */
+    id: string;
+    /** What the author called it, shown in the instance's inspector. */
+    name: string;
+    type: "string";
+    /** Used by an instance that has not overridden it, and by the definition's own preview. */
+    defaultValue: string;
+};
+
 export type UIComponentLink = {
     componentId: UIComponentId;
     linked: true;
+    /** Values by param id. Absent ids fall back to the definition's `defaultValue`. */
+    params?: Record<string, string>;
 };
 
 export type UIElementExtraComponentLink = {
@@ -143,10 +169,54 @@ export function getUIComponentLink(element: Pick<UIElement, "extra"> | null | un
     if (link.linked !== true || typeof link.componentId !== "string" || link.componentId.trim().length === 0) {
         return null;
     }
+    // Rebuilt rather than spread, so a link cannot smuggle unknown keys through; params are copied
+    // across explicitly because dropping them here would silently unset every instance value.
+    const params: Record<string, string> = {};
+    if (link.params && typeof link.params === "object" && !Array.isArray(link.params)) {
+        for (const [id, value] of Object.entries(link.params as Record<string, unknown>)) {
+            if (typeof value === "string") {
+                params[id] = value;
+            }
+        }
+    }
     return {
         componentId: link.componentId,
         linked: true,
+        ...(Object.keys(params).length > 0 ? { params } : {}),
     };
+}
+
+/** Declared params of a component definition, in author order. */
+export function getUIComponentParams(component: Pick<UIComponentDefinition, "params"> | null | undefined): UIComponentParam[] {
+    const raw = component?.params;
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    return raw.filter(
+        (param): param is UIComponentParam =>
+            Boolean(param) &&
+            typeof param === "object" &&
+            typeof (param as UIComponentParam).id === "string" &&
+            (param as UIComponentParam).id.trim().length > 0,
+    );
+}
+
+/**
+ * What a param resolves to for one instance: the instance's own value, or the declared default.
+ *
+ * An undeclared id resolves to the empty string rather than undefined - blueprints have one empty
+ * value, and a param that was renamed out from under an instance should read as blank, not crash.
+ */
+export function resolveUIComponentParams(
+    component: Pick<UIComponentDefinition, "params"> | null | undefined,
+    link: UIComponentLink | null | undefined,
+): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const param of getUIComponentParams(component)) {
+        const supplied = link?.params?.[param.id];
+        out[param.id] = typeof supplied === "string" ? supplied : (param.defaultValue ?? "");
+    }
+    return out;
 }
 
 export function isLinkedUIComponentElement(element: Pick<UIElement, "extra"> | null | undefined): boolean {
