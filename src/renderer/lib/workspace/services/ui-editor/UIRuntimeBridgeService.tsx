@@ -12,9 +12,44 @@ import type {
 import { resolveSurfaceRootElementId } from "../../../ui-editor/runtime/resolveSurfaceRoot";
 import { SurfaceElementTree } from "../../../ui-editor/runtime/surface/SurfaceElementTree";
 import { getSurfaceBackgroundColor } from "../../../ui-editor/runtime/surfaceBackground";
+import { useBrandPaletteRevision } from "../../../ui-editor/runtime/useBrandPaletteRevision";
 import { Service } from "../Service";
 import { IUIRuntimeBridgeService, Services, WorkspaceContext } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
+
+/**
+ * The canvas frame, and the surface fill painted on it.
+ *
+ * A component rather than a plain `<div>` in `renderSurface` because that is a service method, not
+ * a React render: the element it returns is built once by whoever called it, so the fill it carries
+ * only changes when that caller happens to re-render. With a `nlbrand:` background that is the
+ * difference between "the canvas follows the palette" and "the canvas follows it the next time you
+ * switch tabs". Subscribing here fixes every caller of `renderSurface` at once, the editing canvas
+ * and the panel thumbnails alike.
+ */
+function BrandedSurfaceFrame({
+    surface,
+    className,
+    style,
+    children,
+}: {
+    surface: UISurface;
+    className: string;
+    style: CSSProperties;
+    children: React.ReactNode;
+}): React.ReactElement {
+    useBrandPaletteRevision();
+    return (
+        <div
+            className={className}
+            data-ui-surface-id={surface.id}
+            data-ui-surface-kind={surface.kind}
+            style={{ ...style, backgroundColor: getSurfaceBackgroundColor(surface) }}
+        >
+            {children}
+        </div>
+    );
+}
 
 export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> implements IUIRuntimeBridgeService {
     private readonly rendererRegistry = new ElementRendererRegistry(BuiltinElementRenderers);
@@ -52,15 +87,13 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
             width: surface.designSize.width,
             height: surface.designSize.height,
             overflow: "hidden",
-            backgroundColor: getSurfaceBackgroundColor(surface),
             ...options.style,
         };
 
         return (
-            <div
+            <BrandedSurfaceFrame
+                surface={surface}
                 className={`ui-editor-surface ${options.className ?? ""}`}
-                data-ui-surface-id={surface.id}
-                data-ui-surface-kind={surface.kind}
                 style={surfaceStyle}
             >
                 <SurfaceElementTree
@@ -72,7 +105,7 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
                     useAppearanceInspectorPreview
                     editorChrome={options.editorChrome}
                 />
-            </div>
+            </BrandedSurfaceFrame>
         );
     }
 
