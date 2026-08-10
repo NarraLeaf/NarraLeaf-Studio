@@ -1554,7 +1554,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -1933,7 +1933,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -2304,7 +2304,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -2789,7 +2789,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -3224,7 +3224,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -3424,7 +3424,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -3887,7 +3887,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -4249,7 +4249,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -4444,7 +4444,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -4651,7 +4651,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -5046,7 +5046,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -5425,7 +5425,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -5796,7 +5796,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -6243,7 +6243,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -6716,7 +6716,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -6916,7 +6916,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -7290,7 +7290,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -8124,7 +8124,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -8483,7 +8483,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -8710,7 +8710,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -9084,7 +9084,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -9446,7 +9446,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -9646,7 +9646,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -10005,7 +10005,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -10232,7 +10232,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -10606,7 +10606,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -10968,7 +10968,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -11168,7 +11168,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -11527,7 +11527,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -12173,7 +12173,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -12532,7 +12532,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -13178,7 +13178,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -13566,7 +13566,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -13925,7 +13925,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -14152,7 +14152,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -14526,7 +14526,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -14888,7 +14888,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -15088,7 +15088,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -15447,7 +15447,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -15674,7 +15674,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -16048,7 +16048,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -16410,7 +16410,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -16610,7 +16610,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -16969,7 +16969,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -17196,7 +17196,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -17570,7 +17570,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -17932,7 +17932,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -18132,7 +18132,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -18491,7 +18491,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -18718,7 +18718,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -19092,7 +19092,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -19454,7 +19454,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -19654,7 +19654,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -20064,7 +20064,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -20423,7 +20423,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -20611,7 +20611,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -20811,7 +20811,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -21170,7 +21170,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -21370,7 +21370,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -21735,7 +21735,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -21935,7 +21935,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -22300,7 +22300,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -22500,7 +22500,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -22865,7 +22865,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -23065,7 +23065,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -23430,7 +23430,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -23630,7 +23630,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -23995,7 +23995,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -24195,7 +24195,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -24560,7 +24560,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -24760,7 +24760,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -25125,7 +25125,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -25325,7 +25325,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -25690,7 +25690,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -25890,7 +25890,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -26294,7 +26294,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -26673,7 +26673,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -27044,7 +27044,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -27453,7 +27453,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -27964,7 +27964,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -28164,7 +28164,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -28542,7 +28542,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -28916,7 +28916,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -29303,7 +29303,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -29491,7 +29491,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -29679,7 +29679,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -29867,7 +29867,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -30074,7 +30074,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -30448,7 +30448,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -30835,7 +30835,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -31023,7 +31023,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -31211,7 +31211,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -31399,7 +31399,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -31606,7 +31606,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -31980,7 +31980,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -32367,7 +32367,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -32555,7 +32555,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -32743,7 +32743,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -32931,7 +32931,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -33138,7 +33138,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -33512,7 +33512,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -33899,7 +33899,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -34087,7 +34087,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -34275,7 +34275,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -34463,7 +34463,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -34670,7 +34670,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -35044,7 +35044,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -35403,7 +35403,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -35591,7 +35591,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -35779,7 +35779,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -35967,7 +35967,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -36155,7 +36155,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -36362,7 +36362,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -36736,7 +36736,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -37095,7 +37095,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -37283,7 +37283,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -37471,7 +37471,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -37659,7 +37659,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -37847,7 +37847,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -38056,7 +38056,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -38443,7 +38443,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -38643,7 +38643,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -39052,7 +39052,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "menu.start"
       }
     },
     "ac7c2f86-e356-4592-9dbf-04c0e55154da": {
@@ -39150,7 +39151,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "menu.continue"
       }
     },
     "2265f0c7-edba-462c-8dc0-e70627b6eded": {
@@ -39248,7 +39250,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "menu.load"
       }
     },
     "ae807231-9926-4bb0-a31d-8a9e625204e1": {
@@ -39266,7 +39269,7 @@
         "opacity": 1
       },
       "props": {
-        "label": "Config",
+        "label": "Settings",
         "fontSize": 30,
         "color": "#f4f1ea",
         "fontWeight": "normal",
@@ -39346,7 +39349,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "menu.settings"
       }
     },
     "281a47c0-277d-4ffb-83b9-8bee6a984480": {
@@ -39444,7 +39448,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "menu.quit"
       }
     },
     "9f32ca71-d0b7-46ee-bdd0-eed4a771b27b": {
@@ -39607,7 +39612,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -39981,7 +39986,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -40340,7 +40345,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -40569,7 +40574,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -40940,7 +40945,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -41314,7 +41319,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -41685,7 +41690,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -42044,7 +42049,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -42239,7 +42244,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -42535,7 +42540,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -42909,7 +42914,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -43268,7 +43273,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -43499,7 +43504,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -44086,7 +44091,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -44274,7 +44279,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -44462,7 +44467,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -44650,7 +44655,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -44845,7 +44850,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -45219,7 +45224,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -45625,7 +45630,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -46004,7 +46009,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -46375,7 +46380,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -46784,7 +46789,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -47295,7 +47300,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -47495,7 +47500,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -47873,7 +47878,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -48247,7 +48252,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -48634,7 +48639,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -48822,7 +48827,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -49010,7 +49015,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -49198,7 +49203,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -49386,7 +49391,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -49593,7 +49598,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -49967,7 +49972,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -50354,7 +50359,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -50542,7 +50547,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -50730,7 +50735,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -50918,7 +50923,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -51106,7 +51111,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -51313,7 +51318,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -51687,7 +51692,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -52074,7 +52079,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -52262,7 +52267,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -52450,7 +52455,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -52638,7 +52643,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -52826,7 +52831,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -53033,7 +53038,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -53407,7 +53412,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -53794,7 +53799,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -53982,7 +53987,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -54170,7 +54175,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -54358,7 +54363,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -54546,7 +54551,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -54753,7 +54758,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -55127,7 +55132,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -55486,7 +55491,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -55681,7 +55686,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -56048,7 +56053,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -56236,7 +56241,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -56424,7 +56429,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -56612,7 +56617,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -56819,7 +56824,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -57193,7 +57198,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -57552,7 +57557,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -57747,7 +57752,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -58114,7 +58119,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -58302,7 +58307,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -58490,7 +58495,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -58678,7 +58683,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "fontAssetId",
@@ -58878,7 +58883,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -59249,7 +59254,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -59620,7 +59625,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -59991,7 +59996,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -60362,7 +60367,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -60733,7 +60738,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -61104,7 +61109,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -61475,7 +61480,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -61846,7 +61851,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -62217,7 +62222,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -62588,7 +62593,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -62959,7 +62964,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -63330,7 +63335,7 @@
           "variants": [
             {
               "id": "default",
-              "name": "默认",
+              "name": "Default",
               "propertyGroups": [
                 {
                   "key": "backgroundColor",
@@ -63647,6 +63652,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-08-07T22:11:17.468Z"
+    "updatedAt": "2026-08-10T00:44:17.385Z"
   }
 }

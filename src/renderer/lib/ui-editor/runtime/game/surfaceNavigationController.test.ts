@@ -130,4 +130,48 @@ describe("surface navigation controller", () => {
         expect(update?.surfacePresenceMode).toBe("sync");
         expect(update?.transitionWaitOptions).toEqual({ waitForEnter: false, waitForExit: true });
     });
+
+    // Clearing the stack is one transition from the top page to where the player lands, not N pops:
+    // popping repeatedly would animate through - and briefly settle on - every page in between.
+    it("drops every layer above the named index in one transition", () => {
+        const root = entry("a:1", "a");
+        const update = createSurfaceNavigationCloseUpdate({
+            navStack: [root, entry("b:2", "b"), entry("c:3", "c"), entry("d:4", "d")],
+            fromSurface: surface("d"),
+            targetSurface: surface("a"),
+            targetHiddenForGame: false,
+            targetIndex: 0,
+        });
+
+        expect(update?.navStack.map(item => item.key)).toEqual(["a:1"]);
+        expect(update?.navStack[0]?.direction).toBe("back");
+    });
+
+    it("lands on the entry below the top when no index is named", () => {
+        const update = createSurfaceNavigationCloseUpdate({
+            navStack: [entry("a:1", "a"), entry("b:2", "b"), entry("c:3", "c")],
+            fromSurface: surface("c"),
+            targetSurface: surface("b"),
+            targetHiddenForGame: false,
+        });
+
+        expect(update?.navStack.map(item => item.key)).toEqual(["a:1", "b:2"]);
+    });
+
+    // The index comes from a blueprint, so it has to survive an author asking for something silly
+    // rather than producing a stack that no longer contains the page being rendered.
+    it("clamps an out-of-range index to a single pop", () => {
+        const navStack = [entry("a:1", "a"), entry("b:2", "b"), entry("c:3", "c")];
+        for (const targetIndex of [-5, 2, 99]) {
+            const update = createSurfaceNavigationCloseUpdate({
+                navStack,
+                fromSurface: surface("c"),
+                targetSurface: surface("b"),
+                targetHiddenForGame: false,
+                targetIndex,
+            });
+            expect(update?.navStack.length, `targetIndex ${targetIndex}`).toBeGreaterThanOrEqual(1);
+            expect(update?.navStack.length, `targetIndex ${targetIndex}`).toBeLessThanOrEqual(2);
+        }
+    });
 });

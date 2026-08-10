@@ -31,6 +31,7 @@ import {
     BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD,
     BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_VALUES,
     BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY,
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN,
     BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE,
     BLUEPRINT_NODE_TYPE_DATA_IS_NULL,
@@ -271,6 +272,7 @@ import {
     resolveEffectiveBlueprintNodePins,
 } from "../effectivePins";
 import { readBlueprintNodeOutputValue } from "../nodeOutputValues";
+import { readBlueprintMemoValue } from "../memoValues";
 import {
     normalizeBlueprintElementRefValue,
     readBlueprintElementRefParams,
@@ -2557,6 +2559,9 @@ function resolveSelfOutput(
         if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_JSON) {
             return selfNode.params?.value ?? null;
         }
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_DATA_MEMO && portId === "result") {
+        return readBlueprintMemoValue(blueprintLocals, nodeId);
     }
     if (isBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
         return runtime?.eventPayload?.[portId] ?? null;

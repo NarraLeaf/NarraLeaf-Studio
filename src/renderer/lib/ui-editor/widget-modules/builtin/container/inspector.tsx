@@ -4,6 +4,7 @@ import { createPropertyEditorSchema, defineField } from "@/apps/workspace/module
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
 import {
+    createInitialContainerAppearance,
     ensureContainerAppearanceHasAllKeys,
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
@@ -24,28 +25,39 @@ function ContainerAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     // "Nothing is being saved right now" about a write the author never made, just for selecting an
     // element. `readOnly` is an input of the effect, so it happens as soon as writing is possible
     // again; the model that was out of date still is.
+    //
+    // It also CREATES the model when the element has none, the way the text module always has.
+    // Elements authored through the services (every element of a bundled template, and everything
+    // imported from the template store) carry flat props only, and refusing to author appearance for
+    // them left "This element has no valid appearance data" on 91 of the skeleton's 307 elements -
+    // with no way for the author to get out of it. The synthesized model is a faithful projection of
+    // the flat props, so nothing renders differently the moment it appears.
     useLayoutEffect(() => {
-        if (props.readOnly || !isUsableAppearanceModel(appearance)) {
+        if (props.readOnly) {
             return;
         }
         const f = getContainerProps(element);
-        const next = ensureContainerAppearanceHasAllKeys(appearance, f);
+        const next = isUsableAppearanceModel(appearance)
+            ? ensureContainerAppearanceHasAllKeys(appearance, f)
+            : createInitialContainerAppearance(f);
         if (next !== appearance) {
             documentService.updateElementProps(element.id, {
-                ...element.props,
                 appearance: next,
             });
         }
     }, [appearance, documentService, element, props.readOnly]);
 
+    // The panel renders from a synthesized model on the frame before the effect commits one, and on
+    // a frozen project where the effect deliberately never runs.
+    const panelAppearance = isUsableAppearanceModel(appearance) ? appearance : createInitialContainerAppearance(flat);
+
     return (
         <AppearanceAuthoringPanel
             key={element.id}
             kind="container"
-            appearance={appearance ?? null}
+            appearance={panelAppearance}
             onReplace={next => {
                 documentService.updateElementProps(props.data.element.id, {
-                    ...props.data.element.props,
                     appearance: next,
                 });
             }}

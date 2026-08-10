@@ -1,5 +1,11 @@
+import type { CSSProperties } from "react";
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import {
+    normalizeUISurfaceBackgroundImage,
+    type UISurfaceBackgroundFillMode,
+    type UISurfaceBackgroundImage,
+} from "@shared/types/ui-editor/surfaceBackgroundImage";
 
 export const EDITOR_SURFACE_AREA_BACKGROUND = "#ffffff";
 export const EDITOR_SURFACE_LOW_OPACITY_THRESHOLD = 0.2;
@@ -59,6 +65,48 @@ export function getSurfaceLayerBackgroundColor(
         return color;
     }
     return `color-mix(in srgb, ${color} ${GAME_OVERLAY_BACKGROUND_ALPHA * 100}%, transparent)`;
+}
+
+/**
+ * How much of a page's background picture survives when the page is opened over a running game.
+ *
+ * The same reasoning as {@link GAME_OVERLAY_BACKGROUND_ALPHA}, and deliberately the same number: a
+ * Config page reached from the quick menu has to keep the scene showing through, and an author who
+ * gave that page a full-bleed picture would otherwise defeat the thinning the colour already gets.
+ */
+export function getSurfaceLayerBackgroundImageOpacity(
+    presentation: "appPage" | "gameOverlay",
+): number {
+    return presentation === "gameOverlay" ? GAME_OVERLAY_BACKGROUND_ALPHA : 1;
+}
+
+export function getSurfaceBackgroundImage(surface: UISurface): UISurfaceBackgroundImage | null {
+    return normalizeUISurfaceBackgroundImage(surface.settings?.backgroundImage);
+}
+
+/**
+ * The CSS that draws a background picture at a given fill mode.
+ *
+ * A `background-image` rather than an `<img>`: `tile` is a repeat, which no single element can
+ * express, and the other three are one `background-size` each. Widget fills reach for `<img>`
+ * because crop mode animates its box; nothing here does.
+ */
+export function surfaceBackgroundImageStyle(
+    url: string,
+    fillMode: UISurfaceBackgroundFillMode,
+): CSSProperties {
+    const base: CSSProperties = {
+        backgroundImage: `url("${url.replace(/["\\]/g, "\\$&")}")`,
+        backgroundPosition: "center",
+    };
+    if (fillMode === "tile") {
+        return { ...base, backgroundRepeat: "repeat", backgroundSize: "auto", backgroundPosition: "top left" };
+    }
+    return {
+        ...base,
+        backgroundRepeat: "no-repeat",
+        backgroundSize: fillMode === "stretch" ? "100% 100%" : fillMode,
+    };
 }
 
 function clamp(value: number, min: number, max: number): number {

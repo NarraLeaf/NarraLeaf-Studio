@@ -1,6 +1,7 @@
 import type { BlueprintGraphEdge, BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
@@ -126,6 +127,7 @@ function isBlueprintFnHeadParamOutputPin(type: string, port: string): boolean {
  */
 export function isBlueprintFanOutOutputPin(type: string, port: string): boolean {
     return (
+        (type === BLUEPRINT_NODE_TYPE_DATA_MEMO && port === "result") ||
         isBlueprintLiteralNodeType(type) ||
         isBlueprintElementBindingOutputPin(type, port) ||
         isBlueprintFnHeadParamOutputPin(type, port)

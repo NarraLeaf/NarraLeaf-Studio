@@ -25,6 +25,7 @@ import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import {
+    createInitialButtonAppearance,
     ensureButtonAppearanceHasAllKeys,
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
@@ -40,14 +41,16 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     const { documentService } = props.data;
     const element = props.data.element;
 
-    // Deferred while read-only - see `ContainerAppearanceField` for why this key-filling pass must
-    // not run inside a frozen project.
+    // Deferred while read-only, and creates the model when the element has none - see
+    // `ContainerAppearanceField` for both, and for why service-authored elements arrive without one.
     useLayoutEffect(() => {
-        if (props.readOnly || !isUsableAppearanceModel(appearance)) {
+        if (props.readOnly) {
             return;
         }
         const f = getButtonProps(element);
-        const next = ensureButtonAppearanceHasAllKeys(appearance, f);
+        const next = isUsableAppearanceModel(appearance)
+            ? ensureButtonAppearanceHasAllKeys(appearance, f)
+            : createInitialButtonAppearance(f);
         if (next !== appearance) {
             documentService.updateElementProps(element.id, {
                 appearance: next,
@@ -55,11 +58,13 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
         }
     }, [appearance, documentService, element, props.readOnly]);
 
+    const panelAppearance = isUsableAppearanceModel(appearance) ? appearance : createInitialButtonAppearance(flat);
+
     return (
         <AppearanceAuthoringPanel
             key={element.id}
             kind="button"
-            appearance={appearance ?? null}
+            appearance={panelAppearance}
             onReplace={next => {
                 documentService.updateElementProps(element.id, {
                     appearance: next,

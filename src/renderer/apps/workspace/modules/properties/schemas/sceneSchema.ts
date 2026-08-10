@@ -19,6 +19,7 @@ import type {
     TextFieldDefinition,
 } from "../framework/types";
 import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
+import { SurfaceBackgroundImageField } from "../fields/SurfaceBackgroundImageField";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import type { Translator } from "@shared/i18n";
@@ -131,6 +132,16 @@ export const scenePropertySchema = (t: TranslateFn) =>
                     };
                 });
             },
+        }),
+        defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+            id: "scene.backgroundImage",
+            type: "custom",
+            label: t("properties.scene.backgroundImage"),
+            component: SurfaceBackgroundImageField,
+            // A Game UI is drawn over the running scene, and its whole job is to let that scene
+            // through. A full-bleed picture there would cover the one thing the slot exists to sit
+            // on top of, so the offer is not made.
+            hidden: data => isGameUi(data.surface),
         }),
         defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
             id: "scene.pageAnimation",
