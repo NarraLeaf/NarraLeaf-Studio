@@ -45,7 +45,7 @@ export type VariableRegistryScope = "saved" | "persistent";
  * `id` is the stable identity refs point at; `storageKey` is the save-file / host-persistence key
  * (defaults to `id`, never changed by rename so saves stay valid). The migration off
  * `BlueprintDocument` seeds `id` from the old `storageKey` so every stored `StoryVariableRef`
- * persistent arm keeps resolving (its arm is keyed by `storageKey` until WI-4 symmetrizes it to
+ * persistent arm keeps resolving (that arm is still keyed by `storageKey` rather than by
  * `variableId`).
  */
 export type VariableRegistryEntry = {

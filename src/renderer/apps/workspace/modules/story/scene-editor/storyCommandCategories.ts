@@ -18,7 +18,7 @@ import type { StoryCommandTargetKind } from "./storyCommandValues";
 
 /**
  * The one taxonomy every command surface reads: eight categories cut by a single criterion - the
- * SUBJECT a line acts on (plan 2026-07-24-006 §4.1).
+ * SUBJECT a line acts on.
  *
  * What it replaced: thirteen categories that mixed three criteria at once - object type
  * (character/image/text/layer/video), material domain (media/effects) and purpose

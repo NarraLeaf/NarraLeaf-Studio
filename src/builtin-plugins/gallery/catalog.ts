@@ -36,8 +36,6 @@ export const RUNTIME_UNLOCKED_KEY = `${PLUGIN_ID}.unlocked`;
  *
  * Readers must treat an unknown kind as "not mine" and skip it, so a project
  * authored in a newer Studio degrades instead of breaking.
- *
- * See docs/plans/2026-07-29-001-plan-gallery-extra-suite.md.
  */
 export type GalleryEntryKind = "cg" | "scene" | "music" | "voice";
 

@@ -330,7 +330,7 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
 
     /**
      * First-time registry for a project that predates M-VAR: seed from the blueprint document's
-     * persistent variables (the field being relocated). Once WI-2 strips the field, this seed reads
+     * persistent variables (the field being relocated). Once the field is stripped, this seed reads
      * the stripped-and-stashed legacy entries the UIGraphService migration hands over.
      */
     private createSeededRegistry(): VariableRegistry {

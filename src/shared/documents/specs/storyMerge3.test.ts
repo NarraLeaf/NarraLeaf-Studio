@@ -6,7 +6,7 @@ import type {StoryBlock, StoryChapter, StoryDocument, StoryScene} from "@shared/
 import {STORY_DOCUMENT_SCHEMA_VERSION} from "@shared/types/story/document";
 
 /**
- * `spec.merge3` for the story format (plan 2026-07-31-004 D8), and the two halves of it:
+ * `spec.merge3` for the story format, and the two halves of it:
  *
  *  - what merges - different scenes, different rows of one scene, different fields of one row - and
  *    what is a leaf conflict, which is exactly "the same field on both sides";
@@ -379,8 +379,8 @@ describe("story merge3: the refusal", () => {
 
 describe("story merge3: writing back", () => {
     it("cannot be committed yet, because the story spec still refuses to serialize", () => {
-        // Pinned rather than assumed. `merge3` is correct and testable today; the write-back step of
-        // plan 2026-07-31-004 §4.4 calls `serialize`, and this is where it stops. Whoever lifts it
+        // Pinned rather than assumed. `merge3` is correct and testable today; the write-back step
+        // calls `serialize`, and this is where it stops. Whoever lifts it
         // has to move the story migration into shared code first - see the note on `story.ts`.
         const base = story([scene("s1", "Prologue", [block("b1", "hello")])]);
         const merged = merge3(base, base, base);

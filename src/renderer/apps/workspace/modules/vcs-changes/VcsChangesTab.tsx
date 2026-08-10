@@ -17,7 +17,7 @@ import type { VcsChangesPayload } from "./vcsChangesIds";
  *
  * It exists because the rail cannot be the only home for this. A 320px column can show eight rows
  * of one file's changes and nothing more, and conflict resolution - the same list with a side to
- * take per row (plan 2026-07-31-004 §3.2) - has nowhere to live in a column that narrow. So this is
+ * take per row - has nowhere to live in a column that narrow. So this is
  * a tab rather than a modal: a comparison is a document, and the workspace already opens documents
  * in tabs, which is also what lets the author keep one open beside the editors they are about to
  * change.

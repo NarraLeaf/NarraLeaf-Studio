@@ -72,7 +72,7 @@ interface VersionRailProps {
  * whole workspace is a view of.
  *
  * Left of the sidebar SELECTOR rail, not of the sidebar, and that is the point: in a past version the
- * author still needs the sidebar, the asset panel and the scene tree (plan 2026-07-28-002 §1). So this
+ * author still needs the sidebar, the asset panel and the scene tree. So this
  * is a column of its own rather than a panel in the left dock - a panel would have taken the place of
  * the very things the author came here to read.
  *
@@ -125,7 +125,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
         surface.loadHistory();
         // A scan is skipped while a past revision is on screen. It is not a pure read - it records
         // newly discovered directories into the repository's staged state (docs §4.17) - and "browsing
-        // history has zero side effects" is the decision this whole feature is shaped around (plan §1).
+        // history has zero side effects" is the decision this whole feature is shaped around.
         // The working tree's change list is also not the question the author asked by opening history.
         if (state.kind !== "revision") {
             surface.refreshChanges();
@@ -299,7 +299,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                     there was whatever the last scan happened to leave behind - observed on a real app,
                     reporting a count from before the preview was entered. Keeping the refresh button
                     would also hand the author a way to trigger a scan while browsing history, and "zero
-                    side effects while browsing" is the decision this feature is built around (plan §1).
+                    side effects while browsing" is the decision this feature is built around.
 
                     Keyed on `state.kind`, NOT on `frozen`: a manual freeze leaves the state on
                     `current`, and there the working tree is real, unchanging and worth showing. */}
@@ -1170,8 +1170,8 @@ function EnableVersionControl({ surface }: { surface: VersionSurface }) {
  * real and a data layer that had assumed a chain would need rebuilding rather than extending.
  * A merge is marked instead of expanded, so the list never quietly hides a second ancestry.
  *
- * Scrolling this list is how the author reaches other versions; the plan's "scrolling down moves
- * through the linear history" is this. It ends where the read ended, and the control below the last
+ * Scrolling this list is how the author reaches other versions: scrolling down moves through the
+ * linear history. It ends where the read ended, and the control below the last
  * row is what reaches further back.
  *
  * **A row leads with what the version SAYS.** It used to show an icon, `#12` and a short hash, which

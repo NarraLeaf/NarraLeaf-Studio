@@ -1,5 +1,5 @@
 /*
- * Card 2026-08-01-001 — prove buses are a live gain graph, not arithmetic done once.
+ * Prove buses are a live gain graph, not arithmetic done once.
  *
  * Reads the engine's own AudioManager rather than wrapping AudioContext: the dev-mode window
  * reloads on launch, so a wrapped constructor is either wiped or installed too late, and a CDP

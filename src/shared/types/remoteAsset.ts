@@ -3,7 +3,7 @@
  * asks for it.
  *
  * See `src/main/app/application/managers/remoteAssetFetcher.ts` for why the fetch is in main, and
- * `docs/plans/2026-08-05-003-plan-remote-asset-pinning.md` for the model these serve.
+ * `src/renderer/lib/workspace/services/assets/types.ts` for the model these serve.
  */
 
 /** What the server said about the snapshot the caller already holds. */

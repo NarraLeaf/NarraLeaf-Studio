@@ -128,7 +128,7 @@ export class PreviewManager {
      *
      * Refuses while the workspace is frozen. `RunControl` already disables Preview there, but a
      * launch is IPC straight into this method - a keybinding, a plugin, a stale renderer or a second
-     * window can still ask, and this is the only place that can say no (plan 2026-07-28-002 §4.3).
+     * window can still ask, and this is the only place that can say no.
      * Dev Mode stays allowed, which is the decision in §1, and nothing here touches it.
      *
      * The guard sits on this entry rather than inside `launchNow` so it also covers the one launch

@@ -514,7 +514,7 @@ export async function createBranch(
  *
  * This WRITES the working tree. Studio's history browsing must not use it - reading
  * a past revision goes through {@link loadTree} and {@link readAddress}, which touch
- * nothing on disk. See docs/plans/2026-07-27-001, §4.4.
+ * nothing on disk.
  */
 export async function switchBranch(
     globals: LoreGlobals,

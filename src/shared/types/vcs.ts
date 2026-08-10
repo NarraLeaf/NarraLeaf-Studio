@@ -675,7 +675,7 @@ export type VcsMergeDecision = VcsMergeWholeDecision | VcsMergePerChangeDecision
  *
  * **Falling back to tier one is a normal outcome and has to be visible**, which is what this type
  * is for: a surface that simply omitted the per-change control would present "we cannot" and "you
- * already have" as the same blank space. Per plan 2026-07-31-004 §4.2, tier three is "refuse and
+ * already have" as the same blank space. Tier three is "refuse and
  * say why", not a greyed-out button.
  *
  *  - `no-spec` - nothing in Studio claims this path. Most of a repository is like this.

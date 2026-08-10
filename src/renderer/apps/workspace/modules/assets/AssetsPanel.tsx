@@ -79,8 +79,8 @@ interface AssetsPanelState {
     /**
      * Which sidebar sections are open. Still named `assetTypeOpenItems` on disk: the ids stored by
      * a build from before sections were categories are filtered out by
-     * {@link filterKnownAssetCategoryIds}, which is exactly the "persisted UI state may lapse"
-     * the plan allows.
+     * {@link filterKnownAssetCategoryIds} - persisted UI state is deliberately allowed to
+     * lapse this way.
      */
     assetTypeOpenItems?: string[];
     expandedGroupIds?: string[];

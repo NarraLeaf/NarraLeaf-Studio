@@ -29,8 +29,8 @@ import { translate, translateN } from "@/lib/i18n";
  *
  * Dev Mode and Preview are no longer standalone actions — the toolbar's Run split-button
  * ({@link RunControl}) owns launching and stopping both. **Production Build is now folded into that
- * button's dropdown too**, to make room in the title bar for the version control widget (plan
- * 2026-07-28-002 §3), so nothing renders this action's icon in the bar any more.
+ * button's dropdown too**, to make room in the title bar for the version control widget, so
+ * nothing renders this action's icon in the bar any more.
  *
  * It stays REGISTERED regardless, and that is load-bearing rather than tidiness: the macOS native
  * Dev ▸ Build menu item resolves through the action registry (`useMenuActionHandler` looks the id up

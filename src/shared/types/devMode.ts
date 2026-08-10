@@ -60,7 +60,7 @@ export type DevModeBlueprintDebugEventPayload = {
     event: BlueprintDebugEvent;
 };
 
-/** Play-head row forwarded from a Dev Mode window to its project's workspace (WI-2 editor sync). */
+/** Play-head row forwarded from a Dev Mode window to its project's workspace. */
 export type DevModeStoryRowPayload = {
     projectPath: string;
     storyId: string;
@@ -202,7 +202,7 @@ export type DevModeStoryLibrary = {
      * `assetId → author-facing asset name`, for the media types a story row can name (image / audio /
      * video). Names only — the bytes travel through the compiler, and this table exists so the Dev
      * Mode debug panel can read a row the way the editor does: `Set background outside_s.jpg` rather
-     * than `Set background 4b645b59-1723-4ac9-98ab-e6859b837bef` (U4 WI-1).
+     * than `Set background 4b645b59-1723-4ac9-98ab-e6859b837bef`.
      */
     assetNames: Record<string, string>;
 };

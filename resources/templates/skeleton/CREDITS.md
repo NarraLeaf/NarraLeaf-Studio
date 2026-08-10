@@ -33,13 +33,8 @@ Studio's intro→loop audio track wants.
 
 ## Character — NarraLeaf's own
 
-`narra` — Narra, the project's mascot, supplied by the project owner: cropped to
-the character, padded so the **head** sits on the horizontal centre (not the
-alpha centroid — long hair drags that off the axis a viewer actually tracks), and
-scaled to 1289×1620.
-
-**Upper body only.** The owner intends to replace it with a full-body sprite, so
-the story places her with a single centred preset that a new file can inherit.
+`narra` — Narra, the project's mascot, supplied by the project owner. Upper body
+only, 1289×1620, cropped and padded so the head sits on the horizontal centre.
 
 ## Rejected, and why — so nobody re-researches them
 

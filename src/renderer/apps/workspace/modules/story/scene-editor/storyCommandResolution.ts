@@ -326,7 +326,7 @@ function resolveAgainstType(
             const option = matchEnumOptionLocalized(type, value);
             // Normalizing the alias to its canonical value happens here, not in the parser: the parser
             // stays faithful to what was typed, the payload gets what it can store. A translated
-            // spelling normalizes on exactly the same step, so `t=淡变` banks `fade` (bible B6) and the
+            // spelling normalizes on exactly the same step, so `t=淡变` banks `fade` and the
             // project file never carries a locale.
             return option ? { value: { kind: "enum", value: option.value } } : null;
         }
@@ -341,7 +341,7 @@ function resolveAgainstType(
             return parsed === null ? null : { value: { kind: "number", value: parsed } };
         }
         case "boolean": {
-            // The human spellings collapse to the canonical pair here (bible B5).
+            // The human spellings collapse to the canonical pair here.
             const normalized = value.trim().toLowerCase();
             if (["true", "on", "yes"].includes(normalized)) {
                 return { value: { kind: "boolean", value: true } };

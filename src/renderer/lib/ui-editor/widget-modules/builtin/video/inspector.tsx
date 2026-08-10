@@ -341,7 +341,7 @@ export function createVideoInspector(ctx: InspectorContext) {
                      * The widget paints through `RectangleChromeRenderer`, so these are the same flat
                      * chrome props every other rectangle-like widget stores. Kept to the four the
                      * chrome actually reads for a video box - there is no appearance-variant model on
-                     * this widget yet (see the plan's phase 2).
+                     * this widget yet.
                      */
                     defineField<D, any>({
                         id: "section.videoBox",

@@ -254,7 +254,7 @@ export class GameTestManager {
      *  - **A frozen workspace.** Same gate Preview applies (`PreviewManager.launch`), for the same
      *    reason and deliberately not a weaker one: a test must not become the way around it.
      *  - **A session already exists for this project.** Two game processes would contend for the
-     *    same compiled artifact directory and the second would silently win. R7 in the plan: one run
+     *    same compiled artifact directory and the second would silently win. The rule is one run
      *    at a time, per project.
      *
      * The session is registered *synchronously*, before the first `await`, so the second of two

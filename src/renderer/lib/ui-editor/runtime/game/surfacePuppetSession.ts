@@ -16,8 +16,8 @@
  * runtime bundle (`src/runtime/renderer/shims/useSurfacePuppetSession.ts`, aliased by
  * `runtimeAliasPlugin` in `project/build/build-runtime.js`).
  *
- * Nothing here names a renderer and nothing here may — see `puppetBackendHost.ts` and card
- * 2026-07-27-002. The author supplies the drawing code; this decides when to ask it to draw.
+ * Nothing here names a renderer and nothing here may — see `puppetBackendHost.ts`.
+ * The author supplies the drawing code; this decides when to ask it to draw.
  *
  * ## Status vocabulary is the engine's, not a new one
  *

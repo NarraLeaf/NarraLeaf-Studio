@@ -350,7 +350,7 @@ describe("canCommit", () => {
         expect(missingCoreParams(parseCommandLine("/bg forest"))).toEqual([]);
     });
 
-    it("reads a bare flag as a named boolean (bible B5)", () => {
+    it("reads a bare flag as a named boolean", () => {
         const line = command("/bgm battle loop");
         expect(getArgValue(line, "loop")).toBe("true");
         expect(line.issues).toEqual([]);
@@ -358,7 +358,7 @@ describe("canCommit", () => {
         expect(getArgValue(command("/bgm loop"), "audio")).toBe("loop");
     });
 
-    it("skips an omissible leading target when the value slot matches instead (bible B4)", () => {
+    it("skips an omissible leading target when the value slot matches instead", () => {
         // `/vol 0.5` is a volume with the default target; `/vol piano 0.5` names the sound.
         expect(getArgValue(command("/vol 0.5"), "volume")).toBe("0.5");
         expect(getArgValue(command("/vol 0.5"), "target")).toBeUndefined();

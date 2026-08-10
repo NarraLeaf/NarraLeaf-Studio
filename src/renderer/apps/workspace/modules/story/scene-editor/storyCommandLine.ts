@@ -67,7 +67,7 @@ import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues
  * a row is not allowed to display a command the editor would refuse.
  *
  * **Why a hand-written table rather than a generic inverse of `spec.build`.** `build` is many-to-one
- * by design (bible B3: `/show` lands on six different payloads, `/swap` on two) and lossy on purpose
+ * by design (`/show` lands on six different payloads, `/swap` on two) and lossy on purpose
  * (`t=fade` becomes `fadeIn` or `dissolve` depending on context). There is no mechanical inverse to
  * derive. What CAN be shared is the vocabulary, and all of it is: the verb comes from
  * {@link storyVerbCommandId} (the same table the row's verb word already used), the keys from
@@ -279,7 +279,7 @@ function quoteValue(value: string, greedy: boolean): string {
 }
 
 /**
- * The pause lengths `/wait` offers beside its input — the bible's B10 "high-frequency" set, in the
+ * The pause lengths `/wait` offers beside its input — the "high-frequency" set, in the
  * seconds the line is written in.
  */
 const WAIT_PRESET_SECONDS = [0.2, 0.5, 1, 2, 3] as const;
@@ -1037,7 +1037,7 @@ function actionSentence(
             return {
                 commandId,
                 args: [payload.mode === "duration"
-                    // The house set (bible B10) rides along, so the common pauses are one click rather
+                    // The house set rides along, so the common pauses are one click rather
                     // than a number to type.
                     ? positional("seconds", seconds(payload.durationMs), {
                         presets: WAIT_PRESET_SECONDS,

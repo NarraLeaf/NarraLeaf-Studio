@@ -32,7 +32,6 @@ import type { AssetContentDigest } from "./LocalAssetsManager";
  *
  * This is deliberately *not* runtime fetching. A shipped game has no URL for its assets - the pack
  * manifest carries none - and adding one would put content outside the reach of asset encryption.
- * See docs/plans/2026-08-05-003-plan-remote-asset-pinning.md §1.3.
  */
 export class RemoteAssetsManager {
     constructor(

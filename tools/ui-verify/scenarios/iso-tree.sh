@@ -41,7 +41,7 @@ mkdir -p "$ISO/.yarn"
 #   NLS_VERIFY_PROJECT=/d/Temp/nls-u4-proj/demo3  restored from  /d/Temp/nls-u4-proj-pristine
 #
 # A fresh profile every round: probes leave selected rows and open tabs behind, and a state that
-# has been probed can no longer reproduce "nothing selected" (handoff 6.9). Seeded by COPYING the
+# has been probed can no longer reproduce "nothing selected". Seeded by COPYING the
 # main checkout's dev profile (read-only on it), then repointing recents at the project COPY so an
 # acceptance run cannot reach the shared demo3 even by accident.
 mkdir -p "$ISO/.dev/temp"

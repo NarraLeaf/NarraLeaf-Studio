@@ -74,8 +74,8 @@ describe("resolveDock", () => {
  * The version rail's account. A new fixed column the solver does not know about is not a cosmetic
  * bug: the sidebars would size themselves as if the space were free, the editor would be pushed under
  * its floor, its CSS floor would overflow, the overflow would raise a scrollbar, the scrollbar would
- * shrink the container, and the re-clamp would loop (docs/plans/2026-07-28-002 §3, and it has
- * happened once). So the accounting is asserted here rather than eyeballed in a screenshot.
+ * shrink the container, and the re-clamp would loop - and it has happened once. So the accounting
+ * is asserted here rather than eyeballed in a screenshot.
  */
 describe("the version rail in the dock account", () => {
     const RAIL_WIDTHS = [0, VERSION_RAIL_COLLAPSED_WIDTH, VERSION_RAIL_EXPANDED_WIDTH];

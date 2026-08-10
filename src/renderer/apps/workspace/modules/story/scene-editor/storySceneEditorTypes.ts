@@ -5,7 +5,7 @@ export type StoryBlockTarget = {
     beforeBlockId?: StoryBlockId | null;
 };
 
-/** The three stage placements `at=` accepts (bible §1.2). */
+/** The three stage placements `at=` accepts. */
 export type StoryStagePlacement = "left" | "center" | "right";
 
 /** What a character is showing at a given point — its "current appearance". */
@@ -21,8 +21,8 @@ export type CharacterAppearanceRef = {
      */
     shown?: boolean;
     /**
-     * The character's placement (`at=`) at this point, accumulated from its most recent enter/move
-     * (WI-3, M3.1). Drives the group-header position dropdown's current value; absent means the
+     * The character's placement (`at=`) at this point, accumulated from its most recent enter/move.
+     * Drives the group-header position dropdown's current value; absent means the
      * placement was never set explicitly, so it reads as the runtime default (center).
      */
     position?: StoryStagePlacement;
@@ -46,19 +46,19 @@ export type VisibleStoryRow = {
      */
     lineNumber: number;
     /**
-     * For a dialogue row, the speaker's accumulated appearance at this line (WI-3), so its avatar can
+     * For a dialogue row, the speaker's accumulated appearance at this line, so its avatar can
      * follow the most recent enter/expression. Absent on non-dialogue rows and when nothing was shown.
      */
     appearance?: CharacterAppearanceRef;
     /**
-     * Dialogue-grouping role (WI-5), a pure render projection. `"head"` is the first dialogue of a
+     * Dialogue-grouping role, a pure render projection. `"head"` is the first dialogue of a
      * run of same-speaker lines (renders avatar + nametag as usual); `"member"` is a continuation —
      * a later same-speaker dialogue, or a same-character expression line — which drops the badge and
      * nametag for a group rail. Absent on rows that are not part of any dialogue group.
      */
     groupRole?: "head" | "member";
     /**
-     * This head's run continues on the very next row (U1). Purely so the head can extend the group's
+     * This head's run continues on the very next row. Purely so the head can extend the group's
      * attribution rail out of its own bottom edge — the rail is what says "the lines below are still
      * this speaker", and a rail that starts one row late points at nothing.
      */
@@ -73,7 +73,7 @@ export type VisibleStoryRow = {
      */
     nextRowDepth?: number;
     /**
-     * The row is compiled out (WI-3 / schema v7): disabled itself or nested in a disabled container.
+     * The row is compiled out (schema v7): disabled itself or nested in a disabled container.
      * Rendered muted at reduced opacity; the runtime behaves as if it were not there.
      */
     disabled?: boolean;
@@ -134,7 +134,7 @@ export type EditorMode =
      * (see `handleInsertValueChange`), so the menu comes back the moment the author edits, rather than
      * staying shut for the slot's whole life.
      *
-     * `confirmation` is the just-declared line's ghost receipt (`✓ Var gold: number = 0`, bible §3.5),
+     * `confirmation` is the just-declared line's ghost receipt (`✓ Var gold: number = 0`),
      * carried on the fresh slot that opens after a declaration commits. Like `chooserDismissed` it is
      * one-shot — the next edit strips it (see `handleInsertValueChange`) — and it lives on the slot, not
      * in separate state, so navigating to any other slot leaves it behind without anyone clearing it.

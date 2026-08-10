@@ -43,8 +43,7 @@ import {
  * LORE_TEST_REMOTE="lore://127.0.0.1:41337" yarn vitest run src/main/app/application/managers/vcs/
  * ```
  *
- * Every expectation below was measured before it was written; the record is
- * docs/plans/2026-07-31-003-plan-vcs-remote-server.md §1.
+ * Every expectation below was measured against a running server before it was written.
  */
 
 const SERVER = (process.env.LORE_TEST_REMOTE ?? "").trim();

@@ -4,7 +4,7 @@ import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformPr
 import { asDurationMs, asEnum, asNumber, defineStoryCommand, PLACEMENT_OPTIONS, secondsParam } from "../spec";
 
 /**
- * `/camera` - the story's stage camera (plan 2026-07-24-006 §5.7).
+ * `/camera` - the story's stage camera.
  *
  * One token with the operation as its first positional, rather than five tokens: the five operations
  * are one instrument, and an author reaching for the camera knows which knob they want before they
