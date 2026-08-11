@@ -722,8 +722,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * same reading the guard enforces — two independent lookups would eventually disagree, and the
      * one the author sees is not the one that decides.
      */
-    public async findAssetReferences(assetIds: readonly string[]): Promise<AssetReferenceReport> {
-        return collectAssetReferences(this.getReferenceLookup(), assetIds);
+    public async findAssetReferences(
+        assetIds: readonly string[],
+        /** Types of the same assets, so coverage is judged against the question being asked. */
+        assetTypes: readonly AssetType[] = [],
+    ): Promise<AssetReferenceReport> {
+        return collectAssetReferences(this.getReferenceLookup(), assetIds, assetTypes);
     }
 
     /**
@@ -757,7 +761,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             return null;
         }
 
-        const report = await this.findAssetReferences(assets.map(asset => asset.id));
+        const report = await this.findAssetReferences(
+            assets.map(asset => asset.id),
+            assets.map(asset => asset.type),
+        );
         if (report.checked && report.references.size === 0) {
             return null;
         }

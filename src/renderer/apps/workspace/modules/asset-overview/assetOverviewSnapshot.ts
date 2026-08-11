@@ -108,6 +108,8 @@ export async function computeAssetOverviewSnapshot(ctx: WorkspaceContext): Promi
 
     return buildAssetOverview({
         assets,
+        // Read after the same flush the counts came from, so coverage and counts describe one pass.
+        indexResult: referenceService.getIndexResult(),
         bytesByAssetId,
         referenceCountByAssetId,
         directoryBytes: walk.totalBytes,
