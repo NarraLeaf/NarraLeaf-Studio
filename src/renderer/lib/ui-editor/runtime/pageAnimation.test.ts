@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+    DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
+    type UIPageAnimationSettings,
+} from "@shared/types/ui-editor/pageAnimation";
+import {
     getPageAnimationDurationMs,
     resolvePageAnimationMotion,
     scalePageMotionDistances,
     shouldBlockPageAnimationExit,
 } from "./pageAnimation";
+
+/** Spelling out every field per case buries what each one is actually about. */
+function settings(partial: Partial<UIPageAnimationSettings>): UIPageAnimationSettings {
+    return { ...DEFAULT_UI_PAGE_ANIMATION_SETTINGS, ...partial };
+}
 
 function transitionDuration(target: { transition?: unknown }): number | undefined {
     const transition = target.transition;
@@ -13,21 +22,25 @@ function transitionDuration(target: { transition?: unknown }): number | undefine
         : undefined;
 }
 
+function transitionDelay(target: { transition?: unknown }): number | undefined {
+    const transition = target.transition;
+    return transition && typeof transition === "object" && "delay" in transition
+        ? Number((transition as { delay: unknown }).delay)
+        : undefined;
+}
+
 describe("page animation runtime resolver", () => {
     it("maps presets to Motion keyframes with separate phase durations", () => {
-        const motion = resolvePageAnimationMotion({
-            settings: {
-                enter: "slide",
-                exit: "fade",
-                enterDirection: "right",
-                exitDirection: "left",
-                enterAngleDegrees: 0,
-                exitAngleDegrees: 180,
-                enterDurationSeconds: 0.35,
-                exitDurationSeconds: 0.75,
-                exitBlocking: true,
-            },
+        const phases = settings({
+            enter: "slide",
+            exit: "fade",
+            enterDirection: "right",
+            exitDirection: "left",
+            enterDurationSeconds: 0.35,
+            exitDurationSeconds: 0.75,
+            exitBlocking: true,
         });
+        const motion = resolvePageAnimationMotion({ settings: phases });
 
         expect(motion.initial).toMatchObject({ opacity: 0, x: 48, y: 0 });
         expect(motion.animate).toMatchObject({ opacity: 1, x: 0, y: 0, scale: 1 });
@@ -37,48 +50,19 @@ describe("page animation runtime resolver", () => {
         expect(motion.enterDurationMs).toBe(350);
         expect(motion.exitDurationMs).toBe(750);
         expect(motion.exitBlocking).toBe(true);
-        expect(shouldBlockPageAnimationExit({
-            enter: "slide",
-            exit: "fade",
-            enterDirection: "right",
-            exitDirection: "left",
-            enterAngleDegrees: 0,
-            exitAngleDegrees: 180,
-            enterDurationSeconds: 0.35,
-            exitDurationSeconds: 0.75,
-            exitBlocking: true,
-        })).toBe(true);
+        expect(shouldBlockPageAnimationExit(phases)).toBe(true);
     });
 
     it("uses phase-aware auto direction based on navigation direction", () => {
-        const forward = resolvePageAnimationMotion({
-            settings: {
-                enter: "slide",
-                exit: "push",
-                enterDirection: "auto",
-                exitDirection: "auto",
-                enterAngleDegrees: 0,
-                exitAngleDegrees: 180,
-                enterDurationSeconds: 0.16,
-                exitDurationSeconds: 0.16,
-                exitBlocking: false,
-            },
-            navigationDirection: "forward",
+        const phases = settings({
+            enter: "slide",
+            exit: "push",
+            enterDurationSeconds: 0.16,
+            exitDurationSeconds: 0.16,
+            exitBlocking: false,
         });
-        const back = resolvePageAnimationMotion({
-            settings: {
-                enter: "slide",
-                exit: "push",
-                enterDirection: "auto",
-                exitDirection: "auto",
-                enterAngleDegrees: 0,
-                exitAngleDegrees: 180,
-                enterDurationSeconds: 0.16,
-                exitDurationSeconds: 0.16,
-                exitBlocking: false,
-            },
-            navigationDirection: "back",
-        });
+        const forward = resolvePageAnimationMotion({ settings: phases, navigationDirection: "forward" });
+        const back = resolvePageAnimationMotion({ settings: phases, navigationDirection: "back" });
 
         expect(forward.initial.x).toBe(48);
         expect(forward.exit.x).toBe(-48);
@@ -88,7 +72,7 @@ describe("page animation runtime resolver", () => {
 
     it("resolves custom angle directions per phase", () => {
         const motion = resolvePageAnimationMotion({
-            settings: {
+            settings: settings({
                 enter: "slide",
                 exit: "slide",
                 enterDirection: "angle",
@@ -98,7 +82,7 @@ describe("page animation runtime resolver", () => {
                 enterDurationSeconds: 0.2,
                 exitDurationSeconds: 0.2,
                 exitBlocking: false,
-            },
+            }),
         });
 
         expect(Math.round(Number(motion.initial.x))).toBe(0);
@@ -108,50 +92,44 @@ describe("page animation runtime resolver", () => {
     });
 
     it("zeros a phase duration when its preset is none", () => {
-        const motion = resolvePageAnimationMotion({
-            settings: {
-                enter: "none",
-                exit: "fade",
-                enterDirection: "auto",
-                exitDirection: "auto",
-                enterAngleDegrees: 0,
-                exitAngleDegrees: 180,
-                enterDurationSeconds: 1.2,
-                exitDurationSeconds: 0.4,
-                exitBlocking: false,
-            },
+        const phases = settings({
+            enter: "none",
+            exit: "fade",
+            enterDurationSeconds: 1.2,
+            exitDurationSeconds: 0.4,
+            exitBlocking: false,
         });
+        const motion = resolvePageAnimationMotion({ settings: phases });
 
         expect(motion.enterDurationMs).toBe(0);
         expect(motion.exitDurationMs).toBe(400);
         expect(transitionDuration(motion.animate)).toBe(0);
         expect(transitionDuration(motion.exit)).toBe(0.4);
-        expect(getPageAnimationDurationMs({
-            enter: "none",
-            exit: "fade",
-            enterDirection: "auto",
-            exitDirection: "auto",
-            enterAngleDegrees: 0,
-            exitAngleDegrees: 180,
-            enterDurationSeconds: 1.2,
-            exitDurationSeconds: 0.4,
-            exitBlocking: false,
-        }, "enter")).toBe(0);
+        expect(getPageAnimationDurationMs(phases, "enter")).toBe(0);
+    });
+
+    it("holds each phase for the delay it was given", () => {
+        const motion = resolvePageAnimationMotion({
+            settings: settings({ enter: "fade", exit: "fade" }),
+            delays: { enterMs: 120, exitMs: 400 },
+        });
+
+        expect(transitionDelay(motion.animate)).toBe(0.12);
+        expect(transitionDelay(motion.exit)).toBe(0.4);
     });
 
     it("zeros motion when reduce motion is active", () => {
         const motion = resolvePageAnimationMotion({
-            settings: {
+            settings: settings({
                 enter: "blur",
                 exit: "zoom",
                 enterDirection: "down",
                 exitDirection: "up",
-                enterAngleDegrees: 0,
-                exitAngleDegrees: 180,
                 enterDurationSeconds: 0.42,
                 exitDurationSeconds: 0.8,
                 exitBlocking: true,
-            },
+            }),
+            delays: { enterMs: 500, exitMs: 500 },
             reducedMotion: true,
         });
 
@@ -160,33 +138,28 @@ describe("page animation runtime resolver", () => {
         expect(motion.exit).toMatchObject(motion.initial);
         expect(transitionDuration(motion.animate)).toBe(0);
         expect(transitionDuration(motion.exit)).toBe(0);
-        expect(getPageAnimationDurationMs({
-            enter: "fade",
-            exit: "fade",
-            enterDirection: "auto",
-            exitDirection: "auto",
-            enterAngleDegrees: 0,
-            exitAngleDegrees: 180,
-            enterDurationSeconds: 0.42,
-            exitDurationSeconds: 0.42,
-            exitBlocking: true,
-        }, "enter", true)).toBe(0);
+        expect(transitionDelay(motion.animate)).toBeUndefined();
+        expect(
+            getPageAnimationDurationMs(
+                settings({ enter: "fade", exit: "fade", enterDurationSeconds: 0.42, exitDurationSeconds: 0.42 }),
+                "enter",
+                true,
+            ),
+        ).toBe(0);
         expect(motion.exitBlocking).toBe(false);
     });
 
     it("scales numeric travel distances into backing px for out-of-tree layers", () => {
         const motion = resolvePageAnimationMotion({
-            settings: {
+            settings: settings({
                 enter: "slide",
                 exit: "slide",
                 enterDirection: "right",
                 exitDirection: "left",
-                enterAngleDegrees: 0,
-                exitAngleDegrees: 180,
                 enterDurationSeconds: 0.3,
                 exitDurationSeconds: 0.3,
                 exitBlocking: false,
-            },
+            }),
         });
 
         // Distances are authored in design px (48); a layer rendered outside the

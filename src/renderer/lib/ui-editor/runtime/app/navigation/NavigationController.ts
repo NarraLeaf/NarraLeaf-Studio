@@ -1,4 +1,5 @@
 import type { UISurface } from "@shared/types/ui-editor/document";
+import type { SurfaceNavigationElements } from "@/lib/ui-editor/runtime/game/surfaceNavigationController";
 import { SURFACE_PREPAINT_TIMEOUT_MS } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
 import {
     initialNavigationState,
@@ -14,6 +15,8 @@ export type NavigationOpenInput = {
     targetSurface: UISurface;
     currentHiddenForGame: boolean;
     reducedMotion: boolean | null;
+    /** The bundle's elements, so the transition counts what each Page's contents cost. */
+    elements?: SurfaceNavigationElements;
     createNextEntry: (waitForExit: boolean) => AppNavEntry;
 };
 
@@ -22,6 +25,7 @@ export type NavigationCloseInput = {
     targetSurface: UISurface | null;
     targetHiddenForGame: boolean;
     reducedMotion: boolean | null;
+    elements?: SurfaceNavigationElements;
     /** Land on this stack index instead of the entry directly below the top. See the close update. */
     targetIndex?: number;
 };

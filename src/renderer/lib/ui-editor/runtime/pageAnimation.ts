@@ -45,11 +45,12 @@ function durationFor(settings: UIPageAnimationSettings, phase: PageAnimationPhas
     return hasMotion(preset) ? Math.max(0, Math.round(seconds * 1000)) : 0;
 }
 
-function transitionFor(durationMs: number): MotionTransition {
+function transitionFor(durationMs: number, delayMs = 0): MotionTransition {
     return {
         type: "tween",
         duration: durationMs / 1000,
         ease: PAGE_ANIMATION_EASE,
+        ...(delayMs > 0 ? { delay: delayMs / 1000 } : {}),
     };
 }
 
@@ -184,9 +185,17 @@ export function resolvePageAnimationMotion(input: {
     settings?: UIPageAnimationSettings | null;
     navigationDirection?: PageAnimationNavigationDirection;
     reducedMotion?: boolean;
+    /**
+     * Held before each phase starts, in ms. The settings carry the author's own delay; this is what
+     * the timing plan resolved it to - for a Surface that waits for its children, the wait itself.
+     * Passing it here rather than reading the settings keeps one place in charge of the arithmetic.
+     */
+    delays?: { enterMs?: number; exitMs?: number };
 }): PageAnimationMotion {
     const settings = normalizeUIPageAnimationSettings(input.settings ?? DEFAULT_UI_PAGE_ANIMATION_SETTINGS);
     const reducedMotion = input.reducedMotion === true;
+    const enterDelayMs = reducedMotion ? 0 : Math.max(0, input.delays?.enterMs ?? 0);
+    const exitDelayMs = reducedMotion ? 0 : Math.max(0, input.delays?.exitMs ?? 0);
     const navigationDirection = input.navigationDirection ?? "forward";
     const enterVector = vectorFor(resolveDirection(
         settings.enterDirection,
@@ -219,11 +228,11 @@ export function resolvePageAnimationMotion(input: {
         initial: enterDurationMs > 0 ? enterTarget(settings.enter, enterVector) : BASE_TARGET,
         animate: {
             ...BASE_TARGET,
-            transition: transitionFor(enterDurationMs),
+            transition: transitionFor(enterDurationMs, enterDelayMs),
         },
         exit: {
             ...(exitDurationMs > 0 ? exitTarget(settings.exit, exitVector) : BASE_TARGET),
-            transition: transitionFor(exitDurationMs),
+            transition: transitionFor(exitDurationMs, exitDelayMs),
         },
         enterDurationMs,
         exitDurationMs,

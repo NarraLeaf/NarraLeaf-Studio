@@ -69,7 +69,9 @@ function SurfacePageAnimationField({ data }: CustomFieldProps<SceneEditorContext
         }, { mergeKey: `surface:${data.surface.id}:pageAnimation:${changed}` });
     };
 
-    return createElement(PageAnimationEditor, { settings, onChange: update });
+    // A Surface owns the widgets on it the way a container owns its children, so it offers the same
+    // two child timings: space them out as they arrive, and do not leave before they have.
+    return createElement(PageAnimationEditor, { settings, onChange: update, showChildTiming: true });
 }
 
 export const scenePropertySchema = (t: TranslateFn) =>

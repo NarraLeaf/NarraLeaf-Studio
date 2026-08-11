@@ -43,6 +43,8 @@ import { staticSurfaceHostAdapter, type OpenSurfaceOptions, type PageProps, type
  */
 export type GameUiSlotHostOptions = {
     sessionId: string;
+    /** The player asked for less motion: the widgets on a slot surface stay put. */
+    reducedMotion?: boolean;
     core: BlueprintRuntimeCore | null;
     bundle: DevModeBundle;
     rendererRegistry: ElementRendererRegistry;
@@ -404,6 +406,10 @@ export function StageSlotSurfaceBody(props: {
                     onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     surfacePointerEvents={surfacePointerEvents}
                     passive={passive}
+                    // A Game UI slot has no page animation of its own - it appears when the scene
+                    // says so - but the widgets on it can still arrive and leave on their own terms.
+                    elementAnimations
+                    reducedMotion={options.reducedMotion === true}
                     // The uidoc here is the compiled bundle's; nothing edits it in place.
                     staticDocument
                 />

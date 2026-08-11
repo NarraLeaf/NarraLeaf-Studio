@@ -33,12 +33,18 @@ import {
     WidgetRuntimeScopeProvider,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { getUIFrameWidgetProps } from "@shared/types/ui-editor/frame";
-import {
-    getPageAnimationDurationMs,
-    resolvePageAnimationMotion,
-    shouldBlockPageAnimationExit,
-} from "@/lib/ui-editor/runtime/pageAnimation";
+import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import {
+    getSurfaceAnimationPlan,
+    getSurfaceAnimationTimings,
+    type SurfaceAnimationPlan,
+} from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
+import { getUIElementAnimationSettings } from "@shared/types/ui-editor/elementAnimation";
+import {
+    ElementAnimationLayer,
+    ElementAnimationPresence,
+} from "@/lib/ui-editor/runtime/surface/ElementAnimationLayer";
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
 import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
@@ -110,6 +116,13 @@ export type SurfaceElementTreeProps = {
      * content and a memoised tree would simply stop showing edits.
      */
     staticDocument?: boolean;
+    /**
+     * Per-element enter/exit timings for this Surface, or nothing to leave every element static.
+     *
+     * Opt-in rather than inferred: the editing canvas renders the same tree, and an author dragging a
+     * widget must not watch it animate itself back in. Only the runtime hosts pass one.
+     */
+    animationPlan?: SurfaceAnimationPlan | null;
     /**
      * Counter the host bumps when a store it subscribes to *on this tree's behalf* has changed -
      * `GameSurfaceRenderer` watches the surface-state store and the widget runtime patches for
@@ -275,6 +288,8 @@ function renderSurfaceElementTreeWithValueRuntime(
         [],
         props.surfaceLifecycleSignals,
         props.blueprintLifecycleReady ?? true,
+        null,
+        props.animationPlan ?? null,
     );
 
     return (
@@ -422,11 +437,23 @@ function NestedSurfaceRenderer(props: {
             return;
         }
 
-        const exitSettings = frameAnimation ?? currentInput.targetSurface.settings?.pageAnimation;
-        const enterSettings = frameAnimation ?? runtimeInput.targetSurface.settings?.pageAnimation;
-        const waitForExit = shouldBlockPageAnimationExit(exitSettings, reducedMotion);
-        const exitDurationMs = getPageAnimationDurationMs(exitSettings, "exit", reducedMotion);
-        const enterDurationMs = getPageAnimationDurationMs(enterSettings, "enter", reducedMotion);
+        const outgoing = getSurfaceAnimationTimings({
+            elements: currentInput.document.elements,
+            surface: currentInput.targetSurface,
+            settingsOverride: frameAnimation,
+            reducedMotion,
+            cache: true,
+        });
+        const incoming = getSurfaceAnimationTimings({
+            elements: runtimeInput.document.elements,
+            surface: runtimeInput.targetSurface,
+            settingsOverride: frameAnimation,
+            reducedMotion,
+            cache: true,
+        });
+        const waitForExit = outgoing.exitBlocking;
+        const exitDurationMs = outgoing.exitMs;
+        const enterDurationMs = incoming.enterMs;
         const holdCurrentUntilEnterComplete = shouldHoldCurrentSurfaceUntilEnterComplete({
             waitForExit,
             hasCurrentSurface: true,
@@ -657,15 +684,25 @@ function NestedSurfaceInstance(props: {
 
     const frameAnimation = getUIFrameWidgetProps(runtimeInput.frameElement).animation;
     const animationSettings = frameAnimation ?? targetSurface.settings?.pageAnimation;
+    const timings = getSurfaceAnimationTimings({
+        elements: document.elements,
+        surface: targetSurface,
+        settingsOverride: frameAnimation,
+        reducedMotion,
+        cache: true,
+    });
+    const animationDelays = { enterMs: timings.ownEnterDelayMs, exitMs: timings.ownExitDelayMs };
     const animationMotion = resolvePageAnimationMotion({
         settings: animationSettings,
         navigationDirection: "forward",
         reducedMotion,
+        delays: animationDelays,
     });
     const resolveExit = () => resolvePageAnimationMotion({
         settings: animationSettings,
         navigationDirection: "forward",
         reducedMotion,
+        delays: animationDelays,
     }).exit;
     const surfaceStyle: CSSProperties = {
         position: "relative",
@@ -709,6 +746,7 @@ function NestedSurfaceInstance(props: {
                 interactive={effectiveInteractive}
                 keyboardInteractive={effectiveKeyboardInteractive}
                 surfaceLifecycleSignals={surfaceLifecycleSignals}
+                animationPlan={timings.plan}
             />
         </SurfaceAnimationLayer>
     );
@@ -784,6 +822,7 @@ function renderLinkedComponentInstanceContent(input: {
     blueprintLifecycleReady?: boolean;
     interactive?: boolean;
     keyboardInteractive?: boolean;
+    animationPlan: SurfaceAnimationPlan | null;
 }): ReactNode | null {
     const link = getUIComponentLink(input.instanceElement);
     if (!link) {
@@ -838,6 +877,21 @@ function renderLinkedComponentInstanceContent(input: {
     // map, so the dispatch options of content without params are byte-for-byte what they were.
     const resolvedParams = resolveUIComponentParams(component, link);
     const componentParams = Object.keys(resolvedParams).length > 0 ? resolvedParams : null;
+    /**
+     * A definition is authored on its own, so its animations are timed from its own root rather than
+     * from the Surface the instance sits on: an instance placed under a staggering container still
+     * plays its insides from zero. Built off `component.elements`, whose identity survives a render,
+     * so the cache holds - the virtual document assembled below does not.
+     */
+    const componentAnimationPlan = input.animationPlan
+        ? getSurfaceAnimationPlan({
+              elements: component.elements,
+              rootElementId: component.rootElementId,
+              rootSettings: getUIElementAnimationSettings(root),
+              reducedMotion: input.animationPlan.reducedMotion,
+              cache: true,
+          })
+        : null;
     const viewportStyle: CSSProperties = {
         position: "relative",
         width: "100%",
@@ -878,6 +932,7 @@ function renderLinkedComponentInstanceContent(input: {
                     input.surfaceLifecycleSignals,
                     input.blueprintLifecycleReady ?? true,
                     componentParams,
+                    componentAnimationPlan,
                 )}
             </div>
         </div>
@@ -906,6 +961,8 @@ function renderElementTree(
     blueprintLifecycleReady = true,
     /** Resolved params of the component instance this subtree belongs to; null outside one. */
     componentParams: Record<string, string> | null = null,
+    /** Enter/exit timings for this Surface, or null when the host wants a static tree. */
+    animationPlan: SurfaceAnimationPlan | null = null,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
     const runtimePatch = widgetRuntimePatches?.[element.id];
@@ -927,7 +984,12 @@ function renderElementTree(
         mergeElementWithBlueprintValues(bound, surface.id, valueRuntime, listItemScope ?? null, instanceKey)
     );
 
-    if (resolved.layout.visible === false) {
+    // An animated element is kept mounted through its exit, so "hidden" cannot mean "gone" here: the
+    // presence wrapper at the bottom of this function decides when it actually leaves the tree.
+    const visible = resolved.layout.visible !== false;
+    const animationTiming = animationPlan?.elements.get(resolved.id) ?? null;
+    const animated = Boolean(animationTiming?.subtreeAnimated) && resolved.parentId !== null;
+    if (!visible && !animated) {
         return null;
     }
 
@@ -966,6 +1028,7 @@ function renderElementTree(
                 surfaceLifecycleSignals,
                 blueprintLifecycleReady,
                 componentParams,
+                animationPlan,
             );
         })
         .filter((node): node is ReactNode => node !== null);
@@ -996,6 +1059,7 @@ function renderElementTree(
         blueprintLifecycleReady,
         interactive,
         keyboardInteractive,
+        animationPlan,
     });
     const content = linkedComponentContent ?? (renderer
         ? renderer.render({
@@ -1045,9 +1109,18 @@ function renderElementTree(
             : isUIElementFlowLayoutChild(document, resolved)
               ? "flow"
               : "absolute";
-    return (
+    const nodeKey = `${resolved.id}${instanceKey ? `:${instanceKey}` : ""}`;
+    const animatedContent =
+        animationTiming && animated && animationTiming.selfAnimated ? (
+            <ElementAnimationLayer timing={animationTiming} reducedMotion={animationPlan?.reducedMotion === true}>
+                {content}
+            </ElementAnimationLayer>
+        ) : (
+            content
+        );
+    const node = (
         <EditorNodeWrapper
-            key={`${resolved.id}${instanceKey ? `:${instanceKey}` : ""}`}
+            key={nodeKey}
             element={resolved}
             layout={resolved.layout}
             isRoot={resolved.parentId === null}
@@ -1079,8 +1152,17 @@ function renderElementTree(
                     surfaceLifecycleSignals={surfaceLifecycleSignals}
                 />
             ) : null}
-            {content}
+            {animatedContent}
         </EditorNodeWrapper>
+    );
+
+    if (!animated || !animationTiming) {
+        return node;
+    }
+    return (
+        <ElementAnimationPresence key={nodeKey} timing={animationTiming} visible={visible}>
+            {node}
+        </ElementAnimationPresence>
     );
 }
 

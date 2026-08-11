@@ -18,6 +18,7 @@ import {
     resolvePageAnimationMotion,
     type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
+import { getSurfaceAnimationTimings } from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
 import {
     getSurfaceLayerBackgroundColor,
     getSurfaceLayerBackgroundImageOpacity,
@@ -176,13 +177,26 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
 
     const layerBackgroundColor = getSurfaceLayerBackgroundColor(surface, entry.presentation);
 
+    // The Page's own animation may have to wait for its contents to leave first, so the delays come
+    // from the timing plan rather than straight off the settings. Cached on the bundle's element
+    // table, so this is the same object the element tree below resolves.
+    const animationDelays = useMemo(() => {
+        const timings = getSurfaceAnimationTimings({
+            elements: uidoc.elements,
+            surface,
+            reducedMotion,
+            cache: true,
+        });
+        return { enterMs: timings.ownEnterDelayMs, exitMs: timings.ownExitDelayMs };
+    }, [reducedMotion, surface, uidoc.elements]);
     const pageMotion = useMemo(
         () => resolvePageAnimationMotion({
             settings: surface.settings?.pageAnimation,
             navigationDirection: entry.direction,
             reducedMotion,
+            delays: animationDelays,
         }),
-        [entry.direction, reducedMotion, surface.settings?.pageAnimation],
+        [animationDelays, entry.direction, reducedMotion, surface.settings?.pageAnimation],
     );
     const resolveExit = useCallback(
         (direction: PageAnimationNavigationDirection) =>
@@ -190,8 +204,9 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
                 settings: surface.settings?.pageAnimation,
                 navigationDirection: direction,
                 reducedMotion,
+                delays: animationDelays,
             }).exit,
-        [reducedMotion, surface.settings?.pageAnimation],
+        [animationDelays, reducedMotion, surface.settings?.pageAnimation],
     );
 
     const handleBeforeExit = useCallback(
@@ -309,6 +324,8 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
                         interactive={effectiveInteractive}
                         keyboardInteractive={effectiveKeyboardInteractive}
                         onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
+                        elementAnimations
+                        reducedMotion={reducedMotion}
                         // The uidoc here is the compiled bundle's; nothing edits it in place.
                         staticDocument
                     />

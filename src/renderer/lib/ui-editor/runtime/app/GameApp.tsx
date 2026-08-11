@@ -656,6 +656,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             targetSurface: target,
             currentHiddenForGame,
             reducedMotion: prefersReducedMotion,
+            elements: bundle.ui.uidoc.elements,
             createNextEntry: waitForExit => createNavEntry(target.id, "forward", waitForExit, props, presentation),
         });
     }, [
@@ -687,6 +688,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             targetSurface: target,
             targetHiddenForGame,
             reducedMotion: prefersReducedMotion,
+            elements: bundle.ui.uidoc.elements,
             targetIndex,
         });
     }, [
@@ -743,6 +745,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             targetSurface: target,
             targetHiddenForGame,
             reducedMotion: prefersReducedMotion,
+            elements: bundle.ui.uidoc.elements,
         });
     }, [
         bundle,
@@ -1653,6 +1656,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
             widgetRuntimeStore,
+            reducedMotion: prefersReducedMotion === true,
         };
         const slots = createGameUiSlotComponents({
             uidoc: bundle.ui.uidoc,

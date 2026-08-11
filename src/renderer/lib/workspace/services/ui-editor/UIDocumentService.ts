@@ -117,7 +117,11 @@ import {
     getUISwitchChildSlot,
     type UISwitchElementExtra,
 } from "@shared/types/ui-editor/switch";
-import { normalizeUIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
+import {
+    isDefaultUIPageAnimationSettings,
+    normalizeUIPageAnimationSettings,
+    type UIPageAnimationSettings,
+} from "@shared/types/ui-editor/pageAnimation";
 import {
     DEFAULT_UI_STAGE_SLOT_ID,
     normalizeUIStageSlotId,
@@ -547,6 +551,25 @@ function calculateElementsBounds(elements: UIElement[]): UISurfaceDesignSize & {
     };
 }
 
+/**
+ * Write an element's animation, or take it away.
+ *
+ * An all-default record is the same as none, and is stored as none: an author who tries a preset and
+ * puts it back must leave the document as they found it.
+ */
+function applyElementAnimation(element: UIElement, animation: UIPageAnimationSettings | null): void {
+    if (!animation) {
+        delete element.animation;
+        return;
+    }
+    const normalized = normalizeUIPageAnimationSettings(animation);
+    if (isDefaultUIPageAnimationSettings(normalized)) {
+        delete element.animation;
+        return;
+    }
+    element.animation = normalized;
+}
+
 /** What a template import touched: the surfaces added, any library components it
  * brought with them, and any stage slots that were already occupied so their
  * surface was skipped (surfaced to the user). */
@@ -932,6 +955,34 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 after: historyService.captureSnapshot(surfaceId),
             });
         }
+    }
+
+    /**
+     * How this element arrives and leaves. `null` clears it.
+     *
+     * Unlike props and extras this is allowed on a linked component instance: the animation belongs
+     * to where the instance was placed, not to the definition, exactly as its position and size do.
+     */
+    public updateElementAnimation(
+        elementId: string,
+        animation: UIPageAnimationSettings | null,
+        options: { mergeKey?: string } = {},
+    ): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element) {
+                return;
+            }
+            applyElementAnimation(element, animation);
+        }, {
+            history: surfaceId
+                ? {
+                      surfaceId,
+                      mergeKey: options.mergeKey ?? `animation:${elementId}`,
+                  }
+                : false,
+        });
     }
 
     public updateElementExtra(elementId: string, extraPatch: Record<string, unknown>): void {
@@ -2784,6 +2835,22 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...(element.props ?? {}),
                 ...propsPatch,
             };
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    public updateComponentElementAnimation(
+        componentId: string,
+        elementId: string,
+        animation: UIPageAnimationSettings | null,
+    ): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            applyElementAnimation(element, animation);
             component.updatedAt = new Date().toISOString();
         }, { history: false });
     }
