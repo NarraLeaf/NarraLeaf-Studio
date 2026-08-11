@@ -3,13 +3,16 @@ import type { DocumentMergeDecision } from "@shared/documents/diff";
 import { mergeDecisionKey } from "@shared/documents/mergeApply";
 import type { TranslationKey } from "@shared/i18n";
 import {
+    buildConflictRows,
     countUndecidedChanges,
+    countUndecidedFiles,
     describeMergeSide,
     effectiveMergeSide,
     MERGE_VALUE_FIELD_LIMIT,
     MERGE_VALUE_TEXT_LIMIT,
     mergeDocumentBlockedKey,
     resolveMergeDecisionLabel,
+    type MergeChoiceState,
 } from "./mergeDecisionView";
 import type { LabelTranslator } from "./documentChangeView";
 
@@ -156,5 +159,103 @@ describe("mergeDocumentBlockedKey", () => {
         ] as const).map(mergeDocumentBlockedKey);
         expect(new Set(keys).size).toBe(keys.length);
         expect(keys.every(key => key.startsWith("documentDiff.resolve.change.blocked."))).toBe(true);
+    });
+});
+
+/**
+ * One file's state, which is the answer the finish button is built on.
+ *
+ * The failure these are for is a merge that can be closed while something is still unanswered: the
+ * backend refuses it by name, so nothing is lost, but the author is told at the end of a two hundred
+ * file merge rather than while they are making it.
+ */
+const EMPTY_STATE: MergeChoiceState = { decisions: {}, perChange: {}, changeChoices: {}, documents: {} };
+
+const state = (partial: Partial<MergeChoiceState>): MergeChoiceState => ({ ...EMPTY_STATE, ...partial });
+
+describe("buildConflictRows", () => {
+    it("draws one row per conflicted file, whatever is inside it", () => {
+        const many = Array.from({ length: 40 }, (_, index) => decision("conflict", { path: ["u", String(index)] }));
+        const rows = buildConflictRows(["a.json", "b.json"], state({
+            documents: {
+                "b.json": { status: "ready", document: { path: "b.json", decisions: many, conflicts: 40 } },
+            },
+        }));
+
+        expect(rows.map(row => row.path)).toEqual(["a.json", "b.json"]);
+    });
+
+    it("starts every file on neither side, which is the state that blocks the finish", () => {
+        const rows = buildConflictRows(["a.json", "b.json"], EMPTY_STATE);
+
+        expect(rows.map(row => row.decision)).toEqual(["none", "none"]);
+        expect(rows.some(row => row.settled)).toBe(false);
+        expect(countUndecidedFiles(rows)).toBe(2);
+    });
+
+    it("settles a file the moment a whole side is taken", () => {
+        const rows = buildConflictRows(["a.json"], state({ decisions: { "a.json": "theirs" } }));
+
+        expect(rows[0]).toMatchObject({ decision: "theirs", settled: true });
+        expect(countUndecidedFiles(rows)).toBe(0);
+    });
+
+    /**
+     * The per-change control is a property of the DOCUMENT, so it cannot be offered before anyone
+     * has looked - a row drawn as mergeable while the read is still out would be a control that
+     * disappears when the answer arrives.
+     */
+    it("offers the per-change choice only for a document that has answered and can be merged", () => {
+        const unread = buildConflictRows(["a.json"], EMPTY_STATE);
+        const loading = buildConflictRows(["a.json"], state({ documents: { "a.json": { status: "loading" } } }));
+        const blocked = buildConflictRows(["a.json"], state({
+            documents: {
+                "a.json": { status: "ready", document: { path: "a.json", decisions: [], conflicts: 0, blocked: "no-spec" } },
+            },
+        }));
+        const ready = buildConflictRows(["a.json"], state({
+            documents: {
+                "a.json": { status: "ready", document: { path: "a.json", decisions: [], conflicts: 0 } },
+            },
+        }));
+
+        expect([unread[0].mergeable, loading[0].mergeable, blocked[0].mergeable]).toEqual([false, false, false]);
+        expect(ready[0].mergeable).toBe(true);
+    });
+
+    it("counts a file being merged as settled only once every conflict inside it has a side", () => {
+        const document = {
+            path: "a.json",
+            decisions: [decision("auto-mine"), decision("conflict", { path: ["units", "farewell"] })],
+            conflicts: 1,
+        };
+        const documents = { "a.json": { status: "ready", document } } as const;
+
+        const open = buildConflictRows(["a.json"], state({ perChange: { "a.json": true }, documents }));
+        const answered = buildConflictRows(["a.json"], state({
+            perChange: { "a.json": true },
+            changeChoices: { "a.json": { [mergeDecisionKey(["units", "farewell"])]: "mine" } },
+            documents,
+        }));
+
+        expect(open[0]).toMatchObject({ decision: "per-change", settled: false, undecidedChanges: 1 });
+        expect(answered[0]).toMatchObject({ decision: "per-change", settled: true, undecidedChanges: 0 });
+    });
+
+    /**
+     * Tier three is "refuse and say why", not "accept and hope". A blocked document reports its own
+     * decision list as empty, and a file marked for per-change merging on the strength of that would
+     * be finished with nothing chosen for it at all.
+     */
+    it("never settles a blocked file through the per-change route", () => {
+        const rows = buildConflictRows(["a.json"], state({
+            perChange: { "a.json": true },
+            documents: {
+                "a.json": { status: "ready", document: { path: "a.json", decisions: [], conflicts: 0, blocked: "read-only" } },
+            },
+        }));
+
+        expect(rows[0]).toMatchObject({ decision: "per-change", settled: false });
+        expect(countUndecidedFiles(rows)).toBe(1);
     });
 });

@@ -4,26 +4,20 @@ import type { TranslationKey, Translator } from "@shared/i18n";
 /**
  * Turning a {@link DocumentDiff} into rows a surface can draw, without any surface in the picture.
  *
- * Two surfaces render the same list - the version rail's in-place summary and the `vcs-changes`
- * editor tab - and everything that can be WRONG about that list is here rather than in either of
- * them: how many rows fit, which ones survive the cap, how many were left out, and how a label
- * made of a translation key plus parameters becomes text. There are no component-render tests in
- * this codebase, so anything that decides behaviour has to be reachable without mounting a rail.
+ * Everything that can be WRONG about that list is here rather than in the component drawing it:
+ * how many rows fit, which ones survive the cap, how many were left out, and how a label made of a
+ * translation key plus parameters becomes text. There are no component-render tests for most of
+ * this codebase, so anything that decides behaviour has to be reachable without mounting anything.
+ *
+ * The list has one home now - the comparison tab's detail pane, through `presenters` - where it
+ * used to have two. The version rail drew a second, denser copy under any file row an author
+ * expanded; the rail lists files only as of this milestone, so the cap that rendering needed is
+ * gone with it.
  *
  * Nothing here reads project data, so nothing here is gated on the freeze. A comparison is a read
  * by construction - it cannot write anything even in principle - and a frozen workspace is exactly
  * the state an author is in while they are trying to find out what a past version says.
  */
-
-/**
- * Rows the version rail's in-place summary draws before it defers to the tab.
- *
- * Eight, because the rail is 320px and its change list lives inside a bounded box that the commit
- * form and the history share a scroller with (see `ChangesSection`): an expansion tall enough to
- * push the way to another version out of view would cost more than it gives. Past eight the honest
- * move is not a taller box, it is a wider surface, and "view all N" is the way to one.
- */
-export const RAIL_CHANGE_SUMMARY_ROWS = 8;
 
 /** One line of a change list: a top-level change, or one of its children. */
 export interface DocumentChangeRow {

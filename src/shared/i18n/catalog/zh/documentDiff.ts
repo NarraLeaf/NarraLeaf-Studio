@@ -202,6 +202,12 @@ export const documentDiff = {
         takeAllMine: "全部保留我的",
         takeAllTheirs: "全部保留对方的",
         rowsOmitted: "另有 {count} 个文件未列出，可用上方的两个链接一次性选择",
+        /** 两栏：左边是有冲突的文件，右边是选中文件内部的变更。 */
+        fileList: "有冲突的文件",
+        decision: "保留哪一边",
+        /** 三态里唯一带标记的一态：它是拦住「完成合并」的那一态，必须一眼找得到。 */
+        pending: "尚未选边",
+        selectPrompt: "选中一个文件，查看其中的变更",
         finish: "完成合并",
         finishUndecided: {
             one: "还有 {count} 个文件没选边",

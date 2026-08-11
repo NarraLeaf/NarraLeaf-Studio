@@ -277,6 +277,18 @@ export const documentDiff = {
         takeAllMine: "Keep mine everywhere",
         takeAllTheirs: "Keep theirs everywhere",
         rowsOmitted: "{count} more files are not listed here. Use the two links above to choose for all of them.",
+        /** The two panes: the conflicted files, and the changes inside the one being looked at. */
+        fileList: "Conflicted files",
+        /** The controls on one file's row, named as the question they answer. */
+        decision: "Which side to keep",
+        /**
+         * The state a file starts in, and the only one of the three that wears a marker.
+         *
+         * It is what stops the merge being finished, so it has to be findable without reading every
+         * button on every row.
+         */
+        pending: "No side chosen",
+        selectPrompt: "Pick a file to see the changes inside it.",
         finish: "Finish the merge",
         finishUndecided: {
             one: "{count} file still needs a side",
