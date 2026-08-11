@@ -95,6 +95,16 @@ export class BaseApp {
         this.electronApp.on("before-quit", () => {
             this.quitting = true;
         });
+        // Take the icon down ourselves rather than leaving it to the shell. Windows only reaps a
+        // notification icon whose owner is gone when something makes it check - usually a mouse
+        // moving over it - so an icon that is not deleted stays on screen, and clicking it does
+        // nothing. `will-quit` rather than `before-quit`: the latter fires on quits that are still
+        // cancellable (an update still downloading asks, and `cancelQuit()` puts the session back),
+        // and a Studio that stayed open with no window and no icon has no handle left at all.
+        this.electronApp.on("will-quit", () => {
+            this.trayManager?.destroy();
+            this.trayManager = null;
+        });
         // Studio outlives its windows: closing the last one leaves it in the status bar (Windows,
         // Linux) or the Dock (macOS), which is what makes "finish this update in the background"
         // possible at all. Electron's built-in behaviour is the opposite - with no listener at

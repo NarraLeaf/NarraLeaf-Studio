@@ -344,9 +344,22 @@ export class App extends BaseApp {
      * only from Task Manager. A tray that failed to appear (no StatusNotifier host on Linux, a
      * missing icon resource) therefore falls back to the old behaviour rather than stranding it.
      * macOS always has the Dock, so it never needs the fallback.
+     *
+     * A quit gets here too, and must not be treated as this gesture: the windows a quit closes on
+     * its way out arrive at the same listener, with the tray still up and `hasWindows()` already
+     * false. Electron's own `window-all-closed` is silent during a quit for exactly this reason
+     * (`Browser::OnWindowAllClosed` shuts down instead of emitting), but the window event this
+     * runs on is Studio's, so the distinction has to be made here.
      */
     public handleLastWindowClosed(): void {
         if (process.platform === "darwin") {
+            return;
+        }
+        // Closing the last window on the way out of a quit is not "the user closed the last
+        // window". Announcing residency there says the opposite of what is happening - and, being
+        // a once-per-profile notice, it spends itself on the one moment it cannot be true, so the
+        // first real residency is then the silent one.
+        if (this.isQuitting()) {
             return;
         }
         if (this.trayManager?.isActive()) {
