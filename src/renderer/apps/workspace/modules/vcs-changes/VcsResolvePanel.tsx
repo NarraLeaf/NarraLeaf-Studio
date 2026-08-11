@@ -1,31 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, GitMerge, Loader2, RotateCcw } from "lucide-react";
+import { GitMerge, Loader2, RotateCcw } from "lucide-react";
 import type { DocumentMergeDecision } from "@shared/documents/diff";
 import { mergeDecisionKey } from "@shared/documents/mergeApply";
 import type {
     VcsMergeDecision,
-    VcsMergeDocument,
     VcsMergeSideChoice,
     VcsMergeState,
 } from "@shared/types/vcs";
-import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { translate, useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
+import { ConflictFooter, ConflictResolveView } from "@/lib/vcs/ConflictResolveView";
 import {
-    countUndecidedChanges,
-    describeMergeSide,
-    effectiveMergeSide,
-    mergeDocumentBlockedKey,
-    resolveMergeDecisionLabel,
+    buildConflictRows,
+    countUndecidedFiles,
     type MergeChangeChoices,
-    type MergeValueView,
+    type MergeDocumentEntry,
 } from "@/lib/vcs/mergeDecisionView";
 import { useWorkspace } from "../../context";
 import { useFreezeGuard } from "../../components/ui/freezeGuard";
-import { splitChangePath } from "../../components/layout/versionRailModel";
 
 /**
  * Finishing a merge: whole files from one side, and - where the format allows it - one change
@@ -39,7 +34,12 @@ import { splitChangePath } from "../../components/layout/versionRailModel";
  * cannot merge this format" and "there is nothing left to decide here" must not be the same blank
  * space.
  *
- * Three properties of the backend shape everything here, and none of them is a preference:
+ * **Two panes, the same two a comparison has.** The index carries one line per conflicted file with
+ * that file's decision on it; the detail carries the changes inside whichever file is selected,
+ * with both sides' values side by side. Everything drawn is in `lib/vcs` and takes plain props, so
+ * this file is the wiring - the service, the choices, and what a press means - and nothing else.
+ *
+ * Three properties of the backend shape all of it, and none of them is a preference:
  *
  * **Nothing readable says which conflicts the author has already settled.** The three sides the
  * merge left on disk survive a resolve, the status call reports nothing for the whole of a merge,
@@ -66,17 +66,11 @@ import { splitChangePath } from "../../components/layout/versionRailModel";
  * answer and took it.
  */
 
-/** How many rows this draws before it says how many it left out. */
+/** How many conflicts the index lists before it says how many it left out. */
 const RESOLVE_ROW_LIMIT = 200;
 
-/** What this window knows about one conflicted document's insides. */
-type DocumentEntry =
-    | { status: "loading" }
-    | { status: "error"; message: string }
-    | { status: "ready"; document: VcsMergeDocument };
-
 export function VcsResolvePanel() {
-    const { t, tn } = useTranslation();
+    const { t } = useTranslation();
     const { context } = useWorkspace();
     // A resolve WRITES the author's files, so unlike everything else in this tab it is gated. The
     // read half - the file list, which side is which, what changed inside, the fact that a merge is
@@ -104,8 +98,8 @@ export function VcsResolvePanel() {
      */
     const [perChange, setPerChange] = useState<Record<string, true>>({});
     const [changeChoices, setChangeChoices] = useState<Record<string, MergeChangeChoices>>({});
-    const [expanded, setExpanded] = useState<Record<string, true>>({});
-    const [documents, setDocuments] = useState<Record<string, DocumentEntry>>({});
+    const [selectedPath, setSelectedPath] = useState<string | null>(null);
+    const [documents, setDocuments] = useState<Record<string, MergeDocumentEntry>>({});
     const [running, setRunning] = useState<"finish" | "abandon" | null>(null);
     const alive = useRef(true);
     useEffect(() => {
@@ -159,7 +153,16 @@ export function VcsResolvePanel() {
         () => (state?.inProgress ? state.conflicts : []),
         [state],
     );
-    const rows = conflicts.slice(0, RESOLVE_ROW_LIMIT);
+    const listed = conflicts.slice(0, RESOLVE_ROW_LIMIT);
+    /**
+     * The selected file, resolved against the current merge rather than stored as truth.
+     *
+     * A re-read can drop the file that was selected - a second window's abandon, or a merge that
+     * finished - and a selection kept in state would then point at a conflict that no longer
+     * exists. The fallback is the first conflict, so the detail is never blank on arrival.
+     */
+    const selectedPathInList = selectedPath !== null && listed.includes(selectedPath);
+    const selected = selectedPathInList ? selectedPath : (listed[0] ?? null);
 
     /**
      * Read one file's insides, once, when the author asks to see them.
@@ -189,18 +192,15 @@ export function VcsResolvePanel() {
             });
     }, [service]);
 
-    const toggle = (path: string) => {
-        setExpanded(current => {
-            if (current[path]) {
-                const { [path]: _removed, ...rest } = current;
-                return rest;
-            }
-            return { ...current, [path]: true };
-        });
-        if (!documents[path]) {
-            readDocument(path);
+    // Selecting a file IS asking to see inside it, so the read follows the selection rather than a
+    // second gesture. Which is also what makes the per-change control honest: it appears once the
+    // document has answered and its format turns out to be mergeable, and never before anyone has
+    // looked.
+    useEffect(() => {
+        if (selected !== null && documents[selected] === undefined) {
+            readDocument(selected);
         }
-    };
+    }, [selected, documents, readDocument]);
 
     /** Take a whole file from one side. Drops any per-change work on it - the two are exclusive. */
     const chooseWhole = (path: string, choice: VcsMergeSideChoice) => {
@@ -231,26 +231,17 @@ export function VcsResolvePanel() {
     };
 
     /**
-     * Whether this file has an answer the author gave.
+     * Every conflict as a row, decisions included.
      *
-     * Per-change counts only when every `conflict` inside it has a side; an `auto-*` row needs
-     * nothing, because the merge already had a right answer for it.
+     * Built over the whole conflict list rather than over the rows the index draws: a file past the
+     * cap that nobody answered still holds the merge open, and a finish button counting only what
+     * is on screen would offer to close a merge that the backend then refuses.
      */
-    const settled = useCallback((path: string): boolean => {
-        if (decisions[path]) {
-            return true;
-        }
-        if (!perChange[path]) {
-            return false;
-        }
-        const entry = documents[path];
-        if (entry?.status !== "ready" || entry.document.blocked !== undefined) {
-            return false;
-        }
-        return countUndecidedChanges(entry.document.decisions, changeChoices[path] ?? {}) === 0;
-    }, [decisions, perChange, documents, changeChoices]);
-
-    const undecided = conflicts.filter(path => !settled(path)).length;
+    const rows = useMemo(
+        () => buildConflictRows(conflicts, { decisions, perChange, changeChoices, documents }),
+        [conflicts, decisions, perChange, changeChoices, documents],
+    );
+    const undecided = countUndecidedFiles(rows);
 
     const chooseAll = (choice: VcsMergeSideChoice) => {
         setDecisions(Object.fromEntries(conflicts.map(path => [path, choice])));
@@ -302,14 +293,14 @@ export function VcsResolvePanel() {
      * Forget every choice, and every side read to make them.
      *
      * The documents go too, not only the choices: the merge's three copies are deleted by the
-     * commit and by an abandon (docs §4.23, §4.27), so anything kept here would be an expandable
-     * row over files that no longer exist.
+     * commit and by an abandon (docs §4.23, §4.27), so anything kept here would be a detail pane
+     * over files that no longer exist.
      */
     const resetChoices = () => {
         setDecisions({});
         setPerChange({});
         setChangeChoices({});
-        setExpanded({});
+        setSelectedPath(null);
         setDocuments({});
     };
 
@@ -349,6 +340,8 @@ export function VcsResolvePanel() {
         });
     };
 
+    const hasConflicts = state?.inProgress === true && conflicts.length > 0;
+
     return (
         // One of the two places an author meets a state they did not ask for and cannot leave by
         // undoing, so the `?` is drawn here rather than left to `F1` alone. The other is the rail.
@@ -379,392 +372,59 @@ export function VcsResolvePanel() {
                 <HelpTrigger topic="versionConflicts" />
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-                {loading && state === null && (
-                    <p className="flex items-center gap-2 text-xs text-fg-subtle">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        {t("documentDiff.rows.loading")}
-                    </p>
-                )}
+            {/* Above both panes, because it is a fact about the merge rather than about any one
+                file - and a failed finish must not be scrolled past inside a list. */}
+            {error && <p className="shrink-0 px-3 pt-2 text-xs text-danger">{error}</p>}
 
-                {error && <p className="mb-2 text-xs text-danger">{error}</p>}
+            {hasConflicts ? (
+                <ConflictResolveView
+                    rows={rows.slice(0, RESOLVE_ROW_LIMIT)}
+                    conflictCount={conflicts.length}
+                    omitted={conflicts.length - listed.length}
+                    selectedPath={selected}
+                    onSelect={setSelectedPath}
+                    documents={documents}
+                    changeChoices={changeChoices}
+                    running={running !== null}
+                    guard={guard}
+                    onChooseWhole={chooseWhole}
+                    onChooseMerged={chooseMerged}
+                    onChooseChange={chooseChange}
+                    onChooseAll={chooseAll}
+                />
+            ) : (
+                <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+                    {loading && state === null && (
+                        <p className="flex items-center gap-2 text-xs text-fg-subtle">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            {t("documentDiff.rows.loading")}
+                        </p>
+                    )}
 
-                {!loading && state !== null && !state.inProgress && (
-                    <p className="text-xs text-fg-subtle">{t("documentDiff.resolve.none")}</p>
-                )}
+                    {!loading && state !== null && !state.inProgress && (
+                        <p className="text-xs text-fg-subtle">{t("documentDiff.resolve.none")}</p>
+                    )}
 
-                {state?.inProgress && conflicts.length === 0 && (
-                    // A merge with nothing left to a human: the automerge settled every path, and
-                    // all that is missing is the commit that closes it. Not an error, and not an
-                    // empty screen either - the button below is the whole of what is left to do.
-                    <p className="text-xs text-fg-subtle">{t("documentDiff.resolve.automerged")}</p>
-                )}
-
-                {state?.inProgress && conflicts.length > 0 && (
-                    <>
-                        <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                            <p className="text-xs text-fg">
-                                {tn("documentDiff.resolve.count", conflicts.length)}
-                            </p>
-                            {/* Two links rather than buttons, and they SELECT rather than apply -
-                                which is what makes offering them at all defensible next to a
-                                deliberately unselected default. */}
-                            <button
-                                type="button"
-                                {...guard.writes(running !== null)}
-                                onClick={() => chooseAll("mine")}
-                                className="text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg disabled:opacity-50"
-                            >
-                                {t("documentDiff.resolve.takeAllMine")}
-                            </button>
-                            <button
-                                type="button"
-                                {...guard.writes(running !== null)}
-                                onClick={() => chooseAll("theirs")}
-                                className="text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg disabled:opacity-50"
-                            >
-                                {t("documentDiff.resolve.takeAllTheirs")}
-                            </button>
-                        </div>
-
-                        {rows.map(path => (
-                            <ConflictRow
-                                key={path}
-                                path={path}
-                                choice={decisions[path]}
-                                merging={Boolean(perChange[path])}
-                                expanded={Boolean(expanded[path])}
-                                entry={documents[path]}
-                                choices={changeChoices[path] ?? {}}
-                                disabled={running !== null}
-                                onToggle={() => toggle(path)}
-                                onChoose={choice => chooseWhole(path, choice)}
-                                onChooseMerged={() => chooseMerged(path)}
-                                onChooseChange={(decision, side) => chooseChange(path, decision, side)}
-                            />
-                        ))}
-
-                        {conflicts.length > rows.length && (
-                            <p className="pt-2 text-2xs text-fg-subtle">
-                                {t("documentDiff.resolve.rowsOmitted", {
-                                    count: String(conflicts.length - rows.length),
-                                })}
-                            </p>
-                        )}
-                    </>
-                )}
-            </div>
+                    {state?.inProgress && (
+                        // A merge with nothing left to a human: the automerge settled every path,
+                        // and all that is missing is the commit that closes it. Not an error, and
+                        // not an empty screen either - the button below is the whole of what is
+                        // left to do.
+                        <p className="text-xs text-fg-subtle">{t("documentDiff.resolve.automerged")}</p>
+                    )}
+                </div>
+            )}
 
             {state?.inProgress && (
-                <div className="shrink-0 border-t border-edge px-3 py-2">
-                    {/* Said before the author invests in two hundred choices, not after: this
-                        record is the window's, and closing the tab or the window loses it. The
-                        merge itself is untouched, which is the half that makes it recoverable. */}
-                    <p className="mb-2 text-2xs text-fg-subtle">
-                        {t("documentDiff.resolve.notSaved")}
-                    </p>
-                    <div className="flex items-center gap-1.5">
-                        <button
-                            type="button"
-                            {...guard.writes(running !== null || undecided > 0)}
-                            onClick={finish}
-                            className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-2xs text-on-primary transition-opacity cursor-default hover:opacity-90 disabled:opacity-50"
-                        >
-                            {running === "finish"
-                                ? <Loader2 className="h-3 w-3 animate-spin" />
-                                : <GitMerge className="h-3 w-3" />}
-                            {undecided > 0
-                                ? tn("documentDiff.resolve.finishUndecided", undecided)
-                                : t("documentDiff.resolve.finish")}
-                        </button>
-                        <button
-                            type="button"
-                            {...guard.writes(running !== null)}
-                            onClick={abandon}
-                            className="flex h-7 items-center justify-center rounded-md border border-edge px-2 text-2xs text-fg-muted transition-colors cursor-default hover:bg-fill hover:text-danger disabled:opacity-50"
-                        >
-                            {running === "abandon"
-                                ? <Loader2 className="h-3 w-3 animate-spin" />
-                                : t("documentDiff.resolve.abandon")}
-                        </button>
-                    </div>
-                </div>
+                <ConflictFooter
+                    rows={rows}
+                    running={running}
+                    guard={guard}
+                    onFinish={finish}
+                    onAbandon={abandon}
+                />
             )}
         </div>
-    );
-}
-
-/**
- * One conflicted file: the side chosen for it, and what is inside it.
- *
- * The path is split the way every other version surface splits it - the file name identifies the
- * document and the directory merely locates it - so the same file reads the same in the rail, in a
- * comparison and here.
- *
- * The two whole-file choices are a pair of buttons rather than a menu or a checkbox: three states
- * have to be visible at a glance (mine, theirs, and NEITHER YET), and the third is the one that has
- * to be unmistakable, because it is what stops the author finishing. The third button appears only
- * once the file has been opened and its format turns out to be mergeable - it is the one whose
- * availability is not a property of the interface but of the document, so it cannot be drawn before
- * anyone has looked.
- */
-function ConflictRow({
-    path,
-    choice,
-    merging,
-    expanded,
-    entry,
-    choices,
-    disabled,
-    onToggle,
-    onChoose,
-    onChooseMerged,
-    onChooseChange,
-}: {
-    path: string;
-    choice: VcsMergeSideChoice | undefined;
-    merging: boolean;
-    expanded: boolean;
-    entry: DocumentEntry | undefined;
-    choices: MergeChangeChoices;
-    disabled: boolean;
-    onToggle: () => void;
-    onChoose: (choice: VcsMergeSideChoice) => void;
-    onChooseMerged: () => void;
-    onChooseChange: (decision: DocumentMergeDecision, side: VcsMergeSideChoice) => void;
-}) {
-    const { t, tn } = useTranslation();
-    const { directory, name } = splitChangePath(path);
-    const mergeable = entry?.status === "ready" && entry.document.blocked === undefined;
-    const undecided = entry?.status === "ready" && entry.document.blocked === undefined
-        ? countUndecidedChanges(entry.document.decisions, choices)
-        : 0;
-
-    return (
-        <div className="border-b border-edge py-1.5 last:border-b-0">
-            <div className="flex items-center gap-2">
-                <button
-                    type="button"
-                    onClick={onToggle}
-                    title={t(expanded ? "documentDiff.resolve.change.collapse" : "documentDiff.resolve.change.expand")}
-                    aria-label={t(expanded ? "documentDiff.resolve.change.collapse" : "documentDiff.resolve.change.expand")}
-                    aria-expanded={expanded}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
-                >
-                    {expanded
-                        ? <ChevronDown className="h-3 w-3" />
-                        : <ChevronRight className="h-3 w-3" />}
-                </button>
-                <div className="flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden">
-                    <span className="min-w-0 truncate text-xs text-fg" title={path}>{name}</span>
-                    {directory !== null && (
-                        <span className="min-w-0 shrink truncate text-2xs text-fg-subtle">{directory}</span>
-                    )}
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                    {(["mine", "theirs"] as const).map(side => (
-                        <button
-                            key={side}
-                            type="button"
-                            disabled={disabled}
-                            aria-pressed={choice === side}
-                            onClick={() => onChoose(side)}
-                            className={cn(
-                                "h-6 rounded-md border px-2 text-2xs transition-colors cursor-default disabled:opacity-50",
-                                choice === side
-                                    ? "border-primary bg-primary/15 text-primary"
-                                    : "border-edge text-fg-muted hover:bg-fill hover:text-fg",
-                            )}
-                        >
-                            {t(side === "mine" ? "documentDiff.resolve.takeMine" : "documentDiff.resolve.takeTheirs")}
-                        </button>
-                    ))}
-                    {mergeable && (
-                        <button
-                            type="button"
-                            disabled={disabled}
-                            aria-pressed={merging}
-                            onClick={onChooseMerged}
-                            className={cn(
-                                "h-6 rounded-md border px-2 text-2xs transition-colors cursor-default disabled:opacity-50",
-                                merging && undecided === 0
-                                    ? "border-primary bg-primary/15 text-primary"
-                                    : merging
-                                        ? "border-warning text-warning"
-                                        : "border-edge text-fg-muted hover:bg-fill hover:text-fg",
-                            )}
-                        >
-                            {merging && undecided > 0
-                                ? tn("documentDiff.resolve.change.undecided", undecided)
-                                : t("documentDiff.resolve.change.auto")}
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {expanded && (
-                <div className="mt-1.5 pl-7">
-                    {entry === undefined || entry.status === "loading" ? (
-                        <p className="flex items-center gap-2 text-2xs text-fg-subtle">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            {t("documentDiff.resolve.change.loading")}
-                        </p>
-                    ) : entry.status === "error" ? (
-                        <p className="text-2xs text-danger">{entry.message}</p>
-                    ) : entry.document.blocked !== undefined ? (
-                        // Tier three: refuse, and say which wall was hit. The two whole-file
-                        // buttons above are still the answer for this file, and they are still
-                        // there - this is a sentence beside them, not a control taken away.
-                        <div className="space-y-0.5">
-                            <p className="text-2xs text-fg-muted">{t("documentDiff.resolve.change.blocked.title")}</p>
-                            <p className="text-2xs text-fg-subtle">{t(mergeDocumentBlockedKey(entry.document.blocked))}</p>
-                            {entry.document.detail && (
-                                // The producer's own words, untranslated and marked as such by
-                                // being quieter - never instead of the sentence above it.
-                                <p className="text-2xs text-fg-subtle opacity-70">{entry.document.detail}</p>
-                            )}
-                        </div>
-                    ) : entry.document.decisions.length === 0 ? (
-                        <p className="text-2xs text-fg-subtle">{t("documentDiff.resolve.change.none")}</p>
-                    ) : (
-                        <>
-                            <p className="mb-1 text-2xs text-fg-subtle">{t("documentDiff.resolve.change.heading")}</p>
-                            {entry.document.decisions.map(decision => (
-                                <MergeChangeRow
-                                    key={mergeDecisionKey(decision.path)}
-                                    decision={decision}
-                                    side={effectiveMergeSide(decision, choices)}
-                                    disabled={disabled}
-                                    onChoose={side => onChooseChange(decision, side)}
-                                />
-                            ))}
-                        </>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-}
-
-/**
- * One change inside a file, and the side it is on.
- *
- * **Two shapes, because two different questions are being asked.** An `auto-*` row was decided by
- * the merge - one side moved and the other did not, so there was a right answer - and it is drawn
- * as settled, showing only the value that won, with the other side offered on hover. A `conflict`
- * row was decided by nobody, so both sides are drawn as choices and neither is selected; there is
- * no hover affordance there because there is nothing yet to reveal an alternative to.
- *
- * Flipping an `auto-*` row and answering a `conflict` are the same operation underneath - both
- * record a side against this decision's path - which is why the merged document can be rebuilt from
- * the flips alone.
- */
-function MergeChangeRow({
-    decision,
-    side,
-    disabled,
-    onChoose,
-}: {
-    decision: DocumentMergeDecision;
-    side: "mine" | "theirs" | undefined;
-    disabled: boolean;
-    onChoose: (side: VcsMergeSideChoice) => void;
-}) {
-    const translator = useTranslation();
-    const { t } = translator;
-    const label = resolveMergeDecisionLabel(decision, translator);
-    const conflict = decision.outcome === "conflict";
-    const other = side === "mine" ? "theirs" : "mine";
-
-    return (
-        <div className="group/change border-t border-edge/60 py-1 first:border-t-0">
-            <div className="flex items-baseline gap-1.5 overflow-hidden">
-                <span
-                    className={cn(
-                        "min-w-0 truncate text-2xs",
-                        label.untranslated ? "font-mono text-fg-muted" : "text-fg",
-                    )}
-                    title={decision.path.join(" / ")}
-                >
-                    {label.primary}
-                </span>
-                {label.detail && <span className="min-w-0 shrink truncate text-2xs text-fg-subtle">{label.detail}</span>}
-                <span className="flex-1" />
-                {!conflict && side !== undefined && (
-                    // Hover-revealed rather than persistent: an automatic row is right almost every
-                    // time, and a button on each of two hundred of them is two hundred invitations
-                    // to change something that did not need changing.
-                    <button
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => onChoose(other)}
-                        className="shrink-0 rounded-md px-1 text-2xs text-fg-subtle opacity-0 transition-opacity cursor-default hover:text-fg group-hover/change:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
-                    >
-                        {t(other === "mine" ? "documentDiff.resolve.change.useMine" : "documentDiff.resolve.change.useTheirs")}
-                    </button>
-                )}
-            </div>
-
-            {conflict || side === undefined ? (
-                <div className="mt-0.5 grid grid-cols-2 gap-1">
-                    {(["mine", "theirs"] as const).map(candidate => (
-                        <button
-                            key={candidate}
-                            type="button"
-                            disabled={disabled}
-                            aria-pressed={side === candidate}
-                            onClick={() => onChoose(candidate)}
-                            className={cn(
-                                "min-w-0 rounded-md border px-1.5 py-1 text-left transition-colors cursor-default disabled:opacity-50",
-                                side === candidate
-                                    ? "border-primary bg-primary/10"
-                                    : "border-edge hover:bg-fill",
-                            )}
-                        >
-                            <span className="mb-0.5 block truncate text-2xs text-fg-subtle">
-                                {t(candidate === "mine"
-                                    ? "documentDiff.resolve.takeMine"
-                                    : "documentDiff.resolve.takeTheirs")}
-                            </span>
-                            <MergeValue view={describeMergeSide(candidate === "mine" ? decision.mine : decision.theirs)} />
-                        </button>
-                    ))}
-                </div>
-            ) : (
-                <div className="mt-0.5 min-w-0 rounded-md border border-edge/60 px-1.5 py-1">
-                    <MergeValue view={describeMergeSide(side === "mine" ? decision.mine : decision.theirs)} />
-                </div>
-            )}
-        </div>
-    );
-}
-
-/**
- * One side's value, field by field.
- *
- * Not JSON: the question a translation conflict asks is which of two sentences to keep, and putting
- * them inside braces and quotes makes the author read punctuation to find the answer. One line per
- * field puts the two `target` strings opposite each other, which IS the choice.
- */
-function MergeValue({ view }: { view: MergeValueView }) {
-    const { t } = useTranslation();
-    if (view.absent) {
-        return <span className="block truncate text-2xs italic text-fg-subtle">{t("documentDiff.resolve.change.absent")}</span>;
-    }
-    return (
-        <span className="block min-w-0">
-            {view.lines.map((line, index) => (
-                <span key={line.name ?? index} className="flex min-w-0 items-baseline gap-1">
-                    {line.name && <span className="shrink-0 text-2xs text-fg-subtle">{line.name}</span>}
-                    <span className="min-w-0 truncate text-2xs text-fg">{line.text}</span>
-                </span>
-            ))}
-            {view.hidden > 0 && (
-                <span className="block text-2xs text-fg-subtle">
-                    {t("documentDiff.resolve.change.moreFields", { count: String(view.hidden) })}
-                </span>
-            )}
-        </span>
     );
 }
 

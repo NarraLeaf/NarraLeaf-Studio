@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
     ArchiveRestore,
     ChevronDown,
-    ChevronRight,
     Cloud,
     CloudDownload,
     CloudUpload,
@@ -31,15 +30,6 @@ import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { Input, TextArea } from "@/lib/components/elements/Input";
-import { DocumentChangeList } from "@/lib/vcs/DocumentChangeList";
-import { RAIL_CHANGE_SUMMARY_ROWS } from "@/lib/vcs/documentChangeView";
-import {
-    findDocumentDiffEntry,
-    useDocumentDiff,
-    type DocumentDiffRequest,
-    type DocumentDiffState,
-} from "@/lib/vcs/useDocumentDiff";
-import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../context";
 import { openVcsChangesTab } from "../../modules/vcs-changes/openVcsChangesTab";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
@@ -494,31 +484,19 @@ function formatRevisionTime(timestamp: number, locale: string): string | null {
  * performance - it is that the history lives further down the SAME scroller. Fifty rows is a
  * screenful, so without a ceiling here the way to another version would be below the fold whenever the
  * author had been working, which is exactly when they are most likely to want it.
+ *
+ * **It lists files and never a change inside one.** A row used to expand into that file's comparison,
+ * drawn in place; eight rows was the whole of what fitted, and the read behind it was a scan. The
+ * comparison is a two-pane tab now (`modules/vcs-changes`), which has the width for an index and a
+ * detail, so the rail keeps the half it can hold honestly - which files moved - and the button beside
+ * the refresh is the way to the other half. The rail therefore runs no document comparison at all,
+ * rather than running one whenever a row was opened.
  */
-function ChangesSection({ surface }: { surface: VersionSurface }) {
+export function ChangesSection({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const { status } = surface;
     const view = useMemo(() => (status ? buildChangeList(status.files) : null), [status]);
-    /**
-     * The one file whose changes are open, or null.
-     *
-     * One at a time. The list already lives in a bounded box that shares its scroller with the commit
-     * form and the whole history, so two open expansions would leave nothing of the list itself - and
-     * the way to another version would be below the fold exactly when the author has been working,
-     * which is the thing this section's own height ceiling exists to prevent.
-     */
-    const [expanded, setExpanded] = useState<string | null>(null);
-    // Read only once a row is open, so an author who never expands one never pays for the comparison -
-    // which is a scan, and a scan is never free (docs §4.17).
-    const diff = useDocumentDiff(WORKING_TREE_DIFF, { enabled: expanded !== null });
-
-    // A new scan describes a working tree that has moved, and the open comparison was read against
-    // the old one. Collapsing is what stops the file list and the expansion under it disagreeing;
-    // the next expand reads again.
-    useEffect(() => {
-        setExpanded(null);
-    }, [status]);
 
     return (
         <div data-vcs-seam="change-list" className="border-b border-edge px-3 py-2">
@@ -526,15 +504,33 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
                 <span className="text-2xs tracking-wide text-fg-subtle">
                     {t("workspace.shell.versionControl.changes")}
                 </span>
-                <button
-                    type="button"
-                    onClick={surface.refreshChanges}
-                    title={t("workspace.shell.versionControl.refreshChanges")}
-                    aria-label={t("workspace.shell.versionControl.refreshChanges")}
-                    className="flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
-                >
-                    <RefreshCw className="h-3 w-3" />
-                </button>
+                <div className="flex shrink-0 items-center gap-0.5">
+                    {/* The way to the comparison, and the only one this section offers: a row cannot
+                        be the way in, because the tab opens on a comparison rather than on a file,
+                        and a row that opened onto some other file's detail would be a promise
+                        broken on the first press. Same icon and same sentence as the history rows'
+                        own compare button, because it is the same act. */}
+                    {context && (
+                        <button
+                            type="button"
+                            onClick={() => openVcsChangesTab(context, { mode: "working-tree" })}
+                            title={t("documentDiff.rail.compareWithPrevious")}
+                            aria-label={t("documentDiff.rail.compareWithPrevious")}
+                            className="flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
+                        >
+                            <GitCompare className="h-3 w-3" />
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={surface.refreshChanges}
+                        title={t("workspace.shell.versionControl.refreshChanges")}
+                        aria-label={t("workspace.shell.versionControl.refreshChanges")}
+                        className="flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
+                    >
+                        <RefreshCw className="h-3 w-3" />
+                    </button>
+                </div>
             </div>
             <p className="mt-1 text-2xs text-fg-muted">
                 {view === null
@@ -547,14 +543,7 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
             {view !== null && view.rows.length > 0 && (
                 <div className="-mx-1 mt-1 max-h-64 overflow-y-auto">
                     {view.rows.map(file => (
-                        <ChangeRow
-                            key={file.path}
-                            file={file}
-                            expanded={expanded === file.path}
-                            onToggle={() => setExpanded(current => (current === file.path ? null : file.path))}
-                            diff={diff}
-                            context={context}
-                        />
+                        <ChangeRow key={file.path} file={file} />
                     ))}
                     {view.hidden > 0 && (
                         <p className="px-1 pt-1 text-2xs text-fg-subtle">
@@ -568,30 +557,18 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
 }
 
 /**
- * The comparison the change list expands into. Module-level so its identity is stable across renders -
- * an inline literal would be a new request object every time, which is the one way `useDocumentDiff`
- * could become the poll its own header forbids.
- */
-const WORKING_TREE_DIFF: DocumentDiffRequest = { mode: "working-tree" };
-
-/**
- * One changed file, and what changed inside it.
+ * One changed file.
  *
- * **A button now, and this is the promise the panel had so far been careful not to make.** The row
- * used to be a plain `<div>` because highlighting something that opens onto nothing is worse than
- * not highlighting it; it opens onto something as of this milestone, so it is a control.
+ * **A plain `<div>`, because it opens onto nothing.** It was a button for one milestone, expanding
+ * into that file's changes in place; those changes are the comparison tab's now, and the tab opens on
+ * a comparison rather than on a file - so a row that looked pressable would land the author on some
+ * other file's detail. Highlighting something that opens onto nothing is worse than not highlighting
+ * it, which is the rule this row was written under before it briefly became a control.
  *
- * It expands **in place, in the list it is already in** - not a popover, not a second panel, not a
- * scroller of its own. The rail is 320px and everything below this section (the history, and the way
- * to another version) is in the same scroller, so anything that opened beside the row would either
- * cover the list or push the history off the bottom. Eight rows is the cap; past that the honest
- * move is a wider surface, and "view all N" is the way to one.
- *
- * The freeze is deliberately not consulted anywhere here. A comparison is a read by construction, and
- * a manual freeze leaves this section on screen (it is keyed on the surface state, not on `frozen`) -
- * so switching it off would take away the only way to see what is uncommitted precisely while the
- * author is unable to commit it. Same rule as `InspectOnlyButton`, reached from the other direction:
- * there is no `<fieldset>` clamp in this column, so a real `<button>` is safe.
+ * The freeze is deliberately not consulted anywhere here. Reading which files moved is a read by
+ * construction, and a manual freeze leaves this section on screen (it is keyed on the surface state,
+ * not on `frozen`) - so switching it off would take away the only way to see what is uncommitted
+ * precisely while the author is unable to commit it.
  *
  * The path is split so the FILE NAME survives a narrow column and the directory is what gets cut - and
  * cut at its head, not its tail, because the distinguishing end of a path here is the last thing on it
@@ -602,19 +579,7 @@ const WORKING_TREE_DIFF: DocumentDiffRequest = { mode: "working-tree" };
  * narraleaf-react injects a Tailwind v4 sheet over this app and betting on generated utilities here
  * has burned us before.
  */
-function ChangeRow({
-    file,
-    expanded,
-    onToggle,
-    diff,
-    context,
-}: {
-    file: VcsFileChange;
-    expanded: boolean;
-    onToggle: () => void;
-    diff: DocumentDiffState;
-    context: WorkspaceContext | null;
-}) {
+function ChangeRow({ file }: { file: VcsFileChange }) {
     const { t } = useTranslation();
     const { directory, name } = splitChangePath(file.path);
     const Icon = CHANGE_ICONS[file.kind];
@@ -623,101 +588,40 @@ function ChangeRow({
     const kindLabel = t(`workspace.shell.versionControl.changeKind.${file.kind}`);
     // The whole repository-relative path, plus where a move or copy came from - the row itself has no
     // room for an origin, and dropping it would make a move indistinguishable from an add.
-    const path = file.fromPath
+    const title = file.fromPath
         ? `${file.path}\n${t("workspace.shell.versionControl.changeFromPath", { path: file.fromPath })}`
         : file.path;
-    const title = `${path}\n${t(expanded ? "documentDiff.rail.collapse" : "documentDiff.rail.expand")}`;
-    // Null while the read is out, and null AFTERWARDS when the comparison does not carry this path -
-    // which happens when a budget cut the comparison short. The two are told apart below, because
-    // "not read yet" and "not inspected" are opposite things to tell someone waiting.
-    const entry = expanded ? findDocumentDiffEntry(diff.result, file.path) : null;
 
     return (
-        <div>
-            <button
-                type="button"
-                onClick={onToggle}
-                aria-expanded={expanded}
-                title={title}
-                className="group flex w-full items-center gap-1.5 overflow-hidden rounded-md px-1 py-0.5 text-left transition-colors cursor-default hover:bg-fill"
-            >
-                {/* `role="img"` beside the label: an <svg> carrying only aria-label is announced by nothing,
-                    and the kind is the one thing about this row that is not in the text. */}
-                <Icon
-                    role="img"
-                    className={cn("h-3 w-3 shrink-0", CHANGE_TINTS[file.kind])}
-                    aria-label={kindLabel}
-                />
-                {/* Shrinks first and by a wide margin, so the file name only starts to give way once the
-                    directory has nothing left to give. */}
-                {directory !== null && (
-                    <span
-                        className="overflow-hidden whitespace-nowrap text-2xs text-fg-subtle"
-                        style={{ direction: "rtl", textOverflow: "ellipsis", flexShrink: 999, minWidth: 0 }}
-                    >
-                        <span style={{ direction: "ltr", unicodeBidi: "embed" }}>{directory}/</span>
-                    </span>
-                )}
-                <span className="min-w-0 truncate text-2xs text-fg-muted">{name}</span>
-                {/* One `ml-auto`, on the group rather than on each of its members: two auto margins in
-                    a flex row SHARE the free space, which would leave the conflict marker floating in
-                    the middle of the row instead of at its end. */}
-                <span className="ml-auto flex shrink-0 items-center gap-1">
-                    {file.conflictUnresolved && (
-                        <TriangleAlert
-                            role="img"
-                            className="h-3 w-3 text-danger"
-                            aria-label={t("workspace.shell.versionControl.changeConflict")}
-                        />
-                    )}
-                    {/* Two icons rather than one rotated: narraleaf-react's Tailwind v4 sheet kills v3
-                        `transform` utilities over this app, and a chevron that silently never turns is
-                        exactly the kind of defect that survives a screenshot. Hidden until the row is
-                        hovered or open, because fifty always-visible chevrons in a 320px column are
-                        fifty pieces of chrome saying the same thing. */}
-                    <span className="text-fg-subtle">
-                        {expanded
-                            ? <ChevronDown className="h-3 w-3" />
-                            : <ChevronRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />}
-                    </span>
+        <div
+            title={title}
+            data-vcs-change-row={file.path}
+            className="flex w-full items-center gap-1.5 overflow-hidden rounded-md px-1 py-0.5 text-left"
+        >
+            {/* `role="img"` beside the label: an <svg> carrying only aria-label is announced by nothing,
+                and the kind is the one thing about this row that is not in the text. */}
+            <Icon
+                role="img"
+                className={cn("h-3 w-3 shrink-0", CHANGE_TINTS[file.kind])}
+                aria-label={kindLabel}
+            />
+            {/* Shrinks first and by a wide margin, so the file name only starts to give way once the
+                directory has nothing left to give. */}
+            {directory !== null && (
+                <span
+                    className="overflow-hidden whitespace-nowrap text-2xs text-fg-subtle"
+                    style={{ direction: "rtl", textOverflow: "ellipsis", flexShrink: 999, minWidth: 0 }}
+                >
+                    <span style={{ direction: "ltr", unicodeBidi: "embed" }}>{directory}/</span>
                 </span>
-            </button>
-
-            {expanded && (
-                <div className="pb-1 pl-4 pr-1">
-                    {diff.loading && (
-                        <p className="flex items-center gap-1.5 text-2xs text-fg-subtle">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            {t("documentDiff.rows.loading")}
-                        </p>
-                    )}
-                    {!diff.loading && diff.error && (
-                        <p className="text-2xs text-danger">{diff.error}</p>
-                    )}
-                    {!diff.loading && !diff.error && entry === null && (
-                        // Either the comparison was cut short before this path, or the bytes could not
-                        // be fetched. Both have to read as "changed, not inspected" rather than as an
-                        // empty list, which is what "nothing changed" looks like.
-                        <p className="text-2xs text-fg-subtle">{t("documentDiff.rows.notInspected")}</p>
-                    )}
-                    {!diff.loading && entry && (
-                        <DocumentChangeList
-                            diff={entry.diff}
-                            limit={RAIL_CHANGE_SUMMARY_ROWS}
-                            dense
-                            wholeDocument={file.kind === "added" || file.kind === "deleted"}
-                            footer={context ? (
-                                <button
-                                    type="button"
-                                    onClick={() => openVcsChangesTab(context, { mode: "working-tree" })}
-                                    className="pt-0.5 text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg"
-                                >
-                                    {t("documentDiff.rows.viewAll", { count: String(entry.diff.total) })}
-                                </button>
-                            ) : undefined}
-                        />
-                    )}
-                </div>
+            )}
+            <span className="min-w-0 truncate text-2xs text-fg-muted">{name}</span>
+            {file.conflictUnresolved && (
+                <TriangleAlert
+                    role="img"
+                    className="ml-auto h-3 w-3 shrink-0 text-danger"
+                    aria-label={t("workspace.shell.versionControl.changeConflict")}
+                />
             )}
         </div>
     );
