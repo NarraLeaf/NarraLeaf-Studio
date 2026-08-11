@@ -9,6 +9,7 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
+import type { SaveLoadOutcome } from "./saveLoad";
 
 export type GameAppLogLevel = "info" | "warning" | "error";
 
@@ -246,11 +247,12 @@ export type GameAppSaveBridge = {
     /**
      * Load a save into the RUNNING game.
      *
-     * Throws whatever `LiveGame.deserialize` throws - and it throws AFTER `reset()` and
-     * `forceRemount()`, so by the time a caller catches anything the stage is already empty. A
-     * caller that means to survive a failure has to put the session back itself (`relaunch`).
+     * Resolves whether or not the save was applied: a save the running story cannot take is refused
+     * with the run left where it was, and {@link SaveLoadOutcome} says which happened. Nothing has
+     * to be put back after a refusal, and relaunching after one would throw away the very run that
+     * was preserved.
      */
-    load: (id: string) => Promise<void>;
+    load: (id: string) => Promise<SaveLoadOutcome>;
     remove: (id: string) => Promise<void>;
 };
 

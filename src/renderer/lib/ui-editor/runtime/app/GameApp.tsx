@@ -7,7 +7,7 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { Sound, type LiveGame, type SavedGame } from "narraleaf-react";
+import { Sound, type LiveGame } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
@@ -118,6 +118,7 @@ import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
+import { loadSaveIntoGame, type SaveLoadOutcome } from "./saveLoad";
 import { createSkipRunController } from "./skipRunController";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
@@ -1228,19 +1229,70 @@ export function GameApp(props: GameAppProps): ReactNode {
         pluginHost?.emitSaveWritten(id);
     }, [host.saveStore, pluginHost, reportSaveCaptureFailure, requireActiveLiveGame]);
 
-    const loadSave = useCallback(async (id: string) => {
+    /**
+     * Load a save, or leave the run that is going exactly where it is.
+     *
+     * Resolves either way: a save the running story cannot take is refused, not thrown, so the
+     * three call sites this reaches (the Load Save node, the plugin save API, the Saves panel)
+     * behave the same without any of them having to catch. It still throws when there is no game
+     * runtime at all, which is a caller mistake rather than an outcome.
+     */
+    const loadSave = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
         const liveGame = requireActiveLiveGame("Load Save");
-        const record = await host.saveStore.read(id);
-        if (!record?.savedGame) {
-            throw new Error(`Load Save: save not found: ${id}`);
+        const outcome = await loadSaveIntoGame({
+            id,
+            readRecord: () => host.saveStore.read(id),
+            game: {
+                // `constructMaps` is the engine's own lookup table for a load and caches on the
+                // live game, so checking against it is checking against exactly what `deserialize`
+                // is about to read. It carries no type in the published surface; an engine that
+                // stops offering it leaves the snapshot as the only protection rather than
+                // breaking the load.
+                resolveStoryMaps: () => {
+                    const construct = (liveGame as unknown as {
+                        constructMaps?: () => [Map<string, unknown>, Map<string, unknown>];
+                    }).constructMaps;
+                    if (typeof construct !== "function") {
+                        return null;
+                    }
+                    const [actions, elements] = construct.call(liveGame);
+                    return {
+                        hasAction: actionId => actions.has(actionId),
+                        hasElement: elementId => elements.has(elementId),
+                    };
+                },
+                readStoryHash: () => liveGame.story?.hash() ?? null,
+                snapshot: () => liveGame.serialize(),
+                apply: savedGame => {
+                    liveGame.game.router.clear().cleanHistory();
+                    liveGame.newGame().deserialize(savedGame);
+                },
+                restore: snapshot => liveGame.deserialize(snapshot),
+            },
+            notifyPlayer: message => liveGame.notify(message),
+            report: (level, message) => {
+                host.log(level, message);
+                host.reportIssue?.({ level, message, origin: "session" });
+            },
+        });
+        if (outcome.status !== "loaded") {
+            return outcome;
         }
-        liveGame.game.router.clear().cleanHistory();
-        liveGame.newGame().deserialize(record.savedGame as SavedGame);
         gameEnteredRef.current = true;
         await liveGame.waitForRouterExit().promise;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
-    }, [hideCurrentStudioPagesForGame, host.saveStore, requireActiveLiveGame]);
+        return outcome;
+    }, [hideCurrentStudioPagesForGame, host.log, host.reportIssue, host.saveStore, requireActiveLiveGame]);
+
+    /**
+     * The same load, for the surfaces that take a plain action: the blueprint host API, the Game UI
+     * callbacks and the plugin save API. They have no branch to put the outcome in, and a refused
+     * load has already told the player and the author by the time this resolves.
+     */
+    const loadSaveAction = useCallback(async (id: string): Promise<void> => {
+        await loadSave(id);
+    }, [loadSave]);
 
     const deleteSave = useCallback(async (id: string) => {
         await host.saveStore.remove(id);
@@ -1256,9 +1308,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         return pluginHost.attachSaveActions({
             write: (id, metadata) => writeSave(id, metadata),
-            load: id => loadSave(id),
+            load: loadSaveAction,
         });
-    }, [loadSave, pluginHost, writeSave]);
+    }, [loadSaveAction, pluginHost, writeSave]);
 
     // Player slots only. Autosaves live in the same store under reserved ids and
     // are listed by List Auto Saves instead, so an authored Save/Load screen
@@ -1535,7 +1587,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 startStoryInGameRef.current?.(request) ??
                 Promise.reject(new Error("Start Game: runtime is not ready")),
             writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
-            loadSaveInGame: id => loadSave(id),
+            loadSaveInGame: loadSaveAction,
             deleteSaveInGame: id => deleteSave(id),
             listSaveIds,
             getSaveMetadata,
@@ -1710,7 +1762,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isInGame,
         isNvlModeInGame,
         listSaveIds,
-        loadSave,
+        loadSaveAction,
         makeStateAccessors,
         nextInGame,
         openSurface,
@@ -1830,7 +1882,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
             onQuitGame: quitGame,
             onWriteSave: writeSave,
-            onLoadSave: loadSave,
+            onLoadSave: loadSaveAction,
             onDeleteSave: deleteSave,
             onListSaveIds: listSaveIds,
             onGetSaveMetadata: getSaveMetadata,
@@ -1939,7 +1991,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isInGame,
         isNvlModeInGame,
         listSaveIds,
-        loadSave,
+        loadSaveAction,
         nextInGame,
         openSurface,
         quitGame,
@@ -2098,7 +2150,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
                     onQuitGame: quitGame,
                     onWriteSave: writeSave,
-                    onLoadSave: loadSave,
+                    onLoadSave: loadSaveAction,
                     onDeleteSave: deleteSave,
                     onListSaveIds: listSaveIds,
                     onGetSaveMetadata: getSaveMetadata,
@@ -2238,7 +2290,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isInGame,
         isNvlModeInGame,
         listSaveIds,
-        loadSave,
+        loadSaveAction,
         nextInGame,
         openSurface,
         quitGame,
