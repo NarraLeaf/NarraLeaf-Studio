@@ -28,6 +28,12 @@ export interface UseAssetFiltersParams {
     bytesByAssetId: ReadonlyMap<string, number> | null;
     /** Ids the reference index found a site for, or `null` while the index has not been read. */
     referencedAssetIds: ReadonlySet<string> | null;
+    /**
+     * Assets the reference index cannot answer for. Excluded from both sides of the referenced
+     * filter: "unreferenced" has to mean the index looked and found nothing, or the filter is a
+     * list of deletion candidates with unknowns mixed in.
+     */
+    usageUnknownAssetIds?: ReadonlySet<string> | null;
 }
 
 /** Filters that cannot be answered from the asset records alone. */
@@ -64,7 +70,7 @@ function matchesSizeBand(bytes: number | undefined, bandIds: readonly string[]):
  * groups that matched *themselves*, which is what a flat grid shows — the ancestors are scaffolding,
  * not hits).
  */
-export function useAssetFilters({ assets, groups, activeFilters, query, bytesByAssetId, referencedAssetIds }: UseAssetFiltersParams) {
+export function useAssetFilters({ assets, groups, activeFilters, query, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds }: UseAssetFiltersParams) {
     const { t } = useTranslation();
     const [refreshFiltersTrigger, setRefreshFiltersTrigger] = useState(0);
 
@@ -131,6 +137,7 @@ export function useAssetFilters({ assets, groups, activeFilters, query, bytesByA
                 // Until the index has been read, an unanswerable question narrows nothing rather
                 // than reporting every asset as unused.
                 if (referencedFilter && referencedAssetIds) {
+                    if (usageUnknownAssetIds?.has(asset.id)) return false;
                     const referenced = referencedAssetIds.has(asset.id);
                     if (referencedFilter === 'referenced' && !referenced) return false;
                     if (referencedFilter === 'unreferenced' && referenced) return false;
@@ -171,7 +178,7 @@ export function useAssetFilters({ assets, groups, activeFilters, query, bytesByA
         });
 
         return { assets: filteredAssets, groups: filteredGroups, matchedGroupIds };
-    }, [assets, groups, activeFilters, query, bytesByAssetId, referencedAssetIds]);
+    }, [assets, groups, activeFilters, query, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds]);
 
     return {
         filterConfigs,

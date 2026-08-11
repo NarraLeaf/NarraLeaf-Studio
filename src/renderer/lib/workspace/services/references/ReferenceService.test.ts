@@ -15,7 +15,12 @@ import { Services, type WorkspaceContext } from "../services";
 type MountOptions = {
     stories?: Array<{ id: string; name: string }>;
     storyLoadFails?: string;
+    /** Break the incremental rescan (`onDocumentChanged`), not the initial build. */
+    storyRescanFails?: boolean;
     blueprintFails?: boolean;
+    blueprintNodes?: Record<string, unknown>;
+    /** Node types the catalogue admits to knowing; everything else reads as unknown. */
+    knownNodeTypes?: readonly string[];
     charactersFail?: boolean;
 };
 
@@ -33,6 +38,12 @@ function mount(options: MountOptions = {}): ReferenceService {
                             listStories: () => stories,
                             loadStory: async (storyId: string) => {
                                 if (storyId === options.storyLoadFails) {
+                                    throw new Error("story will not parse");
+                                }
+                                return { id: storyId, scenes: {} };
+                            },
+                            getStoryDocument: (storyId: string) => {
+                                if (options.storyRescanFails) {
                                     throw new Error("story will not parse");
                                 }
                                 return { id: storyId, scenes: {} };
@@ -55,11 +66,29 @@ function mount(options: MountOptions = {}): ReferenceService {
                                 if (options.blueprintFails) {
                                     throw new Error("blueprint document will not load");
                                 }
-                                return { ownerRecords: {}, blueprints: {} };
+                                if (!options.blueprintNodes) {
+                                    return { ownerRecords: {}, blueprints: {} };
+                                }
+                                return {
+                                    ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+                                    blueprints: {
+                                        "bp-1": {
+                                            id: "bp-1",
+                                            name: "Main",
+                                            program: {
+                                                kind: "graph",
+                                                graphs: { events: { "g-1": { graph: { nodes: options.blueprintNodes } } }, functions: {} },
+                                            },
+                                        },
+                                    },
+                                };
                             },
                         };
                     case Services.BlueprintNodeCatalog:
-                        return { resolveCatalogEntry: () => ({ displayName: "Node", pins: [] }) };
+                        return {
+                            get: (type: string) => (options.knownNodeTypes?.includes(type) ? { type } : undefined),
+                            resolveCatalogEntry: (type: string) => ({ displayName: type, pins: [] }),
+                        };
                     case Services.UIDocument:
                         return { getDocument: () => ({ elements: {} }), onDocumentChanged: noop };
                     case Services.UIGraph:
@@ -142,5 +171,69 @@ describe("ReferenceService.getIndexResult", () => {
         await healed.ensureReady();
 
         expect(healed.getIndexResult().complete).toBe(true);
+    });
+});
+
+describe("the incremental story rescan", () => {
+    /** The path `onDocumentChanged` runs, which is the one that runs on every scene edit. */
+    const rescan = (service: ReferenceService, storyId: string) =>
+        (service as unknown as { rebuildStorySlice(id: string): void }).rebuildStorySlice(storyId);
+
+    it("keeps the gap when a story that is still in the library will not read", async () => {
+        // The build path reports this correctly; the rescan path used to clear the gap it should
+        // raise, so a project that opened clean went back to reporting full coverage the moment an
+        // edit made a document unreadable - with that story's references already dropped.
+        const service = mount({ stories: [{ id: "s1", name: "Main Story" }], storyRescanFails: true });
+        await service.ensureReady();
+        expect(service.getIndexResult().complete).toBe(true);
+
+        rescan(service, "s1");
+
+        expect(service.getIndexResult()).toEqual({
+            complete: false,
+            gaps: [{ reason: "documentUnreadable", slice: "story", location: "Main Story" }],
+        });
+    });
+
+    it("reports nothing for a story that has been deleted", async () => {
+        // The other failure that arrives at the same catch. A story that is gone contributes no
+        // references and no doubt, and a gap here would never clear.
+        const service = mount({ stories: [], storyRescanFails: true });
+        await service.ensureReady();
+
+        rescan(service, "deleted-story");
+
+        expect(service.getIndexResult()).toEqual({ complete: true, gaps: [] });
+    });
+});
+
+describe("nodes the catalogue does not know", () => {
+    it("reports a gap rather than reading silence as coverage", async () => {
+        // `resolveCatalogEntry` answers for an unknown type with a two-exec-pin stub, so it can
+        // never throw and never says "unknown". Asking it alone reported an uninstalled plugin's
+        // nodes as holding no assets at all.
+        const service = mount({
+            blueprintNodes: { n1: { id: "n1", type: "acme.showBanner", params: { banner: "img-1" } } },
+            knownNodeTypes: [],
+        });
+
+        await service.ensureReady();
+        const result = service.getIndexResult();
+
+        expect(result.complete).toBe(false);
+        expect(result.gaps).toEqual([
+            expect.objectContaining({ reason: "unknownNodeType", slice: "blueprint" }),
+        ]);
+    });
+
+    it("says nothing about a node type the catalogue has", async () => {
+        const service = mount({
+            blueprintNodes: { n1: { id: "n1", type: "blueprint.flow.branch", params: {} } },
+            knownNodeTypes: ["blueprint.flow.branch"],
+        });
+
+        await service.ensureReady();
+
+        expect(service.getIndexResult()).toEqual({ complete: true, gaps: [] });
     });
 });

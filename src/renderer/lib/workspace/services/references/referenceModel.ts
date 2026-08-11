@@ -44,25 +44,34 @@ import type { SearchJumpTarget } from "../search/searchIndexModel";
  * ## The index says when it does not know
  *
  * Two shapes hold an asset without naming its id, and neither can be read by pattern-matching the
- * value. Both are now covered as far as they can be, and what remains of them is *reported* rather
- * than passed over, because the caller that matters is deciding whether deleting a file is safe:
+ * value. Both are covered as far as they can be, and what remains is *reported*, because the caller
+ * that matters is deciding whether deleting a file is safe:
  *
  *  - **`app://fs/{token}` URLs.** A widget's `backgroundImage` and the legacy `imageUrl` are
  *    free-text URL fields, and a grant token carries no information about the file it opens. The
  *    tokens this session minted are recorded as they are minted (`assets/assetUrlTokens.ts`) and
- *    resolved back to an asset id here. Any other token — one pasted in from an earlier run, or
- *    from another window — resolves to nothing, and yields a `hashUrlUnresolved` gap naming the
- *    widget and field it sits on.
+ *    resolved back to an asset id here. Any other token yields a `hashUrlUnresolved` gap.
  *  - **`blueprint.data.jsonLiteral` params.** Covered structurally rather than by scanning JSON for
  *    id-shaped strings, which would report references that do not exist and block legitimate
  *    deletes. A pin declares that it carries an asset (`BlueprintNodePinDef.assetRef`), and an edge
  *    into such a pin is followed to its source: a JSON or String literal there is read as the asset
- *    it feeds. A source that computes its value instead yields a `computedAssetPin` gap naming the
- *    node.
+ *    it feeds. A source that computes its value yields a `computedAssetPin` gap.
  *
- * A slice that throws, a document that will not load, and both gaps above all clear
- * {@link ReferenceIndexResult.complete}. Nothing may treat an incomplete index as "nothing uses
- * this": the asset delete guard refuses outright, and `assets/unused` lists nothing and says why.
+ * Every reason that clears {@link ReferenceIndexResult.complete} is listed on
+ * {@link ReferenceGapReason}, and that union is the whole list: an index that never built, a slice
+ * that threw, a document that would not load, a blueprint this walk cannot read (a script module,
+ * or one no owner claims), a node type the catalogue does not know, and the two above. A gap says
+ * which kinds of asset it could be hiding a use of, so one unreadable widget does not put the
+ * sounds beyond deleting — see {@link ReferenceIndexGap.affects}.
+ *
+ * **Known and deliberately not covered:** `UIComponentLink.params` is a bag of author-typed strings
+ * (`document.ts`), and a component param is declared `type: "string"` with no asset-typed variant to
+ * declare instead. Reporting a gap per component instance would fire on every project that uses a
+ * param for a label, which is nearly all of them; reading the values would be the id-shaped-string
+ * heuristic this file refuses everywhere else. Closing it needs an asset-typed component param.
+ *
+ * Nothing may treat an incomplete index as "nothing uses this": the asset delete guard refuses for
+ * the kinds in doubt, and `assets/unused` withholds those kinds and says why.
  */
 
 /** Which kind of document holds the reference — drives grouping and the icon in the UI. */
@@ -104,10 +113,22 @@ export type ReferenceGapReason =
     | "sliceFailed"
     /** A document could not be loaded or parsed, so its references were never seen. */
     | "documentUnreadable"
+    /** A blueprint this walk cannot read: a script module, or one no owner claims. */
+    | "blueprintProgramNotWalked"
+    /** A node type the catalogue does not know, so which of its params hold assets is unknown. */
+    | "unknownNodeType"
     /** An `app://fs/{token}` URL whose token this session did not mint, so it names no asset. */
     | "hashUrlUnresolved"
     /** An asset pin fed by a node that computes its value, so the asset is only known at run time. */
     | "computedAssetPin";
+
+/**
+ * The kinds of library asset a gap can cast doubt on.
+ *
+ * Narrower than `AssetType` on purpose: what a gap knows is what the *site* could hold, and a site
+ * holds a picture or a typeface. Nothing in the project can put a sound behind an image URL.
+ */
+export type ReferenceAssetKind = "image" | "font";
 
 export interface ReferenceIndexGap {
     reason: ReferenceGapReason;
@@ -119,6 +140,16 @@ export interface ReferenceIndexGap {
      * Absent only when the gap has no site: an index that never built is not anywhere.
      */
     location?: string;
+    /**
+     * Which kinds of asset this gap could be hiding a use of. **Absent means every kind** — an
+     * unread document can hold anything.
+     *
+     * This is what keeps one bad site from disabling the whole library. A widget with a picture the
+     * index cannot identify says nothing about whether a sound is used, and without the distinction
+     * a single pasted URL would make every asset in the project undeletable and silence the unused
+     * report entirely.
+     */
+    affects?: readonly ReferenceAssetKind[];
     /** Reuse of the global-search navigation layer; absent when a site has no deep link. */
     target?: SearchJumpTarget;
 }
@@ -129,10 +160,30 @@ export interface ReferenceIndexGap {
  * A boolean alone would be unactionable: "something is missing" with no way to say what, and no way
  * for a message to send the author anywhere. `complete` is `gaps.length === 0` for a built index,
  * and false for an index that never finished building at all.
+ *
+ * `complete` answers the project-wide question. A consumer asking about particular assets asks
+ * {@link referenceGapsAffecting} instead, which is the difference between "one widget is unclear"
+ * and "nothing may be deleted".
  */
 export interface ReferenceIndexResult {
     complete: boolean;
     gaps: readonly ReferenceIndexGap[];
+}
+
+/**
+ * The gaps that cast doubt on assets of these kinds.
+ *
+ * A gap with no `affects` is returned for every question, because an unread document can hold a use
+ * of anything. Passing no kinds asks the project-wide question and returns every gap.
+ */
+export function referenceGapsAffecting(
+    gaps: readonly ReferenceIndexGap[],
+    kinds?: readonly ReferenceAssetKind[],
+): ReferenceIndexGap[] {
+    if (!kinds) {
+        return [...gaps];
+    }
+    return gaps.filter(gap => !gap.affects || gap.affects.some(kind => kinds.includes(kind)));
 }
 
 /**
@@ -336,8 +387,15 @@ export interface BlueprintAssetPin {
     input: boolean;
 }
 
-/** Declared asset pins for a node type; empty for a type the catalogue does not know. */
-export type BlueprintAssetPinResolver = (nodeType: string) => readonly BlueprintAssetPin[];
+/**
+ * Declared asset pins for a node type.
+ *
+ * **`null` means the catalogue has never heard of this type** — a node left behind by an uninstalled
+ * plugin, or a document from a newer Studio. That is not the same as a node with no asset pins, and
+ * conflating them is how an asset held by such a node becomes invisible while the index reports full
+ * coverage. An empty array means "known, and holds none".
+ */
+export type BlueprintAssetPinResolver = (nodeType: string) => readonly BlueprintAssetPin[] | null;
 
 /**
  * The pins covered without a catalogue.
@@ -416,16 +474,21 @@ export function extractBlueprintAssetReferences(
     const gaps: ReferenceIndexGap[] = [];
 
     const assetPinsByType = new Map<string, readonly BlueprintAssetPin[]>();
+    const unknownNodeTypes = new Set<string>();
+    const reportedUnknownSites = new Set<string>();
     const assetPinsFor = (nodeType: string): readonly BlueprintAssetPin[] => {
         const cached = assetPinsByType.get(nodeType);
         if (cached) {
             return cached;
         }
-        const declared = resolveAssetPins?.(nodeType) ?? [];
+        const declared = resolveAssetPins?.(nodeType);
+        if (declared === null) {
+            unknownNodeTypes.add(nodeType);
+        }
         const merged: BlueprintAssetPin[] = nodeType === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL
             ? [...IMAGE_ASSET_LITERAL_PINS]
             : [...DEFAULT_BLUEPRINT_ASSET_PINS];
-        for (const pin of declared) {
+        for (const pin of declared ?? []) {
             if (!merged.some(existing => existing.pinId === pin.pinId)) {
                 merged.push(pin);
             }
@@ -446,6 +509,20 @@ export function extractBlueprintAssetReferences(
     for (const blueprint of Object.values(document.blueprints)) {
         const ownerKey = ownerKeyByBlueprintId.get(blueprint.id);
         if (!ownerKey || blueprint.program.kind !== "graph") {
+            /**
+             * Two shapes this walk cannot read, and both used to leave no trace at all.
+             *
+             * A `scriptModule` blueprint is TypeScript the author wrote (`blueprintFactories.ts`
+             * creates them), and an asset id in that source is a plain string literal this file has
+             * no business parsing. A blueprint no `ownerRecords` entry claims is unreachable from
+             * here for a different reason: without an owner there is no jump target to report it
+             * under. Either way an asset used only from it was reported as used by nothing.
+             */
+            gaps.push({
+                reason: "blueprintProgramNotWalked",
+                slice: "blueprint",
+                location: blueprint.name,
+            });
             continue;
         }
 
@@ -498,6 +575,18 @@ export function extractBlueprintAssetReferences(
                 };
 
                 const assetPins = assetPinsFor(node.type);
+                if (unknownNodeTypes.has(node.type) && !reportedUnknownSites.has(`${blueprint.id} ${node.type}`)) {
+                    // Reported once per blueprint rather than once per node: an uninstalled plugin
+                    // leaves dozens of identical nodes behind, and dozens of identical findings say
+                    // nothing the first one did not.
+                    reportedUnknownSites.add(`${blueprint.id} ${node.type}`);
+                    gaps.push({
+                        reason: "unknownNodeType",
+                        slice: "blueprint",
+                        location: `${blueprint.name} › ${nodeLabel}`,
+                        target,
+                    });
+                }
                 // Keyed by stored key rather than by pin, because two pins can name the same one
                 // (`value` publishes what `asset` stores) and reading it twice would list one site
                 // twice in the "used by" panel.
@@ -532,6 +621,9 @@ export function extractBlueprintAssetReferences(
                                 reason: "computedAssetPin",
                                 slice: "blueprint",
                                 location: `${blueprint.name} › ${nodeLabel}.${pin.pinId}`,
+                                // The pin says which kind of asset can arrive on it, so this casts
+                                // no doubt on the rest of the library.
+                                affects: [pin.kind],
                                 target,
                             });
                             continue;
@@ -613,11 +705,16 @@ function extractElementAssetReferences(
     };
 
     /**
-     * A URL prop resolves to an asset only when this session minted the token in it. Anything else
-     * is reported as a gap: the picture is plainly in use, and calling the asset behind it unused
-     * would be a wrong answer rather than a missing one.
+     * A URL prop resolves to an asset only when this session minted the token in it.
      *
-     * A plain `https:` address is neither - it names no library asset at all, so it is skipped.
+     * Anything else is a gap rather than a resolution. The likeliest such URL is a dead one — a
+     * grant token pasted in from an earlier run, whose grant died with that process, so the widget
+     * draws nothing. But "likeliest" is not "certain", and the two are indistinguishable from here:
+     * a token this session did not mint may still be a live grant another window holds. The gap is
+     * scoped to pictures, which is what a URL prop can draw, so a widget nobody has fixed does not
+     * put every sound and typeface in the project beyond deleting.
+     *
+     * A plain `https:` address is neither reference nor gap — it names no library asset at all.
      */
     const pushUrlValue = (suffix: string, field: string, value: unknown, dormant?: boolean, detail?: string) => {
         const token = parseAssetUrlToken(value);
@@ -633,6 +730,7 @@ function extractElementAssetReferences(
             reason: "hashUrlUnresolved",
             slice: "ui",
             location: `${label}.${field}`,
+            affects: ["image"],
         });
     };
 

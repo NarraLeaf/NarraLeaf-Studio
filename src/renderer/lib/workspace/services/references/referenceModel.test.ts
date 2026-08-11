@@ -8,7 +8,9 @@ import {
     extractUIDocumentAssetReferences,
     extractVoiceAssetReferences,
     isLibraryAssetId,
+    referenceGapsAffecting,
     type AssetReference,
+    type ReferenceIndexGap,
 } from "./referenceModel";
 import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
@@ -570,7 +572,7 @@ describe("coverage of an asset reachable only through a hash URL", () => {
 
         expect(extraction.references).toEqual([]);
         expect(extraction.gaps).toEqual([
-            { reason: "hashUrlUnresolved", slice: "ui", location: "Widget.backgroundImage" },
+            { reason: "hashUrlUnresolved", slice: "ui", location: "Widget.backgroundImage", affects: ["image"] },
         ]);
     });
 
@@ -759,5 +761,129 @@ describe("coverage of an asset reachable only through a legacy literal node", ()
         );
 
         expect(extraction.references[0]).toMatchObject({ assetId: "img-plugin", field: "banner" });
+    });
+});
+
+describe("blueprints this walk cannot read", () => {
+    function docWith(blueprint: Record<string, unknown>, ownerRecords?: Record<string, unknown>): BlueprintDocument {
+        return {
+            ownerRecords: ownerRecords ?? { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            blueprints: { "bp-1": blueprint },
+            persistentVariables: {},
+        } as unknown as BlueprintDocument;
+    }
+
+    it("reports a script-module blueprint as a gap instead of skipping it", () => {
+        // TypeScript blueprints are creatable, and an asset id in that source is a plain string this
+        // file has no business parsing. Skipping in silence reported full coverage over it.
+        const extraction = extractBlueprintAssetReferences(
+            docWith({
+                id: "bp-1",
+                name: "Title Logic",
+                program: { kind: "scriptModule", source: { language: "typescript", code: "" } },
+            }),
+        );
+
+        expect(extraction.references).toEqual([]);
+        expect(extraction.gaps).toEqual([
+            { reason: "blueprintProgramNotWalked", slice: "blueprint", location: "Title Logic" },
+        ]);
+    });
+
+    it("reports a blueprint no owner record claims", () => {
+        const extraction = extractBlueprintAssetReferences(
+            docWith(
+                {
+                    id: "bp-1",
+                    name: "Orphaned",
+                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                },
+                {},
+            ),
+        );
+
+        expect(extraction.gaps).toEqual([
+            { reason: "blueprintProgramNotWalked", slice: "blueprint", location: "Orphaned" },
+        ]);
+    });
+});
+
+describe("node types the catalogue does not know", () => {
+    function nodeDoc(nodes: Record<string, unknown>): BlueprintDocument {
+        return {
+            ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            blueprints: {
+                "bp-1": {
+                    id: "bp-1",
+                    name: "Main",
+                    program: { kind: "graph", graphs: { events: { "g-1": { graph: { nodes } } }, functions: {} } },
+                },
+            },
+            persistentVariables: {},
+        } as unknown as BlueprintDocument;
+    }
+
+    it("reports a gap when the resolver says the type is unknown", () => {
+        // A node left behind by an uninstalled plugin. Its params may hold an asset under a name
+        // nothing here can guess, and reading "no declared pins" as "holds nothing" hid it.
+        const extraction = extractBlueprintAssetReferences(nodeDoc({
+            n1: { id: "n1", type: "acme.gone", params: { banner: "img-1" } },
+        }), { resolveAssetPins: () => null });
+
+        expect(extraction.references).toEqual([]);
+        expect(extraction.gaps).toEqual([
+            expect.objectContaining({ reason: "unknownNodeType", location: "Main › acme.gone" }),
+        ]);
+    });
+
+    it("reports one gap per blueprint however many of the nodes there are", () => {
+        const extraction = extractBlueprintAssetReferences(nodeDoc({
+            n1: { id: "n1", type: "acme.gone", params: {} },
+            n2: { id: "n2", type: "acme.gone", params: {} },
+            n3: { id: "n3", type: "acme.gone", params: {} },
+        }), { resolveAssetPins: () => null });
+
+        expect(extraction.gaps).toHaveLength(1);
+    });
+
+    it("says nothing about a known type that simply declares no asset pins", () => {
+        // "Known and holds none" is an answer; "unknown" is the absence of one. An empty array and
+        // null used to be the same value here, which is what made the omission silent.
+        const extraction = extractBlueprintAssetReferences(nodeDoc({
+            n1: { id: "n1", type: "blueprint.flow.branch", params: {} },
+        }), { resolveAssetPins: () => [] });
+
+        expect(extraction.gaps).toEqual([]);
+    });
+});
+
+describe("referenceGapsAffecting", () => {
+    const imageGap: ReferenceIndexGap = {
+        reason: "hashUrlUnresolved", slice: "ui", location: "Title Screen.backgroundImage", affects: ["image"],
+    };
+    const wholeIndexGap: ReferenceIndexGap = { reason: "documentUnreadable", slice: "story", location: "Main Story" };
+
+    it("holds a picture-shaped gap against pictures only", () => {
+        // The half that keeps one pasted URL from putting the whole library beyond deleting.
+        expect(referenceGapsAffecting([imageGap], ["image"])).toEqual([imageGap]);
+        expect(referenceGapsAffecting([imageGap], ["font"])).toEqual([]);
+    });
+
+    it("holds a gap that names no kinds against every question", () => {
+        // An unread story can hold a use of anything, so it must not be narrowed by asset kind.
+        expect(referenceGapsAffecting([wholeIndexGap], ["font"])).toEqual([wholeIndexGap]);
+        expect(referenceGapsAffecting([wholeIndexGap], [])).toEqual([wholeIndexGap]);
+    });
+
+    it("returns every gap for the project-wide question", () => {
+        expect(referenceGapsAffecting([imageGap, wholeIndexGap])).toHaveLength(2);
+    });
+
+    it("scopes an unresolved URL to pictures at the point it is produced", () => {
+        const extraction = extractUIDocumentAssetReferences(
+            { elements: { e1: uiElement("e1", "nl.container", { backgroundImage: "app://fs/stale" }) } } as unknown as UIDocument,
+        );
+
+        expect(extraction.gaps[0].affects).toEqual(["image"]);
     });
 });

@@ -1,4 +1,51 @@
-import type { AssetReference, ReferenceIndexGap, ReferenceIndexResult } from "../references/referenceModel";
+import {
+    referenceGapsAffecting,
+    type AssetReference,
+    type ReferenceAssetKind,
+    type ReferenceIndexGap,
+    type ReferenceIndexResult,
+} from "../references/referenceModel";
+import { AssetType } from "./assetTypes";
+
+/**
+ * Which kind of doubt an asset of this type can be caught by.
+ *
+ * Exhaustive rather than defaulted, so a new asset type has to be given an answer here instead of
+ * quietly inheriting "nothing can hide this one". A type no gap can describe returns null and is
+ * only ever held back by a gap that names no kinds at all.
+ */
+export function referenceAssetKindOf(assetType: AssetType): ReferenceAssetKind | null {
+    switch (assetType) {
+        case AssetType.Image:
+            return "image";
+        case AssetType.Font:
+            return "font";
+        case AssetType.Audio:
+        case AssetType.Video:
+        case AssetType.JSON:
+        case AssetType.Blueprint:
+        case AssetType.Model:
+        case AssetType.Other:
+            return null;
+    }
+}
+
+/**
+ * The single answer to "can the index say whether these assets are used?".
+ *
+ * Every readout that prints "not used" and every guard that acts on it goes through here, because
+ * the alternative is four places each deciding for themselves — and the failure they would make is
+ * silent: an asset with no references and no coverage looks exactly like an unused one.
+ */
+export function referenceCoverageGapsFor(
+    result: ReferenceIndexResult,
+    assetTypes: readonly AssetType[],
+): ReferenceIndexGap[] {
+    const kinds = assetTypes
+        .map(referenceAssetKindOf)
+        .filter((kind): kind is ReferenceAssetKind => kind !== null);
+    return referenceGapsAffecting(result.gaps, kinds);
+}
 
 /**
  * The slice of `ReferenceService` the delete guard needs. Named separately so the guard can be
@@ -53,6 +100,13 @@ export interface AssetDeleteOptions {
 export async function collectAssetReferences(
     lookup: AssetReferenceLookup | null,
     assetIds: readonly string[],
+    /**
+     * The types of the assets being asked about. A gap is only held against a question it could
+     * actually be hiding the answer to: a widget with an unreadable picture says nothing about
+     * whether a sound is used, and holding it against every asset would make one pasted URL
+     * enough to put the whole library beyond deleting.
+     */
+    assetTypes: readonly AssetType[] = [],
 ): Promise<AssetReferenceReport> {
     if (assetIds.length === 0) {
         return { checked: true, references: new Map() };
@@ -65,13 +119,13 @@ export async function collectAssetReferences(
         await lookup.ensureReady();
         await lookup.flushPendingRebuilds();
         const references = lookup.getReferencesForAll(assetIds);
-        const result = lookup.getIndexResult();
         // Read after the flush, so the coverage answer describes the same pass the references came
-        // from. An index that is not complete cannot say an asset is unused, and this guard exists
-        // for exactly that sentence.
-        return result.complete
+        // from. An index that cannot cover these assets cannot say they are unused, and this guard
+        // exists for exactly that sentence.
+        const gaps = referenceCoverageGapsFor(lookup.getIndexResult(), assetTypes);
+        return gaps.length === 0
             ? { checked: true, references }
-            : { checked: false, references, gaps: result.gaps };
+            : { checked: false, references, gaps };
     } catch {
         return { checked: false, references: new Map() };
     }

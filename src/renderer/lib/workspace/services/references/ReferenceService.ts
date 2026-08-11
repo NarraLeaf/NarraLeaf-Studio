@@ -236,15 +236,21 @@ export class ReferenceService extends Service<ReferenceService> {
     }
 
     /**
-     * Asset-bearing pins for a node type, read off the node catalogue.
+     * Asset-bearing pins for a node type, read off the node catalogue, or null when the catalogue
+     * has never heard of the type.
      *
-     * A type the catalogue does not know contributes nothing rather than throwing: plugin nodes come
-     * and go with the plugins that register them, and a graph left behind by an uninstalled plugin
-     * must not take the whole blueprint slice down with it.
+     * The null branch is the point. `resolveCatalogEntry` never throws for an unknown type — it
+     * returns a two-exec-pin stub — so asking it alone cannot tell "this node holds no assets" from
+     * "nobody knows what this node holds". A graph left behind by an uninstalled plugin is the
+     * second, and reading it as the first is how the asset it names goes quiet. `get()` is the only
+     * call that distinguishes them.
      */
-    private resolveBlueprintAssetPins(nodeType: string): readonly BlueprintAssetPin[] {
+    private resolveBlueprintAssetPins(nodeType: string): readonly BlueprintAssetPin[] | null {
         const catalog = this.getContext().services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
         try {
+            if (!catalog.get(nodeType)) {
+                return null;
+            }
             return catalog.resolveCatalogEntry(nodeType).pins.flatMap(pin => (pin.assetRef
                 ? [{
                     pinId: pin.id,
@@ -254,7 +260,7 @@ export class ReferenceService extends Service<ReferenceService> {
                 }]
                 : []));
         } catch {
-            return [];
+            return null;
         }
     }
 
@@ -402,10 +408,25 @@ export class ReferenceService extends Service<ReferenceService> {
             const name = storyService.listStories().find(entry => entry.id === storyId)?.name ?? storyId;
             this.storyReferences.set(storyId, extractStoryAssetReferences(document, name));
             this.setSliceGaps(`story:${storyId}`, []);
-        } catch {
-            // Story vanished between the event and the rebuild; the library resync removes it.
+        } catch (error) {
             this.storyReferences.delete(storyId);
-            this.setSliceGaps(`story:${storyId}`, []);
+            /**
+             * Two different failures arrive here and they must not be treated alike.
+             *
+             * A story that has been deleted is gone from the library, contributes nothing, and is
+             * nothing to report. A story that is still in the library and will not read is a hole:
+             * its references have just been dropped, and clearing its gap as well would leave the
+             * index reporting full coverage over a document it could not open. This runs on every
+             * scene edit, so getting it wrong here is the likeliest way for the whole signal to be
+             * silently false.
+             */
+            const entry = storyService.listStories().find(story => story.id === storyId);
+            if (entry) {
+                console.warn(`[ReferenceService] Failed to rescan story ${storyId}:`, error);
+                this.setDocumentUnreadable(`story:${storyId}`, "story", entry.name);
+            } else {
+                this.setSliceGaps(`story:${storyId}`, []);
+            }
         }
         this.emitChanged();
     }
