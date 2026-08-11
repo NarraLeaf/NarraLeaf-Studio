@@ -266,6 +266,36 @@ describe("what is never read", () => {
         expect(readPaths()).toEqual([]);
     });
 
+    it("describes an asset stored under its id without reading anything extra for it", async () => {
+        // `assets/content/<shard>/<shard>/<id>` is the shape a real project holds, and there is
+        // no extension anywhere in it. This side has no ranged fetch, so it cannot probe a file's
+        // front - what it does instead is classify from the bytes it was already going to pull,
+        // which is why the read list below is the same one an unclassifiable file produces.
+        const shard = "assets/content/99/55/3d15abb54213bad7203798a1adc4";
+        const png = (width: number, height: number, size: number): Buffer => {
+            const out = Buffer.alloc(size, 0x7f);
+            Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(out, 0);
+            out.writeUInt32BE(13, 8);
+            out.write("IHDR", 12);
+            out.writeUInt32BE(width, 16);
+            out.writeUInt32BE(height, 20);
+            return out;
+        };
+        const { source, readPaths } = sourceOf({
+            r1: { [shard]: png(1088, 1984, 40_000) },
+            r2: { [shard]: png(1024, 1024, 12_000) },
+        });
+
+        const result = await diffRevisions(source, { from: "r1", to: "r2" });
+
+        expect(readPaths()).toEqual([shard]);
+        expect(result.documents[0].diff.tier).toBe("content");
+        expect(result.documents[0].diff.changes.map((change) => change.label.key)).toEqual([
+            "documentDiff.content.dimensions",
+            "documentDiff.content.size",
+        ]);
+    });
+
     it("reads a small image, because its header is worth the bytes", async () => {
         // The other side of the ceiling: a sprite is small enough that pulling it to read eight
         // bytes of IHDR is the right trade, and the backend has no ranged fetch to do better.

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { countDocumentChanges, type DocumentDiff } from "@shared/documents/diff";
 import { DocumentChangeList } from "../DocumentChangeList";
+import { isWholeDocumentChange } from "../documentChangeView";
 import type { ChangePresenter, ChangePresenterProps } from "./registry";
 
 /**
@@ -50,10 +51,10 @@ export function GenericChangeDetail({ entry, change }: ChangePresenterProps) {
         <DocumentChangeList
             diff={diff}
             limit={DOCUMENT_ROW_CEILING}
-            // A document that appeared or disappeared whole has one row and no caveat to make about
+            // A document that appeared, disappeared or moved has one row and no caveat to make about
             // it; the caption would otherwise claim it was unreadable. Suppressed only for the whole
             // document, never when one change inside it is selected.
-            wholeDocument={change === undefined && (entry.kind === "added" || entry.kind === "removed")}
+            wholeDocument={change === undefined && isWholeDocumentChange(entry.kind)}
         />
     );
 }

@@ -52,16 +52,20 @@ export interface DocumentChangeListProps {
      */
     readonly footer?: ReactNode;
     /**
-     * Whether the whole document appeared or disappeared, when the caller knows.
+     * Whether what happened is a fact about the whole document, when the caller knows.
      *
      * It suppresses the tier caption, and the reason is that the caption would otherwise say
      * something false. A document that was added has nothing to be compared against, so the engine
      * reports it as one `opaque` row on purpose - but `opaque`'s caption reads "Not read" and its
      * hint offers "too large, not text, or unreadable", none of which happened. Seen in the real
-     * app: a new 20-byte `.txt` announced itself as unreadable.
+     * app: a new 20-byte `.txt` announced itself as unreadable, and a renamed note did the same -
+     * that one twice as false, since a working-tree rename is confirmed by reading both copies of
+     * the file in full.
      *
      * A caption is a caveat about how the rows below were produced. For a document that is wholly
-     * added or removed there is exactly one row and it is not in doubt, so there is no caveat.
+     * added, removed or moved there is exactly one row and it is not in doubt, so there is no
+     * caveat. `vcs/documentChangeView.ts`'s `isWholeDocumentChange` is where the three are named,
+     * and every caller should reach it through that rather than spelling the kinds again.
      *
      * A boolean rather than a change kind because the two callers speak different vocabularies -
      * the working-tree list says `deleted` and the diff model says `removed` - and a prop typed as

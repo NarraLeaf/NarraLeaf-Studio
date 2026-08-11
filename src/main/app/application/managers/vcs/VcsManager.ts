@@ -1223,6 +1223,26 @@ export class VcsManager extends Manager {
                         const absolute = backend.repositoryPath(session.root, relative);
                         return fs.stat(absolute).then((stat) => ({ size: stat.size })).catch(() => null);
                     },
+                    // A positioned read that stops after `length` bytes, which is what makes
+                    // classifying an extensionless asset by its header affordable. `open` plus
+                    // one `read` rather than a stream: the length is a few dozen bytes and the
+                    // handle is closed on the way out however the read went.
+                    readWorkingHead: async (relative, length) => {
+                        const absolute = backend.repositoryPath(session.root, relative);
+                        const handle = await fs.open(absolute, "r").catch(() => null);
+                        if (!handle) {
+                            return null;
+                        }
+                        try {
+                            const buffer = Buffer.alloc(length);
+                            const { bytesRead } = await handle.read(buffer, 0, length, 0);
+                            return buffer.subarray(0, bytesRead);
+                        } catch {
+                            return null;
+                        } finally {
+                            await handle.close().catch(() => undefined);
+                        }
+                    },
                     readWorking: async (relative) => {
                         const absolute = backend.repositoryPath(session.root, relative);
                         return fs.readFile(absolute).catch(() => null);

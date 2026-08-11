@@ -17,7 +17,12 @@ import { resolveDocumentSpecForPath } from "@shared/documents/registry";
 // main entry point statically reaches this module.
 import "@shared/documents/specs";
 import { DocumentCorruptError, type AnyDocumentSpec, type DocumentParseContext } from "@shared/documents/types";
-import { contentClassIsReadable, contentClassOf, type ContentClass } from "@shared/vcs/contentClass";
+import {
+    contentClassIsReadable,
+    contentClassOf,
+    contentClassOfBytes,
+    type ContentClass,
+} from "@shared/vcs/contentClass";
 import { contentProviderFor, type ContentSide } from "./contentDiff";
 
 /**
@@ -40,13 +45,12 @@ import { contentProviderFor, type ContentSide } from "./contentDiff";
  * | content | an asset: a bitmap, sound, video, font or model | "1920x1080 -> 1280x720" |
  * | `opaque` | none of the above | added/removed/changed plus both sizes |
  *
- * **Content is a step, not a tier name, and that is on purpose.** {@link DocumentDiffTier} is
- * a shared vocabulary the renderer switches over exhaustively, and its own comment says the
- * failure it exists to prevent is a rung claiming to be a higher one. Content results are
- * therefore reported as `opaque` - the weakest rung, so nothing is overclaimed - and it is the
- * ROWS that carry what the header said. The cost is that the caption above them still reads
- * "only its size is reported" while a row beside it names a resolution; adding a fifth tier
- * with its own caption is a renderer change, not a change here.
+ * **`content` is its own rung because reporting it as `opaque` put a false sentence on screen.**
+ * `opaque`'s caption reads "Not read. Too large, not text, or unreadable. Only its size is
+ * reported", and it sat directly above a row naming a bitmap's two resolutions. Both were true
+ * of different things and the author had no way to tell which. So the rule is on the provider
+ * rather than on the step: one that opens a header earns `content`, and one whose `headBytes`
+ * is zero stays on `opaque`, where "only its size" is the whole truth.
  *
  * The content step reads no bytes of its own. It is handed a probe - the size and content
  * address the tree walk already produced - plus, where the caller could afford one, a few
@@ -219,13 +223,23 @@ export const CONTENT_HEAD_READ_CEILING = 2 * 1024 * 1024;
  *  - An asset is read only when a header would say something and is affordable, i.e. its
  *    provider wants bytes and both sides are under {@link CONTENT_HEAD_READ_CEILING}.
  *  - Everything else is 0, and the content step describes it from the tree.
+ *
+ * `knownClass` is for a caller that has already settled the class from the file's own bytes,
+ * which only the working-tree side can do - see {@link import("./workingTreeDiff").diffWorkingTree}.
+ * Without it the name is the only evidence, and a name with no extension answers `unknown`,
+ * which reads as "might be JSON" and buys the whole file on both sides.
  */
-export function planPathRead(path: string, baseSize: number, headSize: number): number {
+export function planPathRead(
+    path: string,
+    baseSize: number,
+    headSize: number,
+    knownClass?: ContentClass,
+): number {
     const largest = Math.max(baseSize, headSize);
     if (largest === 0) {
         return 0;
     }
-    const contentClass = contentClassOf(path);
+    const contentClass = knownClass ?? contentClassOf(path);
     if (specForDocumentPath(path) || contentClassIsReadable(contentClass)) {
         return largest <= DIFF_PARSE_BYTE_CEILING ? baseSize + headSize : 0;
     }
@@ -298,7 +312,17 @@ export function diffDocumentBytes(request: DocumentDiffRequest, options: Documen
     // NOT worth parsing - a `.txt` that reached here is a text file nobody could diff, and
     // handing it to a header reader would produce "Studio does not recognise this format"
     // about a format Studio recognises perfectly well.
-    const contentClass = request.contentClass ?? contentClassOf(request.path);
+    //
+    // A path the NAME could not place is placed from its bytes here, and this is the cheapest
+    // place in the engine to do it: both sides are already in memory, so it costs no read at
+    // all. It is also the only place the revision side can do it, having no ranged fetch - and
+    // it is what stops every asset in a real project (`assets/content/<shard>/<shard>/<id>`,
+    // no extension anywhere) from falling through to two byte counts. The newer side is asked
+    // first: it is what the file IS now.
+    const named = request.contentClass ?? contentClassOf(request.path);
+    const contentClass = named === "unknown"
+        ? contentClassOfBytes(head) ?? contentClassOfBytes(base) ?? named
+        : named;
     if (!contentClassIsReadable(contentClass)) {
         return diffDocumentContent({
             path: request.path,

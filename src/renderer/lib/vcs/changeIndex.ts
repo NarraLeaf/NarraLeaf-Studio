@@ -1,5 +1,6 @@
 import type { DocumentChangeKind, DocumentDiffEntry, DocumentDiffTier } from "@shared/documents/diff";
 import { CHANGE_CATEGORY_ORDER, changeCategoryOf, type ChangeCategory } from "./changeCategory";
+import { isWholeDocumentChange } from "./documentChangeView";
 
 /**
  * A comparison as something to navigate rather than something to read end to end.
@@ -31,11 +32,11 @@ export interface ChangeIndexRow {
     /** Changes this file stands for - `DocumentDiff.total`, including any the producer dropped. */
     readonly changeCount: number;
     /**
-     * Whether the file appeared or disappeared whole.
+     * Whether what happened is a fact about the whole file - see {@link isWholeDocumentChange}.
      *
      * A count is the wrong thing to say about one: an added file is reported as a single change
      * (there is nothing to compare it against), and "1 change" for a new chapter is a worse answer
-     * than "Added".
+     * than "Added". `changeIndexRowSummary` already words all three that way.
      */
     readonly wholeDocument: boolean;
     /** The entry itself, for the detail pane. Carried rather than re-looked-up by path. */
@@ -148,12 +149,15 @@ export function buildChangeIndex(
         rows.push(indexRow(entry));
         byCategory.set(category, rows);
 
-        if (entry.diff.tier !== "semantic") {
+        // The tier set is the evidence behind the count and is gated on the same answer, so a
+        // group cannot report a caveat's tier while reporting nothing to caveat about.
+        const partial = isPartial(entry);
+        if (partial && entry.diff.tier !== "semantic") {
             const tiers = tiersByCategory.get(category) ?? new Set<DocumentDiffTier>();
             tiers.add(entry.diff.tier);
             tiersByCategory.set(category, tiers);
         }
-        if (isPartial(entry)) {
+        if (partial) {
             partialByCategory.set(category, (partialByCategory.get(category) ?? 0) + 1);
         }
     }
@@ -190,8 +194,18 @@ export function buildChangeIndex(
  * Two unrelated shortfalls, one answer, because the author's next move is the same for both: a diff
  * below the semantic tier did not read the document as the format it is, and an incomplete one did
  * but stopped early.
+ *
+ * **A file that appeared, disappeared or moved is neither**, however weak the tier on it reads. The
+ * engine reports one of those as a single `opaque` row because there is no second side to compare
+ * against, not because it gave up - so counting it as "not compared in full" says a comparison fell
+ * short where none was owed. Measured: a 26-byte new `.txt`, described perfectly in its own detail,
+ * counted in a group heading that read "2 files here were not compared in full". Same judgement as
+ * the detail pane's, from the same predicate, so the two cannot drift apart again.
  */
 function isPartial(entry: DocumentDiffEntry): boolean {
+    if (isWholeDocumentChange(entry.kind)) {
+        return false;
+    }
     return entry.diff.tier !== "semantic" || !entry.diff.complete;
 }
 
@@ -203,7 +217,7 @@ function indexRow(entry: DocumentDiffEntry): ChangeIndexRow {
         directory,
         kind: entry.kind,
         changeCount: entry.diff.total,
-        wholeDocument: entry.kind === "added" || entry.kind === "removed",
+        wholeDocument: isWholeDocumentChange(entry.kind),
         entry,
     };
 }

@@ -1,4 +1,4 @@
-import type { DocumentChange, DocumentDiff, DocumentDiffTier } from "@shared/documents/diff";
+import type { DocumentChange, DocumentChangeKind, DocumentDiff, DocumentDiffTier } from "@shared/documents/diff";
 import type { TranslationKey, Translator } from "@shared/i18n";
 
 /**
@@ -186,6 +186,31 @@ function translateCountName(name: string, translator: LabelTranslator): string {
     // renders the dotted path, and a spec may well add a count before anyone translates it. The raw
     // identifier is a worse label than a translated one and a much better one than `documentDiff.count.x`.
     return translator.has(key) ? translator.t(key as TranslationKey) : name;
+}
+
+/**
+ * Whether what happened is a fact about the whole file rather than a comparison of its insides.
+ *
+ * **Three kinds, and the third one was the miss.** A tier is a caveat about HOW two versions were
+ * compared, so it only means anything where two versions were compared. A file that was added has
+ * no other side; one that was removed has no other side; and one that MOVED has two sides holding
+ * the same bytes - so there was nothing to look inside for, and its row is a fact rather than a
+ * summary. Added and removed were spelled out at the two places that care; `moved` was in neither,
+ * so a renamed note read "Not read" in the real app - false twice over, because a working-tree
+ * rename is confirmed by reading both copies IN FULL (`vcs/diff/workingTreeDiff.ts`, `pairRenames`).
+ *
+ * The two places have to agree or the surface contradicts itself: the detail pane suppresses the
+ * caption, and {@link import("./changeIndex").buildChangeIndex} leaves the same files out of the
+ * count its group headings show. Spelling the kinds twice is what let them disagree, so they are
+ * spelled here and nowhere else.
+ *
+ * Takes a kind rather than a whole entry, and the diff model's kind at that: a working-tree status
+ * says `deleted` where this says `removed`, and passing that spelling has to be a compile error
+ * rather than a quiet "not whole". `DocumentChangeList`'s own prop stays a boolean for the same
+ * reason, one layer further out.
+ */
+export function isWholeDocumentChange(kind: DocumentChangeKind): boolean {
+    return kind === "added" || kind === "removed" || kind === "moved";
 }
 
 /** The caption above a change list, or null for the one tier that needs no caveat. */
