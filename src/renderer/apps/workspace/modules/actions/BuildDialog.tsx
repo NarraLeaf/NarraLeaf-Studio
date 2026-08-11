@@ -24,6 +24,15 @@ import {
 } from "@shared/types/gameBuild";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import {
+    RELEASE_APP_TAG,
+    resolveAppTagIdentity,
+    type AppTagBaseIdentity,
+    type AppTagIdentity,
+    type ProjectAppTag,
+} from "@shared/types/appTag";
+import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import { displayedAppTags } from "@/lib/workspace/services/appTag/appTagDisplay";
+import {
     BUILD_COMPRESSIONS,
     SIGNING_PLATFORMS,
     type SigningConfiguration,
@@ -95,6 +104,15 @@ export type BuildDialogInfo = {
     productName: string;
     appId: string;
     /**
+     * The build variants the project has, release first, and the project's own identity that a
+     * variant stating nothing inherits.
+     *
+     * Both are carried so the Identity section can show what the *selected* variant will ship
+     * without another round trip: the same fold the pipeline does, on the same three keys.
+     */
+    appTags: ProjectAppTag[];
+    baseIdentity: AppTagBaseIdentity;
+    /**
      * Bundled locales; the source locale is flagged.
      *
      * The one thing in the Content section that stays a plain reading. Asset protection and the
@@ -162,7 +180,6 @@ export function BuildDialogContent({
     info,
     initialState,
     initialSection,
-    version,
     copyright,
     signing,
     initialContent,
@@ -184,9 +201,9 @@ export function BuildDialogContent({
      *
      * Not `initial*` and not state: this dialog reports them and the project panel writes them, so
      * nothing here can change them. `openBuildDialog` re-reads the manifest before building the
-     * element, so an edit made in the panel is what the next open shows.
+     * element, so an edit made in the panel is what the next open shows. The version arrives as part
+     * of `info.baseIdentity`, which is what the variant fold reads it from.
      */
-    version: string;
     copyright: string;
     signing: SigningConfiguration;
     initialContent: BuildContentSettings;
@@ -206,6 +223,21 @@ export function BuildDialogContent({
 }) {
     const { t } = useTranslation();
     const [state, setState] = useState<BuildDialogState>(initialState);
+    /**
+     * The three identity values as the selected variant will ship them - the same fold the pipeline
+     * applies, on the same three keys.
+     *
+     * Computed once here rather than inside each section, because two of them report it: Identity
+     * says what the package will claim to be, and Output predicts the file names, which are built
+     * from the product name and the version. Folding twice is how those two would come to disagree.
+     */
+    const identity = useMemo(
+        () => resolveAppTagIdentity(
+            info.appTags.find(tag => tag.id === state.appTagId) ?? RELEASE_APP_TAG,
+            info.baseIdentity,
+        ),
+        [info.appTags, info.baseIdentity, state.appTagId],
+    );
     const [section, setSection] = useState<BuildPreflightSection>(initialSection);
     const [findings, setFindings] = useState<BuildPreflightFinding[]>([]);
     const [content, setContent] = useState<BuildContentSettings>(initialContent);
@@ -372,9 +404,11 @@ export function BuildDialogContent({
                     {section === "identity" && (
                         <IdentitySection
                             info={info}
-                            version={version}
+                            state={state}
+                            identity={identity}
                             copyright={copyright}
                             findings={findings}
+                            onChange={update}
                             onEdit={onEditIdentity}
                         />
                     )}
@@ -398,7 +432,7 @@ export function BuildDialogContent({
                         </SigningSummary>
                     )}
                     {section === "output" && (
-                        <OutputSection info={info} state={state} version={version} findings={findings} onChange={update} />
+                        <OutputSection info={info} state={state} identity={identity} findings={findings} onChange={update} />
                     )}
                 </div>
             </div>
@@ -640,32 +674,70 @@ function CrossBuildNote({ info, state }: { info: BuildDialogInfo; state: BuildDi
  */
 function IdentitySection({
     info,
-    version,
+    state,
+    identity,
     copyright,
     findings,
+    onChange,
     onEdit,
 }: {
     info: BuildDialogInfo;
-    version: string;
+    state: BuildDialogState;
+    identity: AppTagIdentity;
     copyright: string;
     findings: BuildPreflightFinding[];
+    onChange: (next: BuildDialogState) => void;
     onEdit: () => void;
 }) {
     const { t } = useTranslation();
     const versionInvalid = findings.some(finding => finding.code === "version-invalid");
+    /*
+     * `overridden` is what turns the readings into an answer to "why does this say that": a value the
+     * variant states is marked, and an unmarked one is the project's, editable through the jump at
+     * the bottom. Without it the section would show a name the App page does not contain and offer
+     * no account of where it came from.
+     */
+    const appId = deriveGameAppId(identity.identifier.value, identity.displayName.value || info.productName);
     return (
         <div className="grid gap-3">
+            {/* First, because it decides what every reading under it says. */}
+            <Field label={t("build.identity.variant")}>
+                {/* The handle is on the wrapper: `Select` takes named props only and spreads
+                    nothing, so a `data-*` written on it is dropped without a compile error. */}
+                <span className="block min-w-0" data-build-app-tag={state.appTagId || RELEASE_APP_TAG.id}>
+                    <Select
+                        size="sm"
+                        fullWidth
+                        className="min-w-0"
+                        ariaLabel={t("build.identity.variant")}
+                        options={info.appTags.map(tag => ({ value: tag.id, label: tag.name }))}
+                        value={state.appTagId || info.appTags[0]?.id || ""}
+                        onChange={value => onChange({ ...state, appTagId: String(value) })}
+                    />
+                </span>
+            </Field>
             <Field label={t("build.identity.version")}>
                 {/* The error colour is what the `error` input variant used to carry. The sentence
                     itself is in the findings below; this is the pointer to which field it is about. */}
-                <ReadValue value={version} className={cn("font-mono", versionInvalid && "text-danger")} />
+                <ReadValue
+                    value={identity.version.value}
+                    className={cn("font-mono", versionInvalid && "text-danger")}
+                    fromVariant={identity.version.overridden}
+                />
             </Field>
             <Field label={t("build.identity.productName")}>
-                <span className="text-fg">{info.productName}</span>
-                <span className="ml-2 text-2xs text-fg-subtle">{t("build.identity.productNameSource")}</span>
+                <span className="text-fg">{identity.displayName.value || info.productName}</span>
+                <span className="ml-2 text-2xs text-fg-subtle">
+                    {identity.displayName.overridden
+                        ? t("build.identity.fromVariant")
+                        : t("build.identity.productNameSource")}
+                </span>
             </Field>
             <Field label={t("build.identity.appId")}>
-                <span className="font-mono text-2xs text-fg-muted">{info.appId}</span>
+                <span className="font-mono text-2xs text-fg-muted">{appId}</span>
+                {identity.identifier.overridden ? (
+                    <span className="ml-2 text-2xs text-fg-subtle">{t("build.identity.fromVariant")}</span>
+                ) : null}
             </Field>
             <Field label={t("build.identity.copyright")}>
                 <ReadValue value={copyright} />
@@ -686,13 +758,26 @@ function IdentitySection({
     );
 }
 
-/** A value the dialog only reports, saying so when the project has not set one. */
-function ReadValue({ value, className }: { value: string; className?: string }) {
+/**
+ * A value the dialog only reports, saying so when the project has not set one.
+ *
+ * `fromVariant` marks a value the selected variant states rather than inherits. In words rather than
+ * a coloured pill: the reader's question is "why is this not what the App page says", and the answer
+ * is a sentence, not a status.
+ */
+function ReadValue({ value, className, fromVariant }: { value: string; className?: string; fromVariant?: boolean }) {
     const { t } = useTranslation();
     if (!value.trim()) {
         return <span className="text-2xs text-fg-subtle">{t("build.identity.notSet")}</span>;
     }
-    return <span className={cn("text-fg", className)}>{value}</span>;
+    return (
+        <span>
+            <span className={cn("text-fg", className)}>{value}</span>
+            {fromVariant ? (
+                <span className="ml-2 text-2xs text-fg-subtle">{t("build.identity.fromVariant")}</span>
+            ) : null}
+        </span>
+    );
 }
 
 /**
@@ -945,25 +1030,31 @@ function PluginStatus({ plugin }: { plugin: BuildPluginEntry }) {
 function OutputSection({
     info,
     state,
-    version,
+    identity,
     findings,
     onChange,
 }: {
     info: BuildDialogInfo;
     state: BuildDialogState;
-    version: string;
+    identity: AppTagIdentity;
     findings: BuildPreflightFinding[];
     onChange: (next: BuildDialogState) => void;
 }) {
     const { t } = useTranslation();
     const request = useMemo(() => stateToRequest(state), [state]);
+    // Named from the selected variant, because the pipeline names them from the same two values: a
+    // variant that renames the application or bumps the version writes differently named files, and
+    // a prediction reading the project's would list names no build produces.
+    const artifactBaseName = identity.displayName.overridden
+        ? sanitizeProjectFileName(identity.displayName.value)
+        : info.artifactBaseName;
     const artifacts = useMemo(() => predictGameBuildArtifacts({
-        artifactBaseName: info.artifactBaseName,
+        artifactBaseName,
         // Mirrors the pipeline's own fallback, so the preview matches a build
         // started with no version set.
-        version: version.trim() || "0.0.0",
+        version: identity.version.value.trim() || "0.0.0",
         targets: request.targets,
-    }), [info.artifactBaseName, request.targets, version]);
+    }), [artifactBaseName, identity.version.value, request.targets]);
 
     const browse = async () => {
         const result = await getInterface().gameBuild.selectOutputDir(state.outputDir || info.defaultOutputDir);
@@ -1068,6 +1159,14 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
     const hostArch = hostResult.success ? hostResult.data.arch : "x64";
     const localization = projectService.getLocalizationConfiguration();
     const productName = projectConfig.name?.trim() || "NarraLeaf Game";
+    // A workspace without the service still gets the dialog, with the release variant alone - which
+    // is what an unselected build produces anyway.
+    let appTagService: AppTagService | null = null;
+    try {
+        appTagService = services.get<AppTagService>(Services.AppTags);
+    } catch (error) {
+        console.warn("[build] app tag service unavailable", error);
+    }
 
     const info: BuildDialogInfo = {
         hostPlatform,
@@ -1075,6 +1174,21 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
         artifactBaseName: sanitizeProjectFileName(productName),
         productName,
         appId: deriveGameAppId(projectConfig.identifier, productName),
+        // Release first, straight off the service, so the list here is the list the App page shows.
+        // A workspace whose variants could not be read still offers the release one, which is the
+        // only variant the pipeline can be certain of anyway.
+        // Named for display before it leaves here. `listTags` prepends the synthesized release
+        // variant under the model's untranslated word, and this picker sits beside a panel that
+        // shows the translated one.
+        appTags: displayedAppTags(
+            appTagService?.listTags() ?? [RELEASE_APP_TAG],
+            translate("project.appTags.releaseName"),
+        ),
+        baseIdentity: {
+            displayName: productName,
+            identifier: projectConfig.identifier?.trim() ?? "",
+            version: projectConfig.metadata?.version?.trim() ?? "",
+        },
         locales: localization.sourceLocale
             ? localization.locales.map(locale => ({
                 name: locale.displayName || locale.code,
@@ -1105,9 +1219,15 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
     // in the middle of, and the only reason they left was to fix something.
     const draft = buildService.getDraft();
     const storedConfig = projectService.getBuildConfiguration();
-    const initialState = draft
+    const restored = draft
         ? stateFromRequest(draft.request, hostPlatform, hostArch)
         : initialDialogState(storedConfig, hostPlatform, hostArch);
+    // A variant deleted since the last build leaves its id in the remembered selection, and the
+    // pipeline refuses an id the project does not have. Dropped back to release here, where the list
+    // is in hand, rather than left to fail a build the dialog had already shown as ready.
+    const initialState: BuildDialogState = info.appTags.some(tag => tag.id === restored.appTagId)
+        ? restored
+        : { ...restored, appTagId: "" };
 
     let request: GameBuildRequest = stateToRequest(initialState);
     let section: BuildPreflightSection = draft?.section ?? "targets";
@@ -1123,7 +1243,6 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                 info={info}
                 initialState={initialState}
                 initialSection={section}
-                version={typeof projectConfig.metadata?.version === "string" ? projectConfig.metadata.version : ""}
                 copyright={typeof projectConfig.metadata?.copyright === "string" ? projectConfig.metadata.copyright : ""}
                 signing={projectService.getSigningConfiguration()}
                 initialContent={{

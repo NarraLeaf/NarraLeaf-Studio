@@ -208,6 +208,16 @@ export function asAudioTrackId(value: StoryCommandValue | undefined): string | u
     return value?.kind === "audioTrack" ? value.trackId : undefined;
 }
 
+/**
+ * A resolved build variant's id, or undefined while the slot is unfilled.
+ *
+ * The id and never the name: a payload holding the name would stop resolving the moment the author
+ * renamed the variant, which is the one thing renaming must not do.
+ */
+export function asAppTagId(value: StoryCommandValue | undefined): string | undefined {
+    return value?.kind === "appTag" ? value.appTagId : undefined;
+}
+
 /** The resolved target of a generic verb (`/show poster`), or undefined while unresolved. */
 export function asTarget(value: StoryCommandValue | undefined): Extract<StoryCommandValue, { kind: "target" }>["target"] | undefined {
     return value?.kind === "target" ? value.target : undefined;
@@ -254,6 +264,18 @@ export function puppetNameParam(channel: StoryPuppetChannel, dependsOn: string, 
  */
 export function audioTrackParam(): StoryCommandParamSpec {
     return { hint: "track", type: { kind: "audioTrack" } };
+}
+
+/**
+ * A build variant the project can be shipped as (`Demo`, `Bonus`, the release one).
+ *
+ * Positional and `core` by default: a line that names a variant is about that variant, and one with
+ * the slot empty says nothing a build could act on. Declared by no command yet - the commands that
+ * will carry it decide what a build *contains* - so this exists to be the one spelling when the
+ * first of them arrives, rather than each of them inventing its own key.
+ */
+export function appTagParam(hint = "appTag"): StoryCommandParamSpec {
+    return { hint, type: { kind: "appTag" }, positional: true, core: true };
 }
 
 /** `at=` - a placement. */

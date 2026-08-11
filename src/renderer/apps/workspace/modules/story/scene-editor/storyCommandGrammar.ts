@@ -106,6 +106,22 @@ export type StoryCommandParamType =
      * the compiler validates against, and a name the menu offered can never be one the build rejects.
      */
     | { kind: "label" }
+    /**
+     * One of the project's build variants, by name: the `Demo` an author would name to say which
+     * edition a passage belongs to.
+     *
+     * A closed set, resolved the way {@link scene} is: the candidates are the variants the project
+     * has, and a name matching none of them is an error rather than free text. The stored value is
+     * the variant's id, so a rename never invalidates a row and a delete leaves the row resolving to
+     * the release variant instead of to nothing.
+     *
+     * Declared by no command yet. The commands that will carry it are the content rules - a passage
+     * that only ships in one edition, a line that reads differently in another - and those decide
+     * what a build *contains*, which is a separate piece of work. This slot exists ahead of them
+     * because it is the part that has to agree with the variant registry, and agreeing with it is
+     * what the tests here hold.
+     */
+    | { kind: "appTag" }
     | { kind: "variable" }
     /**
      * The subject of a generic verb (`/show poster`, `/hide Alice`, `/vol piano`): a character or a
@@ -363,6 +379,9 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         case "audioTrack":
         case "variable":
         case "label":
+        // A variant that is not in the project is not a variant anything could be built as, and the
+        // release one is always there - so there is no name here that free text could stand for.
+        case "appTag":
         case "characterForm":
         // Content is typed by its target: an image target's content is an asset that must resolve.
         // Resolution owns the per-target answer; the static answer is the strict one.

@@ -1,3 +1,4 @@
+import { APP_TAG_ID_RELEASE, RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
@@ -24,6 +25,32 @@ import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
 function assetRefs(assets: AssetsMap | undefined, type: AssetType): StoryCommandNamedRef[] {
     return Object.values(assets?.[type] ?? {}).map(asset => ({ id: asset.id, name: asset.name }));
+}
+
+/**
+ * The build variants a row may name, release first.
+ *
+ * Two things happen here that the service cannot do:
+ *
+ * - The release variant is added when the caller did not supply it, so this table is never empty. A
+ *   context built without a service (a test, a surface mounted before the project finished opening)
+ *   must still resolve the one variant every project has, rather than report it as unknown.
+ * - Its name is replaced by the word the author sees. The model carries the untranslated "Release"
+ *   because it has no catalog to read; the author types what is on screen, so this table has to
+ *   spell it the same way the panel does.
+ */
+function appTagRefs(
+    tags: readonly { id: string; name: string }[] | undefined,
+    releaseName: string | undefined,
+): StoryCommandNamedRef[] {
+    const shown = releaseName?.trim() || RELEASE_APP_TAG.name;
+    const refs = (tags ?? []).map(tag => (
+        tag.id === APP_TAG_ID_RELEASE ? { id: tag.id, name: shown } : { id: tag.id, name: tag.name }
+    ));
+    if (refs.some(ref => ref.id === APP_TAG_ID_RELEASE)) {
+        return refs;
+    }
+    return [{ id: APP_TAG_ID_RELEASE, name: shown }, ...refs];
 }
 
 /**
@@ -212,6 +239,14 @@ export function buildStoryCommandContext(input: {
      * not be read at all.
      */
     audioTracks?: readonly { id: string; name: string }[];
+    /**
+     * The project's build variants, release first. Omitted where no project is open; the release
+     * variant is added back below, because it exists in every project whether or not anyone read the
+     * list, and a slot that takes a variant must never be a dropdown with nothing in it.
+     */
+    appTags?: readonly { id: string; name: string }[];
+    /** How the release variant is named on screen. Passed in, because this projection has no catalog. */
+    releaseAppTagName?: string;
 }): StoryCommandContext {
     // What a `/show` row can name after the character: a preset character's poses, a layered one's
     // tags (across every axis — the engine resolves each against the group that owns it, so the
@@ -256,6 +291,7 @@ export function buildStoryCommandContext(input: {
         // The one scan, shared with the compiler's `goto` validation (§12.9) - not a completion-layer
         // special case, just another table this projection carries.
         labels: sceneLabelNames(input.scene),
+        appTags: appTagRefs(input.appTags, input.releaseAppTagName),
         variables: variableEntries(
             input.document,
             input.scene,

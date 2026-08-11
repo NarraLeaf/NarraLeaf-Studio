@@ -91,6 +91,8 @@ import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManife
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
+import { readProjectAppTagsFromDir } from "../../utils/appTagsFile";
+import { hasAppTag, isBuiltinAppTagId, resolveAppTag, type AppTagOverrides } from "@shared/types/appTag";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
@@ -417,6 +419,12 @@ export class GameBuildManager {
     public async preflight(projectPath: string, request: GameBuildRequest): Promise<BuildPreflightFinding[]> {
         const normalizedProjectPath = path.resolve(projectPath);
         const projectConfig = await readProjectConfigFromDir(normalizedProjectPath).catch(() => null);
+        // Swallowed here and not in `start`: a check pass must report on what it could read rather
+        // than fail, and a variant file it could not read leaves the identity findings describing the
+        // project's own values. `start` reads the same file strictly, so a build under an unreadable
+        // variant file stops there rather than shipping the wrong name.
+        const appTags = await readProjectAppTagsFromDir(normalizedProjectPath).catch(() => []);
+        const overrides = resolveAppTag(appTags, request.appTagId).overrides;
         const hostPlatform = currentGameBuildPlatform();
         const targets = normalizeTargets(request.targets);
         const findings: BuildPreflightFinding[] = [];
@@ -448,7 +456,12 @@ export class GameBuildManager {
         }
 
         const mobileTargets = targets.filter(isMobileTarget);
-        const version = readProjectVersion(projectConfig);
+        // Every identity check below judges what this build will actually carry, which is the
+        // selected variant's value where it states one. Checking the project's value instead would
+        // clear a build whose variant sets an unusable version, and flag one whose variant fixes it.
+        const productName = overrides.displayName ?? projectConfig?.name?.trim() ?? "";
+        const version = overrides.version ?? readProjectVersion(projectConfig);
+        const identifier = overrides.identifier ?? readProjectIdentifier(projectConfig);
         if (!version) {
             findings.push({ code: "version-missing", severity: "warning", section: "identity" });
         } else if (!isValidProjectVersion(version)) {
@@ -469,20 +482,16 @@ export class GameBuildManager {
                 detail: { version },
             });
         }
-        if (!readProjectIdentifier(projectConfig)) {
+        const derivedFrom = productName || path.basename(normalizedProjectPath);
+        if (!identifier) {
             findings.push({
                 code: "identifier-missing",
                 severity: "warning",
                 section: "identity",
-                detail: {
-                    appId: deriveGameAppId(undefined, projectConfig?.name?.trim() || path.basename(normalizedProjectPath)),
-                },
+                detail: { appId: deriveGameAppId(undefined, derivedFrom) },
             });
         }
-        const appId = deriveGameAppId(
-            readProjectIdentifier(projectConfig),
-            projectConfig?.name?.trim() || path.basename(normalizedProjectPath),
-        );
+        const appId = deriveGameAppId(identifier, derivedFrom);
         // Both mobile platforms normalize the app id, by opposite rules - the
         // shipped id can differ from the one shown everywhere else, so say so
         // rather than let them find out from the installed app's details.
@@ -823,7 +832,7 @@ export class GameBuildManager {
                 `macOS builds require a Mac; Linux builds require a Unix host.`,
             );
         }
-        const identity = this.resolveIdentity(session, projectConfig, projectPath);
+        const identity = this.resolveIdentity(session, projectConfig, projectPath, await this.resolveBuildVariant(session, projectPath, request));
         // Everything the credentials this build needs unseals to. Resolved here,
         // before the compile: a credential this machine cannot use fails the
         // build either way, and finding out after several minutes of packing
@@ -1832,13 +1841,44 @@ export class GameBuildManager {
         });
     }
 
+    /**
+     * The variant this build is, as the overrides it states.
+     *
+     * An id naming a variant the project does not have throws instead of falling back to release.
+     * The author picked a variant by name; producing the release identity under that name is a build
+     * that lies about what it is, and every check downstream would agree with it.
+     */
+    private async resolveBuildVariant(
+        session: BuildSession,
+        projectPath: string,
+        request: GameBuildRequest,
+    ): Promise<AppTagOverrides> {
+        const appTags = await readProjectAppTagsFromDir(projectPath);
+        const requested = request.appTagId?.trim();
+        if (requested && !hasAppTag(appTags, requested)) {
+            throw new Error(`The project has no build variant "${requested}". Pick one in the build dialog.`);
+        }
+        const tag = resolveAppTag(appTags, requested);
+        if (!isBuiltinAppTagId(tag.id)) {
+            this.emit(session, { level: "info", source: "Build", message: `building the "${tag.name}" variant` });
+        }
+        return tag.overrides;
+    }
+
     private resolveIdentity(
         session: BuildSession,
         projectConfig: ProjectConfigData | null,
         projectPath: string,
+        overrides: AppTagOverrides,
     ): { appId: string; productName: string; artifactBaseName: string; version: string; copyright?: string } {
-        const productName = projectConfig?.name?.trim() || path.basename(projectPath) || "NarraLeaf Game";
-        const version = readProjectVersion(projectConfig);
+        // The variant's value wherever it states one. Only these three: everything else about a
+        // build - icons, signing, what the pack contains - is the project's and is shared by every
+        // variant of it.
+        const productName = overrides.displayName
+            || projectConfig?.name?.trim()
+            || path.basename(projectPath)
+            || "NarraLeaf Game";
+        const version = overrides.version ?? readProjectVersion(projectConfig);
         if (version && !isValidProjectVersion(version)) {
             throw new Error(
                 `Project version "${version}" is not a valid semantic version. Fix it in the project settings.`,
@@ -1851,7 +1891,7 @@ export class GameBuildManager {
                 message: "project has no version; building as 0.0.0",
             });
         }
-        const identifier = readProjectIdentifier(projectConfig);
+        const identifier = overrides.identifier ?? readProjectIdentifier(projectConfig);
         const appId = deriveGameAppId(identifier, productName);
         if (!identifier) {
             this.emit(session, {

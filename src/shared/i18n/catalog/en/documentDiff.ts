@@ -46,6 +46,8 @@ export const documentDiff = {
      * the list is a far better failure than a blank row.
      */
     count: {
+        /** The author's own variants. The release tag is always there and is not counted. */
+        appTags: "Build variants",
         assets: "Assets",
         audioTracks: "Audio tracks",
         /** The author's own colors. The seeded palette is always there and is not counted. */

@@ -536,6 +536,7 @@ export const story = {
             scene: "场景",
             audioTrack: "音轨",
             label: "本场景内的标签",
+            appTag: "构建版本",
             variable: "变量",
             content: "新内容，类型随目标而定",
             color: "颜色",
