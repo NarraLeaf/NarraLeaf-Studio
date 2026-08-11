@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "./document";
 import { UI_FRAME_ELEMENT_TYPE, getUIFrameTargetInvalidReason, normalizeUIFrameWidgetProps } from "./frame";
+import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "./pageAnimation";
 
 function root(id: string, childrenIds: string[] = []): UIElement {
     return {
@@ -142,6 +143,7 @@ describe("UI Frame target validation", () => {
                 },
             }).animation,
         ).toEqual({
+            ...DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
             enter: "fade",
             exit: "slide",
             enterDirection: "up",
@@ -159,17 +161,7 @@ describe("UI Frame target validation", () => {
                     exit: "explode",
                 },
             }).animation,
-        ).toEqual({
-            enter: "none",
-            exit: "none",
-            enterDirection: "auto",
-            exitDirection: "auto",
-            enterAngleDegrees: 0,
-            exitAngleDegrees: 180,
-            enterDurationSeconds: 0.26,
-            exitDurationSeconds: 0.26,
-            exitBlocking: true,
-        });
+        ).toEqual(DEFAULT_UI_PAGE_ANIMATION_SETTINGS);
         expect(
             normalizeUIFrameWidgetProps({
                 animation: {
@@ -180,15 +172,13 @@ describe("UI Frame target validation", () => {
                 },
             }).animation,
         ).toEqual({
+            ...DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
             enter: "fade",
             exit: "slide",
             enterDirection: "right",
             exitDirection: "right",
-            enterAngleDegrees: 0,
-            exitAngleDegrees: 180,
             enterDurationSeconds: 0.16,
             exitDurationSeconds: 0.16,
-            exitBlocking: true,
         });
     });
 });

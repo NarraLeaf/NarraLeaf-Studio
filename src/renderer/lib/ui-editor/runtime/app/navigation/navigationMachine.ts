@@ -15,6 +15,7 @@ import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/p
 import {
     createSurfaceNavigationCloseUpdate,
     createSurfaceNavigationOpenUpdate,
+    type SurfaceNavigationElements,
     type SurfaceNavigationPresenceMode,
     type SurfaceNavigationUpdate,
 } from "@/lib/ui-editor/runtime/game/surfaceNavigationController";
@@ -48,6 +49,8 @@ export type NavigationEvent =
           targetSurface: UISurface;
           currentHiddenForGame: boolean;
           reducedMotion: boolean | null;
+          /** The bundle's elements, so the transition counts what each Page's contents cost. */
+          elements?: SurfaceNavigationElements;
           createNextEntry: (waitForExit: boolean) => AppNavEntry;
       }
     | {
@@ -56,6 +59,7 @@ export type NavigationEvent =
           targetSurface: UISurface | null;
           targetHiddenForGame: boolean;
           reducedMotion: boolean | null;
+          elements?: SurfaceNavigationElements;
           targetIndex?: number;
       }
     | { type: "PREPAINT_READY"; entryKey: string }
@@ -118,6 +122,7 @@ export function reduceNavigation(state: NavigationState, event: NavigationEvent)
                 targetSurface: event.targetSurface,
                 currentHiddenForGame: event.currentHiddenForGame,
                 prefersReducedMotion: event.reducedMotion,
+                elements: event.elements,
                 createNextEntry: event.createNextEntry,
             });
             return applyUpdate(state, update);
@@ -129,6 +134,7 @@ export function reduceNavigation(state: NavigationState, event: NavigationEvent)
                 targetSurface: event.targetSurface,
                 targetHiddenForGame: event.targetHiddenForGame,
                 prefersReducedMotion: event.reducedMotion,
+                elements: event.elements,
                 targetIndex: event.targetIndex,
             });
             if (!update) {

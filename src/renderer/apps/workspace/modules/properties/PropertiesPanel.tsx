@@ -53,6 +53,7 @@ import {
     createComponentDocumentServiceAdapter,
     parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
 import {
@@ -466,6 +467,31 @@ function createLayoutInspectorSchema(
     });
 }
 
+/**
+ * The animation section every element gets, under whatever the widget itself declares.
+ *
+ * Built here rather than in each widget module: how a widget arrives and leaves is not a property of
+ * being a button or an image, and eighteen modules each remembering to offer it is eighteen chances
+ * to forget. No `order`, so it sorts with the unordered fields and lands last, where a section about
+ * the element as a whole belongs.
+ */
+function createElementAnimationField(element: UIElement, t: TranslateFn): FieldDefinition<UIInspectorData> {
+    return defineField<UIInspectorData, any>({
+        id: "element.animation",
+        type: "section",
+        title: t("properties.layout.animation"),
+        collapsible: true,
+        defaultCollapsed: true,
+        fields: [
+            defineField<UIInspectorData, any>({
+                id: `element.animation.editor:${element.id}`,
+                type: "custom",
+                component: ElementAnimationField,
+            }),
+        ],
+    });
+}
+
 function mergeInspectorWithLayoutSchema(
     layoutSchema: PropertyEditorSchema<UIInspectorData>,
     inspectorSchema: PropertyEditorSchema<UIInspectorData>,
@@ -473,6 +499,7 @@ function mergeInspectorWithLayoutSchema(
     t: TranslateFn,
 ): PropertyEditorSchema<UIInspectorData> {
     const layoutFields = layoutSchema.fields ?? [];
+    const animationField = createElementAnimationField(element, t);
     const baseTitle = inspectorSchema.title ?? element.name ?? t("properties.layout.uiElement");
     const baseId = `ui-element:${element.id}`;
 
@@ -480,10 +507,10 @@ function mergeInspectorWithLayoutSchema(
         const targetTabId =
             inspectorSchema.defaultTabId ?? inspectorSchema.tabs[0]?.id ?? null;
         const tabs = inspectorSchema.tabs.map((tab) => {
-            if (targetTabId && tab.id === targetTabId && layoutFields.length > 0) {
+            if (targetTabId && tab.id === targetTabId) {
                 return {
                     ...tab,
-                    fields: [...layoutFields, ...tab.fields],
+                    fields: [...layoutFields, ...tab.fields, animationField],
                 };
             }
             return tab;
@@ -503,7 +530,7 @@ function mergeInspectorWithLayoutSchema(
     return createPropertyEditorSchema<UIInspectorData>({
         id: baseId,
         title: baseTitle,
-        fields: [...layoutFields, ...(inspectorSchema.fields ?? [])],
+        fields: [...layoutFields, ...(inspectorSchema.fields ?? []), animationField],
         onFieldChange: inspectorSchema.onFieldChange,
         showSavingIndicator: inspectorSchema.showSavingIndicator,
     });
@@ -545,6 +572,9 @@ function createLinkedComponentInspectorSchema(
         title: element.name ?? t("properties.layout.linkedComponent"),
         fields: [
             ...(layoutSchema.fields ?? []),
+            // An instance may animate even though its props come from the definition: how it arrives
+            // belongs to where it was placed, the same way its position does.
+            createElementAnimationField(element, t),
             defineField<UIInspectorData, any>({
                 id: "component.params",
                 type: "custom",
@@ -791,9 +821,19 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 );
             }
             const inspectorSchema = getElementInspector(element, inspectorDocumentService);
-            const combinedSchema = inspectorSchema
-                ? mergeInspectorWithLayoutSchema(layoutSchema, inspectorSchema, element, t)
-                : layoutSchema;
+            const combinedSchema = mergeInspectorWithLayoutSchema(
+                layoutSchema,
+                // A widget with nothing of its own to declare still gets the sections every element
+                // has, so the animation controls do not depend on which widget is selected.
+                inspectorSchema ??
+                    createPropertyEditorSchema<UIInspectorData>({
+                        id: `ui-element:${element.id}`,
+                        title: layoutSchema.title,
+                        fields: [],
+                    }),
+                element,
+                t,
+            );
             return (
                 <PropertyEditor
                     schema={combinedSchema}

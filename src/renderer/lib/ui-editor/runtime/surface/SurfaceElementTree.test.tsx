@@ -3,10 +3,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
+import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "@shared/types/ui-editor/pageAnimation";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
+import { buildSurfaceAnimationPlan } from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
 import { BlueprintWidgetInitLifecycle } from "./BlueprintWidgetInitLifecycle";
+import { ElementAnimationPresence } from "./ElementAnimationLayer";
 import { SurfaceElementTree } from "./SurfaceElementTree";
 
 function flattenNodes(node: ReactNode): ReactNode[] {
@@ -926,5 +929,99 @@ describe("SurfaceElementTree", () => {
         );
 
         expect(markup).toContain("Page loop blocked");
+    });
+
+    /**
+     * The tree is what decides which elements can animate at all, and it has to leave the rest
+     * exactly as they were: a presence wrapper around every widget would put an AnimatePresence in
+     * the editing canvas, where nothing animates and everything re-renders.
+     */
+    describe("element animations", () => {
+        function animatedDocument(): UIDocument {
+            return {
+                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+                id: "doc",
+                name: "Doc",
+                surfaces: [
+                    {
+                        id: "surface",
+                        name: "Surface",
+                        host: "app",
+                        kind: "appSurface",
+                        designSize: { width: 320, height: 180 },
+                        rootElementId: "root",
+                    },
+                ],
+                elements: {
+                    root: {
+                        id: "root",
+                        type: "nl.root",
+                        parentId: null,
+                        childrenIds: ["moving", "still"],
+                        layout: { x: 0, y: 0, width: 320, height: 180 },
+                    },
+                    moving: {
+                        id: "moving",
+                        type: "nl.container",
+                        parentId: "root",
+                        childrenIds: [],
+                        layout: { x: 0, y: 0, width: 40, height: 20 },
+                        animation: {
+                            ...DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
+                            enter: "fade",
+                            exit: "fade",
+                        },
+                    },
+                    still: {
+                        id: "still",
+                        type: "nl.container",
+                        parentId: "root",
+                        childrenIds: [],
+                        layout: { x: 0, y: 40, width: 40, height: 20 },
+                    },
+                },
+            };
+        }
+
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "nl.root", render: props => <>{props.children}</> },
+            { type: "nl.container", render: props => <>{props.children}</> },
+        ]);
+
+        function renderTree(withPlan: boolean): ReactNode {
+            const document = animatedDocument();
+            const surface = document.surfaces[0]!;
+            return SurfaceElementTree({
+                document,
+                surface,
+                rootElement: document.elements.root!,
+                rendererRegistry,
+                hostAdapter: { host: "app" },
+                animationPlan: withPlan
+                    ? buildSurfaceAnimationPlan({
+                          elements: document.elements,
+                          rootElementId: "root",
+                          rootSettings: surface.settings?.pageAnimation,
+                      })
+                    : null,
+            });
+        }
+
+        function wrappedElementIds(node: ReactNode): string[] {
+            return flattenNodes(node)
+                .filter(
+                    (item): item is React.ReactElement<{ children?: ReactNode }> =>
+                        isValidElement(item) && item.type === ElementAnimationPresence,
+                )
+                .map(item => String(item.key));
+        }
+
+        it("wraps only what the plan says can move", () => {
+            expect(wrappedElementIds(renderTree(true))).toEqual(["moving"]);
+        });
+
+        it("adds nothing at all to a host that passes no plan", () => {
+            expect(wrappedElementIds(renderTree(false))).toEqual([]);
+        });
     });
 });

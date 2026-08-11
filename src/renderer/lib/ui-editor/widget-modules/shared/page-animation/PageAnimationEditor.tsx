@@ -26,6 +26,14 @@ type PageAnimationEditorProps = {
     inherited?: boolean;
     inheritedSettings?: UIPageAnimationSettings | null | undefined;
     inheritLabel?: string;
+    /**
+     * Offer the switch that holds the incoming Page until this one has left. Surfaces and Page
+     * components have somewhere to hold; an element's departure is already awaited by whatever
+     * contains it, so it is not asked.
+     */
+    showExitBlocking?: boolean;
+    /** Offer the child timings. Set for Surfaces and for elements that can hold children. */
+    showChildTiming?: boolean;
     onChange: (next: UIPageAnimationSettings) => void;
     onInheritedChange?: (inherited: boolean, seed: UIPageAnimationSettings) => void;
 };
@@ -87,7 +95,16 @@ function PageAnimationPreview({
 }) {
     const prefersReducedMotion = useReducedMotion();
     const motionProps = useMemo(
-        () => resolvePageAnimationMotion({ settings, reducedMotion: prefersReducedMotion === true }),
+        () => resolvePageAnimationMotion({
+            settings,
+            reducedMotion: prefersReducedMotion === true,
+            // The host's own delay only. What it waits for beyond that - its children leaving - is
+            // not in this box, and pretending to time it here would be a guess.
+            delays: {
+                enterMs: settings.enterDelaySeconds * 1000,
+                exitMs: settings.exitDelaySeconds * 1000,
+            },
+        }),
         [prefersReducedMotion, settings],
     );
     const initial = phase === "enter" ? motionProps.initial : motionProps.animate;
@@ -109,6 +126,8 @@ function PageAnimationPreview({
                         settings.exitAngleDegrees,
                         settings.enterDurationSeconds,
                         settings.exitDurationSeconds,
+                        settings.enterDelaySeconds,
+                        settings.exitDelaySeconds,
                         settings.exitBlocking,
                     ].join(":")}
                     className="h-9 w-14 rounded-md border border-primary/40 bg-primary/20 shadow-[0_0_24px_rgba(64,168,196,0.18)]"
@@ -127,12 +146,14 @@ function AnimationPhaseBlock({
     autoFallbackDirection,
     angleDegrees,
     durationSeconds,
+    delaySeconds,
     exitBlocking,
     showExitBlocking = false,
     onPresetChange,
     onDirectionChange,
     onAngleChange,
     onDurationChange,
+    onDelayChange,
     onExitBlockingChange,
 }: {
     label: string;
@@ -141,12 +162,14 @@ function AnimationPhaseBlock({
     autoFallbackDirection: Exclude<UIPageAnimationDirection, "auto">;
     angleDegrees: number;
     durationSeconds: number;
+    delaySeconds: number;
     exitBlocking?: boolean;
     showExitBlocking?: boolean;
     onPresetChange: (next: UIPageAnimationPreset) => void;
     onDirectionChange: (next: UIPageAnimationDirection) => void;
     onAngleChange: (next: number) => void;
     onDurationChange: (next: number) => void;
+    onDelayChange: (next: number) => void;
     onExitBlockingChange?: (next: boolean) => void;
 }) {
     const { t } = useTranslation();
@@ -247,6 +270,80 @@ function AnimationPhaseBlock({
                     />
                 </label>
             </div>
+            {/* Its own labelled row rather than a third column beside the seconds: the inspector is
+                narrow enough that a third column truncates the preset name to one character. */}
+            <label className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2">
+                <span className="min-w-0 text-2xs font-medium tracking-wide text-fg-subtle">
+                    {t("widgetChrome.pageAnimation.delay")}
+                </span>
+                <NumericDraftEnhancedInput
+                    committedDisplay={formatDurationSeconds(delaySeconds)}
+                    onFiniteNumber={value => onDelayChange(normalizeDurationInput(value))}
+                    inputMode="decimal"
+                    type="number"
+                    min={MIN_DURATION_SECONDS}
+                    max={MAX_DURATION_SECONDS}
+                    step={DURATION_STEP_SECONDS}
+                    unit="s"
+                    className="w-full min-w-0"
+                    popoverThreshold={128}
+                />
+            </label>
+        </div>
+    );
+}
+
+/**
+ * The half of the record that is about what this host's children do, rather than about the host.
+ *
+ * Kept out of the two phase blocks because it is not per-phase: the stagger spaces the children out
+ * both on the way in and on the way out, and the wait is what makes those two facts one behaviour -
+ * a container that waits, inside a Page that waits, leaves last.
+ */
+function ChildTimingBlock({
+    staggerSeconds,
+    waitsForChildren,
+    onStaggerChange,
+    onWaitsForChildrenChange,
+}: {
+    staggerSeconds: number;
+    waitsForChildren: boolean;
+    onStaggerChange: (next: number) => void;
+    onWaitsForChildrenChange: (next: boolean) => void;
+}) {
+    const { t } = useTranslation();
+    return (
+        <div className="space-y-2 rounded-md border border-edge bg-fill-subtle p-2">
+            <div className="flex min-h-7 items-center justify-between gap-2">
+                <span className="text-2xs font-semibold tracking-wide text-fg-muted">
+                    {t("widgetChrome.pageAnimation.children")}
+                </span>
+                <label className="flex min-w-0 items-center gap-2 text-2xs text-fg-muted">
+                    <span>{t("widgetChrome.pageAnimation.waitForChildren")}</span>
+                    <Switch
+                        checked={waitsForChildren}
+                        size="sm"
+                        onCheckedChange={onWaitsForChildrenChange}
+                    />
+                </label>
+            </div>
+            <label className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2">
+                <span className="min-w-0 text-2xs font-medium tracking-wide text-fg-subtle">
+                    {t("widgetChrome.pageAnimation.stagger")}
+                </span>
+                <NumericDraftEnhancedInput
+                    committedDisplay={formatDurationSeconds(staggerSeconds)}
+                    onFiniteNumber={value => onStaggerChange(normalizeDurationInput(value))}
+                    inputMode="decimal"
+                    type="number"
+                    min={MIN_DURATION_SECONDS}
+                    max={MAX_DURATION_SECONDS}
+                    step={DURATION_STEP_SECONDS}
+                    unit="s"
+                    className="w-full min-w-0"
+                    popoverThreshold={128}
+                />
+            </label>
         </div>
     );
 }
@@ -256,6 +353,8 @@ export function PageAnimationEditor({
     inherited = false,
     inheritedSettings,
     inheritLabel,
+    showExitBlocking = true,
+    showChildTiming = false,
     onChange,
     onInheritedChange,
 }: PageAnimationEditorProps) {
@@ -301,10 +400,12 @@ export function PageAnimationEditor({
                         autoFallbackDirection="right"
                         angleDegrees={ownSettings.enterAngleDegrees}
                         durationSeconds={ownSettings.enterDurationSeconds}
+                        delaySeconds={ownSettings.enterDelaySeconds}
                         onPresetChange={value => patch({ enter: value })}
                         onDirectionChange={value => patch({ enterDirection: value })}
                         onAngleChange={value => patch({ enterAngleDegrees: value })}
                         onDurationChange={value => patch({ enterDurationSeconds: value })}
+                        onDelayChange={value => patch({ enterDelaySeconds: value })}
                     />
                     <AnimationPhaseBlock
                         label={t("widgetChrome.pageAnimation.exit")}
@@ -313,14 +414,24 @@ export function PageAnimationEditor({
                         autoFallbackDirection="left"
                         angleDegrees={ownSettings.exitAngleDegrees}
                         durationSeconds={ownSettings.exitDurationSeconds}
+                        delaySeconds={ownSettings.exitDelaySeconds}
                         exitBlocking={ownSettings.exitBlocking}
-                        showExitBlocking
+                        showExitBlocking={showExitBlocking}
                         onPresetChange={value => patch({ exit: value })}
                         onDirectionChange={value => patch({ exitDirection: value })}
                         onAngleChange={value => patch({ exitAngleDegrees: value })}
                         onDurationChange={value => patch({ exitDurationSeconds: value })}
+                        onDelayChange={value => patch({ exitDelaySeconds: value })}
                         onExitBlockingChange={value => patch({ exitBlocking: value })}
                     />
+                    {showChildTiming ? (
+                        <ChildTimingBlock
+                            staggerSeconds={ownSettings.childStaggerSeconds}
+                            waitsForChildren={ownSettings.exitWaitsForChildren}
+                            onStaggerChange={value => patch({ childStaggerSeconds: value })}
+                            onWaitsForChildrenChange={value => patch({ exitWaitsForChildren: value })}
+                        />
+                    ) : null}
                 </>
             ) : null}
 

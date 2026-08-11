@@ -4,6 +4,16 @@ export const UI_PAGE_ANIMATION_DIRECTIONS = ["auto", "left", "right", "up", "dow
 export type UIPageAnimationPreset = (typeof UI_PAGE_ANIMATION_PRESETS)[number];
 export type UIPageAnimationDirection = (typeof UI_PAGE_ANIMATION_DIRECTIONS)[number];
 
+/**
+ * One animation record, used by every host that can enter and leave: a Surface, a Page component's
+ * override of the Surface it shows, and any element on a Surface.
+ *
+ * They share the type because they share the mental model - pick a preset, a direction, how long it
+ * takes, and when it starts. What differs is only which fields a host offers: an element has no
+ * navigation to block, so it does not offer {@link exitBlocking}, and only a host that owns children
+ * offers {@link childStaggerSeconds} / {@link exitWaitsForChildren}. The fields are always present in
+ * the record so a hand-edited or older document reads back the same way whichever host wrote it.
+ */
 export type UIPageAnimationSettings = {
     enter: UIPageAnimationPreset;
     exit: UIPageAnimationPreset;
@@ -13,6 +23,15 @@ export type UIPageAnimationSettings = {
     exitAngleDegrees: number;
     enterDurationSeconds: number;
     exitDurationSeconds: number;
+    /** Held before this host's own enter starts, counted from the moment its subtree begins entering. */
+    enterDelaySeconds: number;
+    /** Held before this host's own exit starts, counted from the moment its subtree begins exiting. */
+    exitDelaySeconds: number;
+    /** Added to each successive direct child, so a row of children arrives (and leaves) one after another. */
+    childStaggerSeconds: number;
+    /** Hold this host's own exit until every child has finished leaving. Chains through nested parents. */
+    exitWaitsForChildren: boolean;
+    /** Surfaces only: hold the incoming Page until this exit has finished. */
     exitBlocking: boolean;
 };
 
@@ -33,6 +52,13 @@ export const DEFAULT_UI_PAGE_ANIMATION_SETTINGS: UIPageAnimationSettings = {
     exitAngleDegrees: 180,
     enterDurationSeconds: DEFAULT_PAGE_ANIMATION_DURATION_SECONDS,
     exitDurationSeconds: DEFAULT_PAGE_ANIMATION_DURATION_SECONDS,
+    enterDelaySeconds: 0,
+    exitDelaySeconds: 0,
+    childStaggerSeconds: 0,
+    // True by default, and free: a host whose children animate nothing waits zero. It is the reading
+    // of "the Page left" an author already has - the Page is what its contents are, so it has not
+    // left while they are still on screen. Turning it off is the deliberate choice.
+    exitWaitsForChildren: true,
     exitBlocking: true,
 };
 
@@ -82,6 +108,13 @@ export function normalizeUIPageAnimationSettings(raw: unknown): UIPageAnimationS
         exitAngleDegrees: normalizeAngleDegrees(raw.exitAngleDegrees, DEFAULT_UI_PAGE_ANIMATION_SETTINGS.exitAngleDegrees),
         enterDurationSeconds: normalizeDurationSeconds(raw.enterDurationSeconds, durationFallback),
         exitDurationSeconds: normalizeDurationSeconds(raw.exitDurationSeconds, durationFallback),
+        enterDelaySeconds: normalizeDurationSeconds(raw.enterDelaySeconds, DEFAULT_UI_PAGE_ANIMATION_SETTINGS.enterDelaySeconds),
+        exitDelaySeconds: normalizeDurationSeconds(raw.exitDelaySeconds, DEFAULT_UI_PAGE_ANIMATION_SETTINGS.exitDelaySeconds),
+        childStaggerSeconds: normalizeDurationSeconds(raw.childStaggerSeconds, DEFAULT_UI_PAGE_ANIMATION_SETTINGS.childStaggerSeconds),
+        exitWaitsForChildren:
+            typeof raw.exitWaitsForChildren === "boolean"
+                ? raw.exitWaitsForChildren
+                : DEFAULT_UI_PAGE_ANIMATION_SETTINGS.exitWaitsForChildren,
         exitBlocking: typeof raw.exitBlocking === "boolean" ? raw.exitBlocking : DEFAULT_UI_PAGE_ANIMATION_SETTINGS.exitBlocking,
     };
 }
@@ -90,16 +123,13 @@ export function normalizeOptionalUIPageAnimationSettings(raw: unknown): UIPageAn
     return isRecord(raw) ? normalizeUIPageAnimationSettings(raw) : undefined;
 }
 
+/**
+ * Compared key by key over the default record rather than field by field, so a field added to
+ * {@link UIPageAnimationSettings} later cannot quietly fall out of the comparison - which for an
+ * element is the difference between "this animation is worth storing" and losing it on the next edit.
+ */
 export function isDefaultUIPageAnimationSettings(settings: UIPageAnimationSettings): boolean {
-    return (
-        settings.enter === DEFAULT_UI_PAGE_ANIMATION_SETTINGS.enter &&
-        settings.exit === DEFAULT_UI_PAGE_ANIMATION_SETTINGS.exit &&
-        settings.enterDirection === DEFAULT_UI_PAGE_ANIMATION_SETTINGS.enterDirection &&
-        settings.exitDirection === DEFAULT_UI_PAGE_ANIMATION_SETTINGS.exitDirection &&
-        settings.enterAngleDegrees === DEFAULT_UI_PAGE_ANIMATION_SETTINGS.enterAngleDegrees &&
-        settings.exitAngleDegrees === DEFAULT_UI_PAGE_ANIMATION_SETTINGS.exitAngleDegrees &&
-        settings.enterDurationSeconds === DEFAULT_UI_PAGE_ANIMATION_SETTINGS.enterDurationSeconds &&
-        settings.exitDurationSeconds === DEFAULT_UI_PAGE_ANIMATION_SETTINGS.exitDurationSeconds &&
-        settings.exitBlocking === DEFAULT_UI_PAGE_ANIMATION_SETTINGS.exitBlocking
+    return (Object.keys(DEFAULT_UI_PAGE_ANIMATION_SETTINGS) as (keyof UIPageAnimationSettings)[]).every(
+        key => settings[key] === DEFAULT_UI_PAGE_ANIMATION_SETTINGS[key],
     );
 }
