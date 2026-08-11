@@ -166,9 +166,8 @@ type SafeAreaDeviceSpec = {
  * the portrait top inset, 21pt home indicator) is from the iPhone X measurements and has held for
  * every generation since.
  *
- * ⚠ **The Android entry is a typical device, not a measured one.** Cutout geometry is per-OEM and
- * no first-party table exists; its name says so. The honest fix is to read `env(safe-area-inset-*)`
- * off a real handset, which nothing in this product does yet.
+ * This list is iPhone and iPad only — Android has no per-device numbers to copy, and is carried as
+ * AOSP cutout shapes instead; see `ANDROID_CUTOUT_PRESETS` for why.
  */
 const SAFE_AREA_DEVICES: readonly SafeAreaDeviceSpec[] = [
     // 750x1334 @2x. Home button: no ears and no home indicator, so with the status bar hidden it is
