@@ -35,6 +35,11 @@ const PRODUCER_DIRS = [
     "shared/documents",
     "main/app/application/managers/vcs",
     "renderer/lib/vcs",
+    // The comparison tab and the merge panel. Not producers of label keys, but the same failure
+    // reaches the author from here: a `documentDiff.*` string these write renders as itself, and
+    // `tsc` has no opinion about it either, because `t()` takes a key union that a hand-written
+    // dotted string satisfies only if it is right.
+    "renderer/apps/workspace/modules/vcs-changes",
 ];
 
 /**
@@ -129,6 +134,18 @@ function emittedCountKeys(text: (rel: string) => string, files: string[]): Map<s
 const enKeys = new Set(flattenCatalog(en).keys());
 const zhKeys = new Set(flattenCatalog(zh).keys());
 
+/**
+ * Whether a key a producer wrote resolves to text in this catalogue.
+ *
+ * A key passed to `tn()` names the BASE of a plural pair, so the catalogue holds `<key>.one` and
+ * `<key>.other` and never `<key>` itself. Without this, every pluralised line in a scanned file
+ * would be reported as missing from both catalogues - a false positive that would be silenced by
+ * un-pluralising the copy, which is the opposite of what this test is protecting.
+ */
+function resolves(keys: ReadonlySet<string>, key: string): boolean {
+    return keys.has(key) || keys.has(`${key}.other`);
+}
+
 describe("documentDiff producer keys", () => {
     const emitted = new Map([...emittedLabelKeys(), ...emittedCountKeys(sourceOf, PRODUCER_FILES)]);
 
@@ -142,7 +159,7 @@ describe("documentDiff producer keys", () => {
 
     for (const [locale, keys] of [["en", enKeys], ["zh", zhKeys]] as const) {
         it(`translates every key a producer emits in ${locale}`, () => {
-            const missing = [...emitted.keys()].filter((key) => !keys.has(key)).sort();
+            const missing = [...emitted.keys()].filter((key) => !resolves(keys, key)).sort();
 
             expect(
                 missing,

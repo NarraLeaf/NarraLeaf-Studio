@@ -189,6 +189,54 @@ export const documentDiff = {
         collapse: "Hide what changed inside",
         compareWithPrevious: "Compare with the previous version",
     },
+    /**
+     * The headings changed files are grouped under.
+     *
+     * Named after the panels an author edits those things in, not after the folders they live in:
+     * the grouping exists so a comparison reads as "the story changed" rather than as a path list.
+     * The classification is in `renderer/lib/vcs/changeCategory.ts`.
+     */
+    category: {
+        story: "Story",
+        characters: "Characters",
+        interface: "Interface",
+        assets: "Assets",
+        localization: "Localization",
+        audio: "Audio",
+        settings: "Project",
+        other: "Other",
+    },
+    /**
+     * The comparison's two panes: an index of changed files, and one file's changes beside it.
+     *
+     * Everything here is about navigating the comparison. What a change SAYS is under the tier keys
+     * above, and is the same wherever the change is drawn.
+     */
+    shell: {
+        fileList: "Changed files",
+        resize: "Resize the file list",
+        /** Only reachable by closing every heading, which is a thing an author can do. */
+        selectPrompt: "Open a heading and pick a file to see what changed in it.",
+        /** What one file's row says when the file was modified rather than added or removed. */
+        changes: {
+            one: "{count} change",
+            other: "{count} changes",
+        },
+        fileAdded: "Added",
+        fileRemoved: "Removed",
+        fileMoved: "Moved",
+        /**
+         * Said once under a heading, never on a row.
+         *
+         * Covers both shortfalls at once because the author's next move is the same for either: a
+         * file compared below the semantic tier and a file whose change list was cut short are both
+         * files whose detail has the specific caveat on it.
+         */
+        partial: {
+            one: "{count} file here was not compared in full",
+            other: "{count} files here were not compared in full",
+        },
+    },
     tab: {
         workingTree: "Changes",
         between: "{from} → {to}",

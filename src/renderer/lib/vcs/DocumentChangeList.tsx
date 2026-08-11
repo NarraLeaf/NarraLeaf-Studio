@@ -15,10 +15,17 @@ import {
 /**
  * One document's changes, drawn the same way in both places they appear.
  *
- * The version rail expands it under a file row at 320px and the `vcs-changes` tab draws it at editor
- * width; `dense` is the whole of the difference, because two renderings of one list would drift and
- * the author would have to learn each of them. Everything that can be wrong about the list - what
- * fits, what was left out, how a label becomes text - is in `documentChangeView`, not here.
+ * The version rail expands it under a file row at 320px; the `vcs-changes` tab draws it at editor
+ * width, as the body of its detail pane and through the generic presenter
+ * (`vcs/presenters/GenericChangeDetail`). `dense` is the whole of the difference, because two
+ * renderings of one list would drift and the author would have to learn each of them. Everything
+ * that can be wrong about the list - what fits, what was left out, how a label becomes text - is in
+ * `documentChangeView`, not here.
+ *
+ * **It draws one document, and is no longer what a list of documents is made of.** The tab used to
+ * mount one of these per changed file, stacked; now the file list is an index of one line per file
+ * (`vcs/changeIndex`) and exactly one of these is on screen at a time. That is why nothing here
+ * needs to be smaller than it is: the caveats below have a pane to be stated in.
  *
  * Three things this must never do quietly, all of them the same failure in different clothes:
  *

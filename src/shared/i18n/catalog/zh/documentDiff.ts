@@ -136,6 +136,35 @@ export const documentDiff = {
         collapse: "收起内部改动",
         compareWithPrevious: "与上一个版本对比",
     },
+    /** 变更文件的分组标题，用作者编辑它们的面板名，而不是它们在磁盘上的目录名。 */
+    category: {
+        story: "故事",
+        characters: "角色",
+        interface: "界面",
+        assets: "素材",
+        localization: "本地化",
+        audio: "音频",
+        settings: "项目",
+        other: "其他",
+    },
+    /** 对比的两栏：左边是变更文件索引，右边是其中一个文件的改动。 */
+    shell: {
+        fileList: "变更文件",
+        resize: "调整文件列表宽度",
+        selectPrompt: "展开一个分组并选中文件，即可查看其中的改动",
+        changes: {
+            one: "{count} 处改动",
+            other: "{count} 处改动",
+        },
+        fileAdded: "新增",
+        fileRemoved: "删除",
+        fileMoved: "移动",
+        /** 每组只说一次，不逐行重复；具体是哪一种，写在该文件自己的详情里。 */
+        partial: {
+            one: "本组有 {count} 个文件未被完整比较",
+            other: "本组有 {count} 个文件未被完整比较",
+        },
+    },
     tab: {
         workingTree: "改动",
         between: "{from} → {to}",
