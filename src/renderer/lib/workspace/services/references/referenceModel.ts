@@ -385,6 +385,12 @@ export interface BlueprintAssetPin {
     paramKey: string;
     /** Only an input can be fed by an edge, so only an input can be followed to a source. */
     input: boolean;
+    /**
+     * `"published"` pins hold nothing and hide nothing - see {@link BlueprintAssetPinRef.origin}.
+     * They are declared here anyway, because being declared is what tells the edge walk that a
+     * value arriving from one is accounted for rather than unreadable.
+     */
+    origin?: "stored" | "published";
 }
 
 /**
@@ -593,7 +599,7 @@ export function extractBlueprintAssetReferences(
                 const readParamKeys = new Set<string>();
 
                 for (const pin of assetPins) {
-                    if (!readParamKeys.has(pin.paramKey)) {
+                    if (pin.origin !== "published" && !readParamKeys.has(pin.paramKey)) {
                         readParamKeys.add(pin.paramKey);
                         // `normalizeBlueprintImageAssetValue` also accepts a bare string, so legacy
                         // graphs that stored the raw id instead of the `{kind:"imageAsset"}` wrapper
@@ -611,8 +617,10 @@ export function extractBlueprintAssetReferences(
                         if (!source) {
                             continue;
                         }
-                        // A source that stores the asset on a declared pin of its own is already
-                        // reported from its own node; reading it again would double the site.
+                        // A source pin that declares what it carries is not a hole. Either it
+                        // stores the asset, in which case its own node already reported it and
+                        // reading it again would double the site, or it publishes one the host
+                        // resolves at run time, which is no library reference at all.
                         if (assetPinsFor(source.type).some(sourcePin => sourcePin.pinId === edge.from.port)) {
                             continue;
                         }
