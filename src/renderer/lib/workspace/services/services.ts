@@ -82,6 +82,13 @@ import type {
 } from "@shared/types/blueprint/document";
 import type { VariableRegistry, VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
 import type { AudioTrackChannel, ProjectAudioTrack, ProjectAudioTrackDocument } from "@shared/types/audioTrack";
+import type {
+    AppTagBaseIdentity,
+    AppTagIdentity,
+    AppTagOverrideKey,
+    ProjectAppTag,
+    ProjectAppTagDocument,
+} from "@shared/types/appTag";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
 import type {
@@ -202,6 +209,8 @@ enum Services {
     VariableRegistry = "variableRegistry",
     /** Project-level audio tracks: the authoring-time mix presets every audio surface points at */
     AudioTracks = "audioTracks",
+    /** The build variants the project ships as, and what each one says differently from the project */
+    AppTags = "appTags",
     /** The project's own palette: the colours every `nlbrand:` link in the project resolves through */
     Brand = "brand",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
@@ -515,6 +524,44 @@ interface IAudioTrackService extends IService {
     /** Refuses the three seeded buses; promotes the children of whatever it does delete. */
     deleteTrack(id: string): boolean;
     moveTrack(id: string, beforeId: string | null): void;
+}
+
+/**
+ * The project's build variants - what the same project can be shipped as, and what each variant says
+ * differently from the project itself. See `@shared/types/appTag` for the model.
+ *
+ * Every read answers: the release tag is prepended rather than stored, so a project with no document
+ * still has one tag and an unknown id still resolves.
+ */
+interface IAppTagService extends IService {
+    load(): Promise<ProjectAppTag[]>;
+    save(document: ProjectAppTagDocument): Promise<void>;
+    getDocument(): ProjectAppTagDocument;
+    /** Release first, then the author's own. */
+    listTags(): ProjectAppTag[];
+    listAuthoredTags(): ProjectAppTag[];
+    getTag(id: string): ProjectAppTag | undefined;
+    /** Whether the project has a tag under this id. Always true for the release tag. */
+    hasTag(id: string | null | undefined): boolean;
+    /** Total: an unknown or blank id answers the release tag. */
+    resolveTag(id: string | null | undefined): ProjectAppTag;
+    resolveIdentity(id: string | null | undefined, base: AppTagBaseIdentity): AppTagIdentity;
+    onTagsChanged(handler: (tags: ProjectAppTag[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    applyTagMutation(mutator: (tags: ProjectAppTag[]) => ProjectAppTag[]): void;
+    createTag(input?: { name?: string }): ProjectAppTag;
+    /** Refuses the release tag and a blank name. Stored references hold the id, so they follow. */
+    renameTag(id: string, name: string): boolean;
+    /** A blank value clears the key instead of storing it. */
+    setOverride(id: string, key: AppTagOverrideKey, value: string): boolean;
+    /** Restore one key to the inherited value by removing it. */
+    clearOverride(id: string, key: AppTagOverrideKey): boolean;
+    clearAllOverrides(id: string): boolean;
+    listOverriddenKeys(id: string): AppTagOverrideKey[];
+    /** Refuses the release tag. References are not rewritten; they resolve to release. */
+    deleteTag(id: string): boolean;
 }
 
 /**
@@ -1321,7 +1368,8 @@ export {
     IWorkspaceReloadService, IVideoService,
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IBrandService,
+    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IAppTagService,
+    IBrandService,
     IPuppetDescriptionService,
     IMediaSupportService,
     ITestRunService, IRecoveryService,

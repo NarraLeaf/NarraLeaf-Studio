@@ -73,6 +73,7 @@ export const HELP_TOPIC_IDS = [
     "versionServer",
     "freeze",
     "build",
+    "appTags",
     "icons",
     "signing",
     "assetProtection",
@@ -339,6 +340,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "ship",
         related: ["icons", "signing", "assetProtection", "lint"],
         learnMore: DOCS_URL,
+    },
+    {
+        id: "appTags",
+        section: "ship",
+        related: ["build", "lint"],
     },
     {
         id: "icons",

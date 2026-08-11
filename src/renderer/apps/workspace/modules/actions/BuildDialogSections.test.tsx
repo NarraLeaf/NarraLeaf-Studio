@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BuildPreflightSection } from "@shared/types/gameBuild";
 import type { SigningCredential } from "@shared/types/signing";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
 import {
     buildPluginEntries,
@@ -234,6 +235,8 @@ describe("ContentSection", () => {
         artifactBaseName: "game",
         productName: "Game",
         appId: "com.example.game",
+        appTags: [RELEASE_APP_TAG],
+        baseIdentity: { displayName: "Game", identifier: "com.example.game", version: "1.0.0" },
         locales: [],
         defaultOutputDir: "/tmp/dist",
         electronMirror: "",

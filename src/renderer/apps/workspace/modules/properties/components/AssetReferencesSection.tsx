@@ -4,7 +4,9 @@ import { useTranslation } from "@/lib/i18n";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Services } from "@/lib/workspace/services/services";
 import { ReferenceService } from "@/lib/workspace/services/references/ReferenceService";
-import type { AssetReference, ReferenceSiteKind } from "@/lib/workspace/services/references/referenceModel";
+import type { AssetReference, ReferenceIndexGap, ReferenceSiteKind } from "@/lib/workspace/services/references/referenceModel";
+import { referenceCoverageGapsFor } from "@/lib/workspace/services/assets/assetDeleteGuard";
+import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
 import { jumpToSearchTarget } from "../../search/searchJump";
@@ -28,11 +30,12 @@ const KIND_ORDER: readonly ReferenceSiteKind[] = ["story", "blueprint", "uiEleme
  * global search uses, so a row jumps straight to the block or blueprint node holding the reference;
  * sites that have no deep link yet (voice takes, character variants) render as plain rows.
  */
-export function AssetReferencesSection({ assetId }: { assetId: string }) {
+export function AssetReferencesSection({ assetId, assetType }: { assetId: string; assetType: AssetType }) {
     const { t, tn } = useTranslation();
     const { context } = useWorkspace();
     const { openEditorTab, setPanelVisibility } = useRegistry();
     const [references, setReferences] = useState<AssetReference[]>([]);
+    const [coverageGaps, setCoverageGaps] = useState<ReferenceIndexGap[]>([]);
     const [building, setBuilding] = useState(true);
 
     const referenceService = context ? context.services.get<ReferenceService>(Services.Reference) : null;
@@ -45,6 +48,10 @@ export function AssetReferencesSection({ assetId }: { assetId: string }) {
         const refresh = () => {
             if (mounted) {
                 setReferences(referenceService.getReferences(assetId));
+                // Read alongside the references, never inferred from their being empty: "nothing
+                // uses this" and "the index could not look" produce the same empty list, and this
+                // panel is where an author decides the file is safe to remove.
+                setCoverageGaps(referenceCoverageGapsFor(referenceService.getIndexResult(), [assetType]));
             }
         };
         referenceService
@@ -67,7 +74,7 @@ export function AssetReferencesSection({ assetId }: { assetId: string }) {
             mounted = false;
             unsubscribe();
         };
-    }, [referenceService, assetId]);
+    }, [referenceService, assetId, assetType]);
 
     const grouped = useMemo(() => {
         return KIND_ORDER.map(kind => ({
@@ -101,6 +108,15 @@ export function AssetReferencesSection({ assetId }: { assetId: string }) {
 
             {building ? (
                 <p className="text-xs text-fg-subtle">{t("properties.references.building")}</p>
+            ) : references.length === 0 && coverageGaps.length > 0 ? (
+                <div className="space-y-0.5">
+                    <p className="text-xs text-fg-subtle">{t("properties.references.unknown")}</p>
+                    {coverageGaps[0].location ? (
+                        <p className="text-2xs text-fg-subtle">
+                            {t("properties.references.unknownDetail", { location: coverageGaps[0].location })}
+                        </p>
+                    ) : null}
+                </div>
             ) : references.length === 0 ? (
                 <p className="text-xs text-fg-subtle">{t("properties.references.none")}</p>
             ) : (

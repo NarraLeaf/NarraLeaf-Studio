@@ -184,18 +184,41 @@ describe("tier 3 and 4 - no spec", () => {
         expect(diff.changes[0].path).toEqual(["a"]);
     });
 
-    it("reports bytes that are not JSON by size alone", () => {
+    it("hands an asset to the content step rather than reporting it as raw bytes", () => {
+        // The step between structural and opaque. These two are truncated PNG signatures, so no
+        // dimensions come out of them, and the size row is what is left - but it is the content
+        // step's row, which is how a real PNG gets a dimension row beside it.
         const diff = diffDocumentBytes({
             path: "assets/content/ab/cd/portrait.png",
             base: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
             head: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d]),
         });
 
+        // Reported at the weakest tier on purpose: `DocumentDiffTier` is shared with a renderer
+        // that switches over it exhaustively, and its own contract says a rung must never claim
+        // to be a higher one.
+        expect(diff.tier).toBe("opaque");
+        expect(diff.changes).toEqual([{
+            path: ["size"],
+            kind: "changed",
+            label: { key: "documentDiff.content.size", params: { fromBytes: 4, toBytes: 5 } },
+        }]);
+    });
+
+    it("reports text that is not JSON by size alone, without calling the format unrecognised", () => {
+        // The content step is skipped for a path whose class says its bytes were worth reading.
+        // "Studio does not recognise this format" about an author's `.txt` would be false.
+        const diff = diffDocumentBytes({
+            path: "notes/todo.txt",
+            base: Buffer.from("one"),
+            head: Buffer.from("two!"),
+        });
+
         expect(diff.tier).toBe("opaque");
         expect(diff.changes).toEqual([{
             path: [],
             kind: "changed",
-            label: { key: "documentDiff.opaque.changed", params: { fromBytes: 4, toBytes: 5 } },
+            label: { key: "documentDiff.opaque.changed", params: { fromBytes: 3, toBytes: 4 } },
         }]);
     });
 

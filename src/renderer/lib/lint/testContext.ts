@@ -20,6 +20,9 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         assets: [],
         referencedAssetIds: new Set<string>(),
         assetReferences: new Map(),
+        // A rule test asserts on the rule, so the index it reads is complete unless the test is
+        // about what happens when it is not.
+        assetIndex: { complete: true, gaps: [] },
         characters: [],
         variableRegistry: [],
         persistentNameCollisions: [],

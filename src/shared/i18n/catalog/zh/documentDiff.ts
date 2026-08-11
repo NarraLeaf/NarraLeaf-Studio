@@ -19,6 +19,26 @@ export const documentDiff = {
         changed: "已改动（{fromBytes} → {toBytes}）",
         unread: "已改动，未查看内容",
     },
+    /**
+     * 素材：不读内容，只读文件头。
+     *
+     * 由 `vcs/diff/contentDiff.ts` 发出。每一行都是有条件的：把时长写在文件末尾的容器报不出时长，
+     * 名称表落在前缀之外的字体报不出字族。
+     *
+     * `changed` / `notInspected` / `unrecognized` 是三件不同的事，必须保持三句话：第一句是文件头
+     * 读到了、数值相同；第二句是这次比较没有花这些字节；第三句是 Studio 对这个格式永远说不出更多。
+     */
+    content: {
+        size: "大小（{fromBytes} → {toBytes}）",
+        dimensions: "尺寸（{fromWidth}×{fromHeight} → {toWidth}×{toHeight}）",
+        duration: "时长（{fromSeconds} 秒 → {toSeconds} 秒）",
+        sampleRate: "采样率（{fromHertz} Hz → {toHertz} Hz）",
+        family: "字族（{from} → {to}）",
+        changed: "内容已改动",
+        notInspected: "内容已改动，未读取文件头。",
+        unrecognized: "内容已改动。Studio 无法识别此格式。",
+        moved: "自 {from} 移动而来",
+    },
     summary: {
         title: "名称",
         count: "{name}",
@@ -30,6 +50,7 @@ export const documentDiff = {
         root: "文档本身",
     },
     count: {
+        appTags: "构建版本",
         assets: "素材",
         audioTracks: "音轨",
         brandColors: "配色",

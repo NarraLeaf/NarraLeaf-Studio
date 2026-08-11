@@ -258,6 +258,133 @@ describe.skipIf(!supported)("revisionReader", () => {
 });
 
 /**
+ * What a content address actually means, measured rather than assumed.
+ *
+ * The rename pairing in `diff/contentDiff.ts` claims that two files hold the same bytes when
+ * their `size` and `hash` agree, and it claims it **without reading either of them** - which is
+ * the only reason tidying an assets folder does not cost a few hundred megabytes of reads. An
+ * address also carries a `context`, and nothing in the SDK's types or the library's headers says
+ * what its scope is.
+ *
+ * **The two halves of an address are not the same kind of thing, and this is where that was
+ * found out.** Measured here on a real repository:
+ *
+ *  - `hash` is of the CONTENT. Two files with identical bytes at unrelated paths report the
+ *    same one, and two files with different bytes - including two of exactly equal length -
+ *    do not. That is what makes the pairing possible at all.
+ *  - `context` is NOT. The same two identical files came back with different contexts, sharing
+ *    only a leading prefix (`019ff260ab5f7682bf3f06…2fe7c8f4c0` against
+ *    `…12503f5908`), which is the shape of a per-entry generated id rather than of a digest.
+ *
+ * So `context` must be carried along to `readAddress` and must never be part of deciding that
+ * two files are the same: comparing it would make the pairing fire exactly never, silently, and
+ * an author reorganising their assets would keep getting the wall of delete-plus-add rows the
+ * whole feature exists to remove. It is not compared in `probesMatch`, and this is why.
+ *
+ * Each experiment builds its **own repository**, and that is not tidiness: Lore's repository lock
+ * is exclusive and blocking within a single process (docs/version-control.md §4.28), so calling
+ * `openStore` on a repository this process already holds does not fail - it waits forever.
+ */
+describe.skipIf(!supported)("what a content address means", () => {
+    /** One throwaway repository, one commit, one tree walk, released before returning. */
+    async function walkFreshRepository(
+        label: string,
+        files: Record<string, Buffer>,
+    ): Promise<Map<string, { size: number; hash: string; context: string }>> {
+        const here = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `nl-address-${label}-`)));
+        const localGlobals: LoreGlobals = {
+            repositoryPath: here,
+            offline: true,
+            identity: "test@narraleaf",
+            cache: true,
+        };
+        const created = await createRepository(localGlobals, {
+            repositoryUrl: "lore://127.0.0.1:41337/test",
+            description: `address test ${label}`,
+        });
+
+        for (const [relative, bytes] of Object.entries(files)) {
+            const absolute = path.join(here, relative);
+            fs.mkdirSync(path.dirname(absolute), { recursive: true });
+            fs.writeFileSync(absolute, bytes);
+        }
+        await stage(localGlobals, [here]);
+        const revision = await commit(localGlobals, label);
+        await flushRepository(localGlobals);
+
+        const localStore = await openStore(localGlobals, here);
+        try {
+            const entries = await listFilesAt(localGlobals, localStore, created.repository, revision.revision);
+            return new Map(entries.map(entry => [entry.path, {
+                size: entry.size,
+                hash: entry.hash,
+                context: entry.context,
+            }]));
+        } finally {
+            // flush -> closeStore -> release, in that order (§4.19). Anything less leaves the
+            // directory locked and the next experiment in this file waiting on it.
+            await flushRepository(localGlobals).catch(() => undefined);
+            await closeStore(localGlobals, localStore).catch(() => undefined);
+            await releaseRepository(localGlobals).catch(() => undefined);
+            fs.rmSync(here, { recursive: true, force: true });
+        }
+    }
+
+    const SAME = Buffer.from("the very same bytes, under two names\n");
+
+    it("gives two files with identical contents the same address under different names", async () => {
+        const walked = await walkFreshRepository("same", {
+            "assets/one.bin": SAME,
+            "elsewhere/deeper/two.bin": SAME,
+        });
+
+        const one = walked.get("assets/one.bin");
+        const two = walked.get("elsewhere/deeper/two.bin");
+        expect(one, "the walk did not find the first file").toBeDefined();
+        expect(two, "the walk did not find the second file").toBeDefined();
+
+        expect(one!.size).toBe(SAME.length);
+        expect(two!.size).toBe(SAME.length);
+        // The finding the pairing rests on: `hash` is of the CONTENT, not of the path.
+        expect(two!.hash).toBe(one!.hash);
+        // And the finding that keeps `context` out of the predicate. Asserted rather than left
+        // unmentioned, so that a future library version making contexts converge shows up here
+        // as a failing test to think about rather than as silently dead code somewhere else.
+        expect(two!.context).not.toBe(one!.context);
+    }, 180_000);
+
+    it("gives two files with different contents different addresses", async () => {
+        // The other half, and the one that would make the pairing dangerous rather than useless
+        // if it failed: a hash that collided across contents would report a rename that never
+        // happened, and the file the author actually deleted would vanish from the change list.
+        const walked = await walkFreshRepository("differ", {
+            "assets/one.bin": Buffer.from("first\n"),
+            "assets/two.bin": Buffer.from("second, and a different length\n"),
+        });
+
+        const one = walked.get("assets/one.bin");
+        const two = walked.get("assets/two.bin");
+        expect(one).toBeDefined();
+        expect(two).toBeDefined();
+        expect(two!.hash).not.toBe(one!.hash);
+    }, 180_000);
+
+    it("gives two same-sized files with different contents different addresses", async () => {
+        // Size alone is not evidence, which is why `probesMatch` requires both fields. These two
+        // are byte-for-byte the same length and hold different things.
+        const walked = await walkFreshRepository("samesize", {
+            "assets/one.bin": Buffer.from("AAAAAAAAAAAAAAAA"),
+            "assets/two.bin": Buffer.from("BBBBBBBBBBBBBBBB"),
+        });
+
+        const one = walked.get("assets/one.bin");
+        const two = walked.get("assets/two.bin");
+        expect(one!.size).toBe(two!.size);
+        expect(two!.hash).not.toBe(one!.hash);
+    }, 180_000);
+});
+
+/**
  * The §4.30 regression, on a real two-branch repository.
  *
  * Measured during the spikes and recorded in docs/version-control.md §4.30: `readRevisionGraph` reads

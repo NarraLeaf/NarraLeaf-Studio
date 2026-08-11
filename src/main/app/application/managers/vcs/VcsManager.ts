@@ -35,6 +35,9 @@ import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backen
 // at load time. See backend.ts for why that matters.
 import type { LoreGlobals, LoreHex, StoreHandle } from "./lore";
 import type { InitRepositoryOptions } from "./repository";
+// Type-only for the same reason: `revisionReader` reaches the binding, and only its shapes are
+// wanted here.
+import type { RevisionFileEntry } from "./revisionReader";
 // Value imports, and safe to be ones for the same reason as the two below: pure policy over bytes,
 // with the reader imported for types alone. `documentDiff` is also where the main process picks up
 // `@shared/documents/specs`, so this edge is what populates the document registry in this process.
@@ -1174,16 +1177,12 @@ export class VcsManager extends Manager {
             const cached = session.diffs.get(key);
             if (cached) return cached;
 
+            const reader = this.revisionEntryReader(session, backend);
             const result = await diffRevisions(
                 {
                     changedPaths: (a, b) => backend.changedPaths(session.globals, a, b),
-                    documentsAt: (revision, paths) => backend.documentsAt(
-                        session.globals,
-                        session.store,
-                        session.repositoryId,
-                        revision,
-                        { paths },
-                    ),
+                    entriesAt: reader.entriesAt,
+                    readAt: reader.readAt,
                 },
                 { from, to, onDegrade: (reason) => this.app.logger.info("[Vcs] Diff degraded:", reason) },
             );
@@ -1210,21 +1209,21 @@ export class VcsManager extends Manager {
     public async diffWorkingTree(projectPath: string): Promise<VcsWorkingTreeDiffResult> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
+            const reader = this.revisionEntryReader(session, backend);
             return diffWorkingTree(
                 {
                     status: () => backend.getStatus(session.globals),
-                    documentsAt: (revision, paths) => backend.documentsAt(
-                        session.globals,
-                        session.store,
-                        session.repositoryId,
-                        revision,
-                        { paths },
-                    ),
+                    entriesAt: reader.entriesAt,
+                    readAt: reader.readAt,
+                    // Both of these go through the backend's own guard rather than a `path.join`:
+                    // a status entry is repository-relative text and these are the lines that
+                    // would otherwise reach any file on the disk (§4.16 - the compiler cannot tell
+                    // the two directions of path apart).
+                    statWorking: async (relative) => {
+                        const absolute = backend.repositoryPath(session.root, relative);
+                        return fs.stat(absolute).then((stat) => ({ size: stat.size })).catch(() => null);
+                    },
                     readWorking: async (relative) => {
-                        // Through the backend's own guard rather than a `path.join`: a status entry
-                        // is repository-relative text and this is the line that would otherwise read
-                        // any file on the disk (§4.16 - the compiler cannot tell the two directions
-                        // of path apart).
                         const absolute = backend.repositoryPath(session.root, relative);
                         return fs.readFile(absolute).catch(() => null);
                     },
@@ -1232,6 +1231,49 @@ export class VcsManager extends Manager {
                 { onDegrade: (reason) => this.app.logger.info("[Vcs] Diff degraded:", reason) },
             );
         });
+    }
+
+    /**
+     * The two revision-side ports a comparison needs, sharing **one tree walk per revision**.
+     *
+     * The pairing is the point. `entriesAt` walks a revision's tree and reads nothing;
+     * `readAt` then fetches blobs by the addresses that walk already produced, so it never
+     * walks again. Issuing the two as independent calls onto the backend would walk twice, and
+     * on a project with a remote the first walk of a revision can go to the network
+     * (docs/version-control.md §6) - which is the same reason the reads are batched rather than
+     * taken one document at a time.
+     *
+     * The memo lives for one comparison. Revisions are immutable, so caching it longer would be
+     * sound, but a whole project's file list per revision is not a thing to hold onto for a
+     * cache that already keeps the finished answers.
+     */
+    private revisionEntryReader(session: VcsSession, backend: VcsBackend): {
+        entriesAt: (revision: string) => Promise<ReadonlyMap<string, RevisionFileEntry>>;
+        readAt: (revision: string, paths: readonly string[]) => Promise<ReadonlyMap<string, Buffer | null>>;
+    } {
+        const walked = new Map<string, Promise<Map<string, RevisionFileEntry>>>();
+        const entriesAt = (revision: string): Promise<Map<string, RevisionFileEntry>> => {
+            const pending = walked.get(revision)
+                ?? backend.entriesAt(session.globals, session.store, session.repositoryId, revision);
+            walked.set(revision, pending);
+            return pending;
+        };
+        return {
+            entriesAt,
+            readAt: async (revision, paths) => {
+                const entries = await entriesAt(revision);
+                const out = new Map<string, Buffer | null>();
+                for (const path of paths) {
+                    const entry = entries.get(path.replace(/\\/g, "/"));
+                    // Absent is an answer rather than a failure: it is what tells an addition
+                    // from a removal. Only a read that fails throws.
+                    out.set(path, entry
+                        ? await backend.readEntryBytes(session.globals, session.store, session.repositoryId, entry)
+                        : null);
+                }
+                return out;
+            },
+        };
     }
 
     /**

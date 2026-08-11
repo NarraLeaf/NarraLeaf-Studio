@@ -261,10 +261,11 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         refresh: refreshSnapshot,
         bytesByAssetId,
         referencedAssetIds,
+        usageUnknownAssetIds,
     } = useAssetLibrarySnapshot(context, viewMode === "overview" || filtersNeedLibrarySnapshot(activeFilters));
 
     const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups, matchedGroupIds } =
-        useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds });
+        useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds });
 
     /**
      * A search or a filter is narrowing the library. The views read this to stop hiding hits: the

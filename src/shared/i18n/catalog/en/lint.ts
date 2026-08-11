@@ -22,6 +22,12 @@ export const lint = {
             title: "Unused asset",
             description: "Nothing in the project references this asset",
             message: "{asset} is not used anywhere",
+            // The three the rule reports instead of a list, when the reference index does not
+            // cover the whole project. Naming the site is the point: "the index is incomplete" on
+            // its own gives an author nothing to go and look at.
+            messageIndexUnresolved: "Unused assets not listed: {location} points at an asset that cannot be identified",
+            messageIndexUnreadable: "Unused assets not listed: {location} could not be read",
+            messageIndexNotBuilt: "Unused assets not listed: the project could not be scanned",
         },
         assetsMissing: {
             title: "Missing asset",

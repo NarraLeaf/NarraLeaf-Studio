@@ -9,6 +9,7 @@
  */
 
 import { ProjectDetailsSection } from "../sections/ProjectDetailsSection";
+import { ProjectAppTagsSection } from "../sections/ProjectAppTagsSection";
 import { ProjectIconsSection } from "../sections/ProjectIconsSection";
 import { ProjectDependenciesSection } from "../sections/ProjectDependenciesSection";
 import type { ProjectSectionProps } from "../sections/types";
@@ -17,6 +18,9 @@ export function ProjectAppPage(props: ProjectSectionProps) {
     return (
         <div className="grid gap-3 [&>*]:min-w-0">
             <ProjectDetailsSection {...props} />
+            {/* Directly under the fields it varies: a variant states one of those three or inherits
+                it, so the values it is read against are the rows immediately above. */}
+            <ProjectAppTagsSection {...props} />
             <ProjectIconsSection {...props} />
             <ProjectDependenciesSection {...props} />
         </div>

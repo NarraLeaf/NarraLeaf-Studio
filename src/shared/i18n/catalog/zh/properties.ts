@@ -138,6 +138,8 @@ export const properties = {
         label: "引用位置",
         building: "正在扫描项目…",
         none: "没有任何地方引用它",
+        unknown: "无法确定使用情况",
+        unknownDetail: "{location} 无法读取",
         count: {
             one: "{count} 处引用",
             other: "{count} 处引用",

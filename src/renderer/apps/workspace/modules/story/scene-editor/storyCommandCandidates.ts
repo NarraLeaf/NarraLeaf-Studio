@@ -42,6 +42,7 @@ export type StoryCandidateMark =
     | { kind: "choiceOption" }
     | { kind: "audioTrack" }
     | { kind: "label" }
+    | { kind: "appTag" }
     | { kind: "variable"; valueType?: StoryVariableValueType }
     | { kind: "blueprint" }
     | { kind: "function" }
@@ -287,6 +288,8 @@ function candidatesForType(
             return refCandidates(context.audioTracks, query, () => ({ kind: "audioTrack" }));
         case "label":
             return refCandidates(context.labels.map(name => ({ id: name, name })), query, () => ({ kind: "label" }));
+        case "appTag":
+            return refCandidates(context.appTags, query, () => ({ kind: "appTag" }));
         case "variable":
             return context.variables
                 .filter(entry => !query || containsFold(entry.name, query))
@@ -402,6 +405,8 @@ function paramNameMark(param: StoryCommandParam): StoryCandidateMark | undefined
             return { kind: "audioTrack" };
         case "label":
             return { kind: "label" };
+        case "appTag":
+            return { kind: "appTag" };
         case "variable":
             return { kind: "variable" };
         case "target":
@@ -465,6 +470,8 @@ export function hasCandidateSource(
             case "audioTrack":
             case "variable":
             case "label":
+            // Every project has the release variant, so "no matches" here always means what it says.
+            case "appTag":
             case "target":
             case "content":
             case "enum":
