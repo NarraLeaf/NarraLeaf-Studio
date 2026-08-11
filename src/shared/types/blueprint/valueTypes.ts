@@ -57,6 +57,19 @@ export type BlueprintAssetPinKind = "image" | "font";
 export type BlueprintAssetPinRef = {
     kind: BlueprintAssetPinKind;
     paramKey?: string;
+    /**
+     * Where the pin's value comes from.
+     *
+     * `"stored"` (the default) means the document holds it: the id sits under `paramKey`, and it is
+     * a reference the reverse-lookup index reads and reports.
+     *
+     * `"published"` means the host resolves it while the game runs, and **the pin provably cannot
+     * carry a library asset id**. Nothing is stored to read, and an edge out of such a pin is not a
+     * reference the index is failing to see - so it must not be reported as one. Marking a pin this
+     * way is a claim about what can flow through it: it needs an argument at the declaration, not a
+     * guess, because a wrong one hides a real reference.
+     */
+    origin?: "stored" | "published";
 };
 
 export type BlueprintTimerToken = {

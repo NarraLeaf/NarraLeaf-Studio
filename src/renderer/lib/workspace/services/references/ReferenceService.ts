@@ -257,6 +257,7 @@ export class ReferenceService extends Service<ReferenceService> {
                     kind: pin.assetRef.kind,
                     paramKey: pin.assetRef.paramKey ?? pin.id,
                     input: pin.kind === "input",
+                    origin: pin.assetRef.origin,
                 }]
                 : []));
         } catch {
