@@ -192,7 +192,7 @@ void app.whenReady().then(async () => {
     }
     const allowHttp = pack.network?.allowHttp === true;
     applyRuntimeAppIdentity(pack);
-    applyRuntimeMenu(pack);
+    applyRuntimeMenu();
     registerRuntimeProtocol(allowHttp);
     sidecarHost = createSidecarHost(pack);
     registerRuntimeIpc();
@@ -391,6 +391,10 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         minHeight: 320,
         center: true,
         frame: true,
+        // Windows and Linux lay the menu bar out inside the window, so it has to
+        // be gone before the first frame or the game's viewport is measured with
+        // a strip taken out of it. Ignored on macOS, where the menu is the OS's.
+        autoHideMenuBar: true,
         // Stay hidden until the renderer's first paint so launch never flashes
         // an empty window; the background matches the entry surface for the
         // brief gap between first paint and the surface rendering its content.
@@ -408,6 +412,12 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         },
     });
     win.setTitle(pack.project.name);
+    if (process.platform !== "darwin") {
+        // The window carries a menu of its own, and `autoHideMenuBar` only hides
+        // it - Alt would still pull it back down over the game. Removing it is
+        // what makes the bar unreachable rather than merely out of sight.
+        win.removeMenu();
+    }
     // Show on first paint. The timer is a safety net: a renderer that never
     // reaches ready-to-show should still surface a window rather than leave
     // the process running invisibly.
@@ -505,16 +515,21 @@ function requestRendererCloseDecision(win: BrowserWindow): Promise<boolean> {
 }
 
 /**
- * Production ships without Electron's default menu: it carries Reload and
- * DevTools items (and their accelerators) that have no place in a shipped
- * game. macOS keeps a minimal menu so quit/copy/paste stay reachable; other
- * platforms drop the menu bar entirely. Preview keeps the default menu as a
- * developer affordance.
+ * No mode ships Electron's default menu: it carries Reload and DevTools items
+ * (and their accelerators) that have no place above a game, and a menu bar is
+ * chrome the author's surface layout never accounts for. Preview is held to the
+ * same rule deliberately - a playtest that grows a menu bar is not the window
+ * the player gets - and it loses nothing, because preview's DevTools is on F12
+ * and its reload comes from the Studio recompiling, neither of which was ever
+ * the menu's doing.
+ *
+ * macOS cannot simply drop the menu. It is the process's only route to Quit,
+ * and the Edit roles are what make Cmd+C/V work inside a text field at all
+ * (the OS routes those through the menu, so a game with no Edit menu has a save
+ * name box nothing can be pasted into). That platform therefore keeps the
+ * smallest set that leaves the OS's own operations intact, and nothing beyond it.
  */
-function applyRuntimeMenu(pack: GameRuntimePackV1): void {
-    if (pack.mode !== "production") {
-        return;
-    }
+function applyRuntimeMenu(): void {
     if (process.platform === "darwin") {
         Menu.setApplicationMenu(Menu.buildFromTemplate([
             { role: "appMenu" },
