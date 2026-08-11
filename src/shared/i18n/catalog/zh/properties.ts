@@ -42,6 +42,7 @@ export const properties = {
         unlockAspect: "解锁纵横比",
         resetRotation: "重置旋转",
         toggleVisibility: "切换可见性",
+        animation: "动画",
         uiElement: "界面元素",
         linkedComponent: "关联组件",
     },
