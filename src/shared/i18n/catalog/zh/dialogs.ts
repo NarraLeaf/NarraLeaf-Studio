@@ -59,6 +59,8 @@ export const dialogs = {
         chapter: "章节",
         component: "组件",
         asset: "资源",
+        page: "页面",
+        gameUi: "游戏 UI",
         image: "图片",
         audio: "音频",
         video: "视频",
