@@ -1232,10 +1232,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     /**
      * Load a save, or leave the run that is going exactly where it is.
      *
-     * Resolves either way: a save the running story cannot take is refused, not thrown, so the
-     * three call sites this reaches (the Load Save node, the plugin save API, the Saves panel)
-     * behave the same without any of them having to catch. It still throws when there is no game
-     * runtime at all, which is a caller mistake rather than an outcome.
+     * Resolves either way and says which happened. Reaching for the outcome rather than a throw is
+     * what lets the Saves panel report a refusal precisely; `loadSaveAction` turns the same outcome
+     * back into a rejection for the two surfaces whose callers are written against one. It still
+     * throws outright when there is no game runtime, which is a caller mistake rather than an
+     * outcome of loading.
      */
     const loadSave = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
         const liveGame = requireActiveLiveGame("Load Save");
@@ -1245,17 +1246,26 @@ export function GameApp(props: GameAppProps): ReactNode {
             game: {
                 // `constructMaps` is the engine's own lookup table for a load and caches on the
                 // live game, so checking against it is checking against exactly what `deserialize`
-                // is about to read. It carries no type in the published surface; an engine that
-                // stops offering it leaves the snapshot as the only protection rather than
-                // breaking the load.
+                // is about to read. It carries no type in the published surface, so what comes
+                // back is checked rather than assumed: the name surviving says nothing about the
+                // shape, and a table read as empty would answer "not in this story" for every id
+                // and refuse every save. Anything unexpected leaves the snapshot as the only
+                // protection instead.
                 resolveStoryMaps: () => {
                     const construct = (liveGame as unknown as {
-                        constructMaps?: () => [Map<string, unknown>, Map<string, unknown>];
+                        constructMaps?: () => unknown;
                     }).constructMaps;
                     if (typeof construct !== "function") {
                         return null;
                     }
-                    const [actions, elements] = construct.call(liveGame);
+                    const tables = construct.call(liveGame);
+                    if (!Array.isArray(tables) || tables.length < 2) {
+                        return null;
+                    }
+                    const [actions, elements] = tables as unknown[];
+                    if (!(actions instanceof Map) || !(elements instanceof Map)) {
+                        return null;
+                    }
                     return {
                         hasAction: actionId => actions.has(actionId),
                         hasElement: elementId => elements.has(elementId),
@@ -1268,6 +1278,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                     liveGame.newGame().deserialize(savedGame);
                 },
                 restore: snapshot => liveGame.deserialize(snapshot),
+                // `deserialize` takes this lock on the way in and gives it back from a render it
+                // schedules on the way out, so a throw in between keeps it. It is a flag, not a
+                // count, which is why one balanced load afterwards cannot clear it and every later
+                // load in the session would sit there locked.
+                releaseLoadLock: () => liveGame.getGameState()?.rollLock.unlock(),
             },
             notifyPlayer: message => liveGame.notify(message),
             report: (level, message) => {
@@ -1286,12 +1301,19 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [hideCurrentStudioPagesForGame, host.log, host.reportIssue, host.saveStore, requireActiveLiveGame]);
 
     /**
-     * The same load, for the surfaces that take a plain action: the blueprint host API, the Game UI
-     * callbacks and the plugin save API. They have no branch to put the outcome in, and a refused
-     * load has already told the player and the author by the time this resolves.
+     * The same load for the surfaces declared as `Promise<void>`: the blueprint host API and the
+     * plugin save API.
+     *
+     * It rejects on a refusal, which is what those two have always done and what any caller with a
+     * `catch` around them is written against. Nothing is at stake by the time it throws - the
+     * player has been told, the author has been told, and the run is where it was - so the throw
+     * carries information and no longer carries a destroyed game with it.
      */
     const loadSaveAction = useCallback(async (id: string): Promise<void> => {
-        await loadSave(id);
+        const outcome = await loadSave(id);
+        if (outcome.status === "refused") {
+            throw new Error(`Load Save: "${id}" was not applied. ${outcome.detail}`);
+        }
     }, [loadSave]);
 
     const deleteSave = useCallback(async (id: string) => {

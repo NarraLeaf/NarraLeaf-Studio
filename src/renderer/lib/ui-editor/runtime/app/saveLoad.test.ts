@@ -80,6 +80,10 @@ type HarnessOptions = {
     applyThrows?: string;
     /** A live game that cannot be serialized, so there is nothing to put it back with. */
     snapshotFails?: boolean;
+    /** The rollback is refused as well, which is the only way the run is really gone. */
+    restoreThrows?: string;
+    /** An engine that keeps the name and changes the answer. */
+    brokenMaps?: "wrongShape" | "throws";
 };
 
 function createHarness(options: HarnessOptions) {
@@ -87,6 +91,8 @@ function createHarness(options: HarnessOptions) {
     const actions = new Set(options.knownActions ?? ["action-1"]);
     const notifications: string[] = [];
     const reports: { level: "warning" | "error"; message: string }[] = [];
+    /** Which engine operations the load reached. The live game is only entered through these. */
+    const calls = { snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 };
     let head: PlayHead = { ...options.head, backlog: [...options.head.backlog] };
     let applyThrows = options.applyThrows;
 
@@ -108,15 +114,26 @@ function createHarness(options: HarnessOptions) {
     };
 
     const game: SaveLoadGameSeam = {
-        resolveStoryMaps: () => (options.mapsAvailable === false ? null : maps),
+        resolveStoryMaps: () => {
+            if (options.brokenMaps === "throws") {
+                throw new Error("No story loaded");
+            }
+            if (options.brokenMaps === "wrongShape") {
+                // What the engine's own stubs hand back: the name resolves, the shape does not.
+                return ([new Map()] as unknown) as SaveStoryMaps;
+            }
+            return options.mapsAvailable === false ? null : maps;
+        },
         readStoryHash: () => LIVE_STORY_HASH,
         snapshot: () => {
+            calls.snapshot += 1;
             if (options.snapshotFails) {
                 throw new Error("The game has not started");
             }
             return makeSave(head);
         },
         apply: savedGame => {
+            calls.apply += 1;
             put(savedGame);
             if (applyThrows) {
                 head = { ...BLANK };
@@ -124,9 +141,17 @@ function createHarness(options: HarnessOptions) {
             }
         },
         restore: savedGame => {
+            calls.restore += 1;
+            if (options.restoreThrows) {
+                head = { ...BLANK };
+                throw new Error(options.restoreThrows);
+            }
             // The rollback save came from this very story, so it never hits the throw above.
             applyThrows = undefined;
             put(savedGame);
+        },
+        releaseLoadLock: () => {
+            calls.releaseLoadLock += 1;
         },
     };
 
@@ -134,10 +159,11 @@ function createHarness(options: HarnessOptions) {
         game,
         notifications,
         reports,
+        calls,
         notifyPlayer: (message: string) => notifications.push(message),
         report: (level: "warning" | "error", message: string) => reports.push({ level, message }),
         head: () => head,
-        /** The run as bytes, for asserting a refused load moved nothing. */
+        /** The run as bytes, for asserting a rollback put every field back. */
         serialize: () => JSON.stringify(makeSave(head)),
     };
 }
@@ -176,9 +202,14 @@ describe("loadSaveIntoGame", () => {
         expect(harness.reports).toEqual([]);
     });
 
-    it("leaves the run byte-identical when the save's scene is gone", async () => {
+    /**
+     * The live game is only reachable through `apply`, `snapshot` and `restore`, so "the run did not
+     * move" is asserted as "none of them ran". Asserting the play head instead would pass against
+     * the old code on the paths that threw before touching anything; this does not, because the old
+     * code reached `apply` here and blew up inside it.
+     */
+    it("never enters the live game when the save's scene is gone", async () => {
         const harness = createHarness({ head: PLAYING });
-        const before = harness.serialize();
         const saved = makeSave(
             { sceneId: "scene-deleted", line: 40, backlog: ["elsewhere"], audio: "bgm:cave" },
             { storyHash: "hash-older-build" },
@@ -193,12 +224,17 @@ describe("loadSaveIntoGame", () => {
             unresolvedIds: ["scene-deleted"],
             game: "unchanged",
         });
-        expect(harness.serialize()).toBe(before);
-        expect(harness.head()).toEqual(PLAYING);
+        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 });
         expect(harness.notifications).toEqual([translate("game.saveLoad.refusedOtherStory")]);
         expect(harness.reports).toHaveLength(1);
         expect(harness.reports[0].level).toBe("warning");
         expect(harness.reports[0].message).toContain("scene-deleted");
+        expect(harness.reports[0].message).toBe(
+            translate("game.saveLoad.notApplied", {
+                id: "slot-1",
+                detail: translate("game.saveLoad.detail.unresolved", { ids: "scene-deleted" }),
+            }),
+        );
     });
 
     it("names every unresolved id it found, not only the first", async () => {
@@ -210,31 +246,28 @@ describe("loadSaveIntoGame", () => {
         expect(outcome).toMatchObject({ status: "refused", unresolvedIds: ["action-1", "scene-deleted"] });
     });
 
-    it("leaves the run byte-identical when no save is stored", async () => {
+    it("never enters the live game when no save is stored", async () => {
         const harness = createHarness({ head: PLAYING });
-        const before = harness.serialize();
 
         const outcome = await loadWith(harness, null);
 
         expect(outcome).toMatchObject({ status: "refused", reason: "missing", game: "unchanged" });
-        expect(harness.serialize()).toBe(before);
+        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 });
         expect(harness.notifications).toEqual([translate("game.saveLoad.refused")]);
     });
 
-    it("leaves the run byte-identical when the stored record is not a saved game", async () => {
+    it("never enters the live game when the stored record is not a saved game", async () => {
         const harness = createHarness({ head: PLAYING });
-        const before = harness.serialize();
 
         const outcome = await loadWith(harness, { savedGame: { game: { stage: {} } } });
 
         expect(outcome).toMatchObject({ status: "refused", reason: "malformed", game: "unchanged" });
-        expect(harness.serialize()).toBe(before);
+        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 });
         expect(harness.notifications).toEqual([translate("game.saveLoad.refused")]);
     });
 
-    it("leaves the run byte-identical when the store cannot be read", async () => {
+    it("never enters the live game when the store cannot be read", async () => {
         const harness = createHarness({ head: PLAYING });
-        const before = harness.serialize();
 
         const outcome = await loadSaveIntoGame({
             id: "slot-1",
@@ -247,7 +280,7 @@ describe("loadSaveIntoGame", () => {
         });
 
         expect(outcome).toMatchObject({ status: "refused", reason: "unreadable", game: "unchanged" });
-        expect(harness.serialize()).toBe(before);
+        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 });
         expect(harness.reports[0].message).toContain("save file is locked");
     });
 
@@ -278,17 +311,50 @@ describe("loadSaveIntoGame", () => {
         expect(harness.reports).toEqual([]);
     });
 
+    /**
+     * The one place byte-identity is worth asserting: `apply` really did blank the play head here,
+     * so the comparison is against a run that was taken apart and rebuilt.
+     */
     it("puts the run back when the engine throws past the pre-check", async () => {
         const harness = createHarness({ head: PLAYING, applyThrows: "Storable refused the namespace" });
         const before = harness.serialize();
         const saved = makeSave({ sceneId: "scene-a", line: 12, backlog: ["one"], audio: "bgm:night" });
 
-        const outcome = await loadWith(harness, { savedGame: saved });
+        const outcome = await loadWith(harness, { savedGame: saved }, "slot-3");
 
         expect(outcome).toMatchObject({ status: "refused", reason: "engine", game: "restored" });
+        expect(harness.calls).toMatchObject({ snapshot: 1, apply: 1, restore: 1, releaseLoadLock: 0 });
         expect(harness.serialize()).toBe(before);
         expect(harness.head()).toEqual(PLAYING);
         expect(harness.reports[0].level).toBe("warning");
+        // Not "the running game is unchanged": it was reset and rebuilt on the way here.
+        expect(harness.reports[0].message).toBe(
+            translate("game.saveLoad.putBack", {
+                id: "slot-3",
+                detail: translate("game.saveLoad.detail.engine", { error: "Storable refused the namespace" }),
+            }),
+        );
+    });
+
+    it("reports the run as lost, and gives the load lock back, when the rollback throws too", async () => {
+        const harness = createHarness({
+            head: PLAYING,
+            applyThrows: "Storable refused the namespace",
+            restoreThrows: "Element not found, id: img-3",
+        });
+
+        const outcome = await loadWith(harness, { savedGame: makeSave(PLAYING) }, "slot-4");
+
+        expect(outcome).toMatchObject({ status: "refused", reason: "engine", game: "lost" });
+        expect(harness.calls).toMatchObject({ apply: 1, restore: 1, releaseLoadLock: 1 });
+        expect(harness.head()).toEqual(BLANK);
+        expect(harness.reports[0].level).toBe("error");
+        expect(harness.reports[0].message).toBe(
+            translate("game.saveLoad.notRestored", {
+                id: "slot-4",
+                detail: translate("game.saveLoad.detail.engine", { error: "Storable refused the namespace" }),
+            }),
+        );
     });
 
     it("reports the run as lost when there was no snapshot to put it back with", async () => {
@@ -301,17 +367,25 @@ describe("loadSaveIntoGame", () => {
         const outcome = await loadWith(harness, { savedGame: makeSave(PLAYING) });
 
         expect(outcome).toMatchObject({ status: "refused", reason: "engine", game: "lost" });
+        expect(harness.calls).toMatchObject({ restore: 0 });
         expect(harness.reports[0].level).toBe("error");
     });
 
-    it("still attempts the load, and rolls back, when the id tables are unavailable", async () => {
-        const harness = createHarness({ head: PLAYING, mapsAvailable: false });
+    // The three ways the pre-check can be unavailable. None of them may reject, and all of them
+    // must fall through to the snapshot, which is what still saves the run.
+    it.each([
+        ["absent", { mapsAvailable: false } as const],
+        ["the wrong shape", { brokenMaps: "wrongShape" } as const],
+        ["throwing", { brokenMaps: "throws" } as const],
+    ])("still attempts the load, and rolls back, when the id tables are %s", async (_label, broken) => {
+        const harness = createHarness({ head: PLAYING, ...broken });
         const before = harness.serialize();
         const saved = makeSave({ sceneId: "scene-deleted", line: 40, backlog: [], audio: "" });
 
         const outcome = await loadWith(harness, { savedGame: saved });
 
         expect(outcome).toMatchObject({ status: "refused", reason: "engine", game: "restored" });
+        expect(harness.calls).toMatchObject({ apply: 1, restore: 1 });
         expect(harness.serialize()).toBe(before);
     });
 });

@@ -5,6 +5,7 @@ export const game = {
         refused: "该存档无法读取。游戏从当前位置继续。",
         refusedOtherStory: "该存档来自另一个版本的故事。游戏从当前位置继续。",
         notApplied: "读取存档：「{id}」未生效，运行中的游戏保持不变。{detail}",
+        putBack: "读取存档：「{id}」未生效，运行中的游戏已恢复。{detail}",
         notRestored: "读取存档：「{id}」未生效，运行中的游戏无法恢复。{detail}",
         otherStory: "读取存档：「{id}」来自另一个版本的故事。",
         detail: {

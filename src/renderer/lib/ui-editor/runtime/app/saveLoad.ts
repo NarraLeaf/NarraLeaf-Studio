@@ -20,6 +20,7 @@
  * shown, and raises a note to the author when a load came from a different build.
  */
 import type { SavedGame } from "narraleaf-react";
+import type { TranslationKey } from "@shared/i18n";
 import { translate } from "@/lib/i18n";
 
 /** How the story stamped into the save compares with the story now running. */
@@ -43,13 +44,32 @@ export type SaveLoadRefusalReason =
     /** The engine refused it for something this module does not model. */
     | "engine";
 
-/** What happened to the game that was running. */
+/**
+ * What happened to the game that was running.
+ *
+ * `restored` is narrower than it sounds, and the wording anywhere it is reported has to stay inside
+ * these bounds. Putting the game back is one more `deserialize`, so it carries what a save carries:
+ * the store, the element states, the stage, the execution stacks and the backlog. Three things it
+ * does not carry, none of which a save has ever held:
+ *
+ *  - **The page router stack.** Entering the live game clears it, and nothing puts it back, so a
+ *    player who was reading a menu page lands on the stage.
+ *  - **Sound restores already in flight.** `AudioManager.soundFromData` starts playback without
+ *    waiting for it, so clips the refused save named can still be starting while the ones the
+ *    snapshot names start too. A clip belonging to neither state can be left playing.
+ *  - **Anything a host attached outside the engine**, which is the host's to re-attach.
+ *
+ * Restoring the rest of that is a separate piece of work and is deliberately not attempted here.
+ */
 export type RunningGameState =
-    /** It was never entered. */
+    /** It was never entered. Nothing about it moved. */
     | "unchanged"
-    /** It was entered and put back from the snapshot taken beforehand. */
+    /** It was entered and put back from the snapshot taken beforehand, within the bounds above. */
     | "restored"
-    /** It was entered and could not be put back. */
+    /**
+     * It was entered and could not be put back. The engine's roll lock is released on the way out
+     * so the session can still be asked to load again, but what is on stage is neither state.
+     */
     | "lost";
 
 export type SaveLoadOutcome =
@@ -87,6 +107,15 @@ export type SaveLoadGameSeam = {
     apply: (savedGame: SavedGame) => void;
     /** Put the live game back from a snapshot. Throws whatever the engine throws. */
     restore: (snapshot: SavedGame) => void;
+    /**
+     * Called only when {@link restore} itself threw, to leave the session able to be asked again.
+     *
+     * A load takes the engine's roll lock and gives it back from a render that a throw never
+     * reaches. The lock is a flag rather than a count, so one that is never given back stays taken
+     * for the life of the session and every later load is dead on arrival. Releasing it does not
+     * repair the stage; it stops one failure from silently becoming a permanent one.
+     */
+    releaseLoadLock?: () => void;
 };
 
 export type LoadSaveOptions = {
@@ -278,6 +307,13 @@ function formatIdList(ids: string[]): string {
     return ids.slice(0, REPORTED_ID_LIMIT).join(", ");
 }
 
+/** The author-facing line for a refusal, one per state the run was left in. */
+const AUTHOR_LINE_BY_GAME_STATE = {
+    unchanged: "game.saveLoad.notApplied",
+    restored: "game.saveLoad.putBack",
+    lost: "game.saveLoad.notRestored",
+} as const satisfies Record<RunningGameState, TranslationKey>;
+
 /** The one line the player is shown. Chosen by the story hash and by nothing else. */
 function refusalMessageForPlayer(origin: SaveStoryOrigin): string {
     return origin === "otherStory"
@@ -327,11 +363,12 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
             game: runningGame,
         };
         notifyPlayer(refusalMessageForPlayer(outcome.origin));
+        // One sentence per state, because the three states are three different things to have
+        // happened to the run. Saying "unchanged" after a rollback would be false: the stage was
+        // reset and rebuilt on the way there.
         report(
             runningGame === "lost" ? "error" : "warning",
-            runningGame === "lost"
-                ? translate("game.saveLoad.notRestored", { id, detail })
-                : translate("game.saveLoad.notApplied", { id, detail }),
+            translate(AUTHOR_LINE_BY_GAME_STATE[runningGame], { id, detail }),
         );
         return outcome;
     };
@@ -362,21 +399,24 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
     }
     const origin = compareSaveStory(savedGame, liveStoryHash);
 
-    let maps: SaveStoryMaps | null;
+    // The whole pre-check, resolution included, sits inside one guard. It is an optimisation over
+    // the snapshot, not a step of the load: a table that answers oddly must cost the pre-check and
+    // nothing else, or the safety net becomes the thing that drops the load.
+    let unresolvedIds: string[] = [];
     try {
-        maps = game.resolveStoryMaps();
-    } catch {
-        maps = null;
-    }
-    if (maps) {
-        const unresolvedIds = collectUnresolvedSaveReferences(savedGame, maps);
-        if (unresolvedIds.length > 0) {
-            return refuse(
-                "unresolved",
-                translate("game.saveLoad.detail.unresolved", { ids: formatIdList(unresolvedIds) }),
-                { unresolvedIds, origin },
-            );
+        const maps = game.resolveStoryMaps();
+        if (maps) {
+            unresolvedIds = collectUnresolvedSaveReferences(savedGame, maps);
         }
+    } catch {
+        unresolvedIds = [];
+    }
+    if (unresolvedIds.length > 0) {
+        return refuse(
+            "unresolved",
+            translate("game.saveLoad.detail.unresolved", { ids: formatIdList(unresolvedIds) }),
+            { unresolvedIds, origin },
+        );
     }
 
     // Taken last, so it holds the run right up to the swap. A game that cannot be serialized still
@@ -398,8 +438,14 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
                 game.restore(rollback);
                 restored = true;
             } catch {
-                // Both the save and the snapshot were refused. The outcome says so rather than
-                // reporting a load that did not happen as one that did.
+                // Both the save and the snapshot were refused. Give the roll lock back before
+                // giving up: without it this one failure silently kills every later load in the
+                // session, which surfaces much later as a second, unrelated-looking fault.
+                try {
+                    game.releaseLoadLock?.();
+                } catch {
+                    /* nothing further is available */
+                }
             }
         }
         return refuse("engine", translate("game.saveLoad.detail.engine", { error: errorText(error) }), {
