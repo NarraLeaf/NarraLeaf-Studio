@@ -219,6 +219,25 @@ export class VcsProjectPathError extends Error {
 }
 
 /**
+ * Refused because the app is on its way out, rather than started and abandoned.
+ *
+ * Not a nicety. Every Lore call is a koffi `async` call, and koffi delivers its result by
+ * calling back into JS from a worker thread. A call still in flight when Node tears the main
+ * process's environment down has that callback land on an environment that can no longer take
+ * one, and koffi's answer to that is `napi_fatal_error` - `abort()`, SIGABRT, and the macOS
+ * "NarraLeaf Studio quit unexpectedly" report on top of what the author thought was a clean
+ * quit. So once {@link VcsManager.dispose} has drained the last call, nothing may start another.
+ *
+ * Named rather than anonymous for the reason {@link isNothingToCommit} explains.
+ */
+export class VcsShuttingDownError extends Error {
+    constructor() {
+        super("Version control is closing with the app; this call was refused rather than started");
+        this.name = "VcsShuttingDownError";
+    }
+}
+
+/**
  * Characters no path handed to this layer may contain.
  *
  * NUL everywhere: it terminates a C string, so a path carrying one means something different
@@ -305,6 +324,13 @@ export class VcsManager extends Manager {
      * own. See {@link sessionFor} for what the second store costs.
      */
     private readonly opening = new Map<string, Promise<VcsSession>>();
+    /**
+     * Latched by {@link dispose} and never cleared: it is set on the way out of the process, and
+     * the only thing that could clear it is the app not quitting after all, which does not happen
+     * once the quit has got as far as draining. See {@link VcsShuttingDownError} for what starting
+     * a call after the drain costs.
+     */
+    private shuttingDown = false;
 
     constructor(app: BaseApp, private readonly flushPendingSaves?: PendingSaveFlush) {
         super(app);
@@ -319,6 +345,21 @@ export class VcsManager extends Manager {
     /** Whether this host can run version control at all, and why not if it cannot. */
     public async getAvailability(): Promise<VcsAvailability> {
         return getVcsAvailability();
+    }
+
+    /**
+     * The backend every call in this class starts from, refused once the app is quitting.
+     *
+     * One check covers the whole surface precisely because reaching the backend is the only way
+     * to reach Lore: there is no verb that does not come through here first. {@link releaseSession}
+     * is the one deliberate exception - it calls `requireVcsBackend` directly - because closing a
+     * store is the work the latch exists to protect, not work it should refuse.
+     */
+    private async requireBackend(): Promise<VcsBackend> {
+        if (this.shuttingDown) {
+            throw new VcsShuttingDownError();
+        }
+        return requireVcsBackend();
     }
 
     /**
@@ -436,7 +477,7 @@ export class VcsManager extends Manager {
      * So callers that arrive during an open join it instead of starting another.
      */
     private async sessionFor(projectPath: string): Promise<{ session: VcsSession; backend: VcsBackend }> {
-        const backend = await requireVcsBackend();
+        const backend = await this.requireBackend();
         const key = projectKey(projectPath);
         const existing = this.sessions.get(key);
         if (existing) return { session: existing, backend };
@@ -539,7 +580,7 @@ export class VcsManager extends Manager {
         options: InitRepositoryOptions = {},
     ): Promise<VcsRepositoryInfo> {
         return this.serialize(projectPath, async () => {
-            const backend = await requireVcsBackend();
+            const backend = await this.requireBackend();
             const root = projectRoot(projectPath);
             const globals = this.globalsFor(root);
             // Decided before the attempt, because the cleanup below must not run when
@@ -1268,7 +1309,7 @@ export class VcsManager extends Manager {
         // it from inside our own block would wait on the block it is already in.
         await this.closeProject(projectPath);
         return this.serialize(projectPath, async () => {
-            const backend = await requireVcsBackend();
+            const backend = await this.requireBackend();
             await backend.writeRemote(root, url);
             if (!url || !repositoryId) {
                 this.app.logger.info("[Vcs] Disconnected from server", root);
@@ -1640,7 +1681,7 @@ export class VcsManager extends Manager {
     ): Promise<{ root: string; branch: string; fileCount: number }> {
         const root = projectRoot(destination);
         return this.serialize(root, async () => {
-            const backend = await requireVcsBackend();
+            const backend = await this.requireBackend();
             const globals = this.globalsFor(root, { online: true });
             try {
                 const cloned = await backend.cloneInto(
@@ -1740,12 +1781,39 @@ export class VcsManager extends Manager {
         }
     }
 
-    /** Release every session; called on app teardown. */
+    /**
+     * Release every session and stop taking new work. Awaited on the way out of the app.
+     *
+     * **Awaited, and that is the whole point.** Closing a store is itself three Lore calls, so
+     * firing this off and quitting anyway leaves koffi work in flight while Node destroys the
+     * environment underneath it - which is not a leak but a SIGABRT (see
+     * {@link VcsShuttingDownError}). The latch is set first so that nothing arriving during the
+     * drain - a renderer's interval checkpoint, a window closing behind us - can open a session
+     * this call has already walked past.
+     *
+     * Three sets of keys, because a project can be in any of three states and only the first is
+     * obvious. Opens in flight: quitting during one would otherwise leave the repository locked,
+     * and on Windows that is a directory the author cannot move or delete. Queued operations: a
+     * verb that has not reached `sessionFor` yet is in neither of the other two maps, and
+     * `closeProject` waits behind it rather than racing it.
+     *
+     * A failure to close one project does not stop the others; the alternative is a rejected
+     * `Promise.all` that abandons the sessions it had not got to yet.
+     */
     public async dispose(): Promise<void> {
-        // Opens in flight included: quitting while one is still opening would otherwise leave the
-        // repository locked, and on Windows that is a directory the author cannot move or delete.
-        const keys = new Set([...this.sessions.keys(), ...this.opening.keys()]);
-        await Promise.all([...keys].map((key) => this.closeProject(key)));
+        this.shuttingDown = true;
+        const keys = new Set([...this.sessions.keys(), ...this.opening.keys(), ...this.operations.keys()]);
+        await Promise.all([...keys].map((key) => this.closeProject(key).catch((error) => {
+            this.app.logger.warn("[Vcs] Failed to close a session while quitting", key, error);
+        })));
+    }
+
+    /**
+     * Whether anything is still talking to Lore. Read after a bounded drain to say, in the log,
+     * whether the quit is about to do the one thing {@link dispose} exists to prevent.
+     */
+    public get busy(): boolean {
+        return this.operations.size > 0 || this.opening.size > 0;
     }
 
     /** Exposed for diagnostics: which projects currently hold a Lore store. */
