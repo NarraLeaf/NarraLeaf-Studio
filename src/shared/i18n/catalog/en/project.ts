@@ -35,6 +35,7 @@ export const project = {
     // sentence: the rows under it say what they do.
     group: {
         details: "Details",
+        appTags: "Build variants",
         icons: "Icons",
         dependencies: "Dependencies",
         saving: "Saving",
@@ -77,6 +78,38 @@ export const project = {
         copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. Left empty, no file is shipped.",
         descriptionPlaceholder: "Describe your project…",
         required: "Required",
+    },
+    // Build variants: the editions the same project ships as. What a variant is and what inheriting
+    // means live in the `appTags` help topic, reached by the `?` on this heading; the words here name
+    // controls and say what pressing one does.
+    appTags: {
+        add: "Add variant",
+        newTagName: "New Variant",
+        nameTitle: "Name",
+        // The variant every project has and every other variant is read against. Named where it is
+        // shown rather than in the model, which has no catalog to read.
+        releaseName: "Release",
+        fields: {
+            displayName: "Application name",
+            identifier: "Identifier",
+            version: "Version",
+        },
+        // Sits beside a field only while that field states a value of its own, so it is the mark of
+        // an override as well as the way out of one.
+        restore: "Restore",
+        // Beside Delete inside an open variant: the count the confirmation is about to be about.
+        usedBy: {
+            one: "Used by {count} reference",
+            other: "Used by {count} references",
+        },
+        delete: "Delete",
+        deleteConfirm: "Delete \"{name}\"?",
+        // The honest consequence: nothing pointing at this variant is rewritten, so those references
+        // read the release values from now on.
+        deleteDetail: {
+            one: "{count} reference falls back to Release.",
+            other: "{count} references fall back to Release.",
+        },
     },
     assets: {
         master: "Choose the app icon",
