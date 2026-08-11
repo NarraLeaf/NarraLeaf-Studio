@@ -65,12 +65,15 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
     let headline = "";
     if (newest) {
         const location = newest.location;
+        // No place, no place column. An issue that has no row is normal here - a refused load, a
+        // boot failure - and prefixing it with a phrase about not finding one reads as part of the
+        // message and turns the line into a sentence that says two things at once.
         const where = location
             ? location.lineNumber > 0
                 ? t("devMode.issues.atLine", { line: location.lineNumber, scene: location.sceneName })
                 : t("devMode.issues.inScene", { scene: location.sceneName })
-            : t("devMode.issues.noLocation");
-        headline = `${where} · ${newest.message}`;
+            : null;
+        headline = where ? `${where} · ${newest.message}` : newest.message;
     } else if (sessionError) {
         headline = sessionError.split("\n").find(line => line.trim().length > 0)?.trim() ?? sessionError;
     }

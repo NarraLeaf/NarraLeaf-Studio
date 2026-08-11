@@ -4,6 +4,7 @@ import { translate } from "@/lib/i18n";
 import {
     collectUnresolvedSaveReferences,
     compareSaveStory,
+    readSaveLastLine,
     isSavedGameShape,
     loadSaveIntoGame,
     readSaveStoryHash,
@@ -22,7 +23,12 @@ type SaveOptions = {
     storyHash?: string;
     actionId?: string;
     layerId?: string;
+    /** Explicit null models a save the engine could not stamp a last line onto. */
+    lastSentence?: string | null;
 };
+
+/** The save's own words, the only author-facing thing it carries about where it stopped. */
+const LAST_LINE = "the clubroom smelled of chalk";
 
 /**
  * A save in the shape the engine writes, carrying the play head in `services` so a save and a play
@@ -38,7 +44,7 @@ function makeSave(head: PlayHead, options: SaveOptions = {}): SavedGame {
             created: 1,
             updated: 2,
             id: "save-meta-id",
-            lastSentence: null,
+            lastSentence: options.lastSentence === undefined ? LAST_LINE : options.lastSentence,
             lastSpeaker: null,
             storyHash: options.storyHash ?? LIVE_STORY_HASH,
             version: 2,
@@ -228,22 +234,54 @@ describe("loadSaveIntoGame", () => {
         expect(harness.notifications).toEqual([translate("game.saveLoad.refusedOtherStory")]);
         expect(harness.reports).toHaveLength(1);
         expect(harness.reports[0].level).toBe("warning");
-        expect(harness.reports[0].message).toContain("scene-deleted");
+        // Names the kind and quotes the save's own line. The compiled ids stay off it: nothing left
+        // in the project can name `scene-deleted`, so putting it there would spend the sentence on
+        // a string the author has never seen.
         expect(harness.reports[0].message).toBe(
             translate("game.saveLoad.notApplied", {
                 id: "slot-1",
-                detail: translate("game.saveLoad.detail.unresolved", { ids: "scene-deleted" }),
+                detail: translate("game.saveLoad.detail.savedAt", {
+                    detail: translate("game.saveLoad.detail.unresolvedScene"),
+                    line: LAST_LINE,
+                }),
             }),
         );
+        expect(harness.reports[0].message).not.toContain("scene-deleted");
     });
 
-    it("names every unresolved id it found, not only the first", async () => {
+    it("carries every unresolved id on the outcome, for the panel that shows them", async () => {
         const harness = createHarness({ head: PLAYING, knownActions: [] });
         const saved = makeSave({ sceneId: "scene-deleted", line: 1, backlog: [], audio: "" });
 
         const outcome = await loadWith(harness, { savedGame: saved });
 
         expect(outcome).toMatchObject({ status: "refused", unresolvedIds: ["action-1", "scene-deleted"] });
+    });
+
+    it("says the rows are gone, not the scene, when only actions are missing", async () => {
+        const harness = createHarness({ head: PLAYING, knownActions: [] });
+        const saved = makeSave({ sceneId: "scene-a", line: 4, backlog: [], audio: "" }, { lastSentence: null });
+
+        const outcome = await loadWith(harness, { savedGame: saved });
+
+        expect(outcome).toMatchObject({ status: "refused", reason: "unresolved", unresolvedIds: ["action-1"] });
+        // No last line on this save, so the locator is left off rather than quoted empty.
+        expect(harness.reports[0].message).toBe(
+            translate("game.saveLoad.notApplied", {
+                id: "slot-1",
+                detail: translate("game.saveLoad.detail.unresolvedAction"),
+            }),
+        );
+    });
+
+    it("says the stage is short of something when only elements are missing", async () => {
+        const harness = createHarness({ head: PLAYING, knownElements: ["scene-a"] });
+        const saved = makeSave({ sceneId: "scene-a", line: 4, backlog: [], audio: "" });
+
+        const outcome = await loadWith(harness, { savedGame: saved });
+
+        expect(outcome).toMatchObject({ status: "refused", reason: "unresolved", unresolvedIds: ["layer-main"] });
+        expect(harness.reports[0].message).toContain(translate("game.saveLoad.detail.unresolvedElement"));
     });
 
     it("never enters the live game when no save is stored", async () => {
@@ -433,23 +471,32 @@ describe("collectUnresolvedSaveReferences", () => {
     };
 
     it("finds nothing when the running story has everything", () => {
-        expect(collectUnresolvedSaveReferences(makeSave(PLAYING), maps)).toEqual([]);
+        expect(collectUnresolvedSaveReferences(makeSave(PLAYING), maps)).toEqual({
+            scenes: [],
+            elements: [],
+            actions: [],
+            all: [],
+        });
     });
 
     it("finds a displayable a layer poses that the story dropped", () => {
         const saved = makeSave(PLAYING) as unknown as { game: Record<string, any> };
         saved.game.stage.scenes[0].elements.layers["layer-main"] = ["img-1", "img-gone"];
-        expect(collectUnresolvedSaveReferences(saved as unknown as SavedGame, maps)).toEqual(["img-gone"]);
+        expect(collectUnresolvedSaveReferences(saved as unknown as SavedGame, maps)).toMatchObject({
+            scenes: [],
+            elements: ["img-gone"],
+            all: ["img-gone"],
+        });
     });
 
     it("finds videos and effects the story dropped", () => {
         const saved = makeSave(PLAYING) as unknown as { game: Record<string, any> };
         saved.game.stage.videos = [["video-gone", {}]];
         saved.game.stage.vfx = [["vfx-gone", {}]];
-        expect(collectUnresolvedSaveReferences(saved as unknown as SavedGame, maps)).toEqual([
-            "vfx-gone",
-            "video-gone",
-        ]);
+        expect(collectUnresolvedSaveReferences(saved as unknown as SavedGame, maps)).toMatchObject({
+            elements: ["vfx-gone", "video-gone"],
+            all: ["vfx-gone", "video-gone"],
+        });
     });
 
     it("descends into nested and async stacks, and into loop bodies", () => {
@@ -464,10 +511,10 @@ describe("collectUnresolvedSaveReferences", () => {
         saved.game.asyncStackModels = [
             { items: [], loop: { type: "count", counter: 0, bodyActionIds: ["action-loop-gone"], broken: false } },
         ];
-        expect(collectUnresolvedSaveReferences(saved as unknown as SavedGame, maps)).toEqual([
-            "action-loop-gone",
-            "action-nested-gone",
-        ]);
+        expect(collectUnresolvedSaveReferences(saved as unknown as SavedGame, maps)).toMatchObject({
+            actions: ["action-loop-gone", "action-nested-gone"],
+            all: ["action-loop-gone", "action-nested-gone"],
+        });
     });
 
     it("does not require a link entry's own action, because the engine does not", () => {
@@ -479,6 +526,39 @@ describe("collectUnresolvedSaveReferences", () => {
             stackWaitType: "all",
             stacks: [],
         });
-        expect(collectUnresolvedSaveReferences(saved as unknown as SavedGame, maps)).toEqual([]);
+        expect(collectUnresolvedSaveReferences(saved as unknown as SavedGame, maps).all).toEqual([]);
+    });
+
+    it("separates a missing scene from the elements that went with it", () => {
+        const saved = makeSave({ sceneId: "scene-gone", line: 1, backlog: [], audio: "" }) as unknown as {
+            game: Record<string, any>;
+        };
+        saved.game.stage.scenes[0].elements.layers["layer-gone"] = ["img-1"];
+        // The scene is not restated among the elements even though `elementStates` carries it too.
+        expect(collectUnresolvedSaveReferences(saved as unknown as SavedGame, maps)).toEqual({
+            scenes: ["scene-gone"],
+            elements: ["layer-gone"],
+            actions: [],
+            all: ["layer-gone", "scene-gone"],
+        });
+    });
+});
+
+describe("readSaveLastLine", () => {
+    it("reads the words the save stopped on", () => {
+        expect(readSaveLastLine(makeSave(PLAYING))).toBe(LAST_LINE);
+    });
+
+    it("is null when the save carries none", () => {
+        expect(readSaveLastLine(makeSave(PLAYING, { lastSentence: null }))).toBeNull();
+        expect(readSaveLastLine(makeSave(PLAYING, { lastSentence: "   " }))).toBeNull();
+        expect(readSaveLastLine({})).toBeNull();
+    });
+
+    it("collapses whitespace and caps the quote", () => {
+        expect(readSaveLastLine(makeSave(PLAYING, { lastSentence: "a\n  b" }))).toBe("a b");
+        const quoted = readSaveLastLine(makeSave(PLAYING, { lastSentence: "x".repeat(200) }));
+        expect(quoted).toHaveLength(61);
+        expect(quoted?.endsWith("…")).toBe(true);
     });
 });

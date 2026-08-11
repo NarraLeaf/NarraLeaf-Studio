@@ -118,7 +118,7 @@ import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
-import { loadSaveIntoGame, type SaveLoadOutcome } from "./saveLoad";
+import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import { createSkipRunController } from "./skipRunController";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
@@ -1284,7 +1284,15 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // load in the session would sit there locked.
                 releaseLoadLock: () => liveGame.getGameState()?.rollLock.unlock(),
             },
-            notifyPlayer: message => liveGame.notify(message),
+            // The engine's notification channel, which draws through the project's Notifications
+            // surface when it has one and the engine's own component when it does not.
+            //
+            // It draws inside the Player, and `NlrStageLayer` puts the whole Player behind
+            // `visibility: hidden` until the host reveals the stage. A refusal raised while the
+            // stage is hidden is therefore queued into a hidden layer and times out unseen. That is
+            // every load that fails before the stage has ever been shown; a load from an in-game
+            // menu drawn over a visible stage is seen.
+            notifyPlayer: message => liveGame.notify(message, SAVE_LOAD_NOTICE_DURATION_MS),
             report: (level, message) => {
                 host.log(level, message);
                 host.reportIssue?.({ level, message, origin: "session" });

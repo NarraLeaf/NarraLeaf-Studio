@@ -105,6 +105,7 @@ export const devMode = {
         droppedBacklog: "丢弃的回顾记录：{count} / {total}；它们对应的行已不存在",
         unclaimedOnLoad: "没有对应变量声明的键：{count}",
         missingElement: "该存档引用了故事中已不存在的元素：{id}",
+        unresolvedIds: "编译 id：{ids}",
         gameUnchanged: "运行中的游戏保持不变。",
         gameRestored: "运行中的游戏已恢复。",
         gameLost: "运行中的游戏无法恢复。",

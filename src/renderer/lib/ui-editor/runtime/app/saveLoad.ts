@@ -130,8 +130,16 @@ export type LoadSaveOptions = {
     report: (level: "warning" | "error", message: string) => void;
 };
 
-/** How many ids a single author-facing line names. */
-const REPORTED_ID_LIMIT = 6;
+/** How much of the save's last line a report quotes. */
+const SAVE_LINE_LIMIT = 60;
+
+/**
+ * How long the player's line stays up.
+ *
+ * Longer than the engine's 3000ms default: this one explains why a button the player pressed did
+ * nothing, and the default is tuned for text that repeats what just happened on screen.
+ */
+export const SAVE_LOAD_NOTICE_DURATION_MS = 6000;
 
 /** The serialized discriminant of a stack entry that must resolve to a live action. */
 const STACK_ITEM_ACTION = "action";
@@ -233,17 +241,48 @@ function collectStackActionIds(stack: unknown, found: Set<string>): void {
 }
 
 /**
- * Ids the save names that the running story does not have, deduplicated and sorted.
+ * What a save named that the running story does not have, split by what kind of thing it is.
+ *
+ * Split rather than pooled because the ids themselves are unreadable. They are the engine's own
+ * counters (`e-14`, `a-41`), they are assigned at compile time, and the ones that turn up here are
+ * by definition the ones that no longer exist, so nothing left in the project can name them. What
+ * an author can act on is the kind: a scene that is gone is a scene they deleted.
+ */
+export type UnresolvedSaveReferences = {
+    /** Scenes the save was posing. The one an author recognises. */
+    scenes: string[];
+    /** Layers, images, videos and effects the save had on stage. */
+    elements: string[];
+    /** Story rows the save's execution stacks were sitting on. */
+    actions: string[];
+    /** All of the above, deduplicated and sorted. Raw ids, for a debug view rather than a sentence. */
+    all: string[];
+};
+
+const NO_UNRESOLVED_REFERENCES: UnresolvedSaveReferences = { scenes: [], elements: [], actions: [], all: [] };
+
+/**
+ * What the save names that the running story does not have.
  *
  * Mirrors every lookup `deserialize` performs that throws on a miss, and only those. Sounds,
  * backlog lines and NVL speakers are left out on purpose: the engine already skips those quietly,
  * and refusing a load over one would be stricter than the engine itself.
  */
-export function collectUnresolvedSaveReferences(savedGame: SavedGame, maps: SaveStoryMaps): string[] {
-    const missing = new Set<string>();
+export function collectUnresolvedSaveReferences(
+    savedGame: SavedGame,
+    maps: SaveStoryMaps,
+): UnresolvedSaveReferences {
+    const missingScenes = new Set<string>();
+    const missingElements = new Set<string>();
+    const missingActions = new Set<string>();
+    const requireScene = (id: unknown): void => {
+        if (typeof id === "string" && !maps.hasElement(id)) {
+            missingScenes.add(id);
+        }
+    };
     const requireElement = (id: unknown): void => {
         if (typeof id === "string" && !maps.hasElement(id)) {
-            missing.add(id);
+            missingElements.add(id);
         }
     };
 
@@ -260,7 +299,7 @@ export function collectUnresolvedSaveReferences(savedGame: SavedGame, maps: Save
         if (!isRecord(scene)) {
             continue;
         }
-        requireElement(scene.sceneId);
+        requireScene(scene.sceneId);
         const elements = scene.elements;
         const layers = isRecord(elements) ? elements.layers : undefined;
         if (!isRecord(layers)) {
@@ -295,24 +334,71 @@ export function collectUnresolvedSaveReferences(savedGame: SavedGame, maps: Save
     }
     for (const actionId of actionIds) {
         if (!maps.hasAction(actionId)) {
-            missing.add(actionId);
+            missingActions.add(actionId);
         }
     }
 
-    return Array.from(missing).sort();
+    const scenes = Array.from(missingScenes).sort();
+    // A scene also has an entry in `elementStates`, which is walked as a plain element. Counted in
+    // both buckets it would read as two separate things gone, so the more specific bucket wins.
+    const elements = Array.from(missingElements).filter(id => !missingScenes.has(id)).sort();
+    const actions = Array.from(missingActions).sort();
+    return { scenes, elements, actions, all: [...scenes, ...elements, ...actions].sort() };
 }
 
-/** The ids a single author-facing line names, at most {@link REPORTED_ID_LIMIT} of them. */
-function formatIdList(ids: string[]): string {
-    return ids.slice(0, REPORTED_ID_LIMIT).join(", ");
+/**
+ * How a refusal describes what the story is missing.
+ *
+ * One sentence naming the kind, in the order an author would recognise it: a deleted scene explains
+ * everything else that went with it, so it is said first and the layers and images that vanished
+ * alongside it are not restated. The ids stay off this line and travel on the outcome instead - see
+ * {@link UnresolvedSaveReferences} for why none of them can be named.
+ */
+function unresolvedDetailKey(unresolved: UnresolvedSaveReferences): TranslationKey {
+    if (unresolved.scenes.length > 0) {
+        return "game.saveLoad.detail.unresolvedScene";
+    }
+    if (unresolved.elements.length > 0) {
+        return "game.saveLoad.detail.unresolvedElement";
+    }
+    return "game.saveLoad.detail.unresolvedAction";
 }
 
-/** The author-facing line for a refusal, one per state the run was left in. */
-const AUTHOR_LINE_BY_GAME_STATE = {
-    unchanged: "game.saveLoad.notApplied",
-    restored: "game.saveLoad.putBack",
-    lost: "game.saveLoad.notRestored",
-} as const satisfies Record<RunningGameState, TranslationKey>;
+/**
+ * The line the save was sitting on, as an author reads it.
+ *
+ * `meta.lastSentence` is written on every serialize and is the save's own words, which is the one
+ * author-facing thing a save carries about where it was. It survives the scene being deleted, which
+ * is exactly when it is needed.
+ */
+export function readSaveLastLine(savedGame: unknown): string | null {
+    if (!isRecord(savedGame) || !isRecord(savedGame.meta)) {
+        return null;
+    }
+    const sentence = savedGame.meta.lastSentence;
+    if (typeof sentence !== "string") {
+        return null;
+    }
+    const trimmed = sentence.trim().replace(/\s+/g, " ");
+    if (!trimmed) {
+        return null;
+    }
+    return trimmed.length > SAVE_LINE_LIMIT ? `${trimmed.slice(0, SAVE_LINE_LIMIT)}…` : trimmed;
+}
+
+/**
+ * How loudly each ending is reported, decided once here.
+ *
+ * `restored` shares the warning level with `unchanged` rather than taking the error one: the load
+ * did not happen and the run came back, which is the ordinary end of an old save either way. They
+ * are told apart by their wording, not by their severity. `lost` is the only one where something is
+ * actually broken afterwards.
+ */
+const AUTHOR_REPORT_BY_GAME_STATE = {
+    unchanged: { level: "warning", key: "game.saveLoad.notApplied" },
+    restored: { level: "warning", key: "game.saveLoad.putBack" },
+    lost: { level: "error", key: "game.saveLoad.notRestored" },
+} as const satisfies Record<RunningGameState, { level: "warning" | "error"; key: TranslationKey }>;
 
 /** The one line the player is shown. Chosen by the story hash and by nothing else. */
 function refusalMessageForPlayer(origin: SaveStoryOrigin): string {
@@ -366,10 +452,8 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
         // One sentence per state, because the three states are three different things to have
         // happened to the run. Saying "unchanged" after a rollback would be false: the stage was
         // reset and rebuilt on the way there.
-        report(
-            runningGame === "lost" ? "error" : "warning",
-            translate(AUTHOR_LINE_BY_GAME_STATE[runningGame], { id, detail }),
-        );
+        const { level, key } = AUTHOR_REPORT_BY_GAME_STATE[runningGame];
+        report(level, translate(key, { id, detail }));
         return outcome;
     };
 
@@ -402,20 +486,24 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
     // The whole pre-check, resolution included, sits inside one guard. It is an optimisation over
     // the snapshot, not a step of the load: a table that answers oddly must cost the pre-check and
     // nothing else, or the safety net becomes the thing that drops the load.
-    let unresolvedIds: string[] = [];
+    let unresolved: UnresolvedSaveReferences = NO_UNRESOLVED_REFERENCES;
     try {
         const maps = game.resolveStoryMaps();
         if (maps) {
-            unresolvedIds = collectUnresolvedSaveReferences(savedGame, maps);
+            unresolved = collectUnresolvedSaveReferences(savedGame, maps);
         }
     } catch {
-        unresolvedIds = [];
+        unresolved = NO_UNRESOLVED_REFERENCES;
     }
-    if (unresolvedIds.length > 0) {
+    if (unresolved.all.length > 0) {
+        const line = readSaveLastLine(savedGame);
+        const what = translate(unresolvedDetailKey(unresolved));
         return refuse(
             "unresolved",
-            translate("game.saveLoad.detail.unresolved", { ids: formatIdList(unresolvedIds) }),
-            { unresolvedIds, origin },
+            // The quoted line is a locator, not part of the finding, so it is wrapped around the
+            // finding rather than glued after it: a locale that puts it first can.
+            line ? translate("game.saveLoad.detail.savedAt", { detail: what, line }) : what,
+            { unresolvedIds: unresolved.all, origin },
         );
     }
 

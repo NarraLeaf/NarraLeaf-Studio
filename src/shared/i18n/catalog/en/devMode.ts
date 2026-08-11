@@ -131,6 +131,7 @@ export const devMode = {
         droppedBacklog: "Backlog lines dropped: {count} of {total}. Their rows no longer exist.",
         unclaimedOnLoad: "Keys with no declared variable: {count}",
         missingElement: "This save poses an element the story no longer has: {id}",
+        unresolvedIds: "Compiled ids: {ids}",
         gameUnchanged: "The running game is unchanged.",
         gameRestored: "The running game was put back.",
         gameLost: "The running game could not be put back.",
