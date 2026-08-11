@@ -9,6 +9,7 @@ import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
 } from "@shared/types/blueprint/valueTypes";
+import type { BlueprintAssetPinRef } from "@shared/types/blueprint/valueTypes";
 import type { BehaviorNodeDefinition, BehaviorNodeExecutionContext } from "../behavior-graph/BehaviorNodeRegistry";
 
 export type BlueprintPinSemantic = "exec" | "data";
@@ -52,6 +53,12 @@ export type BlueprintNodePinDef = {
      * string|integer|float|boolean.
      */
     allowInlineLiteral?: boolean;
+    /**
+     * Set when this pin carries a library asset id. Read by the asset reverse-lookup index, which
+     * walks the catalogue rather than a hard-coded list of param names - so a node added later is
+     * covered by declaring it here and nowhere else.
+     */
+    assetRef?: BlueprintAssetPinRef;
 };
 
 /**
@@ -295,6 +302,8 @@ export type BlueprintNodeEditorCatalogEntry = {
         allowInlineLiteral?: boolean;
         /** True for user-added dynamic inputs; show remove control on the node card. */
         removable?: boolean;
+        /** Carried through from the definition; see {@link BlueprintNodePinDef.assetRef}. */
+        assetRef?: BlueprintAssetPinRef;
     }>;
     inspectorParams?: BlueprintInspectorParamDef[];
     graphKinds: BlueprintGraphKind[];

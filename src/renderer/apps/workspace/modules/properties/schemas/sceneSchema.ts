@@ -7,7 +7,8 @@ import type {
     UISurface,
 } from "@shared/types/ui-editor/document";
 import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
-import { DEFAULT_UI_STAGE_SLOT_ID, UI_STAGE_SLOT_IDS, UI_STAGE_SLOT_LABELS } from "@shared/types/ui-editor/stageSlots";
+import { DEFAULT_UI_STAGE_SLOT_ID } from "@shared/types/ui-editor/stageSlots";
+import { getStageSlotLabel, getStageSlotOptions } from "@/lib/ui-editor/stageSlotLabel";
 import { parseColorValue, serializeColorValue } from "../framework/utils/colorUtils";
 import type {
     ColorPickerFieldDefinition,
@@ -32,13 +33,6 @@ export type SceneEditorContext = {
     documentService: UIDocumentService;
 };
 
-const GAME_UI_SLOT_LABELS: Record<UIStageSlotId, string> = UI_STAGE_SLOT_LABELS;
-
-const GAME_UI_SLOT_OPTIONS: { value: UIStageSlotId; label: string }[] = UI_STAGE_SLOT_IDS.map(slotId => ({
-    value: slotId,
-    label: UI_STAGE_SLOT_LABELS[slotId],
-}));
-
 const DEFAULT_GAME_UI_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 
 const isGameUi = (surface: UISurface): surface is UIStageSurface => surface.kind === "stageSurface";
@@ -50,11 +44,11 @@ const getInterfaceTypeLabel = (surface: UISurface, t: TranslateFn): string => {
     return isGameUi(surface) ? t("properties.scene.typeGameUi") : t("properties.scene.typePage");
 };
 
-const getGameUiSlotLabel = (surface: UISurface): string => {
+const getGameUiSlotLabel = (surface: UISurface, t: TranslateFn): string => {
     if (!isGameUi(surface)) {
         return "-";
     }
-    return GAME_UI_SLOT_LABELS[surface.mount.slotId] ?? surface.mount.slotId;
+    return getStageSlotLabel(surface.mount.slotId, t);
 };
 
 function SurfacePageAnimationField({ data }: CustomFieldProps<SceneEditorContext>) {
@@ -98,7 +92,7 @@ export const scenePropertySchema = (t: TranslateFn) =>
                 },
                 {
                     label: t("properties.scene.slot"),
-                    getValue: data => getGameUiSlotLabel(data.surface),
+                    getValue: data => getGameUiSlotLabel(data.surface, t),
                     hidden: data => !isGameUi(data.surface),
                 },
             ],
@@ -169,7 +163,7 @@ export const scenePropertySchema = (t: TranslateFn) =>
             id: "scene.gameUiSlot",
             type: "select",
             label: t("properties.scene.slot"),
-            options: GAME_UI_SLOT_OPTIONS,
+            options: getStageSlotOptions(t),
             getValue: data => (isGameUi(data.surface) ? data.surface.mount.slotId : DEFAULT_GAME_UI_SLOT_ID),
             setValue: (data, value) => {
                 if (!isGameUi(data.surface)) {

@@ -527,6 +527,18 @@ export const help = {
                 + "- Icons come from the project's icon page. A platform whose icon has not been generated builds "
                 + "with the NarraLeaf icon.",
         },
+        appTags: {
+            title: "Build variants",
+            body:
+                "A variant is one edition of the project, such as a demo. Every project has the Release "
+                + "variant, and each variant added beside it starts out identical to Release.\n"
+                + "\n"
+                + "- A variant stores only what it says differently. A field left empty shows the Release "
+                + "value and follows it.\n"
+                + "- Restore removes what the variant said, so the field follows Release again.\n"
+                + "- Deleting a variant does not rewrite what pointed at it. Those places read Release "
+                + "from then on, and the count beside Delete says how many there are.",
+        },
         icons: {
             title: "Icons",
             body:

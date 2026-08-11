@@ -173,6 +173,11 @@ export function normalizeMobileConfiguration(value: unknown): MobileConfiguratio
  * the actual build request is sent with explicit targets.
  */
 export type BuildConfiguration = {
+    /**
+     * The build variant selected last time. Absent means the release variant, which is also what a
+     * stored id whose variant has since been deleted resolves to.
+     */
+    appTagId?: string;
     platforms: GameBuildPlatform[];
     formats: Partial<Record<GameBuildPlatform, GameBuildFormat[]>>;
     /** Arch chosen per desktop platform; the web export has none. */

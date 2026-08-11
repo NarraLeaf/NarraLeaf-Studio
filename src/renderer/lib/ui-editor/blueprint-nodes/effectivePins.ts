@@ -317,6 +317,9 @@ function pinDefToCatalogPin(p: BlueprintNodePinDef, removable: boolean): Effecti
         label: p.label,
         optional: p.optional,
         allowInlineLiteral: p.allowInlineLiteral,
+        // Carried through so the reverse-lookup index can read asset-bearing pins off the catalogue.
+        // Dropping it here is silent: the index would simply stop seeing those references.
+        assetRef: p.assetRef,
         removable,
     };
 }

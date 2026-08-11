@@ -147,6 +147,7 @@ function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReaso
         case "unknownScene":
         case "unknownAudioTrack":
         case "unknownLabel":
+        case "unknownAppTag":
         case "unknownVariable":
         case "duplicateVariable":
             return { key: reasonKey(issue.code), params: { value: issue.value } };

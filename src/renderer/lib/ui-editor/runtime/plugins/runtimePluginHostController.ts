@@ -183,6 +183,11 @@ export type RuntimePluginSessionAttachment = {
  */
 export type RuntimePluginSaveActions = {
     write(id: string, metadata?: unknown): Promise<void>;
+    /**
+     * Rejects when the save was not applied - no slot under that id, or a save the running story
+     * cannot take. The running game is left exactly where it was in either case, so a plugin that
+     * catches this is handling a load that did not happen, not a game that was damaged.
+     */
     load(id: string): Promise<void>;
 };
 

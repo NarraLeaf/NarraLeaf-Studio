@@ -24,6 +24,7 @@ import type { UIGraphService } from "../ui-editor/UIGraphService";
 import type { HistoryService } from "../history/HistoryService";
 import type { VariableRegistryService } from "../variables/VariableRegistryService";
 import type { AudioTrackService } from "../audio/AudioTrackService";
+import type { AppTagService } from "../appTag/AppTagService";
 import { EventEmitter } from "../ui/EventEmitter";
 
 /**
@@ -158,6 +159,16 @@ const RELOAD_PARTICIPANTS: readonly ReloadParticipant[] = [
         // at project open rather than throwing through the reload.
         reload: async ctx => {
             await ctx.services.get<AudioTrackService>(Services.AudioTracks).load();
+        },
+    },
+    {
+        id: "appTags",
+        labelKey: "workspace.shell.save.stores.appTags",
+        // Same shape as `audioTracks`: `load()` clears the corrupt latch at its start, so a tag list
+        // that is unreadable at reload time lands in the same "not loaded, refuses to save" state as
+        // at project open rather than throwing through the reload.
+        reload: async ctx => {
+            await ctx.services.get<AppTagService>(Services.AppTags).load();
         },
     },
     {
