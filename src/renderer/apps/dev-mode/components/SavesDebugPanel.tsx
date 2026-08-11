@@ -38,7 +38,17 @@ type SaveSlotEntry = { summary: SaveSlotSummary; record: GameAppSaveRecord | nul
 /** What the last load attempt on a slot did, drawn under that slot's row. */
 type SaveLoadResult =
     | { kind: "ok"; losses: SaveLoadLosses }
-    | { kind: "failed"; failure: SaveLoadFailure; game: RunningGameState };
+    | {
+          kind: "failed";
+          failure: SaveLoadFailure;
+          game: RunningGameState;
+          /**
+           * The compiled ids behind the failure. This panel is the one place they belong: nothing in
+           * the project can name them, so they are a debugging handle rather than a finding, and the
+           * message above already says what kind of thing went missing.
+           */
+          unresolvedIds: string[];
+      };
 
 /** What became of the run, as the line under a failed load. */
 const RUNNING_GAME_STATE_KEYS = {
@@ -231,7 +241,12 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
         try {
             const outcome = await saves.load(id);
             if (outcome.status === "refused") {
-                recordResult(id, { kind: "failed", failure: refusalAsFailure(outcome), game: outcome.game });
+                recordResult(id, {
+                    kind: "failed",
+                    failure: refusalAsFailure(outcome),
+                    game: outcome.game,
+                    unresolvedIds: outcome.unresolvedIds,
+                });
                 return;
             }
             const knownActionIds = new Set(storyRuntime.getActionIdBindings().map(binding => binding.staticId));
@@ -244,7 +259,12 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
         } catch (error) {
             // Only a caller mistake reaches here now (no game runtime). It happens before anything
             // is touched, so the run is where it was.
-            recordResult(id, { kind: "failed", failure: classifySaveLoadFailure(error), game: "unchanged" });
+            recordResult(id, {
+                kind: "failed",
+                failure: classifySaveLoadFailure(error),
+                game: "unchanged",
+                unresolvedIds: [],
+            });
         } finally {
             setBusy(false);
         }
@@ -446,7 +466,7 @@ function LoadResultBlock(props: { result: SaveLoadResult }): ReactNode {
         );
     }
 
-    const { failure, game } = result;
+    const { failure, game, unresolvedIds } = result;
     return (
         <div
             className={cn(
@@ -460,6 +480,11 @@ function LoadResultBlock(props: { result: SaveLoadResult }): ReactNode {
                     : failure.message}
             </p>
             <p className="text-2xs text-fg-subtle">{t(RUNNING_GAME_STATE_KEYS[game])}</p>
+            {unresolvedIds.length > 0 ? (
+                <p className="mt-0.5 break-all font-mono text-2xs text-fg-subtle">
+                    {t("devMode.saves.unresolvedIds", { ids: unresolvedIds.join(", ") })}
+                </p>
+            ) : null}
         </div>
     );
 }
