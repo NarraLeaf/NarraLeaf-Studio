@@ -33,6 +33,8 @@ export type DocumentKind =
     | "audio-tracks"
     /** The project's palette, at `editor/brand.json`. Cross-cutting, like the two above it. */
     | "brand"
+    /** The build variants the project ships as, at `editor/app-tags.json`. */
+    | "app-tags"
     | "localization"
     | "localization-keys"
     | "voice"

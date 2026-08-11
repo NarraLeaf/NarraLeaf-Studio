@@ -34,6 +34,7 @@ export const project = {
     // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
     group: {
         details: "详情",
+        appTags: "构建版本",
         icons: "图标",
         dependencies: "依赖",
         saving: "存档",
@@ -73,6 +74,34 @@ export const project = {
         copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt；留空则不生成该文件",
         descriptionPlaceholder: "描述你的项目…",
         required: "必填",
+    },
+    // 构建版本：同一个工程能发布出的几个版本。什么是构建版本、继承是什么意思，都在标题旁 `?` 打开的
+    // `appTags` 帮助主题里；这里的文案只命名控件，并说明按下去会发生什么。
+    appTags: {
+        add: "新增版本",
+        newTagName: "新版本",
+        nameTitle: "名称",
+        // 每个工程都有、其余版本都以它为准的那一个。名字写在显示它的地方，模型层没有文案表可读。
+        releaseName: "正式版",
+        fields: {
+            displayName: "应用名称",
+            identifier: "标识符",
+            version: "版本",
+        },
+        // 只在该字段自己填了值时出现在它旁边，所以它既是「此处被覆盖」的标记，也是取消覆盖的入口。
+        restore: "恢复继承",
+        // 在打开的版本里紧挨删除按钮：确认框接下来要说的就是这个数字。
+        usedBy: {
+            one: "被 {count} 处引用",
+            other: "被 {count} 处引用",
+        },
+        delete: "删除",
+        deleteConfirm: "删除「{name}」？",
+        // 如实说明后果：指向该版本的引用不会被改写，从此按正式版的值读取。
+        deleteDetail: {
+            one: "{count} 处引用将回落到正式版",
+            other: "{count} 处引用将回落到正式版",
+        },
     },
     assets: {
         master: "选择应用图标",

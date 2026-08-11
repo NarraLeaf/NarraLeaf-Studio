@@ -1,5 +1,6 @@
 import {registerDocumentSpec} from "../registry";
 import {AnyDocumentSpec} from "../types";
+import {appTagsSpec} from "./appTags";
 import {assetsMetadataSpec} from "./assetsMetadata";
 import {audioTracksSpec} from "./audioTracks";
 import {brandSpec} from "./brand";
@@ -10,6 +11,7 @@ import {storyDocumentSpec} from "./story";
 import {variableRegistrySpec} from "./variables";
 import {voiceDocumentSpec} from "./voice";
 
+export {APP_TAGS_DOCUMENT_PATH, appTagsSpec} from "./appTags";
 export {AUDIO_TRACKS_DOCUMENT_PATH, audioTracksSpec} from "./audioTracks";
 export {BRAND_DOCUMENT_PATH, brandSpec} from "./brand";
 export {VARIABLE_REGISTRY_DOCUMENT_PATH, variableRegistrySpec} from "./variables";
@@ -40,6 +42,7 @@ export {
  * Each says so in its own module.
  */
 export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
+    appTagsSpec,
     audioTracksSpec,
     brandSpec,
     variableRegistrySpec,
