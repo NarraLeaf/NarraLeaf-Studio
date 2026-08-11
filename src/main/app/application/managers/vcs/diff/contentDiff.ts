@@ -29,8 +29,9 @@ import type { ContentClass } from "@shared/vcs/contentClass";
  *
  * ## What a provider may claim
  *
- * The class handed in is a guess from the file's name (`shared/vcs/contentClass.ts`); the
- * bytes are the evidence. So a provider confirms the format from the header and reports
+ * The class handed in is a guess - from the file's name, or from a few dozen bytes of its front
+ * where the name had no extension to read (`shared/vcs/contentClass.ts`); the header is the
+ * evidence. So a provider confirms the format from the header and reports
  * nothing when the header is not what the name promised - which is how a `.png` that is
  * really a JPEG still gets its dimensions, and how a `.mp4` whose index sits at the end of
  * the file says "changed" rather than inventing a duration.

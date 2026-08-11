@@ -91,6 +91,39 @@ describe("ChangeDetailHost", () => {
         expect(captions).toHaveLength(1);
     });
 
+    it("says nothing about a tier for a file that appeared, went away or moved", () => {
+        // Three whole-file facts, and `opaque`'s caption ("Not read. Too large, not text, or
+        // unreadable") was drawn over all three in the real app. The move is the worst of them:
+        // that file's bytes were read on both sides, in full, precisely to prove it was a move.
+        for (const kind of ["added", "removed", "moved"] as const) {
+            const moved: DocumentDiffEntry = {
+                path: "notes-archive/note-01.txt",
+                kind,
+                diff: {
+                    changes: [{ path: [], kind, label: { key: "documentDiff.content.moved", params: { from: "notes/note-01.txt" } } }],
+                    complete: true,
+                    total: 1,
+                    tier: "opaque",
+                },
+            };
+
+            const { container } = render(<ChangeDetailHost entry={moved} />);
+
+            expect(container.textContent, kind).not.toContain("documentDiff.tier.opaque");
+            // Non-vacuous: the row itself is still there, so this is not an empty pane passing.
+            expect(container.textContent, kind).toContain("documentDiff.content.moved");
+            cleanup();
+        }
+    });
+
+    it("still says it for the same file compared change by change", () => {
+        // The caption is suppressed for the WHOLE document only. A changed file at the same tier
+        // keeps it, which is what makes the suppression a statement rather than a hole.
+        const { container } = render(<ChangeDetailHost entry={entry("notes/note-01.txt", "opaque", 1)} />);
+
+        expect(container.textContent).toContain("documentDiff.tier.opaque");
+    });
+
     it("scopes the detail to one change when one is selected", () => {
         const document = entry("editor/brand.json", "semantic", 4);
 

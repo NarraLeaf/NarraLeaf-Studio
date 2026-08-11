@@ -1,5 +1,11 @@
 import type { DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
 import type { RevisionId, VcsChangeKind, VcsStatus, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import {
+    contentClassOf,
+    CONTENT_CLASS_SNIFF_BYTES,
+    resolveContentClass,
+    type ContentClass,
+} from "@shared/vcs/contentClass";
 import { LABEL_MOVED, type ContentSide } from "./contentDiff";
 import {
     DIFF_MOVE_CONFIRM_BYTE_CEILING,
@@ -32,6 +38,15 @@ import type { RevisionEntry } from "./revisionDiff";
  * is enough to decide which files are worth reading. Before this, a working tree holding a
  * freshly re-exported 200 MB video pulled both copies into the main process to report two
  * numbers that were already in hand.
+ *
+ * **What a file IS is settled before that, and here it costs a few dozen bytes.** Studio stores
+ * asset contents under an id with no extension at all
+ * (`assets/content/99/55/3d15abb54213bad7203798a1adc4`), so classifying by name puts every asset
+ * in a real project on `unknown` - which reads as "this might be JSON" and buys both whole
+ * copies of a sprite to find out that it is not. A positioned read of the front of the working
+ * file settles it (`shared/vcs/contentClass.ts`), through a port of its own so a probe is never
+ * mistaken for a read. The recorded side gets none and needs none: it is the same file's class
+ * either way, and the backend could not answer cheaply if it were asked.
  *
  * **Renames are paired, and here that costs a read.** A rename arrives as a delete plus an add
  * (§4.18), and the two sides' identities are not comparable: the recorded side carries the
@@ -70,6 +85,20 @@ export interface WorkingTreeDiffSource {
      * took, and a race there must read as "removed", not as a failed diff.
      */
     statWorking(repositoryRelativePath: string): Promise<{ size: number } | null>;
+    /**
+     * The first `length` bytes of one working file, or `null` if it is not there.
+     *
+     * **A separate port from {@link readWorking} rather than a length argument on it**, and the
+     * separation is load-bearing twice over. It is a different COST - a positioned `fs.read`
+     * that stops after a few dozen bytes, against pulling a 200 MB video into the main process -
+     * and the tests here assert on the call list, so a probe and a whole-file read that arrived
+     * under one name could not be told apart by the thing that exists to tell them apart.
+     *
+     * Working tree only. The recorded side has no counterpart because the backend has no ranged
+     * fetch: `storageGet` answers with the whole blob or nothing (see
+     * {@link import("./documentDiff").CONTENT_HEAD_READ_CEILING}).
+     */
+    readWorkingHead(repositoryRelativePath: string, length: number): Promise<Buffer | null>;
     /** Bytes of one working file, or `null` if it is not there. Same reasoning as above. */
     readWorking(repositoryRelativePath: string): Promise<Buffer | null>;
 }
@@ -177,6 +206,9 @@ export async function diffWorkingTree(
         working.set(file.path, file.kind === "removed" ? null : await source.statWorking(file.path));
     }
 
+    const classes = await classifyFiles(source, files, working);
+    const classOf = (path: string): ContentClass => classes.get(path) ?? contentClassOf(path);
+
     // Renames are settled before anything else is planned, so a file that only moved is never
     // read a second time by the plan below - the same order `diffRevisions` takes.
     const pairing = head ? await pairRenames(source, head, files, recorded, working) : NOTHING_PAIRED;
@@ -191,7 +223,12 @@ export async function diffWorkingTree(
     for (const file of files) {
         if (paired.has(file.path)) continue;
         const before = file.kind === "added" ? undefined : recorded.get(file.was);
-        const wanted = planPathRead(file.path, before?.size ?? 0, working.get(file.path)?.size ?? 0);
+        const wanted = planPathRead(
+            file.path,
+            before?.size ?? 0,
+            working.get(file.path)?.size ?? 0,
+            classOf(file.path),
+        );
         if (wanted === 0) continue;
         if (wanted > budget) {
             complete = false;
@@ -272,7 +309,7 @@ export async function diffWorkingTree(
                 kind: file.kind,
                 ...documentKind,
                 diff: diffDocumentBytes(
-                    { path: file.path, base, head: bytes, spec },
+                    { path: file.path, base, head: bytes, spec, contentClass: classOf(file.path) },
                     { limit, onDegrade: options.onDegrade },
                 ),
             });
@@ -284,7 +321,7 @@ export async function diffWorkingTree(
             kind: file.kind,
             ...documentKind,
             diff: diffDocumentContent(
-                { path: file.path, base: sideOf(before), head: sideOf(after) },
+                { path: file.path, base: sideOf(before), head: sideOf(after), contentClass: classOf(file.path) },
                 { limit, onDegrade: options.onDegrade },
             ),
         });
@@ -297,6 +334,42 @@ export async function diffWorkingTree(
         complete,
         readFailure,
     };
+}
+
+/**
+ * What each changed file is, by name where the name says something and by header where it does not.
+ *
+ * **Only the paths whose name answered `unknown` are probed**, which is the cheap half of a
+ * useful trade: a project's documents and its properly named assets cost nothing here, and the
+ * ones that do cost something are Studio's own content store, where the answer is worth having
+ * for every single file. The probe is {@link CONTENT_CLASS_SNIFF_BYTES} long whatever the file
+ * is, so a 200 MB video costs the same as a 2 KB icon.
+ *
+ * A deleted file is skipped rather than probed: there is nothing on disk to probe, and the
+ * recorded side has no ranged fetch. Its class stays whatever its name said, which is all
+ * anyone had before - and a removal is one row either way.
+ *
+ * The probe result is deliberately NOT kept as a provider's header. A provider wants kilobytes
+ * and gets them from a whole-file read the plan already paid for; passing it a few dozen bytes
+ * instead would have it answer from a truncated header, which is how a comparison reports a
+ * dimension that is not the file's.
+ */
+async function classifyFiles(
+    source: WorkingTreeDiffSource,
+    files: readonly WorkingFile[],
+    working: ReadonlyMap<string, { size: number } | null>,
+): Promise<Map<string, ContentClass>> {
+    const classes = new Map<string, ContentClass>();
+    for (const file of files) {
+        const named = contentClassOf(file.path);
+        if (named !== "unknown" || !working.get(file.path)) {
+            classes.set(file.path, named);
+            continue;
+        }
+        const head = await source.readWorkingHead(file.path, CONTENT_CLASS_SNIFF_BYTES);
+        classes.set(file.path, resolveContentClass(file.path, head));
+    }
+    return classes;
 }
 
 /** What one pass of rename pairing decided, and what it read on the way. */

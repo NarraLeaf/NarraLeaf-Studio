@@ -48,7 +48,10 @@ export function ChangeIndexPane({
         <nav
             aria-label={t("documentDiff.shell.fileList")}
             style={style}
-            className={cn("min-w-0 overflow-y-auto py-1", className)}
+            // Inset by a hair so a row's own rounding has somewhere to sit. The rail's change list
+            // and the history list are both drawn this way, and this is the third list of the same
+            // kind in the same feature.
+            className={cn("min-w-0 overflow-y-auto px-1 py-1", className)}
         >
             {index.groups.map(group => (
                 <ChangeIndexGroupView
@@ -100,7 +103,7 @@ export function ChangeIndexGroupView({
                 onClick={onToggle}
                 aria-expanded={open}
                 className={cn(
-                    "flex w-full items-center gap-1 px-2 py-1 text-left transition-colors cursor-default",
+                    "flex w-full items-center gap-1 rounded-md px-2 py-1 text-left transition-colors cursor-default",
                     // `.nl-focus-ring` rather than a Tailwind ring: `styles.css` drops `box-shadow`
                     // on every native control, so a ring on a `<button>` is dead code
                     // (design-system §5), and a keyboard walking this list needs to be visible.
@@ -157,7 +160,7 @@ function ChangeIndexRowView({
             title={row.path}
             data-change-index-row={row.path}
             className={cn(
-                "flex w-full items-baseline gap-1.5 overflow-hidden whitespace-nowrap px-2 py-1 pl-6 text-left",
+                "flex w-full items-baseline gap-1.5 overflow-hidden whitespace-nowrap rounded-md px-2 py-1 pl-6 text-left",
                 "nl-focus-ring transition-colors cursor-default",
                 selected ? "bg-primary/15 text-fg" : "hover:bg-fill",
             )}

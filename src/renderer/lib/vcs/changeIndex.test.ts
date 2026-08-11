@@ -178,6 +178,39 @@ describe("buildChangeIndex", () => {
         expect(group.caveats.tiers).toEqual(["summary", "opaque"]);
     });
 
+    it("does not count a file with no other side as one it could not finish comparing", () => {
+        // Measured in the app: a 26-byte new `.txt` whose own detail was perfectly correct - one
+        // "+ Added (26 B)" row and no caption - counted under a heading reading "2 files here
+        // were not compared in full". The engine reports an addition as one `opaque` row because
+        // there is nothing to compare it against, not because it gave up part way.
+        const index = buildChangeIndex([
+            entry({ path: "notes/new-note.txt", kind: "added", tier: "opaque" }),
+            entry({ path: "notes/old-note.txt", kind: "removed", tier: "opaque" }),
+            entry({ path: "notes/edited.txt", tier: "structural" }),
+        ], budget);
+
+        const group = index.groups[0];
+        expect(group.count).toBe(3);
+        // One, and it is the one that really was compared and came back weaker than semantic.
+        expect(group.caveats.partialDocuments).toBe(1);
+        expect(group.caveats.tiers).toEqual(["structural"]);
+    });
+
+    it("treats a renamed file as a whole-file fact, not as a comparison that fell short", () => {
+        // The same judgement one kind further: `notes/note-01.txt` moved to `notes-archive/`.
+        // Nothing inside it changed - and its bytes were read IN FULL on both sides to prove the
+        // move - so "not compared in full" is false twice over. The detail pane suppresses the
+        // caption for the same three kinds; this is the counting half of that agreement.
+        const index = buildChangeIndex([
+            entry({ path: "notes-archive/note-01.txt", kind: "moved", tier: "opaque" }),
+        ], budget);
+
+        const group = index.groups[0];
+        expect(group.caveats.partialDocuments).toBe(0);
+        expect(group.caveats.tiers).toEqual([]);
+        expect(index.rows[0].wholeDocument).toBe(true);
+    });
+
     it("reports nothing to caveat about when every file was read in full", () => {
         const group = buildChangeIndex([entry({ path: "editor/brand.json" })], budget).groups[0];
 

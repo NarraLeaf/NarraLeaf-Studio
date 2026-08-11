@@ -72,6 +72,13 @@ function sourceOf(
             return new Map(paths.map((path) => [path, recorded[path] ?? null]));
         },
         statWorking: async (path) => (working[path] ? { size: working[path].length } : null),
+        // Recorded under its own prefix, and that is the point of the port being its own port:
+        // a fixed-length probe of a file's front and a whole-file read cost different things,
+        // and the assertions below are about telling them apart.
+        readWorkingHead: async (path, length) => {
+            reads.push(`head:${path}`);
+            return working[path]?.subarray(0, length) ?? null;
+        },
         readWorking: async (path) => {
             reads.push(`working:${path}`);
             return working[path] ?? null;
@@ -379,5 +386,95 @@ describe("what is never read", () => {
         await diffWorkingTree(source);
 
         expect(reads).toEqual(["entriesAt:r1", "readAt:r1", "working:editor/story.json"]);
+    });
+});
+
+/**
+ * The comparison as a real project presents it: an asset with no extension anywhere in its path.
+ *
+ * `assets/content/<shard>/<shard>/<id>` is where Studio keeps an asset's contents, so a name
+ * carries no class and every one of these files used to be read in full on both sides to be
+ * described by its size. What is pinned here is both halves of the fix at once - the row the
+ * author gets, and the reads it cost - because either alone passes on the broken version: the
+ * whole-file read produced the same size row, and refusing to read produced the same silence.
+ */
+describe("an asset stored under its id", () => {
+    const SHARD = "assets/content/99/55/3d15abb54213bad7203798a1adc4";
+
+    function png(width: number, height: number, size: number): Buffer {
+        const out = Buffer.alloc(Math.max(size, 33), 0x7f);
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(out, 0);
+        out.writeUInt32BE(13, 8);
+        out.write("IHDR", 12);
+        out.writeUInt32BE(width, 16);
+        out.writeUInt32BE(height, 20);
+        return out;
+    }
+
+    it("names the resolution that changed, from a path that names nothing", async () => {
+        const { source, reads } = sourceOf(
+            statusOf([fileChange(SHARD, "modified")]),
+            { [SHARD]: png(1088, 1984, 40_000) },
+            { [SHARD]: png(1024, 1024, 12_000) },
+        );
+
+        const result = await diffWorkingTree(source);
+
+        expect(result.documents[0].diff.tier).toBe("content");
+        expect(result.documents[0].diff.changes.map((change) => change.label.key)).toEqual([
+            "documentDiff.content.dimensions",
+            "documentDiff.content.size",
+        ]);
+        // The probe happens once, before anything is planned, and is the only extra call: both
+        // copies are still pulled because they are small enough for the header to be worth it.
+        expect(reads).toEqual(["entriesAt:r1", `head:${SHARD}`, "readAt:r1", `working:${SHARD}`]);
+    });
+
+    it("stops opening a large one the moment its front says what it is", async () => {
+        // The read the probe pays for itself with. Over the header ceiling a named `.png` was
+        // already left alone; an id was not, because `unknown` reads as "might be JSON" and buys
+        // the whole file twice. Now the front of it settles the question for a few dozen bytes.
+        const large = (fill: number): Buffer => {
+            const out = png(4096, 4096, CONTENT_HEAD_READ_CEILING + 1024);
+            out.fill(fill, 33);
+            return out;
+        };
+        const { source, reads } = sourceOf(
+            statusOf([fileChange(SHARD, "modified")]),
+            { [SHARD]: large(1) },
+            { [SHARD]: large(2) },
+        );
+
+        const result = await diffWorkingTree(source);
+
+        expect(reads).toEqual(["entriesAt:r1", `head:${SHARD}`]);
+        // Still described, and described as a bitmap: the size row plus the rung that says the
+        // format was placed and its contents were not read.
+        expect(result.documents[0].diff.tier).toBe("content");
+        expect(result.documents[0].diff.changes.map((change) => change.label.key))
+            .toEqual(["documentDiff.content.notInspected"]);
+    });
+
+    it("probes nothing whose name already answers, and nothing that is gone", async () => {
+        // The probe is bounded to the paths it can help: a named document, a named asset and a
+        // deletion are all settled without it. A deletion could not use one anyway - there is no
+        // file on disk to read, and the recorded side has no ranged fetch.
+        const { source, reads } = sourceOf(
+            statusOf([
+                fileChange("editor/story.json", "modified"),
+                fileChange("assets/content/intro.mp4", "modified"),
+                fileChange(SHARD, "deleted"),
+            ]),
+            {
+                "editor/story.json": bytes({ v: 1 }),
+                "assets/content/intro.mp4": Buffer.alloc(CONTENT_HEAD_READ_CEILING + 1024, 1),
+                [SHARD]: png(64, 64, 900),
+            },
+            { "editor/story.json": bytes({ v: 2 }) },
+        );
+
+        await diffWorkingTree(source);
+
+        expect(reads.filter((entry) => entry.startsWith("head:"))).toEqual([]);
     });
 });
