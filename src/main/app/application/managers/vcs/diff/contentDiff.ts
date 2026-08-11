@@ -405,7 +405,11 @@ function headerOf(side: ContentSide): ReturnType<typeof readMediaHeader> {
  * never match, and must not: a length is not evidence of anything.
  */
 export function probesMatch(a: ContentProbe | undefined, b: ContentProbe | undefined): boolean {
-    return Boolean(a && b && a.hash && b.hash && a.hash === b.hash && a.size === b.size);
+    // An empty file is excluded, and not because two of them differ - they do not. Emptiness is
+    // simply not evidence of identity: delete four empty placeholders, add three more, and every
+    // one of the twelve possible pairings is equally supported, so whichever this returned would
+    // be an invention presented to the author as a fact about where their file went.
+    return Boolean(a && b && a.size > 0 && a.hash && b.hash && a.hash === b.hash && a.size === b.size);
 }
 
 /**

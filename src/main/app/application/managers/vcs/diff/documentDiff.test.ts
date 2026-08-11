@@ -194,15 +194,31 @@ describe("tier 3 and 4 - no spec", () => {
             head: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d]),
         });
 
-        // Reported at the weakest tier on purpose: `DocumentDiffTier` is shared with a renderer
-        // that switches over it exhaustively, and its own contract says a rung must never claim
-        // to be a higher one.
-        expect(diff.tier).toBe("opaque");
+        // `content`, not `opaque`, and the difference is a sentence the author reads: `opaque`'s
+        // caption says "Not read. Too large, not text, or unreadable. Only its size is reported",
+        // which would sit directly above a row naming this file's dimensions. A provider that
+        // opens the header earns the rung that says so; one that reads no header stays on
+        // `opaque`, which the `.blend` case below pins.
+        expect(diff.tier).toBe("content");
         expect(diff.changes).toEqual([{
             path: ["size"],
             kind: "changed",
             label: { key: "documentDiff.content.size", params: { fromBytes: 4, toBytes: 5 } },
         }]);
+    });
+
+    it("keeps a format nobody can open on the tier that admits it read nothing", () => {
+        // The other half of the rule above, and the reason the rule is on `headBytes` rather than
+        // on "the content step ran": this file went through the same step and came out with a
+        // size row, because there is no reader for it. "Only its size is reported" is the whole
+        // truth here, so `opaque` and its caption are the honest pair.
+        const diff = diffDocumentBytes({
+            path: "assets/content/ab/cd/scene.blend",
+            base: Buffer.from([0x42, 0x4c, 0x45, 0x4e]),
+            head: Buffer.from([0x42, 0x4c, 0x45, 0x4e, 0x44]),
+        });
+
+        expect(diff.tier).toBe("opaque");
     });
 
     it("reports text that is not JSON by size alone, without calling the format unrecognised", () => {

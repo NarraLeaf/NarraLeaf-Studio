@@ -85,6 +85,11 @@ export const CHANGE_CATEGORY_BY_DOCUMENT_KIND: Record<DocumentKind, ChangeCatego
      */
     variables: "story",
     "audio-tracks": "audio",
+    /**
+     * The build variants the project ships as. Settings rather than assets: a variant names how the
+     * project is built, and nothing in it is content the author writes.
+     */
+    "app-tags": "settings",
     brand: "settings",
     localization: "localization",
     "localization-keys": "localization",

@@ -136,6 +136,8 @@ export const documentDiff = {
         summaryHint: "没有比较内容本身，这些是两个版本各自报告的数字",
         structural: "结构级",
         structuralHint: "仅按 JSON 结构比较，所以生成的 id 和重排过的数组都会被算成改动",
+        content: "仅格式信息",
+        contentHint: "比较的是文件自述的信息，没有比较内容本身",
         opaque: "未读取",
         opaqueHint: "文件过大、非文本或无法读取，只能报告体积",
     },
@@ -147,14 +149,10 @@ export const documentDiff = {
         emptyFormatting: "只有格式变了",
         emptyUntracked: "编辑器记录的内容没有变化",
         emptyCounts: "总数没有变化",
-        notInspected: "该文件未被查看",
         moreInGroup: "另有 {count} 处",
-        viewAll: "查看全部 {count} 处",
         showing: "已显示 {shown} / {total}",
     },
     rail: {
-        expand: "展开内部改动",
-        collapse: "收起内部改动",
         compareWithPrevious: "与上一个版本对比",
     },
     /** 变更文件的分组标题，用作者编辑它们的面板名，而不是它们在磁盘上的目录名。 */

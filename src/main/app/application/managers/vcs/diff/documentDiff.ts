@@ -352,11 +352,18 @@ export function diffDocumentContent(
     } catch (error) {
         // Same guard, same reason, as `trySpecDiff`: this runs inside the loop that builds a
         // whole comparison, and a header reader thrown off by a truncated or hostile file must
-        // cost its own row rather than the other forty.
+        // cost its own row rather than the other forty. The tier drops with it: nothing was
+        // read, so the caption that says so is the true one.
         options.onDegrade?.(`the ${provider.id} content provider threw: ${messageOf(error)}`);
-        changes = [{ path: [], kind: "changed", label: { key: LABEL_OPAQUE_UNREAD } }];
+        return buildDocumentDiff(
+            [{ path: [], kind: "changed", label: { key: LABEL_OPAQUE_UNREAD } }],
+            { tier: "opaque", limit },
+        );
     }
-    return buildDocumentDiff(changes, { tier: "opaque", limit });
+    // A provider that reads no header knows nothing this file did not already announce by
+    // existing at a size, and `opaque`'s caption ("only its size is reported") is exactly that
+    // claim. Only a provider that opens the header may say it compared what the file reports.
+    return buildDocumentDiff(changes, { tier: provider.headBytes > 0 ? "content" : "opaque", limit });
 }
 
 /**
