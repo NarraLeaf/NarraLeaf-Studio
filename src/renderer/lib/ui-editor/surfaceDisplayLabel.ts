@@ -23,3 +23,18 @@ export function getSurfaceDisplayLabel(
     }
     return surface.kind === "appSurface" ? t("uiEditor.surfaceKind.page") : t("uiEditor.surfaceKind.gameUi");
 }
+
+/**
+ * The same word again, for the rename dialog - which interpolates its noun itself, from a
+ * `dialogs.noun.*` key, so it is handed the key rather than a translated string.
+ *
+ * The main page answers with its own name instead: it is the one surface an author knows by name
+ * rather than by kind, so "Rename Main Page" is the sentence. `nounFor` passes a string it has no
+ * entry for straight through, which is what makes that work.
+ */
+export function getSurfaceRenameNoun(surface: UISurface): string {
+    if (surface.id === MAIN_APP_SURFACE_ID) {
+        return DEFAULT_APP_SURFACE_NAME;
+    }
+    return surface.kind === "appSurface" ? "page" : "gameUi";
+}

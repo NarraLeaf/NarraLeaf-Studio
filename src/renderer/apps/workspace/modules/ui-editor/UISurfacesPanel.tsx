@@ -22,7 +22,7 @@ import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { appendDeveloperIdSection } from "@/lib/developer";
-import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
+import { getSurfaceDisplayLabel, getSurfaceRenameNoun } from "@/lib/ui-editor/surfaceDisplayLabel";
 import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
@@ -97,14 +97,6 @@ function collectSurfaceOwnedEditorTabs(layout: EditorLayout, surfaceId: string):
 
     visit(layout);
     return result;
-}
-
-// English-only entity label passed to the (not-yet-localized) rename dialog's `itemType`.
-function getSurfaceIdentityLabel(surface: UISurface): string {
-    if (surface.id === MAIN_APP_SURFACE_ID) {
-        return DEFAULT_APP_SURFACE_NAME;
-    }
-    return surface.kind === "appSurface" ? "Page" : "Game UI";
 }
 
 // Exported for the quick-open picker, so surfaces open through the exact same tab definition.
@@ -332,7 +324,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!documentService || !inputDialog || !uiService) {
             return;
         }
-        const name = await inputDialog.showRenameDialog(surface.name, getSurfaceIdentityLabel(surface));
+        const name = await inputDialog.showRenameDialog(surface.name, getSurfaceRenameNoun(surface));
         if (!name) {
             return;
         }
