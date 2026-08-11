@@ -307,6 +307,17 @@ function resolveAgainstType(
             const found = exact ?? context.labels.find(name => name.trim().toLowerCase() === needle);
             return found ? { value: { kind: "label", name: found } } : { issue: { code: "unknownLabel", span, value } };
         }
+        case "appTag": {
+            // By name, the way a scene is - the author types what the variant is called and the row
+            // keeps its id, so a later rename does not reach the stored row at all.
+            const found = findByName(context.appTags, value);
+            if (found === "ambiguous") {
+                return { issue: { code: "ambiguousName", span, value } };
+            }
+            return found
+                ? { value: { kind: "appTag", appTagId: found.id } }
+                : { issue: { code: "unknownAppTag", span, value } };
+        }
         case "variable": {
             const needle = value.trim().toLowerCase();
             const matches = context.variables.filter(entry => entry.name.trim().toLowerCase() === needle);
@@ -519,6 +530,8 @@ function issueForUnresolvable(type: StoryCommandParamType, value: string, span: 
             return { code: "unknownAudioTrack", span, value };
         case "label":
             return { code: "unknownLabel", span, value };
+        case "appTag":
+            return { code: "unknownAppTag", span, value };
         case "variable":
             return { code: "unknownVariable", span, value };
         case "target":

@@ -51,6 +51,12 @@ export const build = {
         universal: "Universal",
     },
     identity: {
+        // Which edition of the project this build is. First in the section, because the three
+        // readings under it are the values that variant ships.
+        variant: "Build variant",
+        // Sits beside a reading the selected variant states rather than inherits, so a value that
+        // differs from the App page has its reason on the same line.
+        fromVariant: "From the build variant",
         version: "Version",
         productName: "Product name",
         productNameSource: "From the project name",
