@@ -22,8 +22,10 @@ export const assets = {
         inUseMessage: "Deleting them will leave the following places without a source:",
         moreReferences: "…and {count} more",
         unverifiedTitle: "Cannot check what uses these assets",
+        // Covers both halves of "not checked": nothing was read at all, and part of the project
+        // was read but holds a picture Studio could not trace back to an asset.
         unverifiedMessage:
-            "The reference index could not be read, so their usage cannot be determined. Delete them anyway?",
+            "Part of the project could not be checked, so their usage is unknown. Delete them anyway?",
         confirmTitle: {
             one: "Delete {count} item?",
             other: "Delete {count} items?",
