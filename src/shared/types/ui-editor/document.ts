@@ -157,6 +157,15 @@ export type UIElement = {
     props?: Record<string, unknown>;
     behavior?: UIBehavior;
     valueBindings?: Record<string, UIElementValueBinding>;
+    /**
+     * How this element arrives and leaves - the same record a Surface uses for its page animation.
+     * Absent means it does neither. Read it through `elementAnimation.ts` rather than directly.
+     *
+     * Its own field rather than a `props` key, because it belongs to the placement and not to the
+     * widget: every type has one, no renderer reads it, and a linked component instance may set it
+     * even though its props come from the definition.
+     */
+    animation?: UIPageAnimationSettings;
     extra?: Record<string, unknown>;
 };
 

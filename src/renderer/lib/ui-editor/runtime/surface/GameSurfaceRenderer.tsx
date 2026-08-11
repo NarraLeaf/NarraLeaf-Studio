@@ -13,6 +13,7 @@ import { SurfaceElementTree } from "@/lib/ui-editor/runtime/surface/SurfaceEleme
 import { SurfacePassiveContext } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import { getSurfaceAnimationPlan } from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 
 export type GameSurfaceRendererProps = {
@@ -66,6 +67,17 @@ export type GameSurfaceRendererProps = {
      * do promise it; anything rendering over a live editor document must leave it unset.
      */
     staticDocument?: boolean;
+    /**
+     * Let the elements on this Surface play their own enter/exit animations.
+     *
+     * Off by default: the same renderer draws Surface previews and the editing canvas, and a widget
+     * that animates itself in every time the author nudges it is unusable. Runtime hosts turn it on.
+     * Requires `staticDocument` for the same reason the element tree's memo does - the timings are
+     * cached against the element table's identity.
+     */
+    elementAnimations?: boolean;
+    /** The player asked for less motion: no element animates, whatever the document says. */
+    reducedMotion?: boolean;
 };
 
 export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
@@ -89,6 +101,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         backgroundColor,
         backgroundImageOpacity,
         staticDocument,
+        elementAnimations = false,
+        reducedMotion = false,
     } = props;
     // Kept as values, not write-only tick setters: the element tree is memoised on its inputs, and
     // "a store I subscribed to fired" is an input that does not show up in any prop.
@@ -131,6 +145,16 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
     if (!rootElement) {
         return null;
     }
+
+    const animationPlan =
+        elementAnimations && !reducedMotion
+            ? getSurfaceAnimationPlan({
+                  elements: document.elements,
+                  rootElementId,
+                  rootSettings: surface.settings?.pageAnimation ?? null,
+                  cache: staticDocument === true,
+              })
+            : null;
 
     const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
     const scaledWidth = surface.designSize.width * safeScale;
@@ -211,6 +235,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
                     interactive={interactive}
                     keyboardInteractive={keyboardInteractive}
                     staticDocument={staticDocument}
+                    animationPlan={animationPlan}
                     hostRenderTick={bindingRenderTick + runtimePatchRenderTick}
                 />
             </div>

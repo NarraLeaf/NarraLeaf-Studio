@@ -15,6 +15,7 @@ import {
     type PageAnimationMotion,
     type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
+import { SurfaceEnterReadyContext } from "@/lib/ui-editor/runtime/surface/ElementAnimationLayer";
 
 export const SURFACE_PREPAINT_TIMEOUT_MS = 900;
 /**
@@ -302,7 +303,11 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
             }}
         >
             <div ref={contentRef} className={contentClassName} style={mergedContentStyle}>
-                {children}
+                {/* Elements on this Surface start their own enter animations from the same instant
+                    this layer becomes visible, not from when they mounted behind the curtain. */}
+                <SurfaceEnterReadyContext.Provider value={prepaintReady}>
+                    {children}
+                </SurfaceEnterReadyContext.Provider>
             </div>
         </motion.div>
     );

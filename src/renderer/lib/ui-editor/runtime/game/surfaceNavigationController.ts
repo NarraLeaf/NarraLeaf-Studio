@@ -1,10 +1,14 @@
-import type { UISurface } from "@shared/types/ui-editor/document";
-import {
-    getPageAnimationDurationMs,
-    shouldBlockPageAnimationExit,
-    type PageAnimationNavigationDirection,
-} from "@/lib/ui-editor/runtime/pageAnimation";
+import type { UIElement, UIElementId, UISurface } from "@shared/types/ui-editor/document";
+import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/pageAnimation";
+import { getSurfaceAnimationTimings } from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
+
+/**
+ * The running bundle's element table, so a transition can count what the Pages' own contents cost.
+ *
+ * Optional: without it the numbers are the Surfaces' own, which is what they always were.
+ */
+export type SurfaceNavigationElements = Record<UIElementId, UIElement> | null | undefined;
 
 export type SurfaceNavigationPresentation = "appPage" | "gameOverlay";
 export type SurfaceNavigationPresenceMode = "sync" | "wait";
@@ -47,17 +51,26 @@ export function createSurfaceNavigationOpenUpdate<Entry extends SurfaceNavigatio
     targetSurface: UISurface | null;
     currentHiddenForGame: boolean;
     prefersReducedMotion?: boolean | null;
+    elements?: SurfaceNavigationElements;
     createNextEntry: (waitForExit: boolean) => Entry;
 }): SurfaceNavigationUpdate<Entry> {
     const reduced = input.prefersReducedMotion === true;
-    const waitForExit = input.currentHiddenForGame
-        ? false
-        : shouldBlockPageAnimationExit(input.fromSurface?.settings?.pageAnimation, reduced);
+    const outgoing = getSurfaceAnimationTimings({
+        elements: input.elements,
+        surface: input.fromSurface,
+        reducedMotion: reduced,
+        cache: true,
+    });
+    const incoming = getSurfaceAnimationTimings({
+        elements: input.elements,
+        surface: input.targetSurface,
+        reducedMotion: reduced,
+        cache: true,
+    });
+    const waitForExit = input.currentHiddenForGame ? false : outgoing.exitBlocking;
     const nextEntry = input.createNextEntry(waitForExit);
-    const exitDurationMs = input.currentHiddenForGame
-        ? 0
-        : getPageAnimationDurationMs(input.fromSurface?.settings?.pageAnimation, "exit", reduced);
-    const enterDurationMs = getPageAnimationDurationMs(input.targetSurface?.settings?.pageAnimation, "enter", reduced);
+    const exitDurationMs = input.currentHiddenForGame ? 0 : outgoing.exitMs;
+    const enterDurationMs = incoming.enterMs;
     const holdCurrentUntilEnterComplete = shouldHoldCurrentSurfaceUntilEnterComplete({
         waitForExit,
         hasCurrentSurface: Boolean(input.activeEntry),
@@ -105,6 +118,7 @@ export function createSurfaceNavigationCloseUpdate<Entry extends SurfaceNavigati
     targetSurface: UISurface | null;
     targetHiddenForGame: boolean;
     prefersReducedMotion?: boolean | null;
+    elements?: SurfaceNavigationElements;
     /**
      * Index in `navStack` to land on. Defaults to the entry below the top - an ordinary Back. Naming
      * a lower one drops every layer above it in a single transition, which is what clearing the page
@@ -120,14 +134,22 @@ export function createSurfaceNavigationCloseUpdate<Entry extends SurfaceNavigati
     const currentEntry = input.navStack[input.navStack.length - 1]!;
     const nextEntryBase = input.navStack[targetIndex]!;
     const reduced = input.prefersReducedMotion === true;
-    const waitForExit = input.targetHiddenForGame
-        ? false
-        : shouldBlockPageAnimationExit(input.fromSurface?.settings?.pageAnimation, reduced);
+    const outgoing = getSurfaceAnimationTimings({
+        elements: input.elements,
+        surface: input.fromSurface,
+        reducedMotion: reduced,
+        cache: true,
+    });
+    const incoming = getSurfaceAnimationTimings({
+        elements: input.elements,
+        surface: input.targetSurface,
+        reducedMotion: reduced,
+        cache: true,
+    });
+    const waitForExit = input.targetHiddenForGame ? false : outgoing.exitBlocking;
     const nextEntry = { ...nextEntryBase, direction: "back" as const, waitForExit } as Entry;
-    const exitDurationMs = getPageAnimationDurationMs(input.fromSurface?.settings?.pageAnimation, "exit", reduced);
-    const enterDurationMs = input.targetHiddenForGame
-        ? 0
-        : getPageAnimationDurationMs(input.targetSurface?.settings?.pageAnimation, "enter", reduced);
+    const exitDurationMs = outgoing.exitMs;
+    const enterDurationMs = input.targetHiddenForGame ? 0 : incoming.enterMs;
     const holdCurrentUntilEnterComplete = shouldHoldCurrentSurfaceUntilEnterComplete({
         waitForExit,
         hasCurrentSurface: true,
