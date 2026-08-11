@@ -22,7 +22,7 @@ export const assets = {
         inUseMessage: "删除后，以下位置将失去素材来源：",
         moreReferences: "…另有 {count} 处",
         unverifiedTitle: "无法检查这些素材的使用情况",
-        unverifiedMessage: "引用索引读取失败，无法确认是否仍有内容引用这些素材；仍要删除吗？",
+        unverifiedMessage: "工程中有一部分无法检查，因此无法确定这些素材是否仍在使用。仍要删除吗？",
         confirmTitle: {
             one: "删除 {count} 项？",
             other: "删除 {count} 项？",

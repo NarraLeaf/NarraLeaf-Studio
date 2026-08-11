@@ -1,4 +1,4 @@
-import type { AssetReference } from "../references/referenceModel";
+import type { AssetReference, ReferenceIndexGap, ReferenceIndexResult } from "../references/referenceModel";
 
 /**
  * The slice of `ReferenceService` the delete guard needs. Named separately so the guard can be
@@ -10,6 +10,7 @@ export interface AssetReferenceLookup {
     ensureReady(): Promise<void>;
     flushPendingRebuilds(): Promise<void>;
     getReferencesForAll(assetIds: readonly string[]): Map<string, AssetReference[]>;
+    getIndexResult(): ReferenceIndexResult;
 }
 
 export interface AssetReferenceReport {
@@ -17,10 +18,16 @@ export interface AssetReferenceReport {
      * Whether the index could be consulted at all. "Nothing uses this" and "I could not find out"
      * are different answers, and an unbuilt index reports every asset in the project as unused —
      * so the second one must never be allowed to read as the first.
+     *
+     * An index that built but does not cover the whole project counts as not checked, and this is
+     * the point of the whole coverage signal: a document holding an asset the index could not
+     * identify is precisely the document that would lose its picture to this delete.
      */
     checked: boolean;
     /** `assetId → references`, only for assets that have at least one. */
     references: Map<string, AssetReference[]>;
+    /** Where coverage stops, when `checked` is false because of a gap rather than a failure. */
+    gaps?: readonly ReferenceIndexGap[];
 }
 
 export interface AssetDeleteOptions {
@@ -57,7 +64,14 @@ export async function collectAssetReferences(
     try {
         await lookup.ensureReady();
         await lookup.flushPendingRebuilds();
-        return { checked: true, references: lookup.getReferencesForAll(assetIds) };
+        const references = lookup.getReferencesForAll(assetIds);
+        const result = lookup.getIndexResult();
+        // Read after the flush, so the coverage answer describes the same pass the references came
+        // from. An index that is not complete cannot say an asset is unused, and this guard exists
+        // for exactly that sentence.
+        return result.complete
+            ? { checked: true, references }
+            : { checked: false, references, gaps: result.gaps };
     } catch {
         return { checked: false, references: new Map() };
     }
@@ -72,7 +86,15 @@ export async function collectAssetReferences(
  */
 export function describeBlockedDelete(report: AssetReferenceReport, nameById: Map<string, string>): string {
     if (!report.checked) {
-        return "Refusing to delete: the reference index could not be read, so it is unknown whether anything still points at these assets.";
+        const where = report.gaps
+            ?.map(gap => gap.location)
+            .filter((location): location is string => Boolean(location));
+        // The locations are what makes this actionable: an author who is told the index is
+        // incomplete can do nothing, while one who is told which widget holds an unidentifiable
+        // picture can go and fix it.
+        return where?.length
+            ? `Refusing to delete: the reference index does not cover ${where.join(", ")}, so it is unknown whether anything still points at these assets.`
+            : "Refusing to delete: the reference index could not be read, so it is unknown whether anything still points at these assets.";
     }
 
     const lines = [...report.references.entries()].map(([assetId, references]) => {

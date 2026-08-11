@@ -71,6 +71,15 @@ const dataIn = (
     allowInlineLiteral,
 });
 const stringIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "string", true);
+/**
+ * A font pin is a plain string on the wire, so it keeps `string` as its value type - retyping it
+ * would break every graph that feeds it from a String output. What it gains is the declaration the
+ * asset reverse-lookup index reads, which is what makes the reference structurally visible.
+ */
+const fontAssetIn = (id: string, label: string): BlueprintNodePinDef => ({
+    ...stringIn(id, label),
+    assetRef: { kind: "font" },
+});
 const floatIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "float", true);
 const colorIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, BLUEPRINT_VALUE_TYPE_RGBA_COLOR);
 const jsonIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "json");
@@ -84,7 +93,7 @@ const out = (id: string, label: string, valueType: string): BlueprintNodePinDef 
 
 const textAllPropertyInputs: BlueprintNodePinDef[] = [
     stringIn("text", "Text"),
-    stringIn("fontAssetId", "Font"),
+    fontAssetIn("fontAssetId", "Font"),
     floatIn("fontSize", "Font Size"),
     stringIn("fontWeight", "Font Weight"),
     colorIn("color", "Color"),
@@ -277,7 +286,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_TEXT_SET_FONT,
         displayName: "Set Font",
         keywords: ["text", "font", "asset"],
-        pins: [stringIn("fontAssetId", "Font")],
+        pins: [fontAssetIn("fontAssetId", "Font")],
         execute: ctx => patchCurrentText(ctx, { fontAssetId: toFontAssetId(readPin(ctx, "fontAssetId"), null) }),
     }),
     readNode({

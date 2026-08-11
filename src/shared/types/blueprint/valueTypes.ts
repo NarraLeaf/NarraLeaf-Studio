@@ -37,6 +37,28 @@ export type BlueprintImageAsset = {
     assetId: string;
 };
 
+/**
+ * The kinds of library asset a blueprint pin can carry.
+ *
+ * Split by kind because the two are stored differently and read differently: an image travels as the
+ * tagged {@link BlueprintImageAsset} record, a font as the bare id string. The reverse-lookup index
+ * needs to know which of the two it is holding before it can turn a pin value into an asset id.
+ */
+export type BlueprintAssetPinKind = "image" | "font";
+
+/**
+ * Declares that a pin carries a library asset id, so the reverse-lookup index can find the
+ * reference from the node catalogue instead of from a list of param names it has to keep in step by
+ * hand. A pin with no declaration carries no asset, and a reference through it is invisible.
+ *
+ * `paramKey` covers the one shape where the stored key is not the pin id: the Image Asset literal
+ * node publishes on a pin called `value` and stores the picked asset under `asset`.
+ */
+export type BlueprintAssetPinRef = {
+    kind: BlueprintAssetPinKind;
+    paramKey?: string;
+};
+
 export type BlueprintTimerToken = {
     kind: "timer";
     id: string;
