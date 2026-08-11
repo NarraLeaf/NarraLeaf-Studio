@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { safeStorage, shell, utilityProcess, type UtilityProcess } from "electron";
@@ -86,6 +87,9 @@ import {
     type ProvisioningProfile,
 } from "../../../../buildWorker/mobile/provisioningProfile";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
+// Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
+// vitest, so a value import through it fails only under test.
+import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
@@ -1744,8 +1748,36 @@ export class GameBuildManager {
         return { iconPngBySlot };
     }
 
+    /**
+     * Where to fork the packaging worker from.
+     *
+     * Packaged, this is deliberately the `app.asar.unpacked` copy rather than
+     * the archive path everything else in Studio uses: the worker disables
+     * Electron's asar patch as its first statement (see enableNoAsar.ts), and a
+     * process started from inside the archive can then resolve none of its own
+     * dependencies. Forking it from the real path is what makes the ordinary
+     * upward walk to `app.asar.unpacked/node_modules` work.
+     *
+     * The existence check is here because the alternative is silence: drop
+     * `dist/main/buildWorker.js` from `asarUnpack` and packaging still succeeds,
+     * Studio still starts, and only an author clicking Build ever finds out.
+     */
+    private resolveWorkerPath(): string {
+        const packedPath = path.join(this.app.getDistDir(), "main", "buildWorker.js");
+        const unpackedPath = asarUnpackedPath(packedPath);
+        if (unpackedPath === null) {
+            return packedPath;
+        }
+        if (!existsSync(unpackedPath)) {
+            throw new Error(
+                `Packaging worker is missing from the unpacked resources: ${unpackedPath}. `
+                + "It must be listed in asarUnpack (electron-builder.yml).",
+            );
+        }
+        return unpackedPath;
+    }
+
     private runWorker(session: BuildSession, config: GameBuildWorkerConfig): Promise<string[]> {
-        const workerPath = path.join(this.app.getDistDir(), "main", "buildWorker.js");
         // The build.electronMirror setting drives only the large Electron dist
         // download (via electronDownload.mirror in the config). The separate
         // NSIS/AppImage/7za toolchain download reads ELECTRON_BUILDER_BINARIES_MIRROR,
@@ -1756,6 +1788,9 @@ export class GameBuildManager {
                 reject(new Error("Build cancelled"));
                 return;
             }
+            // Inside the executor so a missing worker rejects the build like any
+            // other failure, rather than throwing out of a non-async method.
+            const workerPath = this.resolveWorkerPath();
             const worker = utilityProcess.fork(workerPath, [], {
                 serviceName: "narraleaf-game-build",
                 stdio: "pipe",
