@@ -193,10 +193,6 @@ const SAFE_AREA_DEVICES: readonly SafeAreaDeviceSpec[] = [
     { id: "ipad-10", reference: "iPad (10th gen)", family: "ipad", points: { width: 820, height: 1180 }, housing: 0, homeIndicator: [20, 20] },
     // 1668x2388 @2x.
     { id: "ipad-pro-11", reference: "iPad Pro 11\"", family: "ipad", points: { width: 834, height: 1194 }, housing: 0, homeIndicator: [20, 20] },
-    // Pixel-class 1080x2400 @2.625. Housing = a punch hole on the top edge, which lands on a short
-    // edge in landscape; mirrored like iOS because the shell may lock either landscape rotation.
-    // No home-indicator inset: the gesture strip is not reported as safe-area here (see above).
-    { id: "android-punch-hole", reference: "Android punch-hole (typical)", family: "android", points: { width: 412, height: 915 }, housing: 48, homeIndicator: [0, 0] },
 ];
 
 /**
@@ -224,7 +220,82 @@ function expandSafeAreaDevice(device: SafeAreaDeviceSpec): SafeAreaPreset {
     };
 }
 
-export const SAFE_AREA_PRESETS: readonly SafeAreaPreset[] = SAFE_AREA_DEVICES.map(expandSafeAreaDevice);
+/**
+ * Android is cutout SHAPES, not phone models — and that is not a shortcut.
+ *
+ * A phone's cutout geometry lives in `config_mainBuiltInDisplayCutout`, a framework overlay that
+ * ships **in the vendor image, not in AOSP** (source.android.com/docs/core/display/display-cutouts).
+ * The Pixel device trees on android.googlesource.com do not contain it, and no OEM publishes an
+ * equivalent of Apple's per-generation numbers. So there is nothing to copy: a list of phone names
+ * here would be a list of guesses wearing real names, which is worse than no list.
+ *
+ * What Google DOES publish is the emulation overlays under `frameworks/base/packages/overlays/` —
+ * the same set Developer options → "Display cutout" switches on. Every number below is read from
+ * one of those configs, so an author can select the matching shape on a real handset and compare
+ * against the same geometry.
+ *
+ * Not carried, and why:
+ * - **Narrow / Wide** vary the cutout's *width*. This model only consumes inset depth per edge, so
+ *   they are indistinguishable from Corner here — shipping them would add rows that cannot move the
+ *   frame, which is the exact "I picked one and nothing happened" this feature was reported for.
+ * - **Tall** is also 48dp deep (`DisplayCutoutEmulationTallOverlay`), and **Hole** is a 136px
+ *   bounding box ≈ 48dp at the reference density — both land on `android-cutout`, so its name says
+ *   which shapes it covers rather than pretending they differ.
+ *
+ * Screen: 412x915dp, i.e. 1080x2400 @420dpi — the Pixel-class profile these overlays are authored
+ * against. It is the letterbox that decides whether a cutout reaches the content at all, so this is
+ * the number that actually matters here, and it is a real published configuration.
+ *
+ * No bottom inset on any of them: the shell hides the navigation bar, and the gesture strip is a
+ * touch-routing hazard rather than an occlusion (see the note on the device table above).
+ */
+const ANDROID_SCREEN = { width: 412, height: 915 };
+
+const ANDROID_CUTOUT_PRESETS: readonly SafeAreaPreset[] = [
+    {
+        // DisplayCutoutEmulationCornerOverlay: path max Y = 48, "@dp". Covers Tall (identical depth)
+        // and Hole (136px approximation rect ≈ 48dp at 2.625), plus Narrow/Wide, which differ only
+        // in width. Landscape mirrors onto both sides: the shell may lock either rotation.
+        id: "android-cutout",
+        reference: "Cutout · corner / tall / hole",
+        family: "android",
+        portrait: { screen: ANDROID_SCREEN, insets: { left: 0, right: 0, top: 48, bottom: 0 } },
+        landscape: {
+            screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
+            insets: { left: 48, right: 48, top: 0, bottom: 0 },
+        },
+    },
+    {
+        // DisplayCutoutEmulationDoubleOverlay: 32dp top AND bottom. The only shape with two opposed
+        // insets, so rotating it puts one on each side rather than mirroring a single edge.
+        id: "android-cutout-double",
+        reference: "Double cutout",
+        family: "android",
+        portrait: { screen: ANDROID_SCREEN, insets: { left: 0, right: 0, top: 32, bottom: 32 } },
+        landscape: {
+            screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
+            insets: { left: 32, right: 32, top: 0, bottom: 0 },
+        },
+    },
+    {
+        // DisplayCutoutEmulationWaterfallOverlay: no cutout path at all — curved edges instead,
+        // `waterfall_display_left/right_edge_size` = 20dp, top/bottom 0. The only entry whose insets
+        // land on the TOP and bottom in landscape, which is worth having: nothing else tests that.
+        id: "android-waterfall",
+        reference: "Waterfall edges",
+        family: "android",
+        portrait: { screen: ANDROID_SCREEN, insets: { left: 20, right: 20, top: 0, bottom: 0 } },
+        landscape: {
+            screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
+            insets: { left: 0, right: 0, top: 20, bottom: 20 },
+        },
+    },
+];
+
+export const SAFE_AREA_PRESETS: readonly SafeAreaPreset[] = [
+    ...SAFE_AREA_DEVICES.map(expandSafeAreaDevice),
+    ...ANDROID_CUTOUT_PRESETS,
+];
 
 /**
  * Ids this table used to ship, mapped to the device they actually described.
@@ -236,7 +307,9 @@ export const SAFE_AREA_PRESETS: readonly SafeAreaPreset[] = SAFE_AREA_DEVICES.ma
 const LEGACY_SAFE_AREA_PRESET_IDS: Readonly<Record<string, string>> = {
     "ios-dynamic-island": "iphone-15-pro",
     "ios-notch": "iphone-14",
-    "android-gesture": "android-punch-hole",
+    "android-gesture": "android-cutout",
+    // Shipped for part of one day, between the device-table rebuild and the move to AOSP shapes.
+    "android-punch-hole": "android-cutout",
 };
 
 export function getSafeAreaPreset(id: string | null | undefined): SafeAreaPreset | null {
