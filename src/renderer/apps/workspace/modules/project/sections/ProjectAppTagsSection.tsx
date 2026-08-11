@@ -27,6 +27,7 @@ import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { Button, Input } from "@/lib/components/elements";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import { appTagDisplayName } from "@/lib/workspace/services/appTag/appTagDisplay";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
@@ -219,7 +220,8 @@ function TagItem({
     const frozen = freeze.writes(!service);
 
     const identity = useMemo(() => resolveAppTagIdentity(tag, base), [base, tag]);
-    const displayName = tag.builtin ? t("project.appTags.releaseName") : tag.name;
+    // The same call the build dialog's picker makes, so the release variant reads one way in both.
+    const displayName = appTagDisplayName(tag, t("project.appTags.releaseName"));
 
     return (
         <AccordionItem

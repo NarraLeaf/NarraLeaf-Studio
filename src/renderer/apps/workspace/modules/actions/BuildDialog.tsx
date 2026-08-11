@@ -31,6 +31,7 @@ import {
     type ProjectAppTag,
 } from "@shared/types/appTag";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import { displayedAppTags } from "@/lib/workspace/services/appTag/appTagDisplay";
 import {
     BUILD_COMPRESSIONS,
     SIGNING_PLATFORMS,
@@ -1176,7 +1177,13 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
         // Release first, straight off the service, so the list here is the list the App page shows.
         // A workspace whose variants could not be read still offers the release one, which is the
         // only variant the pipeline can be certain of anyway.
-        appTags: appTagService?.listTags() ?? [RELEASE_APP_TAG],
+        // Named for display before it leaves here. `listTags` prepends the synthesized release
+        // variant under the model's untranslated word, and this picker sits beside a panel that
+        // shows the translated one.
+        appTags: displayedAppTags(
+            appTagService?.listTags() ?? [RELEASE_APP_TAG],
+            translate("project.appTags.releaseName"),
+        ),
         baseIdentity: {
             displayName: productName,
             identifier: projectConfig.identifier?.trim() ?? "",
