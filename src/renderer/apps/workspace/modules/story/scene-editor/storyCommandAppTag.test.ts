@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { Package } from "lucide-react";
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
+import { appTagParam, asAppTagId, defineStoryCommand } from "./commands/spec";
 import { buildStoryCommandContext } from "./storyCommandContext";
 import { getCommandCandidates } from "./storyCommandCandidates";
 import { resolveCommandLine } from "./storyCommandResolution";
@@ -26,14 +28,32 @@ const CONTEXT: StoryCommandContext = {
     ],
 };
 
-const PARAM: StoryCommandParam = {
-    name: "tag",
-    type: { kind: "appTag" },
-    positional: true,
-    core: true,
-};
+/**
+ * A spec built the way a real command is - through `defineStoryCommand`, off the shared
+ * `appTagParam()` fragment - and projected onto a def the way the registry projects one
+ * (`specToDef`, which is private to it). The registry itself cannot supply one: it lists the
+ * commands that exist, and this slot is declared by none of them yet.
+ */
+const SPEC = defineStoryCommand({
+    id: "variant",
+    token: "variant",
+    category: "flow",
+    icon: Package,
+    examples: ["/variant Demo"],
+    params: { tag: appTagParam() },
+    build: (args, ctx) => ({
+        id: ctx.generateId(),
+        kind: "note" as const,
+        parentId: null,
+        childrenIds: [],
+        // What a real command's `build` does with this slot: read the id out and store that.
+        payload: { text: { textId: ctx.generateId(), value: asAppTagId(args.tag) ?? "", role: "note" as const } },
+    }),
+});
 
-const DEF: StoryCommandDef = { token: "variant", commandId: "variant", params: [PARAM] };
+const PARAM: StoryCommandParam = { name: "tag", ...SPEC.params.tag };
+
+const DEF: StoryCommandDef = { token: SPEC.token, commandId: SPEC.id, params: [PARAM] };
 
 function commandLine(value: string): StoryCommandLine {
     return {
@@ -95,6 +115,18 @@ describe("app tag command slot - resolution", () => {
 
         expect(resolveCommandLine(commandLine("Demo"), twins).issues.map(issue => issue.code))
             .toEqual(["ambiguousName"]);
+    });
+
+    it("reaches a payload through the real spec path: fragment, resolve, build", () => {
+        const { args } = resolveCommandLine(commandLine("Demo"), CONTEXT);
+        let next = 0;
+        const block = SPEC.build!(args as never, { generateId: () => `id-${++next}` } as never);
+
+        // The fragment declares the slot core and positional, and `asAppTagId` hands `build` the id
+        // rather than the name - the two halves a real command would rely on.
+        expect(PARAM.core).toBe(true);
+        expect(PARAM.positional).toBe(true);
+        expect(block.kind === "note" ? block.payload.text.value : null).toBe("tag-demo");
     });
 
     it("keeps resolving a row through a rename, because the row holds the id", () => {

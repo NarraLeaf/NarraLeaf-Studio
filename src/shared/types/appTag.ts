@@ -19,6 +19,12 @@
  * record. A flag would let a tag be present and off at the same time, which is two states for one
  * thing and a place for them to disagree.
  *
+ * Of those three readers, only the build surface has a subject today: it lists the tags, one is
+ * picked, and that tag's overrides are what the artifacts carry. The editor and the checks have
+ * nothing to read the fact for yet - there is no authored construct that belongs to a tag, so there
+ * is nothing to gate and nothing to hold against the list. Both arrive with the first construct that
+ * does, and neither needs a second fact when it does.
+ *
  * # Where a tag lives, and why here
  *
  * Tags are a project document (`editor/app-tags.json`), the same layer as the variable registry and
@@ -46,9 +52,23 @@
  *
  * # Determinacy
  *
- * Resolving a tag always answers. An unknown id, a missing document, an unreadable one and a project
- * that predates tags all resolve to the release tag, which is synthesized rather than stored - so
- * there is no file edit, no merge and no migration that can leave a project without one.
+ * Resolving a tag always answers. An unknown id, a blank one, a deleted one, a missing document, one
+ * whose contents will not parse, and a project that predates tags all resolve to the release tag,
+ * which is synthesized rather than stored - so there is no file edit, no merge and no migration that
+ * can leave a project without one.
+ *
+ * The one thing outside that guarantee is reaching the file at all. A read that fails for any reason
+ * other than "not there" - a permission denied, a disk error - propagates, and the project does not
+ * open. Resolution is still total; it is the loading that stopped, which is deliberate and is how
+ * every other project document behaves.
+ *
+ * # Names
+ *
+ * Names are unique among the tags a project has, because a tag is named to be picked: two variants
+ * called "Demo" are two answers to one name, and every surface that resolves a name would have to
+ * refuse both. {@link uniqueAppTagName} is what keeps that true, and it is applied on the way in
+ * rather than checked on the way out - an author who types a name in use gets a numbered one they
+ * can see and edit, not a rejected edit and a field that snaps back.
  */
 
 /** Persisted document version for `editor/app-tags.json`. Independent of every other document. */
@@ -261,6 +281,33 @@ export function resolveAppTag(
         return RELEASE_APP_TAG;
     }
     return stored.find(tag => tag.id === trimmed) ?? RELEASE_APP_TAG;
+}
+
+/**
+ * `desired`, or `desired` with a number after it, whichever is free.
+ *
+ * Case-insensitive, because the names are matched case-insensitively wherever they are typed - a
+ * "demo" beside a "Demo" would resolve to neither. `taken` is every name the result must differ
+ * from, which the caller assembles: the other tags, plus whatever the release tag is called on
+ * screen, which this module cannot know because it has no catalog.
+ */
+export function uniqueAppTagName(taken: readonly string[], desired: string): string {
+    const base = desired.trim() || RELEASE_APP_TAG.name;
+    const used = new Set(taken.map(name => name.trim().toLowerCase()));
+    if (!used.has(base.toLowerCase())) {
+        return base;
+    }
+    // From 2, the way a duplicated audio bus is named: "Demo 2" reads as the second of them, while
+    // "Demo 1" would imply a first one that is not called that.
+    for (let suffix = 2; suffix < used.size + 3; suffix += 1) {
+        const candidate = `${base} ${suffix}`;
+        if (!used.has(candidate.toLowerCase())) {
+            return candidate;
+        }
+    }
+    // Unreachable: the loop tries more spellings than there are taken names. Answering the base is
+    // still better than answering nothing, and the caller's own uniqueness is what would suffer.
+    return base;
 }
 
 /** By display name, case-insensitively. `"ambiguous"` when two tags answer to it. */
