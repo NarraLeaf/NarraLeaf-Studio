@@ -178,6 +178,10 @@ export class LintService extends Service<LintService> implements ILintService {
             assets,
             referencedAssetIds,
             assetReferences: referenceService.getReferencesForAll([...referencedAssetIds]),
+            // Read here rather than inside the rule: the two sets above and this answer have to
+            // describe the same pass, and `ensureReady` above swallows its own failure - which is
+            // exactly the case this reports.
+            assetIndex: referenceService.getIndexResult(),
             characters,
             variableRegistry,
             persistentNameCollisions,
