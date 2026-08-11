@@ -230,7 +230,7 @@ function TagItem({
               * the body. Scoped to those two, so application keybindings still reach the window.
               */}
             <div
-                className="grid gap-2.5 bg-fill-subtle py-2.5 pl-3 pr-3 [&>*]:min-w-0"
+                className="grid gap-2.5 bg-fill-subtle px-3 py-2.5 [&>*]:min-w-0"
                 onKeyDown={event => {
                     if (event.key === "Enter" || event.key === " ") {
                         event.stopPropagation();
@@ -354,6 +354,7 @@ function OverrideField({
                 disabled={disabled}
                 label={label}
                 handle={`${tagId}:${overrideKey}`}
+                allowEmpty
                 onCommit={next => service?.setOverride(tagId, overrideKey, next)}
             />
         </Field>
@@ -392,6 +393,11 @@ function Field({
  * Not a convenience: the service trims what it is given and treats blank as "clear this key", so a
  * per-keystroke commit would delete the override the moment the author selected the text to retype
  * it, and would eat the space they typed in the middle of a name.
+ *
+ * `allowEmpty` separates the two things a blank field can mean. On an override it is the author
+ * saying "inherit this again" and the service is told. On the name it is a value the service refuses,
+ * and telling it would leave the field showing a blank the model never accepted - so the field puts
+ * the stored name back instead.
  */
 function CommittedInput({
     value,
@@ -399,6 +405,7 @@ function CommittedInput({
     disabled,
     label,
     handle,
+    allowEmpty = false,
     onCommit,
 }: {
     value: string;
@@ -407,6 +414,7 @@ function CommittedInput({
     label: string;
     /** `<tagId>:name` or `<tagId>:<override key>` - what verification finds this field by. */
     handle: string;
+    allowEmpty?: boolean;
     onCommit: (value: string) => void;
 }) {
     const [draft, setDraft] = useState(value);
@@ -417,12 +425,12 @@ function CommittedInput({
 
     const commit = useCallback(() => {
         const next = draft.trim();
-        if (next !== value) {
+        if (next !== value && (allowEmpty || next)) {
             onCommit(next);
         } else {
             setDraft(value);
         }
-    }, [draft, onCommit, value]);
+    }, [allowEmpty, draft, onCommit, value]);
 
     return (
         <Input
