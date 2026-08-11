@@ -153,3 +153,38 @@ describe("requestToBuildConfiguration", () => {
         expect(stateToRequest(reopened)).toEqual(stateToRequest(state));
     });
 });
+
+/**
+ * Which variant is being built is a build choice, so it travels the same three ways every other one
+ * does: into the request, into the remembered configuration, and back out of a parked draft.
+ */
+describe("build variant selection", () => {
+    it("is the release variant until one is picked, and is then left out of the request", () => {
+        const state = initialDialogState(null, "macos", "arm64");
+
+        expect(state.appTagId).toBe("");
+        // Absent rather than empty: the pipeline reads an absent id as release and refuses one it
+        // cannot find, so "" would name a variant nothing has.
+        expect(stateToRequest(state).appTagId).toBeUndefined();
+    });
+
+    it("carries the picked variant into the request", () => {
+        const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: "tag-demo" };
+
+        expect(stateToRequest(state).appTagId).toBe("tag-demo");
+    });
+
+    it("is remembered for the next open", () => {
+        const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: "tag-demo" };
+        const config = requestToBuildConfiguration(stateToRequest(state));
+
+        expect(config.appTagId).toBe("tag-demo");
+        expect(initialDialogState(config, "macos", "arm64").appTagId).toBe("tag-demo");
+    });
+
+    it("survives a parked draft", () => {
+        const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: "tag-demo" };
+
+        expect(stateFromRequest(stateToRequest(state), "macos", "arm64").appTagId).toBe("tag-demo");
+    });
+});

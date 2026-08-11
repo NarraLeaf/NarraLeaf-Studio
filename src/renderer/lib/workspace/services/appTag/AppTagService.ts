@@ -9,8 +9,10 @@ import {
     isBuiltinAppTagId,
     listAppTags,
     normalizeProjectAppTags,
+    RELEASE_APP_TAG,
     resolveAppTag,
     resolveAppTagIdentity,
+    uniqueAppTagName,
     type AppTagBaseIdentity,
     type AppTagIdentity,
     type AppTagOverrideKey,
@@ -47,6 +49,11 @@ type AppTagServiceEvents = {
  * - **Absence is the document.** A project that has never had a second variant has no file, and
  *   {@link load} does not write one - the surface would otherwise report a change in every project
  *   the author merely opened. The file appears when the first tag does.
+ *
+ * **Mutations here are not undoable.** They follow `AudioTrackService`: written straight through,
+ * with no history entry, because the shell's undo in a side panel addresses the project's own stack
+ * and this is not on it. Deleting a variant is therefore guarded by its confirmation and by nothing
+ * else, which is why the surface says how many references it is about to strand before asking.
  */
 export class AppTagService extends Service<AppTagService> implements IAppTagService {
     private document: ProjectAppTagDocument | null = null;
@@ -210,11 +217,15 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
      * It starts with no overrides, which is the whole of "inherits from release": a tag the author
      * has just made is the release build under another name until they say otherwise.
      */
-    public createTag(input?: { name?: string }): ProjectAppTag {
+    public createTag(input?: { name?: string; reservedNames?: readonly string[] }): ProjectAppTag {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const tag: ProjectAppTag = {
             id: uuidService.generate(),
-            name: input?.name?.trim() || `Tag ${this.getDocument().tags.length + 1}`,
+            // Uniquified rather than taken as given. Every caller has a sensible default name to
+            // offer ("New Variant"), and offering the same one twice is what a second press of Add
+            // does - so pressing it twice must produce two names, not two rows nothing can tell
+            // apart.
+            name: uniqueAppTagName(this.takenNames(null, input?.reservedNames), input?.name ?? ""),
             overrides: {},
         };
         this.applyTagMutation(tags => [...tags, tag]);
@@ -222,18 +233,41 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
     }
 
     /**
+     * Every name a new or renamed tag must differ from: the other stored tags, the release tag's
+     * own name, and whatever the caller says the release tag is called on screen.
+     *
+     * The last of those is why `reservedNames` exists at all. The model spells the release tag
+     * "Release" because it has no catalog to read, while the surface shows the translated word - and
+     * a tag named the translated word would collide with it everywhere a name is resolved, which the
+     * model alone cannot see.
+     */
+    private takenNames(excludeId: string | null, reservedNames?: readonly string[]): string[] {
+        return [
+            RELEASE_APP_TAG.name,
+            ...(reservedNames ?? []),
+            ...this.getDocument().tags.filter(tag => tag.id !== excludeId).map(tag => tag.name),
+        ];
+    }
+
+    /**
      * Rename. Blank is refused rather than stored, because the normalizer would fall it back to the
      * id and put a generated string on the surface as if the author had typed it.
+     *
+     * A name already in use is numbered rather than refused, for the reason {@link createTag} gives:
+     * a refused rename leaves the field holding a name the project does not have, while a numbered
+     * one is on screen and can be edited again. So the caller reads the stored name back rather than
+     * assuming it got what it asked for.
      *
      * Stored references hold the id, so nothing has to be rewritten: every place naming this tag
      * follows the new name by construction.
      */
-    public renameTag(id: string, name: string): boolean {
+    public renameTag(id: string, name: string, reservedNames?: readonly string[]): boolean {
         const next = name.trim();
         if (!next || isBuiltinAppTagId(id) || !this.getTag(id)) {
             return false;
         }
-        this.applyTagMutation(tags => tags.map(tag => (tag.id === id ? { ...tag, name: next } : tag)));
+        const unique = uniqueAppTagName(this.takenNames(id, reservedNames), next);
+        this.applyTagMutation(tags => tags.map(tag => (tag.id === id ? { ...tag, name: unique } : tag)));
         return true;
     }
 

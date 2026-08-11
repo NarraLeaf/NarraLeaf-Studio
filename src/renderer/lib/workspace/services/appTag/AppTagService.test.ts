@@ -165,6 +165,43 @@ describe("AppTagService", () => {
             .toEqual({ value: "com.example.mygame.demo", overridden: true });
     });
 
+    it("names two variants apart when Add is pressed twice with one default name", async () => {
+        const { service } = await createHarness();
+
+        const first = service.createTag({ name: "New Variant" });
+        const second = service.createTag({ name: "New Variant" });
+
+        expect([first.name, service.getTag(second.id)?.name]).toEqual(["New Variant", "New Variant 2"]);
+    });
+
+    it("numbers a rename onto a name already in use instead of leaving two of it", async () => {
+        const { service } = await createHarness();
+        service.createTag({ name: "Demo" });
+        const other = service.createTag({ name: "Bonus" });
+
+        expect(service.renameTag(other.id, "demo")).toBe(true);
+        // Case-insensitive, because that is how every surface resolves a name.
+        expect(service.getTag(other.id)?.name).toBe("demo 2");
+    });
+
+    it("refuses to let a variant take the release tag's name, under either spelling", async () => {
+        const { service } = await createHarness();
+
+        const model = service.createTag({ name: "Release" });
+        const shown = service.createTag({ name: "正式版", reservedNames: ["正式版"] });
+
+        expect(service.getTag(model.id)?.name).toBe("Release 2");
+        expect(service.getTag(shown.id)?.name).toBe("正式版 2");
+    });
+
+    it("lets a rename keep its own name, rather than numbering a variant against itself", async () => {
+        const { service } = await createHarness();
+        const created = service.createTag({ name: "Demo" });
+
+        expect(service.renameTag(created.id, "Demo")).toBe(true);
+        expect(service.getTag(created.id)?.name).toBe("Demo");
+    });
+
     it("refuses a blank rename rather than storing one", async () => {
         const { service } = await createHarness();
         const created = service.createTag({ name: "Demo" });

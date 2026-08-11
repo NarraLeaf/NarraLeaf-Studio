@@ -114,12 +114,23 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
         return openIds.filter(id => known.has(id));
     }, [openIds, tags]);
 
+    /**
+     * The release tag's name on screen, which a new or renamed variant must differ from.
+     *
+     * Handed to the service rather than known by it: the model spells the release tag "Release"
+     * because it has no catalog, and a variant named the translated word would be a second answer to
+     * a name every surface resolves.
+     */
+    const reservedNames = useMemo(() => [t("project.appTags.releaseName")], [t]);
+
     const addTag = useCallback(() => {
-        const created = tagService?.createTag({ name: t("project.appTags.newTagName") });
+        // The same name every time on purpose - the service numbers it, so pressing Add twice gives
+        // two variants an author can tell apart rather than two rows reading "New Variant".
+        const created = tagService?.createTag({ name: t("project.appTags.newTagName"), reservedNames });
         if (created) {
             setOpenIds(prev => [...prev, created.id]);
         }
-    }, [t, tagService]);
+    }, [reservedNames, t, tagService]);
 
     const removeTag = useCallback(async (tag: ProjectAppTag) => {
         if (!tagService) {
@@ -170,6 +181,7 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
                             tag={tag}
                             base={base}
                             service={tagService}
+                            reservedNames={reservedNames}
                             uses={references[tag.id] ?? 0}
                             onDelete={() => void removeTag(tag)}
                         />
@@ -191,12 +203,14 @@ function TagItem({
     tag,
     base,
     service,
+    reservedNames,
     uses,
     onDelete,
 }: {
     tag: ProjectAppTag;
     base: AppTagBaseIdentity;
     service: AppTagService | null;
+    reservedNames: readonly string[];
     uses: number;
     onDelete: () => void;
 }) {
@@ -244,7 +258,7 @@ function TagItem({
                             disabled={frozen.disabled}
                             label={t("project.appTags.nameTitle")}
                             handle={`${tag.id}:name`}
-                            onCommit={name => service?.renameTag(tag.id, name)}
+                            onCommit={name => service?.renameTag(tag.id, name, reservedNames)}
                         />
                     </Field>
                 )}
@@ -456,7 +470,18 @@ function CommittedInput({
 }
 
 /**
- * How many stored references each variant has, read from the documents that can hold one.
+ * How many stored references each variant has.
+ *
+ * **Exactly three document sets are swept**: every story document, the interface blueprints
+ * (`UIGraphService`) and the interface document (`UIDocumentService`). That is complete rather than
+ * partial, because there is one place a variant can be named - the `appTag` command slot, which
+ * lives in a story row - and the other two are swept because a blueprint node or a widget prop is
+ * where the next holder would appear. Nothing else in the project can hold an `appTagId` today.
+ *
+ * **A holder added anywhere else has to be added here**, or the number beside Delete under-reports
+ * and an author strands references it told them did not exist. Characters, assets metadata, the
+ * variable registry, voice, localization and the `.nlproj` are deliberately not swept, and each of
+ * them becoming a holder is a change to this function.
  *
  * Reads the in-memory documents rather than the files, so the count reflects unsaved edits - the same
  * reason `ReferenceService` is renderer-side. A story that has never been opened is loaded here;

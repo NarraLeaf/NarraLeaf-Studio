@@ -10,6 +10,7 @@ import {
     normalizeProjectAppTags,
     resolveAppTag,
     resolveAppTagIdentity,
+    uniqueAppTagName,
     type AppTagBaseIdentity,
     type ProjectAppTag,
 } from "./appTag";
@@ -89,6 +90,31 @@ describe("app tag list", () => {
         expect(findAppTagByName(tags, "A")?.valueOf()).toMatchObject({ id: "a" });
         expect(findAppTagByName(named, "a")).toBe("ambiguous");
         expect(findAppTagByName(tags, "nothing")).toBeNull();
+    });
+});
+
+describe("app tag names", () => {
+    it("answers the desired name when nothing else has it", () => {
+        expect(uniqueAppTagName(["Release", "Bonus"], "Demo")).toBe("Demo");
+    });
+
+    it("numbers from 2, and keeps numbering past the first free-looking one", () => {
+        expect(uniqueAppTagName(["Demo"], "Demo")).toBe("Demo 2");
+        expect(uniqueAppTagName(["Demo", "Demo 2"], "Demo")).toBe("Demo 3");
+    });
+
+    it("matches case-insensitively, because every surface resolves names that way", () => {
+        expect(uniqueAppTagName(["demo"], "Demo")).toBe("Demo 2");
+    });
+
+    it("treats whatever the caller says release is called as taken", () => {
+        // The model spells it "Release"; the surface may show a translated word, and a variant named
+        // that word would be a second answer to a name the command slot resolves.
+        expect(uniqueAppTagName(["Release", "正式版"], "正式版")).toBe("正式版 2");
+    });
+
+    it("falls back to the release name for a blank request rather than answering blank", () => {
+        expect(uniqueAppTagName([], "   ")).toBe("Release");
     });
 });
 
