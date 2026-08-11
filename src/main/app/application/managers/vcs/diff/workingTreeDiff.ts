@@ -368,7 +368,10 @@ async function pairRenames(
     // a budget that runs out takes the most expensive groups rather than whichever ones the
     // status happened to name first.
     const candidates = [...removals.keys()]
-        .filter((size) => additions.has(size) && size <= DIFF_MOVE_CONFIRM_BYTE_CEILING)
+        // `size > 0` for the reason `probesMatch` excludes it on the other side: two empty files
+        // do have the same bytes, and emptiness is still not evidence that one became the other,
+        // so a pairing among them would be decided by path order and shown as a fact.
+        .filter((size) => size > 0 && additions.has(size) && size <= DIFF_MOVE_CONFIRM_BYTE_CEILING)
         .sort((a, b) => a - b);
 
     let spent = 0;

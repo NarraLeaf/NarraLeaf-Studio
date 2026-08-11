@@ -217,6 +217,11 @@ export function documentDiffTierCaption(tier: DocumentDiffTier): DocumentDiffTie
                 key: "documentDiff.tier.structural" as TranslationKey,
                 hintKey: "documentDiff.tier.structuralHint" as TranslationKey,
             };
+        case "content":
+            return {
+                key: "documentDiff.tier.content" as TranslationKey,
+                hintKey: "documentDiff.tier.contentHint" as TranslationKey,
+            };
         case "opaque":
             return {
                 key: "documentDiff.tier.opaque" as TranslationKey,
@@ -244,8 +249,8 @@ export function documentDiffTierCaption(tier: DocumentDiffTier): DocumentDiffTie
  *    here would be a specific claim the spec has not earned.
  *  - `summary` compared counts. Equal counts are not an equal document, and saying so is
  *    the whole point of the tier being named.
- *  - `opaque` never produces an empty list, but the fallback stays honest rather than
- *    unreachable-by-assumption.
+ *  - `content` and `opaque` never produce an empty list, but the fallback stays honest
+ *    rather than unreachable-by-assumption.
  */
 export function documentDiffEmptyKey(tier: DocumentDiffTier): TranslationKey {
     switch (tier) {
@@ -255,6 +260,7 @@ export function documentDiffEmptyKey(tier: DocumentDiffTier): TranslationKey {
             return "documentDiff.rows.emptyUntracked" as TranslationKey;
         case "summary":
             return "documentDiff.rows.emptyCounts" as TranslationKey;
+        case "content":
         case "opaque":
             return "documentDiff.rows.empty" as TranslationKey;
     }

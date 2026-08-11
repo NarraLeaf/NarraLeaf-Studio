@@ -199,6 +199,8 @@ export const documentDiff = {
         summaryHint: "The contents were not compared. These are the numbers each version reports about itself.",
         structural: "Structural",
         structuralHint: "Compared by JSON structure alone, so generated ids and reordered lists read as changes.",
+        content: "Format only",
+        contentHint: "What the file reports about itself was compared. Its contents were not.",
         opaque: "Not read",
         opaqueHint: "Too large, not text, or unreadable. Only its size is reported.",
     },
@@ -210,14 +212,10 @@ export const documentDiff = {
         emptyFormatting: "Only formatting changed",
         emptyUntracked: "Nothing the editor tracks changed",
         emptyCounts: "The totals are unchanged",
-        notInspected: "This file was not inspected",
         moreInGroup: "{count} more inside",
-        viewAll: "View all {count}",
         showing: "Showing {shown} of {total}",
     },
     rail: {
-        expand: "Show what changed inside",
-        collapse: "Hide what changed inside",
         compareWithPrevious: "Compare with the previous version",
     },
     /**

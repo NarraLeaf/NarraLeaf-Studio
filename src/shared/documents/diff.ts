@@ -17,7 +17,7 @@ import type {DocumentKind} from "./types";
 export type DocumentChangeKind = "added" | "removed" | "changed" | "moved";
 
 /**
- * Which of the four tiers produced a diff. See `vcs/diff/documentDiff.ts` for what
+ * Which of the five tiers produced a diff. See `vcs/diff/documentDiff.ts` for what
  * each one costs and when it is reached.
  *
  * **The least conspicuous field here and the most important one.** A structural diff
@@ -28,8 +28,17 @@ export type DocumentChangeKind = "added" | "removed" | "changed" | "moved";
  * whose values differ", which on a document full of generated ids is mostly noise
  * wearing the same clothes. A surface that draws them identically is lying, and the
  * author's only way to find out is to act on a change that was never a change.
+ *
+ * `content` is the same distinction one rung lower, and it was added because the pair
+ * below it had already produced the lie once: a file compared by its header reports
+ * "1920x1080 became 1280x720", which is a real resolution, while `opaque`'s caption
+ * reads "Not read. Too large, not text, or unreadable. Only its size is reported." Both
+ * were on screen at once. `content` claims what a header reader can support - the format
+ * was recognised and what the file says about itself was compared - and nothing about
+ * what is inside it. A provider that cannot read a header at all stays on `opaque`,
+ * because "only its size" is then the whole truth.
  */
-export type DocumentDiffTier = "semantic" | "summary" | "structural" | "opaque";
+export type DocumentDiffTier = "semantic" | "summary" | "structural" | "content" | "opaque";
 
 /**
  * How to read a change out loud: a translation KEY plus parameters, never a sentence.
