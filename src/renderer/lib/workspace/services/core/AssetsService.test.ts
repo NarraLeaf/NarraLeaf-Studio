@@ -87,6 +87,21 @@ function imageGroup(id: string, parentGroupId?: string): AssetGroup {
     return { id, name: id, category: AssetCategory.Image, parentGroupId, createdAt: 0, updatedAt: 0 };
 }
 
+/** A row of a type no picture-shaped gap can be hiding, for the scoping cases. */
+function audioAsset(id: string): Asset<AssetType.Audio, AssetSource.Local> {
+    return {
+        id,
+        type: AssetType.Audio,
+        name: `${id}.mp3`,
+        hash: `hash-${id}`,
+        ext: "mp3",
+        source: AssetSource.Local,
+        meta: {},
+        tags: [],
+        description: "",
+    } as unknown as Asset<AssetType.Audio, AssetSource.Local>;
+}
+
 function imageAsset(id: string, overrides: Partial<Asset<AssetType.Image, AssetSource.Local>> = {}): Asset<AssetType.Image, AssetSource.Local> {
     return {
         id,
@@ -112,11 +127,13 @@ interface HarnessOptions {
     groups?: AssetGroup[];
 }
 
-function createHarness(assets: Asset<AssetType.Image, AssetSource.Local>[], options: HarnessOptions = {}) {
+function createHarness(assets: Asset<AssetType, AssetSource.Local>[], options: HarnessOptions = {}) {
     const calls: string[] = [];
     const metadata = emptyAssetsMap();
     for (const asset of assets) {
-        metadata[AssetType.Image][asset.id] = asset;
+        // Filed under its own type, so a case about one asset kind is not silently a case about
+        // another - which is what the coverage-scoping cases below turn on.
+        (metadata[asset.type] as Record<string, unknown>)[asset.id] = asset;
     }
     const groupMap = emptyGroupMap();
     for (const group of options.groups ?? []) {
@@ -349,6 +366,38 @@ describe("AssetsService delete guard", () => {
         // The refusal names where coverage stopped, so the author has somewhere to go.
         expect(result.error).toContain("Title Screen.backgroundImage");
         expect(metadata[AssetType.Image]["asset-1"]).toBeDefined();
+    });
+
+    it("lets an unrelated asset through a gap that can only be hiding a picture", async () => {
+        // The other end of the same rule. A widget with an unreadable picture says nothing about
+        // whether a sound is used, and holding it against every asset would leave one pasted URL
+        // able to put the whole library beyond deleting for the rest of the project's life.
+        const sound = audioAsset("asset-1");
+        const { service, metadata } = createHarness([sound], {
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "hashUrlUnresolved", slice: "ui", location: "Title Screen.backgroundImage", affects: ["image"] }],
+            },
+        });
+
+        const result = await service.deleteAsset(sound);
+
+        expect(result.success).toBe(true);
+        expect(metadata[AssetType.Audio]["asset-1"]).toBeUndefined();
+    });
+
+    it("holds a gap that names no kinds against every asset", async () => {
+        // An unread story can hold a use of anything, so it narrows nothing.
+        const sound = audioAsset("asset-1");
+        const { service, metadata } = createHarness([sound], {
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "documentUnreadable", slice: "story", location: "Main Story" }],
+            },
+        });
+
+        expect((await service.deleteAsset(sound)).success).toBe(false);
+        expect(metadata[AssetType.Audio]["asset-1"]).toBeDefined();
     });
 
     it("still deletes on the author's say-so when the index is incomplete", async () => {

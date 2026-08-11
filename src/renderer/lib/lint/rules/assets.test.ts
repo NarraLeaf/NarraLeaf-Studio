@@ -96,6 +96,28 @@ describe("assets/unused", () => {
         expect(findings[0].messageParams).toEqual({ location: "Title Screen.backgroundImage" });
     });
 
+    it("still reports the kinds a picture-shaped gap cannot be hiding", async () => {
+        // Withholding everything was the first shape and it was too blunt: one widget with an
+        // unreadable picture silenced the report for the sounds too, which are not in doubt.
+        const ctx = createTestLintContext({
+            assets: [asset("pic"), asset("tune", { type: AssetType.Audio, name: "tune.mp3", ext: "mp3" })],
+            referencedAssetIds: new Set<string>(),
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "hashUrlUnresolved", slice: "ui", location: "Title Screen.backgroundImage", affects: ["image"] }],
+            },
+        });
+
+        const findings = await runRule("assets/unused", ctx);
+
+        expect(findings.map(finding => finding.messageKey)).toEqual([
+            "lint.rule.assetsUnused.messageIndexUnresolved",
+            "lint.rule.assetsUnused.message",
+        ]);
+        // The audio row, and only the audio row.
+        expect(findings[1].messageParams).toEqual({ asset: "tune.mp3" });
+    });
+
     it("says the project could not be scanned when the index never built", async () => {
         const ctx = createTestLintContext({
             assets: [asset("a")],

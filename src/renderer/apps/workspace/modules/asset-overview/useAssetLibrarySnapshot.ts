@@ -108,5 +108,17 @@ export function useAssetLibrarySnapshot(context: WorkspaceContext | null, enable
         return new Set(snapshot.entries.filter(entry => entry.referenced).map(entry => entry.asset.id));
     }, [snapshot]);
 
-    return { snapshot, loading, failed, refresh, bytesByAssetId, referencedAssetIds };
+    /**
+     * Assets the index cannot answer for. Held apart from both filter answers: they are not known
+     * to be referenced and they are not known to be unreferenced, and putting them in either
+     * bucket would state something the index did not say.
+     */
+    const usageUnknownAssetIds = useMemo(() => {
+        if (!snapshot) {
+            return null;
+        }
+        return new Set(snapshot.entries.filter(entry => !entry.usageKnown).map(entry => entry.asset.id));
+    }, [snapshot]);
+
+    return { snapshot, loading, failed, refresh, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds };
 }

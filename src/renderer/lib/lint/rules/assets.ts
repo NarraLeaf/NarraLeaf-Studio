@@ -1,5 +1,6 @@
 import { AssetType, isBundleAssetType } from "../../workspace/services/assets/assetTypes";
 import type { AssetReference, ReferenceGapReason } from "../../workspace/services/references/referenceModel";
+import { referenceCoverageGapsFor } from "../../workspace/services/assets/assetDeleteGuard";
 import type { LintAssetEntry, LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 
@@ -26,9 +27,11 @@ function incompleteIndexMessageKey(reason: ReferenceGapReason): LintFinding["mes
             return "lint.rule.assetsUnused.messageIndexNotBuilt";
         case "sliceFailed":
         case "documentUnreadable":
+        case "blueprintProgramNotWalked":
             return "lint.rule.assetsUnused.messageIndexUnreadable";
         case "hashUrlUnresolved":
         case "computedAssetPin":
+        case "unknownNodeType":
             return "lint.rule.assetsUnused.messageIndexUnresolved";
     }
 }
@@ -137,29 +140,38 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
         /**
          * Library rows absent from the reference index.
          *
-         * **This rule is exactly as complete as the index is, and it refuses to answer when the
-         * index is not.** An incomplete index under-reports references, and every reference it
-         * misses turns into an asset this rule calls unused - the one wrong answer that costs an
-         * author their work. So a gap produces a finding naming where coverage stopped, and no
-         * unused rows at all: a partial list here would be indistinguishable from a complete one.
+         * **This rule is exactly as complete as the index is, and it withholds the answers the
+         * index cannot support.** An incomplete index under-reports references, and every reference
+         * it misses turns into an asset this rule calls unused - the one wrong answer that costs an
+         * author their work.
+         *
+         * So each gap produces a finding naming where coverage stopped, and the unused rows are
+         * filtered to the assets no gap could be hiding a use of. Withholding *everything* was the
+         * first shape and it was too blunt: one widget with an unreadable picture would silence the
+         * report for the sounds and the typefaces too, which are not in doubt at all.
          *
          * This also replaces the old "no referenced ids at all" heuristic, which stood in for the
          * same signal and got it wrong in both directions - it hid the findings of a genuinely tidy
          * project, and it passed an index that failed on one story out of thirty.
          */
         run(ctx) {
-            if (!ctx.assetIndex.complete) {
-                return ctx.assetIndex.gaps.map(gap => ({
-                    ruleId: "assets/unused" as const,
-                    messageKey: incompleteIndexMessageKey(gap.reason),
-                    ...(gap.location ? { messageParams: { location: gap.location } } : {}),
-                    location: { kind: "project" } as const,
-                    ...(gap.target ? { target: gap.target } : {}),
-                }));
-            }
-            return ctx.assets
-                .filter(asset => !ctx.referencedAssetIds.has(asset.id))
-                .map(asset => assetFinding("assets/unused", "lint.rule.assetsUnused.message", asset));
+            const findings: LintFinding[] = ctx.assetIndex.gaps.map(gap => ({
+                ruleId: "assets/unused" as const,
+                messageKey: incompleteIndexMessageKey(gap.reason),
+                ...(gap.location ? { messageParams: { location: gap.location } } : {}),
+                location: { kind: "project" } as const,
+                ...(gap.target ? { target: gap.target } : {}),
+            }));
+            // Per asset rather than all-or-nothing: a gap that can only be hiding a picture must not
+            // cost the author the answer about their sounds. `referenceCoverageGapsFor` is the same
+            // judgement the delete guard makes, so the report and the guard cannot disagree.
+            findings.push(
+                ...ctx.assets
+                    .filter(asset => !ctx.referencedAssetIds.has(asset.id))
+                    .filter(asset => referenceCoverageGapsFor(ctx.assetIndex, [asset.type]).length === 0)
+                    .map(asset => assetFinding("assets/unused", "lint.rule.assetsUnused.message", asset)),
+            );
+            return findings;
         },
     },
     {
