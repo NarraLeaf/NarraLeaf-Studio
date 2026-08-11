@@ -41,6 +41,8 @@ const getSurfaceTypeLabel = (surface: UISurface, t: UseTranslation["t"]): string
 type SurfaceRowProps = {
     surface: UISurface;
     typeLabel: string;
+    /** Localized stage slot this Game UI mounts into; absent for a Page. */
+    mountLabel?: string;
     actionsLabel: string;
     contentRevision: number;
     renderPreview: () => ReactNode;
@@ -60,6 +62,7 @@ const SurfaceRow = memo(
     function SurfaceRow({
         surface,
         typeLabel,
+        mountLabel,
         actionsLabel,
         contentRevision,
         renderPreview,
@@ -87,9 +90,7 @@ const SurfaceRow = memo(
                             {surface.designSize.width}×{surface.designSize.height}
                         </div>
                         <div className="text-2xs text-fg-subtle">{typeLabel}</div>
-                        {surface.kind === "stageSurface" && (
-                            <div className="text-2xs text-fg-subtle">{formatStageMountLabel(surface.mount)}</div>
-                        )}
+                        {mountLabel ? <div className="text-2xs text-fg-subtle">{mountLabel}</div> : null}
                     </div>
                     <button
                         type="button"
@@ -116,6 +117,7 @@ const SurfaceRow = memo(
         previous.surface === next.surface &&
         previous.contentRevision === next.contentRevision &&
         previous.typeLabel === next.typeLabel &&
+        previous.mountLabel === next.mountLabel &&
         previous.actionsLabel === next.actionsLabel &&
         previous.onSurfaceClick === next.onSurfaceClick &&
         previous.onOpenMenu === next.onOpenMenu,
@@ -169,6 +171,9 @@ export function SurfaceList({
                         key={surface.id}
                         surface={surface}
                         typeLabel={typeLabel}
+                        mountLabel={
+                            surface.kind === "stageSurface" ? formatStageMountLabel(surface.mount, t) : undefined
+                        }
                         actionsLabel={t("uiEditor.panel.surfaceActions", { label: typeLabel })}
                         contentRevision={getSurfaceContentRevision?.(surface) ?? 0}
                         renderPreview={() => renderSurfacePreview?.(surface) ?? null}
