@@ -17,6 +17,8 @@ import { resolveDocumentSpecForPath } from "@shared/documents/registry";
 // main entry point statically reaches this module.
 import "@shared/documents/specs";
 import { DocumentCorruptError, type AnyDocumentSpec, type DocumentParseContext } from "@shared/documents/types";
+import { contentClassIsReadable, contentClassOf, type ContentClass } from "@shared/vcs/contentClass";
+import { contentProviderFor, type ContentSide } from "./contentDiff";
 
 /**
  * Turning two versions of one file into changes an author can read.
@@ -28,14 +30,27 @@ import { DocumentCorruptError, type AnyDocumentSpec, type DocumentParseContext }
  * this be tested without a repository and reused by the resolve flow, which will hold
  * three sides rather than two.
  *
- * The four resolution tiers, in the order they are tried:
+ * The resolution tiers, in the order they are tried:
  *
  * | tier | when | what the author gets |
  * |---|---|---|
  * | `semantic` | the spec implements `diff` | "scene Prologue gained 3 lines" |
  * | `summary` | a spec, but no `diff` | both sides summarised: "variables 12 -> 14" |
  * | `structural` | no spec, but both sides are JSON | the JSON paths whose values differ |
- * | `opaque` | not JSON, unparseable, or too big | added/removed/changed plus both sizes |
+ * | content | an asset: a bitmap, sound, video, font or model | "1920x1080 -> 1280x720" |
+ * | `opaque` | none of the above | added/removed/changed plus both sizes |
+ *
+ * **Content is a step, not a tier name, and that is on purpose.** {@link DocumentDiffTier} is
+ * a shared vocabulary the renderer switches over exhaustively, and its own comment says the
+ * failure it exists to prevent is a rung claiming to be a higher one. Content results are
+ * therefore reported as `opaque` - the weakest rung, so nothing is overclaimed - and it is the
+ * ROWS that carry what the header said. The cost is that the caption above them still reads
+ * "only its size is reported" while a row beside it names a resolution; adding a fifth tier
+ * with its own caption is a renderer change, not a change here.
+ *
+ * The content step reads no bytes of its own. It is handed a probe - the size and content
+ * address the tree walk already produced - plus, where the caller could afford one, a few
+ * kilobytes of header. See `contentDiff.ts` for why that split is the whole point.
  *
  * **Degrading is a normal outcome, never a failure.** A document a spec rejects as
  * corrupt falls to a lower tier and is reported through {@link DocumentDiffOptions.onDegrade};
@@ -69,13 +84,16 @@ export const DOCUMENT_DIFF_CHANGE_LIMIT = 200;
 export const DIFF_PARSE_BYTE_CEILING = 8 * 1024 * 1024;
 
 /**
- * Total bytes one comparison will PARSE before the rest is reported opaquely.
+ * Total bytes one comparison will READ before the rest is reported without being opened.
  *
- * Same provenance and the same disclaimer as {@link DIFF_PARSE_BYTE_CEILING}. It bounds
- * parsing rather than reading, deliberately: the read is one batched call per side
- * (`documentsAt` walks the tree once), so refusing to read the second half of a batch
- * would mean issuing the batch in pieces and paying a tree walk for each. Parsing is
- * where the seconds are.
+ * Same provenance and the same disclaimer as {@link DIFF_PARSE_BYTE_CEILING}.
+ *
+ * **It used to bound parsing rather than reading, and that was the defect.** The argument
+ * was that a side is one batched call, so refusing half a batch would mean paying a tree walk
+ * per piece - true of the old port, and it made the budget a thing that was checked once both
+ * sides were already in main-process memory. It never prevented a read. Now the sizes come out
+ * of the tree walk first (`revisionDiff.planReads`), the budget is spent against those, and no
+ * second walk is needed because the walk and the reads are separate calls over one memo.
  */
 export const DIFF_TOTAL_BYTE_BUDGET = 64 * 1024 * 1024;
 
@@ -106,6 +124,23 @@ export interface DocumentDiffRequest {
     readonly head: Buffer | null;
     /** The spec owning {@link path}, when one does - see {@link specForDocumentPath}. */
     readonly spec?: AnyDocumentSpec;
+    /** Defaults to what {@link path} implies. Passed in where the caller already worked it out. */
+    readonly contentClass?: ContentClass;
+}
+
+/**
+ * A comparison of two versions of a file **whose bytes were never read**.
+ *
+ * The other door into this module, and the one the asset half of a project comes through. It
+ * carries no `Buffer` for the whole file by construction: a side is a probe out of the tree
+ * walk plus, at most, a header the caller could afford. See `contentDiff.ts`.
+ */
+export interface ContentDiffRequest {
+    readonly path: string;
+    /** Defaults to what {@link path} implies. */
+    readonly contentClass?: ContentClass;
+    readonly base: ContentSide | null;
+    readonly head: ContentSide | null;
 }
 
 export interface DocumentDiffOptions {
@@ -135,6 +170,52 @@ export function specForDocumentPath(path: string): AnyDocumentSpec | undefined {
     } catch {
         return undefined;
     }
+}
+
+/**
+ * Largest asset a comparison will pull whole **just to read its header**.
+ *
+ * The number exists because the backend has no ranged fetch: `storageGet` answers with a whole
+ * blob or nothing, so getting eight kilobytes of PNG header out of a revision costs the whole
+ * PNG. Below this the trade is worth it - a sprite, a UI image, a short sound effect, most
+ * fonts - and above it a comparison reports from the tree's own numbers instead. A music track
+ * and a video are both comfortably above it, which is the intent.
+ *
+ * A working tree is not subject to it: `fs.read` takes a length there, so a header off disk
+ * costs a header. The consequence is that the same file can produce a dimension row against
+ * the working tree and only a size row between two revisions, which is a real asymmetry rather
+ * than an inconsistency - one side can be read cheaply and the other cannot.
+ */
+export const CONTENT_HEAD_READ_CEILING = 2 * 1024 * 1024;
+
+/**
+ * How many bytes reading this path would cost, or **0 for do not read it**.
+ *
+ * The one place the question "is this worth reading" is answered, so both comparison flows
+ * answer it the same way. The rule is that reading has to be able to change what the author is
+ * told:
+ *
+ *  - A path a spec claims, or one whose class says a parser has a chance, is read - up to
+ *    {@link DIFF_PARSE_BYTE_CEILING}, past which `diffDocumentBytes` would degrade to size
+ *    alone anyway and the read would be pure waste. **That last clause is the old defect:**
+ *    the ceiling was checked after both sides were already in memory.
+ *  - An asset is read only when a header would say something and is affordable, i.e. its
+ *    provider wants bytes and both sides are under {@link CONTENT_HEAD_READ_CEILING}.
+ *  - Everything else is 0, and the content step describes it from the tree.
+ */
+export function planPathRead(path: string, baseSize: number, headSize: number): number {
+    const largest = Math.max(baseSize, headSize);
+    if (largest === 0) {
+        return 0;
+    }
+    const contentClass = contentClassOf(path);
+    if (specForDocumentPath(path) || contentClassIsReadable(contentClass)) {
+        return largest <= DIFF_PARSE_BYTE_CEILING ? baseSize + headSize : 0;
+    }
+    if (contentProviderFor(path, contentClass).headBytes === 0 || largest > CONTENT_HEAD_READ_CEILING) {
+        return 0;
+    }
+    return baseSize + headSize;
 }
 
 /** Compare two versions of one document, degrading through the four tiers as needed. */
@@ -196,7 +277,69 @@ export function diffDocumentBytes(request: DocumentDiffRequest, options: Documen
         return diffJsonStructural(jsonBase.value, jsonHead.value, { limit });
     }
 
+    // The content step, between structural and opaque. Only for the classes whose bytes are
+    // NOT worth parsing - a `.txt` that reached here is a text file nobody could diff, and
+    // handing it to a header reader would produce "Studio does not recognise this format"
+    // about a format Studio recognises perfectly well.
+    const contentClass = request.contentClass ?? contentClassOf(request.path);
+    if (!contentClassIsReadable(contentClass)) {
+        return diffDocumentContent({
+            path: request.path,
+            contentClass,
+            // The whole file was read, so the header is certainly inside it.
+            base: { probe: { size: base.length }, head: base },
+            head: { probe: { size: head.length }, head },
+        }, { limit });
+    }
+
     return opaqueDiff(base, head, limit);
+}
+
+/**
+ * Compare two versions of a file from their probes, without their bytes.
+ *
+ * Reported at the `opaque` tier for the reason set out at the top of this module: the tier
+ * vocabulary is shared with a renderer that switches over it exhaustively, and the weakest rung
+ * is the only one that cannot overclaim.
+ */
+export function diffDocumentContent(
+    request: ContentDiffRequest,
+    options: DocumentDiffOptions = {},
+): DocumentDiff {
+    const limit = options.limit ?? DOCUMENT_DIFF_CHANGE_LIMIT;
+    const { base, head } = request;
+
+    if (!base && !head) {
+        return buildDocumentDiff([], { tier: "opaque", limit });
+    }
+    if (!base || !head) {
+        const probe = (head ?? base) as ContentSide;
+        return buildDocumentDiff(
+            [{
+                path: [],
+                kind: base ? "removed" : "added",
+                label: {
+                    key: base ? LABEL_REMOVED : LABEL_ADDED,
+                    params: { bytes: probe.probe.size },
+                },
+            }],
+            { tier: "opaque", limit },
+        );
+    }
+
+    const contentClass = request.contentClass ?? contentClassOf(request.path);
+    const provider = contentProviderFor(request.path, contentClass);
+    let changes: readonly DocumentChange[];
+    try {
+        changes = provider.describe(base, head);
+    } catch (error) {
+        // Same guard, same reason, as `trySpecDiff`: this runs inside the loop that builds a
+        // whole comparison, and a header reader thrown off by a truncated or hostile file must
+        // cost its own row rather than the other forty.
+        options.onDegrade?.(`the ${provider.id} content provider threw: ${messageOf(error)}`);
+        changes = [{ path: [], kind: "changed", label: { key: LABEL_OPAQUE_UNREAD } }];
+    }
+    return buildDocumentDiff(changes, { tier: "opaque", limit });
 }
 
 /**

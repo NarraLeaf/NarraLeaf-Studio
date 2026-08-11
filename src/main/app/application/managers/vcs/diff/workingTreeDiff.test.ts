@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { VcsChangeKind, VcsFileChange, VcsStatus } from "@shared/types/vcs";
-import { DIFF_PATH_LIMIT } from "./documentDiff";
+import { CONTENT_HEAD_READ_CEILING, DIFF_PATH_LIMIT } from "./documentDiff";
 import { diffWorkingTree, type WorkingTreeDiffSource } from "./workingTreeDiff";
 
 /**
@@ -10,6 +10,10 @@ import { diffWorkingTree, type WorkingTreeDiffSource } from "./workingTreeDiff";
  * the other is being edited while this runs, which is why nothing may cache the result and
  * why a file that vanishes between the scan and the read is an ordinary outcome rather
  * than a failure.
+ *
+ * The fake records every call in one ordered list, so the tests can assert on **what was not
+ * read** as well as on what came out. That is the only way to see the difference between a
+ * comparison that opens a 200 MB video and one that does not: both produce the same row.
  */
 
 const bytes = (value: unknown): Buffer => Buffer.from(JSON.stringify(value), "utf-8");
@@ -56,10 +60,18 @@ function sourceOf(
     const reads: string[] = [];
     const source: WorkingTreeDiffSource = {
         status: async () => status,
-        documentsAt: async (revision, paths) => {
-            reads.push(`documentsAt:${revision}`);
+        entriesAt: async (revision) => {
+            reads.push(`entriesAt:${revision}`);
+            return new Map(Object.entries(recorded).map(([path, buffer]) => [
+                path,
+                { size: buffer.length, hash: buffer.toString("base64") },
+            ]));
+        },
+        readAt: async (revision, paths) => {
+            reads.push(`readAt:${revision}`);
             return new Map(paths.map((path) => [path, recorded[path] ?? null]));
         },
+        statWorking: async (path) => (working[path] ? { size: working[path].length } : null),
         readWorking: async (path) => {
             reads.push(`working:${path}`);
             return working[path] ?? null;
@@ -106,7 +118,7 @@ describe("diffing the working tree against the last version", () => {
         expect(result.documents.map((entry) => entry.path)).toEqual(["editor/new/a.json"]);
     });
 
-    it("reads the recorded side in one batch, before touching the working tree", async () => {
+    it("walks and reads the recorded side once each, before touching the working tree", async () => {
         const { source, reads } = sourceOf(
             statusOf([fileChange("editor/a.json", "modified"), fileChange("editor/b.json", "modified")]),
             { "editor/a.json": bytes({ a: 1 }), "editor/b.json": bytes({ b: 1 }) },
@@ -115,7 +127,12 @@ describe("diffing the working tree against the last version", () => {
 
         await diffWorkingTree(source);
 
-        expect(reads).toEqual(["documentsAt:r1", "working:editor/a.json", "working:editor/b.json"]);
+        expect(reads).toEqual([
+            "entriesAt:r1",
+            "readAt:r1",
+            "working:editor/a.json",
+            "working:editor/b.json",
+        ]);
     });
 
     it("looks for a moved file's recorded bytes under the name it was committed with", async () => {
@@ -162,10 +179,10 @@ describe("diffing the working tree against the last version", () => {
         // lie than saying the version could not be read. Reachable per §4.29.
         const { source } = sourceOf(
             statusOf([fileChange("editor/a.json", "modified")]),
-            {},
+            { "editor/a.json": bytes({ a: 1 }) },
             { "editor/a.json": bytes({ a: 2 }) },
             {
-                documentsAt: async () => {
+                readAt: async () => {
                     throw new Error("1/1 get items failed");
                 },
             },
@@ -177,6 +194,24 @@ describe("diffing the working tree against the last version", () => {
         expect(result.documents[0].kind).toBe("changed");
         expect(result.documents[0].diff.changes[0].label.key).toBe("documentDiff.opaque.unread");
         expect(result.complete).toBe(false);
+    });
+
+    it("reports a failed walk of the recorded side the same way", async () => {
+        const { source } = sourceOf(
+            statusOf([fileChange("editor/a.json", "modified")]),
+            {},
+            { "editor/a.json": bytes({ a: 2 }) },
+            {
+                entriesAt: async () => {
+                    throw new Error("tree unavailable");
+                },
+            },
+        );
+
+        const result = await diffWorkingTree(source);
+
+        expect(result.readFailure).toBe("tree unavailable");
+        expect(result.documents[0].diff.changes[0].label.key).toBe("documentDiff.opaque.unread");
     });
 
     it("lists without reading past the path limit", async () => {
@@ -191,5 +226,40 @@ describe("diffing the working tree against the last version", () => {
         expect(result.pathCount).toBe(files.length);
         expect(result.complete).toBe(false);
         expect(onDegrade).toHaveBeenCalledWith(expect.stringContaining("path limit"));
+    });
+});
+
+describe("what is never read", () => {
+    const video = (fill: number): Buffer => Buffer.alloc(CONTENT_HEAD_READ_CEILING + 1024, fill);
+
+    it("never opens a re-exported video, on either side", async () => {
+        const { source, reads } = sourceOf(
+            statusOf([fileChange("assets/content/intro.mp4", "modified")]),
+            { "assets/content/intro.mp4": video(1) },
+            { "assets/content/intro.mp4": video(2) },
+        );
+
+        const result = await diffWorkingTree(source);
+
+        // The walk is the only backend call: no `readAt`, no `readWorking`.
+        expect(reads).toEqual(["entriesAt:r1"]);
+        expect(result.documents).toHaveLength(1);
+        expect(result.documents[0].diff.changes.length).toBeGreaterThan(0);
+    });
+
+    it("still opens the documents beside it", async () => {
+        // Non-vacuous: the same run that skips the video reads the story.
+        const { source, reads } = sourceOf(
+            statusOf([
+                fileChange("assets/content/intro.mp4", "modified"),
+                fileChange("editor/story.json", "modified"),
+            ]),
+            { "assets/content/intro.mp4": video(1), "editor/story.json": bytes({ v: 1 }) },
+            { "assets/content/intro.mp4": video(2), "editor/story.json": bytes({ v: 2 }) },
+        );
+
+        await diffWorkingTree(source);
+
+        expect(reads).toEqual(["entriesAt:r1", "readAt:r1", "working:editor/story.json"]);
     });
 });

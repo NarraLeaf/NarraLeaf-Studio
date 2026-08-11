@@ -32,18 +32,31 @@ const lore = vi.hoisted(() => {
             calls.push(`changedPaths:${from}..${to}`);
             return ["editor/audio-tracks.json"];
         },
-        documentsAt: async (
+        // The bytes each revision holds for the one path this fake knows about. Written once so
+        // the walk can report a truthful size and the read can hand back the matching buffer.
+        bytesAt: (revision: string) => Buffer.from(
+            JSON.stringify({ version: 2, tracks: revision === "r1" ? [] : [{ id: "bgm" }] }),
+            "utf-8",
+        ),
+        entriesAt: async (_globals: unknown, _store: unknown, _repository: string, revision: string) => {
+            calls.push(`entriesAt:${revision}`);
+            const bytes = backend.bytesAt(revision);
+            return new Map([["editor/audio-tracks.json", {
+                path: "editor/audio-tracks.json",
+                size: bytes.length,
+                hash: `hash-${revision}`,
+                context: `context-${revision}`,
+            }]]);
+        },
+        readEntryBytes: async (
             _globals: unknown,
             _store: unknown,
             _repository: string,
-            revision: string,
-            select: { paths?: readonly string[] },
+            entry: { hash: string },
         ) => {
-            calls.push(`documentsAt:${revision}`);
-            return new Map((select.paths ?? []).map((path) => [
-                path,
-                Buffer.from(JSON.stringify({ version: 2, tracks: revision === "r1" ? [] : [{ id: "bgm" }] }), "utf-8"),
-            ]));
+            const revision = entry.hash.replace("hash-", "");
+            calls.push(`readEntryBytes:${revision}`);
+            return backend.bytesAt(revision);
         },
         getStatus: async () => {
             calls.push("getStatus");
@@ -108,7 +121,15 @@ describe("comparison caching", () => {
         const second = await manager.diffRevisions(PROJECT, "r1", "r2");
 
         expect(second).toEqual(first);
-        expect(lore.calls).toEqual(["changedPaths:r1..r2", "documentsAt:r1", "documentsAt:r2"]);
+        // One walk and one read per side, in that order: the walk is what decides whether the
+        // read is worth making at all.
+        expect(lore.calls).toEqual([
+            "changedPaths:r1..r2",
+            "entriesAt:r1",
+            "entriesAt:r2",
+            "readEntryBytes:r1",
+            "readEntryBytes:r2",
+        ]);
     });
 
     it("keeps the two directions apart", async () => {
@@ -126,7 +147,7 @@ describe("comparison caching", () => {
         await manager.diffWorkingTree(PROJECT);
 
         expect(lore.calls.filter((call) => call === "getStatus")).toHaveLength(2);
-        expect(lore.calls.filter((call) => call === "documentsAt:r2")).toHaveLength(2);
+        expect(lore.calls.filter((call) => call === "entriesAt:r2")).toHaveLength(2);
     });
 
     it("does not let a working-tree comparison answer a revision one, or the reverse", async () => {
@@ -135,7 +156,23 @@ describe("comparison caching", () => {
 
         await manager.diffRevisions(PROJECT, "r1", "r2");
 
-        expect(lore.calls).toEqual(["changedPaths:r1..r2", "documentsAt:r1", "documentsAt:r2"]);
+        expect(lore.calls).toEqual([
+            "changedPaths:r1..r2",
+            "entriesAt:r1",
+            "entriesAt:r2",
+            "readEntryBytes:r1",
+            "readEntryBytes:r2",
+        ]);
+    });
+
+    it("walks each revision once even though two ports ask for it", async () => {
+        // The memo the two ports share. Without it, `entriesAt` and the read behind `readAt`
+        // would each walk the tree - and on a project with a remote the first walk of a revision
+        // can go to the network (docs/version-control.md §6), so the second one is not free.
+        await manager.diffRevisions(PROJECT, "r1", "r2");
+
+        expect(lore.calls.filter((call) => call === "entriesAt:r1")).toHaveLength(1);
+        expect(lore.calls.filter((call) => call === "entriesAt:r2")).toHaveLength(1);
     });
 
     it("does not remember a comparison whose bytes could not be read", async () => {
@@ -143,18 +180,18 @@ describe("comparison caching", () => {
         // measured case is a process unable to read back what it wrote with an online commit
         // (docs/version-control.md §4.29) - so caching it would make the failure outlive whatever
         // caused it, and the author's only way out would be to reopen the project.
-        const documentsAt = lore.backend.documentsAt;
-        lore.backend.documentsAt = async () => {
+        const readEntryBytes = lore.backend.readEntryBytes;
+        lore.backend.readEntryBytes = async () => {
             throw new Error("1/1 get items failed");
         };
         const failed = await manager.diffRevisions(PROJECT, "r3", "r4");
         expect(failed.readFailure).toBe("1/1 get items failed");
 
-        lore.backend.documentsAt = documentsAt;
+        lore.backend.readEntryBytes = readEntryBytes;
         lore.calls.length = 0;
         const retried = await manager.diffRevisions(PROJECT, "r3", "r4");
 
         expect(retried.readFailure).toBeNull();
-        expect(lore.calls).toContain("documentsAt:r3");
+        expect(lore.calls).toContain("readEntryBytes:r3");
     });
 });

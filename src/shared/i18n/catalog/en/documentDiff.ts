@@ -25,6 +25,35 @@ export const documentDiff = {
         changed: "Changed ({fromBytes} → {toBytes})",
         unread: "Changed, not inspected",
     },
+    /**
+     * An asset, described from its header instead of read.
+     *
+     * Emitted by `vcs/diff/contentDiff.ts`, whose providers are handed a file's size and content
+     * address plus at most a few kilobytes of its front. So these rows are what a bitmap, a sound,
+     * a video or a font says about itself, and every one of them is conditional: a container that
+     * keeps its length at the end of the file reports no duration, and a font whose name table sits
+     * past the prefix reports no family.
+     *
+     * `changed`, `notInspected` and `unrecognized` are three different facts and must stay three
+     * separate sentences. The first says the header was read and reports the same numbers; the
+     * second says this comparison did not spend the bytes; the third says Studio will never have
+     * more to say about this format. An author who cannot tell a budget from a permanent limit
+     * cannot tell whether looking again would help.
+     */
+    content: {
+        size: "Size ({fromBytes} → {toBytes})",
+        /** Its own row, because a resolution change is what breaks a layout. */
+        dimensions: "Dimensions ({fromWidth}×{fromHeight} → {toWidth}×{toHeight})",
+        duration: "Length ({fromSeconds}s → {toSeconds}s)",
+        sampleRate: "Sample rate ({fromHertz} Hz → {toHertz} Hz)",
+        /** The family name out of the font itself, which is why it is also carried as the subject. */
+        family: "Family ({from} → {to})",
+        changed: "Contents changed",
+        notInspected: "Contents changed. The header was not read.",
+        unrecognized: "Contents changed. Studio does not recognise this format.",
+        /** A deletion and an addition that hold the same bytes: the file was renamed or moved. */
+        moved: "Moved from {from}",
+    },
     /** Tier 2: what each side says about itself. */
     summary: {
         title: "Name",
