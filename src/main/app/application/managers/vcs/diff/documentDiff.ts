@@ -98,6 +98,23 @@ export const DIFF_PARSE_BYTE_CEILING = 8 * 1024 * 1024;
 export const DIFF_TOTAL_BYTE_BUDGET = 64 * 1024 * 1024;
 
 /**
+ * Largest file a working-tree comparison will pull **whole, from both sides** to decide whether
+ * a removal and an addition are one rename.
+ *
+ * A judgement, not a measurement, and the same disclaimer as the two above. There is no cheaper
+ * way to settle it: the recorded side has a content address and the working side has none, so
+ * the only proof is the bytes, and half a proof is worse than none here - see the note on
+ * `workingTreeDiff.ts`. Past this the two rows stand as they arrived.
+ *
+ * Set to the same 2 MiB as {@link CONTENT_HEAD_READ_CEILING} and for a related reason rather
+ * than the same one: that is roughly where a file stops being a document or a sprite and starts
+ * being a music track, a video or a model bundle. Below it a rename is the ordinary tidy-up this
+ * pairing exists for; above it, folding a re-import into a "moved" row would cost hundreds of
+ * megabytes on the chance that two large files are byte-identical.
+ */
+export const DIFF_MOVE_CONFIRM_BYTE_CEILING = 2 * 1024 * 1024;
+
+/**
  * Paths one comparison will look inside at all.
  *
  * Past it every document is reported at tier 4 without being read. A comparison across
