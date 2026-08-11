@@ -340,6 +340,11 @@ function getMountedBlueprintModule(blueprintId: string): BlueprintModuleSink | u
 
 /**
  * Dispatch a UI element behavior event into a blueprint event graph or TypeScript module (M3-min + M5).
+ *
+ * Resolves to whether a listener actually ran. The caller bubbles an event nothing listened to, so
+ * this answer has to come from the dispatch itself rather than from a second reading of the document:
+ * two spellings of "is anything listening here" would eventually disagree, and the event would then
+ * be both handled and forwarded.
  */
 export async function dispatchBlueprintUiEvent(options: {
     document: UIDocument;
@@ -361,7 +366,7 @@ export async function dispatchBlueprintUiEvent(options: {
     /** Resolved params of the component instance this dispatch came from; see UIHostAdapterElementEventOptions. */
     componentParams?: Record<string, string>;
     maxSteps?: number;
-} & CancellableDispatchOptions): Promise<void> {
+} & CancellableDispatchOptions): Promise<boolean> {
     const {
         document,
         blueprintDocument,
@@ -382,7 +387,7 @@ export async function dispatchBlueprintUiEvent(options: {
     } = options;
     const el = readDispatchElement(document, elementId, componentId);
     if (!el || eventControl?.isPropagationStopped()) {
-        return;
+        return false;
     }
     const widgetLogicApi = getWidgetLogicApi(el.type);
     const widgetOwnerKey = widgetLogicApi?.supportsPrivateBlueprint
@@ -401,11 +406,11 @@ export async function dispatchBlueprintUiEvent(options: {
               ? legacyBinding.blueprintId
               : undefined;
     if (!blueprintId) {
-        return;
+        return false;
     }
     const bp = blueprintDocument.blueprints[blueprintId];
     if (!bp) {
-        return;
+        return false;
     }
     if (bp.program.kind === "scriptModule") {
         const mod = getMountedBlueprintModule(blueprintId);
@@ -413,7 +418,7 @@ export async function dispatchBlueprintUiEvent(options: {
             mod?.events?.[eventName] ??
             (legacyBinding?.kind === "blueprintEvent" ? mod?.events?.[legacyBinding.eventId] : undefined);
         if (typeof fn !== "function") {
-            return;
+            return false;
         }
         const executionId = newExecutionId();
         const execution = beginTrackedExecution({
@@ -448,7 +453,7 @@ export async function dispatchBlueprintUiEvent(options: {
                     eventId: eventName,
                     reason: err.message,
                 });
-                return;
+                return true;
             }
             const message = err instanceof Error ? err.message : String(err);
             debug.emit({
@@ -461,11 +466,11 @@ export async function dispatchBlueprintUiEvent(options: {
         } finally {
             execution?.finish();
         }
-        return;
+        return true;
     }
 
     if (bp.program.kind !== "graph") {
-        return;
+        return false;
     }
 
     const widgetElementType = el?.type;
@@ -484,7 +489,7 @@ export async function dispatchBlueprintUiEvent(options: {
         .filter((entry): entry is { eventGraph: NonNullable<typeof candidateGraphs[number]>; ir: NonNullable<typeof candidateGraphs[number]["graph"]>; headIds: string[] } => Boolean(entry));
 
     if (matchingGraphs.length === 0) {
-        return;
+        return false;
     }
     const executionId = newExecutionId();
     const execution = beginTrackedExecution({
@@ -556,7 +561,7 @@ export async function dispatchBlueprintUiEvent(options: {
                 nodeId: err.nodeId,
                 reason: err.message,
             });
-            return;
+            return true;
         }
         if (err instanceof BlueprintGraphExecutionError) {
             debug.emit({
@@ -567,7 +572,7 @@ export async function dispatchBlueprintUiEvent(options: {
                 eventId: eventName,
                 nodeId: err.nodeId,
             });
-            return;
+            return true;
         }
         const message = err instanceof Error ? err.message : String(err);
         debug.emit({
@@ -580,6 +585,9 @@ export async function dispatchBlueprintUiEvent(options: {
     } finally {
         execution?.finish();
     }
+    // A listener that threw still listened: bubbling on error would turn one author's broken
+    // handler into the parent's problem.
+    return true;
 }
 
 function collectSurfaceElementIds(document: UIDocument, surfaceId: string): string[] {
@@ -708,7 +716,7 @@ type ElementEventDispatchOptions = {
     graphIdPrefix: BlueprintRunGraphKind;
 };
 
-async function dispatchBlueprintElementEvent(options: ElementEventDispatchOptions & CancellableDispatchOptions): Promise<void> {
+async function dispatchBlueprintElementEvent(options: ElementEventDispatchOptions & CancellableDispatchOptions): Promise<boolean> {
     const {
         document,
         blueprintDocument,
@@ -724,6 +732,7 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
     } = options;
     const payload = { ...(eventPayload ?? {}), element: target };
     const targets = collectElementEventTargets({ document, blueprintDocument, surfaceId, target, nodeType });
+    const handled = targets.length > 0;
 
     for (const listener of targets) {
         const executionId = newExecutionId();
@@ -803,6 +812,7 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
             execution?.finish();
         }
     }
+    return handled;
 }
 
 export async function dispatchBlueprintElementFlushEvent(options: {
@@ -840,8 +850,8 @@ export async function dispatchBlueprintElementClickEvent(options: {
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
     maxSteps?: number;
-} & CancellableDispatchOptions): Promise<void> {
-    await dispatchBlueprintElementEvent({
+} & CancellableDispatchOptions): Promise<boolean> {
+    return dispatchBlueprintElementEvent({
         ...options,
         nodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
         eventId: "elementClick",

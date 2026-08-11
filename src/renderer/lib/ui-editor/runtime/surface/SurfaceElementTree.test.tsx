@@ -105,6 +105,113 @@ describe("SurfaceElementTree", () => {
     });
 
     /**
+     * Every instance of one definition shares the element ids inside it, so if that content were
+     * addressable there would be no telling six placements apart.
+     */
+    describe("a linked component instance", () => {
+        function renderInstanceMarkup(): string {
+            const document: UIDocument = {
+                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+                id: "doc",
+                name: "Doc",
+                surfaces: [
+                    {
+                        id: "surface",
+                        name: "Surface",
+                        host: "player",
+                        kind: "stageSurface",
+                        designSize: { width: 320, height: 180 },
+                        rootElementId: "root",
+                        mount: { kind: "slot", slotId: "onStage" },
+                    },
+                ],
+                components: [
+                    {
+                        id: "component",
+                        name: "Component",
+                        rootElementId: "component-root",
+                        elements: {
+                            "component-root": {
+                                id: "component-root",
+                                type: "nl.container",
+                                parentId: null,
+                                childrenIds: ["component-child"],
+                                layout: { x: 0, y: 0, width: 160, height: 80 },
+                            },
+                            "component-child": {
+                                id: "component-child",
+                                type: "nl.container",
+                                parentId: "component-root",
+                                childrenIds: [],
+                                layout: { x: 4, y: 4, width: 40, height: 20 },
+                            },
+                        },
+                    },
+                ],
+                elements: {
+                    root: {
+                        id: "root",
+                        type: "nl.root",
+                        parentId: null,
+                        childrenIds: ["instance"],
+                        layout: { x: 0, y: 0, width: 320, height: 180 },
+                    },
+                    instance: {
+                        id: "instance",
+                        type: "nl.container",
+                        parentId: "root",
+                        childrenIds: [],
+                        layout: { x: 8, y: 8, width: 160, height: 80 },
+                        extra: { componentLink: { componentId: "component", linked: true } },
+                    },
+                },
+            };
+            const surface = document.surfaces[0]!;
+            const hostAdapter: UIHostAdapter = {
+                host: "player",
+                blueprintRuntime: {
+                    surfaceId: surface.id,
+                    setSurfaceState: () => undefined,
+                    getSurfaceState: () => undefined,
+                    emitDebug: () => undefined,
+                    dispatchElementBlueprintEvent: async () => undefined,
+                },
+            };
+            const rendererRegistry = new ElementRendererRegistry([
+                { type: "nl.root", render: props => <>{props.children}</> },
+                { type: "nl.container", render: props => <>{props.children}</> },
+            ]);
+            return renderToStaticMarkup(
+                <>
+                    {SurfaceElementTree({
+                        document,
+                        surface,
+                        rootElement: document.elements.root!,
+                        rendererRegistry,
+                        hostAdapter,
+                    })}
+                </>,
+            );
+        }
+
+        function tagFor(markup: string, elementId: string): string {
+            return markup.match(new RegExp(`<[^>]*data-ui-element-id="${elementId}"[^>]*>`))?.[0] ?? "";
+        }
+
+        it("leaves its content unaddressable, so the instance is what a click resolves to", () => {
+            const markup = renderInstanceMarkup();
+
+            // Element events find their owner by walking up to the nearest tagged ancestor. Content
+            // carries no tag of its own, so that walk passes straight through it to the placement -
+            // which is why six instances of one definition are six distinct click targets even
+            // though they share every id inside.
+            expect(tagFor(markup, "component-child")).toBe("");
+            expect(tagFor(markup, "component-root")).toBe("");
+            expect(tagFor(markup, "instance")).not.toBe("");
+        });
+    });
+
+    /**
      * The tree is the only place that holds the instance element and the document at once, so it is
      * the only place that can answer what a placement supplies. Everything below it runs the shared
      * definition, so if the answer does not leave here it never exists.

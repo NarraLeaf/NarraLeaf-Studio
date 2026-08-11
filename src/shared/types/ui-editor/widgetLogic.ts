@@ -840,3 +840,36 @@ export function getWidgetLogicEvent(
 export function listWidgetLogicEventIds(elementType: string | undefined | null): string[] {
     return (getWidgetLogicApi(elementType)?.events ?? []).map(eventDef => eventDef.id);
 }
+
+/**
+ * Events that belong to whatever sits under the pointer rather than to one element.
+ *
+ * Only the innermost element of a stack is offered an event, so a decorative child over a clickable
+ * parent used to swallow every click in its area - the author had to notice and forward it by hand,
+ * on that element and on each one added later. An element with no listener for one of these forwards
+ * it to its parent instead; one that does listen still keeps it, so nothing that already works moves.
+ *
+ * Deliberately narrower than `dispatchKind: "interaction"`:
+ *
+ * - Hover and movement (`mouseEnter`, `mouseLeave`, `mouseMove`) describe a pointer's path through
+ *   one element, and forwarding them would report every ancestor as hovered at once.
+ * - Keys already reach every widget on the surface, and belong to focus rather than to position.
+ * - `focus`, `blur` and `scroll` are about the element itself, not the point it occupies.
+ * - A widget's own interactions (an item clicked, a slider moved) carry context an ancestor has no
+ *   way to mean.
+ * - Lifecycle events are per-element notifications; forwarding `flush` in particular would turn one
+ *   element's redraw into its whole ancestry's.
+ */
+const POINTER_POSITION_EVENT_IDS: ReadonlySet<string> = new Set([
+    "mouseClick",
+    "mouseDoubleClick",
+    "mouseDown",
+    "mouseUp",
+    "rightClick",
+    "mouseWheel",
+]);
+
+/** Whether an element that has no listener for this event should hand it to its parent. */
+export function isPointerPositionElementEvent(eventId: string | undefined | null): boolean {
+    return Boolean(eventId) && POINTER_POSITION_EVENT_IDS.has(eventId as string);
+}
