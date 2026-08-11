@@ -51,6 +51,10 @@ export const build = {
         universal: "通用",
     },
     identity: {
+        // 本次构建属于工程的哪一个发行版本；放在该分区最前，因为下面三行读数都是该版本发布的值
+        variant: "构建版本",
+        // 标在「由该版本自己填写、而非继承」的读数旁边，使与「应用」页不一致的值在同一行给出原因
+        fromVariant: "来自该构建版本",
         version: "版本",
         productName: "产品名",
         productNameSource: "源自项目名",

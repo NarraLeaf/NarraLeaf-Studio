@@ -4,6 +4,7 @@ import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryDocument } from "@shared/types/story";
 import { sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
 import { buildMergedPersistentView, type MergedPersistentEntry } from "@shared/variables/mergedPersistentView";
+import type { TranslationKey } from "@shared/i18n";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
@@ -13,6 +14,7 @@ import type {
     GameAppSaveRecord,
     GameAppStoryRuntimeBridge,
 } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import type { RunningGameState, SaveLoadOutcome } from "@/lib/ui-editor/runtime/app/saveLoad";
 import { collectSavedVariableView } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
@@ -36,17 +38,47 @@ type SaveSlotEntry = { summary: SaveSlotSummary; record: GameAppSaveRecord | nul
 /** What the last load attempt on a slot did, drawn under that slot's row. */
 type SaveLoadResult =
     | { kind: "ok"; losses: SaveLoadLosses }
-    | { kind: "failed"; failure: SaveLoadFailure; relaunched: boolean };
+    | {
+          kind: "failed";
+          failure: SaveLoadFailure;
+          game: RunningGameState;
+          /**
+           * The compiled ids behind the failure. This panel is the one place they belong: nothing in
+           * the project can name them, so they are a debugging handle rather than a finding, and the
+           * message above already says what kind of thing went missing.
+           */
+          unresolvedIds: string[];
+      };
+
+/** What became of the run, as the line under a failed load. */
+const RUNNING_GAME_STATE_KEYS = {
+    unchanged: "devMode.saves.gameUnchanged",
+    restored: "devMode.saves.gameRestored",
+    lost: "devMode.saves.gameLost",
+} as const satisfies Record<RunningGameState, TranslationKey>;
+
+/**
+ * A refused load as this panel draws failures.
+ *
+ * `missingElementId` stays null: a refusal names whatever the running story is missing, which is as
+ * often an action as an element, and the wording that goes with that field claims an element.
+ */
+function refusalAsFailure(outcome: Extract<SaveLoadOutcome, { status: "refused" }>): SaveLoadFailure {
+    return {
+        tone: outcome.game === "lost" ? "danger" : "warning",
+        missingElementId: null,
+        message: outcome.detail,
+    };
+}
 
 /**
  * The last result per slot, kept alive across this panel unmounting.
  *
- * It is unmounted far more often than it is read: closing the drawer unmounts it, and so does the
- * relaunch this panel performs to put the session back after a failed load - which would discard
- * the report of the very failure that caused the relaunch, leaving an author looking at a restarted
- * game with no word about why. Module-level for the same reason `StoryRuntimeDebugPanel`'s trail
- * cache is: a Dev Mode window serves one project, and these results belong to the window rather
- * than to whichever view happens to be mounted.
+ * It is unmounted far more often than it is read: closing the drawer unmounts it, and so does any
+ * timeline jump, which would otherwise discard the report of the load that just failed. Module-level
+ * for the same reason `StoryRuntimeDebugPanel`'s trail cache is: a Dev Mode window serves one
+ * project, and these results belong to the window rather than to whichever view happens to be
+ * mounted.
  */
 const saveLoadResults = new Map<string, SaveLoadResult>();
 
@@ -205,12 +237,18 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
 
     const load = useCallback(async (entry: SaveSlotEntry) => {
         const id = entry.summary.id;
-        // Captured before the attempt: a failed `deserialize` has already reset the stage, and this
-        // is what the relaunch has to put back.
-        const launch = storyRuntime.getStoryContext();
         setBusy(true);
         try {
-            await saves.load(id);
+            const outcome = await saves.load(id);
+            if (outcome.status === "refused") {
+                recordResult(id, {
+                    kind: "failed",
+                    failure: refusalAsFailure(outcome),
+                    game: outcome.game,
+                    unresolvedIds: outcome.unresolvedIds,
+                });
+                return;
+            }
             const knownActionIds = new Set(storyRuntime.getActionIdBindings().map(binding => binding.staticId));
             const losses = collectSaveLoadLosses({
                 savedGame: entry.record?.savedGame,
@@ -219,22 +257,14 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
             });
             recordResult(id, { kind: "ok", losses });
         } catch (error) {
-            const failure = classifySaveLoadFailure(error);
-            let relaunched = false;
-            if (launch) {
-                try {
-                    await storyRuntime.relaunch({
-                        sceneId: launch.sceneId,
-                        startBlockId: launch.startBlockId,
-                        snapshotId: launch.snapshotId,
-                    });
-                    relaunched = true;
-                } catch {
-                    // Nothing left to put the session back with; the result says so rather than
-                    // leaving the author looking at a blank stage with no explanation.
-                }
-            }
-            recordResult(id, { kind: "failed", failure, relaunched });
+            // Only a caller mistake reaches here now (no game runtime). It happens before anything
+            // is touched, so the run is where it was.
+            recordResult(id, {
+                kind: "failed",
+                failure: classifySaveLoadFailure(error),
+                game: "unchanged",
+                unresolvedIds: [],
+            });
         } finally {
             setBusy(false);
         }
@@ -436,7 +466,7 @@ function LoadResultBlock(props: { result: SaveLoadResult }): ReactNode {
         );
     }
 
-    const { failure, relaunched } = result;
+    const { failure, game, unresolvedIds } = result;
     return (
         <div
             className={cn(
@@ -449,9 +479,12 @@ function LoadResultBlock(props: { result: SaveLoadResult }): ReactNode {
                     ? t("devMode.saves.missingElement", { id: failure.missingElementId })
                     : failure.message}
             </p>
-            <p className="text-2xs text-fg-subtle">
-                {relaunched ? t("devMode.saves.sessionRestored") : t("devMode.saves.sessionLost")}
-            </p>
+            <p className="text-2xs text-fg-subtle">{t(RUNNING_GAME_STATE_KEYS[game])}</p>
+            {unresolvedIds.length > 0 ? (
+                <p className="mt-0.5 break-all font-mono text-2xs text-fg-subtle">
+                    {t("devMode.saves.unresolvedIds", { ids: unresolvedIds.join(", ") })}
+                </p>
+            ) : null}
         </div>
     );
 }

@@ -91,6 +91,8 @@ function describeType(type: StoryCommandParamType, t: ManualTranslate): string {
             return t("story.manual.type.audioTrack");
         case "label":
             return t("story.manual.type.label");
+        case "appTag":
+            return t("story.manual.type.appTag");
         case "variable":
             return t("story.manual.type.variable");
         case "target":

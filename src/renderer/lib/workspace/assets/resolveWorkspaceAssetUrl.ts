@@ -8,6 +8,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { characterAvatarBakePath, parseCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { getInterface } from "@/lib/app/bridge";
+import { recordAssetUrlToken } from "./assetUrlTokens";
 
 export type WorkspaceAssetUrlResult =
     | { success: true; url: string }
@@ -80,6 +81,11 @@ export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): Work
             return { success: false, error: request.error ?? "Failed to resolve asset file" };
         }
 
+        // The one instant at which "this token" and "this asset" are both known and both true. A
+        // grant token carries no information about the file it opens, so a URL that reaches a
+        // document is traceable back to an asset only if it was written down here - see
+        // assetUrlTokens.ts.
+        recordAssetUrlToken(request.data.data, asset.id);
         return { success: true, url: `${AppProtocol}://${AppHost.Fs}/${request.data.data}` };
     };
 }
@@ -138,6 +144,9 @@ async function resolveModelBundleUrl(
     // relative path would turn "Hiyori.2048/texture_00.png" into a single opaque segment and break
     // the very sibling arithmetic this URL exists for.
     const encodedEntry = resolved.entry.split("/").map(encodeURIComponent).join("/");
+    // Recorded for the same reason the per-file grant above is: a bundle's directory token is just
+    // as opaque, and the entry path after it belongs to the bundle rather than to the token.
+    recordAssetUrlToken(grant.data.data, asset.id);
     return { success: true, url: `${AppProtocol}://${AppHost.Fs}/${grant.data.data}/${encodedEntry}` };
 }
 

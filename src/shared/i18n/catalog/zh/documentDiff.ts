@@ -50,6 +50,7 @@ export const documentDiff = {
         root: "文档本身",
     },
     count: {
+        appTags: "构建版本",
         assets: "素材",
         audioTracks: "音轨",
         brandColors: "配色",

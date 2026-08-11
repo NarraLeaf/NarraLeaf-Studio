@@ -258,7 +258,7 @@ function AssetDetail({ entry }: { entry: AssetOverviewEntry }) {
                 )}
             </div>
 
-            <AssetReferencesSection assetId={asset.id} />
+            <AssetReferencesSection assetId={asset.id} assetType={asset.type} />
         </div>
     );
 }

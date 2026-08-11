@@ -147,6 +147,9 @@ export const ProjectNameConvention = {
     // The project's brand palette (the colours widgets, scenes and characters link to instead of
     // storing a hex literal). Cross-cutting like the two above, so it sits at editor root too.
     EditorBrand: ["editor", "brand.json"],
+    // The build variants the project can be shipped as, and what each one says differently from the
+    // project itself. Cross-cutting like the three above, so it sits at editor root too.
+    EditorAppTags: ["editor", "app-tags.json"],
     EditorStory: ["editor", "story/"],
     EditorStoryStories: ["editor", "story", "stories/"],
     EditorStoryIndex: ["editor", "story", "index.json"],

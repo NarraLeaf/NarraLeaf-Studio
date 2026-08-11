@@ -108,6 +108,13 @@ export type StoryCommandContext = {
      * validates with, so the two can never disagree about which names exist.
      */
     labels: readonly string[];
+    /**
+     * The project's build variants, by the name the author gave them - release first.
+     *
+     * Always non-empty: the release variant exists in every project, so a slot that takes one always
+     * has something to offer and can never be a dropdown with nothing in it.
+     */
+    appTags: readonly StoryCommandNamedRef[];
     variables: readonly StoryCommandVariableEntry[];
     /** Per character: its poses (preset) or every tag across its axes (layered). */
     appearanceByCharacterId: Readonly<Record<string, readonly StoryCommandAppearanceRef[]>>;
@@ -165,7 +172,7 @@ export type StoryPuppetParamSpec = {
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
     images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], choiceOptions: [], valueBlueprints: [],
-    audioTracks: [], labels: [], variables: [], appearanceByCharacterId: {},
+    audioTracks: [], labels: [], appTags: [], variables: [], appearanceByCharacterId: {},
     puppetCharacterIds: [],
     puppetByCharacterId: {},
     stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
@@ -228,6 +235,14 @@ export type StoryCommandValue =
     | { kind: "audioTrack"; trackId: string }
     /** A label declared in this scene - stored as declared, so it matches what the engine sees. */
     | { kind: "label"; name: string }
+    /**
+     * A build variant, resolved from its name to the stable id the payload stores.
+     *
+     * The id, not the name, is what a row keeps - so renaming a variant leaves every row that names
+     * it pointing at the same variant, and deleting one leaves those rows resolving to release rather
+     * than to nothing.
+     */
+    | { kind: "appTag"; appTagId: string }
     /** `name` is the author-facing name as declared - the compound-assignment sugar re-emits it into the desugared source. */
     | { kind: "variable"; ref: StoryVariableRef; valueType: StoryVariableValueType; name: string; defaultValue?: StoryLiteralValue }
     | { kind: "enum"; value: string }
@@ -256,6 +271,8 @@ export type StoryCommandResolutionIssue =
     | { code: "unknownAudioTrack"; span: StoryCommandSpan; value: string }
     /** `/goto intro` with no `intro` label in this scene - the engine would refuse to build. */
     | { code: "unknownLabel"; span: StoryCommandSpan; value: string }
+    /** A build variant the project does not have. Naming one would decide nothing at build time. */
+    | { code: "unknownAppTag"; span: StoryCommandSpan; value: string }
     | { code: "unknownVariable"; span: StoryCommandSpan; value: string }
     | { code: "unknownForm"; span: StoryCommandSpan; value: string; characterName: string }
     /** `/motion Alice run` - Alice is drawn by Studio, so she has no runtime state to request. */

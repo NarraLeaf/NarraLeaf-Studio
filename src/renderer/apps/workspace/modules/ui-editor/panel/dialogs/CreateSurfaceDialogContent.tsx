@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Input, InputGroup } from "@/lib/components/elements/Input";
 import type { UIStageSlotId, UISurfaceDesignSize, UISurfaceKind } from "@shared/types/ui-editor/document";
 import { useTranslation } from "@/lib/i18n";
-import { GAME_UI_SLOT_OPTIONS, STAGE_SLOT_LABELS } from "../constants";
+import { getStageSlotLabel, getStageSlotOptions } from "@/lib/ui-editor/stageSlotLabel";
 
 export type CreateSurfaceDialogValue = {
     name: string;
@@ -46,7 +46,8 @@ export function CreateSurfaceDialogContent({
     const heightValue = useMemo(() => parsePositiveInteger(height), [height]);
     const isPage = kind === "appSurface";
     const pageValid = name.trim().length > 0 && widthValue != null && heightValue != null;
-    const gameUiName = t("uiEditor.naming.gameUi", { slot: STAGE_SLOT_LABELS[slotId] ?? slotId });
+    const gameUiName = t("uiEditor.naming.gameUi", { slot: getStageSlotLabel(slotId, t) });
+    const slotOptions = useMemo(() => getStageSlotOptions(t), [t]);
     const disabledSlots = useMemo(() => new Set(disabledSlotIds), [disabledSlotIds]);
     const gameUiValid = !disabledSlots.has(slotId);
 
@@ -73,7 +74,7 @@ export function CreateSurfaceDialogContent({
             <div className="space-y-4">
                 <div className="text-sm text-fg-muted">{t("uiEditor.createDialog.slotIntro")}</div>
                 <div className="grid gap-2">
-                    {GAME_UI_SLOT_OPTIONS.map(option => {
+                    {slotOptions.map(option => {
                         const isActive = slotId === option.value;
                         const disabled = disabledSlots.has(option.value);
                         return (

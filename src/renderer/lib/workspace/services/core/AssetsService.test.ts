@@ -7,6 +7,7 @@ import { AssetSource, type Asset, type AssetGroup, type AssetGroupMap, type Asse
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
+import type { ReferenceIndexResult } from "../references/referenceModel";
 
 vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
 
@@ -86,6 +87,21 @@ function imageGroup(id: string, parentGroupId?: string): AssetGroup {
     return { id, name: id, category: AssetCategory.Image, parentGroupId, createdAt: 0, updatedAt: 0 };
 }
 
+/** A row of a type no picture-shaped gap can be hiding, for the scoping cases. */
+function audioAsset(id: string): Asset<AssetType.Audio, AssetSource.Local> {
+    return {
+        id,
+        type: AssetType.Audio,
+        name: `${id}.mp3`,
+        hash: `hash-${id}`,
+        ext: "mp3",
+        source: AssetSource.Local,
+        meta: {},
+        tags: [],
+        description: "",
+    } as unknown as Asset<AssetType.Audio, AssetSource.Local>;
+}
+
 function imageAsset(id: string, overrides: Partial<Asset<AssetType.Image, AssetSource.Local>> = {}): Asset<AssetType.Image, AssetSource.Local> {
     return {
         id,
@@ -106,14 +122,18 @@ interface HarnessOptions {
     references?: Record<string, string[]>;
     /** Simulate a reference index that cannot answer (unbuilt, or the service is missing). */
     referenceLookup?: "ok" | "throws" | "missing";
+    /** Simulate an index that answered but does not cover the whole project. */
+    assetIndex?: ReferenceIndexResult;
     groups?: AssetGroup[];
 }
 
-function createHarness(assets: Asset<AssetType.Image, AssetSource.Local>[], options: HarnessOptions = {}) {
+function createHarness(assets: Asset<AssetType, AssetSource.Local>[], options: HarnessOptions = {}) {
     const calls: string[] = [];
     const metadata = emptyAssetsMap();
     for (const asset of assets) {
-        metadata[AssetType.Image][asset.id] = asset;
+        // Filed under its own type, so a case about one asset kind is not silently a case about
+        // another - which is what the coverage-scoping cases below turn on.
+        (metadata[asset.type] as Record<string, unknown>)[asset.id] = asset;
     }
     const groupMap = emptyGroupMap();
     for (const group of options.groups ?? []) {
@@ -136,6 +156,11 @@ function createHarness(assets: Asset<AssetType.Image, AssetSource.Local>[], opti
                 }
             }
             return result;
+        },
+        // The guard reads coverage as well as references. Complete unless a case says otherwise:
+        // an incomplete index refuses every delete, which is a different test.
+        getIndexResult() {
+            return options.assetIndex ?? { complete: true, gaps: [] };
         },
     };
 
@@ -321,6 +346,72 @@ describe("AssetsService delete guard", () => {
 
         const missing = createHarness([imageAsset("asset-2")], { referenceLookup: "missing" });
         expect((await missing.service.deleteAsset(imageAsset("asset-2"))).success).toBe(false);
+    });
+
+    it("refuses when the index answered but does not cover the whole project", async () => {
+        // The index has no reference to this asset, and would have deleted it a moment ago. What
+        // stops it is that somewhere in the project a picture is in use under a name the index
+        // could not read, and this asset is a candidate for being that picture.
+        const asset = imageAsset("asset-1");
+        const { service, metadata } = createHarness([asset], {
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "hashUrlUnresolved", slice: "ui", location: "Title Screen.backgroundImage" }],
+            },
+        });
+
+        const result = await service.deleteAsset(asset);
+
+        expect(result.success).toBe(false);
+        // The refusal names where coverage stopped, so the author has somewhere to go.
+        expect(result.error).toContain("Title Screen.backgroundImage");
+        expect(metadata[AssetType.Image]["asset-1"]).toBeDefined();
+    });
+
+    it("lets an unrelated asset through a gap that can only be hiding a picture", async () => {
+        // The other end of the same rule. A widget with an unreadable picture says nothing about
+        // whether a sound is used, and holding it against every asset would leave one pasted URL
+        // able to put the whole library beyond deleting for the rest of the project's life.
+        const sound = audioAsset("asset-1");
+        const { service, metadata } = createHarness([sound], {
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "hashUrlUnresolved", slice: "ui", location: "Title Screen.backgroundImage", affects: ["image"] }],
+            },
+        });
+
+        const result = await service.deleteAsset(sound);
+
+        expect(result.success).toBe(true);
+        expect(metadata[AssetType.Audio]["asset-1"]).toBeUndefined();
+    });
+
+    it("holds a gap that names no kinds against every asset", async () => {
+        // An unread story can hold a use of anything, so it narrows nothing.
+        const sound = audioAsset("asset-1");
+        const { service, metadata } = createHarness([sound], {
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "documentUnreadable", slice: "story", location: "Main Story" }],
+            },
+        });
+
+        expect((await service.deleteAsset(sound)).success).toBe(false);
+        expect(metadata[AssetType.Audio]["asset-1"]).toBeDefined();
+    });
+
+    it("still deletes on the author's say-so when the index is incomplete", async () => {
+        // The guard warns and defers; it does not take the decision away. A caller that has shown
+        // the author what it knows may go ahead, exactly as it may over a live reference.
+        const asset = imageAsset("asset-1");
+        const { service, metadata } = createHarness([asset], {
+            assetIndex: { complete: false, gaps: [{ reason: "indexNotBuilt" }] },
+        });
+
+        const result = await service.deleteAsset(asset, { allowReferenced: true });
+
+        expect(result.success).toBe(true);
+        expect(metadata[AssetType.Image]["asset-1"]).toBeUndefined();
     });
 
     /**

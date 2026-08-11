@@ -1387,6 +1387,13 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                 semantic: "data",
                 valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
                 label: "Preview",
+                /**
+                 * A save slot's own screenshot, addressed as `dev-mode-save-preview:{saveId}` -
+                 * a shape `isLibraryAssetId` rejects outright, because no library row answers to
+                 * it. Wiring this into an image pin therefore hides no reference at all, and the
+                 * reverse-lookup index must not report the pin as an asset it could not identify.
+                 */
+                assetRef: { kind: "image", origin: "published" },
             },
         ],
         async execute(ctx) {

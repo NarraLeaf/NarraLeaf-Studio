@@ -16,6 +16,9 @@ export const lint = {
             title: "未使用的资源",
             description: "工程里没有任何地方引用它",
             message: "{asset} 没有被使用",
+            messageIndexUnresolved: "未列出未使用的资源：{location} 指向的资源无法确定",
+            messageIndexUnreadable: "未列出未使用的资源：{location} 无法读取",
+            messageIndexNotBuilt: "未列出未使用的资源：无法扫描本工程",
         },
         assetsMissing: {
             title: "资源缺失",

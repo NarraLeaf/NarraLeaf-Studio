@@ -7,7 +7,7 @@ import type { GameBuildPlatform } from "@shared/types/gameBuild";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { MergedPersistentNameCollision } from "@shared/variables/mergedPersistentView";
 import type { AssetType } from "../workspace/services/assets/assetTypes";
-import type { AssetReference } from "../workspace/services/references/referenceModel";
+import type { AssetReference, ReferenceIndexResult } from "../workspace/services/references/referenceModel";
 import type { LintingConfiguration, NetworkConfiguration } from "../workspace/project/configuration";
 
 /**
@@ -93,6 +93,15 @@ export type LintContext = {
     assets: readonly LintAssetEntry[];
     referencedAssetIds: ReadonlySet<string>;
     assetReferences: ReadonlyMap<string, readonly AssetReference[]>;
+    /**
+     * Whether the two sets above describe the whole project.
+     *
+     * Carried rather than inferred, because the two ways of inferring it are both wrong: an empty
+     * key set is what a genuinely tidy project looks like, and a full one says nothing about the
+     * document the index could not read. `assets/unused` is the rule that cannot survive either
+     * mistake - every asset in the project is "unused" to an index that never ran.
+     */
+    assetIndex: ReferenceIndexResult;
     characters: readonly LintCharacterEntry[];
     /**
      * The project variable registry, BOTH scopes, exactly as the service holds it.
