@@ -7,6 +7,20 @@ export const uiEditor = {
         pageDescription: "页面是完整的屏幕，例如标题、设置、存档、回想或画廊",
         gameUiDescription: "游戏界面属于进行中的游戏，例如对白、选项、HUD、快捷菜单和通知",
     },
+    stageSlot: {
+        onStage: "舞台",
+        dialog: "对白",
+        notification: "通知",
+        choice: "选项",
+        nvl: "NVL",
+    },
+    stageSlotDescription: {
+        onStage: "游戏运行期间始终可用",
+        dialog: "主要的对话或旁白界面",
+        notification: "运行时的简短消息与提示",
+        choice: "玩家的选项菜单与决策提示",
+        nvl: "全屏小说模式的对白历史",
+    },
     panel: {
         interfaceType: "界面类型",
         createPage: "新建页面",
@@ -170,13 +184,6 @@ export const uiEditor = {
         placement: {
             page: "一个新页面",
             gameUi: "游戏界面 · {slot}",
-        },
-        slot: {
-            onStage: "舞台",
-            dialog: "对白",
-            notification: "通知",
-            choice: "选项",
-            nvl: "NVL",
         },
         error: {
             load: "无法加载模板商店",

@@ -47,7 +47,8 @@ import {
     CreateSurfaceDialogContent,
     CreateSurfaceDialogValue,
 } from "./panel/dialogs/CreateSurfaceDialogContent";
-import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_OPTIONS, STAGE_SLOT_LABELS, SURFACE_KIND_OPTIONS } from "./panel/constants";
+import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_IDS, SURFACE_KIND_OPTIONS } from "./panel/constants";
+import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { EditorLayout, EditorTabDefinition } from "../../registry/types";
 import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
@@ -188,7 +189,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         [occupiedStageSlotIds],
     );
     const defaultStageSlotId = useMemo<UIStageSlotId>(() => {
-        return GAME_UI_SLOT_OPTIONS.find(option => !occupiedStageSlotIds.has(option.value))?.value ?? DEFAULT_STAGE_SLOT_ID;
+        return GAME_UI_SLOT_IDS.find(slotId => !occupiedStageSlotIds.has(slotId)) ?? DEFAULT_STAGE_SLOT_ID;
     }, [occupiedStageSlotIds]);
     const defaultDesignSize = useMemo<UISurfaceDesignSize>(() => {
         return surfaces[0]?.designSize ?? DEFAULT_UI_SURFACE_SIZE;
@@ -509,14 +510,14 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!documentService || !currentKindOption) {
             return;
         }
-        if (kind === "stageSurface" && disabledStageSlotIds.length >= GAME_UI_SLOT_OPTIONS.length) {
+        if (kind === "stageSurface" && disabledStageSlotIds.length >= GAME_UI_SLOT_IDS.length) {
             uiService?.showNotification(t("uiEditor.panel.allSlotsUsed"), "info");
             return;
         }
         const suggestedName =
             kind === "appSurface"
                 ? t("uiEditor.naming.page", { index: filteredSurfaces.length + 1 })
-                : t("uiEditor.naming.gameUi", { slot: STAGE_SLOT_LABELS[defaultStageSlotId] });
+                : t("uiEditor.naming.gameUi", { slot: getStageSlotLabel(defaultStageSlotId, t) });
         const selection = await promptCreateSurface(suggestedName);
         if (!selection) {
             return;
