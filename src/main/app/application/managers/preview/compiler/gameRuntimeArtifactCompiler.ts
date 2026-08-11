@@ -13,6 +13,7 @@ import {
     type GameRuntimePackV1,
     type GameRuntimeProjectIcon,
     type GameRuntimeProjectIconPlatform,
+    normalizeGameRuntimeViewportConfig,
 } from "@shared/types/gameRuntime";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { readProjectIconSet, resolveIconFile, resolveIconSource } from "@shared/types/projectIcons";
@@ -340,6 +341,11 @@ export async function compileGameRuntimeArtifact(
                     allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
                 },
             }),
+            // Unconditional, unlike `network` above: the fit describes the game's art rather than a
+            // shell mechanism, and the web export shares its pack with the mobile repack.
+            viewport: normalizeGameRuntimeViewportConfig(
+                (projectConfig?.app as { mobile?: unknown } | undefined)?.mobile,
+            ),
             ...(input.preview ? { preview: input.preview } : {}),
         };
 

@@ -265,6 +265,27 @@ export const project = {
             portrait: "Portrait",
             auto: "Follow device",
         },
+        stageFitTitle: "Screen fit",
+        stageFitDescription: "What happens on a phone whose shape is not the stage's. Applies to mobile builds and to Dev Mode; desktop and web always letterbox.",
+        stageFit: {
+            contain: "Letterbox",
+            cover: "Fill and crop",
+        },
+        /** Named for what survives, not for what goes: an author decides what to keep. */
+        cropAnchorYTitle: "Keep vertically",
+        cropAnchorYDescription: "Which part survives when the screen is wider than the stage, as a phone in landscape is.",
+        cropAnchorY: {
+            top: "Top",
+            center: "Center",
+            bottom: "Bottom",
+        },
+        cropAnchorXTitle: "Keep horizontally",
+        cropAnchorXDescription: "Which part survives when the screen is narrower than the stage, as a 4:3 tablet is.",
+        cropAnchorX: {
+            left: "Left",
+            center: "Center",
+            right: "Right",
+        },
     },
     dependencies: {
         rescan: "Rescan",

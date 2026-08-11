@@ -15,6 +15,7 @@ import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFra
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
+import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
 import { readRuntimeTestSignalReporter } from "../gameTestSignal";
 import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
 import {
@@ -533,11 +534,24 @@ export function GameRuntimeApp() {
 
     const getScale = useCallback(() => renderScale, [renderScale]);
 
+    // Read once: the document cannot become a phone halfway through a session, and re-querying it
+    // on every frame render would be a DOM lookup per surface change for an answer that never moves.
+    const stageViewport = useMemo(
+        () => resolveStageViewport({
+            viewport: pack?.viewport,
+            mode: pack?.mode ?? "production",
+            isMobileShell: isMobileShellDocument(),
+        }),
+        [pack?.viewport, pack?.mode],
+    );
+
     const renderFrame = useCallback(
         (ctx: GameAppFrameContext) => (
             <StageViewportFrame
                 designSize={ctx.activeSurface.designSize}
                 onRenderScaleChange={setRenderScale}
+                fit={stageViewport.fit}
+                cropAnchor={stageViewport.cropAnchor}
                 outerClassName="bg-black text-white"
                 // Viewport units, not 100%: the runtime's #root has no fixed height, so height:100%
                 // would collapse to content height and shrink the stage (breaking downsampling).
@@ -547,7 +561,7 @@ export function GameRuntimeApp() {
                 {ctx.children}
             </StageViewportFrame>
         ),
-        [],
+        [stageViewport],
     );
 
     const renderPlaceholder = useCallback(() => <RuntimeLoadingScreen />, []);

@@ -19,7 +19,10 @@ import { NumberField } from "./NumberField";
 import { ProjectSigningSection } from "./ProjectSigningSection";
 import { SettingsGroup } from "../components/SettingsGroup";
 import {
+    MOBILE_CROP_ANCHORS_X,
+    MOBILE_CROP_ANCHORS_Y,
     MOBILE_ORIENTATIONS,
+    MOBILE_VIEWPORT_FITS,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
@@ -27,7 +30,10 @@ import {
     WEB_LOSSY_QUALITY_MAX,
     WEB_LOSSY_QUALITY_MIN,
     type MobileConfiguration,
+    type MobileCropAnchorX,
+    type MobileCropAnchorY,
     type MobileOrientation,
+    type MobileViewportFit,
     type NetworkConfiguration,
     type SecurityConfiguration,
     type WebOptimizationConfiguration,
@@ -48,7 +54,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
     );
     const [savingHttp, setSavingHttp] = useState(false);
     const [savingEncrypt, setSavingEncrypt] = useState(false);
-    const [savingOrientation, setSavingOrientation] = useState(false);
+    const [savingMobile, setSavingMobile] = useState(false);
     const [savingWeb, setSavingWeb] = useState<keyof WebOptimizationConfiguration | null>(null);
 
     const setAllowHttp = useCallback(async (next: boolean) => {
@@ -89,24 +95,26 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         }
     }, [security, onConfigChange, projectService, savingEncrypt, uiService]);
 
-    const setOrientation = useCallback(async (next: MobileOrientation) => {
-        if (savingOrientation) {
+    // One writer for the whole Mobile group: every row is the same optimistic-write-then-reconcile,
+    // and four copies of it would be four places to forget the rollback.
+    const commitMobile = useCallback(async (patch: Partial<MobileConfiguration>) => {
+        if (savingMobile) {
             return;
         }
         const previous = mobile;
-        setSavingOrientation(true);
-        setMobile(current => ({ ...current, orientation: next }));
+        setSavingMobile(true);
+        setMobile(current => ({ ...current, ...patch }));
         try {
-            const updated = await projectService.updateMobileConfiguration({ orientation: next });
+            const updated = await projectService.updateMobileConfiguration(patch);
             setMobile(normalizeMobileConfiguration(updated.app?.mobile));
             onConfigChange(updated);
         } catch (error) {
             setMobile(previous);
             uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
         } finally {
-            setSavingOrientation(false);
+            setSavingMobile(false);
         }
-    }, [mobile, onConfigChange, projectService, savingOrientation, uiService]);
+    }, [mobile, onConfigChange, projectService, savingMobile, uiService]);
 
     const commitWebOptimization = useCallback(async (
         field: keyof WebOptimizationConfiguration,
@@ -134,6 +142,30 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         () => MOBILE_ORIENTATIONS.map(orientation => ({
             value: orientation,
             label: t(`project.settings.orientation.${orientation}`),
+        })),
+        [t],
+    );
+
+    const fitOptions: SelectOption[] = useMemo(
+        () => MOBILE_VIEWPORT_FITS.map(value => ({
+            value,
+            label: t(`project.settings.stageFit.${value}`),
+        })),
+        [t],
+    );
+
+    const cropAnchorXOptions: SelectOption[] = useMemo(
+        () => MOBILE_CROP_ANCHORS_X.map(value => ({
+            value,
+            label: t(`project.settings.cropAnchorX.${value}`),
+        })),
+        [t],
+    );
+
+    const cropAnchorYOptions: SelectOption[] = useMemo(
+        () => MOBILE_CROP_ANCHORS_Y.map(value => ({
+            value,
+            label: t(`project.settings.cropAnchorY.${value}`),
         })),
         [t],
     );
@@ -215,24 +247,80 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
             </SettingsGroup>
 
             {/* Neither security nor size, and a heading of its own rather than filed under whichever
-                of the two it is closer to. One row today; the phone-only questions land here. */}
+                of the two it is closer to. The phone-only questions land here. */}
             <SettingsGroup title={t("project.group.mobile")}>
                 <SettingShell
                     title={t("project.settings.orientationTitle")}
                     description={t("project.settings.orientationDescription")}
-                    titleAttr={freeze.writes(savingOrientation).title}
+                    titleAttr={freeze.writes(savingMobile).title}
                 >
                     <Select
                         options={orientationOptions}
                         value={mobile.orientation}
-                        disabled={freeze.writes(savingOrientation).disabled}
-                        onChange={value => void setOrientation(value as MobileOrientation)}
+                        disabled={freeze.writes(savingMobile).disabled}
+                        onChange={value => void commitMobile({ orientation: value as MobileOrientation })}
                         size="sm"
                         portalMenu
                         className="w-32 shrink-0"
                         ariaLabel={t("project.settings.orientationTitle")}
                     />
                 </SettingShell>
+                <SettingShell
+                    title={t("project.settings.stageFitTitle")}
+                    description={t("project.settings.stageFitDescription")}
+                    titleAttr={freeze.writes(savingMobile).title}
+                >
+                    <Select
+                        options={fitOptions}
+                        value={mobile.fit}
+                        disabled={freeze.writes(savingMobile).disabled}
+                        onChange={value => void commitMobile({ fit: value as MobileViewportFit })}
+                        size="sm"
+                        portalMenu
+                        className="w-32 shrink-0"
+                        ariaLabel={t("project.settings.stageFitTitle")}
+                    />
+                </SettingShell>
+                {/* Only under `cover`: with letterboxing nothing is cropped, so an anchor here would be
+                    a control that cannot do anything — the failure mode this feature already had once.
+                    Two rows rather than one because exactly one axis overflows and which one depends
+                    on the handset: a phone in landscape crops vertically, a 4:3 tablet horizontally. */}
+                {mobile.fit === "cover" ? (
+                    <>
+                        <SettingShell
+                            title={t("project.settings.cropAnchorYTitle")}
+                            description={t("project.settings.cropAnchorYDescription")}
+                            titleAttr={freeze.writes(savingMobile).title}
+                        >
+                            <Select
+                                options={cropAnchorYOptions}
+                                value={mobile.cropAnchorY}
+                                disabled={freeze.writes(savingMobile).disabled}
+                                onChange={value => void commitMobile({ cropAnchorY: value as MobileCropAnchorY })}
+                                size="sm"
+                                portalMenu
+                                className="w-32 shrink-0"
+                                ariaLabel={t("project.settings.cropAnchorYTitle")}
+                            />
+                        </SettingShell>
+                        <SettingShell
+                            title={t("project.settings.cropAnchorXTitle")}
+                            description={t("project.settings.cropAnchorXDescription")}
+                            titleAttr={freeze.writes(savingMobile).title}
+                        >
+                            <Select
+                                options={cropAnchorXOptions}
+                                value={mobile.cropAnchorX}
+                                disabled={freeze.writes(savingMobile).disabled}
+                                onChange={value => void commitMobile({ cropAnchorX: value as MobileCropAnchorX })}
+                                size="sm"
+                                portalMenu
+                                className="w-32 shrink-0"
+                                ariaLabel={t("project.settings.cropAnchorXTitle")}
+                            />
+                        </SettingShell>
+                    </>
+                ) : null}
             </SettingsGroup>
         </div>
     );

@@ -7,6 +7,7 @@ import {
     computeSafeAreaFrameForGeometry,
     computeScreenRatioFrame,
     computeScreenRatioFrameById,
+    computeScreenRatioStrips,
     computeUnsafeBands,
     getSafeAreaPreset,
     getSurfacePreviewAspectPreset,
@@ -557,6 +558,69 @@ describe("computeSafeAreaFrame — math", () => {
                 orientation: "landscape",
             }),
         ).toBeNull();
+    });
+});
+
+describe("stage fit: cover", () => {
+    it("inscribes the screen rect in the design rect instead of wrapping it", () => {
+        // 21:9 screen, 16:9 design. Contain grows the screen sideways; cover shrinks it to fit
+        // inside, and the difference is design the player never sees.
+        const contain = computeScreenRatioFrame({ designSize: DESIGN_1920x1080, preset: aspect("21:9") })!;
+        const cover = computeScreenRatioFrame({
+            designSize: DESIGN_1920x1080,
+            preset: aspect("21:9"),
+            stageFit: "cover",
+        })!;
+        expect(contain.cropped).toBe(false);
+        expect(contain.screenRect).toEqual({ x: -300, y: 0, width: 2520, height: 1080 });
+
+        expect(cover.cropped).toBe(true);
+        // screenH = min(1080, 1920 * 9/21) = 822.857…, screenW stays 1920.
+        expect(cover.screenRect.width).toBe(1920);
+        expect(cover.screenRect.x).toBe(0);
+        expect(cover.screenRect.height).toBeCloseTo((1920 * 9) / 21, 9);
+        expect(cover.letterbox).toBeCloseTo((1080 - (1920 * 9) / 21) / 2, 9);
+        expect(cover.screenRect.y).toBeCloseTo(cover.letterbox, 9);
+        expect(cover.pillarbox).toBe(0);
+        // Thicknesses are absolute under either fit — only the rect's position says which side.
+        expect(cover.letterbox).toBeGreaterThan(0);
+    });
+
+    it("puts the strips inside the design under cover and outside it under contain", () => {
+        for (const stageFit of ["contain", "cover"] as const) {
+            const frame = computeScreenRatioFrame({
+                designSize: DESIGN_1920x1080,
+                preset: aspect("21:9"),
+                stageFit,
+            })!;
+            const strips = computeScreenRatioStrips(DESIGN_1920x1080, frame);
+            expect(strips).toHaveLength(2);
+            const inside = strips.every(s => s.x >= 0 && s.y >= 0 && s.x + s.width <= 1920 && s.y + s.height <= 1080);
+            expect(inside).toBe(stageFit === "cover");
+        }
+        expect(computeScreenRatioStrips(DESIGN_1920x1080, null)).toEqual([]);
+    });
+
+    it("an exact-ratio screen has no strips under either fit", () => {
+        for (const stageFit of ["contain", "cover"] as const) {
+            const frame = computeScreenRatioFrame({ designSize: DESIGN_1920x1080, preset: aspect("16:9"), stageFit })!;
+            expect(frame.screenRect).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
+            expect(computeScreenRatioStrips(DESIGN_1920x1080, frame)).toEqual([]);
+        }
+    });
+
+    it("costs MORE safe area than contain — there is no bar left to absorb the inset", () => {
+        // iPhone 15 Pro landscape against 16:9. Under contain the 76.67pt pillarbox swallows the
+        // 59pt housing whole; under cover the content fills the screen, so the housing lands on it
+        // and the design that overflows the screen is lost on top of that.
+        const preset = safeArea("iphone-15-pro");
+        const contain = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset })!;
+        const cover = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset, stageFit: "cover" })!;
+        expect(contain.insets.left).toBe(0);
+        expect(cover.insets.left).toBeGreaterThan(contain.insets.left);
+        expect(cover.fullySafe).toBe(false);
+        // The bottom is worse too: the same home indicator over a smaller design-per-point scale.
+        expect(cover.insets.bottom).toBeGreaterThan(contain.insets.bottom);
     });
 });
 

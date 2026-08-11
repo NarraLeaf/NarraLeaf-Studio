@@ -1,3 +1,11 @@
+import {
+    GAME_RUNTIME_CROP_ANCHORS_X,
+    GAME_RUNTIME_CROP_ANCHORS_Y,
+    GAME_RUNTIME_VIEWPORT_FITS,
+    type GameRuntimeCropAnchorX,
+    type GameRuntimeCropAnchorY,
+    type GameRuntimeViewportFit,
+} from "@shared/types/gameRuntime";
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
@@ -96,6 +104,24 @@ export const MOBILE_ORIENTATIONS = ["landscape", "portrait", "auto"] as const;
 
 export type MobileOrientation = typeof MOBILE_ORIENTATIONS[number];
 
+/**
+ * How the stage meets a screen whose aspect ratio is not the design's.
+ *
+ * `contain` letterboxes — the whole design is visible and bars fill the rest. `cover` fills the
+ * screen and crops the overflow. Exactly one axis ever overflows: a screen that is relatively wider
+ * than the design crops vertically, a relatively narrower one crops horizontally.
+ */
+export const MOBILE_VIEWPORT_FITS = GAME_RUNTIME_VIEWPORT_FITS;
+export type MobileViewportFit = GameRuntimeViewportFit;
+
+/** Which part survives a horizontal crop. Named for what is KEPT, like CSS `object-position`. */
+export const MOBILE_CROP_ANCHORS_X = GAME_RUNTIME_CROP_ANCHORS_X;
+export type MobileCropAnchorX = GameRuntimeCropAnchorX;
+
+/** Which part survives a vertical crop. */
+export const MOBILE_CROP_ANCHORS_Y = GAME_RUNTIME_CROP_ANCHORS_Y;
+export type MobileCropAnchorY = GameRuntimeCropAnchorY;
+
 export type MobileConfiguration = {
     /**
      * Orientation the mobile shells lock the game to at startup. A project-level
@@ -103,20 +129,41 @@ export type MobileConfiguration = {
      * that plays in landscape does so on every device.
      */
     orientation: MobileOrientation;
+    /**
+     * `contain` (default) keeps every project that predates this setting looking exactly as it did.
+     * Opting into `cover` is a decision about the game's art, so it is never inferred.
+     */
+    fit: MobileViewportFit;
+    /** Only consulted under `cover`, and only on the axis that actually overflows. */
+    cropAnchorX: MobileCropAnchorX;
+    cropAnchorY: MobileCropAnchorY;
 };
 
-/** Visual novels are overwhelmingly landscape, including every project predating this setting. */
+/**
+ * Visual novels are overwhelmingly landscape, including every project predating this setting — and
+ * letterboxing is what every project predating the crop setting shipped with, so it stays the
+ * default. A centred crop is the least surprising anchor once an author does opt in.
+ */
 export const DEFAULT_MOBILE_CONFIGURATION: MobileConfiguration = {
     orientation: "landscape",
+    fit: "contain",
+    cropAnchorX: "center",
+    cropAnchorY: "center",
 };
 
 /** Coerce a persisted value into a complete MobileConfiguration. */
 export function normalizeMobileConfiguration(value: unknown): MobileConfiguration {
     const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+    const pick = <T extends string>(
+        candidate: unknown,
+        allowed: readonly T[],
+        fallback: T,
+    ): T => (allowed.includes(candidate as T) ? candidate as T : fallback);
     return {
-        orientation: MOBILE_ORIENTATIONS.includes(record.orientation as MobileOrientation)
-            ? record.orientation as MobileOrientation
-            : DEFAULT_MOBILE_CONFIGURATION.orientation,
+        orientation: pick(record.orientation, MOBILE_ORIENTATIONS, DEFAULT_MOBILE_CONFIGURATION.orientation),
+        fit: pick(record.fit, MOBILE_VIEWPORT_FITS, DEFAULT_MOBILE_CONFIGURATION.fit),
+        cropAnchorX: pick(record.cropAnchorX, MOBILE_CROP_ANCHORS_X, DEFAULT_MOBILE_CONFIGURATION.cropAnchorX),
+        cropAnchorY: pick(record.cropAnchorY, MOBILE_CROP_ANCHORS_Y, DEFAULT_MOBILE_CONFIGURATION.cropAnchorY),
     };
 }
 
