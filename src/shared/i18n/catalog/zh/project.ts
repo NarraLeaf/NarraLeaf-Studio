@@ -249,20 +249,20 @@ export const project = {
             auto: "跟随设备",
         },
         stageFitTitle: "屏幕适配",
-        stageFitDescription: "手机屏幕比例与舞台不一致时怎么办。对移动端构建与开发模式生效；桌面与 Web 始终留黑边",
+        stageFitDescription: "对移动端构建与开发模式生效；桌面与 Web 始终留黑边",
         stageFit: {
             contain: "留黑边",
             cover: "填满并裁剪",
         },
         cropAnchorYTitle: "垂直保留",
-        cropAnchorYDescription: "屏幕比舞台更宽时（手机横屏就是）保留哪一部分",
+        cropAnchorYDescription: "屏幕比舞台更宽时保留哪一部分",
         cropAnchorY: {
             top: "顶部",
             center: "居中",
             bottom: "底部",
         },
         cropAnchorXTitle: "水平保留",
-        cropAnchorXDescription: "屏幕比舞台更窄时（4:3 平板就是）保留哪一部分",
+        cropAnchorXDescription: "屏幕比舞台更窄时保留哪一部分",
         cropAnchorX: {
             left: "左侧",
             center: "居中",
