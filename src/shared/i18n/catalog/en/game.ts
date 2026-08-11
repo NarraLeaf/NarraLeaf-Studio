@@ -10,6 +10,7 @@ export const game = {
         refusedOtherStory:
             "This save was written from a different version of the story. The game continues from the current point.",
         notApplied: "Load Save: \"{id}\" was not applied, and the running game is unchanged. {detail}",
+        putBack: "Load Save: \"{id}\" was not applied, and the running game was put back. {detail}",
         notRestored: "Load Save: \"{id}\" was not applied, and the running game could not be put back. {detail}",
         otherStory: "Load Save: \"{id}\" was written from a different version of the story.",
         detail: {
