@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { VcsChangeKind, VcsFileChange, VcsStatus } from "@shared/types/vcs";
-import { CONTENT_HEAD_READ_CEILING, DIFF_PATH_LIMIT } from "./documentDiff";
+import { CONTENT_HEAD_READ_CEILING, DIFF_MOVE_CONFIRM_BYTE_CEILING, DIFF_PATH_LIMIT } from "./documentDiff";
 import { diffWorkingTree, type WorkingTreeDiffSource } from "./workingTreeDiff";
 
 /**
@@ -226,6 +226,124 @@ describe("diffing the working tree against the last version", () => {
         expect(result.pathCount).toBe(files.length);
         expect(result.complete).toBe(false);
         expect(onDegrade).toHaveBeenCalledWith(expect.stringContaining("path limit"));
+    });
+});
+
+/**
+ * A rename reaches the working tree as one deletion and one addition (§4.18), and the paths
+ * below are `.moc3` on purpose: a model binary is the one class whose provider reads nothing at
+ * all, so every read in these lists was spent deciding whether the two are the same file and
+ * nothing else. Renaming a character's model folder is also where an author meets this first.
+ */
+describe("pairing a deletion with the addition holding the same bytes", () => {
+    const model = (size: number, fill: number): Buffer => Buffer.alloc(size, fill);
+
+    function renameOf(recorded: Buffer, working: Buffer | null) {
+        return sourceOf(
+            statusOf([
+                fileChange("assets/content/new.moc3", "added"),
+                fileChange("assets/content/old.moc3", "deleted"),
+            ]),
+            { "assets/content/old.moc3": recorded },
+            working ? { "assets/content/new.moc3": working } : {},
+        );
+    }
+
+    it("does not open either file when the two sizes differ", async () => {
+        // The sizes are already in hand on both sides and two lengths that differ cannot be the
+        // same bytes, so this must be settled without a read. Asserted on the call list rather
+        // than the rows, because a comparison that reads both files answers identically.
+        const { source, reads } = renameOf(model(64, 1), model(96, 1));
+
+        const result = await diffWorkingTree(source);
+
+        expect(reads).toEqual(["entriesAt:r1"]);
+        expect(result.documents.map((entry) => `${entry.path}:${entry.kind}`)).toEqual([
+            "assets/content/new.moc3:added",
+            "assets/content/old.moc3:removed",
+        ]);
+    });
+
+    it("does not call it a move when the sizes agree and the bytes do not", async () => {
+        // The case a "same size, same first kilobyte" test would get wrong. Telling an author
+        // their file only moved, while its contents were in fact replaced, is worse than the two
+        // rows they would otherwise have read past.
+        const { source, reads } = renameOf(model(64, 1), model(64, 2));
+
+        const result = await diffWorkingTree(source);
+
+        // Non-vacuous: both sides WERE read, and the answer is still two rows.
+        expect(reads).toEqual(["entriesAt:r1", "readAt:r1", "working:assets/content/new.moc3"]);
+        expect(result.documents.map((entry) => `${entry.path}:${entry.kind}`)).toEqual([
+            "assets/content/new.moc3:added",
+            "assets/content/old.moc3:removed",
+        ]);
+    });
+
+    it("calls it a move when the bytes match, and says so once", async () => {
+        const { source } = renameOf(model(64, 1), model(64, 1));
+
+        const result = await diffWorkingTree(source);
+
+        // One row, on the path it moved to. Neither path may still appear as an add or a remove:
+        // that is the noise the pairing exists to remove.
+        expect(result.documents).toHaveLength(1);
+        expect(result.documents[0].path).toBe("assets/content/new.moc3");
+        expect(result.documents[0].kind).toBe("moved");
+        expect(result.documents[0].diff.changes).toEqual([{
+            path: [],
+            kind: "moved",
+            label: { key: "documentDiff.content.moved", params: { from: "assets/content/old.moc3" } },
+        }]);
+    });
+
+    it("leaves a candidate over the confirmation ceiling as it arrived, unopened", async () => {
+        // Identical bytes, so the only thing keeping these two rows apart is the ceiling - which
+        // is what makes this a test of the ceiling rather than of the comparison.
+        const huge = DIFF_MOVE_CONFIRM_BYTE_CEILING + 1;
+        const { source, reads } = renameOf(model(huge, 1), model(huge, 1));
+
+        const result = await diffWorkingTree(source);
+
+        expect(reads).toEqual(["entriesAt:r1"]);
+        expect(result.documents.map((entry) => entry.kind)).toEqual(["added", "removed"]);
+    });
+
+    it("pairs by content rather than by the order the paths sort in", async () => {
+        const { source } = sourceOf(
+            statusOf([
+                fileChange("assets/content/a2.moc3", "added"),
+                fileChange("assets/content/b2.moc3", "added"),
+                fileChange("assets/content/a1.moc3", "deleted"),
+                fileChange("assets/content/b1.moc3", "deleted"),
+            ]),
+            { "assets/content/a1.moc3": model(64, 1), "assets/content/b1.moc3": model(64, 2) },
+            { "assets/content/a2.moc3": model(64, 2), "assets/content/b2.moc3": model(64, 1) },
+        );
+
+        const result = await diffWorkingTree(source);
+
+        expect(result.documents.map((entry) => [entry.path, entry.diff.changes[0]?.label.params?.from])).toEqual([
+            ["assets/content/a2.moc3", "assets/content/b1.moc3"],
+            ["assets/content/b2.moc3", "assets/content/a1.moc3"],
+        ]);
+    });
+
+    it("never turns the backend's own copy into a move", async () => {
+        // A copy's source is still on disk, so there is no removal it belongs to. Pairing it with
+        // an unrelated deletion of the same bytes would say the original is gone.
+        const { source } = sourceOf(
+            statusOf([
+                fileChange("assets/content/copy.moc3", "copied"),
+                fileChange("assets/content/old.moc3", "deleted"),
+            ]),
+            { "assets/content/old.moc3": model(64, 1) },
+            { "assets/content/copy.moc3": model(64, 1) },
+        );
+
+        const result = await diffWorkingTree(source);
+
+        expect(result.documents.map((entry) => entry.kind)).toEqual(["added", "removed"]);
     });
 });
 
