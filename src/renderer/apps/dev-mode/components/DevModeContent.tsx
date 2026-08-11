@@ -30,6 +30,7 @@ import {
 import { DevModeWidgetHighlight } from "./DevModeWidgetHighlight";
 import { DevModeSafeAreaOverlay } from "./DevModeSafeAreaOverlay";
 import { isSafeAreaPresetId } from "@/lib/ui-editor/preview/surfacePreviewFrames";
+import { DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG } from "@shared/types/gameRuntime";
 import { StoryRuntimeDebugPanel } from "./StoryRuntimeDebugPanel";
 import { SavesDebugPanel } from "./SavesDebugPanel";
 import { BlueprintDebuggerProvider } from "./debugger/BlueprintDebuggerContext";
@@ -1248,6 +1249,22 @@ export function DevModeContent(props: DevModeContentProps) {
         }
     }, [entry]);
 
+    /**
+     * The project's stage fit, forwarded on the launch entry by both launch paths.
+     *
+     * Dev Mode crops for real rather than approximating it: this window exists to show the author
+     * what a player gets, and an author who cannot see the crop until they build a phone package
+     * cannot iterate on where it lands. A pack that predates the field reads as `contain`.
+     */
+    const stageViewport = useMemo(() => {
+        const config = entry?.kind === "surface" ? entry.viewport : undefined;
+        const resolved = config ?? DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG;
+        return {
+            fit: resolved.fit,
+            cropAnchor: { x: resolved.cropAnchorX, y: resolved.cropAnchorY },
+        };
+    }, [entry]);
+
     const renderFrame = useCallback((ctx: GameAppFrameContext) => {
         const viewportSize = resolveDevModeViewportSize({
             activeSurfaceDesignSize: ctx.activeSurface.designSize,
@@ -1259,6 +1276,8 @@ export function DevModeContent(props: DevModeContentProps) {
                     <StageViewportFrame
                         designSize={viewportSize}
                         onRenderScaleChange={value => handleAspectUpdate({ scale: value })}
+                        fit={stageViewport.fit}
+                        cropAnchor={stageViewport.cropAnchor}
                     >
                         {ctx.children}
                         {/* Inside the box, so it covers the stage and not the letterbox bars. */}
@@ -1271,7 +1290,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 </div>
             </div>
         );
-    }, [entry, handleAspectUpdate, safeAreaId]);
+    }, [entry, handleAspectUpdate, safeAreaId, stageViewport]);
 
     const renderPlaceholder = useCallback(() => (
         <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">

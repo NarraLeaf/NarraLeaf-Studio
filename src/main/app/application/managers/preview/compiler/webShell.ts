@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import { WEB_SHELL_VARIANT_META, type GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
@@ -86,11 +86,18 @@ export function buildWebIndexHtml(
     const viewport = options.variant === "mobile"
         ? "width=device-width, initial-scale=1.0, viewport-fit=cover"
         : "width=device-width, initial-scale=1.0";
+    // The pack is built once and the mobile repack serves this same site, so the pack cannot say
+    // which shell is running it — the entry document can, and it is already the one file that
+    // differs. The stage crop is mobile-only, and this is what it reads.
+    const shellMeta = options.variant === "mobile"
+        ? `    <meta name="${WEB_SHELL_VARIANT_META}" content="mobile" />\n`
+        : "";
     return `<!doctype html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="${viewport}" />
+${shellMeta}
     <title>${title}</title>
     <script type="importmap">
     {

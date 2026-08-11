@@ -1,9 +1,11 @@
 /**
  * Pure geometry for the UI Surface editor's preview overlays.
  *
- * The engine letterboxes on every run path (`computeStageViewportMetrics`: `fit = min(W/dw, H/dh)`,
- * centred, aspect preserved), so nothing is ever cropped. These frames therefore do NOT show "what
- * gets cut off". They show two independent things:
+ * The stage fits itself to the screen with `computeStageViewportMetrics`. Under `contain` (the
+ * default) nothing is ever cropped and the leftover shows as bars; a project that opts into `cover`
+ * for its mobile builds fills the screen and loses the overflow instead. Both frames below take the
+ * project's fit, because under `cover` there are no bars to talk about and no inset the bars absorb.
+ * They show two independent things:
  *
  * 1. **Screen-ratio frame** — where the letterbox / pillarbox bars land around the design rect on a
  *    player screen of a given aspect ratio.
@@ -83,6 +85,12 @@ export function isSurfacePreviewAspectPresetId(id: unknown): id is SurfacePrevie
 /* -------------------------------------------------------------------------- */
 
 export type SurfacePreviewOrientation = "landscape" | "portrait";
+
+/**
+ * The project's `app.mobile.fit`. `contain` letterboxes, `cover` fills the screen and crops — and it
+ * changes both frames, so it is threaded through rather than assumed.
+ */
+export type SurfacePreviewFit = "contain" | "cover";
 
 export type SafeAreaGeometry = {
     /** Logical screen size in pt (iOS) or dp (Android), in this orientation. */
@@ -358,19 +366,57 @@ export function resolveSafeAreaOrientation(
 
 export type ScreenRatioFrame = {
     /**
-     * The player's screen expressed in design-space coordinates. Always *contains* the design rect
-     * and touches it on the constrained axis, because the engine scales by `min(W/dw, H/dh)`.
+     * The player's screen expressed in design-space coordinates.
+     *
+     * Under `contain` it *contains* the design rect and touches it on the constrained axis; under
+     * `cover` it is *inscribed in* it, and everything outside is design the player never sees.
      */
     screenRect: SurfacePreviewRect;
-    /** Pillarbox bar thickness in design units (per side). 0 when the screen is not relatively wider. */
+    /** True when this frame describes a crop rather than bars. */
+    cropped: boolean;
+    /**
+     * Per-side thickness of the strip where the two rects differ, in design units — bar under
+     * `contain`, cropped-away design under `cover`. Always >= 0; exactly one of the two is non-zero.
+     */
     pillarbox: number;
-    /** Letterbox bar thickness in design units (per side). 0 when the screen is not relatively taller. */
     letterbox: number;
     /** `pillarbox / screenRect.width` — 0 .. 0.5. Handy for "12% of the screen is bar". */
     pillarboxFraction: number;
     /** `letterbox / screenRect.height` — 0 .. 0.5. */
     letterboxFraction: number;
 };
+
+/**
+ * The strips where the design rect and the screen rect differ, in design space.
+ *
+ * One helper for both fits, because the picture is the same either way: a band on each side of the
+ * shorter rect. Under `contain` those bands are the bars, outside the design; under `cover` they are
+ * the parts of the design that get cut, inside it. Corners go to the horizontal band so a
+ * translucent fill never stacks — same rule as {@link computeUnsafeBands}.
+ */
+export function computeScreenRatioStrips(
+    designSize: SurfacePreviewSize,
+    frame: ScreenRatioFrame | null | undefined,
+): SurfacePreviewRect[] {
+    if (!frame || !isUsableSize(designSize)) {
+        return [];
+    }
+    const { screenRect, pillarbox, letterbox, cropped } = frame;
+    // The strips live between the outer rect and the inner one; which is which is the only
+    // difference the fit makes here.
+    const outer = cropped ? { x: 0, y: 0, width: designSize.width, height: designSize.height } : screenRect;
+    const inner = cropped ? screenRect : { x: 0, y: 0, width: designSize.width, height: designSize.height };
+    const strips: SurfacePreviewRect[] = [];
+    if (letterbox > 0) {
+        strips.push({ x: outer.x, y: outer.y, width: outer.width, height: letterbox });
+        strips.push({ x: outer.x, y: inner.y + inner.height, width: outer.width, height: letterbox });
+    }
+    if (pillarbox > 0) {
+        strips.push({ x: outer.x, y: inner.y, width: pillarbox, height: inner.height });
+        strips.push({ x: inner.x + inner.width, y: inner.y, width: pillarbox, height: inner.height });
+    }
+    return strips;
+}
 
 function isUsableSize(size: SurfacePreviewSize | null | undefined): size is SurfacePreviewSize {
     return (
@@ -395,6 +441,8 @@ function isUsableSize(size: SurfacePreviewSize | null | undefined): size is Surf
 export function computeScreenRatioFrame(input: {
     designSize: SurfacePreviewSize;
     preset: SurfacePreviewAspectPreset;
+    /** The project's stage fit; omitted means `contain`. */
+    stageFit?: SurfacePreviewFit;
 }): ScreenRatioFrame | null {
     const { designSize, preset } = input;
     if (!isUsableSize(designSize)) {
@@ -408,23 +456,32 @@ export function computeScreenRatioFrame(input: {
     const dw = designSize.width;
     const dh = designSize.height;
     // Divide last so exact-match cases (16:9 vs 1920x1080) come out exact rather than off by an ulp.
-    const screenW = Math.max(dw, (dh * rw) / rh);
-    const screenH = Math.max(dh, (dw * rh) / rw);
+    // `contain` grows the screen around the design (the excess is bars); `cover` inscribes it (the
+    // excess is design that never reaches the player). The rest of this function does not care
+    // which — it measures the difference between the two rects, and only the sign flips.
+    const cover = input.stageFit === "cover";
+    const screenW = cover ? Math.min(dw, (dh * rw) / rh) : Math.max(dw, (dh * rw) / rh);
+    const screenH = cover ? Math.min(dh, (dw * rh) / rw) : Math.max(dh, (dw * rh) / rw);
     if (!Number.isFinite(screenW) || !Number.isFinite(screenH)) {
         return null;
     }
 
-    const pillarbox = (screenW - dw) / 2;
-    const letterbox = (screenH - dh) / 2;
+    // Absolute, so a caller never has to know the sign convention: the screen rect's own position
+    // already says which side of the design rect the strip is on.
+    const pillarbox = Math.abs(screenW - dw) / 2;
+    const letterbox = Math.abs(screenH - dh) / 2;
+    const offsetX = (dw - screenW) / 2;
+    const offsetY = (dh - screenH) / 2;
 
     return {
         screenRect: {
             // `-0` is harmless in CSS but poisons equality checks and snapshots — normalize it away.
-            x: pillarbox === 0 ? 0 : -pillarbox,
-            y: letterbox === 0 ? 0 : -letterbox,
+            x: offsetX === 0 ? 0 : offsetX,
+            y: offsetY === 0 ? 0 : offsetY,
             width: screenW,
             height: screenH,
         },
+        cropped: cover,
         pillarbox,
         letterbox,
         pillarboxFraction: screenW > 0 ? pillarbox / screenW : 0,
@@ -467,6 +524,8 @@ export function computeSafeAreaFrameForGeometry(input: {
     designSize: SurfacePreviewSize;
     geometry: SafeAreaGeometry;
     orientation: SurfacePreviewOrientation;
+    /** The project's stage fit; omitted means `contain`. */
+    stageFit?: SurfacePreviewFit;
 }): SafeAreaFrame | null {
     const { designSize, geometry, orientation } = input;
     if (!isUsableSize(designSize) || !isUsableSize(geometry.screen)) {
@@ -484,13 +543,18 @@ export function computeSafeAreaFrameForGeometry(input: {
 
     const dw = designSize.width;
     const dh = designSize.height;
-    const fit = Math.min(geometry.screen.width / dw, geometry.screen.height / dh);
+    const fit = input.stageFit === "cover"
+        ? Math.max(geometry.screen.width / dw, geometry.screen.height / dh)
+        : Math.min(geometry.screen.width / dw, geometry.screen.height / dh);
     if (!Number.isFinite(fit) || fit <= 0) {
         return null;
     }
 
     const cw = dw * fit;
     const ch = dh * fit;
+    // Under `cover` these go NEGATIVE — the content runs off the screen instead of leaving a bar —
+    // and the `max(0, inset - ox)` below then correctly reports MORE than the raw inset: the part of
+    // the design outside the screen is lost too, and an author planning a margin needs the total.
     const ox = (geometry.screen.width - cw) / 2;
     const oy = (geometry.screen.height - ch) / 2;
 
@@ -527,8 +591,10 @@ export function computeSafeAreaFrame(input: {
     preset: SafeAreaPreset;
     /** The project's `app.mobile.orientation`; omitted / `auto` falls back to the design size. */
     mobileOrientation?: SafeAreaMobileOrientation | null;
+    /** The project's `app.mobile.fit`; omitted means `contain`. */
+    stageFit?: SurfacePreviewFit;
 }): SafeAreaFrame | null {
-    const { designSize, preset, mobileOrientation } = input;
+    const { designSize, preset, mobileOrientation, stageFit } = input;
     if (!isUsableSize(designSize)) {
         return null;
     }
@@ -537,6 +603,7 @@ export function computeSafeAreaFrame(input: {
         designSize,
         geometry: preset[orientation],
         orientation,
+        stageFit,
     });
 }
 
@@ -587,9 +654,10 @@ export function computeUnsafeBands(
 export function computeScreenRatioFrameById(
     designSize: SurfacePreviewSize,
     aspectId: string | null | undefined,
+    stageFit?: SurfacePreviewFit,
 ): ScreenRatioFrame | null {
     const preset = getSurfacePreviewAspectPreset(aspectId);
-    return preset ? computeScreenRatioFrame({ designSize, preset }) : null;
+    return preset ? computeScreenRatioFrame({ designSize, preset, stageFit }) : null;
 }
 
 /** Resolve a device preset id and compute its safe frame in one step. Unknown id => `null`. */
@@ -597,7 +665,8 @@ export function computeSafeAreaFrameById(
     designSize: SurfacePreviewSize,
     safeAreaId: string | null | undefined,
     mobileOrientation?: SafeAreaMobileOrientation | null,
+    stageFit?: SurfacePreviewFit,
 ): SafeAreaFrame | null {
     const preset = getSafeAreaPreset(safeAreaId);
-    return preset ? computeSafeAreaFrame({ designSize, preset, mobileOrientation }) : null;
+    return preset ? computeSafeAreaFrame({ designSize, preset, mobileOrientation, stageFit }) : null;
 }

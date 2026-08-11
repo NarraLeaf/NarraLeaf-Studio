@@ -7,6 +7,7 @@ import type { PlayerPreferences } from "./preference";
 import type { AutoSaveConfiguration } from "./saves";
 import type { GameVoiceBundle } from "./voice";
 import type { GameAudioBundle } from "./audio";
+import type { GameRuntimeViewportConfig } from "./gameRuntime";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -32,6 +33,13 @@ export type DevModeEntry =
            * able to answer correctly in a window the top bar opened.
            */
           mobileOrientation?: "landscape" | "portrait" | "auto";
+          /**
+           * The project's `app.mobile` stage fit + crop anchor. Sent by BOTH launch paths, unlike
+           * `safeAreaId`: cropping is what the game really does on a phone, not a design aid, and a
+           * Dev Mode window that letterboxed while the shipped build cropped would be a preview of
+           * something nobody plays.
+           */
+          viewport?: GameRuntimeViewportConfig;
       }
     | {
           kind: "story";

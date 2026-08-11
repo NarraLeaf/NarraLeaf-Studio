@@ -2,7 +2,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import { isValidLocaleCode, localeAutonym } from "@shared/types/localization";
 import { parseStageSize, stageOrientation } from "@shared/types/stageSize";
-import { DEFAULT_NETWORK_CONFIGURATION } from "@/lib/workspace/project/configuration";
+import { DEFAULT_MOBILE_CONFIGURATION, DEFAULT_NETWORK_CONFIGURATION } from "@/lib/workspace/project/configuration";
 import type { ProjectAppConfiguration } from "@/lib/workspace/project/configuration";
 import { ProjectData } from "../types";
 import { encodeProjectConfig, getProjectConfigFileName } from "@shared/utils/nlproj";
@@ -273,7 +273,10 @@ function buildAppConfiguration(
         // a second control that agrees with the stage size in every case but the one where somebody
         // set them apart by accident is not a choice, it is a way to be inconsistent. The project
         // panel still offers `auto` for anyone who wants it.
-        mobile: { orientation: stageOrientation(designSize) },
+        // Fit and crop anchor come from the defaults: a new project letterboxes, same as every
+        // project that predates the setting, and cropping is a decision about the art that nobody
+        // has made yet at wizard time.
+        mobile: { ...DEFAULT_MOBILE_CONFIGURATION, orientation: stageOrientation(designSize) },
         // The source language only; targets are the localization panel's business. Absent when
         // there is none, which is what `sourceLocale: ""` means to every reader of this field.
         ...(isValidLocaleCode(sourceLocale)

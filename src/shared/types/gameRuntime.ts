@@ -194,11 +194,77 @@ export type GameRuntimePackV1 = {
      * secure default ({@link GameRuntimeNetworkConfig} all disabled).
      */
     network?: GameRuntimeNetworkConfig;
+    /**
+     * Stage fit + crop anchor. Absent on packs produced before this field existed, which the runtime
+     * reads as `contain` — the behaviour every one of those packs shipped with.
+     */
+    viewport?: GameRuntimeViewportConfig;
     preview?: {
         controlPort: number;
         controlToken: string;
     };
 };
+
+/**
+ * How the stage meets a screen of a different aspect ratio, from `app.mobile`.
+ *
+ * Carried on every pack rather than only mobile ones: the pack is built once and the mobile shells
+ * serve the very same site (see `webShell.ts`), so there is no mobile-specific pack to put it on.
+ * WHERE it applies is decided at run time — the mobile entry document identifies itself, and a
+ * preview run is a preview run — not by baking two different sites.
+ */
+export type GameRuntimeViewportConfig = {
+    /** `contain` letterboxes (the default and the historical behaviour); `cover` fills and crops. */
+    fit: GameRuntimeViewportFit;
+    /** Which part survives the crop. Only meaningful under `cover`. */
+    cropAnchorX: GameRuntimeCropAnchorX;
+    cropAnchorY: GameRuntimeCropAnchorY;
+};
+
+/**
+ * The one place this vocabulary is spelled out. The renderer's project-config layer and the pack
+ * compiler both validate against these, so a value can never be legal in the editor and unknown to
+ * the runtime.
+ */
+export const GAME_RUNTIME_VIEWPORT_FITS = ["contain", "cover"] as const;
+export const GAME_RUNTIME_CROP_ANCHORS_X = ["left", "center", "right"] as const;
+export const GAME_RUNTIME_CROP_ANCHORS_Y = ["top", "center", "bottom"] as const;
+
+export type GameRuntimeViewportFit = typeof GAME_RUNTIME_VIEWPORT_FITS[number];
+export type GameRuntimeCropAnchorX = typeof GAME_RUNTIME_CROP_ANCHORS_X[number];
+export type GameRuntimeCropAnchorY = typeof GAME_RUNTIME_CROP_ANCHORS_Y[number];
+
+/**
+ * Meta name the mobile entry document uses to identify its shell to the runtime bundle.
+ *
+ * Lives here, next to the config it gates, so the producer (`buildWebIndexHtml`) and the consumer
+ * (`isMobileShellDocument`) cannot drift — a rename on one side alone would silently turn the stage
+ * crop off on every phone, with nothing to fail.
+ */
+export const WEB_SHELL_VARIANT_META = "nl-shell";
+
+export const DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG: GameRuntimeViewportConfig = {
+    fit: "contain",
+    cropAnchorX: "center",
+    cropAnchorY: "center",
+};
+
+/**
+ * Read a project's `app.mobile` blob into a complete viewport config.
+ *
+ * Anything unrecognized falls back to `contain`/centre rather than throwing: this runs while
+ * compiling a pack, and a project with a hand-edited config should letterbox, not fail to build.
+ */
+export function normalizeGameRuntimeViewportConfig(value: unknown): GameRuntimeViewportConfig {
+    const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+    const pick = <T extends string>(candidate: unknown, allowed: readonly T[], fallback: T): T =>
+        allowed.includes(candidate as T) ? candidate as T : fallback;
+    return {
+        fit: pick(record.fit, GAME_RUNTIME_VIEWPORT_FITS, DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG.fit),
+        cropAnchorX: pick(record.cropAnchorX, GAME_RUNTIME_CROP_ANCHORS_X, DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG.cropAnchorX),
+        cropAnchorY: pick(record.cropAnchorY, GAME_RUNTIME_CROP_ANCHORS_Y, DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG.cropAnchorY),
+    };
+}
 
 export type GameRuntimeNetworkConfig = {
     /**

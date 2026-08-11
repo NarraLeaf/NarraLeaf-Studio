@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
-import type { SafeAreaMobileOrientation, SurfacePreviewSize } from "@/lib/ui-editor/preview/surfacePreviewFrames";
+import type {
+    SafeAreaMobileOrientation,
+    SurfacePreviewFit,
+    SurfacePreviewSize,
+} from "@/lib/ui-editor/preview/surfacePreviewFrames";
 import { computeSafeAreaFrameById, getSafeAreaPreset } from "@/lib/ui-editor/preview/surfacePreviewFrames";
 
 type Props = {
@@ -8,6 +12,7 @@ type Props = {
     aspectId: string | null;
     safeAreaId: string | null;
     mobileOrientation?: SafeAreaMobileOrientation | null;
+    stageFit?: SurfacePreviewFit;
 };
 
 /**
@@ -21,12 +26,12 @@ type Props = {
  * of text the most valuable answer the feature can give ("this device is fine") is indistinguishable
  * from the feature being off.
  */
-export function SurfacePreviewFramesReadout({ designSize, aspectId, safeAreaId, mobileOrientation }: Props) {
+export function SurfacePreviewFramesReadout({ designSize, aspectId, safeAreaId, mobileOrientation, stageFit }: Props) {
     const { t } = useTranslation();
 
     const safeFrame = useMemo(
-        () => computeSafeAreaFrameById(designSize, safeAreaId, mobileOrientation),
-        [designSize, safeAreaId, mobileOrientation],
+        () => computeSafeAreaFrameById(designSize, safeAreaId, mobileOrientation, stageFit),
+        [designSize, safeAreaId, mobileOrientation, stageFit],
     );
     const preset = getSafeAreaPreset(safeAreaId);
 

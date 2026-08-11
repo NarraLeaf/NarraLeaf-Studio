@@ -2,6 +2,10 @@ import { Services, type WorkspaceContext } from "@/lib/workspace/services/servic
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { normalizeMobileConfiguration } from "@/lib/workspace/project/configuration";
 import type { SafeAreaMobileOrientation } from "@/lib/ui-editor/preview/surfacePreviewFrames";
+import {
+    normalizeGameRuntimeViewportConfig,
+    type GameRuntimeViewportConfig,
+} from "@shared/types/gameRuntime";
 
 /**
  * The project's `app.mobile.orientation` — the rotation the mobile shells actually lock to
@@ -27,4 +31,37 @@ export function readProjectMobileOrientation(
         // Services can be mid-initialization; a missing orientation is not worth a thrown render.
         return "auto";
     }
+}
+
+/**
+ * The project's `app.mobile` stage fit + crop anchor, for a Dev Mode launch entry.
+ *
+ * Same read-every-call reasoning as {@link readProjectMobileOrientation}: this is only ever called
+ * at launch, and a cached copy would open a window that crops the way the project used to.
+ */
+export function readProjectViewportConfig(
+    context: WorkspaceContext | null | undefined,
+): GameRuntimeViewportConfig {
+    if (!context) {
+        return normalizeGameRuntimeViewportConfig(undefined);
+    }
+    try {
+        const config = context.services.get<ProjectService>(Services.Project).getProjectConfig();
+        return normalizeGameRuntimeViewportConfig(config.app?.mobile);
+    } catch {
+        return normalizeGameRuntimeViewportConfig(undefined);
+    }
+}
+
+/**
+ * The project's `app.mobile.fit`, for the canvas frames.
+ *
+ * The frames describe what a player gets, so they have to know whether the build letterboxes or
+ * crops — under `cover` there are no bars, and the bars are exactly what used to absorb a device
+ * inset before it reached the content.
+ */
+export function readProjectStageFit(
+    context: WorkspaceContext | null | undefined,
+): GameRuntimeViewportConfig["fit"] {
+    return readProjectViewportConfig(context).fit;
 }
