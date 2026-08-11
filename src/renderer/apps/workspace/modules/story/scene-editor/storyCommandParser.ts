@@ -205,6 +205,7 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "audioTrack":
         case "variable":
         case "label":
+        case "appTag":
         case "target":
         case "content":
         case "literal":

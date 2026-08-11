@@ -592,6 +592,7 @@ export const story = {
             scene: "Scene",
             audioTrack: "Audio track",
             label: "Label in this scene",
+            appTag: "Build variant",
             variable: "Variable",
             content: "New content, typed by the target",
             color: "Color",
