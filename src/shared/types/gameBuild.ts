@@ -72,6 +72,16 @@ export type GameBuildTarget = {
 export type GameBuildRequest = {
     targets: GameBuildTarget[];
     /**
+     * Which build variant this build is. Absent, or the release id, means the project's own values.
+     *
+     * A variant states its own application name, identifier and version and inherits the rest, so
+     * this is what decides the identity the artifacts carry. An id naming a variant the project does
+     * not have is refused rather than fallen back on: falling back would ship the release identity
+     * under the name of a variant the author selected, which is the one way this can be wrong
+     * without anyone noticing.
+     */
+    appTagId?: string;
+    /**
      * Absolute output directory for finished artifacts (chosen via the native
      * folder picker). When absent, defaults to "<project>/dist".
      */

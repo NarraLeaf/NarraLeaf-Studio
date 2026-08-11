@@ -50,6 +50,7 @@ import { test } from "./test";
 import { help } from "./help";
 import { update } from "./update";
 import { brand } from "./brand";
+import { game } from "./game";
 
 export const en = {
     common,
@@ -93,4 +94,5 @@ export const en = {
     help,
     update,
     brand,
+    game,
 } as const;

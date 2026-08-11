@@ -289,9 +289,11 @@ export type SaveLoadFailure = {
 
 /**
  * The engine's own wording, matched rather than re-thrown. `LiveGame.deserialize` throws
- * `"Element not found, id: <id>\n…"` while replaying `elementStates`, and by then it has already run
- * `reset()` and `forceRemount()` - which is why the caller has to relaunch, and why this shape is
- * worth recognising instead of printing a stack.
+ * `"Element not found, id: <id>\n…"` while replaying `elementStates`, and printing that with its
+ * second line and its stack tells an author less than naming the id does.
+ *
+ * The load path resolves those ids before it enters the live game, so this now reads a throw that
+ * got past that check rather than the ordinary end of an old save.
  */
 const MISSING_ELEMENT_PATTERN = /Element not found, id:\s*(\S+)/;
 

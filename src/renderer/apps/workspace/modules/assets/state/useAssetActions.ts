@@ -1121,7 +1121,10 @@ export function useAssetActions({
             // against cannot drift apart. "No references found" and "could not look for references"
             // stay different answers: an empty index reports every asset as unused.
             const { checked: referencesChecked, references: referencesByAsset } =
-                (await withAssetsService(assetsService => assetsService.findAssetReferences(affectedAssets.map(asset => asset.id))))
+                (await withAssetsService(assetsService => assetsService.findAssetReferences(
+                    affectedAssets.map(asset => asset.id),
+                    affectedAssets.map(asset => asset.type),
+                )))
                 ?? { checked: false, references: new Map<string, AssetReference[]>() };
 
             if (!referencesChecked) {

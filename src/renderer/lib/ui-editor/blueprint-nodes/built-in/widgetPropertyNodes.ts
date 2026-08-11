@@ -91,8 +91,12 @@ const optionalJsonIn = (id: string, label: string): BlueprintNodePinDef => ({
     ...jsonIn(id, label),
     optional: true,
 });
-const imageAssetNullableIn = (id: string, label: string): BlueprintNodePinDef =>
-    dataIn(id, label, BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE, true);
+const imageAssetNullableIn = (id: string, label: string): BlueprintNodePinDef => ({
+    ...dataIn(id, label, BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE, true),
+    // The declaration the asset reverse-lookup index reads. The value type already says "image
+    // asset", but only to the connection rules; nothing walks value types looking for references.
+    assetRef: { kind: "image" },
+});
 const out = (id: string, label: string, valueType: string): BlueprintNodePinDef => ({
     id,
     kind: "output",
@@ -733,6 +737,10 @@ export const imageAssetBlueprintNodes: BlueprintNodeDef[] = [
                 semantic: "data",
                 valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
                 label: "Asset",
+                // The only pin whose stored key is not its own id: the picker writes `asset`, the
+                // pin publishes `value`. Declaring the key is what lets the reverse-lookup index
+                // find the picked asset without a special case for this node type.
+                assetRef: { kind: "image", paramKey: "asset" },
             },
         ],
         execute: () => ({}),

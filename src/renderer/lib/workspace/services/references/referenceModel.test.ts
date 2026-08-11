@@ -8,11 +8,25 @@ import {
     extractUIDocumentAssetReferences,
     extractVoiceAssetReferences,
     isLibraryAssetId,
+    referenceGapsAffecting,
+    type AssetReference,
+    type ReferenceIndexGap,
 } from "./referenceModel";
 import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
+
+/**
+ * The two extractors that can report a coverage gap return both halves. These read the reference
+ * half, which is what every case below is about; the gap half has cases of its own.
+ */
+const blueprintReferences = (
+    ...args: Parameters<typeof extractBlueprintAssetReferences>
+): AssetReference[] => extractBlueprintAssetReferences(...args).references;
+const uiReferences = (
+    ...args: Parameters<typeof extractUIDocumentAssetReferences>
+): AssetReference[] => extractUIDocumentAssetReferences(...args).references;
 
 function actionBlock(id: string, payload: Record<string, unknown>): StoryBlock {
     return { id, kind: "action", parentId: null, childrenIds: [], payload } as unknown as StoryBlock;
@@ -183,7 +197,7 @@ describe("extractBlueprintAssetReferences", () => {
     }
 
     it("reads the tagged image-asset param", () => {
-        const references = extractBlueprintAssetReferences(
+        const references = blueprintReferences(
             blueprintDoc({ n1: { id: "n1", type: "blueprint.image.assetLiteral", params: { asset: { kind: "imageAsset", assetId: "img-1" } } } }),
         );
 
@@ -193,7 +207,7 @@ describe("extractBlueprintAssetReferences", () => {
     });
 
     it("reads the legacy bare-string form of the same param", () => {
-        const references = extractBlueprintAssetReferences(
+        const references = blueprintReferences(
             blueprintDoc({ n1: { id: "n1", type: "x", params: { asset: "img-legacy" } } }),
         );
 
@@ -201,7 +215,7 @@ describe("extractBlueprintAssetReferences", () => {
     });
 
     it("scans macro graphs, which the search index omits", () => {
-        const references = extractBlueprintAssetReferences(
+        const references = blueprintReferences(
             blueprintDoc({ n1: { id: "n1", type: "x", params: { asset: "img-in-macro" } } }, "macros"),
         );
 
@@ -209,7 +223,7 @@ describe("extractBlueprintAssetReferences", () => {
     });
 
     it("reads the pre-rename `assetId` pin, which Set Image Asset still falls back to", () => {
-        const references = extractBlueprintAssetReferences(
+        const references = blueprintReferences(
             blueprintDoc({ n1: { id: "n1", type: "x", params: { assetId: { kind: "imageAsset", assetId: "img-old" } } } }),
         );
 
@@ -219,7 +233,7 @@ describe("extractBlueprintAssetReferences", () => {
 
     it("takes only `asset` when a migrated node still carries the old pin", () => {
         // The node executes `asset`, so the stale `assetId` is not a second live reference.
-        const references = extractBlueprintAssetReferences(
+        const references = blueprintReferences(
             blueprintDoc({ n1: { id: "n1", type: "x", params: { asset: "img-new", assetId: "img-old" } } }),
         );
 
@@ -227,7 +241,7 @@ describe("extractBlueprintAssetReferences", () => {
     });
 
     it("reads bare font ids and skips builtin font stacks", () => {
-        const references = extractBlueprintAssetReferences(
+        const references = blueprintReferences(
             blueprintDoc({
                 n1: { id: "n1", type: "x", params: { fontAssetId: "font-1" } },
                 n2: { id: "n2", type: "x", params: { fontAssetId: "builtin:font:sans" } },
@@ -247,7 +261,7 @@ describe("extractUIDocumentAssetReferences", () => {
     }
 
     it("finds an image fill nested under scrollbar chrome", () => {
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([uiElement("e1", "nl.container", { scrollbar: { trackStyle: { fillType: "image", imageFill: { mode: "cover", assetId: "track-1" } } } })]),
         );
 
@@ -256,7 +270,7 @@ describe("extractUIDocumentAssetReferences", () => {
     });
 
     it("marks a fill dormant when its sibling fillType is not image", () => {
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([uiElement("e1", "nl.container", { fillType: "color", imageFill: { mode: "cover", assetId: "img-1" } })]),
         );
 
@@ -264,7 +278,7 @@ describe("extractUIDocumentAssetReferences", () => {
     });
 
     it("judges dormancy per nesting level, not from the element root", () => {
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([
                 uiElement("e1", "nl.container", {
                     fillType: "color",
@@ -277,7 +291,7 @@ describe("extractUIDocumentAssetReferences", () => {
     });
 
     it("reads the legacy bare assetId on nl.image", () => {
-        const references = extractUIDocumentAssetReferences(doc([uiElement("e1", "nl.image", { assetId: "legacy-1" })]));
+        const references = uiReferences(doc([uiElement("e1", "nl.image", { assetId: "legacy-1" })]));
 
         expect(references[0]).toMatchObject({ assetId: "legacy-1", field: "assetId" });
     });
@@ -285,7 +299,7 @@ describe("extractUIDocumentAssetReferences", () => {
     it("keeps the legacy prop as a dormant reference when an imageFill supplies the picture", () => {
         // `getImageWidgetRectangleProps` renders img-1, so legacy-1 draws nothing today - but
         // clearing the fill brings it back, which is the whole point of reporting dormant sites.
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([uiElement("e1", "nl.image", { assetId: "legacy-1", fillType: "image", imageFill: { mode: "cover", assetId: "img-1" } })]),
         );
 
@@ -298,7 +312,7 @@ describe("extractUIDocumentAssetReferences", () => {
     it("still reads the legacy prop when imageFill exists but holds no asset", () => {
         // The runtime gates on `!hasAssetInFill`, not on the presence of the object. Testing for the
         // object dropped this reference and the widget rendered an asset nothing claimed to use.
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([uiElement("e1", "nl.image", { assetId: "legacy-1", imageFill: { mode: "cover", assetId: null } })]),
         );
 
@@ -310,7 +324,7 @@ describe("extractUIDocumentAssetReferences", () => {
     it("treats the legacy prop as live even when fillType says colour", () => {
         // The legacy upgrade forces `fillType: "image"`, so reading the stored fillType inverted the
         // flag and showed a live reference as "inactive" in the delete dialog.
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([uiElement("e1", "nl.image", { assetId: "legacy-1", fillType: "color" })]),
         );
 
@@ -319,7 +333,7 @@ describe("extractUIDocumentAssetReferences", () => {
     });
 
     it("marks the legacy prop dormant when a backgroundImage wins instead", () => {
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([uiElement("e1", "nl.image", { assetId: "legacy-1", backgroundImage: "app://fs/abc" })]),
         );
 
@@ -336,7 +350,7 @@ describe("extractUIDocumentAssetReferences", () => {
             ],
         } as unknown as UIDocument;
 
-        const references = extractUIDocumentAssetReferences(document);
+        const references = uiReferences(document);
 
         expect(references).toHaveLength(1);
         expect(references[0]).toMatchObject({
@@ -352,7 +366,7 @@ describe("extractUIDocumentAssetReferences", () => {
         // id - nothing else. A widget naming its prop `assetId` was preloaded by the shipped game
         // (`surfaceResourcePreload.ts` matches that literal name) and simultaneously absent from
         // "what uses this asset", which is the one place an author looks before deleting it.
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([uiElement("e1", "nl.video", { assetId: "clip-1", posterAssetId: "poster-1" })]),
         );
 
@@ -364,7 +378,7 @@ describe("extractUIDocumentAssetReferences", () => {
     it("reports the nl.image legacy assetId exactly once", () => {
         // The generic `assetId` arm and the nl.image legacy branch push the same reference id; if
         // both fired, the delete dialog would list the same site twice under one key.
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([uiElement("e1", "nl.image", { assetId: "legacy-1" })]),
         );
 
@@ -373,7 +387,7 @@ describe("extractUIDocumentAssetReferences", () => {
     });
 
     it("descends into arrays so a fill in a list prop is still found", () => {
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([uiElement("e1", "nl.list", {
                 slides: [
                     { fillType: "image", imageFill: { mode: "cover", assetId: "slide-1" } },
@@ -392,7 +406,7 @@ describe("extractUIDocumentAssetReferences", () => {
     });
 
     it("reads assets out of appearance variant rows and labels them by variant", () => {
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([
                 uiElement("e1", "nl.button", {
                     appearance: {
@@ -420,7 +434,7 @@ describe("extractUIDocumentAssetReferences", () => {
     });
 
     it("marks appearance fills dormant when the variant pins fillType away from image", () => {
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([
                 uiElement("e1", "nl.button", {
                     appearance: {
@@ -444,7 +458,7 @@ describe("extractUIDocumentAssetReferences", () => {
     });
 
     it("scans the component element pool, which is disjoint from the stage pool", () => {
-        const references = extractUIDocumentAssetReferences(
+        const references = uiReferences(
             doc([], [
                 {
                     id: "c1",
@@ -522,5 +536,354 @@ describe("buildReferenceIndex", () => {
         expect(index.get("img-1")).toHaveLength(2);
         expect(index.get("img-2")).toHaveLength(1);
         expect(index.has("img-3")).toBe(false);
+    });
+});
+
+describe("coverage of an asset reachable only through a hash URL", () => {
+    function urlDoc(props: Record<string, unknown>): UIDocument {
+        return { elements: { e1: uiElement("e1", "nl.container", props) } } as unknown as UIDocument;
+    }
+
+    it("finds the asset behind a token this session minted", () => {
+        // The widget's only asset-shaped prop is the URL: no imageFill, no assetId. Without the
+        // reverse table this asset has nothing pointing at it and reads as deletable.
+        const extraction = extractUIDocumentAssetReferences(urlDoc({ backgroundImage: "app://fs/token-1" }), {
+            resolveAssetToken: token => (token === "token-1" ? "img-1" : null),
+        });
+
+        expect(extraction.gaps).toEqual([]);
+        expect(extraction.references).toHaveLength(1);
+        expect(extraction.references[0]).toMatchObject({ assetId: "img-1", field: "backgroundImage" });
+    });
+
+    it("reads the token out of a bundle URL, whose remainder is a path inside the grant", () => {
+        const extraction = extractUIDocumentAssetReferences(
+            urlDoc({ backgroundImage: "app://fs/token-1/Hiyori.2048/texture_00.png" }),
+            { resolveAssetToken: token => (token === "token-1" ? "model-1" : null) },
+        );
+
+        expect(extraction.references[0]?.assetId).toBe("model-1");
+    });
+
+    it("reports an unknown token as a gap naming the widget and field", () => {
+        const extraction = extractUIDocumentAssetReferences(urlDoc({ backgroundImage: "app://fs/stale" }), {
+            resolveAssetToken: () => null,
+        });
+
+        expect(extraction.references).toEqual([]);
+        expect(extraction.gaps).toEqual([
+            { reason: "hashUrlUnresolved", slice: "ui", location: "Widget.backgroundImage", affects: ["image"] },
+        ]);
+    });
+
+    it("finds a token inside an appearance variant row", () => {
+        const extraction = extractUIDocumentAssetReferences(
+            {
+                elements: {
+                    e1: uiElement("e1", "nl.button", {
+                        appearance: {
+                            defaultVariantId: "v1",
+                            variants: [{
+                                id: "v1",
+                                name: "Hover",
+                                propertyGroups: [{ key: "backgroundImage", rows: [{ value: "app://fs/token-2" }] }],
+                            }],
+                        },
+                    }),
+                },
+            } as unknown as UIDocument,
+            { resolveAssetToken: token => (token === "token-2" ? "hover-1" : null) },
+        );
+
+        expect(extraction.references[0]).toMatchObject({ assetId: "hover-1", detail: "Hover" });
+    });
+
+    it("treats an ordinary web address as neither a reference nor a gap", () => {
+        // It names no library asset at all, so there is nothing missing and nothing to warn about.
+        const extraction = extractUIDocumentAssetReferences(urlDoc({ backgroundImage: "https://example.com/a.png" }));
+
+        expect(extraction.references).toEqual([]);
+        expect(extraction.gaps).toEqual([]);
+    });
+});
+
+describe("coverage of an asset reachable only through a legacy literal node", () => {
+    function wiredDoc(nodes: Record<string, unknown>, edges: unknown[]): BlueprintDocument {
+        return {
+            ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            blueprints: {
+                "bp-1": {
+                    id: "bp-1",
+                    name: "Main",
+                    program: {
+                        kind: "graph",
+                        graphs: { events: { "g-1": { graph: { nodes, edges } } }, functions: {} },
+                    },
+                },
+            },
+            persistentVariables: {},
+        } as unknown as BlueprintDocument;
+    }
+
+    it("reads a JSON literal wired into an image asset pin", () => {
+        // The consuming node stores nothing: its pin is fed by the edge, and the id lives in the
+        // literal's free-form JSON. This is the shape the index used to be blind to.
+        const extraction = extractBlueprintAssetReferences(
+            wiredDoc(
+                {
+                    lit: {
+                        id: "lit",
+                        type: "blueprint.data.jsonLiteral",
+                        params: { value: { kind: "imageAsset", assetId: "img-json" } },
+                    },
+                    set: { id: "set", type: "widget.image.setAsset", params: {} },
+                },
+                [{ from: { nodeId: "lit", port: "value" }, to: { nodeId: "set", port: "asset" } }],
+            ),
+        );
+
+        expect(extraction.gaps).toEqual([]);
+        expect(extraction.references).toHaveLength(1);
+        expect(extraction.references[0]).toMatchObject({ assetId: "img-json", field: "asset" });
+    });
+
+    it("reads a String literal wired into a font pin", () => {
+        const extraction = extractBlueprintAssetReferences(
+            wiredDoc(
+                {
+                    lit: { id: "lit", type: "blueprint.data.stringLiteral", params: { value: "font-wired" } },
+                    set: { id: "set", type: "text.setFont", params: {} },
+                },
+                [{ from: { nodeId: "lit", port: "value" }, to: { nodeId: "set", port: "fontAssetId" } }],
+            ),
+        );
+
+        expect(extraction.references.map(reference => reference.assetId)).toEqual(["font-wired"]);
+    });
+
+    it("does not read a literal wired into a pin that carries no asset", () => {
+        // The guard against the heuristic this replaces: an id-shaped string is an asset reference
+        // because of the pin it feeds, never because of how it looks.
+        const extraction = extractBlueprintAssetReferences(
+            wiredDoc(
+                {
+                    lit: { id: "lit", type: "blueprint.data.stringLiteral", params: { value: "looks-like-an-id" } },
+                    set: { id: "set", type: "text.setText", params: {} },
+                },
+                [{ from: { nodeId: "lit", port: "value" }, to: { nodeId: "set", port: "text" } }],
+            ),
+        );
+
+        expect(extraction.references).toEqual([]);
+        expect(extraction.gaps).toEqual([]);
+    });
+
+    it("reports an asset pin fed by a computing node as a gap naming the node", () => {
+        const extraction = extractBlueprintAssetReferences(
+            wiredDoc(
+                {
+                    pick: { id: "pick", type: "blueprint.saved.get.value", params: {} },
+                    set: { id: "set", type: "widget.image.setAsset", params: {} },
+                },
+                [{ from: { nodeId: "pick", port: "value" }, to: { nodeId: "set", port: "asset" } }],
+            ),
+            { resolveNodeLabel: type => (type === "widget.image.setAsset" ? "Set Image Asset" : undefined) },
+        );
+
+        expect(extraction.references).toEqual([]);
+        expect(extraction.gaps).toEqual([
+            expect.objectContaining({
+                reason: "computedAssetPin",
+                slice: "blueprint",
+                location: "Main › Set Image Asset.asset",
+            }),
+        ]);
+    });
+
+    it("counts an Image Asset literal once, from the node that stores it", () => {
+        // Its own `asset` param is the reference; following the edge as well would list the same
+        // pick twice under one asset.
+        const extraction = extractBlueprintAssetReferences(
+            wiredDoc(
+                {
+                    lit: {
+                        id: "lit",
+                        type: "blueprint.image.assetLiteral",
+                        params: { asset: { kind: "imageAsset", assetId: "img-1" } },
+                    },
+                    set: { id: "set", type: "widget.image.setAsset", params: {} },
+                },
+                [{ from: { nodeId: "lit", port: "value" }, to: { nodeId: "set", port: "asset" } }],
+            ),
+        );
+
+        expect(extraction.gaps).toEqual([]);
+        expect(extraction.references).toHaveLength(1);
+        expect(extraction.references[0]).toMatchObject({ assetId: "img-1", field: "asset" });
+    });
+
+    it("does not report a gap when the source pin carries the same kind of asset", () => {
+        // Get Font into Set Font moves a font the element already stores, and that element is
+        // indexed. Calling this a gap would make the index incomplete over a graph that hides
+        // nothing, and cost the author their unused-asset report for it.
+        const extraction = extractBlueprintAssetReferences(
+            wiredDoc(
+                {
+                    get: { id: "get", type: "text.getFont", params: {} },
+                    set: { id: "set", type: "text.setFont", params: {} },
+                },
+                [{ from: { nodeId: "get", port: "fontAssetId" }, to: { nodeId: "set", port: "fontAssetId" } }],
+            ),
+            {
+                resolveAssetPins: () => [
+                    { pinId: "fontAssetId", kind: "font", paramKey: "fontAssetId", input: true },
+                ],
+            },
+        );
+
+        expect(extraction.gaps).toEqual([]);
+        expect(extraction.references).toEqual([]);
+    });
+
+    it("covers a node whose asset param the catalogue alone knows about", () => {
+        // A plugin node storing its pick under a name this file has never heard of. Declaring the
+        // pin is the whole registration; nothing here lists it.
+        const extraction = extractBlueprintAssetReferences(
+            wiredDoc(
+                { n1: { id: "n1", type: "acme.showBanner", params: { banner: { kind: "imageAsset", assetId: "img-plugin" } } } },
+                [],
+            ),
+            {
+                resolveAssetPins: type => (type === "acme.showBanner"
+                    ? [{ pinId: "banner", kind: "image", paramKey: "banner", input: true }]
+                    : []),
+            },
+        );
+
+        expect(extraction.references[0]).toMatchObject({ assetId: "img-plugin", field: "banner" });
+    });
+});
+
+describe("blueprints this walk cannot read", () => {
+    function docWith(blueprint: Record<string, unknown>, ownerRecords?: Record<string, unknown>): BlueprintDocument {
+        return {
+            ownerRecords: ownerRecords ?? { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            blueprints: { "bp-1": blueprint },
+            persistentVariables: {},
+        } as unknown as BlueprintDocument;
+    }
+
+    it("reports a script-module blueprint as a gap instead of skipping it", () => {
+        // TypeScript blueprints are creatable, and an asset id in that source is a plain string this
+        // file has no business parsing. Skipping in silence reported full coverage over it.
+        const extraction = extractBlueprintAssetReferences(
+            docWith({
+                id: "bp-1",
+                name: "Title Logic",
+                program: { kind: "scriptModule", source: { language: "typescript", code: "" } },
+            }),
+        );
+
+        expect(extraction.references).toEqual([]);
+        expect(extraction.gaps).toEqual([
+            { reason: "blueprintProgramNotWalked", slice: "blueprint", location: "Title Logic" },
+        ]);
+    });
+
+    it("reports a blueprint no owner record claims", () => {
+        const extraction = extractBlueprintAssetReferences(
+            docWith(
+                {
+                    id: "bp-1",
+                    name: "Orphaned",
+                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                },
+                {},
+            ),
+        );
+
+        expect(extraction.gaps).toEqual([
+            { reason: "blueprintProgramNotWalked", slice: "blueprint", location: "Orphaned" },
+        ]);
+    });
+});
+
+describe("node types the catalogue does not know", () => {
+    function nodeDoc(nodes: Record<string, unknown>): BlueprintDocument {
+        return {
+            ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            blueprints: {
+                "bp-1": {
+                    id: "bp-1",
+                    name: "Main",
+                    program: { kind: "graph", graphs: { events: { "g-1": { graph: { nodes } } }, functions: {} } },
+                },
+            },
+            persistentVariables: {},
+        } as unknown as BlueprintDocument;
+    }
+
+    it("reports a gap when the resolver says the type is unknown", () => {
+        // A node left behind by an uninstalled plugin. Its params may hold an asset under a name
+        // nothing here can guess, and reading "no declared pins" as "holds nothing" hid it.
+        const extraction = extractBlueprintAssetReferences(nodeDoc({
+            n1: { id: "n1", type: "acme.gone", params: { banner: "img-1" } },
+        }), { resolveAssetPins: () => null });
+
+        expect(extraction.references).toEqual([]);
+        expect(extraction.gaps).toEqual([
+            expect.objectContaining({ reason: "unknownNodeType", location: "Main › acme.gone" }),
+        ]);
+    });
+
+    it("reports one gap per blueprint however many of the nodes there are", () => {
+        const extraction = extractBlueprintAssetReferences(nodeDoc({
+            n1: { id: "n1", type: "acme.gone", params: {} },
+            n2: { id: "n2", type: "acme.gone", params: {} },
+            n3: { id: "n3", type: "acme.gone", params: {} },
+        }), { resolveAssetPins: () => null });
+
+        expect(extraction.gaps).toHaveLength(1);
+    });
+
+    it("says nothing about a known type that simply declares no asset pins", () => {
+        // "Known and holds none" is an answer; "unknown" is the absence of one. An empty array and
+        // null used to be the same value here, which is what made the omission silent.
+        const extraction = extractBlueprintAssetReferences(nodeDoc({
+            n1: { id: "n1", type: "blueprint.flow.branch", params: {} },
+        }), { resolveAssetPins: () => [] });
+
+        expect(extraction.gaps).toEqual([]);
+    });
+});
+
+describe("referenceGapsAffecting", () => {
+    const imageGap: ReferenceIndexGap = {
+        reason: "hashUrlUnresolved", slice: "ui", location: "Title Screen.backgroundImage", affects: ["image"],
+    };
+    const wholeIndexGap: ReferenceIndexGap = { reason: "documentUnreadable", slice: "story", location: "Main Story" };
+
+    it("holds a picture-shaped gap against pictures only", () => {
+        // The half that keeps one pasted URL from putting the whole library beyond deleting.
+        expect(referenceGapsAffecting([imageGap], ["image"])).toEqual([imageGap]);
+        expect(referenceGapsAffecting([imageGap], ["font"])).toEqual([]);
+    });
+
+    it("holds a gap that names no kinds against every question", () => {
+        // An unread story can hold a use of anything, so it must not be narrowed by asset kind.
+        expect(referenceGapsAffecting([wholeIndexGap], ["font"])).toEqual([wholeIndexGap]);
+        expect(referenceGapsAffecting([wholeIndexGap], [])).toEqual([wholeIndexGap]);
+    });
+
+    it("returns every gap for the project-wide question", () => {
+        expect(referenceGapsAffecting([imageGap, wholeIndexGap])).toHaveLength(2);
+    });
+
+    it("scopes an unresolved URL to pictures at the point it is produced", () => {
+        const extraction = extractUIDocumentAssetReferences(
+            { elements: { e1: uiElement("e1", "nl.container", { backgroundImage: "app://fs/stale" }) } } as unknown as UIDocument,
+        );
+
+        expect(extraction.gaps[0].affects).toEqual(["image"]);
     });
 });

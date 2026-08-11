@@ -59,6 +59,11 @@ const DEFAULT_FORMATS: Record<GameBuildPlatform, GameBuildFormat[]> = {
 };
 
 export type BuildDialogState = {
+    /**
+     * The build variant being produced, by id. `""` means the release variant, which is what an
+     * absent selection and a deleted variant both come to.
+     */
+    appTagId: string;
     formats: Record<GameBuildPlatform, Set<GameBuildFormat>>;
     archs: Record<GameBuildDesktopPlatform, GameBuildArch>;
     /** Absolute output directory, or "" to use the default (`<project>/dist`). */
@@ -115,6 +120,7 @@ export function initialDialogState(
             : defaultGameBuildArch(platform, hostPlatform, hostArch);
     }
     return {
+        appTagId: config?.appTagId ?? "",
         formats,
         archs,
         outputDir: config?.outputDir ?? "",
@@ -139,6 +145,9 @@ export function stateToRequest(state: BuildDialogState): GameBuildRequest {
     });
     return {
         targets,
+        // Omitted rather than sent empty: the pipeline reads an absent id as the release variant and
+        // refuses one it cannot find, so "" would be a variant nothing has.
+        ...(state.appTagId ? { appTagId: state.appTagId } : {}),
         outputDir: state.outputDir.trim(),
         compression: state.compression,
         openWhenDone: state.openWhenDone,
@@ -156,6 +165,7 @@ export function requestToBuildConfiguration(request: GameBuildRequest): BuildCon
         }
     }
     return {
+        ...(request.appTagId ? { appTagId: request.appTagId } : {}),
         platforms: request.targets.map(target => target.platform),
         formats,
         archs,
@@ -186,6 +196,7 @@ export function stateFromRequest(
         }
     }
     return {
+        appTagId: request.appTagId ?? "",
         formats,
         archs,
         outputDir: request.outputDir ?? "",

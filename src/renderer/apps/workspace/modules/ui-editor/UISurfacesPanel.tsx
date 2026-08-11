@@ -22,7 +22,7 @@ import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { appendDeveloperIdSection } from "@/lib/developer";
-import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
+import { getSurfaceDisplayLabel, getSurfaceRenameNoun } from "@/lib/ui-editor/surfaceDisplayLabel";
 import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
@@ -47,7 +47,8 @@ import {
     CreateSurfaceDialogContent,
     CreateSurfaceDialogValue,
 } from "./panel/dialogs/CreateSurfaceDialogContent";
-import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_OPTIONS, STAGE_SLOT_LABELS, SURFACE_KIND_OPTIONS } from "./panel/constants";
+import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_IDS, SURFACE_KIND_OPTIONS } from "./panel/constants";
+import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { EditorLayout, EditorTabDefinition } from "../../registry/types";
 import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
@@ -96,14 +97,6 @@ function collectSurfaceOwnedEditorTabs(layout: EditorLayout, surfaceId: string):
 
     visit(layout);
     return result;
-}
-
-// English-only entity label passed to the (not-yet-localized) rename dialog's `itemType`.
-function getSurfaceIdentityLabel(surface: UISurface): string {
-    if (surface.id === MAIN_APP_SURFACE_ID) {
-        return DEFAULT_APP_SURFACE_NAME;
-    }
-    return surface.kind === "appSurface" ? "Page" : "Game UI";
 }
 
 // Exported for the quick-open picker, so surfaces open through the exact same tab definition.
@@ -188,7 +181,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         [occupiedStageSlotIds],
     );
     const defaultStageSlotId = useMemo<UIStageSlotId>(() => {
-        return GAME_UI_SLOT_OPTIONS.find(option => !occupiedStageSlotIds.has(option.value))?.value ?? DEFAULT_STAGE_SLOT_ID;
+        return GAME_UI_SLOT_IDS.find(slotId => !occupiedStageSlotIds.has(slotId)) ?? DEFAULT_STAGE_SLOT_ID;
     }, [occupiedStageSlotIds]);
     const defaultDesignSize = useMemo<UISurfaceDesignSize>(() => {
         return surfaces[0]?.designSize ?? DEFAULT_UI_SURFACE_SIZE;
@@ -331,7 +324,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!documentService || !inputDialog || !uiService) {
             return;
         }
-        const name = await inputDialog.showRenameDialog(surface.name, getSurfaceIdentityLabel(surface));
+        const name = await inputDialog.showRenameDialog(surface.name, getSurfaceRenameNoun(surface));
         if (!name) {
             return;
         }
@@ -509,14 +502,14 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!documentService || !currentKindOption) {
             return;
         }
-        if (kind === "stageSurface" && disabledStageSlotIds.length >= GAME_UI_SLOT_OPTIONS.length) {
+        if (kind === "stageSurface" && disabledStageSlotIds.length >= GAME_UI_SLOT_IDS.length) {
             uiService?.showNotification(t("uiEditor.panel.allSlotsUsed"), "info");
             return;
         }
         const suggestedName =
             kind === "appSurface"
                 ? t("uiEditor.naming.page", { index: filteredSurfaces.length + 1 })
-                : t("uiEditor.naming.gameUi", { slot: STAGE_SLOT_LABELS[defaultStageSlotId] });
+                : t("uiEditor.naming.gameUi", { slot: getStageSlotLabel(defaultStageSlotId, t) });
         const selection = await promptCreateSurface(suggestedName);
         if (!selection) {
             return;
