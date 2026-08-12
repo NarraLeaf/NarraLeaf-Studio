@@ -61,6 +61,18 @@ export const build = {
         // Beside a value the selected variant does not state, so a reading that matches the App page
         // says why on the same line that an overridden one does.
         inherited: "From the project",
+        // Where this variant's story stops. Counted from the cut points naming it, so the release
+        // variant - which no cut point can name - always reads as the whole story.
+        boundary: "Content",
+        endsNever: "Plays to the end of the story.",
+        endsAt: {
+            one: "Ends at {count} cut point. Nothing after it is in this build.",
+            other: "Ends at {count} cut points. Nothing after them is in this build.",
+        },
+        variantRows: {
+            one: "{count} row reads the variant and can differ between builds.",
+            other: "{count} rows read the variant and can differ between builds.",
+        },
         blocking: "Blocking this build",
         blockingNone: "Nothing is blocking this build.",
     },

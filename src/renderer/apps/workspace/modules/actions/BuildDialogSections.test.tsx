@@ -348,6 +348,7 @@ describe("the variant page", () => {
             initialContent={{ encryptAssets: false, allowHttp: false }}
             initialPlugins={[]}
             appTagService={null}
+            loadStoryUsage={null}
             onChange={noop}
             onPersistContent={async () => undefined}
             onRescanPlugins={async () => []}
@@ -404,6 +405,7 @@ describe("the variant page", () => {
                 initialContent={{ encryptAssets: false, allowHttp: false }}
                 initialPlugins={[]}
                 appTagService={null}
+            loadStoryUsage={null}
                 onChange={noop}
                 onPersistContent={async () => undefined}
                 onRescanPlugins={async () => []}
@@ -466,6 +468,7 @@ describe("the plugins page", () => {
             initialContent={{ encryptAssets: false, allowHttp: false }}
             initialPlugins={[]}
             appTagService={options.service ?? stubService()}
+            loadStoryUsage={null}
             onChange={noop}
             onPersistContent={async () => undefined}
             onRescanPlugins={async () => []}
