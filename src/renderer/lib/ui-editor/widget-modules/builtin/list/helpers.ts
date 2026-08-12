@@ -5,6 +5,7 @@ import type {
     UIListScrollbarPartStyle,
     UIListScrollbarProps,
 } from "@shared/types/ui-editor/list";
+import { isUIListItemsBindingKind } from "@shared/types/ui-editor/list";
 import {
     defaultListScrollbarPartStyle,
     defaultListScrollbarProps,
@@ -39,19 +40,58 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
     return Math.max(min, Math.min(max, n));
 }
 
+/**
+ * A binding keeps its source with no key yet: picking a source and naming it are two separate
+ * moves in the inspector, and collapsing the half-made binding to nothing put the source dropdown
+ * back on "Preview only" the instant it was changed, so the key field never appeared and no list
+ * could be bound at all. An unnamed binding reads nothing, which is what leaves the list on its
+ * preview items until the key is typed.
+ */
 function normalizeItemsBinding(value: unknown): UIListItemsBinding | null {
     if (!value || typeof value !== "object") {
         return null;
     }
     const raw = value as Partial<UIListItemsBinding>;
-    const key = typeof raw.key === "string" ? raw.key.trim() : "";
-    if (!key) {
+    if (!isUIListItemsBindingKind(raw.kind)) {
         return null;
     }
-    if (raw.kind === "surfaceState" || raw.kind === "globalState") {
-        return { kind: raw.kind, key };
+    return { kind: raw.kind, key: typeof raw.key === "string" ? raw.key.trim() : "" };
+}
+
+/** The three readers a list items binding can point at. Hosts supply whichever they have. */
+export type ListItemsBindingSources = {
+    surfaceState?: { get(key: string): unknown } | null;
+    globalState?: { get(key: string): unknown } | null;
+    /** Props the current page was opened with; absent for hosts that never open pages with props. */
+    pageProps?: Readonly<Record<string, unknown>> | null;
+};
+
+/**
+ * Read the array a list's items binding points at.
+ *
+ * Every host resolves the binding through here so the sources cannot drift apart. A missing key and
+ * a value that is not an array both read as unbound, which is what leaves the list on its preview
+ * items rather than showing an empty list the author never authored.
+ */
+export function resolveListItemsBindingArray(
+    binding: UIListItemsBinding | null | undefined,
+    sources: ListItemsBindingSources,
+): unknown[] | null {
+    if (!binding || !binding.key) {
+        return null;
     }
-    return null;
+    let value: unknown;
+    if (binding.kind === "globalState") {
+        value = sources.globalState?.get(binding.key);
+    } else if (binding.kind === "pageProp") {
+        const props = sources.pageProps;
+        value = props && Object.prototype.hasOwnProperty.call(props, binding.key)
+            ? props[binding.key]
+            : undefined;
+    } else {
+        value = sources.surfaceState?.get(binding.key);
+    }
+    return Array.isArray(value) ? value : null;
 }
 
 function normalizePartStyle(value: unknown, fallback: UIListScrollbarPartStyle): UIListScrollbarPartStyle {
