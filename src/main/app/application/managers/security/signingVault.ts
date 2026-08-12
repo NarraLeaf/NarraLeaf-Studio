@@ -14,10 +14,10 @@ import {
 } from "@shared/types/signing";
 
 /**
- * The machine's code-signing credential vault, under `<userData>/signing/`:
+ * The machine's secret vault, under `<userData>/signing/`:
  *
  *     signing/
- *     ├─ credentials.json        metadata + sealed passwords, 0600
+ *     ├─ credentials.json        metadata + sealed passwords + sealed plugin secrets, 0600
  *     └─ material/<id>/          the imported key material, copied in, 0600
  *
  * Two rules shape everything here.
@@ -39,6 +39,21 @@ import {
  * The keyring is injected rather than imported so this module stays free of
  * Electron and can be unit tested. Imports are relative-free on purpose:
  * `@shared` resolves under both tsc and vitest, `@/` does not.
+ *
+ * # Plugin build secrets
+ *
+ * The index also holds plugin build-config secrets - a Steam publisher token, an
+ * upload key - because they need exactly the sealing, the file mode and the
+ * "never write plaintext" rule the passwords already have, and a second store
+ * would be a second place to get those wrong.
+ *
+ * They are a **sibling record**, not another signing credential kind:
+ * `isSigningCredentialKind` and the credential union stay closed, so nothing a
+ * plugin stores can be offered in a signing slot or reached through
+ * `resolveMaterial`. What links a project to one is a **handle** - a generated
+ * id the project file holds in place of the value. A handle whose secret is not
+ * on this machine is the ordinary state of a project a collaborator configured,
+ * and it reads as set-but-unavailable rather than as empty.
  */
 
 /** The subset of Electron's `safeStorage` the vault needs. Injected for testability. */
@@ -83,9 +98,40 @@ type StoredCredential = SigningCredential & {
     secrets?: Record<string, string>;
 };
 
+/**
+ * One plugin build-config secret as it sits on disk.
+ *
+ * There is no label, no plugin id and no project path here on purpose: the vault
+ * is asked "what is behind this handle", and everything else about the value -
+ * which field it answers, which project holds it - is the project's business and
+ * is recorded there. Keeping it out means a leaked index says as little as
+ * possible about what the author is building.
+ */
+type StoredPluginSecret = {
+    /** What the project file holds in place of the value. */
+    handle: string;
+    createdAt: string;
+    updatedAt: string;
+    /**
+     * safeStorage ciphertext, base64. Absent when the keyring was unavailable
+     * when the value was set - the plaintext is not written in its place, the
+     * same trade `secretUnavailable` makes for a signing password.
+     */
+    sealed?: string;
+};
+
 type CredentialsFile = {
     version: number;
     credentials: StoredCredential[];
+    /** Plugin build-config secrets. Separate array; see the module comment. */
+    pluginSecrets: StoredPluginSecret[];
+};
+
+/** What setting a plugin secret answers: the handle to store, and whether it sealed. */
+export type PluginSecretSetResult = {
+    handle: string;
+    /** False when the keyring refused; the handle is recorded, the value is not. */
+    available: boolean;
 };
 
 export class SigningVault {
@@ -267,6 +313,77 @@ export class SigningVault {
             .every(field => this.unseal(stored.secrets?.[field]) !== null);
     }
 
+    /**
+     * Seal a plugin build-config secret and answer the handle the project stores.
+     *
+     * Pass `handle` to fill in a value the project already refers to - that is the
+     * repair path for a collaborator who has the project but not the secret, and
+     * it is why this accepts a handle instead of always minting one. Without it a
+     * fresh handle is generated, and the caller is responsible for storing it.
+     *
+     * The plaintext is sealed here and kept nowhere else. When the keyring is
+     * unavailable the record is written without it: the handle stays stable so
+     * the author can try again on the same machine, and `available` says plainly
+     * that nothing was stored.
+     */
+    public async setPluginSecret(value: string, handle?: string): Promise<PluginSecretSetResult> {
+        return this.serialize(async () => {
+            if (typeof value !== "string" || !value) {
+                throw new Error("A plugin build secret needs a value");
+            }
+            const requested = typeof handle === "string" ? handle.trim() : "";
+            const id = requested || this.generateId();
+            const available = this.encryptionAvailable();
+            const now = this.now().toISOString();
+
+            const file = await this.readIndex();
+            const existing = file.pluginSecrets.find(secret => secret.handle === id);
+            const sealed = available ? this.sealer.encryptString(value).toString("base64") : undefined;
+            if (existing) {
+                existing.updatedAt = now;
+                if (sealed) {
+                    existing.sealed = sealed;
+                } else {
+                    // Cleared rather than left holding the previous ciphertext: the
+                    // author asked for this value to be the one behind the handle,
+                    // and a build must not quietly use the old one instead.
+                    delete existing.sealed;
+                }
+            } else {
+                file.pluginSecrets.push({ handle: id, createdAt: now, updatedAt: now, ...(sealed ? { sealed } : {}) });
+            }
+            await this.writeIndex(file);
+            return { handle: id, available };
+        });
+    }
+
+    /**
+     * Whether the secret behind this handle can actually be unsealed right now.
+     *
+     * The question every surface asks, and it exists so no surface has to call
+     * {@link resolvePluginSecret} - and hold a real secret - just to ask it.
+     * False covers both "no such handle on this machine" and "the keyring will
+     * not open it", which are the same fact to a caller: the value is not here.
+     */
+    public async pluginSecretAvailable(handle: string): Promise<boolean> {
+        const stored = await this.findPluginSecret(handle);
+        return stored ? this.unseal(stored.sealed) !== null : false;
+    }
+
+    /**
+     * Unseal a plugin build secret for one build. **The only function that
+     * returns one.** Main process only - the result must not cross IPC, be
+     * logged, or be written anywhere.
+     *
+     * `null` for an unknown handle and for one the keyring will not open, which
+     * is the normal state of a project configured on another machine. A throw
+     * here would surface as an opaque build failure instead of a readable one.
+     */
+    public async resolvePluginSecret(handle: string): Promise<string | null> {
+        const stored = await this.findPluginSecret(handle);
+        return stored ? this.unseal(stored.sealed) : null;
+    }
+
     /** Absolute path of a credential's material directory. Useful to the inspector. */
     public materialDir(id: string): string {
         return path.join(this.root, MATERIAL_DIR, safeIdSegment(id));
@@ -309,6 +426,15 @@ export class SigningVault {
         return file.credentials.find(credential => credential.id === id) ?? null;
     }
 
+    private async findPluginSecret(handle: string): Promise<StoredPluginSecret | null> {
+        const wanted = typeof handle === "string" ? handle.trim() : "";
+        if (!wanted) {
+            return null;
+        }
+        const file = await this.readIndex();
+        return file.pluginSecrets.find(secret => secret.handle === wanted) ?? null;
+    }
+
     private serialize<T>(run: () => Promise<T>): Promise<T> {
         const next = this.queue.then(run, run);
         // Keep the chain alive after a rejected operation, without swallowing it
@@ -333,7 +459,7 @@ export class SigningVault {
             raw = await fs.readFile(this.indexPath(), "utf8");
         } catch (error) {
             if (isEnoent(error)) {
-                return { version: FORMAT_VERSION, credentials: [] };
+                return emptyIndex();
             }
             throw error;
         }
@@ -342,15 +468,24 @@ export class SigningVault {
             parsed = JSON.parse(raw);
         } catch {
             await this.quarantineIndex();
-            return { version: FORMAT_VERSION, credentials: [] };
+            return emptyIndex();
         }
         const credentials = (parsed as CredentialsFile | null)?.credentials;
         if (!Array.isArray(credentials)) {
             await this.quarantineIndex();
-            return { version: FORMAT_VERSION, credentials: [] };
+            return emptyIndex();
         }
+        // A malformed plugin secret list is read as none rather than quarantining
+        // the file: the signing credentials in it point at key material on disk
+        // that nothing else records, and losing those to a bad neighbouring field
+        // would cost far more than re-entering a token.
+        const pluginSecrets = (parsed as CredentialsFile | null)?.pluginSecrets;
         // One unusable record must not cost the author the rest of them.
-        return { version: FORMAT_VERSION, credentials: credentials.filter(isUsableCredential) };
+        return {
+            version: FORMAT_VERSION,
+            credentials: credentials.filter(isUsableCredential),
+            pluginSecrets: Array.isArray(pluginSecrets) ? pluginSecrets.filter(isUsablePluginSecret) : [],
+        };
     }
 
     private async quarantineIndex(): Promise<void> {
@@ -367,9 +502,20 @@ export class SigningVault {
         await fs.mkdir(this.root, { recursive: true, mode: DIR_MODE });
         const target = this.indexPath();
         const temporary = `${target}.${crypto.randomBytes(6).toString("hex")}.tmp`;
-        await fs.writeFile(temporary, JSON.stringify(file, null, 2), { mode: FILE_MODE });
+        // The plugin secret list is omitted when empty, so a machine that has only
+        // ever imported signing credentials keeps the file it already had.
+        const payload = {
+            version: file.version,
+            credentials: file.credentials,
+            ...(file.pluginSecrets.length > 0 ? { pluginSecrets: file.pluginSecrets } : {}),
+        };
+        await fs.writeFile(temporary, JSON.stringify(payload, null, 2), { mode: FILE_MODE });
         await fs.rename(temporary, target);
     }
+}
+
+function emptyIndex(): CredentialsFile {
+    return { version: FORMAT_VERSION, credentials: [], pluginSecrets: [] };
 }
 
 /** Strip the sealed secrets. Everything that leaves the vault goes through here. */
@@ -387,6 +533,16 @@ function isUsableCredential(value: unknown): value is StoredCredential {
         && typeof credential.label === "string"
         && isSigningCredentialKind(credential.kind),
     );
+}
+
+/**
+ * A record with no handle answers nothing and can never be looked up, so it is
+ * dropped. A record with no `sealed` is kept: that is exactly "set here, the
+ * keyring would not open it", which the surfaces have to be able to report.
+ */
+function isUsablePluginSecret(value: unknown): value is StoredPluginSecret {
+    const secret = value as Partial<StoredPluginSecret> | null;
+    return Boolean(secret && typeof secret.handle === "string" && secret.handle.length > 0);
 }
 
 /**

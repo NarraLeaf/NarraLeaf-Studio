@@ -3679,6 +3679,30 @@ describe("break", () => {
     });
 });
 
+/**
+ * `/cut` — a marker for the build that assembles one variant's package, and nothing at all here.
+ *
+ * This compiler always plays the story as the author sees it, which is the release edition, and no
+ * cut point ends that one. So the row emits nothing, binds no action id, reports nothing, and above
+ * all does not truncate: the rows after it are the rest of the scene and must still compile.
+ */
+describe("cut point", () => {
+    it("emits nothing and lets the scene carry on past it", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                cut: { id: "cut", kind: "control", parentId: null, childrenIds: [], payload: { control: "cut", appTagId: "tag-demo" } },
+                after: narrationBlock("after", "text-after", "Still here"),
+            }, ["cut", "after"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).not.toContain("cut");
+        expect(boundBlocks).toContain("after");
+    });
+});
+
 describe("diagnostics carry their origin row", () => {
     it("blames the row for a character whose image cannot be resolved, and names the character not its id", async () => {
         // The case the Dev Mode error banner exists for: a `/show` naming a character the project no

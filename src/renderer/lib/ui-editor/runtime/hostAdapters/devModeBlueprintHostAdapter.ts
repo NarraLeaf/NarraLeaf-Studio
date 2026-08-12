@@ -230,6 +230,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 executionId: `flush-cascade-${Date.now()}`,
                 eventId: "flush",
                 message: `Flush cascade exceeded ${MAX_FLUSH_CASCADE_ROUNDS} rounds; dropped pending element flush events: ${elementIds}`,
+                surfaceId: surface.id,
             });
             resolvePendingFlushes(droppedItems);
             return;
@@ -247,6 +248,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                         executionId: `flush-${Date.now()}`,
                         eventId: "flush",
                         message,
+                        surfaceId: surface.id,
                     });
                 } finally {
                     resolvePendingFlushes([item]);

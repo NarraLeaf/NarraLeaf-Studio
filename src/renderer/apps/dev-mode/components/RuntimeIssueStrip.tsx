@@ -72,7 +72,11 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
             ? location.lineNumber > 0
                 ? t("devMode.issues.atLine", { line: location.lineNumber, scene: location.sceneName })
                 : t("devMode.issues.inScene", { scene: location.sceneName })
-            : null;
+            : newest.surface
+              // A Game UI failure has a place too, and it is the one that identifies it: several
+              // surfaces can fail with the same sentence, and only the surface name tells them apart.
+              ? t("devMode.issues.onSurface", { surface: newest.surface.surfaceName })
+              : null;
         headline = where ? `${where} · ${newest.message}` : newest.message;
     } else if (sessionError) {
         headline = sessionError.split("\n").find(line => line.trim().length > 0)?.trim() ?? sessionError;

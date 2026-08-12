@@ -24,4 +24,21 @@ export const game = {
             engine: "{error}",
         },
     },
+    /**
+     * What the game puts on screen when it cannot carry on drawing: a failure inside the game's
+     * own rendering, or a pack it could not read at all.
+     *
+     * Written for the player, not the author. The player's questions are whether their saves are
+     * gone and how to get back in, and those are answered outright; what actually broke is one
+     * click away, because the person who can act on it is whoever they send it to.
+     */
+    crash: {
+        title: "The game stopped working",
+        detail: "Saved games are not affected. Restarting reopens the game at its title screen.",
+        restart: "Restart",
+        showDetails: "Details",
+        copyDetails: "Copy details",
+        copied: "Copied to the clipboard.",
+        copyFailed: "Could not copy: {error}",
+    },
 } as const;

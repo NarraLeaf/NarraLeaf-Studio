@@ -198,6 +198,13 @@ function RuntimeIssueEntry(props: {
                                   })
                                 : t("devMode.issues.inScene", { scene: location.sceneName })}
                         </span>
+                    ) : issue.surface ? (
+                        // A Game UI blueprint failure. It is located too - just on a surface rather
+                        // than on a line - so it gets the same headline treatment and not the
+                        // apologetic "could not be traced" one.
+                        <span className="font-medium">
+                            {t("devMode.issues.onSurface", { surface: issue.surface.surfaceName })}
+                        </span>
                     ) : (
                         <span className="font-medium opacity-80">{t("devMode.issues.noLocation")}</span>
                     )}

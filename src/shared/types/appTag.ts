@@ -1,3 +1,11 @@
+import type { GameBuildPlatform } from "./gameBuild";
+import {
+    isPlatformScopedBuildConfig,
+    isVariantScopedBuildConfig,
+    pluginBuildConfigStorageKey,
+    type PluginBuildConfigField,
+} from "./plugins";
+
 /**
  * App tags - the build variants a project can be shipped as.
  *
@@ -13,6 +21,11 @@
  * nothing is the project, and "restore this key to the inherited value" is `delete overrides[key]`
  * rather than a second place to store the same number. The release tag has no overrides by
  * construction: it *is* the value everything else inherits from.
+ *
+ * A tag also carries a **plugin build config record**, under exactly the same rule: only what this
+ * variant says differently, absent means inherited, restore is a delete. It is a second record
+ * rather than more keys in the first because its keys are not known here - they are declared by
+ * whatever plugins are installed - while the identity keys are a closed list this module owns.
  *
  * There is deliberately **no enabled flag**. A tag exists or it does not, and its existence is the
  * whole fact - the editor, the checks and the build surface all ask the same question of the same
@@ -71,7 +84,16 @@
  * can see and edit, not a rejected edit and a field that snaps back.
  */
 
-/** Persisted document version for `editor/app-tags.json`. Independent of every other document. */
+/**
+ * Persisted document version for `editor/app-tags.json`. Independent of every other document.
+ *
+ * Not bumped when plugin build config was added. The version exists so a document this Studio cannot
+ * read is refused rather than half-understood, and a document written before plugin config simply
+ * has none: the new keys are absent, which is exactly what "this project configures no plugin"
+ * means. Nothing already on disk is read differently, so there is nothing for a bump to protect -
+ * and bumping would make every older Studio refuse the whole document, trading keys it would have
+ * ignored for a project it cannot open.
+ */
 export const APP_TAG_SCHEMA_VERSION = 1 as const;
 
 export type AppTagSchemaVersion = typeof APP_TAG_SCHEMA_VERSION;
@@ -109,6 +131,24 @@ export type AppTagOverrides = {
     version?: string;
 };
 
+/**
+ * Values the installed plugins asked the author for, keyed by plugin id and then by the storage key
+ * the field's scope produces (see {@link pluginBuildConfigStorageKey}).
+ *
+ * Two records of this shape exist: one at the document root, holding the project's own values, and
+ * one per tag, holding only what that variant says differently. That is the same pair the identity
+ * overrides form, and it is read the same way - absent key means inherited, clearing is a delete.
+ *
+ * Keyed by plugin id and not flattened into one namespace so an uninstalled plugin's values are
+ * identifiable as a block: nothing here drops a key merely because no installed plugin claims it,
+ * because "the plugin is not installed on this machine" and "the author cleared this" have to stay
+ * different facts. A collaborator who opens the project without the plugin must not silently write
+ * its values away.
+ *
+ * A `secret` field's value is a handle, not the secret. See `PluginBuildConfigFieldContribution`.
+ */
+export type AppTagPluginConfig = Record<string, Record<string, string>>;
+
 export interface ProjectAppTag {
     /** Stable. What every stored reference holds, so renaming a tag never invalidates one. */
     id: string;
@@ -116,6 +156,11 @@ export interface ProjectAppTag {
     name: string;
     /** Only what this tag says differently. See {@link AppTagOverrides}. */
     overrides: AppTagOverrides;
+    /**
+     * Only the plugin values this variant states itself. Absent when it states none, so a tag that
+     * configures nothing is byte-identical to one written before plugins could ask for anything.
+     */
+    pluginConfig?: AppTagPluginConfig;
     /** Set on the release tag. Derived from the id, never authored, never stored. */
     builtin?: true;
 }
@@ -141,6 +186,14 @@ export type ProjectAppTagDocument = {
     schemaVersion: AppTagSchemaVersion;
     /** Author-created tags only. The release tag is never stored; see {@link RELEASE_APP_TAG}. */
     tags: ProjectAppTag[];
+    /**
+     * The project's own plugin values - what every variant inherits, and what the release tag reads.
+     *
+     * At the document root rather than on a tag because the release tag is synthesized and stores
+     * nothing: there is no record on it for a value to live in, and inventing one would be a second
+     * answer to "what does an unstated key resolve to". Absent when the project configures nothing.
+     */
+    pluginConfig?: AppTagPluginConfig;
     meta?: {
         createdAt?: string;
         updatedAt?: string;
@@ -174,12 +227,99 @@ export function normalizeProjectAppTag(raw: unknown): ProjectAppTag | null {
         return null;
     }
     const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : id;
+    const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
 
     return {
         id,
         name,
         overrides: normalizeAppTagOverrides(record.overrides),
+        // Omitted when empty rather than written as `{}`, so adopting this feature does not rewrite
+        // every tag in every project the author merely opened.
+        ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
     };
+}
+
+/**
+ * A plugin config record as the rest of Studio may assume it: plugin ids and storage keys non-blank,
+ * values non-blank strings, empty plugin records dropped.
+ *
+ * Structural only - it judges the shape, never the meaning. It cannot ask whether a key is declared,
+ * because the declarations come from the installed plugins and this module has none; and it must
+ * not, because the plugin that owns a key may simply not be installed here and dropping the key
+ * would delete a collaborator's work. Deciding a key belongs on the project rather than on a variant
+ * needs the declaration, and that is {@link variantStorablePluginConfig}.
+ */
+export function normalizeAppTagPluginConfig(raw: unknown): AppTagPluginConfig {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const config: AppTagPluginConfig = {};
+    for (const [rawPluginId, rawValues] of Object.entries(raw as Record<string, unknown>)) {
+        const pluginId = rawPluginId.trim();
+        if (!pluginId || !rawValues || typeof rawValues !== "object" || Array.isArray(rawValues)) {
+            continue;
+        }
+        const values: Record<string, string> = {};
+        for (const [rawKey, rawValue] of Object.entries(rawValues as Record<string, unknown>)) {
+            const key = rawKey.trim();
+            // Blank is not a value: it is a field the author has not filled in, and the only spelling
+            // of that is the key being absent.
+            if (!key || typeof rawValue !== "string" || !rawValue.trim()) {
+                continue;
+            }
+            values[key] = rawValue.trim();
+        }
+        if (Object.keys(values).length > 0) {
+            config[pluginId] = values;
+        }
+    }
+    return config;
+}
+
+/** Whether a record says anything at all. `{}` and `{ "acme.plugin": {} }` both say nothing. */
+export function hasAppTagPluginConfig(config: AppTagPluginConfig | undefined): boolean {
+    return Boolean(config && Object.values(config).some(values => Object.keys(values).length > 0));
+}
+
+/**
+ * `config` with the entries a declared field says belong on the project removed.
+ *
+ * A `global`- or `platform`-scoped field has one value for the whole project, so a variant record
+ * holding one is not a smaller override - it is a second answer to a question that has one, and
+ * every reader would have to decide which of the two wins. Dropping it here is what makes "this
+ * field is the same for every variant" a fact about the storage rather than a convention the
+ * surfaces agree to keep.
+ *
+ * Only entries whose field is present in `fields` are judged. A key no declared field claims is left
+ * exactly where it is: its plugin may be uninstalled or disabled on this machine, and a variant that
+ * loses its values because a collaborator opened the project without the plugin is the one failure
+ * this whole record shape exists to avoid.
+ */
+export function variantStorablePluginConfig(
+    config: AppTagPluginConfig,
+    fields: readonly PluginBuildConfigField[],
+): AppTagPluginConfig {
+    const rooted = fields.filter(field => !isVariantScopedBuildConfig(field.scope));
+    if (rooted.length === 0) {
+        return config;
+    }
+    const result: AppTagPluginConfig = {};
+    for (const [pluginId, values] of Object.entries(config)) {
+        const kept: Record<string, string> = {};
+        for (const [storageKey, value] of Object.entries(values)) {
+            // Matched by prefix so a platform-scoped field's `key@windows` spellings are covered
+            // without enumerating the platforms it happens to name.
+            const misplaced = rooted.some(field => field.pluginId === pluginId
+                && (storageKey === field.key || storageKey.startsWith(`${field.key}@`)));
+            if (!misplaced) {
+                kept[storageKey] = value;
+            }
+        }
+        if (Object.keys(kept).length > 0) {
+            result[pluginId] = kept;
+        }
+    }
+    return result;
 }
 
 /** Known keys only, blanks dropped. An unknown key is discarded rather than carried. */
@@ -237,10 +377,12 @@ export function migrateProjectAppTagDocument(raw: unknown): ProjectAppTagDocumen
     const meta = record.meta && typeof record.meta === "object" && !Array.isArray(record.meta)
         ? record.meta as ProjectAppTagDocument["meta"]
         : undefined;
+    const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
 
     return {
         schemaVersion: APP_TAG_SCHEMA_VERSION,
         tags: normalizeProjectAppTags(record.tags),
+        ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
         ...(meta ? { meta } : {}),
     };
 }
@@ -354,6 +496,41 @@ export function resolveAppTagIdentity(tag: ProjectAppTag, base: AppTagBaseIdenti
             : { value: override, overridden: true };
     }
     return resolved;
+}
+
+/**
+ * What one plugin field is set to for this tag, and whether the tag is the reason for it.
+ *
+ * The same `{ value, overridden }` answer {@link resolveAppTagIdentity} gives, for the same reason:
+ * an inherited value and a stated one are the same string, and a surface that cannot tell them apart
+ * cannot say whether restoring would change anything.
+ *
+ * `base` is the project's own record - the document root. A `global`- or `platform`-scoped field
+ * reads it and nothing else, so `overridden` is false for those by construction: the variant has no
+ * say, which is what those scopes mean.
+ *
+ * A blank answer means the field has never been filled in. For a `secret` field a non-blank answer
+ * is a handle, and whether the secret behind it is on *this* machine is a separate question that
+ * only the machine's vault can answer.
+ */
+export function resolveAppTagPluginConfigValue(
+    tag: ProjectAppTag,
+    base: AppTagPluginConfig,
+    field: PluginBuildConfigField,
+    platform?: GameBuildPlatform,
+): AppTagResolvedValue {
+    const storageKey = pluginBuildConfigStorageKey(
+        field.key,
+        isPlatformScopedBuildConfig(field.scope) ? platform : undefined,
+    );
+    const inherited = base[field.pluginId]?.[storageKey] ?? "";
+    if (!isVariantScopedBuildConfig(field.scope)) {
+        return { value: inherited, overridden: false };
+    }
+    const stated = tag.pluginConfig?.[field.pluginId]?.[storageKey];
+    return stated === undefined
+        ? { value: inherited, overridden: false }
+        : { value: stated, overridden: true };
 }
 
 /**

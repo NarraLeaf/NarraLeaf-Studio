@@ -14,6 +14,7 @@ import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/u
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
+import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
 import { readRuntimeTestSignalReporter } from "../gameTestSignal";
@@ -91,14 +92,15 @@ function useRuntimePack(): {
     return { pack, error };
 }
 
+/**
+ * A game that could not read its own pack.
+ *
+ * The same screen a render failure gets, because they are the same event to a player: the game
+ * does not come up. It used to be a full-width stack trace on a red panel, which told the player
+ * nothing they could use and did not even say the game was not coming back.
+ */
 function RuntimeErrorScreen(props: { message: string }): ReactNode {
-    return (
-        <div className="flex h-screen w-screen items-center justify-center bg-neutral-950 p-8 text-neutral-100">
-            <pre className="max-h-full max-w-full overflow-auto whitespace-pre-wrap rounded border border-red-800/70 bg-red-950/50 p-4 text-xs leading-relaxed text-red-100">
-                {props.message}
-            </pre>
-        </div>
-    );
+    return <RuntimeCrashScreen details={props.message} />;
 }
 
 function RuntimeLoadingScreen(): ReactNode {

@@ -83,6 +83,7 @@ export type LintRuleId =
     | "story/dead-end"
     | "story/unreachable-scene"
     | "story/empty-scene"
+    | "story/app-tag-unknown"
     | "blueprint/reference-missing"
     | "blueprint/unreachable-node"
     | "blueprint/empty-event"

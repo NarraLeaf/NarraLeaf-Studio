@@ -211,6 +211,11 @@ function projectBlockLine(
         if (block.payload.control === "break") {
             return { text: `${indent}/break`, editable: false, prefix: "" };
         }
+        if (block.payload.control === "cut") {
+            // The id, because this projection is pure and holds no variant table - the same standing-in
+            // an asset id does on a `/background` line here.
+            return { text: `${indent}/cut ${block.payload.appTagId}`.trimEnd(), editable: false, prefix: "" };
+        }
         // Both loop forms render back as the command that produces them. The conditional one renders
         // as `/until`, not as `/repeat until="…"`: same block, but the greedy positional needs no
         // quotes, so this is both shorter and the spelling an author would actually type.

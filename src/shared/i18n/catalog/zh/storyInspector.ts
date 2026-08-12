@@ -434,6 +434,11 @@ export const storyInspector = {
         until: "何时停止",
         untilHint: "条件为假时重复执行，条件成立时停止；条件在每轮开始前检查，因此初始即成立的条件会使整组一次都不执行",
         breakHint: "跳出本行所在的重复组；不在重复组里时它什么也不做",
+        cutVariant: "构建版本",
+        cutHint: "该版本的剧情在此行结束，其后的内容不进入该版本；其余版本不受影响，也没有这一行",
+        // 这一行指向的版本工程里已经没有了。它和其他失效引用一样按正式版读取，而截断正式版等于不截断。
+        cutMissingVariant: "已删除的版本，现按{name}读取",
+        cutNoVariants: "没有构建版本",
         branch: "分支",
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },
