@@ -2,7 +2,11 @@ import type { DocumentChange, DocumentDiffEntry } from "@shared/documents/diff";
 import { cn } from "@/lib/utils/cn";
 import { CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "../documentChangeView";
 import { splitDocumentPath } from "../changeIndex";
+import type { ComparisonSides } from "./comparisonSide";
 import { presenterFor } from "./registry";
+// Imported for the registration inside it, which is the only thing that puts a presenter in front
+// of anyone. Every presenter that is not the fallback belongs on this list.
+import "./BitmapChangeDetail";
 
 /**
  * The detail half of a comparison: which file is being looked at, and exactly one presenter.
@@ -20,10 +24,12 @@ export interface ChangeDetailHostProps {
     readonly entry: DocumentDiffEntry;
     /** The selected change, when the selection is finer than the file. */
     readonly change?: DocumentChange;
+    /** Which two versions this is a comparison of, for a presenter that reads the file itself. */
+    readonly sides?: ComparisonSides;
     readonly className?: string;
 }
 
-export function ChangeDetailHost({ entry, change, className }: ChangeDetailHostProps) {
+export function ChangeDetailHost({ entry, change, sides, className }: ChangeDetailHostProps) {
     const presenter = presenterFor(entry);
     const { directory, name } = splitDocumentPath(entry.path);
 
@@ -49,7 +55,7 @@ export function ChangeDetailHost({ entry, change, className }: ChangeDetailHostP
                 data-change-presenter={presenter.id}
                 className="min-h-0 flex-1 overflow-y-auto px-3 pb-3"
             >
-                <presenter.Detail entry={entry} change={change} />
+                <presenter.Detail entry={entry} change={change} sides={sides} />
             </div>
         </div>
     );

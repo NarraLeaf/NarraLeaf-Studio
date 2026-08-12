@@ -106,6 +106,29 @@ export const lint = {
             description: "A scene with no content",
             message: "This scene has no rows",
         },
+        blueprintReferenceMissing: {
+            title: "Missing target",
+            description: "A node naming something the project no longer has",
+            // The generic fallback; every kind the rule can resolve has a sentence of its own
+            // below, because "something" is exactly the word an author cannot act on.
+            message: "Names something the project no longer has",
+            messageSurface: "Opens a page that no longer exists",
+            messageStory: "Starts a story that no longer exists",
+            messageScene: "Names a scene that no longer exists",
+            messageChoice: "Names a choice that no longer exists",
+            messageCharacter: "Names a character that no longer exists",
+            messageTextKey: "Names a text key the project does not declare",
+        },
+        blueprintUnreachableNode: {
+            title: "Unreachable node",
+            description: "A node no entry point in its graph can reach",
+            message: "Nothing reaches this node, so it never runs",
+        },
+        blueprintEmptyEvent: {
+            title: "Event that does nothing",
+            description: "An event layer with nothing wired to run",
+            message: "This event runs nothing",
+        },
         variablesUndeclared: {
             title: "Undeclared variable",
             description: "A variable used without a declaration",
@@ -188,6 +211,7 @@ export const lint = {
         portability: "Portability",
         network: "Network",
         story: "Story",
+        blueprint: "Blueprint",
         variables: "Variables",
         text: "Text",
         localization: "Localization",
