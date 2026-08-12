@@ -859,7 +859,8 @@ export const workspace = {
             occurrences: "×{count}",
         },
         // 标题栏里类 PyCharm 的项目选择器：显示当前项目名，下拉列出最近工作区。
-        // 从这里打开的项目各自开一个新窗口，当前窗口留在原地，所以这行文案说的是"打开"不是"切换"。
+        // 从这里选的项目既可以换到当前窗口，也可以另开一个窗口，所以文案说的是「打开」不是「切换」，
+        // 由 `openTarget` 那个对话框问清楚。
         projectSwitcher: {
             openAnother: "打开其他项目",
             recentProjects: "最近项目",
@@ -868,6 +869,14 @@ export const workspace = {
             newProject: "新建项目…",
             noRecent: "无最近工作区",
             untitled: "未命名项目",
+            // 选中项目之后、真正打开之前问的一句。对话框已经写出选中的项目，
+            // 这行说的是当前窗口里那个项目会怎么样，也是按钮上说不出来的部分。
+            openTarget: {
+                title: "打开项目",
+                detail: "在当前窗口打开会关闭「{current}」，未保存的更改会自动保存",
+                thisWindow: "在当前窗口打开",
+                newWindow: "在新窗口打开",
+            },
         },
         closeConfirm: {
             message: "关闭当前工作区？",
