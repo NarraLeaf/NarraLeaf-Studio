@@ -13,6 +13,13 @@ module.exports = {
         // at build time, so they are limited to the utilities this stylesheet
         // already carries.
         './src/builtin-plugins/**/*.{ts,tsx}',
+        // The game runtime, for exactly the same reason: it shares this one stylesheet but is
+        // bundled by build-runtime.js, so nothing here scanned it. Every class the runtime alone
+        // used was therefore never emitted, and the screen a game showed when it failed to read
+        // its pack was styled by whichever of its classes some Studio file happened to use too -
+        // which was none of them. A silent failure by construction: the markup is right, the rule
+        // does not exist, and the only way to see it is to look at the rendered page.
+        './src/runtime/**/*.{ts,tsx}',
         './project/assets/**/*.ejs',
     ],
     // Dark is the default and light is the prefers-color-scheme override (see
