@@ -292,6 +292,7 @@ export class VersionControlService extends Service<VersionControlService> implem
     private readonly events = new EventEmitter<VersionControlServiceEvents>();
     private settings: GlobalSettingsService | null = null;
     private scheduler: CheckpointScheduler | null = null;
+    private stopWatchingWrites: (() => void) | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         try {
@@ -316,13 +317,41 @@ export class VersionControlService extends Service<VersionControlService> implem
      * write observer plus one heartbeat, and nothing reaches the host until a versioned
      * file has actually been written and the configured interval has passed.
      */
-    public override activate(_ctx: WorkspaceContext): void {
+    public override activate(ctx: WorkspaceContext): void {
         this.scheduler?.start();
+        this.watchWritesForStaleness(ctx.project.getConfig().projectPath);
+    }
+
+    /**
+     * Forget the last scan the moment the author writes something.
+     *
+     * A snapshot is only true until the next save, and the panel treats null as "nobody has looked"
+     * rather than as "clean" - so dropping it is what keeps the change list from showing a stale
+     * "No changes" over a project that has been edited since, and what keeps the Submit button live
+     * (`canCommit`). Without this the button would go inert on the last scan's answer and stay
+     * inert while the author worked, which is the opposite of what disabling it was for.
+     *
+     * **Drops, never scans.** Re-reading here would be the implicit scan docs §4.17 forbids, once
+     * per keystroke's worth of auto-save. The same predicate as the checkpoint scheduler's, so the
+     * set of writes that invalidate a scan is the set a scan would have reported.
+     */
+    private watchWritesForStaleness(projectPath: string): void {
+        this.stopWatchingWrites?.();
+        this.stopWatchingWrites = BaseFileSystemService.observeWrites((write) => {
+            if (!write.ok || this.status === null) {
+                return;
+            }
+            if (isFrozenProjectData(projectPath, write.path)) {
+                this.setStatus(null);
+            }
+        });
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
         this.scheduler?.stop();
         this.scheduler = null;
+        this.stopWatchingWrites?.();
+        this.stopWatchingWrites = null;
         this.settings = null;
         this.availability = null;
         this.status = null;
