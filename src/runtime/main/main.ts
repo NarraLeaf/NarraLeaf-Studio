@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { Readable } from "stream";
 import { nativeImage } from "electron";
+import { shell } from "electron";
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session } from "electron/main";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { GameTestEvent } from "@shared/types/gameTest";
@@ -23,6 +24,11 @@ import {
 } from "@shared/utils/gameRuntimeEntrySurface";
 import { resolveSingleByteRange } from "@shared/utils/httpRange";
 import type { BlueprintNetworkFetchRequest } from "@shared/types/blueprint/network";
+import {
+    resolveDeclaredExternalLink,
+    type BlueprintOpenExternalRequest,
+    type BlueprintOpenExternalResult,
+} from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
@@ -1043,6 +1049,33 @@ function registerRuntimeIpc(): void {
     ipcMain.handle("runtime:network:fetch", async (_event, request: BlueprintNetworkFetchRequest) => {
         const pack = await readPack();
         return executeBlueprintNetworkFetch(request, { allowHttp: pack.network?.allowHttp === true });
+    });
+
+    // The Open Link node's request.
+    //
+    // Decided here because this is where it is performed: the renderer names an address, and the
+    // pack - re-read per request, like `allowHttp` above - says whether this build declares it.
+    // Nothing about the renderer's message is trusted, because the renderer is where an author's
+    // graph runs.
+    //
+    // Deliberately not gated on `network.allowHttp`: no request is made and no bytes come back, so
+    // a game shipped with the network off still opens its own store page.
+    ipcMain.handle("runtime:external:open", async (_event, request: BlueprintOpenExternalRequest) => {
+        const pack = await readPack();
+        const decision = resolveDeclaredExternalLink(request, pack.externalLinks);
+        if (!decision.allowed) {
+            logRuntime("warning", `Open Link refused: ${decision.result.error}`);
+            return decision.result;
+        }
+        try {
+            await shell.openExternal(decision.url);
+            return { outcome: "opened", error: null } satisfies BlueprintOpenExternalResult;
+        } catch (error) {
+            return {
+                outcome: "failed",
+                error: error instanceof Error ? error.message : String(error),
+            } satisfies BlueprintOpenExternalResult;
+        }
     });
 
     // Sidecar control.

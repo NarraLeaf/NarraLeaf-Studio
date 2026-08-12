@@ -1,3 +1,4 @@
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
 import type { DevModeSaveRecord } from "./devModeSave";
@@ -195,6 +196,18 @@ export type GameRuntimePackV1 = {
      */
     network?: GameRuntimeNetworkConfig;
     /**
+     * Web addresses this build may hand to the player's browser, resolved for the variant it was
+     * compiled as. Absent on packs produced before this field existed and on projects that declare
+     * none; both mean the same thing, and every shell reads it as "this build opens nothing".
+     *
+     * A field of its own rather than part of {@link network}, for two reasons. That block is
+     * skipped entirely for web exports, and a declaration that vanished on one shell would be a
+     * hole in the only thing standing between a graph and the player's browser. And opening a page
+     * is not a network permission: nothing is requested and nothing comes back into the game, so
+     * this is neither gated on `network.allowHttp` nor disabled with it.
+     */
+    externalLinks?: string[];
+    /**
      * Stage fit + crop anchor. Absent on packs produced before this field existed, which the runtime
      * reads as `contain` — the behaviour every one of those packs shipped with.
      */
@@ -359,6 +372,10 @@ export type GameRuntimeNetworkBridge = {
     fetch(request: BlueprintNetworkFetchRequest): Promise<BlueprintNetworkFetchResult>;
 };
 
+export type GameRuntimeExternalLinkBridge = {
+    open(request: BlueprintOpenExternalRequest): Promise<BlueprintOpenExternalResult>;
+};
+
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
@@ -405,6 +422,15 @@ export type GameRuntimePreloadBridge = {
      * do.
      */
     network: GameRuntimeNetworkBridge;
+    /**
+     * One Open Link node request.
+     *
+     * Present on every shell, and decided differently by each - the desktop shell hands it to the
+     * main process, which re-reads the pack and calls the platform opener; the web export decides
+     * in the page, because a page is all there is. What every shell shares is the decision itself:
+     * only an address the pack declares is opened, and the check is made where the act happens.
+     */
+    externalLink: GameRuntimeExternalLinkBridge;
     /**
      * Absent on shells with no child processes (the web export). Absence is the
      * whole signal - the runtime plugin host passes no sidecar backend when this

@@ -673,6 +673,59 @@ describe("game runtime artifact compiler", () => {
         expect(manifest.narraleaf.userDataDir).toBe("com.studio.other");
     });
 
+    it("carries the addresses the compiled variant declares, and only those", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await fs.writeFile(
+            path.join(projectPath, "editor", "app-tags.json"),
+            JSON.stringify({
+                schemaVersion: 1,
+                externalLinks: ["https://example.com/game"],
+                tags: [{
+                    id: "demo",
+                    name: "Demo",
+                    overrides: {},
+                    externalLinks: ["https://example.com/game", "https://example.com/buy"],
+                }],
+            }),
+            "utf-8",
+        );
+
+        const compile = async (appTag?: { id: string; name: string }) => (await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            ...(appTag ? { appTag } : {}),
+        })).pack;
+
+        // The demo links to the full game's store page; the release build does not, which is the
+        // whole reason this list belongs to the variant.
+        expect((await compile({ id: "demo", name: "Demo" })).externalLinks)
+            .toEqual(["https://example.com/game", "https://example.com/buy"]);
+        expect((await compile()).externalLinks).toEqual(["https://example.com/game"]);
+    });
+
+    it("declares no addresses for a project that lists none", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47331));
+
+        // Absent rather than empty, which every shell reads as "this build opens nothing".
+        expect(result.pack.externalLinks).toBeUndefined();
+    });
+
     it("marks preview app manifests with the preview mode", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");

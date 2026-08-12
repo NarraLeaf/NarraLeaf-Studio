@@ -117,6 +117,16 @@ export const project = {
         // Heading for the scene lists, shown only where the project holds something that can start a
         // scene the build cannot read. Each list below it is labelled with that thing's own name.
         reachableTitle: "Scenes these can start",
+        // The addresses a build of this variant may hand to the player's browser. Named for what the
+        // list decides rather than for the mechanism, and stated as a group: a variant has its own
+        // list or reads the project's.
+        links: {
+            title: "Links the game can open",
+            add: "Add link",
+            remove: "Remove link",
+            placeholder: "https://example.com/store",
+            invalid: "Only addresses starting with http:// or https:// can be opened.",
+        },
         // Beside Delete inside an open variant: the count the confirmation is about to be about.
         usedBy: {
             one: "Used by {count} reference",

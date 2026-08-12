@@ -20,6 +20,8 @@ import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
+import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import { BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
 import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/componentNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
@@ -524,6 +526,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const characterService = context.services.get<CharacterService>(Services.Character);
     const variableRegistry = context.services.get<VariableRegistryService>(Services.VariableRegistry);
     const audioTrackService = context.services.get<AudioTrackService>(Services.AudioTracks);
+    const appTagService = context.services.get<AppTagService>(Services.AppTags);
+    // The declared addresses live in the variants document, so adding one has to reach the
+    // `Open Link` picker without anything touching the blueprint.
+    const [appTagRevision, setAppTagRevision] = useState(0);
+    useEffect(
+        () => appTagService.onTagsChanged(() => setAppTagRevision(r => r + 1)),
+        [appTagService],
+    );
     // Persistent variables live in the M-VAR registry; its edits do not bump the blueprint revision.
     const [registryRevision, setRegistryRevision] = useState(0);
     useEffect(() => variableRegistry.onRegistryChanged(() => setRegistryRevision(r => r + 1)), [variableRegistry]);
@@ -1596,6 +1606,13 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             [BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE]: audioTrackService
                 .listTracks()
                 .map(track => ({ value: track.id, label: track.name })),
+            // The `Open Link` picker. Every address the project and its variants declare, because
+            // the node belongs to no variant: which build opens which of them is settled when a
+            // build is compiled. The address is both the value and the label - there is nothing
+            // else to call it, and the author reads the one they typed.
+            [BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE]: appTagService
+                .listDeclaredExternalLinks()
+                .map(url => ({ value: url, label: url })),
             callableFns: listCallableBlueprintFnOptions({
                 blueprintDocument: doc,
                 uiDocument,
@@ -1648,6 +1665,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         characterLibraryRevision,
         audioTrackService,
         audioTrackRevision,
+        appTagService,
+        appTagRevision,
         nodeCatalog,
         dynamicSelectOptionsRevision,
         doc,

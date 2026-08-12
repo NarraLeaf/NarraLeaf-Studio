@@ -73,7 +73,7 @@ function mount(options: { assetIds: string[]; references: AssetReference[] }): L
                         return { listCharacter: () => [] };
                     // `listTags` synthesizes the release variant, so this list is never empty.
                     case Services.AppTags:
-                        return { listTags: () => [RELEASE_APP_TAG] };
+                        return { listTags: () => [RELEASE_APP_TAG], listDeclaredExternalLinks: () => [] };
                     case Services.VariableRegistry:
                         return { listEntries: () => [], listEntriesInScope: () => [] };
                     case Services.Localization:

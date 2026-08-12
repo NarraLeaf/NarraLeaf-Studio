@@ -31,6 +31,8 @@ import {
     gameRuntimeBundleAssetEntry,
     gameRuntimeBundleRuntimeEntry,
 } from "@shared/utils/gameRuntimeBundle";
+import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
+import { resolveAppTag, resolveAppTagExternalLinks } from "@shared/types/appTag";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { readPublishedPluginData } from "../../pluginRuntimeData";
 // Relative rather than "@/": this module is unit-tested, and the test runner
@@ -273,6 +275,7 @@ export async function compileGameRuntimeArtifact(
     }
 
     const projectConfig = await readProjectConfig(input.projectPath);
+    const externalLinks = await readDeclaredExternalLinks(input.projectPath, input.appTag?.id);
     const blueprintScripts = await compileAllBlueprintScriptsForProject(input.projectPath);
     if (!blueprintScripts.ok) {
         const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
@@ -388,6 +391,11 @@ export async function compileGameRuntimeArtifact(
                     allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
                 },
             }),
+            // Unconditional, unlike `network` above, and deliberately not inside it: a web export
+            // carries no network block, and a declaration that disappeared on one shell would be a
+            // hole in the boundary this list IS. Opening a page is also not a network permission -
+            // nothing is fetched - so `allowHttp` neither enables nor disables it.
+            ...(externalLinks.length > 0 ? { externalLinks } : {}),
             // Unconditional, unlike `network` above: the fit describes the game's art rather than a
             // shell mechanism, and the web export shares its pack with the mobile repack.
             viewport: normalizeGameRuntimeViewportConfig(
@@ -1291,6 +1299,25 @@ function normalizeExtension(rawExt: string | undefined, name: string, type: stri
 
 async function readProjectConfig(projectPath: string): Promise<ProjectConfigData | null> {
     return readProjectConfigFromDir(projectPath);
+}
+
+/**
+ * The addresses this build may open, resolved for the variant it is being compiled as.
+ *
+ * Per variant by nature: a demo links to the full game's store page and the release build does not,
+ * so which list ships is decided by the same tag that decides the build's name. An absent tag is
+ * the release variant, which reads the project's own list.
+ *
+ * A document that will not parse propagates, as it does everywhere else in the build: shipping a
+ * build whose declared addresses could not be read would silently disable every link in it.
+ */
+async function readDeclaredExternalLinks(
+    projectPath: string,
+    appTagId: string | undefined,
+): Promise<string[]> {
+    const document = await readProjectAppTagDocumentFromDir(projectPath);
+    const tag = resolveAppTag(document.tags, appTagId);
+    return resolveAppTagExternalLinks(tag, document.externalLinks).value;
 }
 
 async function readOptionalJson<T>(filePath: string): Promise<T | null> {

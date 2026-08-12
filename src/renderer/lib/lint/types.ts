@@ -87,6 +87,7 @@ export type LintRuleId =
     | "blueprint/reference-missing"
     | "blueprint/unreachable-node"
     | "blueprint/empty-event"
+    | "blueprint/external-link-undeclared"
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"

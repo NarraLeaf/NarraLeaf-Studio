@@ -3,6 +3,7 @@ import {
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
 } from "@shared/types/gameRuntime";
+import { resolveDeclaredExternalLink } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { WebGameStorage } from "./webStorage";
 
@@ -162,6 +163,32 @@ const bridge: GameRuntimePreloadBridge = {
      */
     network: {
         fetch: async request => executeBlueprintNetworkFetch(request, { allowHttp: true }),
+    },
+    /**
+     * The Open Link node, on a page.
+     *
+     * The check is made here because here is where the act happens: a static site has no process
+     * behind it, so "the same process that would perform it" is this one. It reads the same pack
+     * field the desktop shell reads and refuses the same addresses - which is why the field is not
+     * part of `pack.network`, a block a web export never carries.
+     *
+     * A popup blocker can still refuse a declared address when the call did not come from a click.
+     * That is reported as a failure rather than a refusal: the address is declared, the browser
+     * simply did not open it.
+     */
+    externalLink: {
+        open: async request => {
+            const pack = await readPack();
+            const decision = resolveDeclaredExternalLink(request, pack.externalLinks);
+            if (!decision.allowed) {
+                console.warn(`[GameRuntime] Open Link refused: ${decision.result.error}`);
+                return decision.result;
+            }
+            const opened = window.open(decision.url, "_blank", "noopener,noreferrer");
+            return opened
+                ? { outcome: "opened", error: null }
+                : { outcome: "failed", error: "The browser did not open the link." };
+        },
     },
     // `sidecar` is deliberately absent, not stubbed. A browser has no child
     // processes and never will, so there is no honest no-op: a stub would let a

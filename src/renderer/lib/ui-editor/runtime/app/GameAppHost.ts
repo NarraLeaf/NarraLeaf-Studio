@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
@@ -170,6 +171,18 @@ export type GameAppHost = {
      * no running game to play through.
      */
     networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    /**
+     * Open one web address in the player's browser, for the Open Link node.
+     *
+     * Where the check happens is the host's business, and every shell puts it in the process that
+     * performs the act: Dev Mode and the packaged desktop game hand the request to their main
+     * process, the web export decides in the page because there is nothing else. What none of them
+     * do is trust this side — the renderer says which address, never whether.
+     *
+     * Omitted by hosts with nowhere to send it (the workspace story preview). The node then reports
+     * a failure saying so, the same degradation {@link networkFetch} takes.
+     */
+    openExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
 };
 
 /** A read-only view of the current execution stacks (root + in-flight async branches). */
