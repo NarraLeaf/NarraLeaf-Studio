@@ -97,6 +97,28 @@ export const lint = {
             description: "场景里没有内容",
             message: "这个场景里没有任何行",
         },
+        blueprintReferenceMissing: {
+            title: "指向不存在的对象",
+            description: "节点指向了工程里已经没有的东西",
+            // 兜底句；每一类都另有自己的句子，因为「东西」正是作者没法据以行动的那个词。
+            message: "指向了工程里已经没有的东西",
+            messageSurface: "打开的页面已经不存在",
+            messageStory: "开始的故事已经不存在",
+            messageScene: "指向的场景已经不存在",
+            messageChoice: "指向的选项已经不存在",
+            messageCharacter: "指向的角色已经不存在",
+            messageTextKey: "指向的文本键，工程里没有声明过",
+        },
+        blueprintUnreachableNode: {
+            title: "到不了的节点",
+            description: "图里没有任何入口能到达它",
+            message: "没有任何路径能到达这个节点，它不会执行",
+        },
+        blueprintEmptyEvent: {
+            title: "什么都不做的事件",
+            description: "事件层里没有接任何可执行的东西",
+            message: "这个事件什么都不会执行",
+        },
         variablesUndeclared: {
             title: "未声明的变量",
             description: "用到了却没有声明",
@@ -178,6 +200,7 @@ export const lint = {
         portability: "可移植性",
         network: "网络",
         story: "故事",
+        blueprint: "蓝图",
         variables: "变量",
         text: "文本",
         localization: "本地化",

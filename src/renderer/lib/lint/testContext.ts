@@ -15,6 +15,9 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         // The secure default, same as a new project. A test about the network rule turns it on.
         network: { ...DEFAULT_NETWORK_CONFIGURATION },
         stories: [],
+        // Same footing as `assetIndex` below: a rule test asserts on the rule, so what it is given
+        // is the whole project unless the test is about what happens when it is not.
+        storiesComplete: true,
         blueprintDocument: null,
         uiDocument: null,
         assets: [],
@@ -28,6 +31,7 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         persistentNameCollisions: [],
         savedNameCollisions: [],
         localization: null,
+        localizationKeyNames: null,
         voice: null,
         buildPlatforms: [],
         io: {
