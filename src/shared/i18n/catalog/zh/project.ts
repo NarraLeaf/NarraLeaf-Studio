@@ -35,6 +35,7 @@ export const project = {
     group: {
         details: "详情",
         appTags: "构建版本",
+        userData: "玩家文件",
         icons: "图标",
         dependencies: "依赖",
         saving: "存档",
@@ -74,6 +75,23 @@ export const project = {
         copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt；留空则不生成该文件",
         descriptionPlaceholder: "描述你的项目…",
         required: "必填",
+    },
+    // 发布出去的游戏把属于玩家的东西写在哪里。只陈述，不提供开关：这一部分没有任何设置，也不点名
+    // 任何平台，把这些交给谁是作者自己的判断。描述只说这些路径是什么，到此为止。
+    userData: {
+        description: "发布后的游戏把玩家的存档与进度存放在这里。目录名取自标识符，所以改应用名称不会挪动它。",
+        copy: "复制位置",
+        copied: "位置已复制",
+        copyFailed: "无法复制位置",
+        platform: {
+            windows: "Windows",
+            macos: "macOS",
+            linux: "Linux",
+        },
+        content: {
+            saves: "存档槽",
+            persistence: "持久变量、已解锁内容与插件数据",
+        },
     },
     // 构建版本：同一个工程能发布出的几个版本。什么是构建版本、继承是什么意思，都在标题旁 `?` 打开的
     // `appTags` 帮助主题里；这里的文案只命名控件，并说明按下去会发生什么。
