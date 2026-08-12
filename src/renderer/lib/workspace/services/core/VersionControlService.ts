@@ -445,6 +445,21 @@ export class VersionControlService extends Service<VersionControlService> implem
     }
 
     /**
+     * One file's bytes as the working tree holds them now - a comparison's other side.
+     *
+     * **Null means the file is too large to hand over**, which is a fact about the file rather
+     * than a failure: the ceiling is in the main process (`vcs/diff/documentDiff.ts`), a project is
+     * allowed to hold something past it, and a surface has to be able to say so. Everything else
+     * throws, for {@link readBlob}'s reason - and a path outside the project or outside version
+     * control throws loudly on purpose, because no comparison can name one.
+     */
+    public async readWorkingFile(path: string): Promise<Uint8Array | null> {
+        const result = await getInterface().vcs.readWorkingFile(this.projectPath(), path);
+        if (!result.success) throw new Error(result.error);
+        return result.data.contentBase64 === null ? null : decodeBase64(result.data.contentBase64);
+    }
+
+    /**
      * Every document at one revision, in one round trip. `null` means the revision does
      * not contain that path.
      *

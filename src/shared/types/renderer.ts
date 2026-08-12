@@ -53,7 +53,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -516,6 +516,15 @@ export interface RendererPreloadedInterface {
         getHistory(projectPath: string, limit?: number, includeDetails?: boolean): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>;
         /** File contents at a revision, base64-encoded. */
         readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
+        /**
+         * The same file as the working tree holds it now, base64-encoded.
+         *
+         * The comparison's other side, and narrow by design: one repository-relative path, under
+         * version control, under a size ceiling. `refusal: "tooLarge"` with no content is an
+         * answer about a file that is really there. A path outside the project or outside version
+         * control is a failure instead, because no comparison can name one.
+         */
+        readWorkingFile(projectPath: string, path: string): Promise<RequestStatus<VcsWorkingFileRead>>;
         /**
          * Every document at one revision, base64-encoded, in one round trip.
          *

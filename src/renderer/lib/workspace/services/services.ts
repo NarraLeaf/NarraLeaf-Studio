@@ -1254,6 +1254,8 @@ interface IVersionControlService extends IService {
     /** `includeDetails` costs one backend call per revision; leave it off unless they are shown. */
     getHistory(limit?: number, options?: { includeDetails?: boolean }): Promise<VcsHistoryEntry[]>;
     readBlob(revision: RevisionId, path: string): Promise<Uint8Array>;
+    /** The same file on disk now; `null` = it is there and too large to hand over. */
+    readWorkingFile(path: string): Promise<Uint8Array | null>;
     /** Every document at one revision in one round trip; `null` = absent at that revision. */
     readRevisionDocuments(revision: RevisionId, paths?: readonly string[]): Promise<Map<string, string | null>>;
     /** Show a past revision in the real editors. Freezes first; awaitable because it may go to the network. */

@@ -1,7 +1,9 @@
 import type { DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
 import type { RevisionId, VcsRevisionDiffResult } from "@shared/types/vcs";
+import { contentClassOf } from "@shared/vcs/contentClass";
 import { LABEL_MOVED, pairMoves, type ContentProbe, type ContentSide } from "./contentDiff";
 import {
+    classOfReadSides,
     DIFF_PATH_LIMIT,
     DIFF_TOTAL_BYTE_BUDGET,
     diffDocumentBytes,
@@ -173,6 +175,10 @@ export async function diffRevisions(
         const kind = presenceKind(before, after);
         const spec = specForDocumentPath(path);
         const documentKind = spec ? { documentKind: spec.kind } : {};
+        // The name is all this side has until bytes arrive: a revision tree has no ranged fetch,
+        // so nothing here can sniff a header the way the working-tree comparison does. Refined
+        // below for the paths that were read whole anyway.
+        const named = { contentClass: contentClassOf(path) };
 
         const movedFrom = moves.get(path);
         if (movedFrom !== undefined) {
@@ -180,6 +186,7 @@ export async function diffRevisions(
                 path,
                 kind: "moved",
                 ...documentKind,
+                ...named,
                 diff: {
                     changes: [{ path: [], kind: "moved", label: { key: LABEL_MOVED, params: { from: movedFrom } } }],
                     complete: true,
@@ -192,7 +199,7 @@ export async function diffRevisions(
 
         if (planned.has(path)) {
             if (readFailure) {
-                documents.push({ path, kind, ...documentKind, diff: unreadDocumentDiff(kind) });
+                documents.push({ path, kind, ...documentKind, ...named, diff: unreadDocumentDiff(kind) });
                 continue;
             }
             const beforeBytes = base.get(path) ?? null;
@@ -204,6 +211,9 @@ export async function diffRevisions(
                 path,
                 kind,
                 ...documentKind,
+                // The one place this side can do better than the name, and the place it matters:
+                // Studio's content store gives its files no extension at all.
+                contentClass: classOfReadSides(path, afterBytes, beforeBytes),
                 diff: diffDocumentBytes(
                     { path, base: beforeBytes, head: afterBytes, spec },
                     { limit, onDegrade: options.onDegrade },
@@ -216,6 +226,7 @@ export async function diffRevisions(
             path,
             kind,
             ...documentKind,
+            ...named,
             diff: diffDocumentContent(
                 { path, base: sideOf(before), head: sideOf(after) },
                 { limit, onDegrade: options.onDegrade },
@@ -313,6 +324,7 @@ function unreadEntry(path: string, kind: DocumentChangeKind = "changed"): Docume
         path,
         kind,
         ...(spec ? { documentKind: spec.kind } : {}),
+        contentClass: contentClassOf(path),
         diff: unreadDocumentDiff(kind),
     };
 }
