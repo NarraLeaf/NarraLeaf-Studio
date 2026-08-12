@@ -238,20 +238,49 @@ export const documentDiff = {
     },
     /** 某一种格式自己的详情面板所加的词（`renderer/lib/vcs/presenters`）。变更本身怎么读仍在上面的分档键里。 */
     presenter: {
+        /** 两个版本的称呼，所有格式共用一份，避免同一个词在一次对比里出现两种写法。 */
+        before: "更改前",
+        after: "更改后",
         image: {
             modeLabel: "对比方式",
             sideBySide: "并排",
             swipe: "滑动分割",
             difference: "差异",
             splitPosition: "分割位置",
-            before: "更改前",
-            after: "更改后",
             /** 差异模式要求两边像素一一对应，尺寸不同就无从相减。 */
             sizeDiffers: "两个版本尺寸不同，无法逐像素比较",
             /** 画面位置上可能出现的四种状态，各自是不同的事实，不合并成一句。 */
             tooLarge: "该文件过大，无法在此显示",
             unsupported: "该图片格式无法在此显示",
             unreadable: "该图片无法读取",
+        },
+        audio: {
+            play: "播放",
+            pause: "暂停",
+            /** 解码后得到的声道数。 */
+            mono: "单声道",
+            stereo: "立体声",
+            channels: "{count} 声道",
+            /** 波形位置上可能出现的三种状态。 */
+            tooLarge: "该文件过大，无法在此播放",
+            unreadable: "该音频无法读取",
+        },
+        font: {
+            sizeLabel: "字号",
+            /** 样张同时含中英文：只看拉丁字母看不出中文字形是否随字体一起装上。 */
+            sample: "The quick brown fox 0123 汉字排版样张",
+            unreadable: "该字体无法加载",
+            tooLarge: "该文件过大，无法在此显示",
+        },
+        brand: {
+            added: "新增",
+            removed: "删除",
+            unreadable: "该调色板无法读取",
+            tooLarge: "该文件过大，无法在此显示",
+            unchangedOne: "另有 1 个颜色未变",
+            unchangedMany: "另有 {count} 个颜色未变",
+            /** 指向本调色板另一个条目、但最终没有落到颜色上的值：名字不存在，或者成环。 */
+            unresolved: "无颜色",
         },
     },
     /** 变更文件的分组标题，用作者编辑它们的面板名，而不是它们在磁盘上的目录名。 */
