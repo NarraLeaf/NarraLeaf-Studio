@@ -110,6 +110,12 @@ export const project = {
             one: "{count} reference falls back to Release.",
             other: "{count} references fall back to Release.",
         },
+        // The second half of that consequence, for the references that are rows in the script: a cut
+        // point is kept, and one that names no variant ends nothing.
+        deleteDetailCuts: {
+            one: "{count} cut point stays in the script and stops taking effect.",
+            other: "{count} cut points stay in the script and stop taking effect.",
+        },
     },
     assets: {
         master: "Choose the app icon",

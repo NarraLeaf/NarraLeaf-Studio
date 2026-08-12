@@ -5,6 +5,7 @@ import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttCha
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene, StorySceneId } from "@shared/types/story";
+import { isBuiltinAppTagId } from "@shared/types/appTag";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -36,8 +37,8 @@ import {
     characterScopeLead,
     dialogueActionCharacter,
 } from "./storyCharacterActions";
-import { localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
-import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
+import { availableSpecCommands, localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
+import { availableSidebarGroups, browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { getCommandDef, getDefById, localizedCommandToken } from "./commands/registry";
 import { localizeCommandVerb } from "./storyCommandSpelling";
@@ -547,6 +548,12 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                         density an author picks, the more crooked the row's own controls look. */}
                     {containerInfo ? null : (
                         <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                            {/* Mounted only on the rows that are cut points, unlike the two beside it:
+                                a component that answers "not me" still costs a translation
+                                subscription on every row of the screenful. */}
+                            {block.kind === "control" && block.payload.control === "cut"
+                                ? <RowCutPointMark appTagId={block.payload.appTagId} commandContext={props.commandContext} />
+                                : null}
                             {diagnostic ? <RowDiagnosticMark code={diagnostic.code} /> : null}
                             <StoryVoiceIndicator block={block} />
                         </div>
@@ -590,6 +597,37 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     );
 });
 
+
+/**
+ * What a cut point row says about every OTHER build: it is not in them.
+ *
+ * The line itself already names the variant this row ends (`/cut Demo`); what it cannot say is the
+ * half that is about the rows around it — this line exists in one edition and in none of the others,
+ * including the release one the author is looking at. So the fact is stated in words rather than
+ * drawn as a glyph: there is no icon that means "absent from every other build", and one invented for
+ * it would have to be learned from a tooltip that could have been the label.
+ *
+ * A neutral sibling of the lint mark rather than the mark itself: it shares the always-visible slot
+ * (this is meant to be read, not hunted for) but not its warning colour, because a cut point is a
+ * decision the author wrote, not a defect.
+ */
+function RowCutPointMark({ appTagId, commandContext }: { appTagId: string; commandContext: StoryCommandContext }) {
+    const { t } = useTranslation();
+    // The release variant reads as no variant here, the same as an id nothing answers to: it is where
+    // a deleted one lands, and a cut point on the release build ends nothing.
+    const named = commandContext.appTags.find(tag => tag.id === appTagId && !isBuiltinAppTagId(tag.id));
+    return (
+        <span
+            className="shrink-0 truncate text-2xs text-fg-subtle"
+            // The whole sentence on hover, naming the variant; the row shows the short half of it.
+            title={named
+                ? t("story.rows.cutPointTitle", { name: named.name })
+                : t("story.rows.cutPointInactiveTitle")}
+        >
+            {named ? t("story.rows.cutPoint") : t("story.rows.cutPointInactive")}
+        </span>
+    );
+}
 
 /**
  * The lint mark: a small warning glyph beside the voice indicator, with the reason on hover.
@@ -1906,13 +1944,16 @@ export function InsertRow(props: {
             const all = [
                 // The typing/filter tier lists one entry per spec — the ranked flat list is the right
                 // shape while filtering, so a verb appears once even though it files under many subjects.
-                ...specPaletteCommands().map(command => localizeSpecCommand(command, ct)),
+                // Filtered here rather than inside `specPaletteCommands`, which is a module constant
+                // with no project in sight: a command with nothing to name in this project is not
+                // offered (see `StoryCommandSpec.available`).
+                ...availableSpecCommands(specPaletteCommands(), props.commandContext).map(command => localizeSpecCommand(command, ct)),
                 // A plugin action carries the label its own language pack already resolved.
                 ...pluginCommands,
             ];
             return searchActionCommands(scopeName === null ? all : characterScopedActions(all), chooserQuery);
         },
-        [chooserQuery, ct, pluginCommands, scopeName],
+        [chooserQuery, ct, pluginCommands, props.commandContext, scopeName],
     );
     // The browse is the sidebar's projection, not a second catalogue: same `accepts` classification.
     // Handed over undeduped, because the menu's category column needs both readings of it —
@@ -1921,10 +1962,13 @@ export function InsertRow(props: {
     // wants the full filing, where `/show` under 图片 is the answer rather than a repeat.
     const sidebarGroups = useMemo(
         () => {
-            const groups = buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct));
+            const groups = availableSidebarGroups(
+                buildSpecSidebarGroups(pluginCommands, command => localizeSpecCommand(command, ct)),
+                props.commandContext,
+            );
             return scopeName === null ? groups : characterScopedSidebarGroups(groups);
         },
-        [ct, pluginCommands, scopeName],
+        [ct, pluginCommands, props.commandContext, scopeName],
     );
     const characterOptions = useMemo(
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),

@@ -1,6 +1,7 @@
 import type { TranslationKey } from "@shared/i18n";
 import type { PaletteActionCommand } from "../storyActionCommands";
-import { commandDetailKey, commandLabelKey, listCommandSpecs } from "./registry";
+import type { StoryCommandContext } from "../storyCommandValues";
+import { commandDetailKey, commandLabelKey, getCommandSpec, listCommandSpecs } from "./registry";
 
 /**
  * The command specs projected onto the palette-command shape every menu renders.
@@ -25,6 +26,26 @@ const SPEC_PALETTE: readonly PaletteActionCommand[] = listCommandSpecs().map(spe
 
 export function specPaletteCommands(): readonly PaletteActionCommand[] {
     return SPEC_PALETTE;
+}
+
+/**
+ * Whether this project has anything for the command to name - `StoryCommandSpec.available`, read
+ * through the palette id.
+ *
+ * Applied by the surfaces rather than inside {@link specPaletteCommands}, which is a module constant
+ * built once with no project in sight. An id with no spec is a plugin action, which declares no rule
+ * and is therefore always available.
+ */
+export function isSpecCommandAvailable(commandId: string, context: StoryCommandContext): boolean {
+    return getCommandSpec(commandId)?.available?.(context) ?? true;
+}
+
+/** The entries this project can act on. Every browse surface filters through this one call. */
+export function availableSpecCommands(
+    commands: readonly PaletteActionCommand[],
+    context: StoryCommandContext,
+): readonly PaletteActionCommand[] {
+    return commands.filter(command => isSpecCommandAvailable(command.id, context));
 }
 
 /**
