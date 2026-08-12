@@ -1,3 +1,6 @@
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { validatePluginManifest } from "./pluginManifest";
 
@@ -672,6 +675,119 @@ describe("validatePluginManifest — capability/permission alignment", () => {
         expect(result).toMatchObject({
             ok: false,
             error: expect.stringContaining("unsupported platform key"),
+        });
+    });
+});
+
+/**
+ * Build config: the values a plugin needs the author to supply before a build can ship.
+ *
+ * The one behavioural difference from every other code-backed contribution is what it does *not* do
+ * - it derives no install permission - so that is asserted rather than left implied.
+ */
+describe("validatePluginManifest contributes.buildConfig", () => {
+    const buildConfigManifest = (buildConfig: unknown) => ({
+        manifestVersion: 2,
+        id: "acme.steam",
+        name: "Steam",
+        version: "1.0.0",
+        entries: { runtime: "runtime.js" },
+        contributes: { buildConfig },
+    });
+
+    it("normalizes a declared field and defaults the optional halves away", () => {
+        const result = validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "text", scope: "global" },
+        ]));
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: { contributes: { buildConfig: [{ key: "appId", label: "Steam App ID" }] } },
+        });
+        const [field] = (result as { manifest: { contributes: { buildConfig: Record<string, unknown>[] } } })
+            .manifest.contributes.buildConfig;
+        expect(field.description).toBeUndefined();
+        expect(field.platforms).toBeUndefined();
+        expect(field.required).toBeUndefined();
+    });
+
+    it("defaults to an empty list, like every other contribution kind", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.steam",
+            name: "Steam",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+        });
+
+        expect(result).toMatchObject({ ok: true, manifest: { contributes: { buildConfig: [] } } });
+    });
+
+    it("grants nothing: a declared field derives no install permission", () => {
+        const result = validatePluginManifest(buildConfigManifest([
+            { key: "token", label: "Upload token", type: "secret", scope: "variant", required: true },
+        ]));
+
+        expect(result).toMatchObject({ ok: true, manifest: { permissions: [] } });
+    });
+
+    it("refuses two fields under one key", () => {
+        const result = validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "text", scope: "global" },
+            { key: "appId", label: "Steam App ID again", type: "text", scope: "variant" },
+        ]));
+
+        expect(result).toMatchObject({ ok: false, error: expect.stringContaining("more than once") });
+    });
+
+    it("refuses a field nothing on screen would identify", () => {
+        const result = validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "   ", type: "text", scope: "global" },
+        ]));
+
+        expect(result).toMatchObject({ ok: false, error: expect.stringContaining("must declare a label") });
+    });
+
+    it("refuses an unknown type and an unknown scope", () => {
+        expect(validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "password", scope: "global" },
+        ]))).toMatchObject({ ok: false, error: expect.stringContaining("type must be one of") });
+
+        expect(validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "text", scope: "per-build" },
+        ]))).toMatchObject({ ok: false, error: expect.stringContaining("scope must be one of") });
+    });
+
+    it("refuses a platform no build can target, and an empty platform list", () => {
+        expect(validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "text", scope: "platform", platforms: ["switch"] },
+        ]))).toMatchObject({ ok: false, error: expect.stringContaining("unknown platform") });
+
+        expect(validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "text", scope: "platform", platforms: [] },
+        ]))).toMatchObject({ ok: false, error: expect.stringContaining("non-empty array") });
+    });
+
+    it("accepts the fixture package's manifest as it sits on disk", async () => {
+        const manifestPath = path.join(
+            fileURLToPath(new URL("./__fixtures__/plugins/narraleaf.steam-appid-fixture/", import.meta.url)),
+            "manifest.json",
+        );
+        const result = validatePluginManifest(JSON.parse(await fs.readFile(manifestPath, "utf8")));
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                id: "narraleaf.steam-appid-fixture",
+                // The whole point of the fixture: two fields, and no permission from either.
+                permissions: [],
+                contributes: {
+                    buildConfig: [
+                        { key: "appId", type: "text", scope: "global", required: true },
+                        { key: "buildToken", type: "secret", scope: "variant" },
+                    ],
+                },
+            },
         });
     });
 });

@@ -1,0 +1,30 @@
+{
+  "manifestVersion": 2,
+  "id": "narraleaf.steam-appid-fixture",
+  "name": "Steam App ID (fixture)",
+  "version": "1.0.0",
+  "description": "Declares the build configuration a Steam release needs. Test fixture: it ships no behaviour.",
+  "entries": {
+    "runtime": "runtime.js"
+  },
+  "contributes": {
+    "buildConfig": [
+      {
+        "key": "appId",
+        "label": "Steam App ID",
+        "description": "The numeric id Steam issued for this title.",
+        "type": "text",
+        "scope": "global",
+        "platforms": ["windows", "macos", "linux"],
+        "required": true
+      },
+      {
+        "key": "buildToken",
+        "label": "Steam build token",
+        "description": "Authorises uploads to this variant's Steam branch.",
+        "type": "secret",
+        "scope": "variant"
+      }
+    ]
+  }
+}
