@@ -351,6 +351,19 @@ export const build = {
     },
     contentDropped: "{scene} in {story} is not in this build.",
     /**
+     * The reference index gate. Only for a build that removes scenes, and only for a gap in a story
+     * document: a widget whose picture the index cannot identify says nothing about which scenes a
+     * story can reach, and refusing over one would put every variant build behind a URL nobody can
+     * resolve.
+     */
+    contentCoverageGap: "{location} could not be read, so what the {variant} build leaves out cannot be decided.",
+    /** What `{location}` becomes for a gap that is the whole index rather than one document. */
+    contentCoverageWholeProject: "The project",
+    contentCoverageSummary: {
+        one: "Build stopped: the {variant} build removes scenes and {count} document could not be read. See the console.",
+        other: "Build stopped: the {variant} build removes scenes and {count} documents could not be read. See the console.",
+    },
+    /**
      * The media gate. One line per asset, then one summary.
      *
      * Each line has to be actionable on its own, because the console is what an author comes back

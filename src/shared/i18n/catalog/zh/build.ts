@@ -302,6 +302,15 @@ export const build = {
         other: "{variant} 构建包含 {count} 个场景",
     },
     contentDropped: "{story} 中的 {scene} 不在本次构建里",
+    // 只针对会删场景的构建，也只针对剧本文档里的缺口：索引认不出某个控件里的图片，说明不了任何剧本能
+    // 走到哪些场景；为这种缺口拒绝构建，等于让一个谁也解析不了的 URL 永久挡住所有版本构建。
+    contentCoverageGap: "{location} 无法读取，因此无法判断 {variant} 构建应当去掉什么",
+    // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
+    contentCoverageWholeProject: "本工程",
+    contentCoverageSummary: {
+        one: "构建已停止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
+        other: "构建已停止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
+    },
     mediaNeedsConverting: "{asset} 无法播放，请在素材面板中转换",
     mediaNotPlayable: "{asset} 不含音频也不含视频，请替换或删除该文件",
     mediaSummary: {
