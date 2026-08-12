@@ -669,7 +669,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     ]);
 
     /**
-     * Close down to `targetIndex` in one transition. `closeLayer` is this with the default index;
+     * Close down to `targetIndex` in one transition. `goBack` is this with the default index;
      * `clearPages` and `clearGameOverlay` name a lower one.
      */
     const closeToIndex = useCallback((targetIndex: number): Promise<void> => {
@@ -729,7 +729,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return closeToIndex(lastHidden);
     }, [closeToIndex, navigation]);
 
-    const closeLayer = useCallback((): Promise<void> => {
+    const goBack = useCallback((): Promise<void> => {
         const currentStack = navigation.getState().navStack;
         if (currentStack.length <= 1) {
             return Promise.resolve();
@@ -1612,7 +1612,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             lifecycleRef,
             makeStateAccessors,
             openSurfaceWithTransition: openSurface,
-            closeLayerWithTransition: closeLayer,
+            goBackWithTransition: goBack,
             quitApplication: host.quitApplication,
             getFullscreen: host.getFullscreen,
             setFullscreen: host.setFullscreen,
@@ -1771,7 +1771,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         activeSurface,
         bundle,
         clearGameHiddenStudioPages,
-        closeLayer,
+        goBack,
         core,
         deleteSave,
         getChoiceCountInGame,
@@ -1905,7 +1905,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             pageProps: entry.props,
             emit: event => core.debug.emit(event),
             onOpenSurface: openSurface,
-            onCloseLayer: closeLayer,
+            onPageBack: goBack,
             onClearPages: clearPages,
             onClearGameOverlay: clearGameOverlay,
             onQuitApplication: host.quitApplication,
@@ -2004,7 +2004,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         } satisfies HostAdapterBundle;
     }, [
         bundle,
-        closeLayer,
+        goBack,
         core,
         deleteSave,
         getChoiceCountInGame,
@@ -2172,7 +2172,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     },
                     emit: event => core.debug.emit(event),
                     onOpenSurface: openSurface,
-                    onCloseLayer: closeLayer,
+                    onPageBack: goBack,
                     onClearPages: clearPages,
                     onClearGameOverlay: clearGameOverlay,
                     onQuitApplication: host.quitApplication,
@@ -2303,7 +2303,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, [
         bundle,
-        closeLayer,
+        goBack,
         core,
         deleteSave,
         getChoiceCountInGame,

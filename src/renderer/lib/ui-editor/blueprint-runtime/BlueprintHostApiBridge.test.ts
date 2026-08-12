@@ -172,7 +172,7 @@ function createHostApi(options?: {
     onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
     onGetGamePreference?: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
     onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
-    onCloseLayer?: () => Promise<void> | void;
+    onPageBack?: () => Promise<void> | void;
     widgetRuntimeStore?: WidgetRuntimeStateStore;
     onPlaySound?: CreateBlueprintHostApiRuntimeOptions["onPlaySound"];
     onStopSound?: CreateBlueprintHostApiRuntimeOptions["onStopSound"];
@@ -223,7 +223,7 @@ function createHostApi(options?: {
         onSubscribeGamePreferences: options?.onSubscribeGamePreferences,
         emit: () => undefined,
         onOpenSurface: options?.onOpenSurface ?? (() => undefined),
-        onCloseLayer: options?.onCloseLayer ?? (() => undefined),
+        onPageBack: options?.onPageBack ?? (() => undefined),
         onQuitApplication: options?.onQuitApplication,
         onWidgetPatch: options?.onWidgetPatch ?? (() => undefined),
         widgetRuntimeStore: options?.widgetRuntimeStore ?? new WidgetRuntimeStateStore(),
@@ -280,7 +280,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             onOpenSurface: (surfaceId, props) => {
                 opened.push({ surfaceId, props });
             },
-            onCloseLayer: () => {
+            onPageBack: () => {
                 closed.push(true);
             },
         });
