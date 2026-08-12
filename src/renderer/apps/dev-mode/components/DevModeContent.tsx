@@ -53,6 +53,7 @@ import { RuntimeIssueStrip } from "./RuntimeIssueStrip";
 import { RuntimeIssuesPanel } from "./RuntimeIssuesPanel";
 import {
     appendRuntimeIssue,
+    blueprintDebugEventIssue,
     locateRuntimeIssue,
     runtimeIssueKey,
     type LocatedRuntimeIssue,
@@ -785,17 +786,6 @@ export function DevModeContent(props: DevModeContentProps) {
         };
     }, [projectRef]);
 
-    const onDebugEvent = useCallback((event: BlueprintDebugEvent) => {
-        if (!projectPath) {
-            return;
-        }
-        try {
-            getInterface().devMode.forwardBlueprintDebugEvent({ projectPath, event });
-        } catch (error) {
-            console.warn("[DevMode] failed to forward blueprint debug event", error);
-        }
-    }, [projectPath]);
-
     const log = useCallback<GameAppHost["log"]>((level, message) => {
         if (level === "error") {
             console.error(message);
@@ -842,6 +832,32 @@ export function DevModeContent(props: DevModeContentProps) {
         const located = locateRuntimeIssue(current, issue, `issue-${issueSeqRef.current}`);
         setRuntimeIssues(previous => appendRuntimeIssue(previous, located));
     }, []);
+
+    /**
+     * The blueprint debug stream, which this window both forwards and reads.
+     *
+     * Reading it is the half that was missing. A node that threw emitted `execution.error` and
+     * nothing else: the event went over IPC to the Workspace console in the OTHER window, so a Game
+     * UI failure — a quick menu button, a dialogue box, a choice list — left this window saying
+     * "nothing has failed" while the button did nothing. The author's only signal was the silence.
+     *
+     * Both halves stay: the Workspace console is where an author reads a whole session's trace, and
+     * the Issues panel is where they are told something is wrong right now.
+     */
+    const onDebugEvent = useCallback((event: BlueprintDebugEvent) => {
+        const issue = blueprintDebugEventIssue(event);
+        if (issue) {
+            reportIssue(issue);
+        }
+        if (!projectPath) {
+            return;
+        }
+        try {
+            getInterface().devMode.forwardBlueprintDebugEvent({ projectPath, event });
+        } catch (error) {
+            console.warn("[DevMode] failed to forward blueprint debug event", error);
+        }
+    }, [projectPath, reportIssue]);
     useEffect(() => {
         setRuntimeIssues([]);
         setAcknowledgedKeys(NO_ACKNOWLEDGED_KEYS);

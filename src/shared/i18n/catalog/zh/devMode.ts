@@ -12,6 +12,7 @@ export const devMode = {
         sessionFailure: "会话启动失败",
         atLine: "第 {line} 行 · {scene}",
         inScene: "位于 {scene}",
+        onSurface: "位于界面 {surface}",
         noLocation: "无法定位到具体的行",
         viaPlayHead: "播放到此处",
         openInStudio: "在 Studio 中打开",
