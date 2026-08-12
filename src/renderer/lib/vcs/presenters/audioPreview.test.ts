@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { DocumentDiffEntry } from "@shared/documents/diff";
-import { formatClock, formatSampleRate, isAudioEntry, peaksOf, timelineShares } from "./audioPreview";
+import {
+    AUDIO_DECODE_BYTE_BUDGET,
+    estimateDecodedBytes,
+    formatClock,
+    formatSampleRate,
+    isAudioEntry,
+    peaksOf,
+    timelineShares,
+    withinDecodeBudget,
+} from "./audioPreview";
 
 /**
  * The three decisions a sound comparison is made of that are wrong in ways nobody would notice on
@@ -108,5 +117,48 @@ describe("how the numbers read", () => {
         expect(formatSampleRate(44100)).toBe("44.1 kHz");
         expect(formatSampleRate(48000)).toBe("48 kHz");
         expect(formatSampleRate(22050)).toBe("22.1 kHz");
+    });
+});
+
+/**
+ * The decode gate.
+ *
+ * It is checked before decoding on purpose, and that is the whole of what these pin: a budget
+ * consulted after `decodeAudioData` has returned is a budget that has already been spent. Two
+ * sides of a sixteen minute stereo track are some 680 MB, and the read that feeds them is allowed
+ * up to the preview ceiling, so without the gate one row of a list can exhaust the renderer.
+ */
+describe("decode budget", () => {
+    it("measures a decode from the header rather than by attempting it", () => {
+        // Ten minutes, stereo, 44.1 kHz, four bytes a sample.
+        expect(estimateDecodedBytes({ durationMs: 600_000, sampleRate: 44_100, channels: 2 }))
+            .toBe(600 * 44_100 * 2 * 4);
+    });
+
+    it("assumes stereo when the header does not say, because guessing low lets the big ones through", () => {
+        expect(estimateDecodedBytes({ durationMs: 1_000, sampleRate: 44_100 }))
+            .toBe(estimateDecodedBytes({ durationMs: 1_000, sampleRate: 44_100, channels: 2 }));
+    });
+
+    it("refuses a track whose decode would not fit", () => {
+        // Sixteen minutes of stereo is about 340 MB, five times over.
+        expect(withinDecodeBudget({ durationMs: 960_000, sampleRate: 44_100, channels: 2 })).toBe(false);
+    });
+
+    it("admits an ordinary background loop", () => {
+        expect(withinDecodeBudget({ durationMs: 150_000, sampleRate: 44_100, channels: 2 })).toBe(true);
+    });
+
+    it("admits a header that cannot say, because most variable bitrate files cannot", () => {
+        // Refusing the unmeasurable would withhold the waveform for ordinary files; the read
+        // ceiling is the backstop for those.
+        expect(estimateDecodedBytes({ sampleRate: 44_100, channels: 2 })).toBeNull();
+        expect(withinDecodeBudget(null)).toBe(true);
+        expect(withinDecodeBudget({ durationMs: 0, sampleRate: 44_100 })).toBe(true);
+    });
+
+    it("keeps the budget under what one side of a preview read could decode to", () => {
+        // Guards the constant itself: a budget raised past the point of the gate is not a gate.
+        expect(AUDIO_DECODE_BYTE_BUDGET).toBeLessThan(340 * 1024 * 1024);
     });
 });
