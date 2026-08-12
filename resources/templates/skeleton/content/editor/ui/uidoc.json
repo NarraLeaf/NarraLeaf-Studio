@@ -64474,7 +64474,7 @@
       "valueBindings": {
         "text": {
           "kind": "blueprintValue",
-          "blueprintId": "6a89cfda-3bde-4156-8d4c-23e0aa770962",
+          "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78",
           "valueType": "string"
         }
       }
@@ -65126,7 +65126,7 @@
       "valueBindings": {
         "text": {
           "kind": "blueprintValue",
-          "blueprintId": "6a89cfda-3bde-4156-8d4c-23e0aa770962",
+          "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79",
           "valueType": "string"
         }
       }
