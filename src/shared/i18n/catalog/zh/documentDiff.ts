@@ -155,6 +155,24 @@ export const documentDiff = {
     rail: {
         compareWithPrevious: "与上一个版本对比",
     },
+    /** 某一种格式自己的详情面板所加的词（`renderer/lib/vcs/presenters`）。变更本身怎么读仍在上面的分档键里。 */
+    presenter: {
+        image: {
+            modeLabel: "对比方式",
+            sideBySide: "并排",
+            swipe: "滑动分割",
+            difference: "差异",
+            splitPosition: "分割位置",
+            before: "更改前",
+            after: "更改后",
+            /** 差异模式要求两边像素一一对应，尺寸不同就无从相减。 */
+            sizeDiffers: "两个版本尺寸不同，无法逐像素比较",
+            /** 画面位置上可能出现的四种状态，各自是不同的事实，不合并成一句。 */
+            tooLarge: "该文件过大，无法在此显示",
+            unsupported: "该图片格式无法在此显示",
+            unreadable: "该图片无法读取",
+        },
+    },
     /** 变更文件的分组标题，用作者编辑它们的面板名，而不是它们在磁盘上的目录名。 */
     category: {
         story: "故事",

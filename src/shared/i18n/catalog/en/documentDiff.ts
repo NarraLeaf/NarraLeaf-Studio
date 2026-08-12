@@ -219,6 +219,37 @@ export const documentDiff = {
         compareWithPrevious: "Compare with the previous version",
     },
     /**
+     * What a format's own detail says, where one has been written (`renderer/lib/vcs/presenters`).
+     *
+     * Only the words a presenter adds. What a change SAYS is still under the tier keys above and is
+     * the same wherever it is drawn - a presenter that restated one would be a second wording of
+     * the same fact, drifting from the first.
+     */
+    presenter: {
+        image: {
+            /** The three comparisons, as a segmented control. */
+            modeLabel: "Comparison",
+            sideBySide: "Side by side",
+            swipe: "Slider",
+            difference: "Difference",
+            splitPosition: "Split position",
+            before: "Before",
+            after: "After",
+            /**
+             * Why only two of the three are offered.
+             *
+             * The difference mode subtracts one image from the other, which needs the same pixels
+             * in the same places; stretched onto one frame, two sizes differ everywhere and the
+             * result would light up whole and say nothing.
+             */
+            sizeDiffers: "The two versions are different sizes, so they cannot be compared pixel by pixel.",
+            /** Four states a frame can be in instead of a picture, and they stay four. */
+            tooLarge: "This file is too large to show here.",
+            unsupported: "This image format cannot be shown here.",
+            unreadable: "This image could not be read.",
+        },
+    },
+    /**
      * The headings changed files are grouped under.
      *
      * Named after the panels an author edits those things in, not after the folders they live in:
