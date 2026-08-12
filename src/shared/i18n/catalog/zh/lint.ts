@@ -31,6 +31,12 @@ export const lint = {
             message: "{asset} 无法解码",
             messageMissingBytes: "{asset} 的文件内容无法读取",
         },
+        assetsOversized: {
+            title: "文件过大",
+            description: "构建会带上的文件超过了本工程设定的大小",
+            // 两个数字都写进句子：这个文件多大，以及工程定的是多少，这样不用打开设置页也能处理。
+            message: "{asset} 有 {size}，超过了构建应携带的 {limit}",
+        },
         portabilityAssetName: {
             title: "文件名不安全",
             description: "含有部分文件系统不接受的字符或保留名",
@@ -101,6 +107,18 @@ export const lint = {
             title: "未知的构建变体",
             description: "行里比较的变体在工程中不存在",
             message: "没有名为「{name}」的构建变体，这一行不会出现在任何构建里",
+        },
+        storyCutPointOrphan: {
+            title: "截断点没有对应的变体",
+            description: "工程里已经没有构建变体，但剧本里还留着截断点",
+            // 这一行是失效而不是写错，所以句子说的是它现在的状态，而不是作者做了什么。两种处理都写进去，
+            // 因为任何一种都是完整的答案。
+            message: "本工程没有构建变体，这个截断点不会截断任何内容。可以新增一个变体，或者删掉这一行",
+        },
+        storyCutPointUnreachable: {
+            title: "截断点无法到达",
+            description: "截断点所在的场景没有任何路径可以到达",
+            message: "没有任何路径能到达这个场景，这个截断点不会截断任何构建",
         },
         blueprintReferenceMissing: {
             title: "指向不存在的对象",

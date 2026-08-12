@@ -759,3 +759,95 @@ describe("story/app-tag-unknown", () => {
         expect(findings).toEqual([]);
     });
 });
+
+const cut = (id: string, appTagId = "t-demo"): BlockSpec => ({
+    id,
+    kind: "control",
+    payload: { control: "cut", appTagId },
+});
+
+describe("story/cut-point-orphan", () => {
+    const demo: ProjectAppTag = { id: "t-demo", name: "Demo", overrides: {} };
+
+    it("reports a cut point in a project whose only variant is the release one", () => {
+        const findings = run(
+            "story/cut-point-orphan",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Prologue", [narration("n1"), cut("c1")])])],
+                appTags: [RELEASE_APP_TAG],
+            }),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyCutPointOrphan.message");
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "c1" });
+    });
+
+    it("says nothing while the project has a variant, whatever the row names", () => {
+        // Including a row naming a variant that is gone: `story/app-tag-unknown` owns that, and this
+        // rule is about the project having nowhere for any cut point to point.
+        expect(run(
+            "story/cut-point-orphan",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Prologue", [narration("n1"), cut("c1", "t-gone")])])],
+                appTags: [RELEASE_APP_TAG, demo],
+            }),
+        )).toEqual([]);
+    });
+
+    it("says nothing about a disabled row", () => {
+        expect(run(
+            "story/cut-point-orphan",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Prologue", [{ ...cut("c1"), disabled: true }])])],
+                appTags: [RELEASE_APP_TAG],
+            }),
+        )).toEqual([]);
+    });
+});
+
+describe("story/cut-point-unreachable", () => {
+    it("reports a cut point in a scene nothing can get to", () => {
+        const findings = run(
+            "story/cut-point-unreachable",
+            createTestLintContext({
+                stories: [story("s1", "Main", [
+                    scene("sc1", "Prologue", [narration("n1")]),
+                    scene("sc2", "Orphan", [narration("n2"), cut("c1"), narration("n3")]),
+                ], "sc1")],
+            }),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyCutPointUnreachable.message");
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "c1" });
+    });
+
+    it("says nothing about a cut point the story can reach", () => {
+        expect(run(
+            "story/cut-point-unreachable",
+            createTestLintContext({
+                stories: [story("s1", "Main", [
+                    scene("sc1", "Prologue", [jump("j1", "sc2")]),
+                    scene("sc2", "Chapter", [narration("n2"), cut("c1"), narration("n3")]),
+                ], "sc1")],
+            }),
+        )).toEqual([]);
+    });
+
+    it("stays silent when an entry point cannot be read at all", () => {
+        // The same guard `story/unreachable-scene` carries: a wired Start Story target means no
+        // reachability claim can be made, and a rule that flagged every cut point over it is one an
+        // author switches off.
+        expect(run(
+            "story/cut-point-unreachable",
+            createTestLintContext({
+                stories: [story("s1", "Main", [
+                    scene("sc1", "Prologue", [narration("n1")]),
+                    scene("sc2", "Orphan", [narration("n2"), cut("c1"), narration("n3")]),
+                ], "sc1")],
+                blueprintDocument: blueprintWithStartStory({ storyId: "s1", sceneId: "sc2" }, ["sceneId"]),
+            }),
+        )).toEqual([]);
+    });
+});

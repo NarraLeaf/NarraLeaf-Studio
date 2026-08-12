@@ -1,3 +1,6 @@
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { formatBytes } from "@shared/utils/formatBytes";
+import { solveReleaseContent } from "../../build/releaseContent";
 import { AssetType, isBundleAssetType } from "../../workspace/services/assets/assetTypes";
 import type { AssetReference, ReferenceGapReason } from "../../workspace/services/references/referenceModel";
 import { referenceCoverageGapsFor } from "../../workspace/services/assets/assetDeleteGuard";
@@ -282,4 +285,102 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
             return findings;
         },
     },
+    {
+        /**
+         * A file every build carries that is larger than this project says a build should carry.
+         *
+         * ## Why the solver decides which assets count
+         *
+         * `solveReleaseContent` answers which assets the retained content of a package references,
+         * and that is the set worth reporting: an asset nothing points at is `assets/unused`'s
+         * business, and saying it twice in two vocabularies would make the bigger list the one an
+         * author stops reading.
+         *
+         * ## Why one solve answers for every variant
+         *
+         * **Nothing trims assets.** A variant drops scenes; the asset copy walks the library, so an
+         * oversized file ships in every edition whichever one references it. The release variant's
+         * set is also the superset by construction - it sweeps no scene - so solving it once names
+         * every asset any variant could carry. Solving per variant would cost a fold of every story
+         * per variant to produce a subset of this answer.
+         *
+         * ## Why the threshold is declared rather than chosen here
+         *
+         * There is no number that is right for a phone build and for a desktop release, so this
+         * follows `text/overlong`: a declared option the settings panel renders an editor for, with
+         * a default that only reports files large enough that nobody meant them.
+         */
+        id: "assets/oversized",
+        category: "assets",
+        defaultSeverity: "info",
+        slug: "assetsOversized",
+        options: {
+            maxMegabytes: { kind: "number", default: 64, min: 1, max: 4096 },
+        },
+        run(ctx, options) {
+            const megabytes = Number(options.maxMegabytes);
+            if (!Number.isFinite(megabytes) || megabytes <= 0) {
+                return [];
+            }
+            const limit = megabytes * 1024 * 1024;
+            const carried = shippedAssetIds(ctx);
+            const findings: LintFinding[] = [];
+            for (const asset of ctx.assets) {
+                const size = assetByteSize(asset);
+                // A record with no size has never been measured - a remote asset that has not been
+                // fetched is the case - and a rule that read that as zero would say nothing while a
+                // rule that read it as huge would report a file it has never seen.
+                if (size === null || size <= limit || !carried.has(asset.id)) {
+                    continue;
+                }
+                findings.push({
+                    ruleId: "assets/oversized",
+                    messageKey: "lint.rule.assetsOversized.message",
+                    messageParams: { asset: assetLabel(asset), size: formatBytes(size), limit: formatBytes(limit) },
+                    location: { kind: "asset", assetId: asset.id, assetName: assetLabel(asset) },
+                    target: { kind: "asset", assetId: asset.id, assetType: asset.type },
+                });
+            }
+            return findings;
+        },
+    },
 ];
+
+/** The bytes a record was measured at, or null when it has never been measured. */
+function assetByteSize(asset: LintAssetEntry): number | null {
+    const meta = asset.meta;
+    if (!meta || typeof meta !== "object") {
+        return null;
+    }
+    const size = (meta as { size?: unknown }).size;
+    return typeof size === "number" && Number.isFinite(size) && size >= 0 ? size : null;
+}
+
+/**
+ * Every asset a package's retained content references, from the solver.
+ *
+ * Asked of the release variant, which is the superset; see the rule's own note. Answers an empty set
+ * on any failure, which withholds the rule rather than reporting the whole library - the same
+ * bargain `assets/unused` makes with an index it cannot trust.
+ */
+function shippedAssetIds(ctx: LintContext): ReadonlySet<string> {
+    try {
+        const answer = solveReleaseContent({
+            appTag: RELEASE_APP_TAG,
+            // The release variant sweeps nothing, so no declaration and no plugin can change which
+            // scenes are retained - and therefore none can change this answer.
+            projectDeclaredScenes: {},
+            plugins: [],
+            stories: ctx.stories.map(entry => ({ id: entry.id, name: entry.name, document: entry.document })),
+            blueprints: Object.values(ctx.blueprintDocument?.blueprints ?? {}),
+            surfaces: [],
+            localizationKeys: [],
+            assets: ctx.assets.map(asset => ({ id: asset.id, name: asset.name })),
+            assetReferences: ctx.assetReferences,
+        });
+        return new Set(answer.members.filter(member => member.kind === "asset").map(member => member.id));
+    } catch (error) {
+        console.warn("[lint] the release content solver failed, so no asset size is reported", error);
+        return new Set<string>();
+    }
+}

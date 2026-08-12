@@ -40,6 +40,13 @@ export const lint = {
             message: "{asset} cannot be decoded",
             messageMissingBytes: "{asset} cannot be read from disk",
         },
+        assetsOversized: {
+            title: "Large file",
+            description: "A file a build carries that is over the size this project allows",
+            // Both numbers in the sentence: what this file is, and what the project said, so the
+            // finding can be acted on without opening the settings page it came from.
+            message: "{asset} is {size}, over the {limit} a build should carry",
+        },
         portabilityAssetName: {
             title: "Unsafe file name",
             description: "Characters or names some filesystems reject",
@@ -110,6 +117,18 @@ export const lint = {
             title: "Unknown build variant",
             description: "A row compared with a variant the project does not have",
             message: "No build variant is named \"{name}\", so this row is in no build",
+        },
+        storyCutPointOrphan: {
+            title: "Cut point with no variant",
+            description: "A cut point written while the project has no build variant",
+            // The row is inert rather than wrong, so the sentence says what it does now, not what
+            // the author did. Both remedies are in it because either one is a complete answer.
+            message: "This project has no build variant, so this cut point ends nothing. Add a variant, or delete the row",
+        },
+        storyCutPointUnreachable: {
+            title: "Cut point out of reach",
+            description: "A cut point in a scene nothing can get to",
+            message: "Nothing can reach this scene, so this cut point never ends a build",
         },
         blueprintReferenceMissing: {
             title: "Missing target",
