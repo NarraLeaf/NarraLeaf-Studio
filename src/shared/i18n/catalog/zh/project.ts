@@ -107,6 +107,15 @@ export const project = {
         // 只在该字段自己填了值时出现在它旁边，所以它既是「此处被覆盖」的标记，也是取消覆盖的入口。
         restore: "恢复继承",
         reachableTitle: "可以开始的场景",
+        // 该版本的构建可以交给玩家浏览器打开的地址。按这份清单决定什么来命名，而不是按机制；整份
+        // 清单一起覆盖：一个版本要么有自己的清单，要么读工程的。
+        links: {
+            title: "游戏可以打开的链接",
+            add: "新增链接",
+            remove: "移除链接",
+            placeholder: "https://example.com/store",
+            invalid: "只有以 http:// 或 https:// 开头的地址可以打开",
+        },
         // 在打开的版本里紧挨删除按钮：确认框接下来要说的就是这个数字。
         usedBy: {
             one: "被 {count} 处引用",

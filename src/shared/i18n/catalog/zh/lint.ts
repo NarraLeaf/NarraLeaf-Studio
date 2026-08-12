@@ -124,6 +124,11 @@ export const lint = {
             description: "事件层里没有接任何可执行的东西",
             message: "这个事件什么都不会执行",
         },
+        blueprintExternalLinkUndeclared: {
+            title: "未声明的链接",
+            description: "打开链接节点上的地址没有任何构建变体声明过",
+            message: "没有任何构建变体声明 {url}，因此任何构建都不会打开它",
+        },
         variablesUndeclared: {
             title: "未声明的变量",
             description: "用到了却没有声明",

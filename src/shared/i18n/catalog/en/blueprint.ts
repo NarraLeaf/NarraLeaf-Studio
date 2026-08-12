@@ -973,6 +973,7 @@ export const blueprint = {
         onKeyDown: "On Key Down",
         onKeyUp: "On Key Up",
         onPreferenceChanged: "On Preference Changed",
+        openLink: "Open Link",
         openPage: "Open page",
         or: "Or",
         padEnd: "Pad End",

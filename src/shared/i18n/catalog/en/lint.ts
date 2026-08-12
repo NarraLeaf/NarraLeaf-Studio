@@ -134,6 +134,11 @@ export const lint = {
             description: "An event layer with nothing wired to run",
             message: "This event runs nothing",
         },
+        blueprintExternalLinkUndeclared: {
+            title: "Undeclared link",
+            description: "An Open Link node holding an address no build variant declares",
+            message: "{url} is not declared by any build variant, so no build opens it",
+        },
         variablesUndeclared: {
             title: "Undeclared variable",
             description: "A variable used without a declaration",

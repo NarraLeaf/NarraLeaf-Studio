@@ -972,6 +972,7 @@ export const blueprint = {
         onKeyDown: "按键按下时",
         onKeyUp: "按键抬起时",
         onPreferenceChanged: "偏好变更时",
+        openLink: "打开链接",
         openPage: "打开页面",
         or: "或",
         padEnd: "尾部填充",

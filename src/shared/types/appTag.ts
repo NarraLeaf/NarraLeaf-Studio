@@ -178,6 +178,23 @@ export type AppTagDeclaredScene = {
  * undeclared and the build stops, empty means declared to start nothing and it does not.
  */
 export type AppTagReachableScenes = Record<string, AppTagDeclaredScene[]>;
+/**
+ * The web addresses a build may hand to the player's browser, in the order the author listed them.
+ *
+ * Two records of this shape exist - one at the document root and one per tag - under the same rule
+ * the plugin values follow: absent means inherited, and restoring is a delete. It belongs to the
+ * variant rather than to the project because the demo build links to the full game's store page and
+ * the release build does not, so "which pages exist" is a fact about the edition being shipped.
+ *
+ * The list is a whole value rather than a keyed record: a variant states its own list or it states
+ * nothing, because a per-entry override would need an expression for "the project lists this one and
+ * this variant does not", which is a second way of saying a list the variant states itself.
+ *
+ * **This is not a network permission.** Nothing is fetched and nothing comes back into the game; a
+ * page opens in the browser the player already uses. So it is neither gated on the project's Allow
+ * HTTP setting nor disabled with it, and the two must not be folded together.
+ */
+export type AppTagExternalLinks = string[];
 
 export interface ProjectAppTag {
     /** Stable. What every stored reference holds, so renaming a tag never invalidates one. */
@@ -193,6 +210,11 @@ export interface ProjectAppTag {
     pluginConfig?: AppTagPluginConfig;
     /** Only the scene declarations this variant states itself. See {@link AppTagReachableScenes}. */
     reachableScenes?: AppTagReachableScenes;
+    /**
+     * Only the addresses this variant states itself. Absent when it states none, which is how it
+     * says "the project's list"; an empty array is a variant that states it may open nothing.
+     */
+    externalLinks?: AppTagExternalLinks;
     /** Set on the release tag. Derived from the id, never authored, never stored. */
     builtin?: true;
 }
@@ -263,6 +285,13 @@ export type ProjectAppTagDocument = {
      * stores nothing, so there is no record on it for a value to live in.
      */
     reachableScenes?: AppTagReachableScenes;
+    /**
+     * The project's own addresses - what every variant inherits, and what the release tag reads.
+     *
+     * At the document root for the reason `pluginConfig` is: the release tag is synthesized and
+     * stores nothing, so there is no record on it for a value to live in.
+     */
+    externalLinks?: AppTagExternalLinks;
     meta?: {
         createdAt?: string;
         updatedAt?: string;
@@ -307,7 +336,80 @@ export function normalizeProjectAppTag(raw: unknown): ProjectAppTag | null {
         // every tag in every project the author merely opened.
         ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
         ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
+        // Kept whenever the key is present, empty array included: "this variant opens nothing" is a
+        // statement, and dropping an empty list would silently hand it the project's own list.
+        ...(record.externalLinks === undefined
+            ? {}
+            : { externalLinks: normalizeAppTagExternalLinks(record.externalLinks) }),
     };
+}
+
+/**
+ * One entry, as it is stored and compared: an absolute `http:` or `https:` address in the form
+ * `URL` parses it back to. Null for anything else, which is what refuses it at the point the author
+ * types it.
+ *
+ * Parsed rather than pattern-matched because parsing is also what the match at run time does, and
+ * two readings of one address is how an entry gets stored in a spelling that never matches. The
+ * scheme list is the security-bearing half: without it a declared `file:` entry would make this a
+ * way to open local files, and a declared `javascript:` one a way to run script.
+ */
+export function normalizeExternalLinkUrl(raw: unknown): string | null {
+    if (typeof raw !== "string" || !raw.trim()) {
+        return null;
+    }
+    let parsed: URL;
+    try {
+        parsed = new URL(raw.trim());
+    } catch {
+        return null;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return null;
+    }
+    return parsed.href;
+}
+
+/**
+ * A declared list as the rest of Studio may assume it: every entry absolute, `http(s)`, in its
+ * parsed form, no duplicates, author order kept.
+ */
+export function normalizeAppTagExternalLinks(raw: unknown): AppTagExternalLinks {
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    const links: string[] = [];
+    for (const entry of raw) {
+        const url = normalizeExternalLinkUrl(entry);
+        // First wins, as everywhere else a duplicate is dropped: the two entries open the same page,
+        // and the later one is the copy.
+        if (url && !links.includes(url)) {
+            links.push(url);
+        }
+    }
+    return links;
+}
+
+/**
+ * Whether `url` is one of the addresses `declared` names.
+ *
+ * **Exact, on the parsed form, with no wildcards and no prefixes.** Prefix matching was refused
+ * because `https://store.example.com` would then also match `https://store.example.com.evil.test` -
+ * the host is a suffix-structured name, so a prefix over the whole address is not a prefix over the
+ * authority. An author who needs three pages declares three.
+ *
+ * A request that does not parse, or that names any other scheme, is not declared by construction:
+ * the normalizer answers null for it and null is compared against nothing.
+ */
+export function isExternalLinkDeclared(
+    declared: readonly string[] | undefined,
+    url: string,
+): boolean {
+    const requested = normalizeExternalLinkUrl(url);
+    if (!requested || !declared) {
+        return false;
+    }
+    return declared.some(entry => normalizeExternalLinkUrl(entry) === requested);
 }
 
 /**
@@ -516,12 +618,17 @@ export function migrateProjectAppTagDocument(raw: unknown): ProjectAppTagDocumen
         : undefined;
     const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
     const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
+    const externalLinks = normalizeAppTagExternalLinks(record.externalLinks);
 
     return {
         schemaVersion: APP_TAG_SCHEMA_VERSION,
         tags: normalizeProjectAppTags(record.tags),
         ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
         ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
+        // Omitted when empty, unlike a variant's own list: the root record is what a variant that
+        // states nothing reads, and "the project declares none" and "the key is absent" are the
+        // same fact there.
+        ...(externalLinks.length > 0 ? { externalLinks } : {}),
         ...(meta ? { meta } : {}),
     };
 }
@@ -669,6 +776,34 @@ export function resolveAppTagPluginConfigValue(
     return stated === undefined
         ? { value: inherited, overridden: false }
         : { value: stated, overridden: true };
+}
+
+/** A resolved list, and whether the variant is the reason for it. */
+export type AppTagResolvedExternalLinks = {
+    value: AppTagExternalLinks;
+    /** True when the tag states the list itself, false when it is reading the project's. */
+    overridden: boolean;
+};
+
+/**
+ * Which addresses a build under this tag may open, and whether the tag is the reason.
+ *
+ * The same `{ value, overridden }` answer the identity keys and the plugin fields give, for the
+ * same reason: an inherited list and a stated one look identical, and a surface that cannot tell
+ * them apart cannot say whether restoring would change anything.
+ *
+ * `base` is the project's own list - the document root. The release tag stores nothing, so it always
+ * reads that.
+ */
+export function resolveAppTagExternalLinks(
+    tag: ProjectAppTag,
+    base: readonly string[] | undefined,
+): AppTagResolvedExternalLinks {
+    const inherited = normalizeAppTagExternalLinks(base ?? []);
+    if (tag.externalLinks === undefined) {
+        return { value: inherited, overridden: false };
+    }
+    return { value: normalizeAppTagExternalLinks(tag.externalLinks), overridden: true };
 }
 
 /**

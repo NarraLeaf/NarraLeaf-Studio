@@ -553,6 +553,9 @@ export const help = {
                 + "- A variant stores only what it says differently. A field left empty shows the main "
                 + "value and follows it.\n"
                 + "- Restore removes what the variant said, so the field follows main again.\n"
+                + "- A variant lists the links the game can open. A build opens the addresses its "
+                + "variant lists and no others, matched exactly, so a page one address away needs a "
+                + "line of its own.\n"
                 + "- Deleting a variant does not rewrite what pointed at it. Those places read main "
                 + "from then on, and the count beside Delete says how many there are.",
         },
