@@ -56,6 +56,21 @@ export const STORY_EXPR_FUNCTIONS = [
     // Strings. `str`/`num` are the explicit conversions - the coercions the operators apply
     // implicitly, made nameable so an author can force one rather than discover it.
     "upper", "lower", "trim", "replace", "split", "pad", "str", "num",
+    /**
+     * The build variant this package is being produced as, as a string. The odd one out: it is a
+     * compile-time CONSTANT, written `AppTag` with no parentheses (see {@link APP_TAG_EXPR_KEYWORD}),
+     * and it sits in this list only because a zero-argument call is the smallest shape the tree
+     * already has that can carry it.
+     *
+     * A new `StoryExpr` kind would have been the honest spelling and is exactly what must not be
+     * added: every switch over `kind` that a stale build has not seen returns `undefined` for an
+     * unknown one, which reads as "false" rather than as "broken" (see the v14/v15 notes in
+     * `document.ts`). A new `fn`, by contrast, is a member of a closed union that three
+     * `Record<StoryExprFunction, …>` tables index - so the compiler enumerates every site that has to
+     * learn about it, and `isStoryExpressionEvaluable`, the evaluator and the inference stay total
+     * with no edit at all.
+     */
+    "appTag",
 ] as const;
 
 export type StoryExprFunction = typeof STORY_EXPR_FUNCTIONS[number];
@@ -94,6 +109,25 @@ export type StoryVisitedCall = typeof STORY_VISITED_CALLS[number];
 
 export function isStoryVisitedCall(name: string): name is StoryVisitedCall {
     return (STORY_VISITED_CALLS as readonly string[]).includes(name);
+}
+
+/**
+ * The bare word an author writes for the build variant: `AppTag == "Demo"`.
+ *
+ * Matched case-insensitively, the same convention `true` / `false` / `null` follow, and reserved -
+ * a project may not read a variable of this name by its bare spelling. The quoted form `'AppTag'`
+ * still addresses that variable, because quoting means "this exact declared name, verbatim"
+ * everywhere else in the language too.
+ */
+export const APP_TAG_EXPR_KEYWORD = "AppTag";
+
+/** The tree `AppTag` parses to. See the `appTag` entry in {@link STORY_EXPR_FUNCTIONS}. */
+export function appTagExpr(): StoryExpr {
+    return { kind: "call", fn: "appTag", args: [] };
+}
+
+export function isAppTagExpr(expr: StoryExpr): boolean {
+    return expr.kind === "call" && expr.fn === "appTag";
 }
 
 export type StoryExpr =
@@ -202,6 +236,75 @@ export function isStoryExpressionEvaluable(expr: StoryExpr): boolean {
             // Both halves: `inv[i]` is broken by a bad `i` just as surely as by a bad `inv`.
             return isStoryExpressionEvaluable(expr.target) && isStoryExpressionEvaluable(expr.index);
     }
+}
+
+/**
+ * The sub-expressions of one node, in evaluation order.
+ *
+ * One place that states the shape of the tree, so a walk that only needs to *visit* every node does
+ * not have to spell out a switch of its own - and so a node kind added later meets one exhaustive
+ * switch rather than five near-identical ones that each silently stop descending.
+ */
+export function storyExprChildren(expr: StoryExpr): StoryExpr[] {
+    switch (expr.kind) {
+        case "literal":
+        case "var":
+        case "visited":
+        case "invoke":
+        case "invalid":
+            return [];
+        case "unary":
+            return [expr.operand];
+        case "binary":
+            return [expr.left, expr.right];
+        case "ternary":
+            return [expr.test, expr.consequent, expr.alternate];
+        case "call":
+            return expr.args;
+        case "array":
+            return expr.items;
+        case "index":
+            return [expr.target, expr.index];
+    }
+}
+
+/** Whether `AppTag` appears anywhere in the tree. */
+export function storyExpressionMentionsAppTag(expr: StoryExpr): boolean {
+    return isAppTagExpr(expr) || storyExprChildren(expr).some(storyExpressionMentionsAppTag);
+}
+
+/**
+ * Every variant name the tree compares `AppTag` against, deduped, in encounter order.
+ *
+ * Only `AppTag == "…"` and `AppTag != "…"` count, and only against a string literal: those are the
+ * two spellings whose meaning is decided entirely by the variant list, so they are the two a surface
+ * can check a name against. `AppTag == someVariable` names nothing to check.
+ */
+export function collectAppTagComparisonNames(expr: StoryExpr): string[] {
+    const found: string[] = [];
+    const seen = new Set<string>();
+
+    const visit = (node: StoryExpr): void => {
+        if (node.kind === "binary" && (node.op === "==" || node.op === "!=")) {
+            const name = appTagComparedName(node.left, node.right) ?? appTagComparedName(node.right, node.left);
+            if (name !== null && !seen.has(name)) {
+                seen.add(name);
+                found.push(name);
+            }
+        }
+        storyExprChildren(node).forEach(visit);
+    };
+
+    visit(expr);
+    return found;
+}
+
+/** The string `other` holds, when `tag` is the AppTag constant and `other` is a string literal. */
+function appTagComparedName(tag: StoryExpr, other: StoryExpr): string | null {
+    if (!isAppTagExpr(tag) || other.kind !== "literal" || typeof other.value !== "string") {
+        return null;
+    }
+    return other.value;
 }
 
 /** Every variable the tree reads, in encounter order, deduped by ref identity. */

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
@@ -22,8 +23,11 @@ export type GameAppLogLevel = "info" | "warning" | "error";
  *    that throws while a row is running, and a near miss for anything asynchronous — the row named
  *    is where playback WAS, which is a real place to start looking and not a claim about the cause.
  *  - `session`: nothing was running that could be blamed (a boot failure, a reload failure). No row.
+ *  - `interface`: a Game UI blueprint threw. It has no story row at all — the author was not writing
+ *    a story when they wrote it — so the place it names is a SURFACE (see
+ *    {@link GameAppRuntimeIssue.surfaceId}) and the row fields stay empty.
  */
-export type GameAppIssueOrigin = "compile" | "playHead" | "session";
+export type GameAppIssueOrigin = "compile" | "playHead" | "session" | "interface";
 
 /**
  * A runtime failure with its authored origin attached. See {@link GameAppHost.reportIssue}.
@@ -39,6 +43,12 @@ export type GameAppRuntimeIssue = {
     origin: GameAppIssueOrigin;
     /** Studio story block this came from; absent when nothing could be attributed. */
     blockId?: string;
+    /**
+     * UI surface this came from — the other kind of place a failure can have, and the only one an
+     * `interface` issue has. Carried as an id for the same reason `blockId` is: the runtime knows
+     * which surface it was running and nothing about what the author named it.
+     */
+    surfaceId?: string;
     /** The underlying stack, when there was one. Kept for the cases a location cannot explain. */
     stack?: string;
 };
@@ -94,6 +104,16 @@ export type GameAppHost = {
     sessionKey: string;
     /** Surface the navigation stack starts on; null falls back to the default app surface. */
     entrySurfaceId: string | null | undefined;
+    /**
+     * Surface to show when the running story falls off the end, resolved for the variant this build
+     * was produced as. Blank or absent keeps the behaviour every build had before it existed: the
+     * story stops and the stage stays where it is.
+     *
+     * A host supplies it from what it was given, never from a default. There is no page to fall back
+     * on - a screen nobody authored is worse than no screen - and a demo whose cut point IS its
+     * ending may legitimately want the stage left alone.
+     */
+    endingSurfaceId?: string | null;
     /** Gate for boot side effects (appBoot, NLR boot preload, keyboard). Preview: pack+assets ready. */
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */
@@ -161,6 +181,18 @@ export type GameAppHost = {
      * no running game to play through.
      */
     networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    /**
+     * Open one web address in the player's browser, for the Open Link node.
+     *
+     * Where the check happens is the host's business, and every shell puts it in the process that
+     * performs the act: Dev Mode and the packaged desktop game hand the request to their main
+     * process, the web export decides in the page because there is nothing else. What none of them
+     * do is trust this side — the renderer says which address, never whether.
+     *
+     * Omitted by hosts with nowhere to send it (the workspace story preview). The node then reports
+     * a failure saying so, the same degradation {@link networkFetch} takes.
+     */
+    openExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
 };
 
 /** A read-only view of the current execution stacks (root + in-flight async branches). */

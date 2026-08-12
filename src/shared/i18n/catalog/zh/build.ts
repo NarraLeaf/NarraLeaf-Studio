@@ -37,10 +37,16 @@ export const build = {
     },
     outputDir: "输出目录",
     chooseFolder: "选择文件夹…",
+    // 侧边导航。其中六项对应检查结果可以归属的分区；`variant` 是选择构建版本的那一页，
+    // 它决定其余各页描述的是哪一个版本，只在工程存在可选版本时出现；`plugins` 只在有插件
+    // 索要取值时出现。
     section: {
+        variant: "版本",
         targets: "目标",
         identity: "标识",
         content: "内容与保护",
+        // 插件索要的取值。随包发布的插件列在「内容与保护」里，那是另一回事。
+        plugins: "插件",
         signing: "签名",
         output: "输出",
     },
@@ -50,8 +56,26 @@ export const build = {
         arm64: "ARM（arm64）",
         universal: "通用",
     },
+    // 第一页：本次构建产出哪一个版本，以及该版本发布的值。
+    variant: {
+        // 标在「该版本自己未填写」的读数旁边，使继承来的值与被覆盖的值在同一行都给出出处
+        inherited: "来自工程",
+        // 该版本的剧情止于何处。数的是指向它的截断行，因此发布版本恒为完整剧情
+        boundary: "内容",
+        endsNever: "剧情播放至结尾",
+        endsAt: {
+            one: "在 {count} 个截断行处结束，其后的内容不在这份构建里",
+            other: "在 {count} 个截断行处结束，其后的内容不在这份构建里",
+        },
+        variantRows: {
+            one: "有 {count} 行读取了构建版本，在不同版本里可能不同",
+            other: "有 {count} 行读取了构建版本，在不同版本里可能不同",
+        },
+        blocking: "阻止本次构建",
+        blockingNone: "没有阻止本次构建的问题",
+    },
     identity: {
-        // 本次构建属于工程的哪一个发行版本；放在该分区最前，因为下面三行读数都是该版本发布的值
+        // 第一页所做的选择的名称，同时用作那份列表的标签
         variant: "构建版本",
         // 标在「由该版本自己填写、而非继承」的读数旁边，使与「应用」页不一致的值在同一行给出原因
         fromVariant: "来自该构建版本",
@@ -81,6 +105,19 @@ export const build = {
         network: "网络策略",
         networkAllowHttp: "允许明文 HTTP",
         networkStrict: "禁止明文 HTTP",
+    },
+    // 插件页。字段名与说明都来自插件清单，这里只写密文相关的措辞——密文是这一页唯一
+    // 不会显示出来的取值。
+    pluginConfig: {
+        secretUnset: "未设置",
+        // 凭据库还没有回答时的说法。那时只知道「已设置」，写成下面两种读法中的任何一种，
+        // 都会是一个片刻之后自我撤回的判断。
+        secretSet: "已设置",
+        secretHere: "已设置，本机可以读取",
+        secretElsewhere: "在其他设备上设置，本机没有它的值",
+        secretEnter: "输入新的值",
+        clear: "清除",
+        secretFailed: "无法在本机保存这个值",
     },
     signing: {
         empty: "选择一个可签名的目标后，这里会列出对应平台",
@@ -169,11 +206,25 @@ export const build = {
         "version-invalid": "版本号 {version} 不是合法的语义化版本，构建会失败",
         "version-missing": "未设置版本号，将以 0.0.0 构建",
         "identifier-missing": "项目没有标识符，将使用应用 ID {appId}",
+        // 构建本身同样拒绝这个文件，所以这里说明的是中止的原因，而不是替代的取值
+        "variants-unreadable": "无法读取工程的构建版本：{reason}",
         "icon-missing": "未设置应用图标，将使用 NarraLeaf 图标",
         "icon-unusable": "{platform} 图标无法读取，将使用 NarraLeaf 图标",
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
         "icon-stale": "{platform} 图标尚未烘焙，请打开 项目 ▸ 应用 生成",
+        // 这一行看起来像结局，但产出的包和没有这一行完全一样，整本书都会随包发出去。这里报场景名而
+        // 不报行号：构建对话框没有行号栏，作者要打开的也是场景。
+        "cut-point-inert": "{scene}（{story}）中的截断点没有从 {variant} 里去掉任何内容，该构建仍会带上整个剧本",
+        // 只针对真的会截短剧本的版本；两种回答都算作答：选一个页面，或者在该版本上选「不显示任何页面」，
+        // 让画面停在最后一帧。
+        "variant-ending-missing": "{variant} 会提前结束剧本，但没有指定结束后显示的页面。请在 项目 ▸ 应用 ▸ 构建版本 中选择",
+        // 句子里不带数量：对话框用的是普通翻译函数，选不了复数形式，而且这个数字并不比场景名多说什么。
+        "variant-branch-uncut": "从 {scene}（{story}）出发的部分路线上没有截断点，{variant} 会把这些路线整段发出去",
         "plugins-invalid": "插件校验失败：\n{errors}",
+        // {platforms} 是这一个取值需要覆盖的平台：按平台存放时是它所属的那一个，否则是本次
+        // 构建的全部平台。它永远不为空，两种情形下句子读起来一样。
+        "plugin-config-missing": "构建 {platforms} 需要 {plugin} 的「{field}」，该值尚未填写",
+        "plugin-secret-unavailable": "{plugin} 的「{field}」已设置，但值不在本机；密文不会随工程流转；在此重新输入即可构建 {platforms}",
         "build-dependency-unavailable":
             "{plugin} 在 {platform} 上需要构建依赖 {dependency}，本机没有缓存，也无法从 {url} 获取（{reason}）；"
             + "自行下载并另存为 {path} 即可离线构建",
@@ -220,6 +271,45 @@ export const build = {
     invalidCommandSummary: {
         one: "构建已中止：有 {count} 条无效指令，详见控制台",
         other: "构建已中止：有 {count} 条无效指令，详见控制台",
+    },
+    appTagUnresolved: "{story} / {scene} 中 AppTag 没有得出固定值：{source}",
+    appTagUnresolvedSummary: {
+        one: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
+        other: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
+    },
+    appTagGraphUnresolved: "{blueprint} / {graph} 中的应用标签没有得出固定值，请把它与变体名比较，或直接使用它的值",
+    appTagGraphUnknownNode: "{blueprint} / {graph} 既判断了变体，又使用了本次构建无法读取的节点，请把变体判断移到不含该节点的图中",
+    appTagGraphFnHead: "{blueprint} / {graph} 中的变体判断决定了一个 Fn 是否存在，请把该 Fn 移出它决定的分支",
+    appTagGraphSummary: {
+        one: "构建已中止：有 {count} 个蓝图图层的变体判断没有得出固定值，详见控制台",
+        other: "构建已中止：有 {count} 个蓝图图层的变体判断没有得出固定值，详见控制台",
+    },
+    cutPointNested: "{story} / {scene} 中 {variant} 的截断点位于条件或分组内部，请把它移到场景顶层",
+    cutPointNestedSummary: {
+        one: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
+        other: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
+    },
+    contentBlockedStartStory: "{location} 中的开始游戏节点在运行时才确定场景。请在检查器中选定场景，或在 {variant} 版本中列出它可以开始的场景",
+    contentBlockedScript: "蓝图 {location} 使用 TypeScript 编写，可以开始任意场景。请在 {variant} 版本中列出它可以开始的场景",
+    contentBlockedPlugin: "{location} 插件可以开始任意场景。请在 {variant} 版本中列出它可以开始的场景",
+    contentBlockedSummary: {
+        one: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
+        other: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
+    },
+    contentStaleDeclaration: "{variant} 版本中为 {location} 列出的某个场景已不在本工程中",
+    contentKept: {
+        one: "{variant} 构建包含 {count} 个场景",
+        other: "{variant} 构建包含 {count} 个场景",
+    },
+    contentDropped: "{story} 中的 {scene} 不在本次构建里",
+    // 只针对会删场景的构建，也只针对剧本文档里的缺口：索引认不出某个控件里的图片，说明不了任何剧本能
+    // 走到哪些场景；为这种缺口拒绝构建，等于让一个谁也解析不了的 URL 永久挡住所有版本构建。
+    contentCoverageGap: "{location} 无法读取，因此无法判断 {variant} 构建应当去掉什么",
+    // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
+    contentCoverageWholeProject: "本工程",
+    contentCoverageSummary: {
+        one: "构建已停止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
+        other: "构建已停止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
     },
     mediaNeedsConverting: "{asset} 无法播放，请在素材面板中转换",
     mediaNotPlayable: "{asset} 不含音频也不含视频，请替换或删除该文件",

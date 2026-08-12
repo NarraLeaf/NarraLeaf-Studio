@@ -2,18 +2,31 @@ import { describe, expect, it } from "vitest";
 import {
     APP_TAG_ID_RELEASE,
     APP_TAG_SCHEMA_VERSION,
+    appTagMechanismKey,
     countAppTagReferences,
     findAppTagByName,
     hasAppTag,
+    hasAppTagReachableScenes,
+    isExternalLinkDeclared,
     listAppTags,
     migrateProjectAppTagDocument,
+    normalizeAppTagExternalLinks,
+    normalizeAppTagPluginConfig,
+    normalizeAppTagReachableScenes,
+    normalizeExternalLinkUrl,
     normalizeProjectAppTags,
     resolveAppTag,
+    resolveAppTagEndingSurface,
+    resolveAppTagExternalLinks,
     resolveAppTagIdentity,
+    resolveAppTagPluginConfigValue,
+    resolveAppTagReachableScenes,
     uniqueAppTagName,
+    variantStorablePluginConfig,
     type AppTagBaseIdentity,
     type ProjectAppTag,
 } from "./appTag";
+import type { PluginBuildConfigField } from "./plugins";
 
 /**
  * The model half of build variants: what a stored list is allowed to say, what a tag resolves to,
@@ -55,7 +68,7 @@ describe("app tag list", () => {
         ]);
 
         expect(stored.map(entry => entry.id)).toEqual(["demo"]);
-        expect(listAppTags(stored)[0].name).toBe("Release");
+        expect(listAppTags(stored)[0].name).toBe("main");
     });
 
     it("keeps the first of two entries under one id", () => {
@@ -95,7 +108,7 @@ describe("app tag list", () => {
 
 describe("app tag names", () => {
     it("answers the desired name when nothing else has it", () => {
-        expect(uniqueAppTagName(["Release", "Bonus"], "Demo")).toBe("Demo");
+        expect(uniqueAppTagName(["main", "Bonus"], "Demo")).toBe("Demo");
     });
 
     it("numbers from 2, and keeps numbering past the first free-looking one", () => {
@@ -107,14 +120,12 @@ describe("app tag names", () => {
         expect(uniqueAppTagName(["demo"], "Demo")).toBe("Demo 2");
     });
 
-    it("treats whatever the caller says release is called as taken", () => {
-        // The model spells it "Release"; the surface may show a translated word, and a variant named
-        // that word would be a second answer to a name the command slot resolves.
-        expect(uniqueAppTagName(["Release", "正式版"], "正式版")).toBe("正式版 2");
+    it("keeps a variant off the release name, which is the same word in every language", () => {
+        expect(uniqueAppTagName(["main"], "main")).toBe("main 2");
     });
 
     it("falls back to the release name for a blank request rather than answering blank", () => {
-        expect(uniqueAppTagName([], "   ")).toBe("Release");
+        expect(uniqueAppTagName([], "   ")).toBe("main");
     });
 });
 
@@ -175,5 +186,346 @@ describe("app tag references", () => {
         cyclic.self = cyclic;
 
         expect(countAppTagReferences([cyclic], ["demo"])).toEqual({ demo: 1 });
+    });
+});
+
+/**
+ * The plugin half: what a stored record may say, what a variant may say it differently, and the
+ * one rule that separates the two - a field with a single value for the whole project cannot be
+ * stated on a variant, so nothing reads one that is.
+ */
+const buildField = (
+    pluginId: string,
+    key: string,
+    scope: PluginBuildConfigField["scope"],
+): PluginBuildConfigField => ({
+    pluginId,
+    pluginName: pluginId,
+    key,
+    label: key,
+    type: "text",
+    scope,
+});
+
+describe("app tag plugin config", () => {
+    it("keeps well-formed values and drops what says nothing", () => {
+        expect(normalizeAppTagPluginConfig({
+            "acme.steam": { appId: " 480 ", blank: "   ", missing: 7 },
+            "acme.empty": {},
+            "  ": { appId: "1" },
+            broken: [],
+        })).toEqual({ "acme.steam": { appId: "480" } });
+    });
+
+    it("reads an unusable record as empty rather than throwing", () => {
+        expect(normalizeAppTagPluginConfig(undefined)).toEqual({});
+        expect(normalizeAppTagPluginConfig("nonsense")).toEqual({});
+        expect(normalizeAppTagPluginConfig([{ appId: "480" }])).toEqual({});
+    });
+
+    it("omits the record entirely when a tag states nothing", () => {
+        const normalized = normalizeProjectAppTags([
+            { id: "demo", name: "Demo", pluginConfig: { "acme.steam": {} } },
+        ]);
+
+        expect(normalized[0].pluginConfig).toBeUndefined();
+    });
+
+    it("carries the project's own record through a document migration", () => {
+        const document = migrateProjectAppTagDocument({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [],
+            pluginConfig: { "acme.steam": { appId: "480" } },
+        });
+
+        expect(document.pluginConfig).toEqual({ "acme.steam": { appId: "480" } });
+    });
+
+    it("leaves a document that predates plugin config without the key", () => {
+        const document = migrateProjectAppTagDocument({ schemaVersion: APP_TAG_SCHEMA_VERSION, tags: [] });
+
+        expect(document.pluginConfig).toBeUndefined();
+    });
+
+    it("reads a variant's own value, and the project's when it states none", () => {
+        const demo: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            pluginConfig: { "acme.steam": { branch: "beta" } },
+        };
+        const base = { "acme.steam": { branch: "default", appId: "480" } };
+
+        expect(resolveAppTagPluginConfigValue(demo, base, buildField("acme.steam", "branch", "variant")))
+            .toEqual({ value: "beta", overridden: true });
+        expect(resolveAppTagPluginConfigValue(demo, base, buildField("acme.steam", "appId", "variant")))
+            .toEqual({ value: "480", overridden: false });
+        expect(resolveAppTagPluginConfigValue(demo, base, buildField("acme.steam", "unset", "variant")))
+            .toEqual({ value: "", overridden: false });
+    });
+
+    it("reads a global field from the project even when the variant holds one", () => {
+        const demo: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            pluginConfig: { "acme.steam": { appId: "999" } },
+        };
+
+        expect(resolveAppTagPluginConfigValue(demo, { "acme.steam": { appId: "480" } }, buildField("acme.steam", "appId", "global")))
+            .toEqual({ value: "480", overridden: false });
+    });
+
+    it("keys a platform-scoped field per platform", () => {
+        const demo: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            pluginConfig: { "acme.steam": { "depot@windows": "1001" } },
+        };
+        const field = buildField("acme.steam", "depot", "variant-platform");
+
+        expect(resolveAppTagPluginConfigValue(demo, {}, field, "windows"))
+            .toEqual({ value: "1001", overridden: true });
+        expect(resolveAppTagPluginConfigValue(demo, {}, field, "macos"))
+            .toEqual({ value: "", overridden: false });
+    });
+
+    it("drops a variant entry for a field the project owns, and leaves undeclared keys alone", () => {
+        const stored = {
+            "acme.steam": { appId: "999", branch: "beta", "depot@windows": "1001" },
+            "acme.uninstalled": { anything: "kept" },
+        };
+
+        expect(variantStorablePluginConfig(stored, [
+            buildField("acme.steam", "appId", "global"),
+            buildField("acme.steam", "branch", "variant"),
+            buildField("acme.steam", "depot", "platform"),
+        ])).toEqual({
+            "acme.steam": { branch: "beta" },
+            "acme.uninstalled": { anything: "kept" },
+        });
+    });
+});
+
+describe("app tag scene declarations", () => {
+    const NODE = appTagMechanismKey({
+        kind: "startStoryNode",
+        blueprintId: "bp-1",
+        graphKind: "event",
+        graphId: "ev-1",
+        nodeId: "n-1",
+    });
+
+    it("keeps well-formed pairs and drops what cannot be one", () => {
+        expect(normalizeAppTagReachableScenes({
+            [NODE]: [
+                { storyId: " story-1 ", sceneId: " scene-1 " },
+                { storyId: "story-1", sceneId: "scene-1" },
+                { storyId: "story-1", sceneId: "  " },
+                { storyId: 7, sceneId: "scene-2" },
+                "nonsense",
+            ],
+            "  ": [{ storyId: "story-1", sceneId: "scene-9" }],
+            "plugin:acme.thing": "not a list",
+        })).toEqual({ [NODE]: [{ storyId: "story-1", sceneId: "scene-1" }] });
+    });
+
+    it("keeps a declared empty list, which is not the same as no declaration", () => {
+        // Absent means undeclared and the build stops; empty means the author said this mechanism
+        // starts nothing here, and it does not.
+        const declared = normalizeAppTagReachableScenes({ [NODE]: [] });
+
+        expect(declared[NODE]).toEqual([]);
+        expect(hasAppTagReachableScenes(declared)).toBe(true);
+    });
+
+    it("keeps a declaration whose scene the project no longer has", () => {
+        // Dropping it would delete the author's answer and turn their next build into a refusal they
+        // never asked for. Reporting the stale scene is the surfaces' job, not the normalizer's.
+        expect(normalizeAppTagReachableScenes({ [NODE]: [{ storyId: "gone", sceneId: "gone" }] }))
+            .toEqual({ [NODE]: [{ storyId: "gone", sceneId: "gone" }] });
+    });
+
+    it("reads an unusable record as empty rather than throwing", () => {
+        expect(normalizeAppTagReachableScenes(undefined)).toEqual({});
+        expect(normalizeAppTagReachableScenes("nonsense")).toEqual({});
+        expect(normalizeAppTagReachableScenes([])).toEqual({});
+    });
+
+    it("lets a variant replace the project's list rather than adding to it", () => {
+        // A demo whose chapter select offers one chapter is stating a smaller set; a union would
+        // hand it the chapters it exists to leave out.
+        const tag: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            reachableScenes: { [NODE]: [{ storyId: "s", sceneId: "chapter-1" }] },
+        };
+        const base = {
+            [NODE]: [
+                { storyId: "s", sceneId: "chapter-1" },
+                { storyId: "s", sceneId: "chapter-2" },
+            ],
+            "plugin:acme.thing": [{ storyId: "s", sceneId: "gallery" }],
+        };
+
+        expect(resolveAppTagReachableScenes(tag, base)).toEqual({
+            [NODE]: [{ storyId: "s", sceneId: "chapter-1" }],
+            // Untouched keys stay inherited, which is what "states only what it says differently" means.
+            "plugin:acme.thing": [{ storyId: "s", sceneId: "gallery" }],
+        });
+    });
+
+    it("gives the three mechanism kinds keys that cannot collide", () => {
+        const keys = [
+            appTagMechanismKey({ kind: "scriptBlueprint", blueprintId: "shared-id" }),
+            appTagMechanismKey({ kind: "plugin", pluginId: "shared-id" }),
+            NODE,
+        ];
+
+        expect(new Set(keys).size).toBe(3);
+    });
+
+    it("carries both records through a document migration", () => {
+        const document = migrateProjectAppTagDocument({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [{ id: "demo", name: "Demo", reachableScenes: { [NODE]: [] } }],
+            reachableScenes: { [NODE]: [{ storyId: "s", sceneId: "sc" }] },
+        });
+
+        expect(document.reachableScenes).toEqual({ [NODE]: [{ storyId: "s", sceneId: "sc" }] });
+        expect(document.tags[0].reachableScenes).toEqual({ [NODE]: [] });
+    });
+
+    it("omits the record entirely when nothing is declared", () => {
+        const document = migrateProjectAppTagDocument({ schemaVersion: APP_TAG_SCHEMA_VERSION, tags: [] });
+
+        expect(document.reachableScenes).toBeUndefined();
+        expect(normalizeProjectAppTags([{ id: "demo", name: "Demo", reachableScenes: {} }])[0].reachableScenes)
+            .toBeUndefined();
+    });
+});
+
+describe("app tag external links", () => {
+    it("keeps absolute http and https entries in the form a match compares", () => {
+        expect(normalizeAppTagExternalLinks([
+            " https://store.example.com/app/480 ",
+            "http://example.com",
+        ])).toEqual(["https://store.example.com/app/480", "http://example.com/"]);
+    });
+
+    it("refuses anything that is not an absolute web address", () => {
+        expect(normalizeExternalLinkUrl("file:///C:/secrets.txt")).toBeNull();
+        expect(normalizeExternalLinkUrl("javascript:alert(1)")).toBeNull();
+        expect(normalizeExternalLinkUrl("app://asset/1")).toBeNull();
+        expect(normalizeExternalLinkUrl("/app/480")).toBeNull();
+        expect(normalizeExternalLinkUrl("store.example.com")).toBeNull();
+        expect(normalizeExternalLinkUrl("")).toBeNull();
+        expect(normalizeAppTagExternalLinks("nonsense")).toEqual([]);
+    });
+
+    it("drops a repeated entry and keeps author order", () => {
+        expect(normalizeAppTagExternalLinks([
+            "https://b.example.com/",
+            "https://a.example.com/",
+            "https://b.example.com",
+        ])).toEqual(["https://b.example.com/", "https://a.example.com/"]);
+    });
+
+    it("matches exactly, so a declared host does not cover a lookalike", () => {
+        const declared = ["https://store.example.com"];
+
+        expect(isExternalLinkDeclared(declared, "https://store.example.com/")).toBe(true);
+        expect(isExternalLinkDeclared(declared, " https://store.example.com ")).toBe(true);
+        expect(isExternalLinkDeclared(declared, "https://store.example.com.evil.test/")).toBe(false);
+        expect(isExternalLinkDeclared(declared, "https://store.example.com/app/480")).toBe(false);
+        expect(isExternalLinkDeclared(declared, "http://store.example.com/")).toBe(false);
+        expect(isExternalLinkDeclared(undefined, "https://store.example.com/")).toBe(false);
+        expect(isExternalLinkDeclared(declared, "not a url")).toBe(false);
+    });
+
+    it("reads a variant's own list, and the project's when it states none", () => {
+        const base = ["https://example.com/game"];
+        const stating: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            externalLinks: ["https://example.com/full-version"],
+        };
+
+        expect(resolveAppTagExternalLinks(tag("demo"), base))
+            .toEqual({ value: ["https://example.com/game"], overridden: false });
+        expect(resolveAppTagExternalLinks(stating, base))
+            .toEqual({ value: ["https://example.com/full-version"], overridden: true });
+    });
+
+    it("treats a stated empty list as a statement, not as inheritance", () => {
+        const stored = normalizeProjectAppTags([{ id: "demo", name: "Demo", externalLinks: [] }]);
+
+        expect(stored[0].externalLinks).toEqual([]);
+        expect(resolveAppTagExternalLinks(stored[0], ["https://example.com/"]))
+            .toEqual({ value: [], overridden: true });
+    });
+
+    it("carries the project's own list through a document migration", () => {
+        expect(migrateProjectAppTagDocument({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [],
+            externalLinks: ["https://example.com/", "not a url"],
+        }).externalLinks).toEqual(["https://example.com/"]);
+        expect(migrateProjectAppTagDocument({ schemaVersion: APP_TAG_SCHEMA_VERSION, tags: [] }).externalLinks)
+            .toBeUndefined();
+    });
+});
+
+describe("app tag ending page", () => {
+    it("reads a variant's own page, and the project's when it states none", () => {
+        const inheriting: ProjectAppTag = { id: "demo", name: "Demo", overrides: {} };
+        const stating: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            endingSurfaceId: "surface-thanks",
+        };
+
+        expect(resolveAppTagEndingSurface(inheriting, "surface-credits"))
+            .toEqual({ value: "surface-credits", overridden: false });
+        expect(resolveAppTagEndingSurface(stating, "surface-credits"))
+            .toEqual({ value: "surface-thanks", overridden: true });
+    });
+
+    it("treats a stated blank page as a statement, not as inheritance", () => {
+        const stored = normalizeProjectAppTags([{ id: "demo", name: "Demo", endingSurfaceId: "  " }]);
+
+        expect(stored[0].endingSurfaceId).toBe("");
+        expect(resolveAppTagEndingSurface(stored[0], "surface-credits"))
+            .toEqual({ value: "", overridden: true });
+    });
+
+    it("leaves a variant that never stated one inheriting", () => {
+        const stored = normalizeProjectAppTags([{ id: "demo", name: "Demo" }]);
+
+        expect(stored[0].endingSurfaceId).toBeUndefined();
+        expect(resolveAppTagEndingSurface(stored[0], "surface-credits"))
+            .toEqual({ value: "surface-credits", overridden: false });
+    });
+
+    it("carries the project's own page through a document migration, dropping a blank one", () => {
+        expect(migrateProjectAppTagDocument({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [],
+            endingSurfaceId: " surface-credits ",
+        }).endingSurfaceId).toBe("surface-credits");
+        expect(migrateProjectAppTagDocument({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [],
+            endingSurfaceId: "   ",
+        }).endingSurfaceId).toBeUndefined();
+    });
+
+    it("gives the release tag the project's page and nothing of its own", () => {
+        expect(resolveAppTagEndingSurface(resolveAppTag([], "release"), "surface-credits"))
+            .toEqual({ value: "surface-credits", overridden: false });
     });
 });

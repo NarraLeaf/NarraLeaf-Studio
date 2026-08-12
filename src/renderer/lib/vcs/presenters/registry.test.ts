@@ -49,7 +49,10 @@ describe("presenterFor", () => {
         registerChangePresenter(presenter("test-story", item => item.documentKind === "story"));
 
         expect(presenterFor(entry("editor/story/stories/a/storydoc.json", "story")).id).toBe("test-story");
-        expect(presenterFor(entry("editor/brand.json", "brand"))).toBe(genericChangePresenter);
+        // A document kind nothing here claims. This file deliberately does not import the real
+        // presenters - the registry is module state, and the point of these tests is the lookup
+        // rather than who is installed - so the only entries in it are the ones above.
+        expect(presenterFor(entry("editor/audio/tracks.json", "audio-tracks"))).toBe(genericChangePresenter);
     });
 
     it("replaces a presenter registered twice under one id", () => {

@@ -35,6 +35,7 @@ export const project = {
     group: {
         details: "详情",
         appTags: "构建版本",
+        userData: "玩家文件",
         icons: "图标",
         dependencies: "依赖",
         saving: "存档",
@@ -75,14 +76,29 @@ export const project = {
         descriptionPlaceholder: "描述你的项目…",
         required: "必填",
     },
+    // 发布出去的游戏把属于玩家的东西写在哪里。只陈述，不提供开关：这一部分没有任何设置，也不点名
+    // 任何平台，把这些交给谁是作者自己的判断。描述只说这些路径是什么，到此为止。
+    userData: {
+        description: "发布后的游戏把玩家的存档与进度存放在这里。目录名取自标识符，所以改应用名称不会挪动它。",
+        copy: "复制位置",
+        copied: "位置已复制",
+        copyFailed: "无法复制位置",
+        platform: {
+            windows: "Windows",
+            macos: "macOS",
+            linux: "Linux",
+        },
+        content: {
+            saves: "存档槽",
+            persistence: "持久变量、已解锁内容与插件数据",
+        },
+    },
     // 构建版本：同一个工程能发布出的几个版本。什么是构建版本、继承是什么意思，都在标题旁 `?` 打开的
     // `appTags` 帮助主题里；这里的文案只命名控件，并说明按下去会发生什么。
     appTags: {
         add: "新增版本",
         newTagName: "新版本",
         nameTitle: "名称",
-        // 每个工程都有、其余版本都以它为准的那一个。名字写在显示它的地方，模型层没有文案表可读。
-        releaseName: "正式版",
         fields: {
             displayName: "应用名称",
             identifier: "标识符",
@@ -90,6 +106,22 @@ export const project = {
         },
         // 只在该字段自己填了值时出现在它旁边，所以它既是「此处被覆盖」的标记，也是取消覆盖的入口。
         restore: "恢复继承",
+        reachableTitle: "可以开始的场景",
+        // 该版本的构建可以交给玩家浏览器打开的地址。按这份清单决定什么来命名，而不是按机制；整份
+        // 清单一起覆盖：一个版本要么有自己的清单，要么读工程的。
+        links: {
+            title: "游戏可以打开的链接",
+            add: "新增链接",
+            remove: "移除链接",
+            placeholder: "https://example.com/store",
+            invalid: "只有以 http:// 或 https:// 开头的地址可以打开",
+        },
+        // 该版本的构建在剧本走完之后显示的页面。按作者看到的结果命名，而不是按背后的引擎事件。
+        ending: {
+            title: "剧本结束后显示的页面",
+            // 这是一个真正的选项，不是「没填」：画面停在最后一帧，也就是这个字段出现之前每个构建的行为。
+            none: "不显示任何页面",
+        },
         // 在打开的版本里紧挨删除按钮：确认框接下来要说的就是这个数字。
         usedBy: {
             one: "被 {count} 处引用",
@@ -97,10 +129,16 @@ export const project = {
         },
         delete: "删除",
         deleteConfirm: "删除「{name}」？",
-        // 如实说明后果：指向该版本的引用不会被改写，从此按正式版的值读取。
+        // 如实说明后果：指向该版本的引用不会被改写，从此按发布版本的值读取。`{name}` 是发布版本的
+        // 名称，插值而不是写死在这里，将来改名时这句会跟着改。
         deleteDetail: {
-            one: "{count} 处引用将回落到正式版",
-            other: "{count} 处引用将回落到正式版",
+            one: "{count} 处引用将回落到 {name}",
+            other: "{count} 处引用将回落到 {name}",
+        },
+        // 后果的另一半，说的是那些写在剧本里的引用：截断点会保留下来，而不指向任何版本的截断点不再截断
+        deleteDetailCuts: {
+            one: "剧本中的 {count} 处截断点将保留，并不再生效",
+            other: "剧本中的 {count} 处截断点将保留，并不再生效",
         },
     },
     assets: {

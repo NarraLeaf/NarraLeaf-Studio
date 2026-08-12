@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useHostWindow } from "@/lib/components/layout";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
@@ -113,6 +114,8 @@ export function BlueprintAddNodeMenu({
     connectSourceLabel,
 }: Props) {
     const { t } = useTranslation();
+    // The menu is portalled into, positioned against and keyed off the window it is drawn in.
+    const hostWindow = useHostWindow();
     const [query, setQuery] = useState("");
     const [activeCategoryId, setActiveCategoryId] = useState(BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
     const [activeFlatIndex, setActiveFlatIndex] = useState(-1);
@@ -160,9 +163,9 @@ export function BlueprintAddNodeMenu({
         }
         const pad = 8;
         const viewportTop = WINDOW_TITLEBAR_HEIGHT + pad;
-        const maxHeight = Math.min(MENU_MAX_H, Math.max(280, window.innerHeight - viewportTop - pad));
-        const left = Math.max(pad, Math.min(anchor.x, window.innerWidth - MENU_W - pad));
-        const top = Math.max(viewportTop, Math.min(anchor.y, Math.max(viewportTop, window.innerHeight - maxHeight - pad)));
+        const maxHeight = Math.min(MENU_MAX_H, Math.max(280, hostWindow.innerHeight - viewportTop - pad));
+        const left = Math.max(pad, Math.min(anchor.x, hostWindow.innerWidth - MENU_W - pad));
+        const top = Math.max(viewportTop, Math.min(anchor.y, Math.max(viewportTop, hostWindow.innerHeight - maxHeight - pad)));
         return { left, top, maxHeight };
     }, [anchor.x, anchor.y]);
 
@@ -298,8 +301,8 @@ export function BlueprintAddNodeMenu({
                 }
             }
         };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
+        hostWindow.addEventListener("keydown", onKey);
+        return () => hostWindow.removeEventListener("keydown", onKey);
     }, [open, pickEntry, selectRelativeCategory]);
 
     if (!open) {
@@ -414,7 +417,7 @@ export function BlueprintAddNodeMenu({
                 </div>
             </div>
         </>,
-        document.body,
+        hostWindow.document.body,
     );
 }
 

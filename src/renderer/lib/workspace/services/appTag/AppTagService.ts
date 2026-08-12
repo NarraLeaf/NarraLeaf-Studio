@@ -6,19 +6,43 @@ import {
     APP_TAG_OVERRIDE_KEYS,
     createEmptyAppTagDocument,
     hasAppTag,
+    hasAppTagPluginConfig,
+    hasAppTagReachableScenes,
     isBuiltinAppTagId,
     listAppTags,
+    normalizeAppTagEndingSurfaceId,
+    normalizeAppTagExternalLinks,
+    normalizeAppTagPluginConfig,
+    normalizeAppTagReachableScenes,
     normalizeProjectAppTags,
     RELEASE_APP_TAG,
     resolveAppTag,
+    resolveAppTagEndingSurface,
+    resolveAppTagExternalLinks,
     resolveAppTagIdentity,
+    resolveAppTagPluginConfigValue,
+    resolveAppTagReachableScenes,
     uniqueAppTagName,
+    variantStorablePluginConfig,
     type AppTagBaseIdentity,
+    type AppTagDeclaredScene,
     type AppTagIdentity,
     type AppTagOverrideKey,
+    type AppTagPluginConfig,
+    type AppTagReachableScenes,
+    type AppTagResolvedEndingSurface,
+    type AppTagResolvedExternalLinks,
+    type AppTagResolvedValue,
     type ProjectAppTag,
     type ProjectAppTagDocument,
 } from "@shared/types/appTag";
+import type { GameBuildPlatform } from "@shared/types/gameBuild";
+import {
+    isPlatformScopedBuildConfig,
+    isVariantScopedBuildConfig,
+    pluginBuildConfigStorageKey,
+    type PluginBuildConfigField,
+} from "@shared/types/plugins";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -121,9 +145,26 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         }
         // This write supersedes whatever the timer was going to do.
         this.autoSaver.cancel();
+        const {
+            pluginConfig: rawPluginConfig,
+            reachableScenes: rawReachableScenes,
+            externalLinks: rawExternalLinks,
+            endingSurfaceId: rawEndingSurfaceId,
+            ...rest
+        } = document;
+        const pluginConfig = normalizeAppTagPluginConfig(rawPluginConfig);
+        const reachableScenes = normalizeAppTagReachableScenes(rawReachableScenes);
+        const externalLinks = normalizeAppTagExternalLinks(rawExternalLinks);
+        const endingSurfaceId = normalizeAppTagEndingSurfaceId(rawEndingSurfaceId);
         const updated: ProjectAppTagDocument = {
-            ...document,
+            ...rest,
             tags: normalizeProjectAppTags(document.tags),
+            // Spread onto a document the key was destructured out of, so a record emptied by the
+            // author's last clear leaves the file rather than sitting there as `{}`.
+            ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
+            ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
+            ...(externalLinks.length > 0 ? { externalLinks } : {}),
+            ...(endingSurfaceId ? { endingSurfaceId } : {}),
             meta: {
                 ...document.meta,
                 updatedAt: new Date().toISOString(),
@@ -204,7 +245,64 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         const document = this.getDocument();
         // Re-normalized on every mutation rather than only on load, so nothing a caller does can put
         // a duplicate id, a stored release tag or a blank override into memory.
-        document.tags = normalizeProjectAppTags(mutator([...document.tags]));
+        this.applyDocumentMutation(document => {
+            document.tags = mutator([...document.tags]);
+        });
+    }
+
+    /**
+     * The one write path. Mutate the document, re-normalize both halves of it, then commit.
+     *
+     * Re-normalized on every mutation rather than only on load, so nothing a caller does can put a
+     * duplicate id, a stored release tag, a blank override or a blank plugin value into memory.
+     */
+    private applyDocumentMutation(mutate: (document: ProjectAppTagDocument) => void): void {
+        const document = this.getDocument();
+        mutate(document);
+        document.tags = normalizeProjectAppTags(document.tags);
+        const pluginConfig = normalizeAppTagPluginConfig(document.pluginConfig);
+        if (hasAppTagPluginConfig(pluginConfig)) {
+            document.pluginConfig = pluginConfig;
+        } else {
+            // Deleted rather than left as `{}`, so clearing the last value returns the document to
+            // what it was before any plugin asked for anything.
+            delete document.pluginConfig;
+        }
+        const reachableScenes = normalizeAppTagReachableScenes(document.reachableScenes);
+        if (hasAppTagReachableScenes(reachableScenes)) {
+            document.reachableScenes = reachableScenes;
+        } else {
+            delete document.reachableScenes;
+        }
+        const externalLinks = normalizeAppTagExternalLinks(document.externalLinks);
+        if (externalLinks.length > 0) {
+            document.externalLinks = externalLinks;
+        } else {
+            // Deleted rather than left as `[]` for the same reason: on the project's own record
+            // "declares none" and "the key is absent" are one fact, unlike on a variant, where an
+            // empty list is the variant saying it opens nothing.
+            delete document.externalLinks;
+        }
+        const endingSurfaceId = normalizeAppTagEndingSurfaceId(document.endingSurfaceId);
+        if (endingSurfaceId) {
+            document.endingSurfaceId = endingSurfaceId;
+        } else {
+            // Deleted rather than left blank, for the reason the list above is deleted when empty:
+            // on the project's own record "picks none" and "the key is absent" are one fact.
+            delete document.endingSurfaceId;
+        }
+        this.commitMutation();
+    }
+
+    /**
+     * Everything a mutation owes regardless of which half of the document it touched.
+     *
+     * The project's own plugin values live at the document root rather than on a tag, so they cannot
+     * go through {@link applyTagMutation} - but they are the same document, the same autosave and
+     * the same event, and splitting the bookkeeping is how one of the two ends up not marking the
+     * project dirty.
+     */
+    private commitMutation(): void {
         this.revision += 1;
         this.setDirty(true);
         this.autoSaver.schedule();
@@ -217,7 +315,7 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
      * It starts with no overrides, which is the whole of "inherits from release": a tag the author
      * has just made is the release build under another name until they say otherwise.
      */
-    public createTag(input?: { name?: string; reservedNames?: readonly string[] }): ProjectAppTag {
+    public createTag(input?: { name?: string }): ProjectAppTag {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const tag: ProjectAppTag = {
             id: uuidService.generate(),
@@ -225,7 +323,7 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             // offer ("New Variant"), and offering the same one twice is what a second press of Add
             // does - so pressing it twice must produce two names, not two rows nothing can tell
             // apart.
-            name: uniqueAppTagName(this.takenNames(null, input?.reservedNames), input?.name ?? ""),
+            name: uniqueAppTagName(this.takenNames(null), input?.name ?? ""),
             overrides: {},
         };
         this.applyTagMutation(tags => [...tags, tag]);
@@ -233,18 +331,12 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
     }
 
     /**
-     * Every name a new or renamed tag must differ from: the other stored tags, the release tag's
-     * own name, and whatever the caller says the release tag is called on screen.
-     *
-     * The last of those is why `reservedNames` exists at all. The model spells the release tag
-     * "Release" because it has no catalog to read, while the surface shows the translated word - and
-     * a tag named the translated word would collide with it everywhere a name is resolved, which the
-     * model alone cannot see.
+     * Every name a new or renamed tag must differ from: the other stored tags, and the release
+     * tag's own name, which is what every surface shows for it in every language.
      */
-    private takenNames(excludeId: string | null, reservedNames?: readonly string[]): string[] {
+    private takenNames(excludeId: string | null): string[] {
         return [
             RELEASE_APP_TAG.name,
-            ...(reservedNames ?? []),
             ...this.getDocument().tags.filter(tag => tag.id !== excludeId).map(tag => tag.name),
         ];
     }
@@ -261,12 +353,12 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
      * Stored references hold the id, so nothing has to be rewritten: every place naming this tag
      * follows the new name by construction.
      */
-    public renameTag(id: string, name: string, reservedNames?: readonly string[]): boolean {
+    public renameTag(id: string, name: string): boolean {
         const next = name.trim();
         if (!next || isBuiltinAppTagId(id) || !this.getTag(id)) {
             return false;
         }
-        const unique = uniqueAppTagName(this.takenNames(id, reservedNames), next);
+        const unique = uniqueAppTagName(this.takenNames(id), next);
         this.applyTagMutation(tags => tags.map(tag => (tag.id === id ? { ...tag, name: unique } : tag)));
         return true;
     }
@@ -328,6 +420,348 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         return APP_TAG_OVERRIDE_KEYS.filter(key => tag.overrides[key] !== undefined);
     }
 
+    /** The project's own plugin values - what a variant states nothing against. A copy. */
+    public getProjectPluginConfig(): AppTagPluginConfig {
+        return clonePluginConfig(this.getDocument().pluginConfig ?? {});
+    }
+
+    /** Only the plugin values this variant states itself. A copy; empty for the release tag. */
+    public getVariantPluginConfig(id: string | null | undefined): AppTagPluginConfig {
+        const tag = this.resolveTag(id);
+        return clonePluginConfig(tag.pluginConfig ?? {});
+    }
+
+    /**
+     * What one plugin field is set to under `id`, and whether the variant states it.
+     *
+     * `platform` is read only for the platform-taking scopes; passing one for a `global` or
+     * `variant` field is harmless and passing none for a platform-scoped field answers blank, which
+     * is the honest reading of "no platform, so no value for one".
+     */
+    public resolvePluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform?: GameBuildPlatform,
+    ): AppTagResolvedValue {
+        return resolveAppTagPluginConfigValue(
+            this.resolveTag(id),
+            this.getDocument().pluginConfig ?? {},
+            field,
+            platform,
+        );
+    }
+
+    /**
+     * State one plugin field's value.
+     *
+     * Where it lands is the field's business, not the caller's: a `global`- or `platform`-scoped
+     * field is written on the project whatever variant is selected, because it has one value for the
+     * whole project, and so is a variant-scoped field written while the release tag is selected - the
+     * release tag stores nothing, and the project's record is what it reads.
+     *
+     * A blank value clears it, for the reason {@link setOverride} gives: "" is not a value a build
+     * can ship with, and clearing a field is how an author says "inherit this again".
+     */
+    public setPluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        value: string,
+        platform?: GameBuildPlatform,
+    ): boolean {
+        const next = value.trim();
+        if (!next) {
+            return this.clearPluginConfigValue(id, field, platform);
+        }
+        return this.writePluginConfigValue(id, field, platform, next);
+    }
+
+    /**
+     * Restore one plugin field to the inherited value, or - on the project's own record - unset it.
+     *
+     * A delete, not a write of the inherited string: storing what was inherited would freeze it, and
+     * the next edit to the project would leave this variant quietly saying the old thing.
+     */
+    public clearPluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform?: GameBuildPlatform,
+    ): boolean {
+        return this.writePluginConfigValue(id, field, platform, null);
+    }
+
+    /** Restore every plugin value this variant states. Same delete rule, applied across the record. */
+    public clearAllPluginConfig(id: string): boolean {
+        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
+            return false;
+        }
+        this.applyTagMutation(tags => tags.map(tag => (
+            tag.id === id ? { ...tag, pluginConfig: {} } : tag
+        )));
+        return true;
+    }
+
+    /**
+     * Write or delete one field's value in whichever record the field's scope says owns it.
+     *
+     * Writing a field a variant cannot state also sweeps that field off every variant. Such an entry
+     * is inert - resolution never reads it - but leaving it there would let one field have two
+     * stored answers, and a later reader could pick either. It is swept here rather than on load
+     * because only a caller holding the declaration knows the scope: a sweep that guessed would
+     * delete the values of a plugin that is merely not installed on this machine.
+     */
+    private writePluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform: GameBuildPlatform | undefined,
+        value: string | null,
+    ): boolean {
+        const storageKey = pluginBuildConfigStorageKey(
+            field.key,
+            isPlatformScopedBuildConfig(field.scope) ? platform : undefined,
+        );
+        const trimmedId = typeof id === "string" ? id.trim() : "";
+        const onProject = !isVariantScopedBuildConfig(field.scope)
+            || !trimmedId
+            || isBuiltinAppTagId(trimmedId);
+
+        if (!onProject && !this.getTag(trimmedId)) {
+            return false;
+        }
+        this.applyDocumentMutation(document => {
+            if (onProject) {
+                document.pluginConfig = writePluginValue(
+                    document.pluginConfig ?? {},
+                    field.pluginId,
+                    storageKey,
+                    value,
+                );
+                if (!isVariantScopedBuildConfig(field.scope)) {
+                    document.tags = document.tags.map(tag => ({
+                        ...tag,
+                        pluginConfig: variantStorablePluginConfig(tag.pluginConfig ?? {}, [field]),
+                    }));
+                }
+                return;
+            }
+            document.tags = document.tags.map(tag => (tag.id === trimmedId
+                ? {
+                    ...tag,
+                    pluginConfig: writePluginValue(
+                        tag.pluginConfig ?? {},
+                        field.pluginId,
+                        storageKey,
+                        value,
+                    ),
+                }
+                : tag));
+        });
+        return true;
+    }
+
+    /** The project's own declared addresses - what a variant that states none reads. A copy. */
+    public getProjectExternalLinks(): string[] {
+        return [...(this.getDocument().externalLinks ?? [])];
+    }
+
+    /** What this variant may open, and whether it is the reason. */
+    public resolveExternalLinks(id: string | null | undefined): AppTagResolvedExternalLinks {
+        return resolveAppTagExternalLinks(this.resolveTag(id), this.getDocument().externalLinks);
+    }
+
+    /**
+     * State the list for one variant, or - on the release tag - for the project.
+     *
+     * The release tag stores nothing, so a list stated while it is selected is the project's own,
+     * exactly as a variant-scoped plugin value is. Entries that are not absolute web addresses are
+     * dropped by the normalizer; the surface refuses them before they get here, and this is what
+     * makes that true of every other caller too.
+     */
+    public setExternalLinks(id: string | null | undefined, links: readonly string[]): boolean {
+        const trimmedId = typeof id === "string" ? id.trim() : "";
+        const onProject = !trimmedId || isBuiltinAppTagId(trimmedId);
+        if (!onProject && !this.getTag(trimmedId)) {
+            return false;
+        }
+        const next = normalizeAppTagExternalLinks([...links]);
+        this.applyDocumentMutation(document => {
+            if (onProject) {
+                document.externalLinks = next;
+                return;
+            }
+            document.tags = document.tags.map(tag => (
+                tag.id === trimmedId ? { ...tag, externalLinks: next } : tag
+            ));
+        });
+        return true;
+    }
+
+    /**
+     * Restore a variant to the project's list.
+     *
+     * A delete, not a copy of what was inherited: storing the project's addresses here would freeze
+     * them, and the next address the project gains would be missing from this variant with nothing
+     * saying so. Refuses the release tag, which has nothing to restore to.
+     */
+    public clearExternalLinks(id: string): boolean {
+        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
+            return false;
+        }
+        this.applyDocumentMutation(document => {
+            document.tags = document.tags.map(tag => {
+                if (tag.id !== id) {
+                    return tag;
+                }
+                const { externalLinks: _dropped, ...rest } = tag;
+                return rest;
+            });
+        });
+        return true;
+    }
+
+    /** The project's own ending page - what a variant that states none reads. Blank picks none. */
+    public getProjectEndingSurfaceId(): string {
+        return this.getDocument().endingSurfaceId ?? "";
+    }
+
+    /** Which page a build under this variant ends on, and whether the variant is the reason. */
+    public resolveEndingSurface(id: string | null | undefined): AppTagResolvedEndingSurface {
+        return resolveAppTagEndingSurface(this.resolveTag(id), this.getDocument().endingSurfaceId);
+    }
+
+    /**
+     * State the ending page for one variant, or - on the release tag - for the project.
+     *
+     * The release tag stores nothing, so a page picked while it is selected is the project's own,
+     * exactly as the address list is. A blank value on a variant is a value, not a clear: it says
+     * this edition shows nothing when its story ends, which a demo whose cut point is its ending may
+     * well mean. Restoring the inherited page is {@link clearEndingSurface}.
+     */
+    public setEndingSurface(id: string | null | undefined, surfaceId: string): boolean {
+        const trimmedId = typeof id === "string" ? id.trim() : "";
+        const onProject = !trimmedId || isBuiltinAppTagId(trimmedId);
+        if (!onProject && !this.getTag(trimmedId)) {
+            return false;
+        }
+        const next = normalizeAppTagEndingSurfaceId(surfaceId);
+        this.applyDocumentMutation(document => {
+            if (onProject) {
+                document.endingSurfaceId = next;
+                return;
+            }
+            document.tags = document.tags.map(tag => (
+                tag.id === trimmedId ? { ...tag, endingSurfaceId: next } : tag
+            ));
+        });
+        return true;
+    }
+
+    /**
+     * Restore a variant to the project's ending page.
+     *
+     * A delete, not a copy of what was inherited: storing the project's page here would freeze it,
+     * and the next page the project picked would quietly not reach this variant. Refuses the release
+     * tag, which has nothing to restore to.
+     */
+    public clearEndingSurface(id: string): boolean {
+        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
+            return false;
+        }
+        this.applyDocumentMutation(document => {
+            document.tags = document.tags.map(tag => {
+                if (tag.id !== id) {
+                    return tag;
+                }
+                const { endingSurfaceId: _dropped, ...rest } = tag;
+                return rest;
+            });
+        });
+        return true;
+    }
+
+    /**
+     * Every address any build of this project could open, project and variants together.
+     *
+     * The union rather than one variant's list, because its readers are not building anything: the
+     * picker on an Open Link node has no variant selected, and a check that judged a graph against
+     * one variant would report a link the demo build opens as a mistake. Which variant actually
+     * opens which address is decided when a build is compiled.
+     */
+    public listDeclaredExternalLinks(): string[] {
+        const document = this.getDocument();
+        return normalizeAppTagExternalLinks([
+            ...(document.externalLinks ?? []),
+            ...document.tags.flatMap(tag => tag.externalLinks ?? []),
+        ]);
+    }
+
+    /**
+     * What the author says each unreadable mechanism can start under `id`: the project's own
+     * declarations with this variant's own replacing them key by key.
+     *
+     * The one entry the solver and the build gate read, so a declaration a surface shows and a
+     * declaration a build acts on can never be two different answers.
+     */
+    public resolveReachableScenes(id: string | null | undefined): AppTagReachableScenes {
+        return resolveAppTagReachableScenes(this.resolveTag(id), this.getDocument().reachableScenes);
+    }
+
+    /** Only the declarations this variant states itself. A copy; empty for the release tag. */
+    public getVariantReachableScenes(id: string | null | undefined): AppTagReachableScenes {
+        return cloneReachableScenes(this.resolveTag(id).reachableScenes ?? {});
+    }
+
+    /**
+     * State what one mechanism can start under `id`.
+     *
+     * The release tag writes the project's record, which is what every other variant inherits - it
+     * stores nothing of its own, so there is nowhere else for its answer to go. An empty list is a
+     * write, not a clear: "this starts nothing here" is a declaration, and it is what a demo says
+     * about the chapter select the main build uses. Clearing is {@link clearDeclaredScenes}.
+     */
+    public setDeclaredScenes(
+        id: string | null | undefined,
+        mechanismKey: string,
+        scenes: readonly AppTagDeclaredScene[],
+    ): boolean {
+        return this.writeDeclaredScenes(id, mechanismKey, [...scenes]);
+    }
+
+    /**
+     * Stop declaring one mechanism, restoring whatever the project says about it.
+     *
+     * A delete, not a write of the inherited list: storing what was inherited would freeze it, and
+     * the next scene the project added to the mechanism would quietly not reach this variant.
+     */
+    public clearDeclaredScenes(id: string | null | undefined, mechanismKey: string): boolean {
+        return this.writeDeclaredScenes(id, mechanismKey, null);
+    }
+
+    private writeDeclaredScenes(
+        id: string | null | undefined,
+        mechanismKey: string,
+        scenes: AppTagDeclaredScene[] | null,
+    ): boolean {
+        const key = mechanismKey.trim();
+        if (!key) {
+            return false;
+        }
+        const trimmedId = typeof id === "string" ? id.trim() : "";
+        const onProject = !trimmedId || isBuiltinAppTagId(trimmedId);
+        if (!onProject && !this.getTag(trimmedId)) {
+            return false;
+        }
+        this.applyDocumentMutation(document => {
+            if (onProject) {
+                document.reachableScenes = writeDeclaration(document.reachableScenes ?? {}, key, scenes);
+                return;
+            }
+            document.tags = document.tags.map(tag => (tag.id === trimmedId
+                ? { ...tag, reachableScenes: writeDeclaration(tag.reachableScenes ?? {}, key, scenes) }
+                : tag));
+        });
+        return true;
+    }
+
     /**
      * Delete a variant. Refuses the release tag - it is what every unresolvable reference falls back
      * to, and a project with no variant to build is not a state the rest of Studio can read.
@@ -355,4 +789,61 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
     private storage(): DocumentStorage {
         return createProjectDocumentStorage(this.getContext());
     }
+}
+
+/**
+ * `config` with one key set, or removed when `value` is null.
+ *
+ * Copied rather than mutated because these records sit inside the tags the service hands out, and a
+ * caller holding a previous list must not watch it change underneath.
+ */
+function writePluginValue(
+    config: AppTagPluginConfig,
+    pluginId: string,
+    storageKey: string,
+    value: string | null,
+): AppTagPluginConfig {
+    const next = clonePluginConfig(config);
+    if (value === null) {
+        delete next[pluginId]?.[storageKey];
+        // The plugin's record goes when its last value does, so an uninstalled plugin does not leave
+        // its name in the document as the only evidence it was ever configured.
+        if (next[pluginId] && Object.keys(next[pluginId]).length === 0) {
+            delete next[pluginId];
+        }
+        return next;
+    }
+    next[pluginId] = { ...next[pluginId], [storageKey]: value };
+    return next;
+}
+
+/** `declared` with one mechanism's list set, or removed when `scenes` is null. Copied, never mutated. */
+function writeDeclaration(
+    declared: AppTagReachableScenes,
+    mechanismKey: string,
+    scenes: AppTagDeclaredScene[] | null,
+): AppTagReachableScenes {
+    const next = cloneReachableScenes(declared);
+    if (scenes === null) {
+        delete next[mechanismKey];
+        return next;
+    }
+    next[mechanismKey] = scenes.map(scene => ({ ...scene }));
+    return next;
+}
+
+function cloneReachableScenes(declared: AppTagReachableScenes): AppTagReachableScenes {
+    const clone: AppTagReachableScenes = {};
+    for (const [key, scenes] of Object.entries(declared)) {
+        clone[key] = scenes.map(scene => ({ ...scene }));
+    }
+    return clone;
+}
+
+function clonePluginConfig(config: AppTagPluginConfig): AppTagPluginConfig {
+    const clone: AppTagPluginConfig = {};
+    for (const [pluginId, values] of Object.entries(config)) {
+        clone[pluginId] = { ...values };
+    }
+    return clone;
 }

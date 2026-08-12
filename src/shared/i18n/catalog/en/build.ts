@@ -36,11 +36,17 @@ export const build = {
     },
     outputDir: "Output folder",
     chooseFolder: "Choose folder…",
+    // The rail. Six of these name a section a finding can be filed against; `variant` names the page
+    // that picks which edition every other page describes, and is shown only for a project that has
+    // an edition to pick. `plugins` is shown only where an installed plugin asks for a value.
     section: {
+        variant: "Variant",
         targets: "Targets",
         identity: "Identity",
         // Short enough for the rail; the section itself covers protection too.
         content: "Content",
+        // The values plugins ask for. What ships is listed under Content, which is a different fact.
+        plugins: "Plugins",
         signing: "Signing",
         output: "Output",
     },
@@ -50,9 +56,28 @@ export const build = {
         arm64: "ARM (arm64)",
         universal: "Universal",
     },
+    // The first page: which edition is being built, and what that edition comes to.
+    variant: {
+        // Beside a value the selected variant does not state, so a reading that matches the App page
+        // says why on the same line that an overridden one does.
+        inherited: "From the project",
+        // Where this variant's story stops. Counted from the cut points naming it, so the release
+        // variant - which no cut point can name - always reads as the whole story.
+        boundary: "Content",
+        endsNever: "Plays to the end of the story.",
+        endsAt: {
+            one: "Ends at {count} cut point. Nothing after it is in this build.",
+            other: "Ends at {count} cut points. Nothing after them is in this build.",
+        },
+        variantRows: {
+            one: "{count} row reads the variant and can differ between builds.",
+            other: "{count} rows read the variant and can differ between builds.",
+        },
+        blocking: "Blocking this build",
+        blockingNone: "Nothing is blocking this build.",
+    },
     identity: {
-        // Which edition of the project this build is. First in the section, because the three
-        // readings under it are the values that variant ships.
+        // Names the choice made on the first page, and labels the list that makes it.
         variant: "Build variant",
         // Sits beside a reading the selected variant states rather than inherits, so a value that
         // differs from the App page has its reason on the same line.
@@ -83,6 +108,21 @@ export const build = {
         network: "Network policy",
         networkAllowHttp: "Plain HTTP is allowed.",
         networkStrict: "Plain HTTP is blocked.",
+    },
+    /**
+     * The plugins page. Field labels and descriptions come from the plugin's manifest, so the only
+     * words here are the ones about a secret, which is the one value the page cannot show.
+     */
+    pluginConfig: {
+        secretUnset: "Not set",
+        // While the vault has not answered yet. "Set" is all that is known then; either of the two
+        // readings below would be a claim that withdraws itself a moment later.
+        secretSet: "Set",
+        secretHere: "Set on this machine",
+        secretElsewhere: "Set on another machine; its value is not here",
+        secretEnter: "Enter a new value",
+        clear: "Clear",
+        secretFailed: "The value could not be stored on this machine.",
     },
     signing: {
         empty: "Select a target that can be signed.",
@@ -171,13 +211,33 @@ export const build = {
         "version-invalid": "Version {version} is not a valid semantic version; the build will fail.",
         "version-missing": "No version set; the game builds as 0.0.0.",
         "identifier-missing": "No project identifier; using the app id {appId}.",
+        // The build refuses the same file, so this says what stopped rather than what was assumed.
+        "variants-unreadable": "The project's build variants could not be read: {reason}",
         // Platform-neutral: a mobile build falls back to the shell's own
         // placeholder icon, not to Electron's.
         "icon-missing": "No app icon set; the NarraLeaf icon ships instead.",
         "icon-unusable": "The {platform} icon could not be read; the NarraLeaf icon ships instead.",
         "icon-low-resolution": "The {platform} icon is smaller than {minimum}×{minimum} and ships upscaled.",
         "icon-stale": "The {platform} icon has not been prepared; open Project ▸ App to bake it.",
+        // The row reads as an ending and produces the same package as no row at all, so the whole
+        // book ships. Names the scene rather than the row number: a build dialog has no gutter to
+        // count lines in, and the scene is what the author opens.
+        "cut-point-inert":
+            "The cut point in {scene} ({story}) removes nothing from {variant}, so that build carries the whole story.",
+        // Only for a variant that shortens the story, and answerable either way: pick a page, or
+        // pick "show nothing" on the variant to keep the last frame on screen.
+        "variant-ending-missing":
+            "{variant} ends the story early and no page is shown when it ends. Choose one under Project ▸ App ▸ Build variants.",
+        // No count in the sentence: the dialog renders findings through the plain translator, which
+        // has no plural form to pick, and the number adds nothing the scene name does not.
+        "variant-branch-uncut":
+            "Some routes from {scene} ({story}) never reach a cut point, so {variant} ships them whole.",
         "plugins-invalid": "Plugin validation failed:\n{errors}",
+        // `{platforms}` is what this one value has to be filled in for: the platform it is keyed by,
+        // or every platform of the build where one value covers them all. Never empty, so the
+        // sentence reads the same either way.
+        "plugin-config-missing": "{plugin} needs a value for {field} to build {platforms}.",
+        "plugin-secret-unavailable": "{plugin}'s {field} is set, but its value is not on this machine; secrets never travel with a project. Enter it again here to build {platforms}.",
         // Carries the cache path so an author on an offline machine still has a
         // way through: download the file elsewhere and save it there.
         "build-dependency-unavailable":
@@ -233,6 +293,75 @@ export const build = {
     invalidCommandSummary: {
         one: "Build stopped: {count} invalid command. See the console.",
         other: "Build stopped: {count} invalid commands. See the console.",
+    },
+    /** The AppTag gate. Same shape as the invalid-command pair above: a line per site, then a count. */
+    appTagUnresolved: "AppTag does not reduce to a fixed value in {story} / {scene}: {source}",
+    appTagUnresolvedSummary: {
+        one: "Build stopped: {count} AppTag expression does not reduce to a fixed value. See the console.",
+        other: "Build stopped: {count} AppTag expressions do not reduce to a fixed value. See the console.",
+    },
+    /**
+     * The blueprint half of the same gate: a graph whose variant test does not come out a constant.
+     *
+     * The first line is deliberately the sibling of `appTagUnresolved` above, because it reports the
+     * same fact about the same feature and an author meets both in the same console. Three lines
+     * rather than one, because the three refusals are three different things to change; each states
+     * what is wrong and then the move that fixes it, the way the cut-point line does.
+     */
+    appTagGraphUnresolved: "App Tag does not reduce to a fixed value in {blueprint} / {graph}. Compare it with a variant name, or use its value directly.",
+    appTagGraphUnknownNode: "{blueprint} / {graph} tests the variant and also uses a node this build cannot read. Move the variant test to a graph without that node.",
+    appTagGraphFnHead: "The variant test in {blueprint} / {graph} decides whether an Fn exists. Move the Fn out of the branch it decides.",
+    appTagGraphSummary: {
+        one: "Build stopped: {count} blueprint graph does not reduce its variant test to a fixed value. See the console.",
+        other: "Build stopped: {count} blueprint graphs do not reduce their variant tests to a fixed value. See the console.",
+    },
+    /**
+     * The cut-point gate, beside the one above and refused in every build for the same reason.
+     *
+     * The remedy is the whole message after the fact, because there is exactly one: a cut point ends
+     * the story, and only a row the scene always reaches can say where that is.
+     */
+    cutPointNested: "The cut point for {variant} in {story} / {scene} is inside a condition or a group. Move it to the top level of the scene.",
+    cutPointNestedSummary: {
+        one: "Build stopped: {count} cut point is not at the top level of its scene. See the console.",
+        other: "Build stopped: {count} cut points are not at the top level of their scene. See the console.",
+    },
+    /**
+     * The content gate: something in the project can start a scene by a name the build cannot read,
+     * and this variant leaves scenes out.
+     *
+     * Each line carries its own remedy, because the three have different first moves and an author
+     * with all three needs all three. The second half is the same in each: list the scenes it can
+     * start, for this variant, in the Project panel. Only shown for a variant that removes something,
+     * which is why every line names the variant.
+     */
+    contentBlockedStartStory: "A Start Game node in {location} picks its scene while the game runs. Pick the scene in the inspector, or list the scenes it can start in the {variant} variant.",
+    contentBlockedScript: "The blueprint {location} is written in TypeScript and can start any scene. List the scenes it can start in the {variant} variant.",
+    contentBlockedPlugin: "The {location} plugin can start any scene. List the scenes it can start in the {variant} variant.",
+    contentBlockedSummary: {
+        one: "Build stopped: {count} thing can start a scene the {variant} build cannot read. See the console.",
+        other: "Build stopped: {count} things can start a scene the {variant} build cannot read. See the console.",
+    },
+    /** A listed scene that has since been deleted. A warning, not a stop: the answer still stands. */
+    contentStaleDeclaration: "A scene listed for {location} in the {variant} variant is no longer in the project.",
+    /** What this variant's package came to. Only printed when it leaves something out. */
+    contentKept: {
+        one: "The {variant} build contains {count} scene.",
+        other: "The {variant} build contains {count} scenes.",
+    },
+    contentDropped: "{scene} in {story} is not in this build.",
+    /**
+     * The reference index gate. Only for a build that removes scenes, and only for a gap in a story
+     * document: a widget whose picture the index cannot identify says nothing about which scenes a
+     * story can reach, and refusing over one would put every variant build behind a URL nobody can
+     * resolve.
+     */
+    contentCoverageGap: "{location} could not be read, so what the {variant} build leaves out cannot be decided.",
+    /** What `{location}` becomes for a gap that is the whole index rather than one document. */
+    contentCoverageWholeProject: "The project",
+    contentCoverageSummary: {
+        one: "Build stopped: the {variant} build removes scenes and {count} document could not be read. See the console.",
+        other: "Build stopped: the {variant} build removes scenes and {count} documents could not be read. See the console.",
     },
     /**
      * The media gate. One line per asset, then one summary.

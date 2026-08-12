@@ -14,6 +14,7 @@ import {
     deriveGameAppId,
     deriveIosBundleVersion,
     GAME_BUILD_FORMATS_BY_PLATFORM,
+    gameBuildArtifactBaseName,
     hostCanBuildTarget,
     isDesktopBuildPlatform,
     isMobileBuildPlatform,
@@ -27,6 +28,7 @@ import {
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
     type GameBuildMobilePlatform,
+    type GameBuildPlatform,
     type GameBuildRequest,
     type GameBuildStateSnapshot,
     type GameBuildTarget,
@@ -49,7 +51,6 @@ import {
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import { Fs } from "@shared/utils/fs";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
-import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import {
     buildDependencyPlatformKey,
     checkBuildDependencies,
@@ -91,8 +92,21 @@ import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManife
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
-import { readProjectAppTagsFromDir } from "../../utils/appTagsFile";
-import { hasAppTag, isBuiltinAppTagId, resolveAppTag, type AppTagOverrides } from "@shared/types/appTag";
+import { getMainLocale } from "../../i18n";
+import { readProjectAppTagDocumentFromDir, readProjectAppTagsFromDir } from "../../utils/appTagsFile";
+import {
+    createEmptyAppTagDocument,
+    hasAppTag,
+    isBuiltinAppTagId,
+    resolveAppTag,
+    resolveAppTagPluginConfigValue,
+    resolveAppTagReachableScenes,
+    type AppTagPluginConfig,
+    type ProjectAppTag,
+    type ProjectAppTagDocument,
+} from "@shared/types/appTag";
+import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
+import { collectPluginBuildConfigFields, pluginBuildConfigSlots } from "@shared/utils/pluginBuildConfig";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
@@ -115,6 +129,7 @@ import type {
     GameBuildWorkerWindowsSigning,
 } from "@/buildWorker/protocol";
 import { currentDownloadRewrites } from "../downloadRewrites";
+import { collectVariantContentFindings } from "./variantContentPreflight";
 
 type BuildSession = {
     id: string;
@@ -419,12 +434,21 @@ export class GameBuildManager {
     public async preflight(projectPath: string, request: GameBuildRequest): Promise<BuildPreflightFinding[]> {
         const normalizedProjectPath = path.resolve(projectPath);
         const projectConfig = await readProjectConfigFromDir(normalizedProjectPath).catch(() => null);
-        // Swallowed here and not in `start`: a check pass must report on what it could read rather
-        // than fail, and a variant file it could not read leaves the identity findings describing the
-        // project's own values. `start` reads the same file strictly, so a build under an unreadable
-        // variant file stops there rather than shipping the wrong name.
-        const appTags = await readProjectAppTagsFromDir(normalizedProjectPath).catch(() => []);
-        const overrides = resolveAppTag(appTags, request.appTagId).overrides;
+        // Reported rather than swallowed: `start` reads the same file strictly and refuses the build,
+        // so a check pass that answered "no variants" would clear a build that then dies on the file
+        // it never mentioned. The identity readings below fall back to the project's own values,
+        // which is all there is left to describe.
+        // The whole document, not just the tag list: the values plugins asked for live at its root,
+        // and the variant being built inherits them.
+        let appTagDocument: ProjectAppTagDocument = createEmptyAppTagDocument();
+        let variantsUnreadable: string | null = null;
+        try {
+            appTagDocument = await readProjectAppTagDocumentFromDir(normalizedProjectPath);
+        } catch (error) {
+            variantsUnreadable = error instanceof Error ? error.message : String(error);
+        }
+        const variant = resolveAppTag(appTagDocument.tags, request.appTagId);
+        const overrides = variant.overrides;
         const hostPlatform = currentGameBuildPlatform();
         const targets = normalizeTargets(request.targets);
         const findings: BuildPreflightFinding[] = [];
@@ -462,6 +486,14 @@ export class GameBuildManager {
         const productName = overrides.displayName ?? projectConfig?.name?.trim() ?? "";
         const version = overrides.version ?? readProjectVersion(projectConfig);
         const identifier = overrides.identifier ?? readProjectIdentifier(projectConfig);
+        if (variantsUnreadable) {
+            findings.push({
+                code: "variants-unreadable",
+                severity: "error",
+                section: "identity",
+                detail: { reason: variantsUnreadable },
+            });
+        }
         if (!version) {
             findings.push({ code: "version-missing", severity: "warning", section: "identity" });
         } else if (!isValidProjectVersion(version)) {
@@ -564,6 +596,21 @@ export class GameBuildManager {
             }
         }
 
+        // What this variant's cut points come to. Skipped for the release variant from inside, which
+        // is what keeps the ordinary build from reading every story document; see the module header
+        // for why these three are findings here rather than gates in the build's own chain.
+        //
+        // Only when the document was readable: the reading below would resolve to the release
+        // variant, and clearing a demo's findings because its variant record could not be opened is
+        // the one answer this must not give.
+        if (!variantsUnreadable) {
+            findings.push(...await collectVariantContentFindings({
+                projectPath: normalizedProjectPath,
+                appTagId: request.appTagId,
+                appTagDocument,
+            }));
+        }
+
         const pluginSelection = await this.selectRuntimePlugins(normalizedProjectPath, projectConfig);
         if (pluginSelection.errors.length > 0) {
             findings.push({
@@ -637,6 +684,19 @@ export class GameBuildManager {
                 });
             }
         }
+        // Every enabled installed plugin, not the runtime selection above. The two differ: the
+        // selection is the plugins that ship *inside* the game, so a plugin with no runtime entry -
+        // one that only does something at build time - is not in it. Its fields still appear on the
+        // dialog's page, which folds the installed list, and a field the dialog marks required has
+        // to be a field the checks insist on, or the marker is a promise nothing keeps.
+        findings.push(...await this.pluginConfigPreflight(
+            (await this.app.pluginManager.listPlugins())
+                .filter(plugin => plugin.enabled)
+                .map(plugin => plugin.manifest),
+            [...new Set(targets.map(target => target.platform))],
+            variant,
+            appTagDocument.pluginConfig ?? {},
+        ));
         if (desktopTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
             const key = await this.resolveEncryptionKey(normalizedProjectPath, projectConfig).catch(() => undefined);
             if (!key) {
@@ -832,7 +892,15 @@ export class GameBuildManager {
                 `macOS builds require a Mac; Linux builds require a Unix host.`,
             );
         }
-        const identity = this.resolveIdentity(session, projectConfig, projectPath, await this.resolveBuildVariant(session, projectPath, request));
+        const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        // What the author says each mechanism the build cannot read can start. Read here rather than
+        // inside the compile because both compiles below are the same game under one variant, and two
+        // reads of the same file could straddle a write.
+        const declaredScenes = resolveAppTagReachableScenes(
+            appTag,
+            (await readProjectAppTagDocumentFromDir(projectPath).catch(() => null))?.reachableScenes,
+        );
+        const identity = this.resolveIdentity(session, projectConfig, projectPath, appTag);
         // Everything the credentials this build needs unseals to. Resolved here,
         // before the compile: a credential this machine cannot use fails the
         // build either way, and finding out after several minutes of packing
@@ -905,7 +973,15 @@ export class GameBuildManager {
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
+                // What the story documents in this pack are folded against. Both compiles below get
+                // it: the desktop pack and the web/mobile one are the same game under one variant.
+                appTag: { id: appTag.id, name: appTag.name },
+                declaredScenes,
+                // The compile can refuse this build (a blueprint whose variant test does not come out
+                // a constant), and that sentence is the author's to read.
+                locale: getMainLocale(this.app),
                 encryptionKey,
+                appId: identity.appId,
                 ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
                 // The compile runs in a utility process, so the build dependency
                 // cache root travels with the input rather than being read from
@@ -937,6 +1013,9 @@ export class GameBuildManager {
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging-web"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
+                appTag: { id: appTag.id, name: appTag.name },
+                declaredScenes,
+                locale: getMainLocale(this.app),
                 shell: "web",
             }, {
                 onStart: worker => { session.worker = worker; },
@@ -951,6 +1030,11 @@ export class GameBuildManager {
             this.ensureNotCancelled(session);
             await this.optimizeCompiledSite(session, webArtifact.appDir, projectConfig);
             this.ensureNotCancelled(session);
+        }
+        // From one compile only: both read the same project under the same variant, so the second
+        // has nothing to say that the first did not.
+        for (const notice of (desktopArtifact ?? webArtifact)?.notices ?? []) {
+            this.emit(session, { level: "info", source: "Build", message: notice });
         }
         // The player-facing notice, written once and shipped by every target that has a place to
         // put it. Into the web site's root directly, since that root IS what gets served; for the
@@ -1202,6 +1286,72 @@ export class GameBuildManager {
                 section: "content",
                 detail: { size: `${(assetBytes / 1024 ** 3).toFixed(2)} GiB` },
             });
+        }
+        return findings;
+    }
+
+    /**
+     * What the plugins shipping in this build asked the author for, held against what the variant
+     * being built actually has.
+     *
+     * `manifests` are the plugins the build already selected, so a value is only ever demanded for a
+     * plugin whose code is in the package: a field belonging to a plugin this project does not ship
+     * is not a question about this build. The dialog offers the fields of every enabled plugin, which
+     * is the wider set - so it can ask for a value nothing here insists on, and never the reverse.
+     * Resolution goes through {@link resolveAppTagPluginConfigValue}, the same fold the dialog reads,
+     * so a value the author sees filled in is the value this judges.
+     *
+     * Nothing here reads a secret. A `secret` field's stored value is a handle, and the only question
+     * asked of the vault is whether the value behind it can be unsealed on this machine.
+     */
+    private async pluginConfigPreflight(
+        manifests: readonly NormalizedPluginManifestV2[],
+        platforms: readonly GameBuildPlatform[],
+        variant: ProjectAppTag,
+        projectPluginConfig: AppTagPluginConfig,
+    ): Promise<BuildPreflightFinding[]> {
+        const fields = collectPluginBuildConfigFields(
+            // The caller has already dropped the disabled ones, which is what the fold reads.
+            manifests.map(manifest => ({ pluginId: manifest.id, enabled: true, manifest })),
+            platforms,
+        );
+        const findings: BuildPreflightFinding[] = [];
+        const vault = this.signingVault();
+
+        for (const slot of pluginBuildConfigSlots(fields, platforms)) {
+            const { field } = slot;
+            const resolved = resolveAppTagPluginConfigValue(
+                variant,
+                projectPluginConfig,
+                field,
+                slot.platform,
+            );
+            // What this one value has to be filled in for: the platform it is keyed by, or every
+            // platform of the build where one value covers them all. Never empty - a build with no
+            // targets declares no fields at all - so the message reads the same either way.
+            const affects = (slot.platform ? [slot.platform] : platforms).join(", ");
+            if (!resolved.value) {
+                if (field.required) {
+                    findings.push({
+                        code: "plugin-config-missing",
+                        severity: "error",
+                        section: "plugins",
+                        detail: { plugin: field.pluginName, field: field.label, platforms: affects },
+                    });
+                }
+                continue;
+            }
+            // A handle whose secret was sealed on another machine. The project carries the handle and
+            // never the value, so this is the ordinary state of a project a collaborator configured.
+            // A manager with no vault (a test double) says nothing rather than guessing.
+            if (field.type === "secret" && vault && !(await vault.pluginSecretAvailable(resolved.value))) {
+                findings.push({
+                    code: "plugin-secret-unavailable",
+                    severity: "error",
+                    section: "plugins",
+                    detail: { plugin: field.pluginName, field: field.label, platforms: affects },
+                });
+            }
         }
         return findings;
     }
@@ -1842,17 +1992,24 @@ export class GameBuildManager {
     }
 
     /**
-     * The variant this build is, as the overrides it states.
+     * The variant this build is.
      *
      * An id naming a variant the project does not have throws instead of falling back to release.
      * The author picked a variant by name; producing the release identity under that name is a build
      * that lies about what it is, and every check downstream would agree with it.
+     *
+     * The whole tag rather than just its overrides, because the variant decides three different
+     * things: the overrides state the build's identity, the name is half of what the artifacts are
+     * called (see {@link gameBuildArtifactBaseName}), and the name is also what the story documents
+     * are folded against (`AppTag == "Demo"`). Handing back one of the three would leave the others
+     * reading the tag again somewhere else, and a build whose identity, whose file names and whose
+     * story disagreed about which variant it is is exactly the failure this is all about.
      */
     private async resolveBuildVariant(
         session: BuildSession,
         projectPath: string,
         request: GameBuildRequest,
-    ): Promise<AppTagOverrides> {
+    ): Promise<ProjectAppTag> {
         const appTags = await readProjectAppTagsFromDir(projectPath);
         const requested = request.appTagId?.trim();
         if (requested && !hasAppTag(appTags, requested)) {
@@ -1862,22 +2019,26 @@ export class GameBuildManager {
         if (!isBuiltinAppTagId(tag.id)) {
             this.emit(session, { level: "info", source: "Build", message: `building the "${tag.name}" variant` });
         }
-        return tag.overrides;
+        return tag;
     }
 
     private resolveIdentity(
         session: BuildSession,
         projectConfig: ProjectConfigData | null,
         projectPath: string,
-        overrides: AppTagOverrides,
+        variant: ProjectAppTag,
     ): { appId: string; productName: string; artifactBaseName: string; version: string; copyright?: string } {
-        // The variant's value wherever it states one. Only these three: everything else about a
-        // build - icons, signing, what the pack contains - is the project's and is shared by every
-        // variant of it.
-        const productName = overrides.displayName
-            || projectConfig?.name?.trim()
+        const overrides = variant.overrides;
+        // What the project itself is called. Kept apart from the product name below, because the
+        // artifacts are named from this and the edition, never from a variant's renamed application.
+        const projectName = projectConfig?.name?.trim()
             || path.basename(projectPath)
             || "NarraLeaf Game";
+        // The variant's value wherever it states one. Only these three: everything else about a
+        // build - icons, signing, what the pack contains - is the project's and is shared by every
+        // variant of it. `??` on all three: an override is absent or it is a value, and `||` would
+        // have made an empty one mean "inherited" for one key and not for the others.
+        const productName = overrides.displayName ?? projectName;
         const version = overrides.version ?? readProjectVersion(projectConfig);
         if (version && !isValidProjectVersion(version)) {
             throw new Error(
@@ -1907,7 +2068,10 @@ export class GameBuildManager {
         return {
             appId,
             productName,
-            artifactBaseName: sanitizeProjectFileName(productName),
+            artifactBaseName: gameBuildArtifactBaseName(
+                projectName,
+                isBuiltinAppTagId(variant.id) ? null : variant.name,
+            ),
             // Same fallback electron-builder applies via the app manifest, so
             // web artifact names line up with the desktop ones.
             version: version ?? "0.0.0",

@@ -16,12 +16,14 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
 /**
- * IPC surface for the code-signing credential vault.
+ * IPC surface for the machine's secret vault: code-signing credentials, and the
+ * plugin build-config secrets that live beside them.
  *
  * No handler here returns a secret. `import` takes plain passwords up (the
- * author just typed them) and hands back the redacted credential; unsealing is
- * the main process's business alone and happens when a build needs the
- * material, not on request from a window.
+ * author just typed them) and hands back the redacted credential; setting a
+ * plugin secret takes the value up and hands back a handle. Unsealing is the
+ * main process's business alone and happens when a build needs the material, not
+ * on request from a window.
  */
 
 /** Electron's keyring, wrapped so the vault itself stays Electron-free and testable. */
@@ -155,6 +157,43 @@ export class SigningMacIdentitiesHandler extends IPCHandler<IPCEventType.signing
         _window: AppWindow,
     ): Promise<RequestStatus<IPCEvents[IPCEventType.signingMacIdentities]["response"]>> {
         return this.tryUse(async () => ({ identities: await findMacSigningIdentities() }));
+    }
+}
+
+/**
+ * Seal a plugin build-config secret and answer the handle the project stores.
+ *
+ * `value` is plaintext: it must not be logged, and the error path reports only
+ * the vault's own message, never the payload. Passing `handle` fills in a value
+ * the project already refers to - the path a collaborator takes when they have
+ * the project but not the secret.
+ */
+export class PluginBuildSecretSetHandler extends IPCHandler<IPCEventType.pluginBuildSecretSet> {
+    readonly name = IPCEventType.pluginBuildSecretSet;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { value, handle }: IPCEvents[IPCEventType.pluginBuildSecretSet]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.pluginBuildSecretSet]["response"]>> {
+        return this.tryUse(async () => vaultFor(window).setPluginSecret(value, handle));
+    }
+}
+
+/**
+ * Whether the secret behind a handle is on this machine. A boolean, and nothing
+ * else: there is no event that reads the value, which is the point of storing a
+ * handle in the project rather than the secret.
+ */
+export class PluginBuildSecretAvailableHandler extends IPCHandler<IPCEventType.pluginBuildSecretAvailable> {
+    readonly name = IPCEventType.pluginBuildSecretAvailable;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { handle }: IPCEvents[IPCEventType.pluginBuildSecretAvailable]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.pluginBuildSecretAvailable]["response"]>> {
+        return this.tryUse(async () => ({ available: await vaultFor(window).pluginSecretAvailable(handle) }));
     }
 }
 

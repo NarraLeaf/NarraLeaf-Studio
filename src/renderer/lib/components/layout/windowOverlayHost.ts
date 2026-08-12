@@ -1,4 +1,5 @@
 import { useLayoutEffect, useState } from "react";
+import { useHostDocument } from "./hostWindow";
 
 /**
  * The window's overlay layer — where a dialog raised from anywhere in the app is mounted.
@@ -34,14 +35,20 @@ export const windowRootProps = { [WINDOW_ROOT_ATTRIBUTE]: "" } as const;
  * a portal's container by identity, so moving the node moves its children with it and remounts
  * nothing. A fresh element per dialog would instead tear the dialog down and build it again, losing
  * focus and any field the author had started filling in.
+ *
+ * Keyed by document rather than held in one variable because a detached editor
+ * (`DetachedWindow`) draws part of this same React tree in a second window: a dialog it raises
+ * belongs in the window the author is looking at, and a host node can only live in one document.
  */
-let overlayHost: HTMLElement | null = null;
+const overlayHosts = new WeakMap<Document, HTMLElement>();
 
-function ensureOverlayHost(): HTMLElement {
+function ensureOverlayHost(doc: Document): HTMLElement {
+    let overlayHost = overlayHosts.get(doc) ?? null;
     if (!overlayHost) {
-        overlayHost = document.createElement("div");
+        overlayHost = doc.createElement("div");
         overlayHost.setAttribute(OVERLAY_HOST_ATTRIBUTE, "");
         overlayHost.style.display = "contents";
+        overlayHosts.set(doc, overlayHost);
     }
     if (!overlayHost.isConnected) {
         // Connected straight away, during the render that first asks for it: a dialog that mounts
@@ -63,22 +70,32 @@ function ensureOverlayHost(): HTMLElement {
  * and it is also where the host waits until the shell has committed.
  */
 function adopt(host: HTMLElement): void {
-    const root = document.querySelector<HTMLElement>(`[${WINDOW_ROOT_ATTRIBUTE}]`);
-    const parent = root ?? document.body;
+    const doc = host.ownerDocument;
+    const root = doc.querySelector<HTMLElement>(`[${WINDOW_ROOT_ATTRIBUTE}]`);
+    const parent = root ?? doc.body;
     if (host.parentElement !== parent) {
         parent.appendChild(host);
     }
 }
 
-/** The element a dialog portals into. */
+/** The element a dialog portals into, in whichever window the caller is drawn in. */
 export function useWindowOverlayHost(): HTMLElement {
-    const [host] = useState(ensureOverlayHost);
-    useLayoutEffect(() => adopt(host), [host]);
-    return host;
+    const doc = useHostDocument();
+    const [host, setHost] = useState(() => ensureOverlayHost(doc));
+    // A subtree does not change window mid-life (a detached editor mounts its own copy), but the
+    // host has to follow the document if one ever does - a portal into another window's node
+    // renders nowhere visible rather than failing.
+    const current = host.ownerDocument === doc ? host : ensureOverlayHost(doc);
+    if (current !== host) {
+        setHost(current);
+    }
+    useLayoutEffect(() => adopt(current), [current]);
+    return current;
 }
 
 /** Test seam: forget the window's host so each case starts from an empty document. */
 export function resetWindowOverlayHostForTests(): void {
-    overlayHost?.remove();
-    overlayHost = null;
+    const host = overlayHosts.get(document);
+    host?.remove();
+    overlayHosts.delete(document);
 }

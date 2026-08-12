@@ -116,6 +116,9 @@ function expressionReason(issue: StoryExpressionIssue): StoryCommandReason {
             return { key, params: { text: issue.text } };
         case "unknownVariable":
         case "unknownFunction":
+        // Reachable only through a surface that renders advisory issues: the command line filters
+        // them out before a reason is asked for, because this one does not stop a line committing.
+        case "unknownAppTagName":
             return { key, params: { name: issue.name } };
         case "unknownQualifiedVariable":
             return { key, params: { name: issue.name, scope: issue.scope } };
@@ -150,6 +153,7 @@ function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReaso
         case "unknownAppTag":
         case "unknownVariable":
         case "duplicateVariable":
+        case "reservedVariableName":
             return { key: reasonKey(issue.code), params: { value: issue.value } };
         case "unknownForm":
             return { key: reasonKey(issue.code), params: { value: issue.value, characterName: issue.characterName } };

@@ -1,7 +1,11 @@
 import path from "path";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
-import type { BlueprintPersistentVariable, SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import type {
+    Blueprint,
+    BlueprintPersistentVariable,
+    SharedBlueprintAsset,
+} from "@shared/types/blueprint/document";
 import {
     VARIABLE_REGISTRY_SCHEMA_VERSION,
     type PersistentVariableRuntimeTable,
@@ -32,6 +36,25 @@ import { normalizeAudioClipRegion } from "@shared/types/audio";
 import type { BrandColor } from "@shared/types/brand";
 import { migrateProjectBrandDocument, normalizeProjectBrandColors } from "@shared/types/brand";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
+import {
+    APP_TAG_ID_RELEASE,
+    appTagMechanismKey,
+    isBuiltinAppTagId,
+    RELEASE_APP_TAG,
+    type AppTagMechanismRef,
+} from "@shared/types/appTag";
+import { runtimeCapabilitiesCanStartStory } from "@shared/types/pluginPermissions";
+import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
+import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
+import {
+    applyAppTagToBlueprint,
+    applyAppTagToBlueprintDocument,
+    collectUnfoldableAppTagGraphsInBlueprint,
+    type AppTagGraphFoldOptions,
+    type UnfoldableAppTagGraph,
+} from "@shared/blueprint/appTagGraphFold";
+import { createTranslator, FALLBACK_LOCALE, type LocaleCode } from "@shared/i18n";
+import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
@@ -52,15 +75,31 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const uigraphsPath = path.join(context.projectPath, "editor", "ui", "uigraphs.json");
     const uidoc = await readJsonFile<UIDocument>(uidocPath);
     const uigraphsRaw = await readJsonFile<UIGraphDocument>(uigraphsPath);
+    const variant = context.appTag ?? { id: APP_TAG_ID_RELEASE, name: RELEASE_APP_TAG.name };
+    const fold = { tagName: variant.name };
+    // Where the variant stops being a label and starts deciding bytes, the blueprint half of what
+    // `loadStoryLibrary` does below. Graphs ship verbatim - this record is what the pack carries - so
+    // a branch this edition cannot take is only absent from the package if it is deleted here. The
+    // build gate has already refused anything this cannot fold; a graph it still cannot read comes
+    // back whole, which is what lets Dev Mode and the preview keep running.
     const uigraphs: UIGraphDocument = {
         ...uigraphsRaw,
-        blueprintDocument: migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
+        blueprintDocument: applyAppTagToBlueprintDocument(
+            migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
+            fold,
+        ),
     };
     const localBlueprints = uigraphs.blueprintDocument;
     const variableTables = await loadVariableRuntimeTables(context.projectPath, uigraphsRaw.blueprintDocument);
-    const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
+    const sharedBlueprints = foldSharedBlueprints(await loadSharedBlueprints(context.projectPath), context, fold);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
-    const storyLibrary = await loadStoryLibrary(context.projectPath);
+    // Read from the folded document on purpose: a `Start Game` on a branch this edition does not take
+    // cannot run, so the scene it names is not an entry into any story this package holds.
+    const sceneDrop = planSceneDrop(context, variant.id, [
+        ...Object.values(localBlueprints.blueprints ?? {}),
+        ...sharedBlueprints.map(asset => asset.blueprint),
+    ]);
+    const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop);
     const localization = await loadGameLocalization(context.projectPath);
     const voice = await loadGameVoice(context.projectPath);
     const audio = await loadGameAudio(context.projectPath);
@@ -198,7 +237,189 @@ async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprin
     return out;
 }
 
-async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrary | undefined> {
+/**
+ * Shared blueprint assets, folded against this variant - and the one place a variant refusal is
+ * raised from the main process rather than from the build gate.
+ *
+ * **The asymmetry is deliberate; do not tidy it away.** `BuildService`'s gate reads the blueprint
+ * *document*, which is the only set of graphs the renderer can see: shared blueprints are asset files,
+ * and nothing in the renderer enumerates and parses them. Removal therefore covers strictly more than
+ * refusal does, which is the safe direction - nothing ever ships unfolded, and the only cost is that a
+ * shared-asset problem is reported here, at assembly, instead of before the build starts.
+ *
+ * Symmetry the other way round is what would be fatal. Leaving these graphs alone would ship a live
+ * `Get App Tag`, and the runtime answers the release name to it (`resolveAppTagNodeOutput`) - so in a
+ * Demo package `AppTag == "Demo"` would read false and the player would silently get release content.
+ * A silent wrong answer is worse than either a refusal or a leak, because nothing anywhere says it
+ * happened.
+ *
+ * Only a build throws. Dev Mode and the preview supply no variant, so they assemble as release, the
+ * runtime's answer is right by construction, and a refused graph there is something the author is
+ * still editing rather than something about to be packaged. Exported for tests.
+ */
+export function foldSharedBlueprints(
+    assets: readonly SharedBlueprintAsset[],
+    context: DevModeBundleLoadContext,
+    fold: AppTagGraphFoldOptions,
+): SharedBlueprintAsset[] {
+    return assets.map(asset => {
+        if (context.appTag) {
+            const refused = collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold);
+            if (refused.length > 0) {
+                throw new Error(describeAppTagGraphRefusal(refused[0], asset.name, context.locale));
+            }
+        }
+        const blueprint = applyAppTagToBlueprint(asset.blueprint, fold);
+        return blueprint === asset.blueprint ? asset : { ...asset, blueprint };
+    });
+}
+
+/**
+ * One refusal as the author reads it, through the same catalogue keys the build gate logs.
+ *
+ * The asset's own name rather than the blueprint's, because a shared blueprint is browsed and opened
+ * as an asset; the blueprint's name inside the file is not what the author would go looking for.
+ */
+function describeAppTagGraphRefusal(
+    refusal: UnfoldableAppTagGraph,
+    assetName: string,
+    locale: LocaleCode | undefined,
+): string {
+    const { t } = createTranslator(locale ?? FALLBACK_LOCALE);
+    const keys = {
+        unresolved: "build.appTagGraphUnresolved",
+        unknownNode: "build.appTagGraphUnknownNode",
+        fnHeadRemoved: "build.appTagGraphFnHead",
+    } as const;
+    return t(keys[refusal.reason], { blueprint: assetName, graph: refusal.graphName });
+}
+
+/**
+ * The reachability sweep to run over each story, or `null` to keep every scene.
+ *
+ * Keyed by story id: a `Start Game` node names one story's scene, and handing that scene to another
+ * story would mark an unrelated scene reachable. A story no node names is not absent from the sweep,
+ * it simply has no entry beyond its own.
+ */
+type SceneDropPlan = Map<string, SceneReachability> | null;
+
+/**
+ * Which scenes may be dropped from each story, and why the answer is sometimes "none of them".
+ *
+ * Two conditions have to hold. The build is producing a variant other than release - release cuts
+ * nothing, and Dev Mode, the preview and "play from this row" all enter a scene the author picked
+ * rather than one the story reaches, so a sweep there would delete the scene about to be played.
+ * And every way into a scene has to be one this function can read.
+ *
+ * The second is where it gives up, and it gives up whole rather than in part: a sweep that dropped
+ * "the ones it was sure about" while an unreadable entry survived would be indistinguishable from a
+ * correct one until a player walked into the gap. Three things make it unreadable, all of them the
+ * same fact - a scene named by a value that only exists while the game runs:
+ *
+ *  - a `Start Game` node whose story or scene is wired rather than picked - and a wired pin counts
+ *    even when the inspector still holds a picked value, because the pin is what the running game
+ *    reads;
+ *  - a blueprint written in TypeScript, which can call `game.startStory` with anything it computes;
+ *  - a runtime plugin whose declared capabilities let it start a story.
+ *
+ * **Each of the three can be answered instead of merely suffered.** An author who states which
+ * scenes a mechanism starts (`context.declaredScenes`) turns it from a reason to ship everything
+ * into an ordinary set of entries. That is the only reason this function ever drops anything in a
+ * real project: a chapter select is a wired node, and before declarations existed one of them was
+ * enough to make every demo the whole book. The renderer refuses the build before it reaches here
+ * when a mechanism is undeclared, so these notices are the second line of defence rather than the
+ * first - and they still have to be right, because Dev Mode and the preview do not run that gate.
+ *
+ * Saved games are deliberately not in that list. A save carries compiled action ids, not a scene, and
+ * the story it resolves them against is the one compiled from this very package - so it cannot name
+ * a scene the package does not have. Exported for tests.
+ */
+export function planSceneDrop(
+    context: DevModeBundleLoadContext,
+    appTagId: string,
+    blueprints: readonly Blueprint[],
+): SceneDropPlan {
+    if (isBuiltinAppTagId(appTagId)) {
+        return null;
+    }
+    const declared = context.declaredScenes ?? {};
+    const entries: { storyId: string; sceneId: string }[] = [];
+    /** Whether this mechanism is answered; collects its scenes when it is. */
+    const answered = (mechanism: AppTagMechanismRef): boolean => {
+        const scenes = declared[appTagMechanismKey(mechanism)];
+        if (!scenes) {
+            return false;
+        }
+        entries.push(...scenes);
+        return true;
+    };
+
+    for (const plugin of context.runtimePlugins ?? []) {
+        if (runtimeCapabilitiesCanStartStory(plugin.runtimeCapabilities)
+            && !answered({ kind: "plugin", pluginId: plugin.id })) {
+            context.onNotice?.(`the ${plugin.name} plugin can start any scene, so every story ships whole`);
+            return null;
+        }
+    }
+    for (const blueprint of blueprints) {
+        if (blueprint.program.kind !== "graph"
+            && !answered({ kind: "scriptBlueprint", blueprintId: blueprint.id })) {
+            context.onNotice?.(`the TypeScript blueprint ${blueprint.name} can start any scene, so every story ships whole`);
+            return null;
+        }
+    }
+    const scan = scanStoryEntryPoints(
+        blueprintGraphCarriers(blueprints),
+        // Every named target is kept: the story documents have not been read at plan time, and a
+        // scene id no story has is dropped by the sweep's own seed filter rather than here.
+        () => true,
+    );
+    for (const undecided of scan.undecidable) {
+        if (!answered({
+            kind: "startStoryNode",
+            blueprintId: undecided.blueprintId,
+            graphKind: undecided.graphKind,
+            graphId: undecided.graphId,
+            nodeId: undecided.nodeId,
+        })) {
+            context.onNotice?.("a Start Game node picks its scene while the game runs, so every story ships whole");
+            return null;
+        }
+    }
+
+    const byStory = new Map<string, SceneReachability>();
+    const add = (storyId: string, sceneId: string): void => {
+        const existing = byStory.get(storyId);
+        byStory.set(storyId, { entrySceneIds: [...(existing?.entrySceneIds ?? []), sceneId] });
+    };
+    for (const [storyId, sceneIds] of scan.byStory) {
+        for (const sceneId of sceneIds) {
+            add(storyId, sceneId);
+        }
+    }
+    // A declared scene is an entry exactly like a picked one. One that no longer exists is dropped by
+    // the sweep's own seed filter, which is also what reports it to the author through the solver.
+    for (const entry of entries) {
+        add(entry.storyId, entry.sceneId);
+    }
+    return byStory;
+}
+
+/**
+ * Every story the project has, as the bundle will carry it.
+ *
+ * `variant` is where the build variant stops being a label and starts deciding bytes. The story
+ * compiler runs inside the shipped game, not here, so these documents ARE the story a player gets:
+ * whatever survives this function ships verbatim. Folding them here - the last point where a
+ * document is still a value rather than a serialized pack - is what makes a variant-only branch
+ * absent from the package rather than merely unreachable in it, and what makes the story after a cut
+ * point absent rather than merely unplayed.
+ */
+async function loadStoryLibrary(
+    projectPath: string,
+    variant: { id: string; name: string },
+    sceneDrop: SceneDropPlan,
+): Promise<DevModeStoryLibrary | undefined> {
     const indexPath = path.join(projectPath, "editor", "story", "index.json");
     const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
     if (!index) {
@@ -220,7 +441,13 @@ async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrar
         if (document.id !== entry.id) {
             throw new Error(`Story document id mismatch: expected ${entry.id}, received ${document.id}`);
         }
-        documents[entry.id] = document;
+        documents[entry.id] = applyAppTagToStoryDocument(document, {
+            tagName: variant.name,
+            tagId: variant.id,
+            // A story no `Start Game` node names still gets swept, from its own entry scene: a jump
+            // never crosses stories, so nothing outside it can reach one of its scenes.
+            ...(sceneDrop ? { sceneReachability: sceneDrop.get(entry.id) ?? { entrySceneIds: [] } } : {}),
+        });
         stories.push({
             ...entry,
             documentPath: storyDocumentRelativePath(entry.id),

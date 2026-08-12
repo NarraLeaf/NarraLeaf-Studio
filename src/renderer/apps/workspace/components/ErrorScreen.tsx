@@ -4,7 +4,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { Button, TitleBar } from "@/lib/components";
 import { useTranslation } from "@/lib/i18n";
 import { WindowAppType } from "@shared/types/window";
-import { copyTextToClipboard } from "@/lib/app/diagnostics/copyText";
+import { copyTextToClipboard } from "@shared/utils/copyText";
 import { buildDiagnosticsFileName, buildDiagnosticsReport } from "@/lib/app/diagnostics/diagnosticsReport";
 
 interface ErrorScreenProps {

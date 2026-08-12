@@ -183,12 +183,22 @@ export function NlrStageLayer(props: {
      */
     onFirstSceneReady: (sessionId: string) => void;
     /**
+     * The story ran off the end (Player `onEnd`): the last scene finished and nothing followed it.
+     *
+     * The engine's own signal, not a guess from the outside. A story ends by running out of rows -
+     * there is no end-of-game action in the story vocabulary - so before this was wired the game
+     * simply stopped with the last frame on screen and nothing else happened. Optional, because a
+     * host with nowhere to send the player wants exactly that behaviour and must not be made to
+     * invent a screen.
+     */
+    onEnd?: (sessionId: string) => void;
+    /**
      * A stage error surfaced from this session's Player. `sessionId` identifies the emitting
      * session so hosts can ignore teardown noise from an already-replaced session.
      */
     onError: (error: Error, sessionId: string) => void;
 }) {
-    const { session, interactive, visible = true, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
+    const { session, interactive, visible = true, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onEnd, onError } = props;
     const startedSessionRef = useRef<string | null>(null);
     const stageRootRef = useRef<HTMLDivElement>(null);
     const gameStateRef = useRef<PlayerEventContext["gameState"] | null>(null);
@@ -243,6 +253,15 @@ export function NlrStageLayer(props: {
         warmedBeforeEntryRef.current = !gameStateRef.current?.getLastScene();
         onEnvironmentReady(session.id);
     }, [onEnvironmentReady, session]);
+
+    const handleEnd = useCallback((_ctx: PlayerEventContext) => {
+        // Guarded on the session that started, so an `onEnd` arriving from a Player being torn down
+        // cannot send a host that has already moved on to a page.
+        if (!session || startedSessionRef.current !== session.id) {
+            return;
+        }
+        onEnd?.(session.id);
+    }, [onEnd, session]);
 
     const handleFirstSceneReady = useCallback((_ctx: PlayerLifecycleEventContext) => {
         if (!session) {
@@ -299,6 +318,7 @@ export function NlrStageLayer(props: {
                         onReady={handleReady}
                         onPreloadComplete={handlePreloadComplete}
                         onFirstSceneReady={handleFirstSceneReady}
+                        onEnd={handleEnd}
                         onError={(error) => onError(error, session.id)}
                     >
                         {renderOnStage ? session.onStageNode ?? null : null}

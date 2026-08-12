@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { GameBuildRequest } from "@shared/types/gameBuild";
 import type { StoryDocument } from "@shared/types/story";
+import type { ReferenceIndexGap } from "../references/referenceModel";
 import type { LintReport, LintReportEntry, LintRuleId, LintSeverity } from "@/lib/lint/types";
 import type { LintingConfiguration } from "../../project/configuration";
 import { Services, type WorkspaceContext } from "../services";
@@ -35,7 +37,10 @@ const gameBuild = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({ gameBuild }),
+    // `plugins.list` is here because the release-content gate asks which plugins ship inside the
+    // game; without it that gate degrades to "the check failed to run" and every gate behind it
+    // would be tested against a project the check never actually looked at.
+    getInterface: () => ({ gameBuild, plugins: { list: async () => ({ success: true, data: { plugins: [] } }) } }),
 }));
 
 /**
@@ -114,6 +119,12 @@ function mount(options: {
     /** Defaults to allowing HTTP, so the network gate stays out of the way of this file's subject. */
     allowHttp?: boolean;
     blueprintDocument?: unknown;
+    /** The variant being built. Release by default, which removes nothing and reaches no trim gate. */
+    appTag?: { id: string; name: string };
+    /** The one story the library holds. Defaults to a story with nothing wrong with it. */
+    storyDocument?: StoryDocument;
+    /** What the reference index says it could not read. Empty by default. */
+    referenceGaps?: readonly ReferenceIndexGap[];
 } = {}) {
     const lines: ConsoleLine[] = [];
     const run = vi.fn(options.run ?? (async () => report([])));
@@ -134,7 +145,8 @@ function mount(options: {
     const story = {
         ...clean,
         getLibraryIndex: () => ({ stories: [{ id: "s1", name: "Main" }] }),
-        loadStory: async () => (options.storyHasInvalidBlock ? STORY_WITH_INVALID_BLOCK : CLEAN_STORY),
+        loadStory: async () => options.storyDocument
+            ?? (options.storyHasInvalidBlock ? STORY_WITH_INVALID_BLOCK : CLEAN_STORY),
     };
     const consoleService = {
         log: (channel: string, level: string, message: string) => {
@@ -169,6 +181,15 @@ function mount(options: {
                         return consoleService;
                     case Services.Story:
                         return story;
+                    // Every project has the release variant, so the AppTag gate always resolves a name.
+                    case Services.AppTags:
+                        return {
+                            resolveTag: () => options.appTag ?? RELEASE_APP_TAG,
+                            getTag: () => options.appTag ?? RELEASE_APP_TAG,
+                            getDocument: () => ({ tags: [], reachableScenes: {} }),
+                        };
+                    case Services.Reference:
+                        return { getIndexResult: () => ({ complete: (options.referenceGaps ?? []).length === 0, gaps: options.referenceGaps ?? [] }) };
                     case Services.MediaSupport:
                         return media;
                     case Services.UIGraph:
@@ -630,5 +651,77 @@ describe("shouldBlockBuild", () => {
 
     it("does not block on an empty report", () => {
         expect(shouldBlockBuild(report([]), config({ failBuildOn: "warning" }))).toBe(false);
+    });
+});
+
+/**
+ * A story whose demo edition really does stop early: two scenes, a cut point before the jump.
+ *
+ * The trim gate below only runs for a build that removes something, so the fixture has to remove
+ * something - a test that used a story with no cut point would pass whatever the gate did.
+ */
+const STORY_WITH_A_CUT: StoryDocument = {
+    id: "s1",
+    name: "Main",
+    scenes: {
+        sc1: {
+            id: "sc1",
+            name: "Prologue",
+            rootBlockIds: ["n1", "c1", "j1"],
+            blocks: {
+                n1: { id: "n1", kind: "nodeAction", childrenIds: [], payload: { action: "narration", text: { textId: "t1", value: "line", role: "narration" } } },
+                c1: { id: "c1", kind: "control", childrenIds: [], payload: { control: "cut", appTagId: "tag-demo" } },
+                j1: { id: "j1", kind: "jump", childrenIds: [], payload: { targetSceneId: "sc2" } },
+            },
+        },
+        sc2: { id: "sc2", name: "Chapter 1", rootBlockIds: [], blocks: {} },
+    },
+} as unknown as StoryDocument;
+
+const DEMO_TAG = { id: "tag-demo", name: "Demo" };
+
+describe("BuildService trim coverage gate", () => {
+    it("refuses a build that removes scenes while a story document could not be read", async () => {
+        const { service, lines } = mount({
+            appTag: DEMO_TAG,
+            storyDocument: STORY_WITH_A_CUT,
+            referenceGaps: [{ reason: "documentUnreadable", slice: "story", location: "Side Story" }],
+        });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(state.status).toBe("error");
+        expect(state.error).toContain("build.contentCoverageSummary");
+        expect(lines.some(entry => entry.message.includes("build.contentCoverageGap"))).toBe(true);
+    });
+
+    it("lets the same build through when the gap is in a widget", async () => {
+        // The whole point of the narrow question: an `app://fs` URL nobody can resolve says nothing
+        // about which scenes a story reaches, and refusing over one would put every variant build in
+        // that project behind a token that can never resolve.
+        const { service } = mount({
+            appTag: DEMO_TAG,
+            storyDocument: STORY_WITH_A_CUT,
+            referenceGaps: [{ reason: "hashUrlUnresolved", slice: "ui", location: "Title.backgroundImage", affects: ["image"] }],
+        });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).toHaveBeenCalledTimes(1);
+        expect(state.status).toBe("done");
+    });
+
+    it("says nothing about a gap when the build removes nothing", async () => {
+        // A release build keeps every scene, so no gap can make its content boundary wrong.
+        const { service } = mount({
+            storyDocument: STORY_WITH_A_CUT,
+            referenceGaps: [{ reason: "indexNotBuilt" }],
+        });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).toHaveBeenCalledTimes(1);
+        expect(state.status).toBe("done");
     });
 });

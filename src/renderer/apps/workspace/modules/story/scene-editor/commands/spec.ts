@@ -131,6 +131,20 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      */
     quickParams?: readonly (keyof P & string)[];
     /**
+     * Whether this command has anything to offer in THIS project - the gate the browse surfaces run
+     * before listing it. Absent means always, which is what all but one command answer.
+     *
+     * Declared here rather than filtered inside the palette because `SPEC_PALETTE` is a module
+     * constant built once at import time, with no project in sight. The consumers hold the context
+     * already, so the rule lives on the spec and the surfaces apply it.
+     *
+     * It gates the MENUS, not the parser: a command hidden here still resolves when it is typed.
+     * That is deliberate rather than a gap - a command whose only reason to be hidden is an empty
+     * list has a `core` param reading that same list, so the typed line cannot resolve its argument
+     * and the row stays a draft, saying so in place.
+     */
+    available?: (context: StoryCommandContext) => boolean;
+    /**
      * Working lines for the manual, written exactly as an author would type them.
      *
      * Written in the canonical English spellings, and left that way in every locale. A locale may add
@@ -267,12 +281,15 @@ export function audioTrackParam(): StoryCommandParamSpec {
 }
 
 /**
- * A build variant the project can be shipped as (`Demo`, `Bonus`, the release one).
+ * A build variant the project can be shipped as (`Demo`, `Bonus`).
  *
- * Positional and `core` by default: a line that names a variant is about that variant, and one with
- * the slot empty says nothing a build could act on. Declared by no command yet - the commands that
- * will carry it decide what a build *contains* - so this exists to be the one spelling when the
- * first of them arrives, rather than each of them inventing its own key.
+ * Positional and `core`: a line that names a variant is about that variant, and one with the slot
+ * empty says nothing a build could act on. One spelling for every command that takes a variant, so
+ * the key, the offer list and the stored id cannot differ between two of them.
+ *
+ * The offer list is the AUTHORED variants; the release one is not among them
+ * (`storyCommandCandidates.ts`). Resolution still accepts its name, and a row naming it is a defined
+ * state rather than an error - it is what a deleted variant's id resolves to, and it cuts nothing.
  */
 export function appTagParam(hint = "appTag"): StoryCommandParamSpec {
     return { hint, type: { kind: "appTag" }, positional: true, core: true };

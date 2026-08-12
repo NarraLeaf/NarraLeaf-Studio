@@ -121,6 +121,7 @@ import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audio
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import { createSkipRunController } from "./skipRunController";
+import { createSessionGate } from "./sessionGate";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -400,9 +401,25 @@ export function GameApp(props: GameAppProps): ReactNode {
     const layers = layerState.layers;
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
     const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
-    const [nlrSession, setNlrSession] = useState<NlrStageSession | null>(null);
+    const [nlrSession, setNlrSessionState] = useState<NlrStageSession | null>(null);
     const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
-    const [gameStageVisible, setGameStageVisible] = useState(false);
+    const [gameStageVisible, setGameStageVisibleState] = useState(false);
+    /**
+     * Ref mirrors of the two pieces of session state a Game UI slot surface has to be able to ask
+     * about at *call* time rather than at build time — see `createSessionGate` for why. Both states
+     * stay: the stage re-renders on them. They are written through these two setters so a mirror can
+     * never drift from the state it mirrors.
+     */
+    const nlrSessionIdRef = useRef<string | null>(null);
+    const gameStageVisibleRef = useRef(false);
+    const setNlrSession = useCallback((session: NlrStageSession | null): void => {
+        nlrSessionIdRef.current = session?.id ?? null;
+        setNlrSessionState(session);
+    }, []);
+    const setGameStageVisible = useCallback((visible: boolean): void => {
+        gameStageVisibleRef.current = visible;
+        setGameStageVisibleState(visible);
+    }, []);
     const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
     const [gameHiddenNavKeys, setGameHiddenNavKeys] = useState<Set<string>>(() => new Set());
     const navEntrySeqRef = useRef(0);
@@ -444,6 +461,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
+    // Built once and never rebuilt, because a Game UI slot surface holds whichever copy it was given
+    // when its session was mounted. Both members read the refs above at call time.
+    const { isInGame, requireLiveGame: requireActiveLiveGame } = useMemo(() => createSessionGate<LiveGame>({
+        sessionId: nlrSessionIdRef,
+        liveGameSessionId: nlrLiveGameSessionIdRef,
+        liveGame: nlrLiveGameRef,
+        stageVisible: gameStageVisibleRef,
+    }), []);
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
@@ -921,10 +946,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         choiceRuntimeRef.current = runtime;
     }, []);
 
-    const isInGame = useCallback((): boolean => {
-        return Boolean(gameStageVisible && nlrSession?.id);
-    }, [gameStageVisible, nlrSession?.id]);
-
     const detachTextReadTracker = useCallback(() => {
         textReadTrackerRef.current?.detach();
         textReadTrackerRef.current = null;
@@ -1027,13 +1048,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
         nlrDialogVirtualClickTargetRef.current = target;
     }, []);
-
-    const requireActiveLiveGame = useCallback((operation: string): LiveGame => {
-        if (!nlrSession?.id || nlrLiveGameSessionIdRef.current !== nlrSession.id || !nlrLiveGameRef.current) {
-            throw new Error(`${operation}: game runtime is not available`);
-        }
-        return nlrLiveGameRef.current;
-    }, [nlrSession?.id]);
 
     // Read through the *mounted* session's compile, never a captured one: a recompile mints new
     // avatar URLs, and an inverse from the previous compile would answer with a stale asset id.
@@ -1338,6 +1352,31 @@ export function GameApp(props: GameAppProps): ReactNode {
         setNlrSession(null);
         clearGameHiddenStudioPages();
     }, [clearCurrentDialogNametag, clearGameHiddenStudioPages, detachTextReadTracker, openSurface, rejectPendingGameStarts]);
+
+    /**
+     * The story ran out of rows, and this build declares a page to land on.
+     *
+     * Routed through `quitGame` rather than through a navigation of its own, because ending a story
+     * and quitting one are the same act as far as everything downstream is concerned: the session
+     * has to be torn down, the tokens cancelled, the stage hidden and the surface stack put back on
+     * an app page. A second path would be a second place for one of those to be forgotten.
+     *
+     * Nothing at all happens when the host declares no page. That is deliberate and is exactly the
+     * behaviour every build had before the ending page existed: the last frame stays on screen. A
+     * default screen here would be one nobody authored, shown to players of projects that never
+     * asked for it.
+     */
+    const endingSurfaceId = host.endingSurfaceId?.trim() ?? "";
+    const handleStoryEnd = useCallback(() => {
+        if (!endingSurfaceId) {
+            return;
+        }
+        void quitGame(endingSurfaceId).catch(error => {
+            // Reported rather than thrown: the story is over either way, and a page that will not
+            // open must not take the window down with it.
+            host.log("error", `[${host.id}] the ending page could not be opened: ${normalizeError(error)}`);
+        });
+    }, [endingSurfaceId, host, quitGame]);
 
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
@@ -2088,6 +2127,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetTrackVolume: soundTransport.getTrackVolume,
             onSetTrackVolume: soundTransport.setTrackVolume,
             onNetworkFetch: host.networkFetch,
+            onOpenExternal: host.openExternal,
             audioTracks: bundle.audio?.tracks,
             onSubscribeGamePreferences: subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {
@@ -2423,6 +2463,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetTrackVolume: soundTransport.getTrackVolume,
                     onSetTrackVolume: soundTransport.setTrackVolume,
                     onNetworkFetch: host.networkFetch,
+                    onOpenExternal: host.openExternal,
                     audioTracks: bundle.audio?.tracks,
                     onSubscribeGamePreferences: subscribeGamePreferences,
                     onWidgetPatch: (elementId, patch) => {
@@ -2998,6 +3039,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 pendingGameStartsRef.current.delete(sessionId);
                 pending.resolve();
             }}
+            onEnd={() => handleStoryEnd()}
             onEnvironmentReady={sessionId => {
                 host.log("info", `[${host.id}] NLR environment assets preheated: ${sessionId}`);
                 const pending = pendingAssetsReadyRef.current.get(sessionId);

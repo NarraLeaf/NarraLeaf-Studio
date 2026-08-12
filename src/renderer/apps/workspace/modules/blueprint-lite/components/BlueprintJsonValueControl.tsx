@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { useHostWindow } from "@/lib/components/layout";
 import {
     createContext,
     useCallback,
@@ -537,6 +538,9 @@ function JsonTreeRow({
 }
 
 function usePortalPanelStyle(open: boolean, triggerRef: RefObject<HTMLElement | null>) {
+    // Measured against the window this control is drawn in - a detached editor's, when it is
+    // inside one - not the renderer's own.
+    const hostWindow = useHostWindow();
     const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
 
     useLayoutEffect(() => {
@@ -548,9 +552,9 @@ function usePortalPanelStyle(open: boolean, triggerRef: RefObject<HTMLElement | 
             if (!rect) {
                 return;
             }
-            const width = Math.min(520, Math.max(360, window.innerWidth - 24));
-            const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
-            const top = Math.min(rect.bottom + 8, window.innerHeight - 420);
+            const width = Math.min(520, Math.max(360, hostWindow.innerWidth - 24));
+            const left = Math.min(Math.max(12, rect.left), hostWindow.innerWidth - width - 12);
+            const top = Math.min(rect.bottom + 8, hostWindow.innerHeight - 420);
             setStyle({
                 position: "fixed",
                 left,
@@ -560,11 +564,11 @@ function usePortalPanelStyle(open: boolean, triggerRef: RefObject<HTMLElement | 
             });
         };
         update();
-        window.addEventListener("resize", update);
-        window.addEventListener("scroll", update, true);
+        hostWindow.addEventListener("resize", update);
+        hostWindow.addEventListener("scroll", update, true);
         return () => {
-            window.removeEventListener("resize", update);
-            window.removeEventListener("scroll", update, true);
+            hostWindow.removeEventListener("resize", update);
+            hostWindow.removeEventListener("scroll", update, true);
         };
     }, [open, triggerRef]);
 
@@ -614,6 +618,7 @@ function JsonEditorPortal({
     onClose: () => void;
 }) {
     const { t } = useTranslation();
+    const hostWindow = useHostWindow();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["$"]));
     const [mode, setMode] = useState<"tree" | "raw">("tree");
@@ -665,11 +670,11 @@ function JsonEditorPortal({
                 closeFromExternalInteraction();
             }
         };
-        window.addEventListener("keydown", onKeyDown);
-        window.addEventListener("pointerdown", onPointerDown);
+        hostWindow.addEventListener("keydown", onKeyDown);
+        hostWindow.addEventListener("pointerdown", onPointerDown);
         return () => {
-            window.removeEventListener("keydown", onKeyDown);
-            window.removeEventListener("pointerdown", onPointerDown);
+            hostWindow.removeEventListener("keydown", onKeyDown);
+            hostWindow.removeEventListener("pointerdown", onPointerDown);
         };
     }, [closeFromExternalInteraction, scopeId, triggerRef]);
 
@@ -759,7 +764,7 @@ function JsonEditorPortal({
                 )}
             </JsonEditorScopeContext.Provider>
         </div>,
-        document.body,
+        hostWindow.document.body,
     );
 }
 

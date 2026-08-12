@@ -29,6 +29,8 @@ export type SurfaceListGlobalBlueprintCard = {
     preview: ReactNode;
     canOpen: boolean;
     onClick: () => void;
+    /** Right click: open the blueprint in a window of its own, as every blueprint entry does. */
+    onOpenInWindow: () => void;
 };
 
 const getSurfaceTypeLabel = (surface: UISurface, t: UseTranslation["t"]): string => {
@@ -147,7 +149,13 @@ export function SurfaceList({
                     className="group w-full text-left rounded-md border border-edge bg-surface-raised px-3 py-2 transition-colors hover:bg-fill-subtle disabled:cursor-default disabled:hover:bg-surface-raised"
                     disabled={!globalBlueprintCard.canOpen}
                     onClick={globalBlueprintCard.onClick}
-                    onContextMenu={event => event.preventDefault()}
+                    onContextMenu={event => {
+                        event.preventDefault();
+                        if (globalBlueprintCard.canOpen) {
+                            globalBlueprintCard.onOpenInWindow();
+                        }
+                    }}
+                    title={globalBlueprintCard.canOpen ? t("blueprint.entry.openInWindow") : undefined}
                     aria-label={
                         globalBlueprintCard.canOpen
                             ? t("uiEditor.panel.openGlobalBlueprint")

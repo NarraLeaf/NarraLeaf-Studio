@@ -55,6 +55,7 @@ import { RuntimeIssueStrip } from "./RuntimeIssueStrip";
 import { RuntimeIssuesPanel } from "./RuntimeIssuesPanel";
 import {
     appendRuntimeIssue,
+    blueprintDebugEventIssue,
     locateRuntimeIssue,
     runtimeIssueKey,
     type LocatedRuntimeIssue,
@@ -797,17 +798,6 @@ export function DevModeContent(props: DevModeContentProps) {
         };
     }, [projectRef]);
 
-    const onDebugEvent = useCallback((event: BlueprintDebugEvent) => {
-        if (!projectPath) {
-            return;
-        }
-        try {
-            getInterface().devMode.forwardBlueprintDebugEvent({ projectPath, event });
-        } catch (error) {
-            console.warn("[DevMode] failed to forward blueprint debug event", error);
-        }
-    }, [projectPath]);
-
     const log = useCallback<GameAppHost["log"]>((level, message) => {
         if (level === "error") {
             console.error(message);
@@ -854,6 +844,32 @@ export function DevModeContent(props: DevModeContentProps) {
         const located = locateRuntimeIssue(current, issue, `issue-${issueSeqRef.current}`);
         setRuntimeIssues(previous => appendRuntimeIssue(previous, located));
     }, []);
+
+    /**
+     * The blueprint debug stream, which this window both forwards and reads.
+     *
+     * Reading it is the half that was missing. A node that threw emitted `execution.error` and
+     * nothing else: the event went over IPC to the Workspace console in the OTHER window, so a Game
+     * UI failure — a quick menu button, a dialogue box, a choice list — left this window saying
+     * "nothing has failed" while the button did nothing. The author's only signal was the silence.
+     *
+     * Both halves stay: the Workspace console is where an author reads a whole session's trace, and
+     * the Issues panel is where they are told something is wrong right now.
+     */
+    const onDebugEvent = useCallback((event: BlueprintDebugEvent) => {
+        const issue = blueprintDebugEventIssue(event);
+        if (issue) {
+            reportIssue(issue);
+        }
+        if (!projectPath) {
+            return;
+        }
+        try {
+            getInterface().devMode.forwardBlueprintDebugEvent({ projectPath, event });
+        } catch (error) {
+            console.warn("[DevMode] failed to forward blueprint debug event", error);
+        }
+    }, [projectPath, reportIssue]);
     useEffect(() => {
         setRuntimeIssues([]);
         setAcknowledgedKeys(NO_ACKNOWLEDGED_KEYS);
@@ -958,6 +974,26 @@ export function DevModeContent(props: DevModeContentProps) {
                 body: null,
                 error: result.error ?? "Fetch failed",
             };
+        }
+        return result.data.result;
+    }, [projectPath]);
+
+    /**
+     * The Open Link node's request, handed to the main process.
+     *
+     * The project path travels with it because the handler reads the project's own declared
+     * addresses off disk and refuses anything else - the same refusal the shipped game makes, in
+     * the same kind of process. Nothing here consults Studio's own external-link path.
+     */
+    const openExternal = useCallback<NonNullable<GameAppHost["openExternal"]>>(async request => {
+        if (!projectPath) {
+            return { outcome: "failed", error: "Open Link: no project is open" };
+        }
+        const result = await getInterface().blueprintExternalLink.open(projectPath, request);
+        if (!result.success) {
+            // The channel itself failed, which is Studio malfunctioning rather than the link being
+            // refused. Reported on the node's failure branch anyway: the graph has to go somewhere.
+            return { outcome: "failed", error: result.error ?? "Open Link failed" };
         }
         return result.data.result;
     }, [projectPath]);
@@ -1210,6 +1246,7 @@ export function DevModeContent(props: DevModeContentProps) {
             subscribeFullscreenChanged,
             subscribeCloseRequested,
             networkFetch,
+            openExternal,
         };
     }, [
         bootAction,
@@ -1217,6 +1254,7 @@ export function DevModeContent(props: DevModeContentProps) {
         getFullscreen,
         log,
         networkFetch,
+        openExternal,
         onDebugEvent,
         persistenceAdapter,
         quitApplication,

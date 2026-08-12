@@ -15,6 +15,7 @@ import {
     resolveStoryLayerRef,
     storyVariableRefKey,
 } from "@shared/types/story";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { translate } from "@/lib/i18n";
 
@@ -1116,6 +1117,24 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                     choices: choicesOf(labels),
                     ...(payload.targetLabel ? { editValue: payload.targetLabel } : {}),
                     apply: next => ({ ...payload, targetLabel: next }),
+                })],
+            };
+        }
+        if (block.payload.control === "cut") {
+            const payload = block.payload;
+            // The authored variants: the same list the slot offers, so switching from the row cannot
+            // write a value the line could not have been typed with.
+            const tags = (lookups.commandContext?.appTags ?? []).filter(tag => tag.id !== APP_TAG_ID_RELEASE);
+            // Named, never the stored id - and blank when no variant answers to it, which is a
+            // deleted one. The row then prints `/cut`, i.e. a cut point that names nothing, which is
+            // what it has become.
+            const name = tags.find(tag => tag.id === payload.appTagId)?.name ?? "";
+            return {
+                commandId: "cut",
+                args: [positional("tag", name, tags.length === 0 ? {} : {
+                    choices: tags.map(tag => ({ value: tag.id, label: tag.name })),
+                    ...(payload.appTagId ? { editValue: payload.appTagId } : {}),
+                    apply: next => ({ ...payload, appTagId: next }),
                 })],
             };
         }

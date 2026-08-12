@@ -4,15 +4,17 @@
  * Adding a language:
  *   1. Append its code to {@link SUPPORTED_LOCALES}.
  *   2. Add an entry to {@link LOCALE_META} (native/English name, BCP-47 tag, dir).
- *   3. Create `src/shared/i18n/catalog/<code>.ts` (typed with `satisfies LocaleMessages`).
- *   4. Register it in `src/shared/i18n/catalog/index.ts`.
+ *   3. Create `src/shared/i18n/catalog/<code>/` - one file per namespace, each typed with
+ *      `satisfies LocaleNamespace<"…">` - plus its `index.ts` (`satisfies LocaleMessages`).
+ *   4. Register that catalog in `src/shared/i18n/catalog/index.ts`.
  * Everything else (settings picker, bootstrap, formatters) reads from here, so
- * no other file needs editing.
+ * no other file needs editing. `catalog/parity.test.ts` then requires the new
+ * catalog to translate every English key, so step 3 is not optional in practice.
  */
 
 import { getOverlayMeta, listOverlayLocales } from "./registry";
 
-export const SUPPORTED_LOCALES = ["en", "zh"] as const;
+export const SUPPORTED_LOCALES = ["en", "zh", "ja"] as const;
 
 /** The built-in locale union. Used for typed catalog authoring and the baseline maps. */
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -48,6 +50,7 @@ export interface LocaleMeta {
 export const LOCALE_META: Record<Locale, LocaleMeta> = {
     en: { nativeName: "English", englishName: "English", intl: "en-US", dir: "ltr" },
     zh: { nativeName: "中文", englishName: "Chinese (Simplified)", intl: "zh-CN", dir: "ltr" },
+    ja: { nativeName: "日本語", englishName: "Japanese", intl: "ja-JP", dir: "ltr" },
 };
 
 /** Whether `value` is one of the static built-in locales. */

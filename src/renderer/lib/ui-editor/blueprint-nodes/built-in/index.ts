@@ -4,6 +4,7 @@
  */
 
 import type { BlueprintNodeDef } from "../types";
+import { appTagBlueprintNodes } from "./appTagNodes";
 import { backlogBlueprintNodes } from "./backlogNodes";
 import { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 import { broadcastBlueprintNodes } from "./broadcastNodes";
@@ -36,6 +37,7 @@ import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 import { widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 
+export { appTagBlueprintNodes } from "./appTagNodes";
 export { backlogBlueprintNodes } from "./backlogNodes";
 export { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 export { broadcastBlueprintNodes } from "./broadcastNodes";
@@ -79,6 +81,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...componentBlueprintNodes,
     ...gameBlueprintNodes,
     ...visitedBlueprintNodes,
+    ...appTagBlueprintNodes,
     ...backlogBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,

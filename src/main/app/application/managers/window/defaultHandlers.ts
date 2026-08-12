@@ -1,6 +1,6 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler } from "./handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import { AppUpdateCheckHandler, AppUpdateDownloadHandler, AppUpdateGetStateHandler, AppUpdateInstallHandler } from "./handlers/updateAction";
 import {
@@ -74,6 +74,8 @@ import {
     GameBuildStartHandler,
 } from "./handlers/gameBuildAction";
 import {
+    PluginBuildSecretAvailableHandler,
+    PluginBuildSecretSetHandler,
     SigningImportHandler,
     SigningInspectHandler,
     SigningKeystoreAliasesHandler,
@@ -116,6 +118,7 @@ import {
     BlueprintPersistenceSetValueHandler,
 } from "./handlers/blueprintPersistenceAction";
 import { BlueprintNetworkFetchHandler } from "./handlers/blueprintNetworkAction";
+import { BlueprintExternalLinkOpenHandler } from "./handlers/blueprintExternalLinkAction";
 import {
     PrivilegedBashExecuteHandler,
     PrivilegedFsCallHandler,
@@ -135,6 +138,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         new AppPropsHandler(),
         new AppWindowControlHandler(),
+        new AppDetachedWindowControlHandler(),
         new AppWindowCloseHandler(),
         new AppWindowEditCommandHandler(),
         new AppWindowCloseWithHandler(),
@@ -240,6 +244,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new SigningKeystoreAliasesHandler(),
         new SigningMacIdentitiesHandler(),
 
+        // Plugin build-config secrets (same vault; the value goes up, a handle comes back)
+        new PluginBuildSecretSetHandler(),
+        new PluginBuildSecretAvailableHandler(),
+
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),
         new BlueprintPersistenceGetValueHandler(),
@@ -248,6 +256,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // Blueprint network handler (the Fetch node)
         new BlueprintNetworkFetchHandler(),
+
+        // Blueprint external link handler (the Open Link node)
+        new BlueprintExternalLinkOpenHandler(),
 
         // Plugin permission handlers
         new PluginPermissionPromptLaunchHandler(),

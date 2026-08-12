@@ -163,7 +163,7 @@ describe("game runtime artifact compiler", () => {
             contributes: {
                 blueprintNodes: ["acme.sample-plugin.node"],
                 widgets: [], tests: [], runtimeData: [], locales: [],
-                runtimeCapabilities: [], sidecars: [], buildDependencies: [],
+                runtimeCapabilities: [], sidecars: [], buildDependencies: [], buildConfig: [],
             },
             permissions: [],
         };
@@ -545,7 +545,7 @@ describe("game runtime artifact compiler", () => {
             contributes: {
                 blueprintNodes: ["acme.sample-plugin.node"],
                 widgets: [], tests: [], runtimeData: [], locales: [],
-                runtimeCapabilities: [], sidecars: [], buildDependencies: [],
+                runtimeCapabilities: [], sidecars: [], buildDependencies: [], buildConfig: [],
             },
             permissions: [],
         };
@@ -642,8 +642,127 @@ describe("game runtime artifact compiler", () => {
             version: "1.2.3",
             author: "NarraLeaf",
             main: "main.js",
-            narraleaf: { mode: "production" },
+            // The shipped game reads userDataDir before it can open the pack, and
+            // names the player's directory after it rather than after productName,
+            // which a rename would move. See shared/utils/userDataLocation.ts.
+            narraleaf: { mode: "production", userDataDir: "fixture.project" },
         });
+    });
+
+    it("names the player's directory after the app id the build resolved", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            // What the build packages under; the manifest must agree with it
+            // rather than derive a second answer from the project fields.
+            appId: "com.studio.other",
+        });
+
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest.narraleaf.userDataDir).toBe("com.studio.other");
+    });
+
+    it("carries the addresses the compiled variant declares, and only those", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await fs.writeFile(
+            path.join(projectPath, "editor", "app-tags.json"),
+            JSON.stringify({
+                schemaVersion: 1,
+                externalLinks: ["https://example.com/game"],
+                tags: [{
+                    id: "demo",
+                    name: "Demo",
+                    overrides: {},
+                    externalLinks: ["https://example.com/game", "https://example.com/buy"],
+                }],
+            }),
+            "utf-8",
+        );
+
+        const compile = async (appTag?: { id: string; name: string }) => (await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            ...(appTag ? { appTag } : {}),
+        })).pack;
+
+        // The demo links to the full game's store page; the release build does not, which is the
+        // whole reason this list belongs to the variant.
+        expect((await compile({ id: "demo", name: "Demo" })).externalLinks)
+            .toEqual(["https://example.com/game", "https://example.com/buy"]);
+        expect((await compile()).externalLinks).toEqual(["https://example.com/game"]);
+    });
+
+    it("declares no addresses for a project that lists none", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47331));
+
+        // Absent rather than empty, which every shell reads as "this build opens nothing".
+        expect(result.pack.externalLinks).toBeUndefined();
+        // Same reading for the ending page: absent is the behaviour every build had before the
+        // field existed, which is the story stopping with its last frame on screen.
+        expect(result.pack.endingSurfaceId).toBeUndefined();
+    });
+
+    it("carries the page the compiled variant ends on, and only that one", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await fs.writeFile(
+            path.join(projectPath, "editor", "app-tags.json"),
+            JSON.stringify({
+                schemaVersion: 1,
+                endingSurfaceId: "surface-credits",
+                tags: [
+                    { id: "demo", name: "Demo", overrides: {}, endingSurfaceId: "surface-thanks" },
+                    { id: "quiet", name: "Quiet", overrides: {}, endingSurfaceId: "" },
+                ],
+            }),
+            "utf-8",
+        );
+
+        const compile = async (appTag?: { id: string; name: string }) => (await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            ...(appTag ? { appTag } : {}),
+        })).pack;
+
+        expect((await compile({ id: "demo", name: "Demo" })).endingSurfaceId).toBe("surface-thanks");
+        expect((await compile()).endingSurfaceId).toBe("surface-credits");
+        // A variant that states it shows nothing carries no page, not the project's.
+        expect((await compile({ id: "quiet", name: "Quiet" })).endingSurfaceId).toBeUndefined();
     });
 
     it("marks preview app manifests with the preview mode", async () => {
@@ -661,6 +780,9 @@ describe("game runtime artifact compiler", () => {
             name: "narraleaf-preview-runtime",
             narraleaf: { mode: "preview" },
         });
+        // Preview keeps its userData beside the compiled app, so there is no
+        // per-user directory to name; the runtime falls back to that sibling.
+        expect(manifest.narraleaf.userDataDir).toBeUndefined();
     });
 
     it("rejects a runtime dist without a build manifest", async () => {
@@ -772,6 +894,7 @@ async function writeSidecarPlugin(input: {
                 },
             }],
             buildDependencies: input.buildDependencies ?? [],
+            buildConfig: [],
         },
         permissions: [],
     };

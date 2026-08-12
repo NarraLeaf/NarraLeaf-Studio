@@ -3,6 +3,7 @@ import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
@@ -124,6 +125,16 @@ export interface RendererPreloadedInterface {
             getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
             onFullscreenChanged(handler: (payload: { isFullscreen: boolean }) => void): AppEventToken;
         };
+        /**
+         * The same controls, for a window this one detached part of itself into (see
+         * `detachedWindowGuard` in the main process). Named rather than implicit: a detached popup
+         * sends IPC through its opener, so `control.close()` from the buttons drawn in that popup
+         * would close the window it was detached FROM.
+         */
+        detachedControl(
+            key: string,
+            control: "status" | "minimize" | "toggleMaximize" | "close",
+        ): Promise<RequestStatus<{ status: WindowVisibilityStatus }>>;
     };
 
     // File System
@@ -733,6 +744,26 @@ export interface RendererPreloadedInterface {
         macIdentities(): Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>;
     };
 
+    /**
+     * Plugin build-config secrets, in the same machine vault the signing
+     * passwords live in. The value goes up once and a handle comes back; there is
+     * no entry that reads a value out.
+     */
+    pluginBuildSecret: {
+        /**
+         * Seal `value` and answer the handle the project stores. Pass `handle` to
+         * fill in one the project already refers to. `value` is plain text - do
+         * not log it or hold it after the call resolves.
+         */
+        set(value: string, handle?: string): Promise<RequestStatus<{ handle: string; available: boolean }>>;
+        /**
+         * Whether the secret behind a handle is on this machine. False is the
+         * ordinary answer for a project a collaborator configured, and means
+         * "set, not available here" rather than "empty".
+         */
+        available(handle: string): Promise<RequestStatus<{ available: boolean }>>;
+    };
+
     blueprintPersistence: {
         getAll(projectRef: BlueprintPersistenceProjectRef): Promise<RequestStatus<{ values: Record<string, unknown> }>>;
         getValue(projectRef: BlueprintPersistenceProjectRef, key: string): Promise<RequestStatus<{ value: unknown }>>;
@@ -751,6 +782,21 @@ export interface RendererPreloadedInterface {
             projectPath: string,
             request: BlueprintNetworkFetchRequest,
         ): Promise<RequestStatus<{ result: BlueprintNetworkFetchResult }>>;
+    };
+
+    blueprintExternalLink: {
+        /**
+         * One Open Link node request, decided and performed by the main process for a Dev Mode
+         * preview.
+         *
+         * `projectPath` decides whose declared addresses apply; the handler reads them off disk
+         * rather than taking the renderer's word for it, so a preview refuses exactly what the
+         * shipped game refuses.
+         */
+        open(
+            projectPath: string,
+            request: BlueprintOpenExternalRequest,
+        ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>>;
     };
 
     pluginPermissions: {
