@@ -62,6 +62,7 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import { ConditionEditor, EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
@@ -798,7 +799,7 @@ function StoryActionBlueprintEditor(props: {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const openBlueprint = useOpenBlueprintTarget();
-    const handleOpen = useCallback(() => {
+    const handleOpen = useCallback((options?: BlueprintOpenOptions) => {
         if (!context || !isInitialized) return;
         const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         let blueprintId = props.payload.blueprintId;
@@ -806,7 +807,7 @@ function StoryActionBlueprintEditor(props: {
             blueprintId = service.ensureStoryActionBlueprint();
             props.onChange({ ...props.payload, blueprintId });
         }
-        openBlueprint({ blueprintId, ownerKind: "storyAction", title: t("storyInspector.blueprint.storyActionTitle") });
+        openBlueprint({ blueprintId, ownerKind: "storyAction", title: t("storyInspector.blueprint.storyActionTitle") }, options);
     }, [context, isInitialized, openBlueprint, props, t]);
     return (
         <Section title={t("storyInspector.section.blueprint")}>

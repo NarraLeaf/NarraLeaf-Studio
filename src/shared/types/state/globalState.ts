@@ -160,6 +160,17 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "editor.storyRowHighlight": "none" | "script" | "command";
     /**
+     * What becomes of an editor that was popped out into its own window when that window closes:
+     * `"restoreTab"` puts it back as a workspace tab, `"close"` lets it go.
+     *
+     * A setting rather than a fixed rule because the two answers come from two different habits.
+     * Popping a blueprint out to work on it beside the surface it drives is a detour, and the tab
+     * coming back is the way back; popping it out to read it once and closing the window is a
+     * dismissal, and a tab reappearing is the thing that was just dismissed. See
+     * lib/settings/detachedEditorCloseOptions.
+     */
+    "editor.detachedEditorOnClose": "restoreTab" | "close";
+    /**
      * Ask for confirmation before a workspace window closes.
      *
      * Replaces the legacy `workspace.confirmOnClose`, which shipped as an unread placeholder
@@ -301,6 +312,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.localizedCommands": true,
     "editor.hideParamNames": false,
     "editor.storyRowHighlight": "none",
+    "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,
     "workspace.returnToLauncherOnClose": true,
     "workspace.recentProjectsLimit": 10,

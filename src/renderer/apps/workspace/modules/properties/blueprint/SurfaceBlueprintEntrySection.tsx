@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
-import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
+import { blueprintEntryContextMenu } from "@/apps/workspace/modules/blueprint-lite/hooks/blueprintEntryGesture";
+import { useOpenBlueprintTarget, type BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -45,7 +46,7 @@ export const SurfaceBlueprintEntrySection = selfReadOnly(function SurfaceBluepri
         [localBp, nodeCatalog, summary.blueprintId, blueprintRevision],
     );
 
-    const openEntry = () => {
+    const openEntry = (options?: BlueprintOpenOptions) => {
         if (!summary.blueprintId) {
             return;
         }
@@ -57,7 +58,7 @@ export const SurfaceBlueprintEntrySection = selfReadOnly(function SurfaceBluepri
                 logic: logicLabel,
                 name: data.surface.name || t("properties.blueprintEntry.interfaceFallback"),
             }),
-        });
+        }, options);
     };
 
     const canOpenEntry = summary.hasSurfaceMain && Boolean(summary.blueprintId);
@@ -68,7 +69,9 @@ export const SurfaceBlueprintEntrySection = selfReadOnly(function SurfaceBluepri
                 type="button"
                 className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:cursor-default"
                 disabled={!canOpenEntry}
-                onClick={openEntry}
+                onClick={() => openEntry()}
+                onContextMenu={blueprintEntryContextMenu(openEntry)}
+                title={canOpenEntry ? t("blueprint.entry.openInWindow") : undefined}
                 aria-label={canOpenEntry ? t("properties.blueprintEntry.open") : t("properties.blueprintEntry.noBlueprint")}
             >
                 <BlueprintLayerPreview model={previewModel} />

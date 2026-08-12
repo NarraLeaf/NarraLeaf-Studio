@@ -39,6 +39,7 @@ import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
+import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { choiceOptionRefs, valueBlueprintRefs } from "./storyCommandContext";
 import {
     collectStoryVariableOptions,
@@ -268,7 +269,7 @@ export function ConditionEditor(props: {
         props.onChange({ ...variableValue, target: makeVariableRef(option.scope, option.id) });
     };
 
-    const openEditor = () => {
+    const openEditor = (options?: BlueprintOpenOptions) => {
         let id = blueprintId;
         if (!id) {
             id = blueprintService?.ensureStoryActionBlueprint({ mode: "condition" }) ?? "";
@@ -278,7 +279,7 @@ export function ConditionEditor(props: {
             return;
         }
         props.onBeforeOpenBlueprint?.();
-        openBlueprint({ blueprintId: id, ownerKind: "storyAction", title: t("story.condition.title") });
+        openBlueprint({ blueprintId: id, ownerKind: "storyAction", title: t("story.condition.title") }, options);
     };
 
     const variableSelectOptions: SelectOption[] = allVariables.length

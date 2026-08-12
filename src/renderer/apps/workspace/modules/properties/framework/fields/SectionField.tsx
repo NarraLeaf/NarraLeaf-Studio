@@ -21,10 +21,21 @@ function SectionFieldInner<TData>({ field, data, onSaving }: SectionFieldProps<T
         }
     }, [field.collapsible]);
 
+    /*
+     * The card clips nothing on purpose: a field inside a section can open a menu or a popover that
+     * has to reach past the card's edge, which is why `overflow-visible` replaced the original
+     * `overflow-hidden` here. That leaves the header to round its own corners. Its fill
+     * (`bg-surface-raised`) is a different one from the body's, so with no radius of its own it
+     * painted square into the card's rounded top corners and the whole section read as a plain
+     * rectangle - the card's radius was still there, just covered up. Collapsed, the header *is* the
+     * card, so it takes the radius on all four corners.
+     */
+    const headerRadiusClass = isCollapsed ? "rounded-md" : "rounded-t-md";
+
     return (
         <div className={`border border-edge rounded-md overflow-visible ${field.className || ""}`}>
             <div
-                className={`flex items-center gap-2 px-3 py-2 bg-surface-raised ${
+                className={`flex items-center gap-2 px-3 py-2 bg-surface-raised ${headerRadiusClass} ${
                     field.collapsible ? "cursor-pointer hover:bg-surface-overlay" : ""
                 }`}
                 onClick={toggleCollapse}

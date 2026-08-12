@@ -1,11 +1,17 @@
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { HelpTrigger } from "@/lib/help";
+import { DetachedTitleBarControls, useDetachedTitleBar } from "@/lib/components/layout";
+import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 
 type Props = {
     header: ReactNode;
+    /** Controls at the far right of the title row, after the help trigger. */
+    headerActions?: ReactNode;
+    /** Non-primary clicks on the title row - a middle click there pops the editor out. */
+    onHeaderAuxClick?: (event: ReactMouseEvent) => void;
     memberTree: ReactNode;
     canvas: ReactNode;
     diagnostics: ReactNode;
@@ -17,6 +23,8 @@ type Props = {
 
 export function BlueprintEditorLayout({
     header,
+    headerActions,
+    onHeaderAuxClick,
     memberTree,
     canvas,
     diagnostics,
@@ -25,6 +33,7 @@ export function BlueprintEditorLayout({
     onMemberPanelFocusContainedChange,
 }: Props) {
     const { t } = useTranslation();
+    const detachedTitleBar = useDetachedTitleBar();
     const [uncontrolledLeftCollapsed, setUncontrolledLeftCollapsed] = useState(false);
     const memberPanelScrollRef = useRef<HTMLDivElement>(null);
     const isLeftCollapsed = memberPanelCollapsed ?? uncontrolledLeftCollapsed;
@@ -67,9 +76,26 @@ export function BlueprintEditorLayout({
         // The whole editor answers with one topic: `F1` anywhere in it - the canvas, the member
         // tree, the diagnostics list - is the same question about the same thing.
         <div className="flex h-full min-h-0 flex-col bg-surface text-sm text-fg" data-help-topic="blueprints">
-            <header className="group/help flex shrink-0 items-center border-b border-edge px-3 py-2">
+            {/* Detached, this row IS the window's title bar: the window is frameless like every
+                other Studio window, so the row carries the drag region, the gap the macOS traffic
+                lights are drawn into, and (off macOS) the window buttons. Everything in it that
+                takes a click has to say `no-drag`, or the drag region swallows the click. */}
+            <header
+                className={cn(
+                    "group/help flex shrink-0 items-center gap-1 border-b border-edge px-3",
+                    detachedTitleBar.isDetached ? "h-10 min-h-10 py-0 pr-0" : "py-2",
+                    detachedTitleBar.rowProps.className,
+                )}
+                style={detachedTitleBar.rowProps.style}
+                onAuxClick={onHeaderAuxClick}
+            >
                 <div className="min-w-0 flex-1">{header}</div>
-                <HelpTrigger topic="blueprints" />
+                {/* No help in a detached window: F1 opens the help panel, which is a dock panel of
+                    the workspace window, so the answer would appear in the window the author is not
+                    looking at. The editor is one F1 away in the workspace either way. */}
+                {detachedTitleBar.isDetached ? null : <HelpTrigger topic="blueprints" />}
+                {headerActions ? <div className="no-drag flex items-center">{headerActions}</div> : null}
+                <DetachedTitleBarControls />
             </header>
             <div className="relative flex min-h-0 min-w-0 flex-1">
                 <aside className={leftPanelClasses}>

@@ -30,6 +30,10 @@ import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
+import {
+    useOpenBlueprintTarget,
+    type BlueprintOpenOptions,
+} from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { ComponentLibraryPanel } from "./panel/ComponentLibraryPanel";
 import { getComponentEditorSurfaceId, getComponentTabId } from "./editors/componentEditorAdapter";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
@@ -116,6 +120,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const { editorLayout, openEditorTab, closeEditorTabs } = useRegistry();
+    const openBlueprintTarget = useOpenBlueprintTarget();
     const [surfaces, setSurfaces] = useState<UISurface[]>([]);
     const [kind, setKind] = useState<UISurfaceKind>("appSurface");
     const { menuState, showMenu, hideMenu } = useContextMenu();
@@ -199,17 +204,20 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         openEditorTab(createSurfaceEditorTab(surface));
     }, [openEditorTab]);
 
-    const handleOpenGlobalBlueprint = useCallback(() => {
+    // Through `useOpenBlueprintTarget` rather than `openEditorTab` directly, so this entry behaves
+    // like every other one: it finds a blueprint that is already in a window instead of opening a
+    // second view onto it, and it can open into a window itself.
+    const handleOpenGlobalBlueprint = useCallback((options?: BlueprintOpenOptions) => {
         if (!globalBlueprintId) {
             return;
         }
-        openEditorTab(createBlueprintEntryEditorTab({
+        openBlueprintTarget({
             blueprintId: globalBlueprintId,
             ownerKind: "globalMain",
             surfaceId: GLOBAL_MAIN_OWNER_KEY,
             title: globalOwnerLabel.titlePrefix,
-        }));
-    }, [globalBlueprintId, openEditorTab]);
+        }, options);
+    }, [globalBlueprintId, openBlueprintTarget]);
 
     /**
      * Make `subjectId` the properties panel's subject and bring the panel forward.
@@ -552,7 +560,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             typeLabel: t("uiEditor.panel.blueprintType"),
             preview: <BlueprintLayerPreview model={globalBlueprintPreviewModel} heightClassName="h-24" />,
             canOpen: Boolean(globalBlueprintId),
-            onClick: handleOpenGlobalBlueprint,
+            onClick: () => handleOpenGlobalBlueprint(),
+            onOpenInWindow: () => handleOpenGlobalBlueprint({ inOwnWindow: true }),
         };
     }, [globalBlueprintId, globalBlueprintPreviewModel, handleOpenGlobalBlueprint, kind, t]);
 

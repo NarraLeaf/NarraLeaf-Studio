@@ -14,6 +14,7 @@ import { useRecoveryOffer } from "./hooks/useRecoveryOffer";
 import { useUpdateOffer } from "./hooks/useUpdateOffer";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
+import { DetachedEditorsHost } from "./detached/DetachedEditorsHost";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
 import { StoryRowHighlightBridge } from "./modules/story/scene-editor/StoryRowHighlightBridge";
 import { DevModeStoryRowOpenBridge } from "./modules/story/scene-editor/DevModeStoryRowOpenBridge";
@@ -42,6 +43,7 @@ function WorkspaceContent() {
 
     return (
         <>
+            <DetachedEditorsHost />
             <PreviewBlueprintNavigateBridge />
             <StoryRowHighlightBridge />
             <DevModeStoryRowOpenBridge />
