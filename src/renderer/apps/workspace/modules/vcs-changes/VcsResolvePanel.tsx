@@ -12,7 +12,8 @@ import { translate, useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
-import { ConflictFooter, ConflictResolveView } from "@/lib/vcs/ConflictResolveView";
+import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
+import { ConflictFooter, ConflictResolveView, type WriteGuard } from "@/lib/vcs/ConflictResolveView";
 import {
     buildConflictRows,
     countUndecidedFiles,
@@ -20,7 +21,14 @@ import {
     type MergeDocumentEntry,
 } from "@/lib/vcs/mergeDecisionView";
 import { useWorkspace } from "../../context";
-import { useFreezeGuard } from "../../components/ui/freezeGuard";
+import { useFreezeGuard, type FreezeGuard } from "../../components/ui/freezeGuard";
+import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
+import {
+    clearMergeDecisionDraft,
+    mergeFingerprint,
+    readMergeDecisionDraft,
+    writeMergeDecisionDraft,
+} from "./mergeDecisionDraft";
 
 /**
  * Finishing a merge: whole files from one side, and - where the format allows it - one change
@@ -45,17 +53,23 @@ import { useFreezeGuard } from "../../components/ui/freezeGuard";
  * merge left on disk survive a resolve, the status call reports nothing for the whole of a merge,
  * and two of the three settle verbs emit no events (docs §4.24, §4.25). The only observation that
  * separates settled from unsettled is the commit refusing itself, which is a write. So the
- * decisions below - whole-file and per-change alike - live in THIS COMPONENT for the life of the
- * window, they are never presented as repository state, and the panel says so in words rather than
- * implying a progress that is not saved anywhere.
+ * decisions below - whole-file and per-change alike - are STUDIO'S record and never the
+ * repository's, and the panel says so in words rather than implying a progress the repository knows
+ * about.
+ *
+ * They are kept in a draft under `.nlstudio/` (`mergeDecisionDraft`) so that a window closed part
+ * way through a long merge does not throw them away. That is a change from what this used to do and
+ * it changes nothing about the paragraph above or the one below: the draft is an unapplied form,
+ * fingerprinted against the merge it belongs to so it can never pre-select sides in a different one,
+ * and discarded the moment the merge is finished or abandoned.
  *
  * **Which is why nothing is applied until the author finishes.** `mine` and `theirs` overwrite the
  * working tree the moment they are called, so a panel that applied each click would rewrite the
  * author's files a file at a time, re-read every editor between clicks, and leave a merge whose
  * half-settled state nothing could read back. Choosing is local; one press then settles everything
  * and commits, as one operation in the main process. A window closed before that press leaves the
- * merge exactly as the sync left it - no bytes written, nothing to recover from - and the author
- * starts the choosing again.
+ * merge exactly as the sync left it - no bytes written, nothing to recover from - and reopening it
+ * brings the choosing back where the author left it.
  *
  * **Neither side is selected by default, at either tier.** Two hundred conflicts is tedious to
  * click through, and that was weighed: one mis-aimed press that silently
@@ -69,6 +83,17 @@ import { useFreezeGuard } from "../../components/ui/freezeGuard";
 /** How many conflicts the index lists before it says how many it left out. */
 const RESOLVE_ROW_LIMIT = 200;
 
+/**
+ * A guard that switches nothing off, for the one freeze this panel is the exit from.
+ *
+ * It still honours a control's OWN disabled state and title, which is the whole contract: "the
+ * freeze is not why this is greyed out" must not become "nothing is ever greyed out", or Finish
+ * would be pressable with files still undecided.
+ */
+const PERMISSIVE_GUARD: WriteGuard = {
+    writes: (ownDisabled, ownTitle) => ({ disabled: Boolean(ownDisabled), title: ownTitle }),
+};
+
 export function VcsResolvePanel() {
     const { t } = useTranslation();
     const { context } = useWorkspace();
@@ -77,15 +102,39 @@ export function VcsResolvePanel() {
     // open - is not: a frozen workspace is exactly the state an author browsing a past revision is
     // in, and taking away their view of the merge would tell them nothing about why they cannot act
     // on it.
-    const guard = useFreezeGuard();
+    const workspaceGuard = useFreezeGuard();
+    const freezeReason = useWorkspaceFreezeReason();
+    /**
+     * The guard this panel actually obeys - the workspace's, except for the freeze it exists to end.
+     *
+     * A project opened mid-merge is frozen with `kind: "merge"`, and that freeze has no `thaw`: the
+     * only ways out are the two buttons at the bottom of this panel. Obeying it therefore greys out
+     * the only exit from the state it describes, which is not a safe default - it is a locked room,
+     * and the rail's own copy is meanwhile telling the author to come here and finish. Every other
+     * freeze still applies: a manual one, or a revision preview, means somebody deliberately made
+     * the project read-only and settling a merge under it would write the very files they stopped.
+     *
+     * Not a special case inside `useFreezeGuard`, deliberately: that hook is what every editor uses,
+     * and an exception living there would be an exception every future surface inherits by accident.
+     */
+    const guard = useMemo<FreezeGuard | WriteGuard>(
+        () => (freezeReason === "merge" ? PERMISSIVE_GUARD : workspaceGuard),
+        [freezeReason, workspaceGuard],
+    );
+    const blockedByFreeze = workspaceGuard.frozen && freezeReason !== "merge";
     const [state, setState] = useState<VcsMergeState | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     /**
-     * The author's choices so far - **this window's memory, and nowhere else's.**
+     * The author's choices so far - **an unapplied form, and still not repository state.**
      *
      * Keyed by repository-relative path. A path that is not a key is undecided, which is the state
      * every row starts in.
+     *
+     * Kept in a draft under `.nlstudio/` as well as here (`mergeDecisionDraft`), so closing the
+     * window forty files into a two-hundred-file merge does not start the choosing again. Nothing
+     * about WHEN it is applied has changed: one press settles everything, and until then not a byte
+     * of the author's tree has moved.
      */
     const [decisions, setDecisions] = useState<Record<string, VcsMergeSideChoice>>({});
     /**
@@ -153,6 +202,57 @@ export function VcsResolvePanel() {
         () => (state?.inProgress ? state.conflicts : []),
         [state],
     );
+
+    /**
+     * Which merge is open, as one value the draft can be keyed by. Null when none is.
+     */
+    const fingerprint = useMemo(
+        () => (state?.inProgress ? mergeFingerprint(state) : null),
+        [state],
+    );
+    const serviceAssets = useMemo(
+        () => (context ? context.services.get<ServiceAssetsService>(Services.ServiceAssets) : null),
+        [context],
+    );
+    /**
+     * The fingerprint whose draft has been read, so the writer below cannot run first.
+     *
+     * Without it the empty initial state would be saved over a real draft between mount and the
+     * read landing - the failure mode being "the author's forty decisions are erased by opening the
+     * tab", which is precisely what this is here to prevent.
+     */
+    const hydrated = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (!serviceAssets || !fingerprint || hydrated.current === fingerprint) {
+            return;
+        }
+        void readMergeDecisionDraft(serviceAssets, fingerprint).then(draft => {
+            if (!alive.current) return;
+            hydrated.current = fingerprint;
+            if (!draft) {
+                return;
+            }
+            setDecisions(draft.decisions);
+            setPerChange(draft.perChange);
+            setChangeChoices(draft.changeChoices);
+        });
+    }, [serviceAssets, fingerprint]);
+
+    // Saved on every change rather than on a timer: a merge produces a click every few seconds at
+    // most, and the whole value of the draft is that it survives a window that closed without
+    // warning - which a debounce is exactly long enough to miss.
+    useEffect(() => {
+        if (!serviceAssets || !fingerprint || hydrated.current !== fingerprint) {
+            return;
+        }
+        void writeMergeDecisionDraft(serviceAssets, {
+            fingerprint,
+            decisions,
+            perChange,
+            changeChoices,
+        });
+    }, [serviceAssets, fingerprint, decisions, perChange, changeChoices]);
     const listed = conflicts.slice(0, RESOLVE_ROW_LIMIT);
     /**
      * The selected file, resolved against the current merge rather than stored as truth.
@@ -251,7 +351,7 @@ export function VcsResolvePanel() {
     const finish = () => {
         // No floor on `conflicts.length`: a merge whose automerge settled everything has nothing to
         // decide and still needs the commit that closes it, which is exactly this press.
-        if (!service || running !== null || guard.frozen || undecided > 0) {
+        if (!service || running !== null || blockedByFreeze || undecided > 0) {
             return;
         }
         // Built by filtering rather than by asserting the map is complete: the button is disabled
@@ -302,6 +402,12 @@ export function VcsResolvePanel() {
         setChangeChoices({});
         setSelectedPath(null);
         setDocuments({});
+        // The draft goes with them, and eagerly rather than through the effect above: that effect is
+        // keyed on the fingerprint, and the merge this draft described no longer exists to have one.
+        hydrated.current = null;
+        if (serviceAssets) {
+            void clearMergeDecisionDraft(serviceAssets);
+        }
     };
 
     /**
@@ -313,7 +419,7 @@ export function VcsResolvePanel() {
      * recoverable (sync again) and still not something to do by accident.
      */
     const abandon = () => {
-        if (!service || !context || running !== null || guard.frozen) {
+        if (!service || !context || running !== null || blockedByFreeze) {
             return;
         }
         const ui = context.services.get<UIService>(Services.UI);

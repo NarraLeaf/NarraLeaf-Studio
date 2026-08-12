@@ -1,5 +1,5 @@
 import type { VcsAvailability } from "@shared/types/vcs";
-import { isVcsPlatformSupported } from "@shared/types/vcs";
+import { isVcsPlatformSupported, VcsErrorCode } from "@shared/types/vcs";
 
 /**
  * The plug in "pluggable version control".
@@ -132,6 +132,9 @@ export async function getVcsAvailability(): Promise<VcsAvailability> {
 
 /** Thrown by every VCS operation on a host without a usable backend. */
 export class VcsUnavailableError extends Error {
+    /** Carried across IPC by `ipcHost.failed`, so the renderer says this in the author's language. */
+    readonly code = VcsErrorCode.Unavailable;
+
     constructor(readonly availability: Extract<VcsAvailability, { available: false }>) {
         super(
             availability.reason === "unsupported-platform"

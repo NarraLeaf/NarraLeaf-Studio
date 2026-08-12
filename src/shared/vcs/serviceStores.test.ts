@@ -27,6 +27,10 @@ describe("service store classification", () => {
         expect(serviceStoreLocation("panel_state")).toBe("studio");
         expect(serviceStoreLocation("notification_history")).toBe("studio");
         expect(serviceStoreLocation("recent_colors")).toBe("studio");
+        // A merge in progress writes nothing until Finish, so the half-filled form is Studio's
+        // state - and it has to be writable while that same merge has the workspace frozen, which
+        // `editor/services/` is not.
+        expect(serviceStoreLocation("merge_decisions")).toBe("studio");
         // The author's cast. Moving this out of the versioned tree is the failure the
         // whole table is arranged to prevent.
         expect(serviceStoreLocation("character")).toBe("project");

@@ -7,7 +7,13 @@ import { VersionControlService } from "@/lib/workspace/services/core/VersionCont
 import { NotificationType } from "@/lib/workspace/services/ui/types";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
+import { openVcsChangesTab } from "../../modules/vcs-changes/openVcsChangesTab";
 import { unavailableReasonKey } from "./versionRailModel";
+import {
+    isVersionRailReachable,
+    openVersionRail,
+    openVersionRailForCommit,
+} from "./versionRailController";
 
 /**
  * The way into and out of the frozen workspace - and into and out of a past revision - until the
@@ -127,6 +133,68 @@ export function WorkspaceFreezeCommands() {
                         translate("workspace.shell.revisionView.shownTitle", { revision: `#${previous.number}` }),
                         translate("workspace.shell.revisionView.shownDetail"),
                     );
+                },
+            },
+            /*
+             * The four ordinary acts, which had no palette entry at all.
+             *
+             * Everything above is about the frozen workspace - the state an author gets INTO by
+             * accident and needs a documented way out of - and that is how this list came to hold
+             * only the exceptional half of the feature. Meanwhile the way to submit a version was a
+             * button inside a panel reachable from two places, neither of which is where someone
+             * looks when they already know what they want.
+             *
+             * **None of them takes a keybinding.** A command with a default shortcut registers that
+             * key globally for the window, and four more global keys is not what "the palette should
+             * know about commit" is worth. The palette is the whole point: it is searchable.
+             */
+            {
+                id: "vcs:open-rail",
+                titleKey: "workspace.shell.versionControl.command.openRail",
+                categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                // The rail registers its bridge exactly when version control exists for this
+                // project, so this is the synchronous form of the availability question a `when`
+                // cannot ask any other way.
+                when: () => isVersionRailReachable(),
+                run: () => openVersionRail(),
+            },
+            {
+                id: "vcs:commit",
+                titleKey: "workspace.shell.versionControl.command.commit",
+                categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                // The form is absent while project data is frozen (`isCommitFormPresent`), so
+                // offering this then would land the author on a panel with no box in it.
+                when: () => isVersionRailReachable() && !freezeService.isFrozen(),
+                run: () => openVersionRailForCommit(),
+            },
+            {
+                id: "vcs:refresh-changes",
+                titleKey: "workspace.shell.versionControl.command.refreshChanges",
+                categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                // Not while a past revision is on screen. A scan is not a pure read - it records
+                // newly discovered directories into staged state (docs §4.17) - and "browsing
+                // history has zero side effects" is the decision this feature is shaped around. The
+                // rail skips the same scan in the same state, for the same reason.
+                when: () => isVersionRailReachable() && freezeService.getReason()?.kind !== "revision",
+                run: async () => {
+                    openVersionRail();
+                    await versionControl.refreshStatus();
+                },
+            },
+            {
+                id: "vcs:compare-working-tree",
+                titleKey: "workspace.shell.versionControl.command.compareChanges",
+                categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                when: () => isVersionRailReachable(),
+                run: async () => {
+                    // `getInfo` is a pure read (`repositoryStatus(scan:false, revisionOnly:true)`),
+                    // so asking for the head's number here costs nothing and is what lets the tab
+                    // call it `#36` rather than by hash - the way every other surface names it.
+                    const info = await versionControl.getInfo();
+                    openVcsChangesTab(context, {
+                        mode: "working-tree",
+                        headLabel: info && info.headNumber > 0 ? `#${info.headNumber}` : undefined,
+                    });
                 },
             },
             {

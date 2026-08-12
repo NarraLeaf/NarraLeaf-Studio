@@ -38,6 +38,28 @@ import type { WorkspaceFreezeService } from "./WorkspaceFreezeService";
 import type { WorkspaceReloadService } from "./WorkspaceReloadService";
 
 /**
+ * A call the main process refused.
+ *
+ * Carries the `code` the thrower gave itself alongside the sentence it threw, so a surface can tell
+ * an ordinary answer ("nothing has changed since the last version") from a failure without matching
+ * on English prose. `code` is undefined for everything that threw a plain `Error`, which is most
+ * things and is fine: the sentence is then all there is, and it is rendered as it always was.
+ */
+export class VcsCallError extends Error {
+    constructor(message: string | undefined, readonly code: string | undefined) {
+        // A refusal with no message at all should still not surface as "undefined". It has not been
+        // seen, and the day it is, this reads as a fault rather than as a sentence.
+        super(message?.trim() || "Version control refused the request");
+        this.name = "VcsCallError";
+    }
+}
+
+/** The rejection every call in this service throws, from the envelope the host sent back. */
+function vcsCallFailed(result: { error?: string; code?: string }): VcsCallError {
+    return new VcsCallError(result.error, result.code);
+}
+
+/**
  * The renderer's side of version control.
  *
  * Everything here goes over IPC to the per-project session in `VcsManager`; the
@@ -440,7 +462,7 @@ export class VersionControlService extends Service<VersionControlService> implem
      */
     public async readBlob(revision: RevisionId, path: string): Promise<Uint8Array> {
         const result = await getInterface().vcs.readBlob(this.projectPath(), revision, path);
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         return decodeBase64(result.data.contentBase64);
     }
 
@@ -455,7 +477,7 @@ export class VersionControlService extends Service<VersionControlService> implem
      */
     public async readWorkingFile(path: string): Promise<Uint8Array | null> {
         const result = await getInterface().vcs.readWorkingFile(this.projectPath(), path);
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         return result.data.contentBase64 === null ? null : decodeBase64(result.data.contentBase64);
     }
 
@@ -476,7 +498,7 @@ export class VersionControlService extends Service<VersionControlService> implem
             revision,
             paths ? [...paths] : undefined,
         );
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         const documents = new Map<string, string | null>();
         for (const entry of result.data.documents) {
             documents.set(entry.path, entry.contentBase64 === null ? null : decodeUtf8(entry.contentBase64));
@@ -566,7 +588,7 @@ export class VersionControlService extends Service<VersionControlService> implem
             // that is already the old version, with no way back that works.
             release();
         }
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         // Before the re-read, because the head has moved and the surfaces that name it re-read it
         // themselves - and because everything cached here describes the tree as it was.
         this.afterRevision();
@@ -617,7 +639,7 @@ export class VersionControlService extends Service<VersionControlService> implem
             throw new Error(`Version control is not available on this machine (${availability.reason})`);
         }
         const result = await getInterface().vcs.setRemote(this.projectPath(), url);
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         return result.data.url;
     }
 
@@ -652,7 +674,7 @@ export class VersionControlService extends Service<VersionControlService> implem
             throw new Error(`Version control is not available on this machine (${availability.reason})`);
         }
         const result = await getInterface().vcs.push(this.projectPath());
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         return result.data;
     }
 
@@ -691,7 +713,7 @@ export class VersionControlService extends Service<VersionControlService> implem
             // holding its own hold would refuse its own thaw.
             release();
         }
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
 
         // Nothing arrived, so nothing on screen is stale and there is no reason to make
         // every editor re-read. The head has not moved either.
@@ -748,7 +770,7 @@ export class VersionControlService extends Service<VersionControlService> implem
     public async getMergeDocument(path: string): Promise<VcsMergeDocument | null> {
         if (!(await this.isAvailable())) return null;
         const result = await getInterface().vcs.getMergeDocument(this.projectPath(), path);
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         return result.data;
     }
 
@@ -813,7 +835,7 @@ export class VersionControlService extends Service<VersionControlService> implem
                 .reload("restore");
         }
 
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         return result.data;
     }
 
@@ -840,7 +862,7 @@ export class VersionControlService extends Service<VersionControlService> implem
         } finally {
             release();
         }
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
 
         // No revision was recorded, so the head has not moved - but every document under the
         // editors was just rewritten, which is the half that still has to be undone in memory.
@@ -880,7 +902,7 @@ export class VersionControlService extends Service<VersionControlService> implem
     public async diffRevisions(from: RevisionId, to: RevisionId): Promise<VcsRevisionDiffResult | null> {
         if (!(await this.isAvailable())) return null;
         const result = await getInterface().vcs.diffRevisions(this.projectPath(), from, to);
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         return result.data;
     }
 
@@ -896,7 +918,7 @@ export class VersionControlService extends Service<VersionControlService> implem
     public async diffWorkingTree(): Promise<VcsWorkingTreeDiffResult | null> {
         if (!(await this.isAvailable())) return null;
         const result = await getInterface().vcs.diffWorkingTree(this.projectPath());
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         return result.data;
     }
 
@@ -915,7 +937,7 @@ export class VersionControlService extends Service<VersionControlService> implem
             throw new Error(`Version control is not available on this machine (${availability.reason})`);
         }
         const result = await getInterface().vcs.initRepository(this.projectPath(), options);
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         // The project just became a repository: anything cached from before described
         // a project that did not have one.
         this.afterRevision();
@@ -942,7 +964,7 @@ export class VersionControlService extends Service<VersionControlService> implem
             throw new Error(`Version control is not available on this machine (${availability.reason})`);
         }
         const result = await getInterface().vcs.commit(this.projectPath(), options);
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         this.afterRevision();
         return result.data;
     }
@@ -959,7 +981,7 @@ export class VersionControlService extends Service<VersionControlService> implem
     public async createCheckpoint(reason: VcsCheckpointReason): Promise<VcsCommitResult | null> {
         if (!(await this.isAvailable())) return null;
         const result = await getInterface().vcs.checkpoint(this.projectPath(), reason);
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) throw vcsCallFailed(result);
         if (result.data.revision) this.afterRevision();
         return result.data.revision;
     }

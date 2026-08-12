@@ -237,7 +237,13 @@ function comparisonHeading(
     switch (payload.mode) {
         case "working-tree":
             return head
-                ? t("documentDiff.tab.comparingWorkingTree", { version: shortRevision(head) })
+                // `#36` when the opener knew it, which is every path an author can actually take to
+                // this tab; the hash only for a tab restored from a persisted layout, where nobody
+                // is left to ask. Naming it the way the rail, the status cell and the switcher menu
+                // all name it is the whole point - one version with two names reads as two versions.
+                ? t("documentDiff.tab.comparingWorkingTree", {
+                    version: payload.headLabel ?? shortRevision(head),
+                })
                 // A repository with no revisions: there is no version to have changed since, and
                 // saying so beats naming one that does not exist.
                 : t("documentDiff.tab.comparingWorkingTreeUnknown");
