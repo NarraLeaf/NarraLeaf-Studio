@@ -55,7 +55,7 @@ export type GameUiSlotHostOptions = {
         props?: PageProps,
         options?: OpenSurfaceOptions,
     ) => Promise<void>;
-    closeLayerWithTransition: () => Promise<void>;
+    goBackWithTransition: () => Promise<void>;
     quitApplication: () => Promise<void>;
     /** Hosts without a real application window (story preview) leave these unset. */
     getFullscreen?: () => Promise<boolean>;
@@ -190,7 +190,7 @@ export function useStageSlotSurfaceRuntime(input: {
             pageProps: {},
             emit: event => core.debug.emit(event),
             onOpenSurface: options.openSurfaceWithTransition,
-            onCloseLayer: options.closeLayerWithTransition,
+            onPageBack: options.goBackWithTransition,
             onQuitApplication: options.quitApplication,
             onGetFullscreen: options.getFullscreen,
             onSetFullscreen: options.setFullscreen,

@@ -79,7 +79,7 @@ function hostOptions(overrides: Partial<GameUiSlotHostOptions>): GameUiSlotHostO
         lifecycleRef: { current: {} },
         makeStateAccessors: () => null,
         openSurfaceWithTransition: async () => undefined,
-        closeLayerWithTransition: async () => undefined,
+        goBackWithTransition: async () => undefined,
         quitApplication: async () => undefined,
         startStoryInGame: async () => undefined,
         writeSaveInGame: async () => undefined,
