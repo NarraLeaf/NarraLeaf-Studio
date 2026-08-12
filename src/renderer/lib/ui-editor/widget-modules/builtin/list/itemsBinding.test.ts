@@ -52,7 +52,7 @@ function hostApiFor(document: UIDocument, pageProps: Record<string, unknown>) {
         pageProps,
         emit: () => undefined,
         onOpenSurface: () => undefined,
-        onCloseLayer: () => undefined,
+        onPageBack: () => undefined,
         onWidgetPatch: () => undefined,
         widgetRuntimeStore: new WidgetRuntimeStateStore(),
     });
