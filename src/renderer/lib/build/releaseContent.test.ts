@@ -366,6 +366,8 @@ describe("release content blockers", () => {
 
         expect(answer.staleDeclarations).toEqual([{
             mechanismKey: START_STORY_MECHANISM,
+            // Named, because the scene it points at has no name left to print.
+            location: "Title screen",
             storyId: "story-1",
             sceneId: "deleted",
         }]);

@@ -157,6 +157,8 @@ export type ReleaseContentBlocker = {
 /** A declaration naming a scene the project no longer has. Reported, never silently dropped. */
 export type StaleSceneDeclaration = {
     mechanismKey: string;
+    /** What the author calls the mechanism this was declared for. The scene itself has no name left. */
+    location: string;
     storyId: string;
     sceneId: string;
 };
@@ -350,7 +352,7 @@ function readMechanisms(
                 // A declared scene the project no longer has. Reported rather than treated as an
                 // entry: a scene id that resolves to nothing would silently narrow what the
                 // declaration protects, which is the failure the declaration exists to prevent.
-                staleDeclarations.push({ mechanismKey, storyId: scene.storyId, sceneId: scene.sceneId });
+                staleDeclarations.push({ mechanismKey, location, storyId: scene.storyId, sceneId: scene.sceneId });
                 continue;
             }
             const forStory = entriesFromDeclarations.get(scene.storyId);

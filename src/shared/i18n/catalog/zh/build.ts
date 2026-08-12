@@ -274,6 +274,19 @@ export const build = {
         one: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
         other: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
     },
+    contentBlockedStartStory: "{location} 中的开始游戏节点在运行时才确定场景。请在检查器中选定场景，或在 {variant} 版本中列出它可以开始的场景",
+    contentBlockedScript: "蓝图 {location} 使用 TypeScript 编写，可以开始任意场景。请在 {variant} 版本中列出它可以开始的场景",
+    contentBlockedPlugin: "{location} 插件可以开始任意场景。请在 {variant} 版本中列出它可以开始的场景",
+    contentBlockedSummary: {
+        one: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
+        other: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
+    },
+    contentStaleDeclaration: "{variant} 版本中为 {location} 列出的某个场景已不在本工程中",
+    contentKept: {
+        one: "{variant} 构建包含 {count} 个场景",
+        other: "{variant} 构建包含 {count} 个场景",
+    },
+    contentDropped: "{story} 中的 {scene} 不在本次构建里",
     mediaNeedsConverting: "{asset} 无法播放，请在素材面板中转换",
     mediaNotPlayable: "{asset} 不含音频也不含视频，请替换或删除该文件",
     mediaSummary: {
