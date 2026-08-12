@@ -6,12 +6,16 @@ import {
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
+    normalizeGameCrashPolicy,
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
     type GameRuntimeSidecarBridge,
     type GameRuntimeSidecarMessage,
 } from "@shared/types/gameRuntime";
-import { readGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
+import {
+    readGameRuntimeAssetVersionArg,
+    readGameRuntimeCrashPolicyArg,
+} from "@shared/utils/gameRuntimeAssetUrl";
 import {
     GAME_RUNTIME_TEST_SIGNAL_CHANNEL,
     type GameRuntimeTestSignal,
@@ -23,6 +27,11 @@ import {
 // session-unique: a missing marker can only under-cache, never serve bytes
 // from an older pack.
 const assetVersion = readGameRuntimeAssetVersionArg(process.argv) ?? String(Date.now());
+
+// Same channel, same reason: the renderer has to know what to do about a crash before it has read
+// anything. Passed through unvalidated - the renderer normalizes, and a marker this process did
+// not write cannot reach here anyway.
+const crashPolicy = normalizeGameCrashPolicy(readGameRuntimeCrashPolicyArg(process.argv));
 
 // The main process asks before honouring a user-initiated window close so blueprints can intercept
 // it. Registered once here; until the game installs a handler (still loading), the close is allowed
@@ -190,6 +199,7 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
         };
     },
     capabilities: { closeRequested: true },
+    crashPolicy,
     save: {
         write: (id, savedGame, capture, metadata) =>
             ipcRenderer.invoke("runtime:save:write", { id, savedGame, capture, metadata }) as Promise<void>,

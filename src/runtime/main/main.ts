@@ -12,12 +12,19 @@ import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
+    GAME_RUNTIME_CRASH_QUERY_PARAM,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
+    DEFAULT_GAME_CRASH_POLICY,
+    normalizeGameCrashPolicy,
+    type GameCrashPolicy,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
-import { buildGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
+import {
+    buildGameRuntimeAssetVersionArg,
+    buildGameRuntimeCrashPolicyArg,
+} from "@shared/utils/gameRuntimeAssetUrl";
 import {
     resolveGameRuntimeEntrySurface,
     resolveGameRuntimeInitialBackgroundColor,
@@ -124,6 +131,8 @@ const DEBUG_SWITCHES = [
 let packPromise: Promise<GameRuntimePackV1> | null = null;
 /** The game's own name, once the pack has been read. Titles the crash dialogs. */
 let loadedPackName: string | null = null;
+/** What this build does when it stops working, from the pack. */
+let crashPolicy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 let mainWindow: BrowserWindow | null = null;
 /** When the game's page process died, newest last. Only the last minute is kept. */
 let windowCrashHistory: number[] = [];
@@ -483,7 +492,14 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             // The preload derives versioned asset URLs from this marker; a
             // process argument is the only synchronous channel it can read
             // before the document loads.
-            additionalArguments: [buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack))],
+            additionalArguments: [
+                buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack)),
+                // So the crash screen is right from the first frame. The failure it is most likely
+                // to draw happens while the pack is still being read, and asking the pack for the
+                // policy then would mean falling back to "show the error" in exactly the build
+                // whose author asked for the opposite.
+                buildGameRuntimeCrashPolicyArg(normalizeGameCrashPolicy(pack.crash?.policy)),
+            ],
         },
     });
     win.setTitle(pack.project.name);
@@ -641,7 +657,7 @@ function installWindowCrashHandling(win: BrowserWindow): void {
             expectedProcessSwap = false;
             return;
         }
-        void offerWindowReload(win, details.reason);
+        void recoverDeadRenderer(win, details.reason, details.exitCode);
     });
     win.webContents.on("did-finish-load", () => {
         expectedProcessSwap = false;
@@ -661,14 +677,30 @@ function installWindowCrashHandling(win: BrowserWindow): void {
     });
 }
 
-async function offerWindowReload(win: BrowserWindow, reason: string): Promise<void> {
+/**
+ * The page process died outright: out of memory, a GPU fault, a kill from the system.
+ *
+ * No JavaScript survived it, so nothing in the page caught anything - this is the only place the
+ * failure exists. It used to become a native dialog; the window now goes back to the game's own
+ * crash screen instead, which is the same screen a caught error draws and so the same thing the
+ * player has already been taught to expect. Under `restart` it goes back to the game itself and
+ * the player sees a reload.
+ *
+ * The reason travels in the URL because there is nothing else left to carry it: no renderer to
+ * message, and the window is about to be replaced. The page decides what to show of it, since the
+ * policy reached it through the same argument that reached this function's pack.
+ *
+ * A window that keeps dying stops being reloaded. The crash page is served by the bundle that just
+ * died, so a fourth attempt would be the fourth identical death; at that point the only honest
+ * move is to say so natively and go.
+ */
+async function recoverDeadRenderer(win: BrowserWindow, reason: string, exitCode: number): Promise<void> {
     if (isQuitting || win.isDestroyed()) {
         return;
     }
-    const now = Date.now();
-    windowCrashHistory = recordCrash(windowCrashHistory, now);
+    windowCrashHistory = recordCrash(windowCrashHistory, Date.now());
     if (isCrashLooping(windowCrashHistory)) {
-        logRuntime("error", "[Crash] The game window has stopped working repeatedly; not offering a reload again.");
+        logRuntime("error", "[Crash] The game window has stopped working repeatedly; not reloading it again.");
         reportFatalRuntimeError(`The game window stopped working (${reason}).`);
         // Before the quit, always: the window's close guard holds the close open while it asks the
         // renderer for a decision, and the renderer is the thing that just died. Without this the
@@ -678,30 +710,18 @@ async function offerWindowReload(win: BrowserWindow, reason: string): Promise<vo
         return;
     }
 
-    try {
-        const answer = await dialog.showMessageBox(win, {
-            type: "error",
-            title: gameDisplayName(),
-            message: "The game stopped working.",
-            detail: "Restarting reopens the game at its title screen. Saved games are not affected.",
-            buttons: ["Restart", "Quit"],
-            defaultId: 0,
-            cancelId: 1,
-            noLink: true,
-        });
-        if (win.isDestroyed()) {
-            return;
-        }
-        if (answer.response === 0) {
-            expectedProcessSwap = true;
-            win.reload();
-            return;
-        }
-    } catch (error) {
-        logRuntime("warning", `[Crash] Could not ask about restarting: ${describeRuntimeError(error).message}`);
-    }
-    isQuitting = true;
-    app.quit();
+    const base = `${GAME_RUNTIME_PROTOCOL}://runtime/index.html`;
+    const target = crashPolicy === "restart"
+        ? base
+        : `${base}?${GAME_RUNTIME_CRASH_QUERY_PARAM}=${encodeURIComponent(`The game's display process exited: ${reason} (exit code ${exitCode})`)}`;
+    logRuntime("info", `[Crash] Reloading the game window (policy: ${crashPolicy})`);
+    expectedProcessSwap = true;
+    await win.loadURL(target).catch(error => {
+        logRuntime("error", `[Crash] Could not reload the game window: ${describeRuntimeError(error).message}`);
+        reportFatalRuntimeError(`The game window stopped working (${reason}).`);
+        isQuitting = true;
+        app.quit();
+    });
 }
 
 async function offerHangReload(win: BrowserWindow): Promise<void> {
@@ -710,6 +730,12 @@ async function offerHangReload(win: BrowserWindow): Promise<void> {
     }
     hangPromptOpen = true;
     try {
+        if (crashPolicy === "restart") {
+            logRuntime("info", "[Crash] Restarting the hung game window (policy: restart)");
+            expectedProcessSwap = true;
+            win.reload();
+            return;
+        }
         const answer = await dialog.showMessageBox(win, {
             type: "warning",
             title: gameDisplayName(),
@@ -735,6 +761,7 @@ async function offerHangReload(win: BrowserWindow): Promise<void> {
 }
 
 function applyRuntimeAppIdentity(pack: GameRuntimePackV1): void {
+    crashPolicy = normalizeGameCrashPolicy(pack.crash?.policy);
     // Also the title of any error box after this point. Before it there is no name to use, which
     // is itself a fact worth keeping honest rather than papering over with the product's name.
     loadedPackName = pack.project.name;
