@@ -345,11 +345,11 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     }
     // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
     // flag), v8 (the `event` rich-text run), v11 (a withdrawn marker block - see the version
-    // history in document.ts), v14 (the expression language's `array`/`index` nodes) and v15 (its
-    // `visited`/`invoke` nodes) are purely additive: an older document is already valid at the new
-    // version - it cannot contain a node kind that did not exist to be written - so there is no step
-    // for any of them, only the stamp (a v7 document falls through every step above and is stamped
-    // v15). v9 (M-VAR, the persistent `StoryVariableRef` rename),
+    // history in document.ts), v14 (the expression language's `array`/`index` nodes), v15 (its
+    // `visited`/`invoke` nodes) and v16 (its `AppTag` constant) are purely additive: an older
+    // document is already valid at the new version - it cannot contain a node that did not exist to
+    // be written - so there is no step for any of them, only the stamp (a v7 document falls through
+    // every step above and is stamped v16). v9 (M-VAR, the persistent `StoryVariableRef` rename),
     // v10 (the character appearance rework - `formName`/`variants` become `pose`/`tags`), v12
     // (the explicit order of chapter-less scenes) and v13 (the `code` block kind's removal) are NOT
     // additive, so each has a real step.

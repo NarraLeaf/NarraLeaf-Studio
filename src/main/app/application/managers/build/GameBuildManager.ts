@@ -874,7 +874,8 @@ export class GameBuildManager {
                 `macOS builds require a Mac; Linux builds require a Unix host.`,
             );
         }
-        const identity = this.resolveIdentity(session, projectConfig, projectPath, await this.resolveBuildVariant(session, projectPath, request));
+        const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        const identity = this.resolveIdentity(session, projectConfig, projectPath, appTag);
         // Everything the credentials this build needs unseals to. Resolved here,
         // before the compile: a credential this machine cannot use fails the
         // build either way, and finding out after several minutes of packing
@@ -947,6 +948,9 @@ export class GameBuildManager {
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
+                // What the story documents in this pack are folded against. Both compiles below get
+                // it: the desktop pack and the web/mobile one are the same game under one variant.
+                appTag: { id: appTag.id, name: appTag.name },
                 encryptionKey,
                 appId: identity.appId,
                 ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
@@ -980,6 +984,7 @@ export class GameBuildManager {
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging-web"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
+                appTag: { id: appTag.id, name: appTag.name },
                 shell: "web",
             }, {
                 onStart: worker => { session.worker = worker; },
@@ -994,6 +999,11 @@ export class GameBuildManager {
             this.ensureNotCancelled(session);
             await this.optimizeCompiledSite(session, webArtifact.appDir, projectConfig);
             this.ensureNotCancelled(session);
+        }
+        // From one compile only: both read the same project under the same variant, so the second
+        // has nothing to say that the first did not.
+        for (const notice of (desktopArtifact ?? webArtifact)?.notices ?? []) {
+            this.emit(session, { level: "info", source: "Build", message: notice });
         }
         // The player-facing notice, written once and shipped by every target that has a place to
         // put it. Into the web site's root directly, since that root IS what gets served; for the
@@ -1953,13 +1963,16 @@ export class GameBuildManager {
     /**
      * The variant this build is.
      *
-     * The whole tag rather than only its overrides, because the artifacts are named after the
-     * variant as well as the project - see {@link gameBuildArtifactBaseName} - and the name is only
-     * here.
-     *
      * An id naming a variant the project does not have throws instead of falling back to release.
      * The author picked a variant by name; producing the release identity under that name is a build
      * that lies about what it is, and every check downstream would agree with it.
+     *
+     * The whole tag rather than just its overrides, because the variant decides three different
+     * things: the overrides state the build's identity, the name is half of what the artifacts are
+     * called (see {@link gameBuildArtifactBaseName}), and the name is also what the story documents
+     * are folded against (`AppTag == "Demo"`). Handing back one of the three would leave the others
+     * reading the tag again somewhere else, and a build whose identity, whose file names and whose
+     * story disagreed about which variant it is is exactly the failure this is all about.
      */
     private async resolveBuildVariant(
         session: BuildSession,

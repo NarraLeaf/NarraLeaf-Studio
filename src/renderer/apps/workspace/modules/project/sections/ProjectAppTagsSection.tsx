@@ -50,6 +50,16 @@ import type { ProjectSectionProps } from "./types";
  */
 const HEADER_WIDTH_CLAMP = "min-w-0 [&>button]:min-w-0 [&>button>span]:min-w-0";
 
+/**
+ * What points at one variant: everything, and the part of it that is written in the script.
+ *
+ * The two are separate because deleting a variant does two different things to them. Every reference
+ * simply reads the release values from then on, which is the one number the row shows. A cut point is
+ * a reference that also stops HAPPENING - the row stays in the scene and ends nothing - and the
+ * confirmation has to say so before the author commits, which it cannot do from a total.
+ */
+type AppTagReferenceCount = { total: number; story: number };
+
 export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
@@ -63,7 +73,7 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
     }, [context, isInitialized]);
 
     const [tags, setTags] = useState<ProjectAppTag[]>([]);
-    const [references, setReferences] = useState<Record<string, number>>({});
+    const [references, setReferences] = useState<Record<string, AppTagReferenceCount>>({});
     /** Collapsed by default. A variant the author just created is the exception - they made it to name it. */
     const [openIds, setOpenIds] = useState<string[]>([]);
 
@@ -137,10 +147,17 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
         if (!tagService) {
             return;
         }
-        const uses = references[tag.id] ?? 0;
+        const uses = references[tag.id]?.total ?? 0;
+        const cuts = references[tag.id]?.story ?? 0;
+        // Two sentences when the script has cut points naming this variant: what happens to every
+        // reference, and then what happens to those rows, which is not the same thing. They are kept,
+        // and a kept cut point that names nothing ends nothing.
+        const detail = cuts > 0
+            ? `${tn("project.appTags.deleteDetail", uses)} ${tn("project.appTags.deleteDetailCuts", cuts)}`
+            : tn("project.appTags.deleteDetail", uses);
         const confirmed = await uiService?.showDestructiveConfirm(
             t("project.appTags.deleteConfirm", { name: tag.name }),
-            tn("project.appTags.deleteDetail", uses),
+            detail,
             t("project.appTags.delete"),
         );
         if (confirmed) {
@@ -183,7 +200,7 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
                             base={base}
                             service={tagService}
                             reservedNames={reservedNames}
-                            uses={references[tag.id] ?? 0}
+                            uses={references[tag.id]?.total ?? 0}
                             onDelete={() => void removeTag(tag)}
                         />
                     ))}
@@ -493,27 +510,37 @@ function CommittedInput({
 async function countReferences(
     context: WorkspaceContext,
     tagIds: readonly string[],
-): Promise<Record<string, number>> {
-    const roots: unknown[] = [];
+): Promise<Record<string, AppTagReferenceCount>> {
+    const storyRoots: unknown[] = [];
     try {
         const storyService = context.services.get<StoryService>(Services.Story);
         for (const entry of storyService.listStories()) {
             const document = await storyService.loadStory(entry.id).catch(() => null);
             if (document) {
-                roots.push(document);
+                storyRoots.push(document);
             }
         }
     } catch {
         // The story library is not loaded in every context this panel can mount in.
     }
+    const otherRoots: unknown[] = [];
     // Each in its own guard: a document service that has not loaded contributes nothing rather than
     // costing the surface the counts the others could have provided.
     try {
-        roots.push(context.services.get<UIGraphService>(Services.UIGraph).getDocument());
+        otherRoots.push(context.services.get<UIGraphService>(Services.UIGraph).getDocument());
     } catch { /* not loaded */ }
     try {
-        roots.push(context.services.get<UIDocumentService>(Services.UIDocument).getDocument());
+        otherRoots.push(context.services.get<UIDocumentService>(Services.UIDocument).getDocument());
     } catch { /* not loaded */ }
 
-    return countAppTagReferences(roots, tagIds);
+    // Two sweeps rather than one, because the confirmation says two different things: how many
+    // references in total stop naming this variant, and - separately - how many rows in the script
+    // stay written and stop taking effect. Only the story documents can hold the second kind.
+    const story = countAppTagReferences(storyRoots, tagIds);
+    const rest = countAppTagReferences(otherRoots, tagIds);
+    const counts: Record<string, AppTagReferenceCount> = {};
+    for (const id of tagIds) {
+        counts[id] = { total: (story[id] ?? 0) + (rest[id] ?? 0), story: story[id] ?? 0 };
+    }
+    return counts;
 }

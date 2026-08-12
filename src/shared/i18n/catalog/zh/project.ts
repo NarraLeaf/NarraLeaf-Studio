@@ -120,6 +120,11 @@ export const project = {
             one: "{count} 处引用将回落到正式版",
             other: "{count} 处引用将回落到正式版",
         },
+        // 后果的另一半，说的是那些写在剧本里的引用：截断点会保留下来，而不指向任何版本的截断点不再截断
+        deleteDetailCuts: {
+            one: "剧本中的 {count} 处截断点将保留，并不再生效",
+            other: "剧本中的 {count} 处截断点将保留，并不再生效",
+        },
     },
     assets: {
         master: "选择应用图标",

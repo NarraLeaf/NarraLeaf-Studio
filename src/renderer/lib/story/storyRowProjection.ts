@@ -1,4 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
+import { isBuiltinAppTagId } from "@shared/types/appTag";
 import type {
     StoryActionPayload,
     StoryBlock,
@@ -113,6 +114,12 @@ export type StoryRowLookups = {
      * itself becoming unreadable rather than a name degrading to an id.
      */
     projectVariableName?: (scope: "saved" | "persistent", variableId: string) => string | null;
+    /**
+     * The author-facing name of a build variant, or `null` when no variant answers to the id - which
+     * is what a deleted one leaves behind. Same rule as the tables above: without it the variant is
+     * simply not named, because the only other thing the row holds is its id.
+     */
+    appTagName?: (appTagId: string) => string | null;
 };
 
 /**
@@ -283,7 +290,8 @@ export function getStoryContainerHeaderInfo(block: StoryBlock): StoryContainerHe
             return { pill, role: "branch", hasCondition: payload.branch !== "else" };
         }
         // Not containers, so they have no header at all - they render as ordinary rows.
-        if (payload.control === "label" || payload.control === "goto" || payload.control === "break") {
+        if (payload.control === "label" || payload.control === "goto" || payload.control === "break"
+            || payload.control === "cut") {
             return null;
         }
         if (payload.control === "repeat") {
@@ -355,7 +363,7 @@ export type StoryBlockBadgeId =
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
     | "blueprint" | "camera" | "effect"
-    | "label" | "goto" | "break" | "control" | "jump" | "invalid" | "declaration" | "note";
+    | "label" | "goto" | "break" | "cut" | "control" | "jump" | "invalid" | "declaration" | "note";
 
 export type StoryBlockBadge = {
     id: StoryBlockBadgeId;
@@ -417,6 +425,9 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
         // Same reasoning as label/goto: a break is an exit, not a container, and the generic
         // "Control" badge would file it beside the group it is trying to leave.
         if (block.payload.control === "break") return badge("break", "story.badge.break", "flow");
+        // A cut point ends one edition's story at this line. Its own badge for the same reason again:
+        // it holds nothing and is the last row a build has, which "Control" says nothing about.
+        if (block.payload.control === "cut") return badge("cut", "story.badge.cut", "flow");
         return badge("control", "story.badge.control", "flow");
     }
     if (block.kind === "jump") return badge("jump", "story.badge.jump", "scene");
@@ -736,6 +747,19 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         if (block.payload.control === "label") return translate("story.describe.label", { name: block.payload.name || translate("story.describe.unnamed") });
         if (block.payload.control === "goto") return translate("story.describe.goto", { name: block.payload.targetLabel || translate("story.describe.unnamed") });
         if (block.payload.control === "break") return translate("story.describe.break");
+        if (block.payload.control === "cut") {
+            // The variant IS the row: which edition ends here is the whole content of the line, and a
+            // row reading only "Cut point" would leave the author opening each one to find out.
+            //
+            // The release variant reads as no variant at all, which is not a special case but the same
+            // one: it is where an id no variant answers to lands, and a cut point on the edition every
+            // other is read against ends nothing.
+            const id = block.payload.appTagId;
+            const name = isBuiltinAppTagId(id) ? null : lookups.appTagName?.(id);
+            return name
+                ? translate("story.describe.cut", { name })
+                : translate("story.describe.cutUnknown");
+        }
         return block.payload.control;
     }
     if (block.kind === "jump") {

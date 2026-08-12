@@ -269,6 +269,23 @@ export const build = {
         one: "Build stopped: {count} invalid command. See the console.",
         other: "Build stopped: {count} invalid commands. See the console.",
     },
+    /** The AppTag gate. Same shape as the invalid-command pair above: a line per site, then a count. */
+    appTagUnresolved: "AppTag does not reduce to a fixed value in {story} / {scene}: {source}",
+    appTagUnresolvedSummary: {
+        one: "Build stopped: {count} AppTag expression does not reduce to a fixed value. See the console.",
+        other: "Build stopped: {count} AppTag expressions do not reduce to a fixed value. See the console.",
+    },
+    /**
+     * The cut-point gate, beside the one above and refused in every build for the same reason.
+     *
+     * The remedy is the whole message after the fact, because there is exactly one: a cut point ends
+     * the story, and only a row the scene always reaches can say where that is.
+     */
+    cutPointNested: "The cut point for {variant} in {story} / {scene} is inside a condition or a group. Move it to the top level of the scene.",
+    cutPointNestedSummary: {
+        one: "Build stopped: {count} cut point is not at the top level of its scene. See the console.",
+        other: "Build stopped: {count} cut points are not at the top level of their scene. See the console.",
+    },
     /**
      * The media gate. One line per asset, then one summary.
      *
