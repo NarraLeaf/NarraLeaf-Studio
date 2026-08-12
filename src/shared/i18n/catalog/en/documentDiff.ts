@@ -311,6 +311,15 @@ export const documentDiff = {
      * the same fact, drifting from the first.
      */
     presenter: {
+        /**
+         * The two versions, named once for every presenter.
+         *
+         * Shared rather than repeated per format: the pair appears under an image, under a
+         * waveform, over a type sample and above a column of swatches, and two spellings of the
+         * same word in one comparison is the drift this namespace exists to avoid.
+         */
+        before: "Before",
+        after: "After",
         image: {
             /** The three comparisons, as a segmented control. */
             modeLabel: "Comparison",
@@ -318,8 +327,6 @@ export const documentDiff = {
             swipe: "Slider",
             difference: "Difference",
             splitPosition: "Split position",
-            before: "Before",
-            after: "After",
             /**
              * Why only two of the three are offered.
              *
@@ -332,6 +339,54 @@ export const documentDiff = {
             tooLarge: "This file is too large to show here.",
             unsupported: "This image format cannot be shown here.",
             unreadable: "This image could not be read.",
+        },
+        audio: {
+            play: "Play",
+            pause: "Pause",
+            /** How many channels the decoded file turned out to have. */
+            mono: "Mono",
+            stereo: "Stereo",
+            channels: "{count} channels",
+            /**
+             * Four states a track can be in instead of a waveform, and they stay four.
+             *
+             * `tooLarge` is about the file, which was never read. `tooLong` is about the sound: the
+             * bytes are here and decoding them would cost more memory than a preview may spend, so
+             * the numbers below are still reported and only the picture is withheld.
+             */
+            tooLarge: "This file is too large to play here.",
+            tooLong: "This track is too long to preview here.",
+            unreadable: "This sound could not be read.",
+        },
+        font: {
+            /** The sample is one string at several sizes; this names the control that picks one. */
+            sizeLabel: "Size",
+            /**
+             * The specimen, and the reason it is not "The quick brown fox".
+             *
+             * A project that installs a font installs it to set Chinese as well as Latin, and a
+             * Latin pangram says nothing about whether the Chinese glyphs came with it or whether
+             * the renderer is falling back to a system face for them.
+             */
+            sample: "The quick brown fox 0123 汉字排版样张",
+            unreadable: "This font could not be loaded.",
+            tooLarge: "This file is too large to show here.",
+        },
+        brand: {
+            /** A colour an author added or removed, beside the ones that merely changed. */
+            added: "Added",
+            removed: "Removed",
+            /** The palette is a document, and a document can be unreadable. */
+            unreadable: "This palette could not be read.",
+            tooLarge: "This file is too large to show here.",
+            /** American in the copy, British in the prose around it, as everywhere else here. */
+            unchangedOne: "1 color is unchanged",
+            unchangedMany: "{count} colors are unchanged",
+            /**
+             * A value that points at another entry of the same palette and never lands on a
+             * colour: a name nothing defines, or a ring.
+             */
+            unresolved: "No color",
         },
     },
     /**
@@ -483,5 +538,70 @@ export const documentDiff = {
                 unreadable: "One of the two versions could not be read, so only the whole file can be taken.",
             },
         },
+    },
+    /**
+     * Two versions of one page or one graph, drawn side by side with what changed washed over it.
+     *
+     * Shared by both canvases (`renderer/lib/vcs/presenters`), because they are one idea seen twice
+     * and an author reads them in the same minute - a word that differed between them would read as
+     * a difference in what happened.
+     *
+     * Nothing here restates what a change SAYS. That is under the tier keys above and is the same
+     * wherever the change is drawn; these are only the words the canvas itself adds.
+     */
+    canvas: {
+        before: "Before",
+        after: "After",
+        /** Accessible names for the two selectors. The current value is the trigger's own text. */
+        surfaceLabel: "Page",
+        graphLabel: "Graph",
+        /** A page or a graph whose author never named it. Never an id: they did not type that. */
+        unnamed: "Untitled",
+        /**
+         * What the four washes mean.
+         *
+         * `moved` is the odd one out and is worded to say why it is drawn faintly: an element
+         * re-ordered under its parent or a node dragged across the canvas changed nothing about
+         * what the game does.
+         */
+        legend: {
+            added: "Added",
+            removed: "Removed",
+            changed: "Changed",
+            moved: "Moved only",
+        },
+        /** One mark. Its own words are in the row underneath, which the mark selects. */
+        markLabel: "Show this change",
+        oneChange: "Showing one change.",
+        showAll: "Show every change",
+        /**
+         * The changes this canvas is not marking, said in one line and never in silence.
+         *
+         * A canvas that marks nine of twelve and says nothing is read as a complete answer, and the
+         * author concludes the change they were looking for did not happen. The three parts stay
+         * apart because the next move differs for each of them.
+         */
+        notMarked: {
+            one: "{count} change is not marked here:",
+            other: "{count} changes are not marked here:",
+        },
+        onOtherPages: "{count} on other pages",
+        onOtherGraphs: "{count} in other graphs",
+        /** Inside a component definition, outside every page, or about the file itself. */
+        offCanvas: "{count} cannot be drawn on a page",
+        /**
+         * Marked nowhere because the drawn page has no handle on the element.
+         *
+         * Content inside a component instance is the expected case: every placement of one
+         * definition shares the element ids inside it, so that content carries no id at all and six
+         * placements would otherwise be indistinguishable.
+         */
+        unplaced: "{count} could not be located",
+        /** Four reasons a column has no picture in it, and they stay four. */
+        notDrawn: "This version of the page could not be drawn.",
+        emptyGraph: "This graph has no nodes.",
+        tooLarge: "This file is too large to draw here.",
+        unreadable: "This file could not be read as an interface document: {error}",
+        readFailed: "This version could not be read: {error}",
     },
 } as const;

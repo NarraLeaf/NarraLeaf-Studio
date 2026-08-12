@@ -7,13 +7,13 @@ import { formatBytes } from "../documentChangeView";
 import { GenericChangeDetail } from "./GenericChangeDetail";
 import { registerChangePresenter, type ChangePresenter, type ChangePresenterProps } from "./registry";
 import { useSideObjectUrl, type ComparisonSide, type SideBytes } from "./comparisonSide";
+import { sidesOfEntry } from "./entrySides";
 import {
     bitmapMediaType,
     comparableModes,
     framedImageStyle,
     frameStyle,
     isBitmapEntry,
-    sidesOfEntry,
     TRANSPARENCY_BACKDROP,
     unionBox,
     type CompareMode,
@@ -272,8 +272,8 @@ function Swipe({ before, after, box }: { before: BitmapSide; after: BitmapSide; 
                 </div>
             </div>
             <figcaption className="flex items-center justify-between text-2xs text-fg-subtle">
-                <span>{t("documentDiff.presenter.image.before")} · {formatBytes(before.size)}</span>
-                <span>{t("documentDiff.presenter.image.after")} · {formatBytes(after.size)}</span>
+                <span>{t("documentDiff.presenter.before")} · {formatBytes(before.size)}</span>
+                <span>{t("documentDiff.presenter.after")} · {formatBytes(after.size)}</span>
             </figcaption>
         </figure>
     );
@@ -311,7 +311,7 @@ function Difference({ before, after, box }: { before: BitmapSide; after: BitmapS
                 )}
             </div>
             <figcaption className="text-2xs text-fg-subtle">
-                {t("documentDiff.presenter.image.before")} · {t("documentDiff.presenter.image.after")}
+                {t("documentDiff.presenter.before")} · {t("documentDiff.presenter.after")}
             </figcaption>
         </figure>
     );
@@ -420,8 +420,8 @@ function sideCaption(kind: DocumentChangeKind, which: "before" | "after"): Trans
     if (kind === "removed") return "documentDiff.shell.fileRemoved";
     if (kind === "moved") return null;
     return which === "before"
-        ? "documentDiff.presenter.image.before"
-        : "documentDiff.presenter.image.after";
+        ? "documentDiff.presenter.before"
+        : "documentDiff.presenter.after";
 }
 
 function dimensions(size: PixelSize): string {
