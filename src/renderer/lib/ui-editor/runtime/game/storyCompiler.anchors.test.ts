@@ -86,7 +86,7 @@ describe("action anchors", () => {
     it("rewriting a line's prose does not move its anchor", async () => {
         const before = await anchorsOf(document());
         const edited = document();
-        edited.scenes["scene-a"].blocks.a1.payload.text.value = "first, rewritten entirely";
+        edited.scenes["scene-a"].blocks.a1 = narration("a1", "first, rewritten entirely") as never;
         expect(await anchorsOf(edited)).toEqual(before);
     });
 });
