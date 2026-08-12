@@ -92,6 +92,7 @@ import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManife
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
+import { getMainLocale } from "../../i18n";
 import { readProjectAppTagDocumentFromDir, readProjectAppTagsFromDir } from "../../utils/appTagsFile";
 import {
     createEmptyAppTagDocument,
@@ -951,6 +952,9 @@ export class GameBuildManager {
                 // What the story documents in this pack are folded against. Both compiles below get
                 // it: the desktop pack and the web/mobile one are the same game under one variant.
                 appTag: { id: appTag.id, name: appTag.name },
+                // The compile can refuse this build (a blueprint whose variant test does not come out
+                // a constant), and that sentence is the author's to read.
+                locale: getMainLocale(this.app),
                 encryptionKey,
                 appId: identity.appId,
                 ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
@@ -985,6 +989,7 @@ export class GameBuildManager {
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
                 appTag: { id: appTag.id, name: appTag.name },
+                locale: getMainLocale(this.app),
                 shell: "web",
             }, {
                 onStart: worker => { session.worker = worker; },

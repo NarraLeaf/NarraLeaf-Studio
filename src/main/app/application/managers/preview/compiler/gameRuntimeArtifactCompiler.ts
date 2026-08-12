@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import type { LocaleCode } from "@shared/i18n";
 import fs from "fs/promises";
 import path from "path";
 import { assembleDevModeBundleFromProjectPath } from "../../devMode/pipeline/bundleAssembler";
@@ -128,6 +129,15 @@ export type GameRuntimeArtifactCompileInput = {
      * different story bytes.
      */
     appTag?: { id: string; name: string };
+    /**
+     * The language a failure this compile reports is written in.
+     *
+     * Carried on the input rather than read from Electron because this module also runs off the main
+     * process (see compileGameRuntimeArtifactInWorker), where the stored `app.language` is out of
+     * reach. Absent falls back to English, which is what a preview compile takes: previews report
+     * nothing an author reads in their own language today.
+     */
+    locale?: LocaleCode;
     /**
      * `<platform>-<arch>` this app dir's native payload is built for - the key
      * plugin sidecar binaries are declared under. A production build passes the
@@ -279,6 +289,7 @@ export async function compileGameRuntimeArtifact(
         blueprintScriptsCompileOk: blueprintScripts.ok,
         blueprintScriptsCompileErrors: blueprintScripts.errors,
         ...(input.appTag ? { appTag: input.appTag } : {}),
+        ...(input.locale ? { locale: input.locale } : {}),
         hasRuntimePlugins: (input.runtimePlugins?.length ?? 0) > 0,
         onNotice: message => notices.push(message),
     });
