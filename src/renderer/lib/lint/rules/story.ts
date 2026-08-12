@@ -1,9 +1,11 @@
+import { collectCutPoints } from "@shared/story/appTagFold";
 import {
     blueprintDocumentGraphCarriers,
     reachableSceneIds,
     scanStoryEntryPoints,
     type StoryEntryPointScan,
 } from "@shared/story/storyReachability";
+import { isBuiltinAppTagId } from "@shared/types/appTag";
 import {
     collectAppTagComparisonNames,
     duplicateSceneLabels,
@@ -560,6 +562,97 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                             target: blockTarget(entry, scene, block.id),
                         });
                     }
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * Cut points written in the script while the project has no variant that could honour one.
+         *
+         * The `/cut` command is only offered where a variant exists, so this is what deleting the
+         * last variant leaves behind: the rows stay written and stop taking effect, which is
+         * deliberate - deleting a variant must not sweep the author's script - and the deletion
+         * confirmation says so at the time. This is the reminder afterwards, when it has been
+         * forgotten and the rows read as endings that end nothing.
+         *
+         * A warning, and never a build gate: the rows are inert, so nothing they can do is wrong.
+         * The remedy is either half of what the confirmation described - add a variant back, or
+         * delete the rows - and the finding lands on the row so the second one is a click away.
+         */
+        id: "story/cut-point-orphan",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyCutPointOrphan",
+        run(ctx) {
+            // The release variant is always in the list and can never be cut to, so a project with
+            // nothing else has no variant a cut point could name.
+            if (ctx.appTags.some(tag => !isBuiltinAppTagId(tag.id))) {
+                return [];
+            }
+            const findings: LintFinding[] = [];
+            for (const entry of ctx.stories) {
+                for (const cut of collectCutPoints(entry.document)) {
+                    const scene = entry.document.scenes[cut.sceneId];
+                    if (!scene) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/cut-point-orphan",
+                        messageKey: "lint.rule.storyCutPointOrphan.message",
+                        location: storyLocation(entry, scene, cut.blockId),
+                        target: blockTarget(entry, scene, cut.blockId),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A cut point in a scene nothing can reach.
+         *
+         * The row will never run, so the variant it names ships the whole story with an ending the
+         * author believes is in it. Different from `story/unreachable-scene`, which reports the
+         * scene: this one is worth saying separately because an unreachable scene is often a draft
+         * an author is deliberately parking, while a cut point inside one is a build decision that
+         * has quietly stopped applying.
+         *
+         * Shares that rule's guard exactly, and must: entry points that cannot be read make every
+         * scene look unreachable, and a rule that flagged every cut point in the project because it
+         * could not find the entry is a rule an author switches off in the first five minutes.
+         */
+        id: "story/cut-point-unreachable",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyCutPointUnreachable",
+        run(ctx) {
+            const { byStory, undecidable } = collectEntryPoints(ctx);
+            if (undecidable.length > 0 || byStory.size === 0) {
+                return [];
+            }
+            const findings: LintFinding[] = [];
+            for (const entry of ctx.stories) {
+                const entrySceneIds = byStory.get(entry.id);
+                if (!entrySceneIds || entrySceneIds.size === 0) {
+                    continue;
+                }
+                // `none`, the same policy `story/unreachable-scene` takes and for the same reason:
+                // the entries above are the whole claim, and guessing at a story with no marked
+                // entry would call every scene but the first one unreachable.
+                const reachable = reachableSceneIds(entry.document, { entrySceneIds, fallback: "none" });
+                for (const cut of collectCutPoints(entry.document)) {
+                    const scene = entry.document.scenes[cut.sceneId];
+                    if (!scene || reachable.has(cut.sceneId)) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/cut-point-unreachable",
+                        messageKey: "lint.rule.storyCutPointUnreachable.message",
+                        location: storyLocation(entry, scene, cut.blockId),
+                        target: blockTarget(entry, scene, cut.blockId),
+                    });
                 }
             }
             return findings;
