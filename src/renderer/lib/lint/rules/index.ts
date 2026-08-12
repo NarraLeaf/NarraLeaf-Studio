@@ -3,6 +3,7 @@ import { ASSETS_LINT_RULES } from "./assets";
 import { PORTABILITY_LINT_RULES } from "./portability";
 import { NETWORK_LINT_RULES } from "./network";
 import { STORY_LINT_RULES } from "./story";
+import { BLUEPRINT_LINT_RULES } from "./blueprint";
 import { VARIABLES_LINT_RULES } from "./variables";
 import { TEXT_LINT_RULES } from "./text";
 import { LOCALIZATION_LINT_RULES } from "./localization";
@@ -23,6 +24,7 @@ export const LINT_RULES: readonly LintRule[] = [
     ...PORTABILITY_LINT_RULES,
     ...NETWORK_LINT_RULES,
     ...STORY_LINT_RULES,
+    ...BLUEPRINT_LINT_RULES,
     ...VARIABLES_LINT_RULES,
     ...TEXT_LINT_RULES,
     ...LOCALIZATION_LINT_RULES,
@@ -49,6 +51,7 @@ export { ASSETS_LINT_RULES } from "./assets";
 export { PORTABILITY_LINT_RULES } from "./portability";
 export { NETWORK_LINT_RULES, collectBlueprintNetworkNodes } from "./network";
 export { STORY_LINT_RULES } from "./story";
+export { BLUEPRINT_LINT_RULES, UNCHECKED_OPTIONS_SOURCES } from "./blueprint";
 export { VARIABLES_LINT_RULES } from "./variables";
 export { TEXT_LINT_RULES } from "./text";
 export { LOCALIZATION_LINT_RULES } from "./localization";
