@@ -584,6 +584,21 @@ export class App extends BaseApp {
     }
 
     /**
+     * Whether a workspace other than this one is still on screen.
+     *
+     * Read while a window is closing, so the closing window itself is excluded by identity rather
+     * than by `isClosed()`: at this point the close has been taken over and re-issued, and the
+     * window is still very much alive.
+     */
+    private hasOtherOpenWorkspace(window: AppWindow<WindowAppType.Workspace>): boolean {
+        return this.windowManager.getWindows().some(other =>
+            other !== window
+            && !other.isClosed()
+            && other.getWindowType() === WindowAppType.Workspace
+        );
+    }
+
+    /**
      * Decide what closing a workspace means, honouring the user's preferences: confirm first if
      * asked, then either fall back to the launcher or let the close stand (which quits the app
      * when this was the last window).
@@ -613,7 +628,14 @@ export class App extends BaseApp {
             return;
         }
 
-        if (this.globalState.get("workspace.returnToLauncherOnClose")) {
+        // "Return to the launcher" means "leave me somewhere to work", so it only applies when this
+        // was the last project on screen. With a second workspace still open the author already has
+        // somewhere to be, and opening the home screen next to it puts a window they did not ask for
+        // on the desktop - the exact outcome of closing the second window the project switcher just
+        // opened. The preference is not consulted at all in that case, rather than being read and
+        // overridden, because it answers a question ("what happens when I leave Studio's last
+        // project") this close is not asking.
+        if (this.globalState.get("workspace.returnToLauncherOnClose") && !this.hasOtherOpenWorkspace(window)) {
             this.reportWorkspaceCloseStage(window, "launcher");
             try {
                 await this.ensureLauncher();
