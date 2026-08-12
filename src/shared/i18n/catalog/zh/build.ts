@@ -60,6 +60,17 @@ export const build = {
     variant: {
         // 标在「该版本自己未填写」的读数旁边，使继承来的值与被覆盖的值在同一行都给出出处
         inherited: "来自工程",
+        // 该版本的剧情止于何处。数的是指向它的截断行，因此正式版恒为完整剧情
+        boundary: "内容",
+        endsNever: "剧情播放至结尾",
+        endsAt: {
+            one: "在 {count} 个截断行处结束，其后的内容不在这份构建里",
+            other: "在 {count} 个截断行处结束，其后的内容不在这份构建里",
+        },
+        variantRows: {
+            one: "有 {count} 行读取了构建版本，在不同版本里可能不同",
+            other: "有 {count} 行读取了构建版本，在不同版本里可能不同",
+        },
         blocking: "阻止本次构建",
         blockingNone: "没有阻止本次构建的问题",
     },

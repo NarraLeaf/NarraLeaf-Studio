@@ -730,7 +730,7 @@ function isStoryExpression(value: unknown): value is StoryExpression {
 }
 
 /** Every expression a block carries, wherever in its payload it sits. */
-function collectBlockExpressions(block: StoryBlock): StoryExpression[] {
+export function collectBlockExpressions(block: StoryBlock): StoryExpression[] {
     const found: StoryExpression[] = [];
     const walk = (value: unknown, seen: Set<object>): void => {
         if (!value || typeof value !== "object") {

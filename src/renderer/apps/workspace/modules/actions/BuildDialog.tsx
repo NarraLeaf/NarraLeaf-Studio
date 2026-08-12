@@ -38,6 +38,7 @@ import {
 } from "@shared/utils/pluginBuildConfig";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { displayedAppTags } from "@/lib/workspace/services/appTag/appTagDisplay";
+import { countAppTagStoryUsage, type AppTagStoryUsage } from "@shared/story/appTagStoryUsage";
 import {
     BUILD_COMPRESSIONS,
     SIGNING_PLATFORMS,
@@ -48,6 +49,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/ui";
 import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
+import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import {
     DEPENDENCY_STATUS_LABEL_KEYS,
@@ -206,6 +208,7 @@ export function BuildDialogContent({
     initialContent,
     initialPlugins,
     appTagService,
+    loadStoryUsage,
     onChange,
     onPersistContent,
     onRescanPlugins,
@@ -240,6 +243,14 @@ export function BuildDialogContent({
      * `BuildPluginConfigSection`.
      */
     appTagService: AppTagService | null;
+    /**
+     * Reads every story in the project and counts what the variants decide in it.
+     *
+     * A function rather than a value because it reads the whole library from disk, which must not
+     * delay the dialog opening: the variant page states the boundary once the answer arrives and
+     * says nothing before then. Null where there is no story library to read.
+     */
+    loadStoryUsage: (() => Promise<AppTagStoryUsage>) | null;
     onChange: (request: GameBuildRequest, page: BuildDialogPage) => void;
     /** Writes one Content setting through. Rejects when it did not land, so the switch can go back. */
     onPersistContent: (patch: Partial<BuildContentSettings>) => Promise<void>;
@@ -305,6 +316,8 @@ export function BuildDialogContent({
     // Whether preflight has answered at least once. The variant page reports what is blocking the
     // build, and "nothing" before the first check is a verdict that withdraws itself 250ms later.
     const [checked, setChecked] = useState(false);
+    // What the variants decide in the story, read once per open. Null while it is being read.
+    const [usage, setUsage] = useState<AppTagStoryUsage | null>(null);
     const [content, setContent] = useState<BuildContentSettings>(initialContent);
     const [plugins, setPlugins] = useState<BuildPluginEntry[]>(initialPlugins);
     // Which Content write is in flight, so its own switch spins and the other one waits.
@@ -370,6 +383,28 @@ export function BuildDialogContent({
     useEffect(() => {
         onChange(request, page);
     }, [onChange, request, page]);
+
+    // Once per open, and not per selection: what the story says about the variants is a property of
+    // the story, and re-reading the library every time the author moves down the list would pay for
+    // the same answer again.
+    useEffect(() => {
+        if (!loadStoryUsage) {
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const result = await loadStoryUsage();
+                if (!cancelled) {
+                    setUsage(result);
+                }
+            } catch (error) {
+                // A library that will not load is the build's problem to report, not this line's.
+                console.warn("[build] could not read what the variants decide in the story", error);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [loadStoryUsage]);
 
     // Re-check, debounced.
     //
@@ -471,6 +506,7 @@ export function BuildDialogContent({
                             info={info}
                             state={state}
                             identity={identity}
+                            usage={usage}
                             findings={findings}
                             checked={checked}
                             onChange={update}
@@ -650,6 +686,7 @@ function VariantPage({
     info,
     state,
     identity,
+    usage,
     findings,
     checked,
     onChange,
@@ -658,14 +695,18 @@ function VariantPage({
     info: BuildDialogInfo;
     state: BuildDialogState;
     identity: AppTagIdentity;
+    /** Null until the story library has been read once; see `usage` in {@link BuildDialogContent}. */
+    usage: AppTagStoryUsage | null;
     findings: BuildPreflightFinding[];
     /** False until preflight has answered once; see `checked` in {@link BuildDialogContent}. */
     checked: boolean;
     onChange: (next: BuildDialogState) => void;
     onOpenSection: (section: BuildPreflightSection) => void;
 }) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const selected = state.appTagId || RELEASE_APP_TAG.id;
+    // Cut points name authored variants only, so release reads its own count as zero and says so.
+    const cutPoints = usage?.cutPointsByTagId[selected] ?? 0;
 
     return (
         <div className="grid gap-3">
@@ -714,6 +755,23 @@ function VariantPage({
                     />
                 ))}
             </div>
+
+            {/* Withheld until the library has been read, rather than stated as "plays to the end"
+                and corrected a moment later: the whole point of the line is that it is trustworthy
+                before the author presses Build. */}
+            {usage && (
+                <div className="grid gap-1 border-t border-edge pt-3">
+                    <span className="text-xs text-fg">{t("build.variant.boundary")}</span>
+                    <span className="text-2xs leading-relaxed text-fg-muted">
+                        {cutPoints === 0 ? t("build.variant.endsNever") : tn("build.variant.endsAt", cutPoints)}
+                    </span>
+                    {usage.variantRows > 0 && (
+                        <span className="text-2xs leading-relaxed text-fg-muted">
+                            {tn("build.variant.variantRows", usage.variantRows)}
+                        </span>
+                    )}
+                </div>
+            )}
 
             {checked && <VariantBlocking findings={findings} onOpenSection={onOpenSection} />}
         </div>
@@ -1400,6 +1458,14 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
     } catch (error) {
         console.warn("[build] app tag service unavailable", error);
     }
+    // Same guard, and for the same reason: a workspace without the story library still gets the
+    // dialog, with the variant page saying nothing about where the story ends.
+    let storyService: StoryService | null = null;
+    try {
+        storyService = services.get<StoryService>(Services.Story);
+    } catch (error) {
+        console.warn("[build] story service unavailable", error);
+    }
 
     // The installed plugins, for the build values their manifests declare. A list that cannot be read
     // drops the plugins page rather than the dialog: nothing else here depends on it, and the build's
@@ -1494,6 +1560,22 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                 }}
                 initialPlugins={initialPlugins}
                 appTagService={appTagService}
+                loadStoryUsage={storyService
+                    ? async () => {
+                        const documents = [];
+                        for (const entry of storyService.getLibraryIndex().stories) {
+                            // One unreadable story costs its own contribution, not the whole line:
+                            // the build reports a story that will not load, and a summary that
+                            // vanished because of it would be the less useful of the two reports.
+                            try {
+                                documents.push(await storyService.loadStory(entry.id));
+                            } catch (error) {
+                                console.warn(`[build] could not read story ${entry.id}`, error);
+                            }
+                        }
+                        return countAppTagStoryUsage(documents);
+                    }
+                    : null}
                 onChange={(nextRequest, nextPage) => {
                     request = nextRequest;
                     page = nextPage;
