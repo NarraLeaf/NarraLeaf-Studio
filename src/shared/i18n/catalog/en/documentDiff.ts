@@ -88,6 +88,11 @@ export const documentDiff = {
         storyChapters: "Chapters",
         storyScenes: "Scenes",
         translationUnits: "Translations",
+        uiBlueprints: "Blueprints",
+        uiComponents: "Components",
+        uiElements: "Interface elements",
+        uiGraphNodes: "Blueprint nodes",
+        uiSurfaces: "Surfaces",
         variables: "Variables",
         voiceUnits: "Voice lines",
     },
@@ -179,6 +184,86 @@ export const documentDiff = {
         added: "Translation added",
         removed: "Translation removed",
         changed: "Translation changed",
+    },
+    /**
+     * Tier 1, the interface document: Surfaces and the elements on them.
+     *
+     * `subject` carries the author's own word - a Surface's name, an element's name - and is drawn
+     * beside these, so none of them names the thing again. An element that changed is one row with
+     * its properties underneath, which is why the `element*` lines below read as fragments: they sit
+     * under "Element changed" and each says only which part of it moved.
+     */
+    uiDocument: {
+        renamed: "Interface renamed",
+        surfaceAdded: "Surface added ({elements} elements)",
+        surfaceRemoved: "Surface removed ({elements} elements)",
+        surfaceChanged: "Surface changed",
+        surfaceRenamed: "Renamed",
+        /** The design area the Surface is laid out in - not the resolution it is rendered at. */
+        surfaceDesignSize: "Design size ({fromWidth}×{fromHeight} → {toWidth}×{toHeight})",
+        surfaceSettings: "Background or page animation changed",
+        surfaceRoot: "Root element changed",
+        surfaceField: "{field} changed",
+        componentAdded: "Component added ({elements} elements)",
+        componentRemoved: "Component removed ({elements} elements)",
+        componentChanged: "Component changed",
+        componentRenamed: "Renamed",
+        componentField: "{field} changed",
+        elementAdded: "Element added",
+        elementRemoved: "Element removed",
+        elementChanged: "Element changed",
+        elementRenamed: "Renamed",
+        /** The widget it is - a text became a button. The two type ids are drawn as the value pair. */
+        elementType: "Element kind changed",
+        /** Re-parented, not re-ordered - `elementOrder` is the one that says a list was rearranged. */
+        elementMoved: "Moved to another parent",
+        elementOrder: "Children reordered",
+        elementLayout: "Position or size changed",
+        elementStyle: "Style changed",
+        elementProps: "Contents changed",
+        elementBehavior: "Behavior changed",
+        elementBinding: "Binding changed",
+        elementAnimation: "Animation changed",
+        elementField: "{field} changed",
+    },
+    /**
+     * Tier 1, the blueprint document: the logic behind the interface.
+     *
+     * `nodeMoved` is the line this whole tier is shaped around. Dragging a node changes nothing the
+     * player will ever see, and reported in the same words as an edit to a parameter it would rank
+     * a tidy-up equal with a change to what the game does. It is a separate row, with a separate
+     * marker, for that reason alone.
+     *
+     * Nothing here names a node. A node's type is an identifier (`blueprint.event.head.appBoot`)
+     * whose human name comes from a table the editor owns, and quoting the identifier at the author
+     * would read as something they typed.
+     */
+    uiGraphs: {
+        /** Which of an owner's blueprints is the live one. */
+        ownerRecord: "Active blueprint changed",
+        blueprintAdded: "Blueprint added ({nodes} nodes)",
+        blueprintRemoved: "Blueprint removed ({nodes} nodes)",
+        blueprintChanged: "Blueprint changed",
+        blueprintRenamed: "Renamed",
+        /** A TypeScript blueprint, whose whole program is one file. */
+        blueprintSource: "Code changed",
+        blueprintField: "{field} changed",
+        graphAdded: "Graph added ({nodes} nodes)",
+        graphRemoved: "Graph removed ({nodes} nodes)",
+        graphChanged: "Graph changed",
+        graphRenamed: "Renamed",
+        graphField: "{field} changed",
+        graphOrder: "Graphs reordered",
+        nodeAdded: "Node added",
+        nodeRemoved: "Node removed",
+        nodeChanged: "Node changed",
+        nodeParams: "Values changed",
+        /** Dragged across the canvas. Says so plainly, so it can be skipped just as plainly. */
+        nodeMoved: "Moved on the canvas",
+        nodeType: "Node kind changed",
+        nodeField: "{field} changed",
+        edgeAdded: "Connection added",
+        edgeRemoved: "Connection removed",
     },
     /** Tier 1, one `assets.metadata.<type>.json` shard: the author's metadata for their assets. */
     assets: {
