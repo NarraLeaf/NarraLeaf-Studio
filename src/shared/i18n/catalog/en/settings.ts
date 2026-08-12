@@ -72,7 +72,7 @@ export const settings = {
         },
         confirmQuit: {
             label: "Confirm before quitting with ⌘Q",
-            description: "⌘Q quits once it has been held down. A short press does nothing.",
+            description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
             unsupportedPlatform: "Not available on this operating system.",
         },
         themeMode: {

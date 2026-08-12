@@ -44,7 +44,7 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "app.updateCheckOnLaunch": boolean;
     /**
-     * Whether ⌘Q has to be held down before it quits, instead of quitting on the keystroke.
+     * Whether ⌘Q has to be pressed twice before it quits, instead of quitting on the first press.
      *
      * macOS only, and not because the key combination is: Windows and Linux quit with Alt+F4 or the
      * window close box, neither of which is a key away from anything an author presses on purpose.
