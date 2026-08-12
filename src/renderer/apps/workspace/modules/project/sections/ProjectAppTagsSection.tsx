@@ -21,7 +21,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { getInterface } from "@/lib/app/bridge";
 import { HelpTrigger } from "@/lib/help";
+import { listUnreadableMechanisms, type UnreadableMechanism } from "@/lib/build/releaseContent";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { Button, Input } from "@/lib/components/elements";
@@ -30,6 +32,8 @@ import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagServic
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
+import type { Blueprint } from "@shared/types/blueprint/document";
+import { listScenesInDocumentOrder } from "@shared/types/story";
 import {
     APP_TAG_OVERRIDE_KEYS,
     countAppTagReferences,
@@ -60,6 +64,60 @@ const HEADER_WIDTH_CLAMP = "min-w-0 [&>button]:min-w-0 [&>button>span]:min-w-0";
  */
 type AppTagReferenceCount = { total: number; story: number };
 
+/** One scene a declaration can name. Flat, because a declaration crosses stories. */
+type DeclarableScene = { storyId: string; sceneId: string; label: string };
+
+/**
+ * What the project holds that a build cannot read, and the scenes a declaration may name.
+ *
+ * Loaded once per open rather than watched: a blueprint gaining a wired pin while this panel is on
+ * screen is not a flow anyone has, and a watcher would re-read every story document on every
+ * keystroke in the graph editor.
+ */
+async function loadMechanisms(context: WorkspaceContext): Promise<{
+    mechanisms: UnreadableMechanism[];
+    scenes: DeclarableScene[];
+}> {
+    const services = context.services;
+    let blueprints: Blueprint[] = [];
+    try {
+        const document = services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+        blueprints = Object.values(document?.blueprints ?? {});
+    } catch {
+        blueprints = [];
+    }
+    const listed = await getInterface().plugins.list();
+    const plugins = listed.success
+        ? listed.data.plugins
+            .filter(plugin => plugin.enabled && plugin.manifest.entries?.runtime)
+            .map(plugin => ({
+                id: plugin.manifest.id,
+                name: plugin.manifest.name ?? plugin.manifest.id,
+                runtimeCapabilities: plugin.manifest.contributes.runtimeCapabilities ?? [],
+            }))
+        : [];
+
+    const mechanisms = listUnreadableMechanisms({ blueprints, plugins });
+    if (mechanisms.length === 0) {
+        // Nothing to declare, so nothing to read every story document for.
+        return { mechanisms, scenes: [] };
+    }
+
+    const storyService = services.get<StoryService>(Services.Story);
+    const scenes: DeclarableScene[] = [];
+    for (const entry of storyService.getLibraryIndex().stories) {
+        try {
+            const document = await storyService.loadStory(entry.id);
+            for (const scene of listScenesInDocumentOrder(document)) {
+                scenes.push({ storyId: entry.id, sceneId: scene.id, label: `${entry.name} / ${scene.name}` });
+            }
+        } catch {
+            // A story that will not load reports itself elsewhere; the rest are still declarable.
+        }
+    }
+    return { mechanisms, scenes };
+}
+
 export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
@@ -74,6 +132,10 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
 
     const [tags, setTags] = useState<ProjectAppTag[]>([]);
     const [references, setReferences] = useState<Record<string, AppTagReferenceCount>>({});
+    const [unreadable, setUnreadable] = useState<{ mechanisms: UnreadableMechanism[]; scenes: DeclarableScene[] }>({
+        mechanisms: [],
+        scenes: [],
+    });
     /** Collapsed by default. A variant the author just created is the exception - they made it to name it. */
     const [openIds, setOpenIds] = useState<string[]>([]);
 
@@ -85,6 +147,19 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
         setTags(tagService.listTags());
         return tagService.onTagsChanged(setTags);
     }, [tagService]);
+
+    useEffect(() => {
+        if (!context || !isInitialized) {
+            return;
+        }
+        let active = true;
+        void loadMechanisms(context).then(loaded => {
+            if (active) {
+                setUnreadable(loaded);
+            }
+        });
+        return () => { active = false; };
+    }, [context, isInitialized]);
 
     /**
      * The project's own identity - what a variant that states nothing resolves to.
@@ -194,6 +269,8 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
                             base={base}
                             service={tagService}
                             uses={references[tag.id]?.total ?? 0}
+                            mechanisms={unreadable.mechanisms}
+                            scenes={unreadable.scenes}
                             onDelete={() => void removeTag(tag)}
                         />
                     ))}
@@ -215,12 +292,16 @@ function TagItem({
     base,
     service,
     uses,
+    mechanisms,
+    scenes,
     onDelete,
 }: {
     tag: ProjectAppTag;
     base: AppTagBaseIdentity;
     service: AppTagService | null;
     uses: number;
+    mechanisms: readonly UnreadableMechanism[];
+    scenes: readonly DeclarableScene[];
     onDelete: () => void;
 }) {
     const { t, tn } = useTranslation();
@@ -286,6 +367,26 @@ function TagItem({
                     />
                 ))}
 
+                {/* Absent in a project where nothing can start a scene the build cannot read, which
+                    is most of them. A part that cannot have content is not content. */}
+                {mechanisms.length === 0 ? null : (
+                    <div className="grid gap-2 border-t border-edge pt-2">
+                        <span className="text-2xs font-medium text-fg-muted">
+                            {t("project.appTags.reachableTitle")}
+                        </span>
+                        {mechanisms.map(mechanism => (
+                            <MechanismField
+                                key={mechanism.mechanismKey}
+                                tag={tag}
+                                mechanism={mechanism}
+                                scenes={scenes}
+                                service={service}
+                                disabled={frozen.disabled}
+                            />
+                        ))}
+                    </div>
+                )}
+
                 {tag.builtin ? null : (
                     <div className="flex min-w-0 items-center justify-between gap-2 border-t border-edge pt-2">
                         <span className="min-w-0 truncate text-2xs text-fg-subtle">
@@ -307,6 +408,83 @@ function TagItem({
                 )}
             </div>
         </AccordionItem>
+    );
+}
+
+/**
+ * What one mechanism can start under one variant.
+ *
+ * A scene list and nothing else. There is deliberately no "any scene" box: an author who could tick
+ * one would tick it once and every later demo would carry the whole story with nothing on screen
+ * saying so. Ticking nothing is a real answer - this mechanism starts nothing in this variant - and
+ * it is what a demo says about the chapter select the main build uses.
+ *
+ * The release row edits the project's own list, which every variant inherits. It stores nothing of
+ * its own, so there is nowhere else for its answer to go, and that is the same rule a `global`-scoped
+ * plugin field follows.
+ */
+function MechanismField({
+    tag,
+    mechanism,
+    scenes,
+    service,
+    disabled,
+}: {
+    tag: ProjectAppTag;
+    mechanism: UnreadableMechanism;
+    scenes: readonly DeclarableScene[];
+    service: AppTagService | null;
+    disabled: boolean;
+}) {
+    const { t } = useTranslation();
+    const key = mechanism.mechanismKey;
+    const stated = tag.builtin ? undefined : tag.reachableScenes?.[key];
+    const effective = service?.resolveReachableScenes(tag.id)[key];
+    const ticked = useMemo(
+        () => new Set((effective ?? []).map(scene => `${scene.storyId}:${scene.sceneId}`)),
+        [effective],
+    );
+
+    const toggle = (scene: DeclarableScene) => {
+        const pair = `${scene.storyId}:${scene.sceneId}`;
+        const next = ticked.has(pair)
+            ? (effective ?? []).filter(entry => `${entry.storyId}:${entry.sceneId}` !== pair)
+            : [...(effective ?? []), { storyId: scene.storyId, sceneId: scene.sceneId }];
+        service?.setDeclaredScenes(tag.id, key, next);
+    };
+
+    return (
+        <Field
+            label={mechanism.location}
+            trailing={stated === undefined ? undefined : (
+                <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() => service?.clearDeclaredScenes(tag.id, key)}
+                    className="h-auto px-1 py-0 text-2xs"
+                >
+                    {t("project.appTags.restore")}
+                </Button>
+            )}
+        >
+            {/* Capped rather than growing: a real project holds dozens of scenes, and the rows below
+                this one have to stay reachable. */}
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-edge bg-surface px-2 py-1.5">
+                {scenes.map(scene => (
+                    <label key={`${scene.storyId}:${scene.sceneId}`} className="flex cursor-pointer items-center gap-2">
+                        <input
+                            type="checkbox"
+                            className="rounded-sm"
+                            checked={ticked.has(`${scene.storyId}:${scene.sceneId}`)}
+                            disabled={disabled}
+                            onChange={() => toggle(scene)}
+                        />
+                        <span className="min-w-0 truncate text-2xs text-fg">{scene.label}</span>
+                    </label>
+                ))}
+            </div>
+        </Field>
     );
 }
 
