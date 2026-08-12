@@ -658,7 +658,7 @@ type SceneCompileContext = {
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
     actionIdBindings: NlrActionIdBinding[];
-    nextActionIndex: () => number;
+    nextActionIndex: (blockId: string) => number;
 };
 
 type CompileInput = {
@@ -771,7 +771,21 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
     const assetUrlCache = new Map<string, string | null>();
-    let actionIndex = 0;
+    /**
+     * How many actions a row has already produced.
+     *
+     * Per row, deliberately, and this is the whole of what makes a save survive an edit. The count
+     * is part of every action's id, and a single counter for the compile put every later row's id
+     * downstream of every earlier row: adding one line at the top of chapter one renamed every
+     * action after it, and every save taken past that point stopped resolving. Counted per row, a
+     * row's ids depend on that row alone.
+     */
+    const actionIndexByBlock = new Map<string, number>();
+    const nextActionIndex = (blockId: string): number => {
+        const next = actionIndexByBlock.get(blockId) ?? 0;
+        actionIndexByBlock.set(blockId, next + 1);
+        return next;
+    };
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
     const voiceUrlsByLocale = input.voice
         ? await buildVoiceMapsByLocale({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
@@ -866,7 +880,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             assetUrlCache,
             diagnostics,
             actionIdBindings,
-            nextActionIndex: () => actionIndex++,
+            nextActionIndex,
         };
         // Seed declared scene-local defaults at the head of the scene's statement list. They must be
         // statements (not build-time sets): `Scene.local.init` resets the namespace on every scene
@@ -916,7 +930,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             assetUrlCache,
             localization,
             voicedUnitIds,
-            nextActionIndex: () => actionIndex++,
+            nextActionIndex,
         })
         : allScenes[input.sceneId];
     nlrStory.entry(nlrEntryScene);
@@ -985,7 +999,7 @@ async function buildLaunchEntryScene(params: {
     assetUrlCache: Map<string, string | null>;
     localization?: SceneLocalizationResolver;
     voicedUnitIds?: ReadonlySet<string>;
-    nextActionIndex: () => number;
+    nextActionIndex: (blockId: string) => number;
 }): Promise<Scene> {
     const { input, launch, nlrStory, allScenes, diagnostics, resolveAssetUrl, assetUrlCache } = params;
     const snapshot = launch.snapshot;
@@ -1204,7 +1218,21 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     const animations = new Map(Object.entries(input.animations ?? {}));
     const assetUrlCache = new Map<string, string | null>();
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
-    let actionIndex = 0;
+    /**
+     * How many actions a row has already produced.
+     *
+     * Per row, deliberately, and this is the whole of what makes a save survive an edit. The count
+     * is part of every action's id, and a single counter for the compile put every later row's id
+     * downstream of every earlier row: adding one line at the top of chapter one renamed every
+     * action after it, and every save taken past that point stopped resolving. Counted per row, a
+     * row's ids depend on that row alone.
+     */
+    const actionIndexByBlock = new Map<string, number>();
+    const nextActionIndex = (blockId: string): number => {
+        const next = actionIndexByBlock.get(blockId) ?? 0;
+        actionIndexByBlock.set(blockId, next + 1);
+        return next;
+    };
 
     const nlrStory = new Story(`${input.document.name || input.document.id} (preview)`);
     // Same merged saved table as a full compile - the preview must agree with the game about which
@@ -1279,7 +1307,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         assetUrlCache,
         diagnostics,
         actionIdBindings,
-        nextActionIndex: () => actionIndex++,
+        nextActionIndex,
     };
 
     // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
@@ -4600,7 +4628,7 @@ async function resolveAssetUrlCached(input: {
 
 function recordStatement(ctx: SceneCompileContext, statement: NlrStatement, block: StoryBlock, textId?: string): NlrStatement {
     for (const action of statementToActions(statement)) {
-        const staticId = stableActionId(ctx.document.id, ctx.scene.id, block.id, textId, ctx.nextActionIndex());
+        const staticId = stableActionId(ctx.document.id, ctx.scene.id, block.id, textId, ctx.nextActionIndex(block.id));
         setStableActionId(action, staticId);
         ctx.actionIdBindings.push({
             action,
