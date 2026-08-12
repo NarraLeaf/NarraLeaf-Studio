@@ -7,10 +7,10 @@ import {
     framedImageStyle,
     frameStyle,
     isBitmapEntry,
-    sidesOfEntry,
     unionBox,
 } from "./bitmapPreview";
 import type { ComparisonSides } from "./comparisonSide";
+import { sidesOfEntry } from "./entrySides";
 
 /**
  * The four decisions an image comparison is made of, each of which is wrong in a way that looks
@@ -49,6 +49,21 @@ describe("which files this draws", () => {
         expect(isBitmapEntry(entry("assets/content/logo.svg"))).toBe(false);
         // The name says PNG, the bytes said otherwise, and the bytes are the evidence.
         expect(isBitmapEntry(entry("assets/content/fake.png", { contentClass: "audio" }))).toBe(false);
+    });
+
+    it("claims a sprite that was deleted, which is where the class used to run out", () => {
+        // The half of the deletion fix that lives on this side. The comparison could not place a
+        // removal - there is nothing on disk to probe - so a deleted sprite arrived as `unknown`,
+        // this declined it, and the author was told "removed, 58.7 KB" about the one change where
+        // seeing the file matters most. `workingTreeDiff` now places it from the bytes it already
+        // pulled, and the only thing left for this to do is claim it.
+        const removed = entry("assets/content/99/55/3d15abb54213bad7203798a1adc4", {
+            kind: "removed",
+            contentClass: "bitmap",
+        });
+
+        expect(isBitmapEntry(removed)).toBe(true);
+        expect(sidesOfEntry(removed, SIDES)).toEqual({ before: SIDES.before, after: null });
     });
 
     it("reads one side for a file that exists on one side", () => {

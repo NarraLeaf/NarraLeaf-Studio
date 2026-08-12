@@ -16,8 +16,15 @@ import { useWorkspace } from "@/apps/workspace/context";
  * **Two reads, because the two sides are not the same kind of thing.** A revision's bytes come
  * from the repository through `readBlob`; the working tree's come off disk through
  * `readWorkingFile`, which is bounded by a ceiling the repository side has no way to apply (see
- * `vcs/diff/documentDiff.ts`). Both arrive base64-encoded over IPC, are wrapped in a `Blob` and
- * handed back as an object URL.
+ * `vcs/diff/documentDiff.ts`). Both arrive base64-encoded over IPC.
+ *
+ * ## Two hooks over one read
+ *
+ * {@link useSideObjectUrl} wraps the bytes in a `Blob` and answers with an object URL, for an
+ * `<img>` that needs a `src`. {@link useSideBytes} answers with the bytes themselves, for a
+ * presenter that decodes them in JavaScript - a waveform, a `FontFace`, a palette document. Each
+ * holds only what it hands back, so a presenter that wants bytes does not also retain a blob copy
+ * of them.
  *
  * ## Two rules, both of which have a way of being broken silently
  *
@@ -73,7 +80,17 @@ export interface SideBytes {
     readonly error: string | null;
 }
 
-const NOTHING: SideBytes = { status: "absent", url: null, size: 0, error: null };
+/** One side's read, as whatever the caller turned the bytes into. */
+export interface SideContent<T> {
+    readonly status: SideBytesStatus;
+    /** Null unless `ready`. */
+    readonly value: T | null;
+    /** What was read, so a caller can state a file's size. Zero unless something was read. */
+    readonly size: number;
+    readonly error: string | null;
+}
+
+const NOTHING: SideContent<never> = { status: "absent", value: null, size: 0, error: null };
 
 /** One side as a value, so an effect can depend on it without depending on an object literal. */
 export function comparisonSideKey(side: ComparisonSide | null): string {
@@ -98,18 +115,68 @@ export function useSideObjectUrl(
     path: string,
     mediaTypeOf: (bytes: Uint8Array) => string | null,
 ): SideBytes {
+    const state = useSideRead<string>(
+        side,
+        path,
+        // The cast is what every other blob in the renderer does with a `Uint8Array`: the DOM
+        // types want a buffer whose backing store is not shared, and nothing here can hand over a
+        // `SharedArrayBuffer` in the first place.
+        bytes => {
+            const type = mediaTypeOf(bytes);
+            return type === null ? null : URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
+        },
+        // The one line this hook exists for. It runs when the selection moves and when the pane
+        // goes away, which are the only two ways a URL stops being wanted.
+        url => URL.revokeObjectURL(url),
+    );
+    return { status: state.status, url: state.value, size: state.size, error: state.error };
+}
+
+/**
+ * The same read, handed over as the bytes it produced.
+ *
+ * For the presenters that decode a file themselves rather than pointing an element at it: a
+ * waveform is `decodeAudioData` over an `ArrayBuffer`, a type sample is a `FontFace` over one, and
+ * a palette is JSON. An object URL would mean wrapping the bytes in a blob and fetching them back
+ * out, which retains two copies to arrive where the read already was.
+ *
+ * `unsupported` is not among the answers here. Whether these bytes are the thing the caller
+ * expected is settled by the decode that follows, which is a stronger test than any signature
+ * table and produces a reason the caller can put on screen.
+ */
+export function useSideBytes(side: ComparisonSide | null, path: string): SideContent<Uint8Array> {
+    return useSideRead<Uint8Array>(side, path, bytes => bytes);
+}
+
+/**
+ * One side's bytes, turned into whatever the caller wants to hold, and released when it stops
+ * being wanted.
+ *
+ * `make` runs only after the read has come back and only if the read is still wanted, which is
+ * what stops an object URL being created for a pane the author has already moved past. Answering
+ * null from it means these bytes are not something this caller can use (`unsupported`), and
+ * nothing is made or released for them.
+ */
+function useSideRead<T>(
+    side: ComparisonSide | null,
+    path: string,
+    make: (bytes: Uint8Array) => T | null,
+    release?: (value: T) => void,
+): SideContent<T> {
     const { context } = useWorkspace();
-    const [state, setState] = useState<SideBytes>(NOTHING);
+    const [state, setState] = useState<SideContent<T>>(NOTHING);
 
     const service = useMemo(
         () => (context ? context.services.get<VersionControlService>(Services.VersionControl) : null),
         [context],
     );
 
-    // Held rather than depended on: it is written inline at nearly every call site, so depending
-    // on it would re-read the file on every render of the presenter.
-    const typeOf = useRef(mediaTypeOf);
-    typeOf.current = mediaTypeOf;
+    // Held rather than depended on: both are written inline at nearly every call site, so
+    // depending on them would re-read the file on every render of the presenter.
+    const makeRef = useRef(make);
+    makeRef.current = make;
+    const releaseRef = useRef(release);
+    releaseRef.current = release;
 
     const key = comparisonSideKey(side);
     const revision = side?.at === "revision" ? side.revision : null;
@@ -121,8 +188,8 @@ export function useSideObjectUrl(
         }
 
         let cancelled = false;
-        let created: string | null = null;
-        setState({ status: "loading", url: null, size: 0, error: null });
+        let made: T | null = null;
+        setState({ status: "loading", value: null, size: 0, error: null });
 
         void (async () => {
             try {
@@ -131,26 +198,23 @@ export function useSideObjectUrl(
                     : await service.readBlob(revision, path);
                 if (cancelled) return;
                 if (bytes === null) {
-                    setState({ status: "tooLarge", url: null, size: 0, error: null });
+                    setState({ status: "tooLarge", value: null, size: 0, error: null });
                     return;
                 }
-                const type = typeOf.current(bytes);
-                if (type === null) {
-                    setState({ status: "unsupported", url: null, size: bytes.length, error: null });
+                const value = makeRef.current(bytes);
+                if (value === null) {
+                    setState({ status: "unsupported", value: null, size: bytes.length, error: null });
                     return;
                 }
                 // Assigned before anything else can run: the cleanup below cannot interleave with
-                // these two statements, so a URL that exists is always one the cleanup can see.
-                // The cast is what every other blob in the renderer does with a `Uint8Array`: the
-                // DOM types want a buffer whose backing store is not shared, and nothing here can
-                // hand over a `SharedArrayBuffer` in the first place.
-                created = URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
-                setState({ status: "ready", url: created, size: bytes.length, error: null });
+                // these two statements, so a value that exists is always one the cleanup can see.
+                made = value;
+                setState({ status: "ready", value, size: bytes.length, error: null });
             } catch (thrown) {
                 if (cancelled) return;
                 setState({
                     status: "failed",
-                    url: null,
+                    value: null,
                     size: 0,
                     error: thrown instanceof Error ? thrown.message : String(thrown),
                 });
@@ -159,11 +223,9 @@ export function useSideObjectUrl(
 
         return () => {
             cancelled = true;
-            if (created) {
-                // The one line this hook exists for. It runs when the selection moves and when
-                // the pane goes away, which are the only two ways a URL stops being wanted.
-                URL.revokeObjectURL(created);
-                created = null;
+            if (made !== null) {
+                releaseRef.current?.(made);
+                made = null;
             }
         };
         // `side` itself is excluded on purpose: it is written as an object literal at the call
