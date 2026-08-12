@@ -43938,6 +43938,20 @@
                     "durationMs": 140,
                     "easing": "easeOut"
                   }
+                },
+                {
+                  "key": "effectGlow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
                 }
               ]
             },
@@ -43991,7 +44005,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 1
+                      "value": 2
                     }
                   ]
                 },
@@ -44021,6 +44035,29 @@
                           "offsetY": 0,
                           "blur": 12,
                           "spread": 0,
+                          "color": "nlbrand:primary"
+                        }
+                      }
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "effectGlow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": {
+                        "storage": "layer",
+                        "layer": {
+                          "offsetX": 0,
+                          "offsetY": 0,
+                          "blur": 14,
+                          "spread": 2,
                           "color": "nlbrand:primary"
                         }
                       }
