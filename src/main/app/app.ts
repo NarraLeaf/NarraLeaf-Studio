@@ -18,6 +18,7 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
 import { TRAY_RESIDENCY_NOTICE_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { getMainTranslator } from "./application/i18n";
+import { HoldToQuitManager } from "./application/managers/holdToQuit";
 import { TrayManager } from "./application/managers/trayManager";
 import { UpdateManager } from "./application/managers/updateManager";
 import { resolveStartupProject } from "./application/startupProject";
@@ -83,6 +84,7 @@ export class App extends BaseApp {
         });
 
         this.updateManager = new UpdateManager(this);
+        this.holdToQuitManager = new HoldToQuitManager(this);
 
         // Built as soon as there is an Electron app to attach it to, because from here on it is
         // the only handle a windowless Studio has - see handleLastWindowClosed, which reads
@@ -100,6 +102,11 @@ export class App extends BaseApp {
             this.trayManager = tray;
 
             this.updateManager.initialize();
+
+            // After ready, because it listens for webContents being created and the first window is
+            // opened from the same ready handler in `index.ts`. Ordering only matters in that
+            // direction: a window built before the listener exists would never see a held ⌘Q.
+            this.holdToQuitManager.initialize();
         });
     }
 
@@ -110,6 +117,7 @@ export class App extends BaseApp {
     private readonly mediaConvertManager: MediaConvertManager;
     private readonly vcsManager: VcsManager;
     private readonly updateManager: UpdateManager;
+    private readonly holdToQuitManager: HoldToQuitManager;
 
     public getDevModeManager(): DevModeManager {
         return this.devModeManager;

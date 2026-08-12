@@ -66,6 +66,11 @@ export const settings = {
             label: "开发者选项",
             description: "右键菜单中增加一组操作，用于复制所选对象的 ID",
         },
+        confirmQuit: {
+            label: "在使用 ⌘Q 退出时二次确认",
+            description: "按住 ⌘Q 才会退出，短按不退出",
+            unsupportedPlatform: "此选项不适用于此操作系统",
+        },
         themeMode: {
             label: "主题",
             description: "Studio 界面的配色主题",
