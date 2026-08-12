@@ -114,6 +114,9 @@ export const project = {
         // Sits beside a field only while that field states a value of its own, so it is the mark of
         // an override as well as the way out of one.
         restore: "Restore",
+        // Heading for the scene lists, shown only where the project holds something that can start a
+        // scene the build cannot read. Each list below it is labelled with that thing's own name.
+        reachableTitle: "Scenes these can start",
         // Beside Delete inside an open variant: the count the confirmation is about to be about.
         usedBy: {
             one: "Used by {count} reference",

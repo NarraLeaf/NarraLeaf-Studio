@@ -154,6 +154,77 @@ export type ReleaseContentBlocker = {
     missing?: ("storyId" | "sceneId")[];
 };
 
+/**
+ * One thing in the project that can name a scene the build cannot read.
+ *
+ * Listed whether or not the author has answered it: the editing surface needs the ones that are
+ * already answered too, or a declaration could never be revisited once it was made.
+ */
+export type UnreadableMechanism = {
+    reason: ReleaseContentBlockerReason;
+    mechanism: AppTagMechanismRef;
+    /** Where a declaration for this mechanism is filed. */
+    mechanismKey: string;
+    /** What the author calls the thing to go and look at. */
+    location: string;
+    /** For `unreadableStartStoryTarget`: which of the node's two targets could not be read. */
+    missing?: ("storyId" | "sceneId")[];
+};
+
+/**
+ * Every mechanism a build cannot read, in one list.
+ *
+ * Exported because the panel that offers the remedy and the solver that demands it must agree about
+ * what the project holds. A panel with its own scan would grow a box for a node the build was happy
+ * with, or - worse - miss the one it refuses over.
+ */
+export function listUnreadableMechanisms(input: {
+    blueprints: readonly Blueprint[];
+    plugins: readonly ReleaseContentPlugin[];
+}): UnreadableMechanism[] {
+    const found: UnreadableMechanism[] = [];
+    const scan = scanStoryEntryPoints(blueprintGraphCarriers(input.blueprints), () => true);
+    for (const entry of scan.undecidable) {
+        const mechanism: AppTagMechanismRef = {
+            kind: "startStoryNode",
+            blueprintId: entry.blueprintId,
+            graphKind: entry.graphKind,
+            graphId: entry.graphId,
+            nodeId: entry.nodeId,
+        };
+        found.push({
+            reason: "unreadableStartStoryTarget",
+            mechanism,
+            mechanismKey: appTagMechanismKey(mechanism),
+            location: entry.blueprintName ?? entry.blueprintId,
+            missing: entry.missing,
+        });
+    }
+    for (const blueprint of input.blueprints) {
+        if (blueprint.program?.kind !== "graph") {
+            const mechanism: AppTagMechanismRef = { kind: "scriptBlueprint", blueprintId: blueprint.id };
+            found.push({
+                reason: "scriptBlueprint",
+                mechanism,
+                mechanismKey: appTagMechanismKey(mechanism),
+                location: blueprint.name,
+            });
+        }
+    }
+    for (const plugin of input.plugins) {
+        if (runtimeCapabilitiesCanStartStory(plugin.runtimeCapabilities)) {
+            const mechanism: AppTagMechanismRef = { kind: "plugin", pluginId: plugin.id };
+            found.push({
+                reason: "storyStartingPlugin",
+                mechanism,
+                mechanismKey: appTagMechanismKey(mechanism),
+                location: plugin.name,
+            });
+        }
+    }
+    return found;
+}
+
 /** A declaration naming a scene the project no longer has. Reported, never silently dropped. */
 export type StaleSceneDeclaration = {
     mechanismKey: string;
@@ -365,35 +436,8 @@ function readMechanisms(
         }
     };
 
-    const scan = scanStoryEntryPoints(blueprintGraphCarriers(input.blueprints), () => true);
-    const blueprintNames = new Map(input.blueprints.map(blueprint => [blueprint.id, blueprint.name]));
-    for (const entry of scan.undecidable) {
-        take(
-            {
-                kind: "startStoryNode",
-                blueprintId: entry.blueprintId,
-                graphKind: entry.graphKind,
-                graphId: entry.graphId,
-                nodeId: entry.nodeId,
-            },
-            "unreadableStartStoryTarget",
-            entry.blueprintName ?? entry.blueprintId,
-            entry.missing,
-        );
-    }
-    for (const blueprint of input.blueprints) {
-        if (blueprint.program?.kind !== "graph") {
-            take(
-                { kind: "scriptBlueprint", blueprintId: blueprint.id },
-                "scriptBlueprint",
-                blueprintNames.get(blueprint.id) ?? blueprint.id,
-            );
-        }
-    }
-    for (const plugin of input.plugins) {
-        if (runtimeCapabilitiesCanStartStory(plugin.runtimeCapabilities)) {
-            take({ kind: "plugin", pluginId: plugin.id }, "storyStartingPlugin", plugin.name);
-        }
+    for (const found of listUnreadableMechanisms(input)) {
+        take(found.mechanism, found.reason, found.location, found.missing);
     }
 
     return { blockers, entriesFromDeclarations, staleDeclarations, declaredBy };
