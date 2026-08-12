@@ -3,6 +3,7 @@ import {
     hostCanBuildTarget,
     isDesktopBuildPlatform,
     normalizeGameBuildArch,
+    type BuildPreflightSection,
     type GameBuildArch,
     type GameBuildCompression,
     type GameBuildDesktopPlatform,
@@ -10,6 +11,7 @@ import {
     type GameBuildPlatform,
     type GameBuildRequest,
 } from "@shared/types/gameBuild";
+import { isBuiltinAppTagId } from "@shared/types/appTag";
 import { DEFAULT_BUILD_COMPRESSION, type BuildConfiguration } from "@/lib/workspace/project/configuration";
 
 /**
@@ -17,6 +19,57 @@ import { DEFAULT_BUILD_COMPRESSION, type BuildConfiguration } from "@/lib/worksp
  * into a request. Kept out of the component so the "what will this build?"
  * logic is testable without rendering.
  */
+
+/**
+ * The sections of the rail a preflight finding can name, in order.
+ *
+ * Exported so a test can hold it against `BuildPreflightSection`: a section the type knows about and
+ * this list does not is invisible - its findings render nowhere, and a blocking one sends the author
+ * to a section that is not there.
+ */
+export const BUILD_DIALOG_SECTIONS: BuildPreflightSection[] = [
+    "targets",
+    "identity",
+    "content",
+    "signing",
+    "output",
+];
+
+/**
+ * A page of the dialog, which is the five sections plus the one that picks the variant.
+ *
+ * The variant page is not a `BuildPreflightSection` and must never become one: it can be hidden (see
+ * {@link visibleBuildDialogPages}), and a finding filed against a hidden page would render nowhere.
+ * It is first because everything after it describes the variant it selects.
+ */
+export type BuildDialogPage = "variant" | BuildPreflightSection;
+
+export const BUILD_DIALOG_PAGES: BuildDialogPage[] = ["variant", ...BUILD_DIALOG_SECTIONS];
+
+/**
+ * The pages the rail shows, and the pages Next walks.
+ *
+ * A project with only the release variant has nothing to choose, so the variant page is dropped and
+ * the dialog is what it was before variants existed. Every reader of the walk - the rail, the
+ * Next/Build arithmetic, the parked draft - works off this list rather than the constant, or a
+ * hidden page becomes a step nobody can leave.
+ */
+export function visibleBuildDialogPages(hasAuthoredVariants: boolean): BuildDialogPage[] {
+    return hasAuthoredVariants ? [...BUILD_DIALOG_PAGES] : [...BUILD_DIALOG_SECTIONS];
+}
+
+/**
+ * The dialog's spelling of a variant selection: the empty string for the release variant.
+ *
+ * The release variant has two possible spellings - its id and "no id at all" - and both used to
+ * reach the stored configuration, which made one choice look like two. Dialog state holds only the
+ * empty one, so a stored `"release"` (written by an older Studio) reads back as the same selection
+ * it always meant.
+ */
+export function appTagSelection(id: string | null | undefined): string {
+    const trimmed = typeof id === "string" ? id.trim() : "";
+    return !trimmed || isBuiltinAppTagId(trimmed) ? "" : trimmed;
+}
 
 /** Platforms shown, in display order. */
 export const DIALOG_PLATFORMS: GameBuildPlatform[] = ["windows", "macos", "linux", "web", "android", "ios"];
@@ -120,7 +173,7 @@ export function initialDialogState(
             : defaultGameBuildArch(platform, hostPlatform, hostArch);
     }
     return {
-        appTagId: config?.appTagId ?? "",
+        appTagId: appTagSelection(config?.appTagId),
         formats,
         archs,
         outputDir: config?.outputDir ?? "",
@@ -146,8 +199,9 @@ export function stateToRequest(state: BuildDialogState): GameBuildRequest {
     return {
         targets,
         // Omitted rather than sent empty: the pipeline reads an absent id as the release variant and
-        // refuses one it cannot find, so "" would be a variant nothing has.
-        ...(state.appTagId ? { appTagId: state.appTagId } : {}),
+        // refuses one it cannot find, so "" would be a variant nothing has. The release variant is
+        // absent for the same reason it is the empty string here - one choice, one spelling.
+        ...(appTagSelection(state.appTagId) ? { appTagId: appTagSelection(state.appTagId) } : {}),
         outputDir: state.outputDir.trim(),
         compression: state.compression,
         openWhenDone: state.openWhenDone,
@@ -164,8 +218,10 @@ export function requestToBuildConfiguration(request: GameBuildRequest): BuildCon
             archs[target.platform] = target.arch;
         }
     }
+    const appTagId = appTagSelection(request.appTagId);
     return {
-        ...(request.appTagId ? { appTagId: request.appTagId } : {}),
+        // Absent for the release variant, which is what an absent id already meant.
+        ...(appTagId ? { appTagId } : {}),
         platforms: request.targets.map(target => target.platform),
         formats,
         archs,
@@ -196,7 +252,7 @@ export function stateFromRequest(
         }
     }
     return {
-        appTagId: request.appTagId ?? "",
+        appTagId: appTagSelection(request.appTagId),
         formats,
         archs,
         outputDir: request.outputDir ?? "",

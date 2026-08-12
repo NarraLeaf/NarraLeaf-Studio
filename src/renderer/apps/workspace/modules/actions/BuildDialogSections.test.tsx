@@ -2,17 +2,24 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BuildPreflightSection } from "@shared/types/gameBuild";
 import type { SigningCredential } from "@shared/types/signing";
-import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { RELEASE_APP_TAG, resolveAppTagIdentity, type ProjectAppTag } from "@shared/types/appTag";
 import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
 import {
     buildPluginEntries,
+    BuildDialogContent,
     ContentSection,
-    SECTIONS,
+    OutputSection,
     type BuildDialogInfo,
     type BuildPluginEntry,
 } from "./BuildDialog";
 import { build as enBuild } from "@shared/i18n/catalog/en/build";
-import { initialDialogState, OFFERED_FORMATS, togglePlatform } from "./buildDialogState";
+import {
+    BUILD_DIALOG_PAGES,
+    BUILD_DIALOG_SECTIONS,
+    initialDialogState,
+    OFFERED_FORMATS,
+    togglePlatform,
+} from "./buildDialogState";
 import { SigningSection, SigningSummary } from "./BuildSigningSection";
 
 /**
@@ -44,13 +51,40 @@ const EVERY_SECTION: Record<BuildPreflightSection, true> = {
 const noop = () => undefined;
 const neverRemoves = async (_credential: SigningCredential) => false;
 
+/** A project called "My Game", with only the release variant. */
+const info: BuildDialogInfo = {
+    hostPlatform: "macos",
+    hostArch: "arm64",
+    productName: "My Game",
+    appId: "com.example.game",
+    appTags: [RELEASE_APP_TAG],
+    baseIdentity: { displayName: "My Game", identifier: "com.example.game", version: "1.0.0" },
+    locales: [],
+    defaultOutputDir: "/tmp/dist",
+    electronMirror: "",
+};
+
+const DEMO_TAG: ProjectAppTag = { id: "tag-demo", name: "Demo", overrides: {} };
+
+const withVariant: BuildDialogInfo = { ...info, appTags: [RELEASE_APP_TAG, DEMO_TAG] };
+
 describe("the build dialog's rail", () => {
     it("has a section for every section a finding can name", () => {
-        expect([...SECTIONS].sort()).toEqual(Object.keys(EVERY_SECTION).sort());
+        expect([...BUILD_DIALOG_SECTIONS].sort()).toEqual(Object.keys(EVERY_SECTION).sort());
     });
 
     it("keeps Output last, so the footer's Build button is the end of the walk", () => {
-        expect(SECTIONS[SECTIONS.length - 1]).toBe("output");
+        expect(BUILD_DIALOG_SECTIONS[BUILD_DIALOG_SECTIONS.length - 1]).toBe("output");
+    });
+
+    /**
+     * The variant page is a page and not a section, and it comes first. A finding filed against it
+     * would render nowhere for a project that has only the release variant, which is the project the
+     * page is hidden for.
+     */
+    it("is the sections with the variant page in front of them", () => {
+        expect(BUILD_DIALOG_PAGES).toEqual(["variant", ...BUILD_DIALOG_SECTIONS]);
+        expect(Object.keys(EVERY_SECTION)).not.toContain("variant");
     });
 });
 
@@ -229,18 +263,6 @@ describe("buildPluginEntries", () => {
  * read-only with the workspace - the three things a regression would silently take away.
  */
 describe("ContentSection", () => {
-    const info: BuildDialogInfo = {
-        hostPlatform: "macos",
-        hostArch: "arm64",
-        artifactBaseName: "game",
-        productName: "Game",
-        appId: "com.example.game",
-        appTags: [RELEASE_APP_TAG],
-        baseIdentity: { displayName: "Game", identifier: "com.example.game", version: "1.0.0" },
-        locales: [],
-        defaultOutputDir: "/tmp/dist",
-        electronMirror: "",
-    };
     const desktopOnly = initialDialogState(null, "macos", "arm64");
     const noop = () => undefined;
 
@@ -305,6 +327,132 @@ describe("ContentSection", () => {
         expect(render({ state: togglePlatform(desktopOnly, "web", true) })).toContain(notice);
     });
 });
+
+/**
+ * The page that picks the variant, and the one thing about it that is not visible from its own
+ * markup: it is there at all only for a project that has something to pick.
+ */
+describe("the variant page", () => {
+    const render = (dialogInfo: BuildDialogInfo, appTagId: string) => renderToStaticMarkup(
+        <BuildDialogContent
+            info={dialogInfo}
+            initialState={{ ...initialDialogState(null, "macos", "arm64"), appTagId }}
+            initialPage="variant"
+            copyright=""
+            signing={{}}
+            initialContent={{ encryptAssets: false, allowHttp: false }}
+            initialPlugins={[]}
+            onChange={noop}
+            onPersistContent={async () => undefined}
+            onRescanPlugins={async () => []}
+            onEditIdentity={noop}
+            onEditSigning={noop}
+            onCommit={noop}
+            onCancel={noop}
+            runPreflight={async () => []}
+        />,
+    );
+
+    it("lists every variant, release first, and marks the selected one", () => {
+        const markup = render(withVariant, "tag-demo");
+
+        expect(markup).toContain('data-build-app-tag="tag-demo"');
+        expect(markup).toContain('data-build-app-tag-option="release"');
+        expect(markup).toContain('data-build-app-tag-option="tag-demo"');
+        expect(markup.indexOf('data-build-app-tag-option="release"'))
+            .toBeLessThan(markup.indexOf('data-build-app-tag-option="tag-demo"'));
+    });
+
+    it("says of each identity value whether the variant states it or reads the project's", () => {
+        const stated: ProjectAppTag = { ...DEMO_TAG, overrides: { displayName: "My Game Demo" } };
+        const markup = render({ ...info, appTags: [RELEASE_APP_TAG, stated] }, "tag-demo");
+
+        expect(markup).toContain("My Game Demo");
+        expect(markup).toContain("From the build variant");
+        // The two values it does not state.
+        expect([...markup.matchAll(/From the project/g)]).toHaveLength(2);
+    });
+
+    it("claims nothing about what is blocking until preflight has answered", () => {
+        // Effects do not run under a static render, so this is the dialog before its first check.
+        expect(render(withVariant, "")).not.toContain("Nothing is blocking this build.");
+    });
+
+    it("is absent for a project whose only variant is Release", () => {
+        const markup = render(info, "");
+
+        expect(markup).not.toContain("data-build-app-tag-option");
+        // The rail falls back to the first page it does show.
+        expect(markup).toContain("Targets");
+    });
+
+    it("is the only place the variant is picked", () => {
+        // The Identity page reports what the selected variant ships; it no longer chooses it.
+        expect(renderToStaticMarkup(
+            <BuildDialogContent
+                info={withVariant}
+                initialState={initialDialogState(null, "macos", "arm64")}
+                initialPage="identity"
+                copyright=""
+                signing={{}}
+                initialContent={{ encryptAssets: false, allowHttp: false }}
+                initialPlugins={[]}
+                onChange={noop}
+                onPersistContent={async () => undefined}
+                onRescanPlugins={async () => []}
+                onEditIdentity={noop}
+                onEditSigning={noop}
+                onCommit={noop}
+                onCancel={noop}
+                runPreflight={async () => []}
+            />,
+        )).not.toContain("<select");
+    });
+});
+
+/**
+ * The predicted file names. They are a promise about what lands in the output folder, so what is
+ * asserted is the promise a variant changes: two variants built into one folder must not name the
+ * same file, and release must keep naming what it always named.
+ */
+describe("OutputSection's artifact prediction", () => {
+    const windowsZip = { ...initialDialogState(null, "windows", "x64") };
+    const render = (variant: ProjectAppTag) => renderToStaticMarkup(
+        <OutputSection
+            info={info}
+            state={windowsZip}
+            variant={variant}
+            identity={resolveAppTagIdentity(variant, info.baseIdentity)}
+            findings={[]}
+            onChange={noop}
+        />,
+    );
+
+    it("names release's artifacts from the project alone", () => {
+        expect(render(RELEASE_APP_TAG)).toContain("My-Game-1.0.0-win-x64.zip");
+    });
+
+    it("carries the variant's name, even where the variant overrides nothing", () => {
+        expect(render(DEMO_TAG)).toContain("My-Game-Demo-1.0.0-win-x64.zip");
+    });
+
+    it("names the project and the edition, not the application the variant renames to", () => {
+        const renamed: ProjectAppTag = { ...DEMO_TAG, overrides: { displayName: "Something Else" } };
+        const markup = render(renamed);
+
+        expect(markup).toContain("My-Game-Demo-1.0.0-win-x64.zip");
+        expect(markup).not.toContain("Something-Else");
+    });
+});
+
+/**
+ * The icon rows read the project's icons through the workspace context, which a static render has
+ * none of. Stubbed so the Identity page can be rendered at all; what is asserted about that page is
+ * what it no longer contains.
+ */
+vi.mock("./BuildIconRow", () => ({
+    BuildIconRow: () => null,
+}));
 
 // The section reaches the vault through the app bridge, which does not exist
 // outside Electron. Effects do not run under static rendering, so this only has

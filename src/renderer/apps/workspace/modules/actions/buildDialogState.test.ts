@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+    appTagSelection,
+    BUILD_DIALOG_PAGES,
+    BUILD_DIALOG_SECTIONS,
     initialDialogState,
     isDesktopPlatform,
     requestToBuildConfiguration,
@@ -7,7 +10,9 @@ import {
     stateToRequest,
     toggleFormat,
     togglePlatform,
+    visibleBuildDialogPages,
 } from "./buildDialogState";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { BuildConfiguration } from "@/lib/workspace/project/configuration";
 
 describe("isDesktopPlatform", () => {
@@ -186,5 +191,51 @@ describe("build variant selection", () => {
         const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: "tag-demo" };
 
         expect(stateFromRequest(stateToRequest(state), "macos", "arm64").appTagId).toBe("tag-demo");
+    });
+
+    /**
+     * The release variant has an id, and the dialog once persisted it. Two spellings of one choice
+     * is one spelling too many: whichever arrives, the release variant is the empty string here and
+     * nothing at all in the request and in the stored configuration.
+     */
+    it("has one spelling of the release variant, whichever one arrives", () => {
+        expect(appTagSelection(RELEASE_APP_TAG.id)).toBe("");
+        expect(appTagSelection("  ")).toBe("");
+        expect(appTagSelection(undefined)).toBe("");
+        expect(appTagSelection(" tag-demo ")).toBe("tag-demo");
+    });
+
+    it("reads a stored release id back as the choice it always meant", () => {
+        const stored = {
+            ...requestToBuildConfiguration(stateToRequest(initialDialogState(null, "macos", "arm64"))),
+            appTagId: RELEASE_APP_TAG.id,
+        };
+
+        expect(initialDialogState(stored, "macos", "arm64").appTagId).toBe("");
+        expect(stateFromRequest({ targets: [], appTagId: RELEASE_APP_TAG.id }, "macos", "arm64").appTagId).toBe("");
+    });
+
+    it("keeps the release variant out of the request and out of what is remembered", () => {
+        const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: RELEASE_APP_TAG.id };
+        const request = stateToRequest(state);
+
+        expect(request.appTagId).toBeUndefined();
+        expect(requestToBuildConfiguration({ ...request, appTagId: RELEASE_APP_TAG.id }).appTagId).toBeUndefined();
+    });
+});
+
+/**
+ * Which pages the dialog walks. The variant page is dropped where there is nothing to choose, and
+ * everything that walks the rail - the rail itself, Next, the parked draft - has to walk this list
+ * rather than the constant, or it lands on a page that is not shown.
+ */
+describe("visibleBuildDialogPages", () => {
+    it("puts the variant page first for a project that has a variant beside release", () => {
+        expect(visibleBuildDialogPages(true)).toEqual(BUILD_DIALOG_PAGES);
+        expect(visibleBuildDialogPages(true)[0]).toBe("variant");
+    });
+
+    it("is the sections alone for a project whose only variant is release", () => {
+        expect(visibleBuildDialogPages(false)).toEqual(BUILD_DIALOG_SECTIONS);
     });
 });
