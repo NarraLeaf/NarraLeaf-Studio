@@ -6,14 +6,18 @@ import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
 import { DEFAULT_PLAYER_PREFERENCES } from "@shared/types/preference";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
+import type { Blueprint } from "@shared/types/blueprint/document";
 import {
     loadAutoSaveConfiguration,
     loadGameAudio,
     loadGameLocalization,
     loadPlayerPreferences,
     loadProjectBrand,
+    planSceneDrop,
     resolveStoryDocumentPathForIndexEntry,
 } from "./bundleAssembler";
+import type { DevModeBundleLoadContext } from "./types";
 
 const STORY_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -437,5 +441,86 @@ describe("bundleAssembler brand palette", () => {
     it("falls back to the seeds when the project cannot be read at all", async () => {
         expect(await loadProjectBrand(path.join(os.tmpdir(), "nls-missing-project")))
             .toEqual([...BUILTIN_BRAND_COLORS]);
+    });
+});
+
+describe("bundleAssembler scene drop plan", () => {
+    function graphBlueprint(nodes: Record<string, unknown>): Blueprint {
+        return {
+            id: "bp-1",
+            name: "Menu",
+            owner: { kind: "surface", surfaceId: "s1" },
+            frontend: "visual",
+            programKind: "graph",
+            program: { kind: "graph", graphs: { events: { "e-1": { id: "e-1", graph: { nodes } } } } },
+        } as unknown as Blueprint;
+    }
+
+    function scriptBlueprint(): Blueprint {
+        return {
+            id: "bp-2",
+            name: "Script",
+            owner: { kind: "surface", surfaceId: "s1" },
+            frontend: "typescript",
+            programKind: "scriptModule",
+            program: { kind: "scriptModule", source: { entry: "index.ts", files: {} } },
+        } as unknown as Blueprint;
+    }
+
+    function context(extra?: Partial<DevModeBundleLoadContext>): DevModeBundleLoadContext {
+        return { projectPath: "/project", bundleId: "b", revision: 1, ...extra };
+    }
+
+    const startGame = (params: Record<string, string>) => ({
+        "n-1": { id: "n-1", type: "blueprint.game.startStory", params },
+    });
+
+    it("keeps every scene in the release build", () => {
+        // Release cuts nothing, and Dev Mode, the preview and "play from this row" all enter a scene
+        // the author picked rather than one the story reaches.
+        expect(planSceneDrop(context(), APP_TAG_ID_RELEASE, [])).toBeNull();
+    });
+
+    it("collects the scenes a Start Game node names, per story", () => {
+        const plan = planSceneDrop(context(), "tag-demo", [
+            graphBlueprint(startGame({ storyId: "story-1", sceneId: "scene-7" })),
+        ]);
+
+        expect(plan?.get("story-1")).toEqual({ entrySceneIds: ["scene-7"] });
+        expect(plan?.get("story-2")).toBeUndefined();
+    });
+
+    it("ships every story whole when a Start Game node picks its scene while the game runs", () => {
+        const notices: string[] = [];
+        const plan = planSceneDrop(context({ onNotice: message => notices.push(message) }), "tag-demo", [
+            graphBlueprint(startGame({ storyId: "story-1", sceneId: "" })),
+        ]);
+
+        expect(plan).toBeNull();
+        expect(notices).toHaveLength(1);
+    });
+
+    it("ships every story whole when a blueprint is written in TypeScript", () => {
+        const notices: string[] = [];
+        const plan = planSceneDrop(
+            context({ onNotice: message => notices.push(message) }),
+            "tag-demo",
+            [scriptBlueprint()],
+        );
+
+        expect(plan).toBeNull();
+        expect(notices).toHaveLength(1);
+    });
+
+    it("ships every story whole when the pack carries a plugin", () => {
+        const notices: string[] = [];
+        const plan = planSceneDrop(
+            context({ hasRuntimePlugins: true, onNotice: message => notices.push(message) }),
+            "tag-demo",
+            [],
+        );
+
+        expect(plan).toBeNull();
+        expect(notices).toHaveLength(1);
     });
 });

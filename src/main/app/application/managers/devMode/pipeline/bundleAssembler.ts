@@ -1,7 +1,12 @@
 import path from "path";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
-import type { BlueprintPersistentVariable, SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import type {
+    Blueprint,
+    BlueprintGraphNode,
+    BlueprintPersistentVariable,
+    SharedBlueprintAsset,
+} from "@shared/types/blueprint/document";
 import {
     VARIABLE_REGISTRY_SCHEMA_VERSION,
     type PersistentVariableRuntimeTable,
@@ -32,8 +37,9 @@ import { normalizeAudioClipRegion } from "@shared/types/audio";
 import type { BrandColor } from "@shared/types/brand";
 import { migrateProjectBrandDocument, normalizeProjectBrandColors } from "@shared/types/brand";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
-import { RELEASE_APP_TAG } from "@shared/types/appTag";
-import { applyAppTagToStoryDocument } from "@shared/story/appTagFold";
+import { APP_TAG_ID_RELEASE, isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
+import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
+import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
@@ -62,7 +68,12 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const variableTables = await loadVariableRuntimeTables(context.projectPath, uigraphsRaw.blueprintDocument);
     const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
-    const storyLibrary = await loadStoryLibrary(context.projectPath, context.appTag?.name ?? RELEASE_APP_TAG.name);
+    const variant = context.appTag ?? { id: APP_TAG_ID_RELEASE, name: RELEASE_APP_TAG.name };
+    const sceneDrop = planSceneDrop(context, variant.id, [
+        ...Object.values(localBlueprints.blueprints ?? {}),
+        ...sharedBlueprints.map(asset => asset.blueprint),
+    ]);
+    const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop);
     const localization = await loadGameLocalization(context.projectPath);
     const voice = await loadGameVoice(context.projectPath);
     const audio = await loadGameAudio(context.projectPath);
@@ -201,15 +212,109 @@ async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprin
 }
 
 /**
+ * The reachability sweep to run over each story, or `null` to keep every scene.
+ *
+ * Keyed by story id: a `Start Game` node names one story's scene, and handing that scene to another
+ * story would mark an unrelated scene reachable. A story no node names is not absent from the sweep,
+ * it simply has no entry beyond its own.
+ */
+type SceneDropPlan = Map<string, SceneReachability> | null;
+
+/**
+ * Which scenes may be dropped from each story, and why the answer is sometimes "none of them".
+ *
+ * Two conditions have to hold. The build is producing a variant other than release - release cuts
+ * nothing, and Dev Mode, the preview and "play from this row" all enter a scene the author picked
+ * rather than one the story reaches, so a sweep there would delete the scene about to be played.
+ * And every way into a scene has to be one this function can read.
+ *
+ * The second is where it gives up, and it gives up whole rather than in part: a sweep that dropped
+ * "the ones it was sure about" while an unreadable entry survived would be indistinguishable from a
+ * correct one until a player walked into the gap. Three things make it unreadable, all of them the
+ * same fact - a scene named by a value that only exists while the game runs:
+ *
+ *  - a `Start Game` node whose story or scene is wired rather than picked;
+ *  - a blueprint written in TypeScript, which can call `game.startStory` with anything it computes;
+ *  - a runtime plugin, which runs with the same host API in reach.
+ *
+ * Saved games are deliberately not in that list. A save carries compiled action ids, not a scene, and
+ * the story it resolves them against is the one compiled from this very package - so it cannot name
+ * a scene the package does not have. Exported for tests.
+ */
+export function planSceneDrop(
+    context: DevModeBundleLoadContext,
+    appTagId: string,
+    blueprints: readonly Blueprint[],
+): SceneDropPlan {
+    if (isBuiltinAppTagId(appTagId)) {
+        return null;
+    }
+    if (context.hasRuntimePlugins) {
+        context.onNotice?.("a plugin can start any scene, so every story ships whole");
+        return null;
+    }
+    if (blueprints.some(blueprint => blueprint.program.kind !== "graph")) {
+        context.onNotice?.("a TypeScript blueprint can start any scene, so every story ships whole");
+        return null;
+    }
+    const byStory = new Map<string, SceneReachability>();
+    for (const node of eachBlueprintGraphNode(blueprints)) {
+        if (node.type !== BLUEPRINT_NODE_TYPE_GAME_START_STORY) {
+            continue;
+        }
+        const storyId = readNodeStringParam(node, "storyId");
+        const sceneId = readNodeStringParam(node, "sceneId");
+        if (!storyId || !sceneId) {
+            context.onNotice?.("a Start Game node picks its scene while the game runs, so every story ships whole");
+            return null;
+        }
+        const existing = byStory.get(storyId);
+        byStory.set(storyId, { entrySceneIds: [...(existing?.entrySceneIds ?? []), sceneId] });
+    }
+    return byStory;
+}
+
+function* eachBlueprintGraphNode(blueprints: readonly Blueprint[]): Generator<BlueprintGraphNode> {
+    for (const blueprint of blueprints) {
+        if (blueprint.program.kind !== "graph") {
+            continue;
+        }
+        const { events, functions, macros } = blueprint.program.graphs;
+        const carriers = [
+            ...Object.values(events ?? {}),
+            ...Object.values(functions ?? {}),
+            ...Object.values(macros ?? {}),
+        ];
+        for (const carrier of carriers) {
+            for (const node of Object.values(carrier?.graph?.nodes ?? {})) {
+                if (node) {
+                    yield node;
+                }
+            }
+        }
+    }
+}
+
+function readNodeStringParam(node: BlueprintGraphNode, key: string): string {
+    const value = node.params?.[key];
+    return typeof value === "string" ? value.trim() : "";
+}
+
+/**
  * Every story the project has, as the bundle will carry it.
  *
- * `appTagName` is where the build variant stops being a label and starts deciding bytes. The story
+ * `variant` is where the build variant stops being a label and starts deciding bytes. The story
  * compiler runs inside the shipped game, not here, so these documents ARE the story a player gets:
  * whatever survives this function ships verbatim. Folding them here - the last point where a
  * document is still a value rather than a serialized pack - is what makes a variant-only branch
- * absent from the package rather than merely unreachable in it.
+ * absent from the package rather than merely unreachable in it, and what makes the story after a cut
+ * point absent rather than merely unplayed.
  */
-async function loadStoryLibrary(projectPath: string, appTagName: string): Promise<DevModeStoryLibrary | undefined> {
+async function loadStoryLibrary(
+    projectPath: string,
+    variant: { id: string; name: string },
+    sceneDrop: SceneDropPlan,
+): Promise<DevModeStoryLibrary | undefined> {
     const indexPath = path.join(projectPath, "editor", "story", "index.json");
     const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
     if (!index) {
@@ -231,7 +336,13 @@ async function loadStoryLibrary(projectPath: string, appTagName: string): Promis
         if (document.id !== entry.id) {
             throw new Error(`Story document id mismatch: expected ${entry.id}, received ${document.id}`);
         }
-        documents[entry.id] = applyAppTagToStoryDocument(document, { tagName: appTagName });
+        documents[entry.id] = applyAppTagToStoryDocument(document, {
+            tagName: variant.name,
+            tagId: variant.id,
+            // A story no `Start Game` node names still gets swept, from its own entry scene: a jump
+            // never crosses stories, so nothing outside it can reach one of its scenes.
+            ...(sceneDrop ? { sceneReachability: sceneDrop.get(entry.id) ?? { entrySceneIds: [] } } : {}),
+        });
         stories.push({
             ...entry,
             documentPath: storyDocumentRelativePath(entry.id),

@@ -18,11 +18,26 @@ export type DevModeBundleLoadContext = {
      * The build variant these bytes are being produced as.
      *
      * Absent is the release variant, which is what Dev Mode and Preview pass: there is no variant to
-     * pick when nothing is being packaged. It is the *name* the story documents are folded against
-     * (`@shared/story/appTagFold`), so it must be the variant list's own spelling; the id travels
-     * with it only so a caller can say which record this came from.
+     * pick when nothing is being packaged. Both halves decide bytes: the *name* is what `AppTag`
+     * folds to (`@shared/story/appTagFold`), so it must be the variant list's own spelling, and the
+     * *id* is what a `/cut` row names, so it decides where this edition's story ends.
      */
     appTag?: { id: string; name: string };
+    /**
+     * Whether this pack ships third-party runtime code.
+     *
+     * Only one thing reads it: a plugin runs inside the game with the host API in reach, so it can
+     * start any scene by a name nothing here can predict, and a pack that carries one has to keep
+     * every scene. Absent is "no plugins", which is what Dev Mode and Preview mean.
+     */
+    hasRuntimePlugins?: boolean;
+    /**
+     * Reports a decision the author has to be told about - today, a story shipped whole because the
+     * project can reach a scene by a name no static read resolves. Plain English, like every other
+     * line the main process puts in the build console. Absent drops the line, which is what Dev Mode
+     * and Preview want: neither drops a scene, so neither has anything to report.
+     */
+    onNotice?: (message: string) => void;
     compiled?: Record<string, unknown>;
     blueprintCompiledScripts?: Record<string, string>;
     blueprintScriptsCompileOk?: boolean;
