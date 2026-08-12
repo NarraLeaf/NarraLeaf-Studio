@@ -411,6 +411,7 @@ export const story = {
         labelName: "Label",
         scene: "Scene",
         track: "Audio Track",
+        appTag: "Build Variant",
         displayName: "Display Name",
         seekTime: "Seconds",
         // Camera
@@ -661,6 +662,12 @@ export const story = {
         setBackground: "Set background",
         transform: "Transform",
         invalidHint: "won't build",
+        // On a cut point row, beside the line that names the variant it ends. The short half is what
+        // the row shows; the title is the whole sentence.
+        cutPoint: "not in other builds",
+        cutPointTitle: "The {name} build ends at this line. No other build contains this line.",
+        cutPointInactive: "no variant",
+        cutPointInactiveTitle: "The variant this line ended has been deleted, so it ends nothing.",
         tempSpeaker: "name only",
         createCharacter: "Create character “{name}”",
         voiceOutdated: "Voice outdated, open voice table",
@@ -871,6 +878,10 @@ export const story = {
         // and /goto does not, and no author can guess which from the token alone.
         label: { label: "Label", detail: "Mark a place in this scene for /goto to reach" },
         goto: { label: "Go to", detail: "Move the play head to a label in this scene. Unlike /jump, the scene keeps running" },
+        // Named for the row it makes, not for the act of cutting: "Cut" alone reads as the clipboard
+        // in an editor that has one. The detail carries the half the name cannot, which is that the
+        // line belongs to one build and to no other.
+        cut: { label: "Cut point", detail: "End one build variant's story at this line. Other builds do not have this line" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         blink: { label: "Blink", detail: "Screen blink effect" },
         vignette: { label: "Vignette", detail: "Screen vignette effect" },
@@ -921,6 +932,7 @@ export const story = {
         label: "Label",
         goto: "Go to",
         break: "Break",
+        cut: "Cut point",
         jump: "Jump",
         note: "Note",
         invalid: "Invalid",
@@ -984,6 +996,11 @@ export const story = {
         label: "Label {name}",
         goto: "Go to {name}",
         break: "Break out of the loop",
+        cut: "{name} ends here",
+        // No variant to name: the row holds an id nothing answers to, or this reader has no variant
+        // list to ask. Says only what is true in both cases; the row's own mark, which does have the
+        // list, is where a deleted variant is named as deleted.
+        cutUnknown: "Cut point",
         jump: "Jump {scene}",
         note: "Note",
         invalid: "Invalid command",

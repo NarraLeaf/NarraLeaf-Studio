@@ -38,8 +38,10 @@ import { buildMergedVariableView } from "@shared/variables/mergedPersistentView"
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
 import { resolveAudioTrack } from "@shared/types/audioTrack";
+import { isBuiltinAppTagId } from "@shared/types/appTag";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
+import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
 import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator, TranslationKey } from "@shared/i18n";
@@ -2729,6 +2731,9 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     if (props.payload.control === "break") {
         return <div className="text-sm text-fg-muted">{t("storyInspector.control.breakHint")}</div>;
     }
+    if (props.payload.control === "cut") {
+        return <CutPointFields payload={props.payload} onChange={props.onChange} />;
+    }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
         const isRepeat = groupPayload.control === "repeat";
@@ -2837,6 +2842,44 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
             ) : (
                 <div className="text-sm text-fg-muted">{t("storyInspector.control.elseHint")}</div>
             )}
+        </div>
+    );
+}
+
+/**
+ * A cut point's one field: which build variant ends here.
+ *
+ * A picker over the variants the author created, the way `/goto`'s target is a picker over this
+ * scene's labels. The release variant is not offered - a row naming it ends nothing - and a stored id
+ * that names no variant stays selectable, or opening the card would silently rewrite the row of a
+ * variant that was deleted.
+ */
+function CutPointFields(props: {
+    payload: Extract<StoryControlPayload, { control: "cut" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const tags = useProjectAppTags();
+    const authored = tags.filter(tag => !isBuiltinAppTagId(tag.id));
+    const releaseName = t("project.appTags.releaseName");
+    const options: SelectOption[] = authored.map(tag => ({ value: tag.id, label: tag.name }));
+    if (props.payload.appTagId && !authored.some(tag => tag.id === props.payload.appTagId)) {
+        options.unshift({
+            value: props.payload.appTagId,
+            // A deleted variant resolves to release, and a cut point naming release ends nothing, so
+            // that is what the row now does. The option says it rather than showing a dangling id.
+            label: t("storyInspector.control.cutMissingVariant", { name: releaseName }),
+        });
+    }
+    return (
+        <div className="flex max-w-sm flex-col gap-2">
+            <SelectField
+                label={t("storyInspector.control.cutVariant")}
+                options={options.length > 0 ? options : [{ value: "", label: t("storyInspector.control.cutNoVariants") }]}
+                value={props.payload.appTagId}
+                onChange={appTagId => props.onChange({ ...props.payload, appTagId: String(appTagId) })}
+            />
+            <div className="text-2xs text-fg-subtle">{t("storyInspector.control.cutHint")}</div>
         </div>
     );
 }

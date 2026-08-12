@@ -1,3 +1,4 @@
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { STORY_EXPR_FUNCTIONS, STORY_VISITED_CALLS, type StoryVariableValueType, type StoryVisitedCall } from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 import { freeTargetKind, paramHintKey, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
@@ -289,7 +290,16 @@ function candidatesForType(
         case "label":
             return refCandidates(context.labels.map(name => ({ id: name, name })), query, () => ({ kind: "label" }));
         case "appTag":
-            return refCandidates(context.appTags, query, () => ({ kind: "appTag" }));
+            // The AUTHORED variants only. The release one is what every unresolvable reference falls
+            // back to, so a line naming it says nothing a build acts on - and for `/cut` it would say
+            // the release build ends there, which is the whole story shipping nowhere. Resolution
+            // still takes the name (a row may legitimately hold it), so this narrows what is offered
+            // rather than what is legal, the way the puppet-name slot already does.
+            return refCandidates(
+                context.appTags.filter(tag => tag.id !== APP_TAG_ID_RELEASE),
+                query,
+                () => ({ kind: "appTag" }),
+            );
         case "variable":
             return context.variables
                 .filter(entry => !query || containsFold(entry.name, query))
@@ -470,7 +480,9 @@ export function hasCandidateSource(
             case "audioTrack":
             case "variable":
             case "label":
-            // Every project has the release variant, so "no matches" here always means what it says.
+            // The variants an author created are a list the project either has or does not, and the
+            // commands that read it are hidden while it is empty - so "no matches" here always means
+            // what it says.
             case "appTag":
             case "target":
             case "content":
