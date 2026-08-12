@@ -28,6 +28,10 @@ import {
     type NestedCutPoint,
     type UnfoldableAppTagUse,
 } from "@shared/story/appTagFold";
+import {
+    collectUnfoldableAppTagGraphs,
+    type AppTagGraphRefusalReason,
+} from "@shared/blueprint/appTagGraphFold";
 import { AppTagService } from "../appTag/AppTagService";
 import { translate, translateN } from "@/lib/i18n";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
@@ -93,6 +97,18 @@ const BUILD_DONE_LINGER_MS = 1400;
  * report tab. Only the per-finding lines are capped; the summary and the refusal count are not.
  */
 const LINT_CONSOLE_FINDING_LIMIT = 200;
+
+/**
+ * Why one graph was refused -> the console line that says so.
+ *
+ * Three reasons rather than one message with a hedge in it: each names a different thing to change,
+ * and the console is what an author comes back to.
+ */
+const APP_TAG_GRAPH_MESSAGE_KEYS: Record<AppTagGraphRefusalReason, "build.appTagGraphUnresolved" | "build.appTagGraphUnknownNode" | "build.appTagGraphFnHead"> = {
+    unresolved: "build.appTagGraphUnresolved",
+    unknownNode: "build.appTagGraphUnknownNode",
+    fnHeadRemoved: "build.appTagGraphFnHead",
+};
 
 /** Finding severity -> the console level it is logged at. */
 const LINT_CONSOLE_LEVELS: Record<LintSeverity, ConsoleLogLevel> = {
@@ -300,6 +316,14 @@ export class BuildService extends Service<BuildService> {
             });
             return this.state;
         }
+        // The blueprint half of the `AppTag` gate above, and unconditional for the same reason: a
+        // graph that names the variant without deciding a branch with it cannot be compiled under any
+        // variant, release included. Free like the two before it - it walks the blueprint document
+        // already in memory.
+        const appTagGraphRefusal = this.runAppTagGraphGate(startedAt, platforms, request.appTagId);
+        if (appTagGraphRefusal) {
+            return appTagGraphRefusal;
+        }
         // Third of the unconditional correctness gates, and placed here for the same reason the
         // invalid-command gate is first: it is free. It walks the blueprint document already in
         // memory, so a build that will be refused anyway does not first pay for a media probe.
@@ -420,6 +444,82 @@ export class BuildService extends Service<BuildService> {
             }
         }
         return found;
+    }
+
+    /**
+     * The blueprint variant gate: no build ships a graph that still asks which edition it is.
+     *
+     * `Get App Tag` has no play-time value. The bundler substitutes the variant's name, folds the
+     * comparison it feeds, and deletes the arm this edition does not take - so a graph the fold cannot
+     * reduce to a decided branch is not a leak an author might tolerate, it is a graph nothing can
+     * compile. Refused in every build including release, the same standing the story-side `AppTag`
+     * gate above has and for the same reason.
+     *
+     * Reads the same module the bundler removes with (`@shared/blueprint/appTagGraphFold`), never a
+     * second implementation: a refusal and a removal that judged different graphs would be exactly the
+     * failure both exist to prevent.
+     *
+     * ## Why this covers less than the removal does, on purpose
+     *
+     * The blueprint document only. **Shared blueprint assets are not judged here and that is not an
+     * oversight** - they are asset files, and nothing in the renderer enumerates and parses them
+     * (`BlueprintService.readLocalBlueprint` takes one path at a time and there is no "list them all"
+     * helper). The bundle assembler already has them parsed, so it folds them and throws on a refusal;
+     * see `foldSharedBlueprints`. Removal is therefore a superset of refusal, which is the safe
+     * direction: nothing ships unfolded, and the only cost is that a shared-asset problem is reported
+     * when the pack is assembled rather than before the build starts. Do not "fix" the asymmetry by
+     * narrowing the removal - that would ship a live variant read, which the runtime answers with the
+     * release name in every edition.
+     *
+     * Synchronous, like the network gate below: the blueprint document is already in memory.
+     */
+    private runAppTagGraphGate(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+        appTagId: string | undefined,
+    ): GameBuildStateSnapshot | null {
+        const services = this.getContext().services;
+        let document: BlueprintDocument | null;
+        try {
+            document = services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+        } catch (error) {
+            // A document that will not load is the packer's problem to report, not this gate's to
+            // guess at - the same bargain the network gate makes.
+            console.error("[Build] could not read the blueprint document for the variant check", error);
+            return null;
+        }
+        // The name is passed for completeness only. Whether a graph reduces is a property of the
+        // graph, so a chain that stops at a text field stops under every variant.
+        const tagName = services.get<AppTagService>(Services.AppTags).resolveTag(appTagId).name;
+        const refused = collectUnfoldableAppTagGraphs(document, { tagName });
+        if (refused.length === 0) {
+            return null;
+        }
+
+        const consoleService = this.tryGetConsole();
+        for (const graph of refused) {
+            consoleService?.log(
+                BUILD_CONSOLE_CHANNEL,
+                "error",
+                translate(APP_TAG_GRAPH_MESSAGE_KEYS[graph.reason], {
+                    blueprint: graph.blueprintName,
+                    graph: graph.graphName,
+                }),
+                { source: BUILD_CONSOLE_SOURCE },
+            );
+        }
+        const refusal = translateN("build.appTagGraphSummary", refused.length, { count: refused.length });
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+        // `startedAt` and `platforms` carried through for the reason every gate around it carries
+        // them: the dashboard archives a refused run as a finished build.
+        this.updateState({
+            status: "error",
+            startedAt,
+            finishedAt: Date.now(),
+            platforms,
+            error: refusal,
+        });
+        return this.state;
     }
 
     /**

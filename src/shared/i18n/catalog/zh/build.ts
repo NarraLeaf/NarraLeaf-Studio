@@ -269,6 +269,13 @@ export const build = {
         one: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
         other: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
     },
+    appTagGraphUnresolved: "{blueprint} / {graph} 中的应用标签没有得出固定值，请把它与变体名比较，或直接使用它的值",
+    appTagGraphUnknownNode: "{blueprint} / {graph} 既判断了变体，又使用了本次构建无法读取的节点，请把变体判断移到不含该节点的图中",
+    appTagGraphFnHead: "{blueprint} / {graph} 中的变体判断决定了一个 Fn 是否存在，请把该 Fn 移出它决定的分支",
+    appTagGraphSummary: {
+        one: "构建已中止：有 {count} 个蓝图图层的变体判断没有得出固定值，详见控制台",
+        other: "构建已中止：有 {count} 个蓝图图层的变体判断没有得出固定值，详见控制台",
+    },
     cutPointNested: "{story} / {scene} 中 {variant} 的截断点位于条件或分组内部，请把它移到场景顶层",
     cutPointNestedSummary: {
         one: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",

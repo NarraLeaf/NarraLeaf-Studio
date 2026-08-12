@@ -7,13 +7,20 @@ import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
 import { DEFAULT_PLAYER_PREFERENCES } from "@shared/types/preference";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
-import type { Blueprint } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintGraphIr, SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
+    BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
+} from "@shared/types/blueprint/graph";
 import {
     loadAutoSaveConfiguration,
     loadGameAudio,
     loadGameLocalization,
     loadPlayerPreferences,
     loadProjectBrand,
+    foldSharedBlueprints,
     planSceneDrop,
     resolveStoryDocumentPathForIndexEntry,
 } from "./bundleAssembler";
@@ -441,6 +448,106 @@ describe("bundleAssembler brand palette", () => {
     it("falls back to the seeds when the project cannot be read at all", async () => {
         expect(await loadProjectBrand(path.join(os.tmpdir(), "nls-missing-project")))
             .toEqual([...BUILTIN_BRAND_COLORS]);
+    });
+});
+
+/**
+ * Shared blueprint assets are the one set of graphs the renderer's build gate cannot see, so the
+ * assembler is where a refusal in one has to stop the build. These cover the three outcomes:
+ * a build refuses, a build folds, and Dev Mode is left alone.
+ */
+describe("bundleAssembler shared blueprint variant fold", () => {
+    function sharedAsset(graph: BlueprintGraphIr): SharedBlueprintAsset {
+        return {
+            assetId: "asset-1",
+            name: "Shared Menu Logic",
+            frontend: "visual",
+            blueprint: {
+                id: "bp-shared",
+                name: "Shared",
+                owner: { kind: "sharedAsset", assetId: "asset-1" },
+                frontend: "visual",
+                programKind: "graph",
+                program: {
+                    kind: "graph",
+                    graphs: { events: { "e-1": { id: "e-1", name: "On Init", graph } }, functions: {} },
+                },
+            },
+        } as unknown as SharedBlueprintAsset;
+    }
+
+    /** `Get App Tag` held against a value only the running game answers. */
+    const refusingGraph: BlueprintGraphIr = {
+        nodes: {
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+            tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
+            eq: { id: "eq", type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL },
+            label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
+        },
+        edges: [
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
+            { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "eq", port: "a" } },
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "eq", port: "b" } },
+            { from: { nodeId: "eq", port: "result" }, to: { nodeId: "label", port: "text" } },
+        ],
+    };
+
+    /** `Get App Tag` straight into a label: a constant the package can simply carry. */
+    const foldingGraph: BlueprintGraphIr = {
+        nodes: {
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+            tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
+            label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
+        },
+        edges: [
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
+            { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "label", port: "text" } },
+        ],
+    };
+
+    function context(extra?: Partial<DevModeBundleLoadContext>): DevModeBundleLoadContext {
+        return { projectPath: "/project", bundleId: "b", revision: 1, ...extra };
+    }
+
+    it("stops a build whose shared blueprint does not reduce to a fixed value", () => {
+        expect(() => foldSharedBlueprints(
+            [sharedAsset(refusingGraph)],
+            context({ appTag: { id: "tag-demo", name: "Demo" } }),
+            { tagName: "Demo" },
+        )).toThrow(/Shared Menu Logic \/ On Init/);
+    });
+
+    it("names the asset in the author's language", () => {
+        expect(() => foldSharedBlueprints(
+            [sharedAsset(refusingGraph)],
+            context({ appTag: { id: "tag-demo", name: "Demo" }, locale: "zh" }),
+            { tagName: "Demo" },
+        )).toThrow(/应用标签/);
+    });
+
+    it("substitutes the variant name into a shared blueprint a build can fold", () => {
+        const [folded] = foldSharedBlueprints(
+            [sharedAsset(foldingGraph)],
+            context({ appTag: { id: "tag-demo", name: "Demo" } }),
+            { tagName: "Demo" },
+        );
+        const program = folded.blueprint.program;
+
+        expect(program.kind).toBe("graph");
+        if (program.kind === "graph") {
+            const nodes = program.graphs.events["e-1"].graph?.nodes ?? {};
+            expect(Object.keys(nodes).sort()).toEqual(["head", "label", "tag__appTag"]);
+            expect(nodes.tag__appTag.params).toEqual({ value: "Demo" });
+        }
+    });
+
+    it("leaves a refusing shared blueprint alone outside a build", () => {
+        // Dev Mode and the preview supply no variant, so they assemble as release and the runtime's
+        // own answer for `Get App Tag` is right. A refusal here would stop an author mid-edit.
+        const assets = [sharedAsset(refusingGraph)];
+
+        expect(() => foldSharedBlueprints(assets, context(), { tagName: "main" })).not.toThrow();
+        expect(foldSharedBlueprints(assets, context(), { tagName: "main" })[0]).toBe(assets[0]);
     });
 });
 

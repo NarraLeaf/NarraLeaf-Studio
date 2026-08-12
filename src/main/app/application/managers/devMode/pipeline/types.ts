@@ -1,3 +1,4 @@
+import type { LocaleCode } from "@shared/i18n";
 import type { DevModeBundle } from "@shared/types/devMode";
 
 /**
@@ -31,6 +32,13 @@ export type DevModeBundleLoadContext = {
      * every scene. Absent is "no plugins", which is what Dev Mode and Preview mean.
      */
     hasRuntimePlugins?: boolean;
+    /**
+     * The language a failure this assembly reports is written in.
+     *
+     * Only the blueprint variant refusal uses it, and only a build ever supplies it: Dev Mode and the
+     * preview never refuse, because neither of them packages anything. Absent falls back to English.
+     */
+    locale?: LocaleCode;
     /**
      * Reports a decision the author has to be told about - today, a story shipped whole because the
      * project can reach a scene by a name no static read resolves. Plain English, like every other
