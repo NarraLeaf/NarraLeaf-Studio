@@ -13,6 +13,7 @@ import {
     blueprintGraphCarriers,
     reachableSceneIds,
     scanStoryEntryPoints,
+    traceReachableScenes,
 } from "./storyReachability";
 
 /**
@@ -189,6 +190,60 @@ describe("reachableSceneIds", () => {
     });
 });
 
+// --- the reasons, from the same walk ----------------------------------------
+
+describe("traceReachableScenes", () => {
+    it("says why each scene is in", () => {
+        const built = document(
+            [
+                scene("sc1", [jump("b1", "sc2")]),
+                scene("sc2", [jump("b2", "sc3")]),
+                scene("sc3", []),
+                scene("sc4", []),
+            ],
+            "sc1",
+        );
+
+        const reached = traceReachableScenes(built, { entrySceneIds: ["sc4"], fallback: "none" });
+
+        expect(reached.get("sc1")).toEqual({ kind: "entryScene" });
+        expect(reached.get("sc2")).toEqual({ kind: "jump", fromSceneId: "sc1", blockId: "b1" });
+        expect(reached.get("sc3")).toEqual({ kind: "jump", fromSceneId: "sc2", blockId: "b2" });
+        expect(reached.get("sc4")).toEqual({ kind: "external" });
+    });
+
+    it("reports the document-order fallback as its own reason", () => {
+        const built = document([scene("sc1", [])]);
+
+        expect(traceReachableScenes(built, { fallback: "documentOrder" }).get("sc1"))
+            .toEqual({ kind: "documentOrder" });
+    });
+
+    it("keeps a live reason for a scene something later also names", () => {
+        // The fixture's Recollection: entered from before a cut point and named again from after it.
+        // The reason has to be the route that survives, or the report justifies a scene by an edge
+        // the package no longer carries.
+        const built = document(
+            [
+                scene("sc1", [jump("b1", "sc2")]),
+                scene("sc2", [jump("b2", "sc3")]),
+                scene("sc3", [jump("b3", "sc2")]),
+            ],
+            "sc1",
+        );
+
+        expect(traceReachableScenes(built, { fallback: "none" }).get("sc2"))
+            .toEqual({ kind: "jump", fromSceneId: "sc1", blockId: "b1" });
+    });
+
+    it("agrees with the id-only answer, member for member and in order", () => {
+        const built = document([scene("sc1", [jump("b1", "sc2")]), scene("sc2", []), scene("sc3", [])], "sc1");
+        const options = { fallback: "none" } as const;
+
+        expect([...traceReachableScenes(built, options).keys()]).toEqual([...reachableSceneIds(built, options)]);
+    });
+});
+
 // --- the entry scan ---------------------------------------------------------
 
 describe("scanStoryEntryPoints", () => {
@@ -201,6 +256,16 @@ describe("scanStoryEntryPoints", () => {
         expect(scan.undecidable).toEqual([]);
         expect([...(scan.byStory.get("story-1") ?? [])]).toEqual(["scene-7"]);
         expect(scan.byStory.get("story-2")).toBeUndefined();
+        // The node behind the entry, so a report can name what put the scene in.
+        expect(scan.sites).toEqual([{
+            storyId: "story-1",
+            sceneId: "scene-7",
+            blueprintId: "bp-1",
+            blueprintName: "Title screen",
+            graphKind: "event",
+            graphId: "ev-1",
+            nodeId: "n-1",
+        }]);
     });
 
     it("keeps only the scenes the story actually has", () => {
