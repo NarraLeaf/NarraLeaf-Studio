@@ -17,7 +17,7 @@ import { useCallback, useMemo } from "react";
 import { Copy } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { IconButton } from "@/lib/components/elements";
-import { copyTextToClipboard } from "@/lib/app/diagnostics/copyText";
+import { copyTextToClipboard } from "@shared/utils/copyText";
 import { deriveGameAppId } from "@shared/types/gameBuild";
 import {
     describeUserDataLocations,
