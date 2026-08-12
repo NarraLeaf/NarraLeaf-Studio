@@ -104,6 +104,16 @@ export type GameAppHost = {
     sessionKey: string;
     /** Surface the navigation stack starts on; null falls back to the default app surface. */
     entrySurfaceId: string | null | undefined;
+    /**
+     * Surface to show when the running story falls off the end, resolved for the variant this build
+     * was produced as. Blank or absent keeps the behaviour every build had before it existed: the
+     * story stops and the stage stays where it is.
+     *
+     * A host supplies it from what it was given, never from a default. There is no page to fall back
+     * on - a screen nobody authored is worse than no screen - and a demo whose cut point IS its
+     * ending may legitimately want the stage left alone.
+     */
+    endingSurfaceId?: string | null;
     /** Gate for boot side effects (appBoot, NLR boot preload, keyboard). Preview: pack+assets ready. */
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */

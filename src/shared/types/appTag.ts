@@ -196,6 +196,24 @@ export type AppTagReachableScenes = Record<string, AppTagDeclaredScene[]>;
  */
 export type AppTagExternalLinks = string[];
 
+/**
+ * The page a build shows when its story falls off the end.
+ *
+ * A surface id, or the empty string for "show nothing" - which is what every build did before this
+ * existed and what a project that never picks one keeps doing. Stored under the same rule the two
+ * records above follow: absent on a variant means inherited, and restoring is a delete.
+ *
+ * Per variant because that is what a cut point creates. A demo ends where the author cut it, and the
+ * page it lands on is a thank-you with a store link on it; the full game ends where the story ends,
+ * and lands on credits or on nothing at all. The same story document produces both.
+ *
+ * **The empty string is a value on a variant and an absence on the project.** A variant that states
+ * `""` says it shows nothing when its story ends, which is different from reading the project's
+ * choice; on the project's own record there is nothing to inherit from, so blank and absent are one
+ * fact and the blank one is not written.
+ */
+export type AppTagEndingSurfaceId = string;
+
 export interface ProjectAppTag {
     /** Stable. What every stored reference holds, so renaming a tag never invalidates one. */
     id: string;
@@ -215,6 +233,11 @@ export interface ProjectAppTag {
      * says "the project's list"; an empty array is a variant that states it may open nothing.
      */
     externalLinks?: AppTagExternalLinks;
+    /**
+     * Only the ending page this variant states itself. See {@link AppTagEndingSurfaceId}: absent is
+     * the project's choice, and an empty string is this variant saying it shows nothing.
+     */
+    endingSurfaceId?: AppTagEndingSurfaceId;
     /** Set on the release tag. Derived from the id, never authored, never stored. */
     builtin?: true;
 }
@@ -292,6 +315,14 @@ export type ProjectAppTagDocument = {
      * stores nothing, so there is no record on it for a value to live in.
      */
     externalLinks?: AppTagExternalLinks;
+    /**
+     * The project's own ending page - what every variant inherits, and what the release tag reads.
+     *
+     * At the root for the reason `externalLinks` is, and absent when blank for the reason that one
+     * is absent when empty: on the record every other record is read against, "the project picks
+     * none" and "the key is not there" are one fact.
+     */
+    endingSurfaceId?: AppTagEndingSurfaceId;
     meta?: {
         createdAt?: string;
         updatedAt?: string;
@@ -341,7 +372,18 @@ export function normalizeProjectAppTag(raw: unknown): ProjectAppTag | null {
         ...(record.externalLinks === undefined
             ? {}
             : { externalLinks: normalizeAppTagExternalLinks(record.externalLinks) }),
+        // Kept whenever the key is present, blank included, for the reason the list above is: on a
+        // variant "" is the statement "this edition shows nothing when its story ends", and dropping
+        // it would silently hand the variant the project's page instead.
+        ...(record.endingSurfaceId === undefined
+            ? {}
+            : { endingSurfaceId: normalizeAppTagEndingSurfaceId(record.endingSurfaceId) }),
     };
+}
+
+/** A surface id as it is stored and compared: trimmed, or blank for anything that is not one. */
+export function normalizeAppTagEndingSurfaceId(raw: unknown): AppTagEndingSurfaceId {
+    return typeof raw === "string" ? raw.trim() : "";
 }
 
 /**
@@ -619,6 +661,7 @@ export function migrateProjectAppTagDocument(raw: unknown): ProjectAppTagDocumen
     const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
     const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
     const externalLinks = normalizeAppTagExternalLinks(record.externalLinks);
+    const endingSurfaceId = normalizeAppTagEndingSurfaceId(record.endingSurfaceId);
 
     return {
         schemaVersion: APP_TAG_SCHEMA_VERSION,
@@ -629,6 +672,10 @@ export function migrateProjectAppTagDocument(raw: unknown): ProjectAppTagDocumen
         // states nothing reads, and "the project declares none" and "the key is absent" are the
         // same fact there.
         ...(externalLinks.length > 0 ? { externalLinks } : {}),
+        // Omitted when blank, unlike a variant's own key and for the same reason the list above is:
+        // this is the record a variant that states nothing reads, so there is nothing for a blank to
+        // mean that absence does not already say.
+        ...(endingSurfaceId ? { endingSurfaceId } : {}),
         ...(meta ? { meta } : {}),
     };
 }
@@ -804,6 +851,35 @@ export function resolveAppTagExternalLinks(
         return { value: inherited, overridden: false };
     }
     return { value: normalizeAppTagExternalLinks(tag.externalLinks), overridden: true };
+}
+
+/** A resolved ending page, and whether the variant is the reason for it. */
+export type AppTagResolvedEndingSurface = {
+    /** The surface a build under this tag shows when its story ends. Blank shows nothing. */
+    value: AppTagEndingSurfaceId;
+    /** True when the tag states it itself, false when it is reading the project's choice. */
+    overridden: boolean;
+};
+
+/**
+ * Which page a build under this tag shows when its story falls off the end, and whether the tag is
+ * the reason.
+ *
+ * The same `{ value, overridden }` answer every other resolved key gives, for the same reason: an
+ * inherited id and a stated one are the same string, and a surface that cannot tell them apart
+ * cannot say whether restoring would change anything.
+ *
+ * `base` is the project's own choice - the document root. The release tag stores nothing, so it
+ * always reads that.
+ */
+export function resolveAppTagEndingSurface(
+    tag: ProjectAppTag,
+    base: string | undefined,
+): AppTagResolvedEndingSurface {
+    if (tag.endingSurfaceId === undefined) {
+        return { value: normalizeAppTagEndingSurfaceId(base), overridden: false };
+    }
+    return { value: normalizeAppTagEndingSurfaceId(tag.endingSurfaceId), overridden: true };
 }
 
 /**

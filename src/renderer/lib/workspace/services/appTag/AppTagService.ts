@@ -10,12 +10,14 @@ import {
     hasAppTagReachableScenes,
     isBuiltinAppTagId,
     listAppTags,
+    normalizeAppTagEndingSurfaceId,
     normalizeAppTagExternalLinks,
     normalizeAppTagPluginConfig,
     normalizeAppTagReachableScenes,
     normalizeProjectAppTags,
     RELEASE_APP_TAG,
     resolveAppTag,
+    resolveAppTagEndingSurface,
     resolveAppTagExternalLinks,
     resolveAppTagIdentity,
     resolveAppTagPluginConfigValue,
@@ -28,6 +30,7 @@ import {
     type AppTagOverrideKey,
     type AppTagPluginConfig,
     type AppTagReachableScenes,
+    type AppTagResolvedEndingSurface,
     type AppTagResolvedExternalLinks,
     type AppTagResolvedValue,
     type ProjectAppTag,
@@ -146,11 +149,13 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             pluginConfig: rawPluginConfig,
             reachableScenes: rawReachableScenes,
             externalLinks: rawExternalLinks,
+            endingSurfaceId: rawEndingSurfaceId,
             ...rest
         } = document;
         const pluginConfig = normalizeAppTagPluginConfig(rawPluginConfig);
         const reachableScenes = normalizeAppTagReachableScenes(rawReachableScenes);
         const externalLinks = normalizeAppTagExternalLinks(rawExternalLinks);
+        const endingSurfaceId = normalizeAppTagEndingSurfaceId(rawEndingSurfaceId);
         const updated: ProjectAppTagDocument = {
             ...rest,
             tags: normalizeProjectAppTags(document.tags),
@@ -159,6 +164,7 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
             ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
             ...(externalLinks.length > 0 ? { externalLinks } : {}),
+            ...(endingSurfaceId ? { endingSurfaceId } : {}),
             meta: {
                 ...document.meta,
                 updatedAt: new Date().toISOString(),
@@ -276,6 +282,14 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             // "declares none" and "the key is absent" are one fact, unlike on a variant, where an
             // empty list is the variant saying it opens nothing.
             delete document.externalLinks;
+        }
+        const endingSurfaceId = normalizeAppTagEndingSurfaceId(document.endingSurfaceId);
+        if (endingSurfaceId) {
+            document.endingSurfaceId = endingSurfaceId;
+        } else {
+            // Deleted rather than left blank, for the reason the list above is deleted when empty:
+            // on the project's own record "picks none" and "the key is absent" are one fact.
+            delete document.endingSurfaceId;
         }
         this.commitMutation();
     }
@@ -598,6 +612,66 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
                     return tag;
                 }
                 const { externalLinks: _dropped, ...rest } = tag;
+                return rest;
+            });
+        });
+        return true;
+    }
+
+    /** The project's own ending page - what a variant that states none reads. Blank picks none. */
+    public getProjectEndingSurfaceId(): string {
+        return this.getDocument().endingSurfaceId ?? "";
+    }
+
+    /** Which page a build under this variant ends on, and whether the variant is the reason. */
+    public resolveEndingSurface(id: string | null | undefined): AppTagResolvedEndingSurface {
+        return resolveAppTagEndingSurface(this.resolveTag(id), this.getDocument().endingSurfaceId);
+    }
+
+    /**
+     * State the ending page for one variant, or - on the release tag - for the project.
+     *
+     * The release tag stores nothing, so a page picked while it is selected is the project's own,
+     * exactly as the address list is. A blank value on a variant is a value, not a clear: it says
+     * this edition shows nothing when its story ends, which a demo whose cut point is its ending may
+     * well mean. Restoring the inherited page is {@link clearEndingSurface}.
+     */
+    public setEndingSurface(id: string | null | undefined, surfaceId: string): boolean {
+        const trimmedId = typeof id === "string" ? id.trim() : "";
+        const onProject = !trimmedId || isBuiltinAppTagId(trimmedId);
+        if (!onProject && !this.getTag(trimmedId)) {
+            return false;
+        }
+        const next = normalizeAppTagEndingSurfaceId(surfaceId);
+        this.applyDocumentMutation(document => {
+            if (onProject) {
+                document.endingSurfaceId = next;
+                return;
+            }
+            document.tags = document.tags.map(tag => (
+                tag.id === trimmedId ? { ...tag, endingSurfaceId: next } : tag
+            ));
+        });
+        return true;
+    }
+
+    /**
+     * Restore a variant to the project's ending page.
+     *
+     * A delete, not a copy of what was inherited: storing the project's page here would freeze it,
+     * and the next page the project picked would quietly not reach this variant. Refuses the release
+     * tag, which has nothing to restore to.
+     */
+    public clearEndingSurface(id: string): boolean {
+        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
+            return false;
+        }
+        this.applyDocumentMutation(document => {
+            document.tags = document.tags.map(tag => {
+                if (tag.id !== id) {
+                    return tag;
+                }
+                const { endingSurfaceId: _dropped, ...rest } = tag;
                 return rest;
             });
         });

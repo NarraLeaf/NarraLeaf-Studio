@@ -724,6 +724,45 @@ describe("game runtime artifact compiler", () => {
 
         // Absent rather than empty, which every shell reads as "this build opens nothing".
         expect(result.pack.externalLinks).toBeUndefined();
+        // Same reading for the ending page: absent is the behaviour every build had before the
+        // field existed, which is the story stopping with its last frame on screen.
+        expect(result.pack.endingSurfaceId).toBeUndefined();
+    });
+
+    it("carries the page the compiled variant ends on, and only that one", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await fs.writeFile(
+            path.join(projectPath, "editor", "app-tags.json"),
+            JSON.stringify({
+                schemaVersion: 1,
+                endingSurfaceId: "surface-credits",
+                tags: [
+                    { id: "demo", name: "Demo", overrides: {}, endingSurfaceId: "surface-thanks" },
+                    { id: "quiet", name: "Quiet", overrides: {}, endingSurfaceId: "" },
+                ],
+            }),
+            "utf-8",
+        );
+
+        const compile = async (appTag?: { id: string; name: string }) => (await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            ...(appTag ? { appTag } : {}),
+        })).pack;
+
+        expect((await compile({ id: "demo", name: "Demo" })).endingSurfaceId).toBe("surface-thanks");
+        expect((await compile()).endingSurfaceId).toBe("surface-credits");
+        // A variant that states it shows nothing carries no page, not the project's.
+        expect((await compile({ id: "quiet", name: "Quiet" })).endingSurfaceId).toBeUndefined();
     });
 
     it("marks preview app manifests with the preview mode", async () => {

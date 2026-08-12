@@ -127,6 +127,14 @@ export const project = {
             placeholder: "https://example.com/store",
             invalid: "Only addresses starting with http:// or https:// can be opened.",
         },
+        // The page a build of this variant shows when its story runs out of rows. Named for what an
+        // author sees happen rather than for the engine event behind it.
+        ending: {
+            title: "Page shown when the story ends",
+            // A real choice, not the empty state: the last frame stays on screen, which is what
+            // every build did before this field existed.
+            none: "Show nothing",
+        },
         // Beside Delete inside an open variant: the count the confirmation is about to be about.
         usedBy: {
             one: "Used by {count} reference",

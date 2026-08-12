@@ -33,7 +33,7 @@ import {
     gameRuntimeBundleRuntimeEntry,
 } from "@shared/utils/gameRuntimeBundle";
 import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
-import { resolveAppTag, resolveAppTagExternalLinks } from "@shared/types/appTag";
+import { resolveAppTag, resolveAppTagEndingSurface, resolveAppTagExternalLinks } from "@shared/types/appTag";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { readPublishedPluginData } from "../../pluginRuntimeData";
 // Relative rather than "@/": this module is unit-tested, and the test runner
@@ -286,6 +286,7 @@ export async function compileGameRuntimeArtifact(
 
     const projectConfig = await readProjectConfig(input.projectPath);
     const externalLinks = await readDeclaredExternalLinks(input.projectPath, input.appTag?.id);
+    const endingSurfaceId = await readEndingSurfaceId(input.projectPath, input.appTag?.id);
     const blueprintScripts = await compileAllBlueprintScriptsForProject(input.projectPath);
     if (!blueprintScripts.ok) {
         const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
@@ -407,6 +408,11 @@ export async function compileGameRuntimeArtifact(
             // hole in the boundary this list IS. Opening a page is also not a network permission -
             // nothing is fetched - so `allowHttp` neither enables nor disables it.
             ...(externalLinks.length > 0 ? { externalLinks } : {}),
+            // Beside the addresses above and resolved the same way: a demo ends where its cut point
+            // is and lands on a page the full game never shows, so which surface ships is decided by
+            // the same tag that decides the build's name. Omitted when blank, which is the state
+            // every build was in before this field and the one the runtime treats as "show nothing".
+            ...(endingSurfaceId ? { endingSurfaceId } : {}),
             // Unconditional, unlike `network` above: the fit describes the game's art rather than a
             // shell mechanism, and the web export shares its pack with the mobile repack.
             viewport: normalizeGameRuntimeViewportConfig(
@@ -1329,6 +1335,23 @@ async function readDeclaredExternalLinks(
     const document = await readProjectAppTagDocumentFromDir(projectPath);
     const tag = resolveAppTag(document.tags, appTagId);
     return resolveAppTagExternalLinks(tag, document.externalLinks).value;
+}
+
+/**
+ * The page this build ends on, resolved for the variant it is being compiled as.
+ *
+ * Per variant for the reason the addresses are: the demo's ending is not the full game's, and the
+ * same story document produces both. An absent tag is the release variant, which reads the project's
+ * own choice. A blank answer is a build that shows nothing when its story ends, which is what every
+ * build did before this existed.
+ *
+ * A document that will not parse propagates, exactly as it does above: a build whose variant record
+ * could not be read has no business guessing at which page it ends on.
+ */
+async function readEndingSurfaceId(projectPath: string, appTagId: string | undefined): Promise<string> {
+    const document = await readProjectAppTagDocumentFromDir(projectPath);
+    const tag = resolveAppTag(document.tags, appTagId);
+    return resolveAppTagEndingSurface(tag, document.endingSurfaceId).value;
 }
 
 async function readOptionalJson<T>(filePath: string): Promise<T | null> {

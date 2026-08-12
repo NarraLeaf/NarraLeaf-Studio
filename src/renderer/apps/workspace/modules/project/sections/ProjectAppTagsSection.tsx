@@ -26,7 +26,7 @@ import { HelpTrigger } from "@/lib/help";
 import { listUnreadableMechanisms, type UnreadableMechanism } from "@/lib/build/releaseContent";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
-import { Button, IconButton, Input } from "@/lib/components/elements";
+import { Button, IconButton, Input, Select, type SelectOption } from "@/lib/components/elements";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -39,6 +39,7 @@ import {
     countAppTagReferences,
     normalizeExternalLinkUrl,
     RELEASE_APP_TAG,
+    resolveAppTagEndingSurface,
     resolveAppTagExternalLinks,
     resolveAppTagIdentity,
     type AppTagBaseIdentity,
@@ -69,6 +70,9 @@ type AppTagReferenceCount = { total: number; story: number };
 /** One scene a declaration can name. Flat, because a declaration crosses stories. */
 type DeclarableScene = { storyId: string; sceneId: string; label: string };
 
+/** One page a variant can end on. Read once per open, like the mechanisms below. */
+type EndingPage = { id: string; name: string };
+
 /**
  * What the project holds that a build cannot read, and the scenes a declaration may name.
  *
@@ -79,8 +83,18 @@ type DeclarableScene = { storyId: string; sceneId: string; label: string };
 async function loadMechanisms(context: WorkspaceContext): Promise<{
     mechanisms: UnreadableMechanism[];
     scenes: DeclarableScene[];
+    surfaces: EndingPage[];
 }> {
     const services = context.services;
+    // Read here rather than watched, for the reason stated above: the ending page picker offers the
+    // project's pages, and a page being renamed while this panel is open is not a flow anyone has.
+    let surfaces: EndingPage[] = [];
+    try {
+        surfaces = (services.get<UIDocumentService>(Services.UIDocument).getDocument().surfaces ?? [])
+            .map(surface => ({ id: surface.id, name: surface.name }));
+    } catch {
+        surfaces = [];
+    }
     let blueprints: Blueprint[] = [];
     try {
         const document = services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
@@ -102,7 +116,7 @@ async function loadMechanisms(context: WorkspaceContext): Promise<{
     const mechanisms = listUnreadableMechanisms({ blueprints, plugins });
     if (mechanisms.length === 0) {
         // Nothing to declare, so nothing to read every story document for.
-        return { mechanisms, scenes: [] };
+        return { mechanisms, scenes: [], surfaces };
     }
 
     const storyService = services.get<StoryService>(Services.Story);
@@ -117,7 +131,7 @@ async function loadMechanisms(context: WorkspaceContext): Promise<{
             // A story that will not load reports itself elsewhere; the rest are still declarable.
         }
     }
-    return { mechanisms, scenes };
+    return { mechanisms, scenes, surfaces };
 }
 
 export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps) {
@@ -134,9 +148,14 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
 
     const [tags, setTags] = useState<ProjectAppTag[]>([]);
     const [references, setReferences] = useState<Record<string, AppTagReferenceCount>>({});
-    const [unreadable, setUnreadable] = useState<{ mechanisms: UnreadableMechanism[]; scenes: DeclarableScene[] }>({
+    const [unreadable, setUnreadable] = useState<{
+        mechanisms: UnreadableMechanism[];
+        scenes: DeclarableScene[];
+        surfaces: EndingPage[];
+    }>({
         mechanisms: [],
         scenes: [],
+        surfaces: [],
     });
     /** Collapsed by default. A variant the author just created is the exception - they made it to name it. */
     const [openIds, setOpenIds] = useState<string[]>([]);
@@ -189,6 +208,12 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
      */
     const projectLinks = useMemo(
         () => (tags.length > 0 ? tagService?.getProjectExternalLinks() ?? [] : []),
+        [tagService, tags],
+    );
+
+    /** The project's own ending page, read the same way and for the same reason as the links above. */
+    const projectEndingSurfaceId = useMemo(
+        () => (tags.length > 0 ? tagService?.getProjectEndingSurfaceId() ?? "" : ""),
         [tagService, tags],
     );
 
@@ -287,10 +312,12 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
                             tag={tag}
                             base={base}
                             projectLinks={projectLinks}
+                            projectEndingSurfaceId={projectEndingSurfaceId}
                             service={tagService}
                             uses={references[tag.id]?.total ?? 0}
                             mechanisms={unreadable.mechanisms}
                             scenes={unreadable.scenes}
+                            surfaces={unreadable.surfaces}
                             onDelete={() => void removeTag(tag)}
                         />
                     ))}
@@ -311,20 +338,25 @@ function TagItem({
     tag,
     base,
     projectLinks,
+    projectEndingSurfaceId,
     service,
     uses,
     mechanisms,
     scenes,
+    surfaces,
     onDelete,
 }: {
     tag: ProjectAppTag;
     base: AppTagBaseIdentity;
     /** The project's own declared addresses - what a variant that states none opens. */
     projectLinks: readonly string[];
+    /** The project's own ending page - what a variant that states none ends on. */
+    projectEndingSurfaceId: string;
     service: AppTagService | null;
     uses: number;
     mechanisms: readonly UnreadableMechanism[];
     scenes: readonly DeclarableScene[];
+    surfaces: readonly EndingPage[];
     onDelete: () => void;
 }) {
     const { t, tn } = useTranslation();
@@ -333,6 +365,10 @@ function TagItem({
 
     const identity = useMemo(() => resolveAppTagIdentity(tag, base), [base, tag]);
     const links = useMemo(() => resolveAppTagExternalLinks(tag, projectLinks), [projectLinks, tag]);
+    const ending = useMemo(
+        () => resolveAppTagEndingSurface(tag, projectEndingSurfaceId),
+        [projectEndingSurfaceId, tag],
+    );
 
     return (
         <AccordionItem
@@ -418,6 +454,18 @@ function TagItem({
                     label={t("project.appTags.links.title")}
                     links={links.value}
                     overridden={links.overridden}
+                    disabled={frozen.disabled}
+                    service={service}
+                />
+
+                {/* Editable on the release row too, for the same reason the addresses are: the
+                    project's own choice has no field higher up the page to be read from. */}
+                <EndingField
+                    tagId={tag.id}
+                    label={t("project.appTags.ending.title")}
+                    surfaceId={ending.value}
+                    overridden={ending.overridden}
+                    surfaces={surfaces}
                     disabled={frozen.disabled}
                     service={service}
                 />
@@ -726,6 +774,81 @@ function LinksField({
                     </Button>
                 </span>
             </div>
+        </Field>
+    );
+}
+
+/**
+ * The page one variant shows when its story falls off the end.
+ *
+ * One value rather than a list, read exactly as the identity keys are: the row shows what is in
+ * force, and Restore appears only when this variant is the reason for it.
+ *
+ * **"Show nothing" is an option in the list, not the absence of a choice.** It is a real answer - a
+ * demo whose cut point is its ending may want the last frame left on screen - and it has to be
+ * distinguishable from inheriting, which is what Restore goes back to. Picking it on the release row
+ * is the project saying its builds end on nothing, which is what every project did before this
+ * field existed.
+ *
+ * A page the project no longer has stays selected and shows as its id. The alternative is a picker
+ * that silently reads as "show nothing" for a variant that names a deleted page, which is the one
+ * reading an author cannot tell from a page they never picked.
+ */
+function EndingField({
+    tagId,
+    label,
+    surfaceId,
+    overridden,
+    surfaces,
+    disabled,
+    service,
+}: {
+    tagId: string;
+    label: string;
+    surfaceId: string;
+    overridden: boolean;
+    surfaces: readonly EndingPage[];
+    disabled: boolean;
+    service: AppTagService | null;
+}) {
+    const { t } = useTranslation();
+
+    const options = useMemo<SelectOption[]>(() => {
+        const known = surfaces.map(surface => ({ value: surface.id, label: surface.name }));
+        const missing = surfaceId && !surfaces.some(surface => surface.id === surfaceId)
+            ? [{ value: surfaceId, label: surfaceId }]
+            : [];
+        return [{ value: "", label: t("project.appTags.ending.none") }, ...known, ...missing];
+    }, [surfaceId, surfaces, t]);
+
+    return (
+        <Field
+            label={label}
+            trailing={!overridden ? null : (
+                <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() => service?.clearEndingSurface(tagId)}
+                    className="px-1.5"
+                    data-app-tag-ending-restore={tagId}
+                >
+                    {t("project.appTags.restore")}
+                </Button>
+            )}
+        >
+            <Select
+                size="sm"
+                fullWidth
+                portalMenu
+                className="min-w-0"
+                options={options}
+                value={surfaceId}
+                disabled={disabled}
+                ariaLabel={label}
+                data-app-tag-ending={tagId}
+                onChange={value => service?.setEndingSurface(tagId, String(value))}
+            />
         </Field>
     );
 }

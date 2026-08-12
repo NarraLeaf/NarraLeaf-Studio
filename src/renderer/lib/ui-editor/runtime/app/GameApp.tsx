@@ -1225,6 +1225,31 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearGameHiddenStudioPages();
     }, [clearCurrentDialogNametag, clearGameHiddenStudioPages, detachTextReadTracker, openSurface, rejectPendingGameStarts]);
 
+    /**
+     * The story ran out of rows, and this build declares a page to land on.
+     *
+     * Routed through `quitGame` rather than through a navigation of its own, because ending a story
+     * and quitting one are the same act as far as everything downstream is concerned: the session
+     * has to be torn down, the tokens cancelled, the stage hidden and the surface stack put back on
+     * an app page. A second path would be a second place for one of those to be forgotten.
+     *
+     * Nothing at all happens when the host declares no page. That is deliberate and is exactly the
+     * behaviour every build had before the ending page existed: the last frame stays on screen. A
+     * default screen here would be one nobody authored, shown to players of projects that never
+     * asked for it.
+     */
+    const endingSurfaceId = host.endingSurfaceId?.trim() ?? "";
+    const handleStoryEnd = useCallback(() => {
+        if (!endingSurfaceId) {
+            return;
+        }
+        void quitGame(endingSurfaceId).catch(error => {
+            // Reported rather than thrown: the story is over either way, and a page that will not
+            // open must not take the window down with it.
+            host.log("error", `[${host.id}] the ending page could not be opened: ${normalizeError(error)}`);
+        });
+    }, [endingSurfaceId, host, quitGame]);
+
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
         let capture: string | undefined;
@@ -2781,6 +2806,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 pendingGameStartsRef.current.delete(sessionId);
                 pending.resolve();
             }}
+            onEnd={() => handleStoryEnd()}
             onEnvironmentReady={sessionId => {
                 host.log("info", `[${host.id}] NLR environment assets preheated: ${sessionId}`);
                 const pending = pendingAssetsReadyRef.current.get(sessionId);
