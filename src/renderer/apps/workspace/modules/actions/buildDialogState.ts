@@ -31,12 +31,13 @@ export const BUILD_DIALOG_SECTIONS: BuildPreflightSection[] = [
     "targets",
     "identity",
     "content",
+    "plugins",
     "signing",
     "output",
 ];
 
 /**
- * A page of the dialog, which is the five sections plus the one that picks the variant.
+ * A page of the dialog, which is the six sections plus the one that picks the variant.
  *
  * The variant page is not a `BuildPreflightSection` and must never become one: it can be hidden (see
  * {@link visibleBuildDialogPages}), and a finding filed against a hidden page would render nowhere.
@@ -49,13 +50,33 @@ export const BUILD_DIALOG_PAGES: BuildDialogPage[] = ["variant", ...BUILD_DIALOG
 /**
  * The pages the rail shows, and the pages Next walks.
  *
- * A project with only the release variant has nothing to choose, so the variant page is dropped and
- * the dialog is what it was before variants existed. Every reader of the walk - the rail, the
- * Next/Build arithmetic, the parked draft - works off this list rather than the constant, or a
- * hidden page becomes a step nobody can leave.
+ * Two of them are conditional, for the same reason: a page with nothing on it is a step nobody can
+ * leave. A project with only the release variant has nothing to choose, so the variant page goes and
+ * the dialog is what it was before variants existed; a build no installed plugin asks a value of has
+ * nothing to fill in, so the plugins page goes.
+ *
+ * The plugins page carries findings and the variant page does not, which is safe: a finding in that
+ * section can only come from a declared field, and a declared field is exactly what makes the page
+ * visible. That holds only while `declaresPluginConfig` is recomputed from the platforms currently
+ * selected - the same input the checks are run against - rather than captured when the dialog opened.
+ *
+ * Every reader of the walk - the rail, the Next/Build arithmetic, the parked draft - works off this
+ * list rather than off the constant, or a hidden page becomes a step nobody can leave.
  */
-export function visibleBuildDialogPages(hasAuthoredVariants: boolean): BuildDialogPage[] {
-    return hasAuthoredVariants ? [...BUILD_DIALOG_PAGES] : [...BUILD_DIALOG_SECTIONS];
+export function visibleBuildDialogPages(input: {
+    hasAuthoredVariants: boolean;
+    /** Whether any enabled plugin declares a field applying to the platforms being built. */
+    declaresPluginConfig: boolean;
+}): BuildDialogPage[] {
+    return BUILD_DIALOG_PAGES.filter(page => {
+        if (page === "variant") {
+            return input.hasAuthoredVariants;
+        }
+        if (page === "plugins") {
+            return input.declaresPluginConfig;
+        }
+        return true;
+    });
 }
 
 /**

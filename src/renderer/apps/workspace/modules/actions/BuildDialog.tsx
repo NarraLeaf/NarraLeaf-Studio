@@ -32,6 +32,10 @@ import {
     type AppTagIdentity,
     type ProjectAppTag,
 } from "@shared/types/appTag";
+import {
+    collectPluginBuildConfigFields,
+    type PluginBuildConfigDeclaringPlugin,
+} from "@shared/utils/pluginBuildConfig";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { displayedAppTags } from "@/lib/workspace/services/appTag/appTagDisplay";
 import {
@@ -75,22 +79,24 @@ import {
     type BuildDialogState,
 } from "./buildDialogState";
 import { BuildIconRow } from "./BuildIconRow";
+import { PluginConfigSection } from "./BuildPluginConfigSection";
 import { SigningSummary } from "./BuildSigningSection";
 import { PROJECT_ICON_TARGETS } from "@shared/types/projectIcons";
 
 /**
  * Which topic answers for each page of the rail.
  *
- * Three of the five sections are about the shipped files rather than about the build: what is inside
- * them, how big they are, and who they say they came from. Those have topics of their own, and the
- * two that are genuinely about the run share the build topic. The variant page decides which edition
- * every page after it describes, which is a subject of its own.
+ * Four of the six sections are about the shipped files rather than about the build: what is inside
+ * them, how big they are, who they say they came from, and what the plugins inside them were told.
+ * Those have topics of their own, and the two that are genuinely about the run share the build topic.
+ * The variant page decides which edition every page after it describes, which is a subject of its own.
  */
 const PAGE_HELP_TOPICS: Record<BuildDialogPage, HelpTopicId> = {
     variant: "buildVariant",
     targets: "build",
     identity: "icons",
     content: "assetProtection",
+    plugins: "plugins",
     signing: "signing",
     output: "build",
 };
@@ -116,6 +122,17 @@ export type BuildDialogInfo = {
      */
     appTags: ProjectAppTag[];
     baseIdentity: AppTagBaseIdentity;
+    /**
+     * Every installed plugin, for the build values its manifest declares.
+     *
+     * The declarations rather than the fields, because which fields apply depends on the platforms
+     * being built - a selection this dialog owns and the author changes on the targets page. The fold
+     * therefore happens inside the dialog, on each render, off `collectPluginBuildConfigFields`.
+     *
+     * The installed list rather than the bundled table: a field is declared by a manifest, and only
+     * an installed copy has one. The fold drops whatever is disabled.
+     */
+    configurablePlugins: PluginBuildConfigDeclaringPlugin[];
     /**
      * Bundled locales; the source locale is flagged.
      *
@@ -188,6 +205,7 @@ export function BuildDialogContent({
     signing,
     initialContent,
     initialPlugins,
+    appTagService,
     onChange,
     onPersistContent,
     onRescanPlugins,
@@ -212,6 +230,16 @@ export function BuildDialogContent({
     signing: SigningConfiguration;
     initialContent: BuildContentSettings;
     initialPlugins: BuildPluginEntry[];
+    /**
+     * Where the plugins page reads and writes the values plugins asked for. Null in a workspace
+     * without the service, which is a workspace whose only variant is the release one anyway.
+     *
+     * Passed as the service rather than as a value plus a callback because the page is the same shape
+     * as the panel that owns the same document: it resolves per field, writes per field, and follows
+     * the service's own change event. Those writes are immediate and not undoable - see
+     * `BuildPluginConfigSection`.
+     */
+    appTagService: AppTagService | null;
     onChange: (request: GameBuildRequest, page: BuildDialogPage) => void;
     /** Writes one Content setting through. Rejects when it did not land, so the switch can go back. */
     onPersistContent: (patch: Partial<BuildContentSettings>) => Promise<void>;
@@ -245,19 +273,34 @@ export function BuildDialogContent({
         () => resolveAppTagIdentity(variant, info.baseIdentity),
         [info.baseIdentity, variant],
     );
+    /** The platforms this build produces. What the plugin fields, and the rail, depend on. */
+    const selectedPlatforms = useMemo(
+        () => DIALOG_PLATFORMS.filter(platform => state.formats[platform].size > 0),
+        [state.formats],
+    );
     /**
-     * A project whose only variant is the release one has nothing to pick, so the page that picks is
-     * dropped and the walk is what it was before variants existed.
+     * What the installed plugins ask the author for, for the platforms currently selected.
+     *
+     * Folded here rather than once at open, because the targets page can change the answer: a field
+     * declared for Android alone is not a question until Android is being built.
      */
-    const pages = useMemo(
-        () => visibleBuildDialogPages(info.appTags.some(tag => !isBuiltinAppTagId(tag.id))),
-        [info.appTags],
+    const pluginFields = useMemo(
+        () => collectPluginBuildConfigFields(info.configurablePlugins, selectedPlatforms),
+        [info.configurablePlugins, selectedPlatforms],
     );
-    // A draft parked on a page that is no longer shown (the last variant was deleted meanwhile)
-    // lands on the first one instead of on a step the rail cannot reach.
-    const [page, setPage] = useState<BuildDialogPage>(
-        () => (pages.includes(initialPage) ? initialPage : pages[0]),
-    );
+    /**
+     * A project whose only variant is the release one has nothing to pick, and a build no plugin asks
+     * anything of has nothing to fill in; both pages are dropped rather than shown empty.
+     */
+    const pages = useMemo(() => visibleBuildDialogPages({
+        hasAuthoredVariants: info.appTags.some(tag => !isBuiltinAppTagId(tag.id)),
+        declaresPluginConfig: pluginFields.length > 0,
+    }), [info.appTags, pluginFields]);
+    const [requestedPage, setPage] = useState<BuildDialogPage>(initialPage);
+    // The visible list shrinks while the dialog is open - the last platform that asked for a plugin
+    // value is switched off on the targets page - so the page on screen is the requested one only
+    // while the rail still has it. A draft parked on a page that has since gone lands here too.
+    const page = pages.includes(requestedPage) ? requestedPage : pages[0];
     const [findings, setFindings] = useState<BuildPreflightFinding[]>([]);
     // Whether preflight has answered at least once. The variant page reports what is blocking the
     // build, and "nothing" before the first check is a verdict that withdraws itself 250ms later.
@@ -459,6 +502,16 @@ export function BuildDialogContent({
                             onRescanPlugins={() => { void rescanPlugins(); }}
                         />
                     )}
+                    {page === "plugins" && (
+                        <PluginConfigSection
+                            fields={pluginFields}
+                            platforms={selectedPlatforms}
+                            appTagId={state.appTagId}
+                            service={appTagService}
+                        >
+                            <Findings findings={findings} section="plugins" />
+                        </PluginConfigSection>
+                    )}
                     {page === "signing" && (
                         <SigningSummary platforms={signablePlatforms} signing={signing}>
                             <Findings findings={findings} section="signing" />
@@ -567,9 +620,12 @@ function Findings({ findings, section }: { findings: BuildPreflightFinding[]; se
     }
     return (
         <div className="grid gap-1">
-            {mine.map(finding => (
+            {/* Keyed by position: one code can be filed several times over details that are not the
+                platform (a plugin value missing for two fields), and two of them under one key is a
+                row React may reuse for the wrong finding. The list is rebuilt whole on every check. */}
+            {mine.map((finding, index) => (
                 <p
-                    key={`${finding.code}-${finding.detail?.platform ?? ""}`}
+                    key={`${finding.code}-${index}`}
                     className={cn(
                         "whitespace-pre-wrap text-2xs leading-relaxed",
                         finding.severity === "error" ? "text-danger" : "text-fg-subtle",
@@ -708,9 +764,10 @@ function VariantBlocking({
                 return (
                     <div key={section} className="grid gap-0.5">
                         <span className="text-2xs text-fg-subtle">{t(`build.section.${section}`)}</span>
-                        {mine.map(finding => (
+                        {/* Keyed by position, for the reason {@link Findings} gives. */}
+                        {mine.map((finding, index) => (
                             <button
-                                key={`${finding.code}-${finding.detail?.platform ?? ""}`}
+                                key={`${finding.code}-${index}`}
                                 type="button"
                                 onClick={() => onOpenSection(section)}
                                 className={cn(
@@ -1344,6 +1401,14 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
         console.warn("[build] app tag service unavailable", error);
     }
 
+    // The installed plugins, for the build values their manifests declare. A list that cannot be read
+    // drops the plugins page rather than the dialog: nothing else here depends on it, and the build's
+    // own checks still refuse a required value that is missing.
+    const installedPlugins = await getInterface().plugins.list();
+    if (!installedPlugins.success) {
+        console.warn("[build] installed plugins unavailable", installedPlugins.error);
+    }
+
     const info: BuildDialogInfo = {
         hostPlatform,
         hostArch,
@@ -1364,6 +1429,7 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
             identifier: projectConfig.identifier?.trim() ?? "",
             version: projectConfig.metadata?.version?.trim() ?? "",
         },
+        configurablePlugins: installedPlugins.success ? installedPlugins.data.plugins : [],
         locales: localization.sourceLocale
             ? localization.locales.map(locale => ({
                 name: locale.displayName || locale.code,
@@ -1427,6 +1493,7 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                     allowHttp: projectService.getNetworkConfiguration().allowHttp,
                 }}
                 initialPlugins={initialPlugins}
+                appTagService={appTagService}
                 onChange={(nextRequest, nextPage) => {
                     request = nextRequest;
                     page = nextPage;

@@ -231,11 +231,33 @@ describe("build variant selection", () => {
  */
 describe("visibleBuildDialogPages", () => {
     it("puts the variant page first for a project that has a variant beside release", () => {
-        expect(visibleBuildDialogPages(true)).toEqual(BUILD_DIALOG_PAGES);
-        expect(visibleBuildDialogPages(true)[0]).toBe("variant");
+        const pages = visibleBuildDialogPages({ hasAuthoredVariants: true, declaresPluginConfig: true });
+
+        expect(pages).toEqual(BUILD_DIALOG_PAGES);
+        expect(pages[0]).toBe("variant");
     });
 
     it("is the sections alone for a project whose only variant is release", () => {
-        expect(visibleBuildDialogPages(false)).toEqual(BUILD_DIALOG_SECTIONS);
+        expect(visibleBuildDialogPages({ hasAuthoredVariants: false, declaresPluginConfig: true }))
+            .toEqual(BUILD_DIALOG_SECTIONS);
+    });
+
+    /**
+     * The plugins page is a section and can still be hidden, which is only safe because a finding in
+     * that section can only come from a declared field - the same fact that shows the page.
+     */
+    it("drops the plugins page where no plugin asks the build for anything", () => {
+        const pages = visibleBuildDialogPages({ hasAuthoredVariants: true, declaresPluginConfig: false });
+
+        expect(pages).not.toContain("plugins");
+        // Everything else keeps its place, so Output stays the end of the walk.
+        expect(pages).toEqual(BUILD_DIALOG_PAGES.filter(page => page !== "plugins"));
+    });
+
+    it("keeps the plugins page between Content and Signing", () => {
+        const pages = visibleBuildDialogPages({ hasAuthoredVariants: false, declaresPluginConfig: true });
+
+        expect(pages.indexOf("plugins")).toBe(pages.indexOf("content") + 1);
+        expect(pages.indexOf("plugins")).toBe(pages.indexOf("signing") - 1);
     });
 });

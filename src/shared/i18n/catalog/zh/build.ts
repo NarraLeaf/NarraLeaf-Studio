@@ -37,13 +37,16 @@ export const build = {
     },
     outputDir: "输出目录",
     chooseFolder: "选择文件夹…",
-    // 侧边导航。其中五项对应检查结果可以归属的分区；`variant` 是选择构建版本的那一页，
-    // 它决定其余各页描述的是哪一个版本，只在工程存在可选版本时出现。
+    // 侧边导航。其中六项对应检查结果可以归属的分区；`variant` 是选择构建版本的那一页，
+    // 它决定其余各页描述的是哪一个版本，只在工程存在可选版本时出现；`plugins` 只在有插件
+    // 索要取值时出现。
     section: {
         variant: "版本",
         targets: "目标",
         identity: "标识",
         content: "内容与保护",
+        // 插件索要的取值。随包发布的插件列在「内容与保护」里，那是另一回事。
+        plugins: "插件",
         signing: "签名",
         output: "输出",
     },
@@ -91,6 +94,19 @@ export const build = {
         network: "网络策略",
         networkAllowHttp: "允许明文 HTTP",
         networkStrict: "禁止明文 HTTP",
+    },
+    // 插件页。字段名与说明都来自插件清单，这里只写密文相关的措辞——密文是这一页唯一
+    // 不会显示出来的取值。
+    pluginConfig: {
+        secretUnset: "未设置",
+        // 凭据库还没有回答时的说法。那时只知道「已设置」，写成下面两种读法中的任何一种，
+        // 都会是一个片刻之后自我撤回的判断。
+        secretSet: "已设置",
+        secretHere: "已设置，本机可以读取",
+        secretElsewhere: "在其他设备上设置，本机没有它的值",
+        secretEnter: "输入新的值",
+        clear: "清除",
+        secretFailed: "无法在本机保存这个值",
     },
     signing: {
         empty: "选择一个可签名的目标后，这里会列出对应平台",
@@ -186,6 +202,10 @@ export const build = {
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
         "icon-stale": "{platform} 图标尚未烘焙，请打开 项目 ▸ 应用 生成",
         "plugins-invalid": "插件校验失败：\n{errors}",
+        // {platforms} 是这一个取值需要覆盖的平台：按平台存放时是它所属的那一个，否则是本次
+        // 构建的全部平台。它永远不为空，两种情形下句子读起来一样。
+        "plugin-config-missing": "构建 {platforms} 需要 {plugin} 的「{field}」，该值尚未填写",
+        "plugin-secret-unavailable": "{plugin} 的「{field}」已设置，但值不在本机；密文不会随工程流转；在此重新输入即可构建 {platforms}",
         "build-dependency-unavailable":
             "{plugin} 在 {platform} 上需要构建依赖 {dependency}，本机没有缓存，也无法从 {url} 获取（{reason}）；"
             + "自行下载并另存为 {path} 即可离线构建",
