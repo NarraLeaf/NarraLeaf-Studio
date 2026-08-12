@@ -16,6 +16,7 @@
 
 import {
     BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF,
+    BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LAYER_HIDE,
     BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
@@ -26,6 +27,7 @@ import {
     isBlueprintGraphExecutionCancelledError,
 } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import { readDynamicInputPinIds } from "../effectivePins";
 import { requireHostApi } from "./hostApi";
 import { resolveDataPinValue } from "./graphParamResolvers";
 
@@ -54,6 +56,64 @@ function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string)
 
 function readHandle(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): string {
     return String(readPin(ctx, "layer") ?? "").trim();
+}
+
+/** Where `Show Confirm` keeps the ordered list of pin ids its Add Button produced. */
+const CONFIRM_BUTTON_PINS_KEY = "__confirmButtonPins";
+const CONFIRM_BUTTON_LABEL_SUFFIX = "_label";
+const CONFIRM_BUTTON_PRESSED_SUFFIX = "_pressed";
+/** The group a confirm claims, so a second question queues behind the first instead of over it. */
+const CONFIRM_GROUP = "confirm";
+
+type ConfirmButtonPin = { labelPinId: string; pressedPinId: string };
+
+/**
+ * The buttons an author added, in the order they will be shown, each with the exec output it leads
+ * to.
+ *
+ * Read once and used for both the labels handed to the page and the ports the answer routes to,
+ * which is the whole reason it returns pairs rather than two lists. Pairing is by id - one add
+ * writes `button_3_label` and `button_3_pressed` together - so deleting a button from the middle
+ * renumbers nothing and misroutes nothing; the surviving pairs keep pointing at their own outputs.
+ * Deriving the ports by position in a separate list is what would eventually route the second
+ * button to the third branch.
+ */
+function readConfirmButtonPins(params: Record<string, unknown> | undefined): ConfirmButtonPin[] {
+    const ids = readDynamicInputPinIds(params, CONFIRM_BUTTON_PINS_KEY);
+    const present = new Set(ids);
+    const out: ConfirmButtonPin[] = [];
+    for (const id of ids) {
+        if (!id.endsWith(CONFIRM_BUTTON_LABEL_SUFFIX)) {
+            continue;
+        }
+        const pressedPinId = `${id.slice(0, -CONFIRM_BUTTON_LABEL_SUFFIX.length)}${CONFIRM_BUTTON_PRESSED_SUFFIX}`;
+        if (!present.has(pressedPinId)) {
+            continue;
+        }
+        out.push({ labelPinId: id, pressedPinId });
+    }
+    return out;
+}
+
+/**
+ * The button index a closing confirm reported, or -1 for anything that is not one.
+ *
+ * The page inside a confirm closes itself with `Close This Layer`, so what comes back is whatever
+ * an author wired into it. A row click carries the index straight through; an object with an
+ * `index` field is what a page that closes with more than the answer would send. Everything else -
+ * a dismissal, which settles as `null`, a page that closes with nothing, a page closing with a
+ * value of its own - is not an answer to this question and leaves through `Dismissed`.
+ */
+function readConfirmIndex(result: unknown): number {
+    const raw =
+        result !== null && typeof result === "object" && !Array.isArray(result)
+            ? (result as Record<string, unknown>).index
+            : result;
+    const value = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+        return -1;
+    }
+    return value;
 }
 
 export const layerBlueprintNodes: BlueprintNodeDef[] = [
@@ -222,6 +282,138 @@ export const layerBlueprintNodes: BlueprintNodeDef[] = [
                     mounted: handle ? requireHostApi(ctx).layers.isMounted(handle) : false,
                 },
             };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
+        displayName: "Show Confirm",
+        category: "App",
+        keywords: ["confirm", "ask", "question", "prompt", "dialog", "choice", "yes", "no", "modal", "layer"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            {
+                id: "message",
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "Message",
+                allowInlineLiteral: true,
+            },
+            {
+                id: "tag",
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "Tag",
+                optional: true,
+                allowInlineLiteral: true,
+            },
+            {
+                id: "data",
+                kind: "input",
+                semantic: "data",
+                valueType: "json",
+                label: "Data",
+                optional: true,
+            },
+            // Outputs, in card order. The buttons land above `Dismissed` (see
+            // `outputInsertBeforePinId`), so the answers read top to bottom in the order the player
+            // sees them and the way out of the question sits under all of them.
+            { id: "dismissed", kind: "output", semantic: "exec", label: "Dismissed" },
+            { id: "index", kind: "output", semantic: "data", valueType: "integer", label: "Index" },
+            { id: "label", kind: "output", semantic: "data", valueType: "string", label: "Label" },
+        ],
+        dynamicInputPins: {
+            storageKey: CONFIRM_BUTTON_PINS_KEY,
+            fixedDataInputIds: ["message", "tag", "data"],
+            generatedIdPrefix: "button",
+            valueType: "string",
+            allowInlineLiteral: true,
+            labelPrefix: "Button",
+            addButtonLabel: "Add Button",
+            // Numbered, unlike every other grouped-pin node: these pins carry no value that tells
+            // them apart on the card, and which branch is which is exactly what an author is here
+            // to decide.
+            numberGeneratedPinLabels: true,
+            outputInsertBeforePinId: "dismissed",
+            generatedPinTemplates: [
+                {
+                    idSuffix: "label",
+                    label: "Button",
+                    kind: "input",
+                    semantic: "data",
+                    valueType: "string",
+                    allowInlineLiteral: true,
+                },
+                {
+                    idSuffix: "pressed",
+                    label: "Pressed",
+                    kind: "output",
+                    semantic: "exec",
+                },
+            ],
+        },
+        inspectorParams: [
+            {
+                key: "surfaceId",
+                label: "Page",
+                kind: "select",
+                dynamicOptionsSource: "surfaces",
+            },
+        ],
+        /**
+         * Put the page up modally, wait for it to close, and leave through the button that closed it.
+         *
+         * The page is an ordinary page and learns the question the ordinary way, through the props
+         * a layer is shown with: `message`, and `buttons` as `{ id, text, index, disabled }` for a
+         * list to bind to. Nothing here is confirm-specific machinery - a page built by hand out of
+         * `Show Layer` reads exactly the same props.
+         */
+        async execute(ctx) {
+            const api = requireHostApi(ctx);
+            const surfaceId = String(ctx.params.surfaceId ?? "").trim();
+            const pins = readConfirmButtonPins(ctx.params);
+            const labels = pins.map(pin => String(readPin(ctx, pin.labelPinId) ?? ""));
+            const ports = pins.map(pin => pin.pressedPinId);
+            const tag = String(readPin(ctx, "tag") ?? "").trim();
+            let handle: string;
+            try {
+                handle = await api.layers.show(
+                    surfaceId,
+                    {
+                        message: String(readPin(ctx, "message") ?? ""),
+                        buttons: labels.map((text, index) => ({
+                            id: `button-${index}`,
+                            text,
+                            index,
+                            disabled: false,
+                        })),
+                        tag: tag || null,
+                        data: readPin(ctx, "data") ?? null,
+                    },
+                    { modal: true, dismissible: true, group: CONFIRM_GROUP },
+                );
+            } catch (error) {
+                if (isBlueprintGraphExecutionCancelledError(error) || error instanceof BlueprintGraphExecutionError) {
+                    throw error;
+                }
+                throw new BlueprintGraphExecutionError(
+                    error instanceof Error ? error.message : String(error),
+                    ctx.node.id,
+                );
+            }
+            const index = readConfirmIndex(await api.layers.wait(handle));
+            if (index >= ports.length) {
+                // A page reporting a button this node does not have is not a branch anybody drew,
+                // and guessing one would send the story somewhere on the strength of a number.
+                return { nextPort: "dismissed", outputValues: { index: -1, label: "" } };
+            }
+            return index < 0
+                ? { nextPort: "dismissed", outputValues: { index: -1, label: "" } }
+                : { nextPort: ports[index], outputValues: { index, label: labels[index] } };
         },
     },
 ];
