@@ -22,10 +22,12 @@ import {
  * rather than a second place to store the same number. The release tag has no overrides by
  * construction: it *is* the value everything else inherits from.
  *
- * A tag also carries a **plugin build config record**, under exactly the same rule: only what this
- * variant says differently, absent means inherited, restore is a delete. It is a second record
- * rather than more keys in the first because its keys are not known here - they are declared by
- * whatever plugins are installed - while the identity keys are a closed list this module owns.
+ * A tag also carries a **plugin build config record** and a **scene declaration record**, both under
+ * exactly the same rule: only what this variant says differently, absent means inherited, restore is
+ * a delete. They are separate records rather than more keys in the first because their keys are not
+ * known here - one set is declared by whatever plugins are installed, the other by whatever the
+ * project holds that a build cannot read - while the identity keys are a closed list this module
+ * owns.
  *
  * There is deliberately **no enabled flag**. A tag exists or it does not, and its existence is the
  * whole fact - the editor, the checks and the build surface all ask the same question of the same
@@ -87,12 +89,12 @@ import {
 /**
  * Persisted document version for `editor/app-tags.json`. Independent of every other document.
  *
- * Not bumped when plugin build config was added. The version exists so a document this Studio cannot
- * read is refused rather than half-understood, and a document written before plugin config simply
- * has none: the new keys are absent, which is exactly what "this project configures no plugin"
- * means. Nothing already on disk is read differently, so there is nothing for a bump to protect -
- * and bumping would make every older Studio refuse the whole document, trading keys it would have
- * ignored for a project it cannot open.
+ * Not bumped when plugin build config was added, nor when scene declarations were. The version
+ * exists so a document this Studio cannot read is refused rather than half-understood, and a document
+ * written before either simply has neither: the new keys are absent, which is exactly what "this
+ * project configures no plugin" and "this project has declared nothing" mean. Nothing already on disk
+ * is read differently, so there is nothing for a bump to protect - and bumping would make every older
+ * Studio refuse the whole document, trading keys it would have ignored for a project it cannot open.
  */
 export const APP_TAG_SCHEMA_VERSION = 1 as const;
 
@@ -149,6 +151,34 @@ export type AppTagOverrides = {
  */
 export type AppTagPluginConfig = Record<string, Record<string, string>>;
 
+/** One scene an author says a mechanism can start. Carries the story, because a jump never crosses one. */
+export type AppTagDeclaredScene = {
+    storyId: string;
+    sceneId: string;
+};
+
+/**
+ * What the author says each unreadable mechanism can start, keyed by {@link appTagMechanismKey}.
+ *
+ * Three things in a project can name a scene the build cannot read: a `Start Story` node whose
+ * target is wired, a TypeScript blueprint, and a plugin that could reach the host API. Left alone
+ * each of them means the build has to ship every story whole - it cannot prove any scene is
+ * unreachable while something it cannot read might name it. This record is how an author answers
+ * instead of being stopped, and it is the same root-plus-variant pair {@link AppTagPluginConfig}
+ * uses: the root is the project's own answer, a tag states only what it says differently, absent is
+ * inherited, and restoring is a delete.
+ *
+ * Per variant because that is the whole point of the feature: a demo's chapter select offers one
+ * chapter where the main build offers ten, and the same node is the mechanism in both.
+ *
+ * **A declaration is a scene list and nothing else.** There is deliberately no "reaches any scene"
+ * value - an author who could write one would write it once, and every later demo would ship the
+ * whole book with nothing on screen to say so. A mechanism that genuinely starts nothing under this
+ * variant is spelled as an empty list, which is a different fact from an absent key: absent means
+ * undeclared and the build stops, empty means declared to start nothing and it does not.
+ */
+export type AppTagReachableScenes = Record<string, AppTagDeclaredScene[]>;
+
 export interface ProjectAppTag {
     /** Stable. What every stored reference holds, so renaming a tag never invalidates one. */
     id: string;
@@ -161,8 +191,35 @@ export interface ProjectAppTag {
      * configures nothing is byte-identical to one written before plugins could ask for anything.
      */
     pluginConfig?: AppTagPluginConfig;
+    /** Only the scene declarations this variant states itself. See {@link AppTagReachableScenes}. */
+    reachableScenes?: AppTagReachableScenes;
     /** Set on the release tag. Derived from the id, never authored, never stored. */
     builtin?: true;
+}
+
+/** The three mechanisms a scene declaration can be about. */
+export type AppTagMechanismRef =
+    | { kind: "startStoryNode"; blueprintId: string; graphKind: string; graphId: string; nodeId: string }
+    | { kind: "scriptBlueprint"; blueprintId: string }
+    | { kind: "plugin"; pluginId: string };
+
+/**
+ * The stable key a declaration is filed under.
+ *
+ * Keyed by what the mechanism *is* rather than by where it sits on a canvas, so moving a node,
+ * renaming a blueprint or reordering an event layer never orphans a declaration. The three kinds are
+ * prefixed rather than sharing one namespace: a plugin id and a blueprint id are both opaque strings,
+ * and a collision would silently hand one mechanism's scene list to another.
+ */
+export function appTagMechanismKey(ref: AppTagMechanismRef): string {
+    switch (ref.kind) {
+        case "startStoryNode":
+            return `node:${ref.blueprintId}:${ref.graphKind}:${ref.graphId}:${ref.nodeId}`;
+        case "scriptBlueprint":
+            return `blueprint:${ref.blueprintId}`;
+        case "plugin":
+            return `plugin:${ref.pluginId}`;
+    }
 }
 
 /**
@@ -200,6 +257,12 @@ export type ProjectAppTagDocument = {
      * answer to "what does an unstated key resolve to". Absent when the project configures nothing.
      */
     pluginConfig?: AppTagPluginConfig;
+    /**
+     * The project's own scene declarations - what every variant inherits, and what the release tag
+     * reads. At the root for the reason {@link pluginConfig} is: the release tag is synthesized and
+     * stores nothing, so there is no record on it for a value to live in.
+     */
+    reachableScenes?: AppTagReachableScenes;
     meta?: {
         createdAt?: string;
         updatedAt?: string;
@@ -234,6 +297,7 @@ export function normalizeProjectAppTag(raw: unknown): ProjectAppTag | null {
     }
     const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : id;
     const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
+    const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
 
     return {
         id,
@@ -242,6 +306,7 @@ export function normalizeProjectAppTag(raw: unknown): ProjectAppTag | null {
         // Omitted when empty rather than written as `{}`, so adopting this feature does not rewrite
         // every tag in every project the author merely opened.
         ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
+        ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
     };
 }
 
@@ -285,6 +350,72 @@ export function normalizeAppTagPluginConfig(raw: unknown): AppTagPluginConfig {
 /** Whether a record says anything at all. `{}` and `{ "acme.plugin": {} }` both say nothing. */
 export function hasAppTagPluginConfig(config: AppTagPluginConfig | undefined): boolean {
     return Boolean(config && Object.values(config).some(values => Object.keys(values).length > 0));
+}
+
+/**
+ * A scene declaration record as the rest of Studio may assume it: mechanism keys non-blank, every
+ * entry a `(storyId, sceneId)` pair of non-blank strings, duplicates within one list collapsed.
+ *
+ * Structural only, exactly like {@link normalizeAppTagPluginConfig}, and for the sharper version of
+ * the same reason. It cannot ask whether a mechanism still exists - the blueprint document and the
+ * installed plugin list are not here - and it must not, because "the plugin is not installed on this
+ * machine" and "the author deleted this declaration" have to stay different facts. A declaration
+ * naming a scene the project no longer has is a finding for the surfaces to report, not a key for
+ * this function to quietly discard: discarding it would delete the author's answer and turn their
+ * next build into a refusal they never asked for.
+ *
+ * A mechanism key mapped to an empty list survives, because that is how "this one starts nothing
+ * under this variant" is written. Only a key that is not a list at all is dropped.
+ */
+export function normalizeAppTagReachableScenes(raw: unknown): AppTagReachableScenes {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const declared: AppTagReachableScenes = {};
+    for (const [rawKey, rawScenes] of Object.entries(raw as Record<string, unknown>)) {
+        const key = rawKey.trim();
+        if (!key || !Array.isArray(rawScenes)) {
+            continue;
+        }
+        const scenes: AppTagDeclaredScene[] = [];
+        const seen = new Set<string>();
+        for (const entry of rawScenes) {
+            if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+                continue;
+            }
+            const record = entry as Record<string, unknown>;
+            const storyId = typeof record.storyId === "string" ? record.storyId.trim() : "";
+            const sceneId = typeof record.sceneId === "string" ? record.sceneId.trim() : "";
+            const pair = `${storyId}:${sceneId}`;
+            if (!storyId || !sceneId || seen.has(pair)) {
+                continue;
+            }
+            seen.add(pair);
+            scenes.push({ storyId, sceneId });
+        }
+        declared[key] = scenes;
+    }
+    return declared;
+}
+
+/** Whether a record declares anything. An empty record is a project that has answered nothing. */
+export function hasAppTagReachableScenes(declared: AppTagReachableScenes | undefined): boolean {
+    return Boolean(declared && Object.keys(declared).length > 0);
+}
+
+/**
+ * What this tag says every mechanism can start: the project's own answers, with the tag's own
+ * answers replacing them key by key.
+ *
+ * Replacing rather than merging the two lists, and that is the whole meaning of an override: a demo
+ * whose chapter select offers one chapter is stating a smaller set, and a union would hand it the
+ * nine chapters it exists to leave out.
+ */
+export function resolveAppTagReachableScenes(
+    tag: ProjectAppTag,
+    base: AppTagReachableScenes | undefined,
+): AppTagReachableScenes {
+    return { ...(base ?? {}), ...(tag.reachableScenes ?? {}) };
 }
 
 /**
@@ -384,11 +515,13 @@ export function migrateProjectAppTagDocument(raw: unknown): ProjectAppTagDocumen
         ? record.meta as ProjectAppTagDocument["meta"]
         : undefined;
     const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
+    const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
 
     return {
         schemaVersion: APP_TAG_SCHEMA_VERSION,
         tags: normalizeProjectAppTags(record.tags),
         ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
+        ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
         ...(meta ? { meta } : {}),
     };
 }

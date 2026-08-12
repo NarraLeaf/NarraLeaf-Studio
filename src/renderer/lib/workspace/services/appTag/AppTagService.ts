@@ -7,20 +7,25 @@ import {
     createEmptyAppTagDocument,
     hasAppTag,
     hasAppTagPluginConfig,
+    hasAppTagReachableScenes,
     isBuiltinAppTagId,
     listAppTags,
     normalizeAppTagPluginConfig,
+    normalizeAppTagReachableScenes,
     normalizeProjectAppTags,
     RELEASE_APP_TAG,
     resolveAppTag,
     resolveAppTagIdentity,
     resolveAppTagPluginConfigValue,
+    resolveAppTagReachableScenes,
     uniqueAppTagName,
     variantStorablePluginConfig,
     type AppTagBaseIdentity,
+    type AppTagDeclaredScene,
     type AppTagIdentity,
     type AppTagOverrideKey,
     type AppTagPluginConfig,
+    type AppTagReachableScenes,
     type AppTagResolvedValue,
     type ProjectAppTag,
     type ProjectAppTagDocument,
@@ -134,14 +139,16 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         }
         // This write supersedes whatever the timer was going to do.
         this.autoSaver.cancel();
-        const { pluginConfig: rawPluginConfig, ...rest } = document;
+        const { pluginConfig: rawPluginConfig, reachableScenes: rawReachableScenes, ...rest } = document;
         const pluginConfig = normalizeAppTagPluginConfig(rawPluginConfig);
+        const reachableScenes = normalizeAppTagReachableScenes(rawReachableScenes);
         const updated: ProjectAppTagDocument = {
             ...rest,
             tags: normalizeProjectAppTags(document.tags),
             // Spread onto a document the key was destructured out of, so a record emptied by the
             // author's last clear leaves the file rather than sitting there as `{}`.
             ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
+            ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
             meta: {
                 ...document.meta,
                 updatedAt: new Date().toISOString(),
@@ -244,6 +251,12 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             // Deleted rather than left as `{}`, so clearing the last value returns the document to
             // what it was before any plugin asked for anything.
             delete document.pluginConfig;
+        }
+        const reachableScenes = normalizeAppTagReachableScenes(document.reachableScenes);
+        if (hasAppTagReachableScenes(reachableScenes)) {
+            document.reachableScenes = reachableScenes;
+        } else {
+            delete document.reachableScenes;
         }
         this.commitMutation();
     }
@@ -513,6 +526,74 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
     }
 
     /**
+     * What the author says each unreadable mechanism can start under `id`: the project's own
+     * declarations with this variant's own replacing them key by key.
+     *
+     * The one entry the solver and the build gate read, so a declaration a surface shows and a
+     * declaration a build acts on can never be two different answers.
+     */
+    public resolveReachableScenes(id: string | null | undefined): AppTagReachableScenes {
+        return resolveAppTagReachableScenes(this.resolveTag(id), this.getDocument().reachableScenes);
+    }
+
+    /** Only the declarations this variant states itself. A copy; empty for the release tag. */
+    public getVariantReachableScenes(id: string | null | undefined): AppTagReachableScenes {
+        return cloneReachableScenes(this.resolveTag(id).reachableScenes ?? {});
+    }
+
+    /**
+     * State what one mechanism can start under `id`.
+     *
+     * The release tag writes the project's record, which is what every other variant inherits - it
+     * stores nothing of its own, so there is nowhere else for its answer to go. An empty list is a
+     * write, not a clear: "this starts nothing here" is a declaration, and it is what a demo says
+     * about the chapter select the main build uses. Clearing is {@link clearDeclaredScenes}.
+     */
+    public setDeclaredScenes(
+        id: string | null | undefined,
+        mechanismKey: string,
+        scenes: readonly AppTagDeclaredScene[],
+    ): boolean {
+        return this.writeDeclaredScenes(id, mechanismKey, [...scenes]);
+    }
+
+    /**
+     * Stop declaring one mechanism, restoring whatever the project says about it.
+     *
+     * A delete, not a write of the inherited list: storing what was inherited would freeze it, and
+     * the next scene the project added to the mechanism would quietly not reach this variant.
+     */
+    public clearDeclaredScenes(id: string | null | undefined, mechanismKey: string): boolean {
+        return this.writeDeclaredScenes(id, mechanismKey, null);
+    }
+
+    private writeDeclaredScenes(
+        id: string | null | undefined,
+        mechanismKey: string,
+        scenes: AppTagDeclaredScene[] | null,
+    ): boolean {
+        const key = mechanismKey.trim();
+        if (!key) {
+            return false;
+        }
+        const trimmedId = typeof id === "string" ? id.trim() : "";
+        const onProject = !trimmedId || isBuiltinAppTagId(trimmedId);
+        if (!onProject && !this.getTag(trimmedId)) {
+            return false;
+        }
+        this.applyDocumentMutation(document => {
+            if (onProject) {
+                document.reachableScenes = writeDeclaration(document.reachableScenes ?? {}, key, scenes);
+                return;
+            }
+            document.tags = document.tags.map(tag => (tag.id === trimmedId
+                ? { ...tag, reachableScenes: writeDeclaration(tag.reachableScenes ?? {}, key, scenes) }
+                : tag));
+        });
+        return true;
+    }
+
+    /**
      * Delete a variant. Refuses the release tag - it is what every unresolvable reference falls back
      * to, and a project with no variant to build is not a state the rest of Studio can read.
      *
@@ -565,6 +646,29 @@ function writePluginValue(
     }
     next[pluginId] = { ...next[pluginId], [storageKey]: value };
     return next;
+}
+
+/** `declared` with one mechanism's list set, or removed when `scenes` is null. Copied, never mutated. */
+function writeDeclaration(
+    declared: AppTagReachableScenes,
+    mechanismKey: string,
+    scenes: AppTagDeclaredScene[] | null,
+): AppTagReachableScenes {
+    const next = cloneReachableScenes(declared);
+    if (scenes === null) {
+        delete next[mechanismKey];
+        return next;
+    }
+    next[mechanismKey] = scenes.map(scene => ({ ...scene }));
+    return next;
+}
+
+function cloneReachableScenes(declared: AppTagReachableScenes): AppTagReachableScenes {
+    const clone: AppTagReachableScenes = {};
+    for (const [key, scenes] of Object.entries(declared)) {
+        clone[key] = scenes.map(scene => ({ ...scene }));
+    }
+    return clone;
 }
 
 function clonePluginConfig(config: AppTagPluginConfig): AppTagPluginConfig {
