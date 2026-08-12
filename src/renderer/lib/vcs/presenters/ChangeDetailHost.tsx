@@ -7,6 +7,8 @@ import { presenterFor } from "./registry";
 // Imported for the registration inside it, which is the only thing that puts a presenter in front
 // of anyone. Every presenter that is not the fallback belongs on this list.
 import "./BitmapChangeDetail";
+import "./UIDocumentChangeDetail";
+import "./UIGraphsChangeDetail";
 
 /**
  * The detail half of a comparison: which file is being looked at, and exactly one presenter.
