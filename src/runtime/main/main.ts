@@ -26,6 +26,7 @@ import { resolveSingleByteRange } from "@shared/utils/httpRange";
 import type { BlueprintNetworkFetchRequest } from "@shared/types/blueprint/network";
 import {
     resolveDeclaredExternalLink,
+    resolvePluginExternalLinkAmong,
     type BlueprintOpenExternalRequest,
     type BlueprintOpenExternalResult,
 } from "@shared/types/blueprint/externalLink";
@@ -1077,6 +1078,42 @@ function registerRuntimeIpc(): void {
             } satisfies BlueprintOpenExternalResult;
         }
     });
+
+    // A plugin's request to open an address, decided against that plugin's own declaration.
+    //
+    // Here for the same reason the channel above is: this is the process that calls the platform
+    // opener, so this is where the question has to be answered. The declaration is re-read from the
+    // pack per request, and it is the manifest that shipped inside it - `pack.plugins[].manifest.
+    // contributes.externalLinks` - rather than a second copy written somewhere for this check to
+    // read. There is only one list, and it is the one the author approved at install.
+    //
+    // Same security posture as the sidecar channels below, stated once more because it is the thing
+    // most likely to be misread: `pluginId` is what the renderer said it was and this process
+    // cannot verify it, since runtime plugins share one realm and nothing in that realm can prove
+    // which plugin a call came from. That is why the id is used to *select* a declaration and never
+    // to grant one. The set of addresses reachable from this handler is exactly the union of what
+    // the plugins in this pack declared, whatever id is passed - and every one of them is a
+    // declaration the author read and approved.
+    ipcMain.handle(
+        "runtime:external:openForPlugin",
+        async (_event, pluginId: string, request: BlueprintOpenExternalRequest) => {
+            const pack = await readPack();
+            const decision = resolvePluginExternalLinkAmong(pack.plugins, pluginId, request);
+            if (!decision.allowed) {
+                logRuntime("warning", `Plugin Open Link refused: ${decision.result.error}`);
+                return decision.result;
+            }
+            try {
+                await shell.openExternal(decision.url);
+                return { outcome: "opened", error: null } satisfies BlueprintOpenExternalResult;
+            } catch (error) {
+                return {
+                    outcome: "failed",
+                    error: error instanceof Error ? error.message : String(error),
+                } satisfies BlueprintOpenExternalResult;
+            }
+        },
+    );
 
     // Sidecar control.
     //

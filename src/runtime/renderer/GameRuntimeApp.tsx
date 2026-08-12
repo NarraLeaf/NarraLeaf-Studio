@@ -226,6 +226,9 @@ function useRuntimePlugins(
             entryUrl: bridge?.pluginEntryUrl(entry.entryRelativePath)
                 ?? `nlgame://runtime/${entry.entryRelativePath}`,
             ...(entry.data ? { data: entry.data } : {}),
+            // One entry per plugin, so a descriptor carries the values of the plugin it is for and
+            // no other's.
+            ...(entry.buildConfig ? { buildConfig: entry.buildConfig } : {}),
         }));
         void loadRuntimePlugins(descriptors, {
             log,
@@ -303,6 +306,13 @@ function createRuntimePluginHost(
         // Present on desktop, absent on the web export - see web.ts. The loader
         // turns that absence into "no app.game.sidecar here".
         ...(sidecar ? { sidecar } : {}),
+        // Forwarded, never decided: the shell behind this bridge re-reads the pack and checks the
+        // named plugin's own declared patterns. Present on both shells, because both can open an
+        // address - the desktop one through the platform opener, the web one through the browser.
+        navigation: {
+            openExternal: (ownerPluginId, request) =>
+                bridge.externalLink.openForPlugin(ownerPluginId, request),
+        },
         log: (level, message) => bridge.log(level, message),
     });
 }

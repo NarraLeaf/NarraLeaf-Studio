@@ -17,7 +17,7 @@ export type PluginFileSystemPermissionMode = "read" | "write" | "readwrite";
  *
  * - **Author-declared** (`filesystem`, `api`) — privileged Studio controls the
  *   plugin asks for explicitly in `permissions[]`.
- * - **Derived** (`runtime`, `sidecar`, `buildDependency`) — computed from
+ * - **Derived** (`runtime`, `sidecar`, `buildDependency`, `externalLink`) — computed from
  *   `contributes` by {@link validatePluginManifest} and *rejected* if written by
  *   hand. A capability is declared in exactly one place, so what the prompt shows
  *   and what the plugin can actually reach cannot drift apart. Adding a
@@ -53,6 +53,24 @@ export type PluginInstallPermission =
         id: string;
         /** Distinct hostnames the binaries are fetched from. */
         hosts: string[];
+    }
+    | {
+        /**
+         * Derived from `contributes.externalLinks`: addresses outside the game this plugin may open
+         * in the player's browser or platform handler.
+         *
+         * One permission carrying every pattern rather than one permission each, because what the
+         * author is deciding is a single question - "may this plugin send the player out to these
+         * places" - and a prompt that asked it four times would be four chances to stop reading.
+         * `isPermissionSubset` still compares the patterns one by one, so adding one to a later
+         * version widens the set and re-prompts.
+         *
+         * The patterns are the author's own strings, unrewritten: this list is what the prompt
+         * shows, and normalizing a permission before showing it to the person approving it would
+         * make the prompt and the manifest two slightly different documents.
+         */
+        kind: "externalLink";
+        patterns: string[];
     };
 
 /**

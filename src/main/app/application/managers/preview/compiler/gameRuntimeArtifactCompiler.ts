@@ -16,8 +16,9 @@ import {
     type GameRuntimeProjectIconPlatform,
     normalizeGameRuntimeViewportConfig,
 } from "@shared/types/gameRuntime";
-import type { AppTagReachableScenes } from "@shared/types/appTag";
+import type { AppTagPluginConfig, AppTagReachableScenes, ProjectAppTag } from "@shared/types/appTag";
 import { APP_TAG_ID_RELEASE, isBuiltinAppTagId } from "@shared/types/appTag";
+import { resolveShippedPluginBuildConfig } from "@shared/utils/pluginBuildConfig";
 import { collectReferencedAssetIds, restrictRecordToAssetIds } from "@shared/build/variantPayload";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
@@ -290,6 +291,7 @@ export async function compileGameRuntimeArtifact(
     const projectConfig = await readProjectConfig(input.projectPath);
     const externalLinks = await readDeclaredExternalLinks(input.projectPath, input.appTag?.id);
     const endingSurfaceId = await readEndingSurfaceId(input.projectPath, input.appTag?.id);
+    const pluginConfig = await readPluginConfigSource(input.projectPath, input.appTag?.id);
     const blueprintScripts = await compileAllBlueprintScriptsForProject(input.projectPath);
     if (!blueprintScripts.ok) {
         const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
@@ -379,6 +381,7 @@ export async function compileGameRuntimeArtifact(
             projectPath: input.projectPath,
             runtimePlugins: input.runtimePlugins ?? [],
             target,
+            pluginConfig,
             ...(input.sidecarPlatformKey ? { sidecarPlatformKey: input.sidecarPlatformKey } : {}),
             ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
             ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
@@ -1003,6 +1006,8 @@ async function copyRuntimePlugins(input: {
     hostUserDataDir?: string;
     /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
+    /** What each plugin's declared fields resolve against. See {@link readPluginConfigSource}. */
+    pluginConfig: { tag: ProjectAppTag; base: AppTagPluginConfig };
 }): Promise<GameRuntimePackPluginEntry[]> {
     const entries: GameRuntimePackPluginEntry[] = [];
     for (const plugin of input.runtimePlugins) {
@@ -1035,11 +1040,19 @@ async function copyRuntimePlugins(input: {
                 ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             })
             : [];
+        // Per plugin and nothing wider: the entry a plugin reads at runtime is its own, so a value
+        // one plugin's author typed is never in front of another's code.
+        const buildConfig = resolveShippedPluginBuildConfig(
+            { pluginId: plugin.manifest.id, manifest: plugin.manifest },
+            input.pluginConfig.tag,
+            input.pluginConfig.base,
+        );
         entries.push({
             manifest: plugin.manifest,
             entryRelativePath: relativePath,
             ...(data ? { data } : {}),
             ...(sidecars.length > 0 ? { sidecars } : {}),
+            ...(Object.keys(buildConfig).length > 0 ? { buildConfig } : {}),
         });
     }
     return entries;
@@ -1448,6 +1461,28 @@ async function readEndingSurfaceId(projectPath: string, appTagId: string | undef
     const document = await readProjectAppTagDocumentFromDir(projectPath);
     const tag = resolveAppTag(document.tags, appTagId);
     return resolveAppTagEndingSurface(tag, document.endingSurfaceId).value;
+}
+
+/**
+ * The two records a plugin's declared fields are resolved against: the variant being compiled, and
+ * the project's own values that every variant inherits.
+ *
+ * The pair travels rather than a finished answer, because the answer is per plugin and the plugins
+ * are not known here - a field belongs to whichever plugin declared it, and only the copy pass
+ * knows which plugins this pack ships. Resolution itself is `resolveShippedPluginBuildConfig`.
+ *
+ * A document that will not parse propagates, as it does for the addresses and the ending page: a
+ * build that could not read its variant record has no business guessing what the author typed.
+ */
+async function readPluginConfigSource(
+    projectPath: string,
+    appTagId: string | undefined,
+): Promise<{ tag: ProjectAppTag; base: AppTagPluginConfig }> {
+    const document = await readProjectAppTagDocumentFromDir(projectPath);
+    return {
+        tag: resolveAppTag(document.tags, appTagId),
+        base: document.pluginConfig ?? {},
+    };
 }
 
 async function readOptionalJson<T>(filePath: string): Promise<T | null> {
