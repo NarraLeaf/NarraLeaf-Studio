@@ -3,7 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentChange, DocumentDiffEntry, DocumentDiffTier } from "@shared/documents/diff";
 import { ChangeDetailHost } from "./ChangeDetailHost";
-import { registerChangePresenter } from "./registry";
+import { listChangePresenters, registerChangePresenter } from "./registry";
 
 /**
  * **One presenter is mounted, and one only.**
@@ -78,6 +78,26 @@ describe("ChangeDetailHost", () => {
         expect(presenters(container)).toHaveLength(1);
         expect(presenters(container)[0].getAttribute("data-change-presenter")).toBe("test-detail-host");
         expect(container.textContent).toContain("claimed");
+    });
+
+    it("never lets two installed presenters claim one document", () => {
+        // `presenterFor` answers with one whatever happens, so an overlap would not show up as a
+        // second pane - it would show up as the wrong presenter, on whichever import order a
+        // bundler settled on. Importing this module is what installs all of them, which is why
+        // the check lives here.
+        const documents: DocumentDiffEntry[] = [
+            { ...entry("assets/content/99/55/3d15abb54213bad7203798a1adc4"), contentClass: "bitmap" },
+            { ...entry("assets/content/99/55/1a2b3c4d5e6f7a8b9c0d1e2f3a4b"), contentClass: "audio" },
+            { ...entry("assets/content/99/55/2b3c4d5e6f7a8b9c0d1e2f3a4b5c"), contentClass: "font" },
+            { ...entry("editor/brand.json"), documentKind: "brand" },
+        ];
+
+        for (const document of documents) {
+            const claiming = listChangePresenters().filter(candidate => candidate.matches(document));
+            // Non-vacuous: exactly one, so a presenter that quietly stopped claiming its own
+            // format fails this as loudly as one that claims two.
+            expect(claiming.map(candidate => candidate.id)).toHaveLength(1);
+        }
     });
 
     it("states the tier once for the whole detail, not once per change", () => {

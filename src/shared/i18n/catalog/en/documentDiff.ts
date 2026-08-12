@@ -311,6 +311,15 @@ export const documentDiff = {
      * the same fact, drifting from the first.
      */
     presenter: {
+        /**
+         * The two versions, named once for every presenter.
+         *
+         * Shared rather than repeated per format: the pair appears under an image, under a
+         * waveform, over a type sample and above a column of swatches, and two spellings of the
+         * same word in one comparison is the drift this namespace exists to avoid.
+         */
+        before: "Before",
+        after: "After",
         image: {
             /** The three comparisons, as a segmented control. */
             modeLabel: "Comparison",
@@ -318,8 +327,6 @@ export const documentDiff = {
             swipe: "Slider",
             difference: "Difference",
             splitPosition: "Split position",
-            before: "Before",
-            after: "After",
             /**
              * Why only two of the three are offered.
              *
@@ -332,6 +339,54 @@ export const documentDiff = {
             tooLarge: "This file is too large to show here.",
             unsupported: "This image format cannot be shown here.",
             unreadable: "This image could not be read.",
+        },
+        audio: {
+            play: "Play",
+            pause: "Pause",
+            /** How many channels the decoded file turned out to have. */
+            mono: "Mono",
+            stereo: "Stereo",
+            channels: "{count} channels",
+            /**
+             * Four states a track can be in instead of a waveform, and they stay four.
+             *
+             * `tooLarge` is about the file, which was never read. `tooLong` is about the sound: the
+             * bytes are here and decoding them would cost more memory than a preview may spend, so
+             * the numbers below are still reported and only the picture is withheld.
+             */
+            tooLarge: "This file is too large to play here.",
+            tooLong: "This track is too long to preview here.",
+            unreadable: "This sound could not be read.",
+        },
+        font: {
+            /** The sample is one string at several sizes; this names the control that picks one. */
+            sizeLabel: "Size",
+            /**
+             * The specimen, and the reason it is not "The quick brown fox".
+             *
+             * A project that installs a font installs it to set Chinese as well as Latin, and a
+             * Latin pangram says nothing about whether the Chinese glyphs came with it or whether
+             * the renderer is falling back to a system face for them.
+             */
+            sample: "The quick brown fox 0123 汉字排版样张",
+            unreadable: "This font could not be loaded.",
+            tooLarge: "This file is too large to show here.",
+        },
+        brand: {
+            /** A colour an author added or removed, beside the ones that merely changed. */
+            added: "Added",
+            removed: "Removed",
+            /** The palette is a document, and a document can be unreadable. */
+            unreadable: "This palette could not be read.",
+            tooLarge: "This file is too large to show here.",
+            /** American in the copy, British in the prose around it, as everywhere else here. */
+            unchangedOne: "1 color is unchanged",
+            unchangedMany: "{count} colors are unchanged",
+            /**
+             * A value that points at another entry of the same palette and never lands on a
+             * colour: a name nothing defines, or a ring.
+             */
+            unresolved: "No color",
         },
     },
     /**
