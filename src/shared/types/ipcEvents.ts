@@ -85,6 +85,7 @@ import type {
 export enum IPCEventType {
     getPlatform = "getPlatform",
     appTerminate = "app.terminate",
+    appReportRendererError = "app.reportRendererError",
     appWindowControl = "app.window.setControl",
     appWindowEditCommand = "app.window.editCommand",
     appWindowClose = "app.window.close",
@@ -349,6 +350,27 @@ export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery";
  */
 export type WorkspaceCloseStage = "saving" | "checkpoint" | "launcher";
 
+/**
+ * Which part of a renderer noticed a failure, so the log line says where to look.
+ *
+ * `boundary` is the window-level one - the whole page has been replaced by the crash screen.
+ * `panel` is a single workspace region that failed on its own and left the rest of the window
+ * working. `window` and `rejection` are the two failures React never sees: a script error that
+ * reached the top of the stack, and a promise nobody attached a catch to.
+ */
+export type RendererErrorSource = "boundary" | "panel" | "window" | "rejection";
+
+/** One renderer failure, flattened to strings before it leaves the window that saw it. */
+export interface RendererErrorReport {
+    source: RendererErrorSource;
+    /** Names the failing region when the reporter has a name for it. */
+    label: string | null;
+    message: string;
+    stack: string | null;
+    /** React's own component stack, for the two boundary sources. */
+    componentStack: string | null;
+}
+
 export type IPCEvents = {
     [IPCEventType.getPlatform]: {
         type: IPCMessageType.request,
@@ -362,6 +384,23 @@ export type IPCEvents = {
         data: {
             err: string | null;
         },
+        response: never;
+    };
+    /**
+     * A renderer failure that did not take the process down: the report, not the reaction.
+     *
+     * The renderer keeps its own console in a ring buffer, but that buffer dies with the window -
+     * and a window that has just crashed is one reload away from being gone. This puts the same
+     * facts in `<userData>/logs/main.log`, which outlives every window, so "it crashed once
+     * yesterday" is still answerable today.
+     *
+     * A message rather than a request on purpose: the reporter is a crash path, and a crash path
+     * must not be able to hang waiting for a reply.
+     */
+    [IPCEventType.appReportRendererError]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: RendererErrorReport,
         response: never;
     };
     [IPCEventType.appWindowControl]: {
