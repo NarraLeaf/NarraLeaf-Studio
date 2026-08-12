@@ -201,7 +201,7 @@ export function stateToRequest(state: BuildDialogState): GameBuildRequest {
         // Omitted rather than sent empty: the pipeline reads an absent id as the release variant and
         // refuses one it cannot find, so "" would be a variant nothing has. The release variant is
         // absent for the same reason it is the empty string here - one choice, one spelling.
-        ...(appTagSelection(state.appTagId) ? { appTagId: state.appTagId } : {}),
+        ...(appTagSelection(state.appTagId) ? { appTagId: appTagSelection(state.appTagId) } : {}),
         outputDir: state.outputDir.trim(),
         compression: state.compression,
         openWhenDone: state.openWhenDone,
