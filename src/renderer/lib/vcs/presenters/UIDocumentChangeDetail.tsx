@@ -11,7 +11,7 @@ import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRenderer
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { createEditorHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/editorHostAdapter";
 import { GameSurfaceRenderer } from "@/lib/ui-editor/runtime/surface/GameSurfaceRenderer";
-import { sidesOfEntry } from "./bitmapPreview";
+import { sidesOfEntry } from "./entrySides";
 import {
     canvasReadFailure,
     CanvasColumn,
