@@ -974,8 +974,8 @@ export const workspace = {
             occurrences: "×{count}",
         },
         // The PyCharm-style project switcher in the title bar: current project name plus a
-        // dropdown of recent workspaces. A project picked here opens in a window of its own and
-        // this window stays, which is why the label says "open" rather than "switch".
+        // dropdown of recent workspaces. The label says "open" rather than "switch" because a
+        // project picked here can do either; `openTarget` is where that is decided.
         projectSwitcher: {
             openAnother: "Open another project",
             recentProjects: "Recent Projects",
@@ -984,6 +984,15 @@ export const workspace = {
             newProject: "New Project…",
             noRecent: "No recent workspaces",
             untitled: "Untitled Project",
+            // Asked once a project has been picked, before anything opens. The dialog names the
+            // picked project; this line names what happens to the one on screen, which is the
+            // part the buttons cannot say. {current} is the project this window is showing.
+            openTarget: {
+                title: "Open project",
+                detail: "Opening in this window closes {current}. Unsaved changes are saved automatically.",
+                thisWindow: "Open in this window",
+                newWindow: "Open in a new window",
+            },
         },
         // In-app confirmation shown before a workspace closes, when `workspace.confirmBeforeClose`
         // is on. The main process drives it over IPC; the dialog supplies its own title/buttons.
