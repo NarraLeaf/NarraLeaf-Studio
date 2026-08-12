@@ -4,7 +4,7 @@ import { Badge, Button, FieldLabel } from "@/lib/components";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
-import { copyTextToClipboard } from "@/lib/app/diagnostics/copyText";
+import { copyTextToClipboard } from "@shared/utils/copyText";
 import { buildDiagnosticsFileName, buildDiagnosticsReport } from "@/lib/app/diagnostics/diagnosticsReport";
 import { Services } from "@/lib/workspace/services/services";
 import type { RecoveryService, RecoveryProbeState } from "@/lib/workspace/services/core/RecoveryService";
