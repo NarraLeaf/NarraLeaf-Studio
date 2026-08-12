@@ -312,6 +312,16 @@ const SILENT_SOUND_HOST: BlueprintHostApiRuntime["sound"] = {
     setTrackVolume: async () => undefined,
 };
 
+/** No host in these tests composites layers; a show reports a handle nothing else knows. */
+const SILENT_LAYER_HOST: BlueprintHostApiRuntime["layers"] = {
+    show: async () => "layer:test:1",
+    hide: async () => undefined,
+    hideGroup: async () => undefined,
+    wait: async () => null,
+    closeSelf: async () => undefined,
+    isMounted: () => false,
+};
+
 /** No host in these tests reaches a network; every request reports the same refusal. */
 const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
     fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
@@ -337,6 +347,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getFullscreen: async () => false,
                     setFullscreen: async () => undefined,
                 },
+                layers: SILENT_LAYER_HOST,
                 widget: {} as any,
                 state: {
                     get: () => undefined,
@@ -458,6 +469,7 @@ function createPageNavigationHostAdapter(
                         fullscreen.current = next;
                     },
                 },
+                layers: SILENT_LAYER_HOST,
                 widget: {
                     getFrameProperties: (elementId: string) => ({
                         targetSurfaceId: frameTargets[elementId] ?? null,
@@ -608,6 +620,7 @@ function createGameSaveHostAdapter(options: {
                     getFullscreen: async () => false,
                     setFullscreen: async () => undefined,
                 },
+                layers: SILENT_LAYER_HOST,
                 widget: {} as any,
                 state: {
                     get: () => undefined,

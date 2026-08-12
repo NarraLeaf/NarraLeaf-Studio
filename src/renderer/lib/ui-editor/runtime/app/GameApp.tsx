@@ -51,6 +51,7 @@ import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/p
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
     createDevModeBlueprintHostApi,
+    type BlueprintLayerShowRequest,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
@@ -134,7 +135,7 @@ import {
 import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
-import { LayerStackController, type SurfaceLayerEntry } from "./layers/LayerStackController";
+import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from "./layers/LayerStackController";
 import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
@@ -630,6 +631,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         navigation.markAllExited();
     }, [navigation]);
 
+    /**
+     * Every layer that was leaving has left.
+     *
+     * This is what releases a queued layer of a mutually exclusive group, and what settles a
+     * `Hide Layer`. Taken from the presence group rather than from a duration because the exit is
+     * authored per page: a timer here would be wrong for every page whose animation someone retimes,
+     * and wrong in the direction that shows two layers of one group at once.
+     */
+    const handleLayerExitComplete = useCallback(() => {
+        layerStack.notifyExitComplete();
+    }, [layerStack]);
+
     const handleSurfaceInteractionReadyChange = useCallback((entryKey: string, ready: boolean) => {
         setInteractionReadyKeys(prev => {
             const alreadyReady = prev.has(entryKey);
@@ -808,6 +821,63 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         return goBackPage();
     }, [goBackPage, layerStack]);
+
+    /**
+     * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
+     */
+    const showLayer = useCallback((request: BlueprintLayerShowRequest): string => {
+        return mountSurfaceLayer(layerStack, {
+            surfaceId: request.surfaceId,
+            props: request.props,
+            modal: request.modal,
+            dismissible: request.dismissible,
+            group: request.group,
+            ownerScopeId: request.ownerScopeId,
+        });
+    }, [layerStack]);
+
+    const hideLayer = useCallback(async (handle: string): Promise<void> => {
+        await layerStack.hideAndWaitForExit(handle);
+    }, [layerStack]);
+
+    const hideLayerGroup = useCallback(async (group: string): Promise<void> => {
+        await layerStack.hideGroupAndWaitForExit(group);
+    }, [layerStack]);
+
+    const waitLayer = useCallback((handle: string): Promise<unknown> => {
+        return layerStack.waitForClose(handle);
+    }, [layerStack]);
+
+    /**
+     * `Close This Layer`. A layer's key IS its runtime scope id, so the graph's own scope is the
+     * handle - which is why the page inside a layer never has to be told one.
+     */
+    const closeOwnLayer = useCallback((runtimeScopeId: string, result: unknown): boolean => {
+        return layerStack.closeWithResult(runtimeScopeId, result);
+    }, [layerStack]);
+
+    const isLayerMounted = useCallback((handle: string): boolean => {
+        return layerStack.isPresent(handle);
+    }, [layerStack]);
+
+    /**
+     * A closing scope takes its layers with it.
+     *
+     * Subscribed to the execution manager rather than to a React unmount, because that one call is
+     * where every surface's scope ends - a page navigated away from, a layer closed, a nested surface
+     * inside a frame - and a layer left standing after the screen that showed it is exactly the
+     * orphan this system is not allowed to produce. Cascades by itself: the layers dropped here
+     * unmount, closing their own scopes, which brings this listener round again for anything they
+     * showed in turn.
+     */
+    useEffect(() => {
+        if (!core) {
+            return;
+        }
+        return core.executionManager.subscribeScopeClosed(scopeId => {
+            layerStack.hideOwnedBy(scopeId);
+        });
+    }, [core, layerStack]);
 
     const makeStateAccessors = useCallback(
         (runtimeScopeId: string): SurfaceStateAccessors | null => {
@@ -1965,6 +2035,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             onQuitApplication: host.quitApplication,
             onGetFullscreen: host.getFullscreen,
             onSetFullscreen: host.setFullscreen,
+            onShowLayer: showLayer,
+            onHideLayer: hideLayer,
+            onHideLayerGroup: hideLayerGroup,
+            onWaitLayer: waitLayer,
+            onCloseOwnLayer: closeOwnLayer,
+            onIsLayerMounted: isLayerMounted,
             onStartStory: startStoryInGame,
             onIsInGame: isInGame,
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
@@ -2075,6 +2151,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
+        showLayer,
+        hideLayer,
+        hideLayerGroup,
+        waitLayer,
+        closeOwnLayer,
+        isLayerMounted,
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isInGame,
@@ -2267,6 +2349,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onQuitApplication: host.quitApplication,
                     onGetFullscreen: host.getFullscreen,
                     onSetFullscreen: host.setFullscreen,
+                    onShowLayer: showLayer,
+                    onHideLayer: hideLayer,
+                    onHideLayerGroup: hideLayerGroup,
+                    onWaitLayer: waitLayer,
+                    onCloseOwnLayer: closeOwnLayer,
+                    onIsLayerMounted: isLayerMounted,
                     onStartStory: startStoryInGame,
                     onIsInGame: isInGame,
                     onIsGameOverlay: () =>
@@ -2409,6 +2497,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
+        showLayer,
+        hideLayer,
+        hideLayerGroup,
+        waitLayer,
+        closeOwnLayer,
+        isLayerMounted,
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isInGame,
@@ -3042,7 +3136,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                         group, so a layer closing would settle a page transition that is still
                         running. Both would only misfire once a layer exists — which is exactly the
                         kind of thing that has to be impossible rather than untested. */}
-                    <AnimatePresence custom="forward" initial={false} mode="sync">
+                    <AnimatePresence
+                        custom="forward"
+                        initial={false}
+                        mode="sync"
+                        onExitComplete={handleLayerExitComplete}
+                    >
                         {nlrPreloadDone
                             ? visibleLayers.map(({ layer, surface }, index) => (
                                 <AppSurfaceLayerWithAdapter
