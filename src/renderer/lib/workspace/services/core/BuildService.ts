@@ -40,6 +40,10 @@ import {
     type AppTagGraphRefusalReason,
 } from "@shared/blueprint/appTagGraphFold";
 import { AppTagService } from "../appTag/AppTagService";
+import type { ReferenceIndexGap } from "../references/referenceModel";
+// Type-only, like `LintService` above: the gate needs `getIndexResult()` and nothing else, and a
+// value import would drag every extractor into the build path and its tests.
+import type { ReferenceService } from "../references/ReferenceService";
 import { translate, translateN } from "@/lib/i18n";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
@@ -580,6 +584,10 @@ export class BuildService extends Service<BuildService> {
         }
 
         if (answer.removedScenes.length > 0) {
+            const coverageRefusal = this.refuseOnTrimCoverageGaps(startedAt, platforms, answer.appTagName);
+            if (coverageRefusal) {
+                return coverageRefusal;
+            }
             const kept = answer.members.filter(member => member.kind === "scene").length;
             consoleService?.log(BUILD_CONSOLE_CHANNEL, "info", translateN("build.contentKept", kept, {
                 count: kept,
@@ -593,6 +601,70 @@ export class BuildService extends Service<BuildService> {
             }
         }
         return null;
+    }
+
+    /**
+     * The reference index gate: a build that removes scenes does not start while a story document is
+     * missing from the index that says what those scenes hold.
+     *
+     * ## The question, which is not "is the index complete"
+     *
+     * The established ruling for a trimming pass is that it asks **"is there a gap in a document that
+     * could touch what I am removing"**, never the project-wide question. Asking the broad one hands
+     * the feature a permanent off switch: one `app://fs` URL pasted into a widget prop leaves a
+     * `hashUrlUnresolved` gap that can never be resolved - those tokens are per-process and a token
+     * another session minted resolves to nothing here, forever - and every variant build in that
+     * project would refuse from then on, over a widget that has nothing to do with any scene.
+     *
+     * So the gaps this reads are the ones in a **story** document, plus the ones that describe no
+     * document at all (an index that never built, a slice that threw before it could say where). A
+     * gap in a widget, a blueprint, a voice table or a character says nothing about which scenes a
+     * story can reach, and this build removes nothing else.
+     *
+     * ## Why it is a gate and not a preflight finding
+     *
+     * The criterion is stated at the `AppTag` gate above, and this one fails it for a reason of its
+     * own: the index lives in the renderer and reflects the documents the editor is holding, unsaved
+     * edits included. The main-process preflight computes from disk and has no route to it - it
+     * could only rebuild a second index that would answer a different question about a different
+     * copy of the project.
+     */
+    private refuseOnTrimCoverageGaps(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+        variant: string,
+    ): GameBuildStateSnapshot | null {
+        let gaps: readonly ReferenceIndexGap[];
+        try {
+            gaps = this.getContext().services.get<ReferenceService>(Services.Reference).getIndexResult().gaps;
+        } catch (error) {
+            // A service this build cannot reach is Studio malfunctioning rather than the project
+            // being wrong, and the same bargain the media gate makes applies: a gate with no way
+            // past it that fails closed on its own defect leaves a project unbuildable.
+            console.error("[Build] the reference index could not be consulted for the content check", error);
+            return null;
+        }
+        const touching = gaps.filter(gap => !gap.slice || gap.slice === "story" || gap.slice === "storyAnimation");
+        if (touching.length === 0) {
+            return null;
+        }
+
+        const consoleService = this.tryGetConsole();
+        for (const gap of touching) {
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate("build.contentCoverageGap", {
+                // A gap with no site is the index itself; it has no location to name, and the
+                // sentence has to read as one either way.
+                location: gap.location ?? translate("build.contentCoverageWholeProject"),
+                variant,
+            }), { source: BUILD_CONSOLE_SOURCE });
+        }
+        const refusal = translateN("build.contentCoverageSummary", touching.length, {
+            count: touching.length,
+            variant,
+        });
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+        this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: refusal });
+        return this.state;
     }
 
     /** Every story in the project, in library order. The three sweeps before this one cached them. */
