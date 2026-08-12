@@ -125,6 +125,16 @@ export interface RendererPreloadedInterface {
             getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
             onFullscreenChanged(handler: (payload: { isFullscreen: boolean }) => void): AppEventToken;
         };
+        /**
+         * The same controls, for a window this one detached part of itself into (see
+         * `detachedWindowGuard` in the main process). Named rather than implicit: a detached popup
+         * sends IPC through its opener, so `control.close()` from the buttons drawn in that popup
+         * would close the window it was detached FROM.
+         */
+        detachedControl(
+            key: string,
+            control: "status" | "minimize" | "toggleMaximize" | "close",
+        ): Promise<RequestStatus<{ status: WindowVisibilityStatus }>>;
     };
 
     // File System
