@@ -55,7 +55,7 @@ import { finalDisplayableMotionValue } from "@/lib/ui-editor/runtime/displayable
 import { getElementSurfaceTopLeftEx } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 import { getSliderProps } from "@/lib/ui-editor/widget-modules/builtin/slider/helpers";
-import { getListProps } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
+import { getListProps, resolveListItemsBindingArray } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
 import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
@@ -955,19 +955,18 @@ function readListItemsFallback(
     document: UIDocument,
     scope: ScopeStoreBridge,
     stateScopeId: string,
+    pageProps: Readonly<Record<string, unknown>>,
     elementId: string,
 ): unknown[] {
     const el = assertListElement(document, elementId);
     const props = getListProps(el);
-    const binding = props.itemsBinding;
-    if (binding) {
-        const source =
-            binding.kind === "globalState"
-                ? scope.globalGet(binding.key)
-                : scope.getSurfaceStore(stateScopeId).get(binding.key);
-        if (Array.isArray(source)) {
-            return cloneJson(source);
-        }
+    const bound = resolveListItemsBindingArray(props.itemsBinding, {
+        surfaceState: { get: key => scope.getSurfaceStore(stateScopeId).get(key) },
+        globalState: { get: key => scope.globalGet(key) },
+        pageProps,
+    });
+    if (bound) {
+        return cloneJson(bound);
     }
     if (props.previewItems.length > 0) {
         return cloneJson(props.previewItems);
@@ -982,11 +981,13 @@ function readListProperties(
     runtimeScopeId: string | undefined,
     activeSurfaceId: string,
     stateScopeId: string,
+    pageProps: Readonly<Record<string, unknown>>,
     elementId: string,
 ): BlueprintListProperties {
     assertListElement(document, elementId);
     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
-    const items = widgetRuntimeStore.getListItems(scopedKey) ?? readListItemsFallback(document, scope, stateScopeId, elementId);
+    const items = widgetRuntimeStore.getListItems(scopedKey)
+        ?? readListItemsFallback(document, scope, stateScopeId, pageProps, elementId);
     const selectedIndex = widgetRuntimeStore.getListSelectedIndex(scopedKey) ??
         getListProps(requireDocumentElement(document, elementId, "list")).selectedIndex;
     return {
@@ -2411,6 +2412,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         runtimeScopeId,
                         activeSurfaceId,
                         stateScopeId,
+                        currentPageProps,
                         elementId,
                     );
                 } finally {
@@ -2443,6 +2445,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         runtimeScopeId,
                         activeSurfaceId,
                         stateScopeId,
+                        currentPageProps,
                         elementId,
                     ).selectedIndex;
                     const next = Math.trunc(index);
