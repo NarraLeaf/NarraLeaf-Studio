@@ -885,6 +885,17 @@ export const BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED = "blueprint.game.isScene
 export const BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED = "blueprint.game.isOptionPicked" as const;
 /** Wipe the running game's visited record. The `Clear Text Read` of this family. */
 export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisited" as const;
+/**
+ * The build variant this package is, as its name - the blueprint spelling of the story language's
+ * `AppTag`.
+ *
+ * Unlike every other reader in this family it has no play-time value at all. The name is decided
+ * when the package is produced, so `@shared/blueprint/appTagGraphFold` substitutes it and removes
+ * this node before the graph reaches a pack; a graph the fold cannot reduce to a decided branch is
+ * refused rather than shipped. A node that reaches the running game is therefore one only Dev Mode
+ * or the preview is executing, and both of those are always the release edition.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG = "blueprint.game.getAppTag" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;

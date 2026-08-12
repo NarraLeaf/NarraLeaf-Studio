@@ -46,6 +46,15 @@ import {
 import { runtimeCapabilitiesCanStartStory } from "@shared/types/pluginPermissions";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
+import {
+    applyAppTagToBlueprint,
+    applyAppTagToBlueprintDocument,
+    collectUnfoldableAppTagGraphsInBlueprint,
+    type AppTagGraphFoldOptions,
+    type UnfoldableAppTagGraph,
+} from "@shared/blueprint/appTagGraphFold";
+import { createTranslator, FALLBACK_LOCALE, type LocaleCode } from "@shared/i18n";
+import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
@@ -66,15 +75,26 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const uigraphsPath = path.join(context.projectPath, "editor", "ui", "uigraphs.json");
     const uidoc = await readJsonFile<UIDocument>(uidocPath);
     const uigraphsRaw = await readJsonFile<UIGraphDocument>(uigraphsPath);
+    const variant = context.appTag ?? { id: APP_TAG_ID_RELEASE, name: RELEASE_APP_TAG.name };
+    const fold = { tagName: variant.name };
+    // Where the variant stops being a label and starts deciding bytes, the blueprint half of what
+    // `loadStoryLibrary` does below. Graphs ship verbatim - this record is what the pack carries - so
+    // a branch this edition cannot take is only absent from the package if it is deleted here. The
+    // build gate has already refused anything this cannot fold; a graph it still cannot read comes
+    // back whole, which is what lets Dev Mode and the preview keep running.
     const uigraphs: UIGraphDocument = {
         ...uigraphsRaw,
-        blueprintDocument: migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
+        blueprintDocument: applyAppTagToBlueprintDocument(
+            migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
+            fold,
+        ),
     };
     const localBlueprints = uigraphs.blueprintDocument;
     const variableTables = await loadVariableRuntimeTables(context.projectPath, uigraphsRaw.blueprintDocument);
-    const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
+    const sharedBlueprints = foldSharedBlueprints(await loadSharedBlueprints(context.projectPath), context, fold);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
-    const variant = context.appTag ?? { id: APP_TAG_ID_RELEASE, name: RELEASE_APP_TAG.name };
+    // Read from the folded document on purpose: a `Start Game` on a branch this edition does not take
+    // cannot run, so the scene it names is not an entry into any story this package holds.
     const sceneDrop = planSceneDrop(context, variant.id, [
         ...Object.values(localBlueprints.blueprints ?? {}),
         ...sharedBlueprints.map(asset => asset.blueprint),
@@ -215,6 +235,63 @@ async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprin
         }
     }
     return out;
+}
+
+/**
+ * Shared blueprint assets, folded against this variant - and the one place a variant refusal is
+ * raised from the main process rather than from the build gate.
+ *
+ * **The asymmetry is deliberate; do not tidy it away.** `BuildService`'s gate reads the blueprint
+ * *document*, which is the only set of graphs the renderer can see: shared blueprints are asset files,
+ * and nothing in the renderer enumerates and parses them. Removal therefore covers strictly more than
+ * refusal does, which is the safe direction - nothing ever ships unfolded, and the only cost is that a
+ * shared-asset problem is reported here, at assembly, instead of before the build starts.
+ *
+ * Symmetry the other way round is what would be fatal. Leaving these graphs alone would ship a live
+ * `Get App Tag`, and the runtime answers the release name to it (`resolveAppTagNodeOutput`) - so in a
+ * Demo package `AppTag == "Demo"` would read false and the player would silently get release content.
+ * A silent wrong answer is worse than either a refusal or a leak, because nothing anywhere says it
+ * happened.
+ *
+ * Only a build throws. Dev Mode and the preview supply no variant, so they assemble as release, the
+ * runtime's answer is right by construction, and a refused graph there is something the author is
+ * still editing rather than something about to be packaged. Exported for tests.
+ */
+export function foldSharedBlueprints(
+    assets: readonly SharedBlueprintAsset[],
+    context: DevModeBundleLoadContext,
+    fold: AppTagGraphFoldOptions,
+): SharedBlueprintAsset[] {
+    return assets.map(asset => {
+        if (context.appTag) {
+            const refused = collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold);
+            if (refused.length > 0) {
+                throw new Error(describeAppTagGraphRefusal(refused[0], asset.name, context.locale));
+            }
+        }
+        const blueprint = applyAppTagToBlueprint(asset.blueprint, fold);
+        return blueprint === asset.blueprint ? asset : { ...asset, blueprint };
+    });
+}
+
+/**
+ * One refusal as the author reads it, through the same catalogue keys the build gate logs.
+ *
+ * The asset's own name rather than the blueprint's, because a shared blueprint is browsed and opened
+ * as an asset; the blueprint's name inside the file is not what the author would go looking for.
+ */
+function describeAppTagGraphRefusal(
+    refusal: UnfoldableAppTagGraph,
+    assetName: string,
+    locale: LocaleCode | undefined,
+): string {
+    const { t } = createTranslator(locale ?? FALLBACK_LOCALE);
+    const keys = {
+        unresolved: "build.appTagGraphUnresolved",
+        unknownNode: "build.appTagGraphUnknownNode",
+        fnHeadRemoved: "build.appTagGraphFnHead",
+    } as const;
+    return t(keys[refusal.reason], { blueprint: assetName, graph: refusal.graphName });
 }
 
 /**
