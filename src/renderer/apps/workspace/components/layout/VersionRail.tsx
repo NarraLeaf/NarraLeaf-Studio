@@ -16,10 +16,11 @@ import {
     GitBranch,
     GitCommitHorizontal,
     GitCompare,
-    GitCompareArrows,
     GitMerge,
     History,
     Loader2,
+    Pin,
+    PinOff,
     Plus,
     RefreshCw,
     TriangleAlert,
@@ -1461,16 +1462,39 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                             `.nl-focus-ring` because the app's global rule kills `focus:ring-*` on
                             buttons with `!important`, silently. */}
                         {context && (
+                            /* ONE chip behind both, not one each. The chip's job is to mask the row
+                               text it floats over, and two of them read as two identical grey boxes
+                               - which is what they were, because the two lucide git-compare glyphs
+                               differ by an arrowhead nobody can see at 14px. So: one surface, and
+                               two icons that are not from the same family. */
                             <div className={cn(
-                                "absolute right-2 top-1.5 z-10 flex items-center gap-0.5",
+                                // OPAQUE, and that is the whole reason for the two nested elements.
+                                // `fill` is a translucent overlay, so a chip made of it alone let the
+                                // row's own message show through underneath the icons - two glyphs
+                                // sitting on top of the word "Merge". The panel's background goes
+                                // down first and the row's own tint over it, which composites to
+                                // exactly the colour of the row being hovered: the text disappears
+                                // and the chip itself does not appear. Same trick, same reason, as
+                                // the sticky header these rows scroll under.
+                                "absolute right-2 top-1 z-10 rounded-md bg-surface-sunken",
                                 "opacity-0 transition-opacity",
                                 "pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100",
                                 "focus-within:pointer-events-auto focus-within:opacity-100",
                             )}>
+                            <div className={cn(
+                                "flex items-center gap-0.5 rounded-md p-0.5",
+                                isFocused ? "bg-fill-strong" : "bg-fill",
+                            )}>
                                 {/* Choosing a base is what makes "compare with anything" possible at
                                     all, and it is on every row including the one already chosen -
                                     where it becomes the way to drop it, so an author who set the
-                                    wrong one does not have to find the header to undo it. */}
+                                    wrong one does not have to find the header to undo it.
+
+                                    A pin rather than a second pair of arrows: what this does is HOLD
+                                    one version still while the others are compared against it, and
+                                    the glyph beside it is already the comparison. `PinOff` on the
+                                    row that holds it, because there the only thing left to do is let
+                                    go. */}
                                 <button
                                     type="button"
                                     onClick={() => surface.setCompareBase(isBase ? null : {
@@ -1486,12 +1510,16 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                                         : t("workspace.shell.versionControl.compareBase.set")}
                                     className={cn(
                                         "nl-focus-ring flex h-5 w-5 items-center justify-center rounded-md",
-                                        "transition-colors cursor-default hover:text-fg",
-                                        isBase ? "text-primary" : "text-fg-subtle",
-                                        isFocused ? "bg-fill-strong" : "bg-fill",
+                                        "transition-colors cursor-default hover:bg-fill-strong hover:text-fg",
+                                        // `fg-muted`, not `fg-subtle`: subtle is the placeholder tone
+                                        // and a 14px stroke icon in it, sitting on a `fill` chip,
+                                        // came out as an outline with nothing readable inside it.
+                                        isBase ? "text-primary" : "text-fg-muted",
                                     )}
                                 >
-                                    <GitCompareArrows className="h-3 w-3" />
+                                    {isBase
+                                        ? <PinOff className="h-3.5 w-3.5" />
+                                        : <Pin className="h-3.5 w-3.5" />}
                                 </button>
 
                                 {/* The comparison itself. Against the chosen base when there is one
@@ -1518,13 +1546,14 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                                         aria-label={against.title}
                                         className={cn(
                                             "nl-focus-ring flex h-5 w-5 items-center justify-center rounded-md",
-                                            "text-fg-subtle transition-colors cursor-default hover:text-fg",
-                                            isFocused ? "bg-fill-strong" : "bg-fill",
+                                            "text-fg-muted transition-colors cursor-default",
+                                            "hover:bg-fill-strong hover:text-fg",
                                         )}
                                     >
-                                        <GitCompare className="h-3 w-3" />
+                                        <GitCompare className="h-3.5 w-3.5" />
                                     </button>
                                 )}
+                            </div>
                             </div>
                         )}
                     </div>
