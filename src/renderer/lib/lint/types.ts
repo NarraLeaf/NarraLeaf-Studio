@@ -79,6 +79,7 @@ export type LintRuleId =
     | "story/dead-end"
     | "story/unreachable-scene"
     | "story/empty-scene"
+    | "story/app-tag-unknown"
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"

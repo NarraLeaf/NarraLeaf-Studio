@@ -97,6 +97,11 @@ export const lint = {
             description: "场景里没有内容",
             message: "这个场景里没有任何行",
         },
+        storyAppTagUnknown: {
+            title: "未知的构建变体",
+            description: "行里比较的变体在工程中不存在",
+            message: "没有名为「{name}」的构建变体，这一行不会出现在任何构建里",
+        },
         variablesUndeclared: {
             title: "未声明的变量",
             description: "用到了却没有声明",

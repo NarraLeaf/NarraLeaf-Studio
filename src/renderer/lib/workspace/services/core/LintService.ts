@@ -21,6 +21,7 @@ import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { Services, type ILintService, type WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
+import { AppTagService } from "../appTag/AppTagService";
 import { AssetsService } from "./AssetsService";
 import { CharacterService } from "./CharacterService";
 import { ConsoleService } from "./ConsoleService";
@@ -183,6 +184,9 @@ export class LintService extends Service<LintService> implements ILintService {
             // exactly the case this reports.
             assetIndex: referenceService.getIndexResult(),
             characters,
+            // `listTags()`, which synthesizes the release variant, so the list is never empty and
+            // `AppTag == "Release"` resolves in a project that has authored no variants at all.
+            appTags: services.get<AppTagService>(Services.AppTags).listTags(),
             variableRegistry,
             persistentNameCollisions,
             savedNameCollisions,

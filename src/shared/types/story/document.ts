@@ -88,7 +88,21 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // engages and a one-shot option that never greys out - i.e. a story that runs, plausibly, and gates
 // nothing. An `invoke` fails the same way, silently turning a computed bonus into "no bonus".
 // Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 15 as const;
+// v16 adds `AppTag` to the story expression language: the build variant a package is being produced
+// as, readable as a string (`AppTag == "Demo"`). It is a compile-time constant, not a value the game
+// has - the transform in `@shared/story/appTagFold` replaces every mention with the variant's name
+// while the bundle is assembled, and a build refuses any mention it could not replace.
+// No migration: a v15 document cannot contain the node, so the ladder in
+// `migrateStoryDocumentToLatest` gains no step, only the stamp it already ends with.
+// The bump is not additive, and it is the same silent-wrong-answer as v14 and v15, one layer down.
+// `AppTag` is stored as a `call` node with a `fn` older Studios have never heard of - which is
+// exactly why it is a `call` and not a new node kind: every switch over `kind` would have returned
+// `undefined` for a new kind and dropped the expression, while every switch over `fn` is exhaustive
+// over a closed union that the compiler checks. But a v15 Studio still meets `fn: "appTag"` at
+// runtime, falls off the end of `evaluateCall` with `undefined`, and reads `AppTag == "Demo"` as
+// false - a demo-only branch that silently never runs, in a story that otherwise plays. Refusing the
+// document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 16 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 

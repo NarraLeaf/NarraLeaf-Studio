@@ -221,6 +221,11 @@ export const build = {
         one: "构建已中止：有 {count} 条无效指令，详见控制台",
         other: "构建已中止：有 {count} 条无效指令，详见控制台",
     },
+    appTagUnresolved: "{story} / {scene} 中 AppTag 与构建时读不到的值比较：{source}",
+    appTagUnresolvedSummary: {
+        one: "构建已中止：有 {count} 处 AppTag 没有与固定的变体名比较，详见控制台",
+        other: "构建已中止：有 {count} 处 AppTag 没有与固定的变体名比较，详见控制台",
+    },
     mediaNeedsConverting: "{asset} 无法播放，请在素材面板中转换",
     mediaNotPlayable: "{asset} 不含音频也不含视频，请替换或删除该文件",
     mediaSummary: {

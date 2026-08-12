@@ -21,6 +21,8 @@ import { ConsoleService, type ConsoleLogLevel } from "./ConsoleService";
 import { CharacterService } from "./CharacterService";
 import { StoryService } from "../story/StoryService";
 import { collectInvalidBlocks, type InvalidStoryBlockRef } from "../story/storyModel";
+import { collectUnfoldableAppTagUses, type UnfoldableAppTagUse } from "@shared/story/appTagFold";
+import { AppTagService } from "../appTag/AppTagService";
 import { translate, translateN } from "@/lib/i18n";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
@@ -228,6 +230,36 @@ export class BuildService extends Service<BuildService> {
             });
             return this.state;
         }
+        // Beside the invalid-command gate, and in the same class as it.
+        //
+        // The test that comment states for the unconditional class is "decided by measurement, not
+        // an opinion an author may reasonably overrule", and this meets it exactly: `AppTag` has no
+        // play-time value at all, so a comparison the fold cannot decide is not a style a project
+        // might tolerate - it is an expression that cannot be compiled under any setting. It is also
+        // free, reading documents the story service already holds, so it sits with the other free
+        // gate rather than behind the media probe.
+        //
+        // Every build refuses it, the release variant included. This is not a leak-only concern: the
+        // release build has no more of a value for `AppTag` than a demo does.
+        const unfoldable = await this.collectUnfoldableAppTagUses(request.appTagId);
+        if (unfoldable.length > 0) {
+            const consoleService = this.tryGetConsole();
+            for (const use of unfoldable) {
+                consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate("build.appTagUnresolved", {
+                    story: use.storyName,
+                    scene: use.sceneName,
+                    source: use.source,
+                }), { source: BUILD_CONSOLE_SOURCE });
+            }
+            this.updateState({
+                status: "error",
+                startedAt,
+                finishedAt: Date.now(),
+                platforms,
+                error: translateN("build.appTagUnresolvedSummary", unfoldable.length, { count: unfoldable.length }),
+            });
+            return this.state;
+        }
         // Third of the unconditional correctness gates, and placed here for the same reason the
         // invalid-command gate is first: it is free. It walks the blueprint document already in
         // memory, so a build that will be refused anyway does not first pay for a media probe.
@@ -298,6 +330,31 @@ export class BuildService extends Service<BuildService> {
             } catch (error) {
                 // A story that will not load is the packer's problem to report, not ours to mask.
                 console.error(`[Build] could not scan story ${entry.id} for invalid commands`, error);
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Every `AppTag` comparison the build cannot decide, across every story - not just the loaded
+     * ones, for the same reason the invalid-command sweep reads them all: a story the author never
+     * opened this session ships exactly like one they did.
+     *
+     * The variant's name is passed for completeness only. Whether a mention reduces to a literal is
+     * a property of the expression, not of which variant is being built: `AppTag == someVariable`
+     * is undecidable under every one of them, which is why one refusal covers them all.
+     */
+    private async collectUnfoldableAppTagUses(appTagId: string | undefined): Promise<UnfoldableAppTagUse[]> {
+        const services = this.getContext().services;
+        const story = services.get<StoryService>(Services.Story);
+        const tagName = services.get<AppTagService>(Services.AppTags).resolveTag(appTagId).name;
+        const found: UnfoldableAppTagUse[] = [];
+        for (const entry of story.getLibraryIndex().stories) {
+            try {
+                found.push(...collectUnfoldableAppTagUses(await story.loadStory(entry.id), { tagName }));
+            } catch (error) {
+                // A story that will not load is the packer's problem to report, not ours to mask.
+                console.error(`[Build] could not scan story ${entry.id} for AppTag comparisons`, error);
             }
         }
         return found;

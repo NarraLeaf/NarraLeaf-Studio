@@ -1,3 +1,4 @@
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { StoryLiteralValue, StoryVariableRef, StoryVariableValueType } from "@shared/types/story";
 import type { StoryExpr, StoryExprFunction, StoryExprType, StoryVisitedRef } from "@shared/types/story/expression";
 
@@ -413,6 +414,13 @@ function evaluateCall(expr: Extract<StoryExpr, { kind: "call" }>, env: StoryExpr
             return toDisplayString(args[0]);
         case "num":
             return toNumber(args[0]);
+
+        case "appTag":
+            // Only reachable where no package is being produced: the transform in
+            // `@shared/story/appTagFold` replaces every `AppTag` with the variant's name before a
+            // bundle is assembled, and the build refuses anything it could not replace. What is left
+            // is an editor preview, which is the project's own values - the release variant.
+            return RELEASE_APP_TAG.name;
     }
 }
 
@@ -571,7 +579,9 @@ const FUNCTION_RESULT_TYPES: Readonly<Record<StoryExprFunction, StoryExprType>> 
     indexOf: "number", num: "number",
     hasKey: "boolean", contains: "boolean",
     join: "string", upper: "string", lower: "string", trim: "string", replace: "string",
-    pad: "string", str: "string",
+    // A variant's name, so `/set edition AppTag` fits a string variable and `AppTag == "Demo"`
+    // infers boolean like any other string comparison.
+    pad: "string", str: "string", appTag: "string",
     list: "unknown", dict: "unknown", get: "unknown", keys: "unknown",
     push: "unknown", removeAt: "unknown", setKey: "unknown", removeKey: "unknown",
     split: "unknown", slice: "unknown", concat: "unknown",

@@ -2,7 +2,7 @@ import { Equal, Minus, Plus, RotateCcw, ToggleRight, Variable } from "lucide-rea
 import type { StoryActionPayload, StoryBlock, StoryDeclarationPayload, StoryExpr, StoryExpression, StoryLiteralValue, StoryVariableValueType } from "@shared/types/story";
 import { inferStoryExpressionType, storyExprTypeFits } from "@shared/utils/storyExpressionEval";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
-import { storyVariableRefKey } from "@shared/types/story";
+import { APP_TAG_EXPR_KEYWORD, storyVariableRefKey } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue, StoryCommandValue } from "../../storyCommandValues";
 import { defineStoryCommand, type ResolvedArgsOf, type StoryCommandParamSpec, type StoryCommandValidateContext } from "../spec";
@@ -281,6 +281,16 @@ function validateSceneDeclaration(args: { readonly name?: StoryCommandValue }, c
         return [];
     }
     const needle = name.value.trim().toLowerCase();
+    // The expression language reads `AppTag` as the build variant before it looks at any scope, so a
+    // variable of that name could only ever be read as `'AppTag'`. Refused at the declaration rather
+    // than left to be discovered at the first line that tries to use it.
+    //
+    // Only this scope is protected. A `saved` or `persistent` variable is named in the Variables
+    // panel, which writes the registry directly and has no validation seam to hang this off - so a
+    // name collision there stays possible, and the quoted spelling stays the way to read it.
+    if (needle === APP_TAG_EXPR_KEYWORD.toLowerCase()) {
+        return [{ code: "reservedVariableName", span, value: name.value }];
+    }
     if (ctx.context.variables.some(entry => entry.ref.scope === "scene" && entry.name.trim().toLowerCase() === needle)) {
         return [{ code: "duplicateVariable", span, value: name.value }];
     }
