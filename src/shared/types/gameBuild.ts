@@ -136,6 +136,24 @@ export type BuildPreflightCode =
      * project - rather than a damaged one.
      */
     | "plugin-secret-unavailable"
+    /**
+     * A `/cut` row naming the variant being built that would take nothing with it - the last row of
+     * its scene, or one below an unconditional jump. It reads on the page as an ending and produces
+     * a package identical to the one without it, so the author believes their demo stops there while
+     * every line of the book ships.
+     */
+    | "cut-point-inert"
+    /**
+     * The variant shortens the story and nobody has said what the player sees when it ends. The
+     * story simply runs out of rows and the last frame stays on screen, which is what an author
+     * discovers by playing the build to the end. Picking "show nothing" on the variant answers it.
+     */
+    | "variant-ending-missing"
+    /**
+     * The story parts into routes and only some of them end for this variant. Not a mistake by
+     * itself - a demo may ship one route whole on purpose - so it ships, and says so.
+     */
+    | "variant-branch-uncut"
     | "build-dependency-unavailable"
     | "sidecar-target-missing"
     | "sidecar-crossbuild-exec-bit"

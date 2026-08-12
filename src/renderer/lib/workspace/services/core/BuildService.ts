@@ -277,6 +277,20 @@ export class BuildService extends Service<BuildService> {
         }
         // Beside the invalid-command gate, and in the same class as it.
         //
+        // ## Why this is a gate and not a preflight finding
+        //
+        // The line between the two is: a condition whose report needs per-row story detail is a
+        // gate, and a condition that is a property of the project's configuration is a preflight
+        // finding. This one is the first kind twice over. It quotes the author's own expression -
+        // `use.source` is the text they typed, and without it "an AppTag comparison is undecidable"
+        // names nothing they can find - and it reads every story document the editor is holding,
+        // unsaved edits included, which the main process has no copy of. The same is true of the
+        // undecidable-entry refusal further down (see `runReleaseContentGate`), which names the
+        // blueprint and the node.
+        //
+        // The three variant conditions that DID become preflight findings are in
+        // `variantContentPreflight.ts`, and its header states the same criterion from that side.
+        //
         // The test that comment states for the unconditional class is "decided by measurement, not
         // an opinion an author may reasonably overrule", and this meets it exactly: `AppTag` has no
         // play-time value at all, so a comparison the fold cannot decide is not a style a project

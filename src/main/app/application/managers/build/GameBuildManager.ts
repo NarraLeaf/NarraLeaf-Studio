@@ -129,6 +129,7 @@ import type {
     GameBuildWorkerWindowsSigning,
 } from "@/buildWorker/protocol";
 import { currentDownloadRewrites } from "../downloadRewrites";
+import { collectVariantContentFindings } from "./variantContentPreflight";
 
 type BuildSession = {
     id: string;
@@ -593,6 +594,21 @@ export class GameBuildManager {
                     detail: { platform },
                 });
             }
+        }
+
+        // What this variant's cut points come to. Skipped for the release variant from inside, which
+        // is what keeps the ordinary build from reading every story document; see the module header
+        // for why these three are findings here rather than gates in the build's own chain.
+        //
+        // Only when the document was readable: the reading below would resolve to the release
+        // variant, and clearing a demo's findings because its variant record could not be opened is
+        // the one answer this must not give.
+        if (!variantsUnreadable) {
+            findings.push(...await collectVariantContentFindings({
+                projectPath: normalizedProjectPath,
+                appTagId: request.appTagId,
+                appTagDocument,
+            }));
         }
 
         const pluginSelection = await this.selectRuntimePlugins(normalizedProjectPath, projectConfig);

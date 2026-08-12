@@ -219,6 +219,19 @@ export const build = {
         "icon-unusable": "The {platform} icon could not be read; the NarraLeaf icon ships instead.",
         "icon-low-resolution": "The {platform} icon is smaller than {minimum}×{minimum} and ships upscaled.",
         "icon-stale": "The {platform} icon has not been prepared; open Project ▸ App to bake it.",
+        // The row reads as an ending and produces the same package as no row at all, so the whole
+        // book ships. Names the scene rather than the row number: a build dialog has no gutter to
+        // count lines in, and the scene is what the author opens.
+        "cut-point-inert":
+            "The cut point in {scene} ({story}) removes nothing from {variant}, so that build carries the whole story.",
+        // Only for a variant that shortens the story, and answerable either way: pick a page, or
+        // pick "show nothing" on the variant to keep the last frame on screen.
+        "variant-ending-missing":
+            "{variant} ends the story early and no page is shown when it ends. Choose one under Project ▸ App ▸ Build variants.",
+        // No count in the sentence: the dialog renders findings through the plain translator, which
+        // has no plural form to pick, and the number adds nothing the scene name does not.
+        "variant-branch-uncut":
+            "Some routes from {scene} ({story}) never reach a cut point, so {variant} ships them whole.",
         "plugins-invalid": "Plugin validation failed:\n{errors}",
         // `{platforms}` is what this one value has to be filled in for: the platform it is keyed by,
         // or every platform of the build where one value covers them all. Never empty, so the

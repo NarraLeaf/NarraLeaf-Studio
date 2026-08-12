@@ -212,6 +212,14 @@ export const build = {
         "icon-unusable": "{platform} 图标无法读取，将使用 NarraLeaf 图标",
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
         "icon-stale": "{platform} 图标尚未烘焙，请打开 项目 ▸ 应用 生成",
+        // 这一行看起来像结局，但产出的包和没有这一行完全一样，整本书都会随包发出去。这里报场景名而
+        // 不报行号：构建对话框没有行号栏，作者要打开的也是场景。
+        "cut-point-inert": "{scene}（{story}）中的截断点没有从 {variant} 里去掉任何内容，该构建仍会带上整个剧本",
+        // 只针对真的会截短剧本的版本；两种回答都算作答：选一个页面，或者在该版本上选「不显示任何页面」，
+        // 让画面停在最后一帧。
+        "variant-ending-missing": "{variant} 会提前结束剧本，但没有指定结束后显示的页面。请在 项目 ▸ 应用 ▸ 构建版本 中选择",
+        // 句子里不带数量：对话框用的是普通翻译函数，选不了复数形式，而且这个数字并不比场景名多说什么。
+        "variant-branch-uncut": "从 {scene}（{story}）出发的部分路线上没有截断点，{variant} 会把这些路线整段发出去",
         "plugins-invalid": "插件校验失败：\n{errors}",
         // {platforms} 是这一个取值需要覆盖的平台：按平台存放时是它所属的那一个，否则是本次
         // 构建的全部平台。它永远不为空，两种情形下句子读起来一样。
