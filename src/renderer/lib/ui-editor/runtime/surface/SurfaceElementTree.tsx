@@ -57,6 +57,12 @@ export type SurfaceBlueprintBindingContext = {
     debug: DebugBridge;
     coalescer: BindingDebugCoalescer;
     globalState?: BlueprintStateReader & { subscribe?: (listener: () => void) => () => void };
+    /**
+     * Props this page instance was opened with. Widgets that resolve their own data source read
+     * them here; unlike the two state stores they never change while the page is mounted, so there
+     * is nothing to subscribe to.
+     */
+    pageProps?: Readonly<Record<string, unknown>>;
 };
 
 export type NestedSurfaceRuntimeInput = {
@@ -1092,6 +1098,7 @@ function renderElementTree(
                   ? {
                         surfaceState: blueprintBindingContext.surfaceState,
                         globalState: blueprintBindingContext.globalState,
+                        pageProps: blueprintBindingContext.pageProps,
                     }
                   : undefined,
               useAppearanceInspectorPreview,

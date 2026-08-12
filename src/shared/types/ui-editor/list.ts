@@ -24,9 +24,23 @@ export type UIListElementExtra = {
     runtimeVariantOverrideId?: string;
 };
 
+/**
+ * Where a list reads its runtime items from when no blueprint has written items into it.
+ *
+ * `pageProp` reads the props the current page was opened with, so an array handed to `Go Page`
+ * arrives at the list without a blueprint copying it into state first.
+ */
 export type UIListItemsBinding =
     | { kind: "surfaceState"; key: string }
-    | { kind: "globalState"; key: string };
+    | { kind: "globalState"; key: string }
+    | { kind: "pageProp"; key: string };
+
+export const UI_LIST_ITEMS_BINDING_KINDS = ["surfaceState", "globalState", "pageProp"] as const;
+
+export function isUIListItemsBindingKind(value: unknown): value is UIListItemsBinding["kind"] {
+    return typeof value === "string"
+        && (UI_LIST_ITEMS_BINDING_KINDS as readonly string[]).includes(value);
+}
 
 export type UIListItemScope = {
     item: unknown;

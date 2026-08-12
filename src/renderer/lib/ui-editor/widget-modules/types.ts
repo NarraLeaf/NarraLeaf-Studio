@@ -48,6 +48,8 @@ export type WidgetRendererProps = {
     runtimeData?: {
         surfaceState?: { get(key: string): unknown };
         globalState?: { get(key: string): unknown };
+        /** Props the current page was opened with; fixed for the life of the page instance. */
+        pageProps?: Readonly<Record<string, unknown>>;
     };
     /**
      * When true, canvas appearance resolves the variant from the inspector cache (editing-area preview).

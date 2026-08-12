@@ -1996,6 +1996,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 get: key => core.scopeBridge.globalGet(key),
                 subscribe: listener => core.scopeBridge.subscribeGlobals(listener),
             },
+            pageProps: entry.props,
         };
         return {
             hostAdapter,
@@ -2263,6 +2264,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 debug: core.debug,
                 coalescer: core.bindingDebugCoalescer,
                 globalState,
+                pageProps: input.params,
             }),
             mountSurface: input => {
                 const surfaceStore = core.scopeBridge.getSurfaceStore(input.runtimeScopeId);
