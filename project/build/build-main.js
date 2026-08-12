@@ -97,6 +97,24 @@ const { rootDir, isDev } = require('./utils');
         tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
     });
 
+    // The shipped-content audit. Built apart from every other bundle here because it runs the story
+    // compiler, which lives in the renderer tree and resolves its own imports through the renderer's
+    // "@/" alias -- the opposite of what the main tsconfig means by it. The compile worker loads this
+    // by path for that reason; the two alias maps cannot coexist in one bundle.
+    console.log('[build-main] Bundling content audit…');
+    await esbuild.build({
+        entryPoints: [path.join(rootDir, 'src', 'renderer', 'lib', 'build', 'contentAuditEntry.ts')],
+        outfile: path.join(outDir, 'contentAudit.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        external: ['electron', '@narraleaf/encryption', 'koffi'],
+        sourcemap: isDev(),
+        minify: !isDev(),
+        target: ['node18'],
+        tsconfig: path.join(rootDir, 'src', 'renderer', 'tsconfig.json'),
+    });
+
     const preloadEntry = path.join(rootDir, 'src', 'main', 'preload', 'preload.ts');
     if (!fs.existsSync(preloadEntry)) {
         console.warn('[build-main] Preload entry "src/main/preload/preload.ts" not found. Skipping preload build.');
