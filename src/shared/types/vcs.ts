@@ -343,6 +343,29 @@ export interface VcsBlobRequest {
     path: string;
 }
 
+/** {@link VcsBlobRequest}'s working-tree twin: the same file as it is on disk now. */
+export interface VcsWorkingFileRequest {
+    projectPath: string;
+    /**
+     * Repository-relative path. Absolute paths, escaping paths and paths outside version
+     * control are rejected rather than skipped.
+     */
+    path: string;
+}
+
+/**
+ * One working-tree file's bytes, or the reason they were not read.
+ *
+ * `contentBase64: null` with a `refusal` is an answer, not a failure: a file too large to draw is
+ * an ordinary thing for a project to hold, and the surface says so rather than showing nothing. A
+ * path that should never have been asked for is a failure and arrives as one.
+ */
+export interface VcsWorkingFileRead {
+    contentBase64: string | null;
+    /** Present exactly when `contentBase64` is null. */
+    refusal?: "tooLarge";
+}
+
 /**
  * How one path differs from the last commit.
  *

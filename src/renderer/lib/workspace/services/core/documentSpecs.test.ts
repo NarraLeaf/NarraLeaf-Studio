@@ -8,6 +8,8 @@ import {
     localizationDocumentSpec,
     localizationKeysSpec,
     storyDocumentSpec,
+    uiDocumentSpec,
+    uiGraphsSpec,
     variableRegistrySpec,
     voiceDocumentSpec,
 } from "@shared/documents/specs";
@@ -49,6 +51,16 @@ describe("document specs agree with ProjectNameConvention", () => {
             .toBe(of(ProjectNameConvention.EditorStoryDocument("abc")));
         expect(assetsMetadataSpec.pathFor({ type: AssetType.Image }))
             .toBe(of(ProjectNameConvention.AssetsMetadataShard(AssetType.Image)));
+    });
+
+    /**
+     * The two interface documents, read-side only like the story and the asset shards. The path is
+     * the whole of what has to agree here: get it wrong and version control finds no spec, degrades
+     * to a JSON walk over a document made of generated ids, and says so nowhere.
+     */
+    it("puts the interface documents where the convention says they go", () => {
+        expect(uiDocumentSpec.pathFor()).toBe(of(ProjectNameConvention.EditorUIDocument));
+        expect(uiGraphsSpec.pathFor()).toBe(of(ProjectNameConvention.EditorUIGraphs));
     });
 
     /** Every asset type resolves to a shard the spec claims - `other` and `blueprint` included. */

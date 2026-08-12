@@ -8,6 +8,8 @@ import {charactersSpec} from "./characters";
 import {localizationDocumentSpec} from "./localization";
 import {localizationKeysSpec} from "./localizationKeys";
 import {storyDocumentSpec} from "./story";
+import {uiDocumentSpec} from "./uiDocument";
+import {uiGraphsSpec} from "./uiGraphs";
 import {variableRegistrySpec} from "./variables";
 import {voiceDocumentSpec} from "./voice";
 
@@ -20,6 +22,8 @@ export {LOCALIZATION_DOCUMENT_PATH, localizationDocumentSpec} from "./localizati
 export {LOCALIZATION_KEYS_DOCUMENT_PATH, localizationKeysSpec} from "./localizationKeys";
 export {CHARACTER_STORE_DOCUMENT_PATH, charactersSpec} from "./characters";
 export {STORY_DOCUMENT_PATH, storyDocumentSpec} from "./story";
+export {UI_DOCUMENT_PATH, uiDocumentSpec} from "./uiDocument";
+export {UI_GRAPHS_DOCUMENT_PATH, uiGraphsSpec} from "./uiGraphs";
 export {
     ASSETS_METADATA_DOCUMENT_PATH,
     assetsMetadataSpec,
@@ -36,10 +40,10 @@ export {
  *
  * Not every spec here is adopted to the same degree, and the difference is worth knowing before
  * reaching for one. The first five are read AND written through their spec by the service that owns
- * them, and `characters` joined them (`CharacterService`). `story` and `assets-metadata` are
- * **read-side only**: they exist so version control can diff the two biggest things in a project,
- * their `parse` is a shape gate rather than a migration, and their `serialize` throws by design.
- * Each says so in its own module.
+ * them, and `characters` joined them (`CharacterService`). `story`, `assets-metadata`, `ui-document`
+ * and `ui-graphs` are **read-side only**: they exist so version control can diff the biggest things
+ * in a project, their `parse` is a shape gate rather than a migration, and their `serialize` throws
+ * by design. Each says so in its own module.
  */
 export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
     appTagsSpec,
@@ -52,6 +56,8 @@ export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
     charactersSpec,
     storyDocumentSpec,
     assetsMetadataSpec,
+    uiDocumentSpec,
+    uiGraphsSpec,
 ];
 
 // Registration happens on import rather than behind a call, so no consumer can reach the registry
