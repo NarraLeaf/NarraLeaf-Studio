@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import type { DocumentChangeKind } from "@shared/documents/diff";
 import type { TranslationKey } from "@shared/i18n";
+import { readMediaHeader } from "@shared/utils/mediaHeader";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { formatBytes } from "../documentChangeView";
@@ -12,6 +13,7 @@ import { sidesOfEntry } from "./entrySides";
 import {
     formatClock,
     formatSampleRate,
+    withinDecodeBudget,
     isAudioEntry,
     peaksOf,
     timelineShares,
@@ -267,6 +269,8 @@ interface AudioSide {
     readonly channels: number | null;
     /** True when the bytes arrived and no decoder here would take them. */
     readonly broken: boolean;
+    /** True when decoding these bytes would cost more memory than a preview may spend. */
+    readonly oversized: boolean;
 }
 
 interface Decoded {
@@ -286,10 +290,12 @@ function useAudioSide(side: ComparisonSide | null, path: string, host: AudioHost
     const read = useSideBytes(side, path);
     const [decoded, setDecoded] = useState<Decoded | null>(null);
     const [broken, setBroken] = useState(false);
+    const [oversized, setOversized] = useState(false);
 
     useEffect(() => {
         setDecoded(null);
         setBroken(false);
+        setOversized(false);
         const bytes = read.value;
         if (!bytes) {
             return;
@@ -297,6 +303,12 @@ function useAudioSide(side: ComparisonSide | null, path: string, host: AudioHost
         const context = host.open();
         if (!context) {
             setBroken(true);
+            return;
+        }
+        // Asked before anything is allocated. Decoding to find out how big the decode is would be
+        // the allocation this refuses, and a sixteen minute track is some 340 MB per side.
+        if (!withinDecodeBudget(readMediaHeader(bytes))) {
+            setOversized(true);
             return;
         }
         let cancelled = false;
@@ -330,6 +342,7 @@ function useAudioSide(side: ComparisonSide | null, path: string, host: AudioHost
         sampleRate: decoded?.buffer.sampleRate ?? null,
         channels: decoded?.buffer.numberOfChannels ?? null,
         broken,
+        oversized,
     };
 }
 
@@ -519,6 +532,11 @@ function stateKey(side: AudioSide): TranslationKey {
 
 /** Why nothing is drawn, when nothing is. The side that has something to say wins. */
 function failureKey(before: AudioSide, after: AudioSide): TranslationKey {
+    // Said ahead of every other reason: a file this long is a working file, not a broken one, and
+    // "could not be read" about a track the author can play in any editor is the wrong sentence.
+    if (before.oversized || after.oversized) {
+        return "documentDiff.presenter.audio.tooLong";
+    }
     return stateKey(after.status === "absent" ? before : after);
 }
 
@@ -547,7 +565,7 @@ function isSettled(side: AudioSide): boolean {
         case "loading":
             return false;
         case "ready":
-            return side.peaks !== null || side.broken;
+            return side.peaks !== null || side.broken || side.oversized;
         default:
             return true;
     }

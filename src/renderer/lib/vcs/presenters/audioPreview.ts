@@ -112,3 +112,54 @@ export function formatClock(milliseconds: number): string {
 export function formatSampleRate(hertz: number): string {
     return `${Math.round(hertz / 100) / 10} kHz`;
 }
+
+/**
+ * Decoded audio one side may hold before the waveform is refused instead.
+ *
+ * Compressed sound expands by one to two orders of magnitude: `decodeAudioData` produces 32-bit
+ * float samples per channel, so a sixteen minute stereo track is some 340 MB whatever it weighed on
+ * disk. Two of those are held at once here, and the read that feeds them is already allowed up to
+ * `COMPARISON_PREVIEW_BYTE_CEILING`, so without this the author can reach a renderer that runs out
+ * of memory by clicking one row of a list.
+ *
+ * 64 MiB is a judgement, not a measurement, like the ceilings in `vcs/diff/documentDiff.ts`. It is
+ * about six minutes of stereo at 44.1 kHz, which covers a background loop and every voice line;
+ * past it the header's own numbers are still reported and only the picture is withheld.
+ */
+export const AUDIO_DECODE_BYTE_BUDGET = 64 * 1024 * 1024;
+
+/**
+ * Bytes decoding these would allocate, from the header rather than by trying it.
+ *
+ * The point is to answer BEFORE the allocation happens - a budget checked after `decodeAudioData`
+ * has returned is a budget that has already been spent. Null when the header does not carry enough
+ * to say, which is an ordinary answer for a variable bitrate file with no seek table.
+ */
+export function estimateDecodedBytes(
+    header: { durationMs?: number; sampleRate?: number; channels?: number } | null,
+): number | null {
+    const durationMs = header?.durationMs;
+    const sampleRate = header?.sampleRate;
+    if (!durationMs || !sampleRate || durationMs <= 0 || sampleRate <= 0) {
+        return null;
+    }
+    // Channels default to two rather than one: guessing low here would let exactly the files this
+    // guards against through, which is the failure it exists to prevent.
+    const channels = header?.channels && header.channels > 0 ? header.channels : 2;
+    return Math.round((durationMs / 1000) * sampleRate * channels * 4);
+}
+
+/**
+ * Whether to decode at all.
+ *
+ * A header that cannot say is decoded, deliberately: refusing everything unmeasurable would
+ * withhold the waveform for most variable bitrate files, which are ordinary. The read ceiling is
+ * the backstop for those.
+ */
+export function withinDecodeBudget(
+    header: { durationMs?: number; sampleRate?: number; channels?: number } | null,
+    budget: number = AUDIO_DECODE_BYTE_BUDGET,
+): boolean {
+    const estimated = estimateDecodedBytes(header);
+    return estimated === null || estimated <= budget;
+}

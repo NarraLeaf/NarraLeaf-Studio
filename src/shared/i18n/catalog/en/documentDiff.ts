@@ -347,8 +347,15 @@ export const documentDiff = {
             mono: "Mono",
             stereo: "Stereo",
             channels: "{count} channels",
-            /** Three states a track can be in instead of a waveform, and they stay three. */
+            /**
+             * Four states a track can be in instead of a waveform, and they stay four.
+             *
+             * `tooLarge` is about the file, which was never read. `tooLong` is about the sound: the
+             * bytes are here and decoding them would cost more memory than a preview may spend, so
+             * the numbers below are still reported and only the picture is withheld.
+             */
             tooLarge: "This file is too large to play here.",
+            tooLong: "This track is too long to preview here.",
             unreadable: "This sound could not be read.",
         },
         font: {
