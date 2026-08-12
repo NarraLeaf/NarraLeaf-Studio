@@ -46,6 +46,8 @@ import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@s
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
+import { deriveGameAppId } from "@shared/types/gameBuild";
+import { userDataDirectoryName } from "@shared/utils/userDataLocation";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "model", "other"] as const;
@@ -164,6 +166,13 @@ export type GameRuntimeArtifactCompileInput = {
      * verbatim (protection off).
      */
     encryptionKey?: string;
+    /**
+     * The app id this build ships under, as the build resolved it. Only the
+     * production electron shell reads it, to name the per-user directory the
+     * game keeps the player's files in; passing it keeps that name and the
+     * packager's identity from being derived twice and disagreeing.
+     */
+    appId?: string;
 };
 
 export type GameRuntimeArtifactCompileResult = {
@@ -364,7 +373,7 @@ export async function compileGameRuntimeArtifact(
         } else {
             await fs.writeFile(
                 path.join(appDir, "package.json"),
-                JSON.stringify(buildAppManifest(mode, input.runtimeVersion, pack, projectConfig), null, 2),
+                JSON.stringify(buildAppManifest(mode, input.runtimeVersion, pack, projectConfig, input.appId), null, 2),
                 "utf-8",
             );
         }
@@ -389,16 +398,23 @@ export async function compileGameRuntimeArtifact(
 
 /**
  * The loose app manifest Electron reads before any pack (possibly sealed) is
- * open. Production identity fields drive the shell's app name - and with it
- * the default OS userData location - plus the packager's product metadata.
- * `narraleaf.mode` is the early mode marker the runtime consults before
- * app-ready; the pack's own `mode` stays authoritative.
+ * open. Production identity fields drive the shell's app name plus the
+ * packager's product metadata. `narraleaf.mode` is the early mode marker the
+ * runtime consults before app-ready; the pack's own `mode` stays authoritative.
+ *
+ * `narraleaf.userDataDir` travels the same way and for the same reason: the
+ * runtime has to settle where the player's files live before Chromium starts,
+ * which is long before it can open a sealed pack. It is resolved here rather
+ * than in the runtime so the name is decided by the same code the build dialog
+ * and the Project panel read - see userDataLocation.ts for why it is the app id
+ * and not the display name.
  */
 function buildAppManifest(
     mode: "preview" | "production",
     runtimeVersion: string,
     pack: GameRuntimePackV1,
     projectConfig: ProjectConfigData | null,
+    appId: string | undefined,
 ): Record<string, unknown> {
     const base = {
         private: true,
@@ -406,6 +422,8 @@ function buildAppManifest(
         narraleaf: { mode },
     };
     if (mode === "preview") {
+        // Preview keeps its userData beside the compiled app, so there is no
+        // per-user directory to name.
         return {
             name: "narraleaf-preview-runtime",
             version: runtimeVersion,
@@ -420,6 +438,16 @@ function buildAppManifest(
         description: readString(projectConfig?.metadata?.description),
         author: readString(projectConfig?.metadata?.author) ?? "NarraLeaf",
         ...base,
+        narraleaf: {
+            ...base.narraleaf,
+            // The build's own app id when there is one, so a game writes under
+            // the identity it ships with. The fallback derives from the same
+            // project fields the build would have used; it only diverges from
+            // the build's answer for a project with no identifier whose variant
+            // renames it, and there the project's own name is the more stable
+            // of the two anyway.
+            userDataDir: userDataDirectoryName(appId ?? deriveGameAppId(identifier, pack.project.name)),
+        },
     };
 }
 

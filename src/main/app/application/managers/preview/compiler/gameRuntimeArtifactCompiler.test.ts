@@ -642,8 +642,35 @@ describe("game runtime artifact compiler", () => {
             version: "1.2.3",
             author: "NarraLeaf",
             main: "main.js",
-            narraleaf: { mode: "production" },
+            // The shipped game reads userDataDir before it can open the pack, and
+            // names the player's directory after it rather than after productName,
+            // which a rename would move. See shared/utils/userDataLocation.ts.
+            narraleaf: { mode: "production", userDataDir: "fixture.project" },
         });
+    });
+
+    it("names the player's directory after the app id the build resolved", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            // What the build packages under; the manifest must agree with it
+            // rather than derive a second answer from the project fields.
+            appId: "com.studio.other",
+        });
+
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest.narraleaf.userDataDir).toBe("com.studio.other");
     });
 
     it("marks preview app manifests with the preview mode", async () => {
@@ -661,6 +688,9 @@ describe("game runtime artifact compiler", () => {
             name: "narraleaf-preview-runtime",
             narraleaf: { mode: "preview" },
         });
+        // Preview keeps its userData beside the compiled app, so there is no
+        // per-user directory to name; the runtime falls back to that sibling.
+        expect(manifest.narraleaf.userDataDir).toBeUndefined();
     });
 
     it("rejects a runtime dist without a build manifest", async () => {

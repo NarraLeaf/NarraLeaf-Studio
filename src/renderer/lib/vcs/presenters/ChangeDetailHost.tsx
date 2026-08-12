@@ -4,9 +4,20 @@ import { CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "../documentChangeView";
 import { splitDocumentPath } from "../changeIndex";
 import type { ComparisonSides } from "./comparisonSide";
 import { presenterFor } from "./registry";
-// Imported for the registration inside it, which is the only thing that puts a presenter in front
-// of anyone. Every presenter that is not the fallback belongs on this list.
+// Imported for the registration inside them, which is the only thing that puts a presenter in
+// front of anyone. Every presenter that is not the fallback belongs on this list.
+//
+// The order is the tie-break: a presenter imported later wins over an earlier one that also
+// claims a document (see `registry.ts`). Nothing here overlaps - three read a content class the
+// comparison settled (sound, stills, type) and three read a document kind (the palette, the
+// interface, its blueprints) - so the order below is alphabetical rather than meaningful, and
+// `registry.test.ts` holds the rule that decides.
+import "./AudioChangeDetail";
 import "./BitmapChangeDetail";
+import "./BrandChangeDetail";
+import "./FontChangeDetail";
+import "./UIDocumentChangeDetail";
+import "./UIGraphsChangeDetail";
 
 /**
  * The detail half of a comparison: which file is being looked at, and exactly one presenter.
