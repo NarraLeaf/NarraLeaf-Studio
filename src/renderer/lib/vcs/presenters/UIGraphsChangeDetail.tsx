@@ -8,7 +8,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Select } from "@/lib/components/elements";
 import { getBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { resolveBlueprintNodeTitle } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
-import { sidesOfEntry } from "./bitmapPreview";
+import { sidesOfEntry } from "./entrySides";
 import {
     canvasReadFailure,
     CanvasColumn,
