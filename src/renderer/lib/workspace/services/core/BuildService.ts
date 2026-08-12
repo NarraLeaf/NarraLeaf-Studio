@@ -12,7 +12,7 @@ import type {
 // Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
 import type { BuildDialogPage } from "@/apps/workspace/modules/actions/buildDialogState";
 import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import { collectBlueprintNetworkNodes } from "@/lib/lint/rules";
 // One spelling of "where is this finding", shared with the report tab - see locationText.ts.
 import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
@@ -28,6 +28,13 @@ import {
     type NestedCutPoint,
     type UnfoldableAppTagUse,
 } from "@shared/story/appTagFold";
+import {
+    solveReleaseContent,
+    type ReleaseContentAnswer,
+    type ReleaseContentBlockerReason,
+    type ReleaseContentPlugin,
+    type ReleaseContentStory,
+} from "@/lib/build/releaseContent";
 import { AppTagService } from "../appTag/AppTagService";
 import { translate, translateN } from "@/lib/i18n";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
@@ -93,6 +100,18 @@ const BUILD_DONE_LINGER_MS = 1400;
  * report tab. Only the per-finding lines are capped; the summary and the refusal count are not.
  */
 const LINT_CONSOLE_FINDING_LIMIT = 200;
+
+/**
+ * Blocker reason -> the line the console prints, remedy included.
+ *
+ * A table rather than a switch so the three cannot drift: each one names what to go and look at and
+ * what to state instead, and an author who has three of them gets three usable instructions.
+ */
+const BLOCKER_MESSAGE_KEYS: Record<ReleaseContentBlockerReason, "build.contentBlockedStartStory" | "build.contentBlockedScript" | "build.contentBlockedPlugin"> = {
+    unreadableStartStoryTarget: "build.contentBlockedStartStory",
+    scriptBlueprint: "build.contentBlockedScript",
+    storyStartingPlugin: "build.contentBlockedPlugin",
+};
 
 /** Finding severity -> the console level it is logged at. */
 const LINT_CONSOLE_LEVELS: Record<LintSeverity, ConsoleLogLevel> = {
@@ -300,6 +319,16 @@ export class BuildService extends Service<BuildService> {
             });
             return this.state;
         }
+        // What this variant's package comes to, and whether anything about it cannot be decided.
+        //
+        // Beside the two sweeps above rather than in the main-process preflight, because it has
+        // per-row story detail: it names the scene a jump leads to and the blueprint a node sits in,
+        // and the preflight has neither document. It reads the story documents those two sweeps have
+        // just put in the service's cache, so it is free in the same sense they are.
+        const contentRefusal = await this.runReleaseContentGate(startedAt, platforms, request.appTagId);
+        if (contentRefusal) {
+            return contentRefusal;
+        }
         // Third of the unconditional correctness gates, and placed here for the same reason the
         // invalid-command gate is first: it is free. It walks the blueprint document already in
         // memory, so a build that will be refused anyway does not first pay for a media probe.
@@ -420,6 +449,162 @@ export class BuildService extends Service<BuildService> {
             }
         }
         return found;
+    }
+
+    /**
+     * The release content gate: no variant build starts while something in the project can name a
+     * scene the build cannot read.
+     *
+     * ## Why this refuses where it used to shrug
+     *
+     * The packer's answer to an unreadable mechanism is to ship every story whole. That is safe -
+     * nothing is missing from the package - but it is silently the opposite of what the author asked
+     * for: a demo that carries the whole script, with the cut point they wrote doing nothing. The
+     * only way to learn it was to unpack the build. So the three mechanisms become a refusal with the
+     * remedy attached, and the remedy is one an author can actually use: state which scenes the thing
+     * starts, per variant, which is exactly the shape a chapter select has.
+     *
+     * ## And why it stays quiet almost always
+     *
+     * Only when the variant removes something. A build that keeps every scene cannot be made wrong by
+     * a mechanism nobody can read, so a release build - which cuts nothing by construction - never
+     * reaches the refusal, and neither does a variant whose cut points are all in stories it does not
+     * touch. That condition lives in the solver ({@link ReleaseContentAnswer.blockers}) rather than
+     * here, so the panel that offers the remedy and the gate that demands it agree about when it
+     * matters.
+     *
+     * ## What it prints when it passes
+     *
+     * The kept and dropped counts, and every dropped scene by name. A variant build changes which
+     * bytes ship, and the console is where an author finds out that it did.
+     */
+    private async runReleaseContentGate(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+        appTagId: string | undefined,
+    ): Promise<GameBuildStateSnapshot | null> {
+        const consoleService = this.tryGetConsole();
+        const services = this.getContext().services;
+        const appTags = services.get<AppTagService>(Services.AppTags);
+        const appTag = appTags.resolveTag(appTagId);
+
+        let answer: ReleaseContentAnswer;
+        try {
+            answer = solveReleaseContent({
+                appTag,
+                projectDeclaredScenes: appTags.getDocument().reachableScenes ?? {},
+                stories: await this.loadAllStories(),
+                blueprints: this.listProjectBlueprints(),
+                plugins: await this.listShippingPlugins(),
+                // The four sets this gate cannot be stopped by. Nothing about a surface, an asset, a
+                // localization key or a plugin's presence blocks a build, and assembling them means
+                // an asset reference index rebuild - which the gates around this one deliberately do
+                // not pay for. The panel that reports what a variant contains passes them all.
+                surfaces: [],
+                assets: [],
+                assetReferences: new Map(),
+                localizationKeys: [],
+            });
+        } catch (error) {
+            // Untranslated, like the media gate's own failure: this reports Studio malfunctioning
+            // rather than something the project did, and a gate that fails closed on its own defect
+            // can leave a project unbuildable with nothing the author can do about it.
+            console.error("[Build] the release content check failed to run", error);
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "warning", "The build content check failed to run", {
+                source: BUILD_CONSOLE_SOURCE,
+            });
+            return null;
+        }
+
+        for (const stale of answer.staleDeclarations) {
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "warning", translate("build.contentStaleDeclaration", {
+                location: stale.location,
+                variant: answer.appTagName,
+            }), { source: BUILD_CONSOLE_SOURCE });
+        }
+
+        if (answer.blockers.length > 0) {
+            for (const blocker of answer.blockers) {
+                consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate(BLOCKER_MESSAGE_KEYS[blocker.reason], {
+                    location: blocker.location,
+                    variant: answer.appTagName,
+                }), { source: BUILD_CONSOLE_SOURCE });
+            }
+            const refusal = translateN("build.contentBlockedSummary", answer.blockers.length, {
+                count: answer.blockers.length,
+                variant: answer.appTagName,
+            });
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+            // `startedAt` and `platforms` carried through for the reason the gates either side carry
+            // them: the dashboard archives a refused run as a finished build.
+            this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: refusal });
+            return this.state;
+        }
+
+        if (answer.removedScenes.length > 0) {
+            const kept = answer.members.filter(member => member.kind === "scene").length;
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "info", translateN("build.contentKept", kept, {
+                count: kept,
+                variant: answer.appTagName,
+            }), { source: BUILD_CONSOLE_SOURCE });
+            for (const removed of answer.removedScenes) {
+                consoleService?.log(BUILD_CONSOLE_CHANNEL, "info", translate("build.contentDropped", {
+                    scene: removed.sceneName,
+                    story: removed.storyName,
+                }), { source: BUILD_CONSOLE_SOURCE });
+            }
+        }
+        return null;
+    }
+
+    /** Every story in the project, in library order. The three sweeps before this one cached them. */
+    private async loadAllStories(): Promise<ReleaseContentStory[]> {
+        const story = this.getContext().services.get<StoryService>(Services.Story);
+        const loaded: ReleaseContentStory[] = [];
+        for (const entry of story.getLibraryIndex().stories) {
+            try {
+                loaded.push({ id: entry.id, name: entry.name, document: await story.loadStory(entry.id) });
+            } catch (error) {
+                // A story that will not load is the packer's problem to report, not ours to mask -
+                // the same reading the three sweeps above take of the same failure.
+                console.error(`[Build] could not read story ${entry.id} for the content check`, error);
+            }
+        }
+        return loaded;
+    }
+
+    /**
+     * The blueprints this gate can read.
+     *
+     * The project's own document only. A blueprint kept as a shared asset is not here, which is the
+     * same reach every blueprint lint rule has - they all read `ctx.blueprintDocument` - and the
+     * packer still refuses one it cannot read, so a script blueprint hiding in an asset costs a whole
+     * story rather than a wrong package.
+     */
+    private listProjectBlueprints(): Blueprint[] {
+        const services = this.getContext().services;
+        try {
+            const document = services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+            return Object.values(document?.blueprints ?? {});
+        } catch (error) {
+            console.error("[Build] could not read the blueprint document for the content check", error);
+            return [];
+        }
+    }
+
+    /** The enabled plugins with a runtime entry - the ones whose code ships inside the game. */
+    private async listShippingPlugins(): Promise<ReleaseContentPlugin[]> {
+        const result = await getInterface().plugins.list();
+        if (!result.success) {
+            return [];
+        }
+        return result.data.plugins
+            .filter(plugin => plugin.enabled && plugin.manifest.entries?.runtime)
+            .map(plugin => ({
+                id: plugin.manifest.id,
+                name: plugin.manifest.name ?? plugin.manifest.id,
+                runtimeCapabilities: plugin.manifest.contributes.runtimeCapabilities ?? [],
+            }));
     }
 
     /**

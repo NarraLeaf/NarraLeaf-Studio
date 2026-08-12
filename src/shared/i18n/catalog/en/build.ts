@@ -299,6 +299,30 @@ export const build = {
         other: "Build stopped: {count} cut points are not at the top level of their scene. See the console.",
     },
     /**
+     * The content gate: something in the project can start a scene by a name the build cannot read,
+     * and this variant leaves scenes out.
+     *
+     * Each line carries its own remedy, because the three have different first moves and an author
+     * with all three needs all three. The second half is the same in each: list the scenes it can
+     * start, for this variant, in the Project panel. Only shown for a variant that removes something,
+     * which is why every line names the variant.
+     */
+    contentBlockedStartStory: "A Start Game node in {location} picks its scene while the game runs. Pick the scene in the inspector, or list the scenes it can start in the {variant} variant.",
+    contentBlockedScript: "The blueprint {location} is written in TypeScript and can start any scene. List the scenes it can start in the {variant} variant.",
+    contentBlockedPlugin: "The {location} plugin can start any scene. List the scenes it can start in the {variant} variant.",
+    contentBlockedSummary: {
+        one: "Build stopped: {count} thing can start a scene the {variant} build cannot read. See the console.",
+        other: "Build stopped: {count} things can start a scene the {variant} build cannot read. See the console.",
+    },
+    /** A listed scene that has since been deleted. A warning, not a stop: the answer still stands. */
+    contentStaleDeclaration: "A scene listed for {location} in the {variant} variant is no longer in the project.",
+    /** What this variant's package came to. Only printed when it leaves something out. */
+    contentKept: {
+        one: "The {variant} build contains {count} scene.",
+        other: "The {variant} build contains {count} scenes.",
+    },
+    contentDropped: "{scene} in {story} is not in this build.",
+    /**
      * The media gate. One line per asset, then one summary.
      *
      * Each line has to be actionable on its own, because the console is what an author comes back
