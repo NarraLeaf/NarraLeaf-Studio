@@ -28,6 +28,7 @@ import {
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
     type GameBuildMobilePlatform,
+    type GameBuildPlatform,
     type GameBuildRequest,
     type GameBuildStateSnapshot,
     type GameBuildTarget,
@@ -91,8 +92,19 @@ import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManife
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
-import { readProjectAppTagsFromDir } from "../../utils/appTagsFile";
-import { hasAppTag, isBuiltinAppTagId, resolveAppTag, type ProjectAppTag } from "@shared/types/appTag";
+import { readProjectAppTagDocumentFromDir, readProjectAppTagsFromDir } from "../../utils/appTagsFile";
+import {
+    createEmptyAppTagDocument,
+    hasAppTag,
+    isBuiltinAppTagId,
+    resolveAppTag,
+    resolveAppTagPluginConfigValue,
+    type AppTagPluginConfig,
+    type ProjectAppTag,
+    type ProjectAppTagDocument,
+} from "@shared/types/appTag";
+import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
+import { collectPluginBuildConfigFields, pluginBuildConfigSlots } from "@shared/utils/pluginBuildConfig";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
@@ -423,14 +435,17 @@ export class GameBuildManager {
         // so a check pass that answered "no variants" would clear a build that then dies on the file
         // it never mentioned. The identity readings below fall back to the project's own values,
         // which is all there is left to describe.
-        let appTags: ProjectAppTag[] = [];
+        // The whole document, not just the tag list: the values plugins asked for live at its root,
+        // and the variant being built inherits them.
+        let appTagDocument: ProjectAppTagDocument = createEmptyAppTagDocument();
         let variantsUnreadable: string | null = null;
         try {
-            appTags = await readProjectAppTagsFromDir(normalizedProjectPath);
+            appTagDocument = await readProjectAppTagDocumentFromDir(normalizedProjectPath);
         } catch (error) {
             variantsUnreadable = error instanceof Error ? error.message : String(error);
         }
-        const overrides = resolveAppTag(appTags, request.appTagId).overrides;
+        const variant = resolveAppTag(appTagDocument.tags, request.appTagId);
+        const overrides = variant.overrides;
         const hostPlatform = currentGameBuildPlatform();
         const targets = normalizeTargets(request.targets);
         const findings: BuildPreflightFinding[] = [];
@@ -651,6 +666,12 @@ export class GameBuildManager {
                 });
             }
         }
+        findings.push(...await this.pluginConfigPreflight(
+            pluginSelection.selected.map(source => source.manifest),
+            [...new Set(targets.map(target => target.platform))],
+            variant,
+            appTagDocument.pluginConfig ?? {},
+        ));
         if (desktopTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
             const key = await this.resolveEncryptionKey(normalizedProjectPath, projectConfig).catch(() => undefined);
             if (!key) {
@@ -1216,6 +1237,73 @@ export class GameBuildManager {
                 section: "content",
                 detail: { size: `${(assetBytes / 1024 ** 3).toFixed(2)} GiB` },
             });
+        }
+        return findings;
+    }
+
+    /**
+     * What the plugins shipping in this build asked the author for, held against what the variant
+     * being built actually has.
+     *
+     * `manifests` are the plugins the build already selected, so a value is only ever demanded for a
+     * plugin whose code is in the package: a field belonging to a plugin this project does not ship
+     * is not a question about this build. The dialog offers the fields of every enabled plugin, which
+     * is the wider set - so it can ask for a value nothing here insists on, and never the reverse.
+     * Resolution goes through {@link resolveAppTagPluginConfigValue}, the same fold the dialog reads,
+     * so a value the author sees filled in is the value this judges.
+     *
+     * Nothing here reads a secret. A `secret` field's stored value is a handle, and the only question
+     * asked of the vault is whether the value behind it can be unsealed on this machine.
+     */
+    private async pluginConfigPreflight(
+        manifests: readonly NormalizedPluginManifestV2[],
+        platforms: readonly GameBuildPlatform[],
+        variant: ProjectAppTag,
+        projectPluginConfig: AppTagPluginConfig,
+    ): Promise<BuildPreflightFinding[]> {
+        const fields = collectPluginBuildConfigFields(
+            // The selection is drawn from enabled plugins alone (see `listRuntimePluginPackSources`),
+            // and `enabled` is what the fold reads.
+            manifests.map(manifest => ({ pluginId: manifest.id, enabled: true, manifest })),
+            platforms,
+        );
+        const findings: BuildPreflightFinding[] = [];
+        const vault = this.signingVault();
+
+        for (const slot of pluginBuildConfigSlots(fields, platforms)) {
+            const { field } = slot;
+            const resolved = resolveAppTagPluginConfigValue(
+                variant,
+                projectPluginConfig,
+                field,
+                slot.platform,
+            );
+            // What this one value has to be filled in for: the platform it is keyed by, or every
+            // platform of the build where one value covers them all. Never empty - a build with no
+            // targets declares no fields at all - so the message reads the same either way.
+            const affects = (slot.platform ? [slot.platform] : platforms).join(", ");
+            if (!resolved.value) {
+                if (field.required) {
+                    findings.push({
+                        code: "plugin-config-missing",
+                        severity: "error",
+                        section: "plugins",
+                        detail: { plugin: field.pluginName, field: field.label, platforms: affects },
+                    });
+                }
+                continue;
+            }
+            // A handle whose secret was sealed on another machine. The project carries the handle and
+            // never the value, so this is the ordinary state of a project a collaborator configured.
+            // A manager with no vault (a test double) says nothing rather than guessing.
+            if (field.type === "secret" && vault && !(await vault.pluginSecretAvailable(resolved.value))) {
+                findings.push({
+                    code: "plugin-secret-unavailable",
+                    severity: "error",
+                    section: "plugins",
+                    detail: { plugin: field.pluginName, field: field.label, platforms: affects },
+                });
+            }
         }
         return findings;
     }

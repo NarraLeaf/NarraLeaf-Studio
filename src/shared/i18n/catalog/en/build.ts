@@ -36,15 +36,17 @@ export const build = {
     },
     outputDir: "Output folder",
     chooseFolder: "Choose folder…",
-    // The rail. Five of these name a section a finding can be filed against; `variant` names the
-    // page that picks which edition every other page describes, and is shown only for a project that
-    // has an edition to pick.
+    // The rail. Six of these name a section a finding can be filed against; `variant` names the page
+    // that picks which edition every other page describes, and is shown only for a project that has
+    // an edition to pick. `plugins` is shown only where an installed plugin asks for a value.
     section: {
         variant: "Variant",
         targets: "Targets",
         identity: "Identity",
         // Short enough for the rail; the section itself covers protection too.
         content: "Content",
+        // The values plugins ask for. What ships is listed under Content, which is a different fact.
+        plugins: "Plugins",
         signing: "Signing",
         output: "Output",
     },
@@ -94,6 +96,21 @@ export const build = {
         network: "Network policy",
         networkAllowHttp: "Plain HTTP is allowed.",
         networkStrict: "Plain HTTP is blocked.",
+    },
+    /**
+     * The plugins page. Field labels and descriptions come from the plugin's manifest, so the only
+     * words here are the ones about a secret, which is the one value the page cannot show.
+     */
+    pluginConfig: {
+        secretUnset: "Not set",
+        // While the vault has not answered yet. "Set" is all that is known then; either of the two
+        // readings below would be a claim that withdraws itself a moment later.
+        secretSet: "Set",
+        secretHere: "Set on this machine",
+        secretElsewhere: "Set on another machine; its value is not here",
+        secretEnter: "Enter a new value",
+        clear: "Clear",
+        secretFailed: "The value could not be stored on this machine.",
     },
     signing: {
         empty: "Select a target that can be signed.",
@@ -191,6 +208,11 @@ export const build = {
         "icon-low-resolution": "The {platform} icon is smaller than {minimum}×{minimum} and ships upscaled.",
         "icon-stale": "The {platform} icon has not been prepared; open Project ▸ App to bake it.",
         "plugins-invalid": "Plugin validation failed:\n{errors}",
+        // `{platforms}` is what this one value has to be filled in for: the platform it is keyed by,
+        // or every platform of the build where one value covers them all. Never empty, so the
+        // sentence reads the same either way.
+        "plugin-config-missing": "{plugin} needs a value for {field} to build {platforms}.",
+        "plugin-secret-unavailable": "{plugin}'s {field} is set, but its value is not on this machine; secrets never travel with a project. Enter it again here to build {platforms}.",
         // Carries the cache path so an author on an offline machine still has a
         // way through: download the file elsewhere and save it there.
         "build-dependency-unavailable":

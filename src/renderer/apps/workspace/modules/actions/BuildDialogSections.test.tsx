@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BuildPreflightSection } from "@shared/types/gameBuild";
 import type { SigningCredential } from "@shared/types/signing";
 import { RELEASE_APP_TAG, resolveAppTagIdentity, type ProjectAppTag } from "@shared/types/appTag";
+import type { PluginBuildConfigFieldContribution } from "@shared/types/plugins";
+import type { PluginBuildConfigDeclaringPlugin } from "@shared/utils/pluginBuildConfig";
+import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
 import {
     buildPluginEntries,
@@ -44,6 +47,7 @@ const EVERY_SECTION: Record<BuildPreflightSection, true> = {
     targets: true,
     identity: true,
     content: true,
+    plugins: true,
     signing: true,
     output: true,
 };
@@ -51,7 +55,7 @@ const EVERY_SECTION: Record<BuildPreflightSection, true> = {
 const noop = () => undefined;
 const neverRemoves = async (_credential: SigningCredential) => false;
 
-/** A project called "My Game", with only the release variant. */
+/** A project called "My Game", with only the release variant and no plugin asking for anything. */
 const info: BuildDialogInfo = {
     hostPlatform: "macos",
     hostArch: "arm64",
@@ -59,6 +63,7 @@ const info: BuildDialogInfo = {
     appId: "com.example.game",
     appTags: [RELEASE_APP_TAG],
     baseIdentity: { displayName: "My Game", identifier: "com.example.game", version: "1.0.0" },
+    configurablePlugins: [],
     locales: [],
     defaultOutputDir: "/tmp/dist",
     electronMirror: "",
@@ -342,6 +347,7 @@ describe("the variant page", () => {
             signing={{}}
             initialContent={{ encryptAssets: false, allowHttp: false }}
             initialPlugins={[]}
+            appTagService={null}
             onChange={noop}
             onPersistContent={async () => undefined}
             onRescanPlugins={async () => []}
@@ -397,6 +403,7 @@ describe("the variant page", () => {
                 signing={{}}
                 initialContent={{ encryptAssets: false, allowHttp: false }}
                 initialPlugins={[]}
+                appTagService={null}
                 onChange={noop}
                 onPersistContent={async () => undefined}
                 onRescanPlugins={async () => []}
@@ -407,6 +414,118 @@ describe("the variant page", () => {
                 runPreflight={async () => []}
             />,
         )).not.toContain("<select");
+    });
+});
+
+/**
+ * The page that holds what plugins asked the author for.
+ *
+ * Two things about it are invisible from its own markup and are what a regression would take away:
+ * it is there only where a plugin asks something of the platforms *currently* selected, and a value
+ * the variant states itself is the only one that grows a Restore.
+ */
+describe("the plugins page", () => {
+    const declaring = (fields: PluginBuildConfigFieldContribution[]): PluginBuildConfigDeclaringPlugin => ({
+        pluginId: "acme.storefront",
+        enabled: true,
+        manifest: { name: "Acme Storefront", contributes: { buildConfig: fields } },
+    });
+
+    const appId: PluginBuildConfigFieldContribution = {
+        key: "appId",
+        label: "Storefront app id",
+        type: "text",
+        scope: "variant",
+        required: true,
+    };
+
+    /**
+     * Only what the page reads while rendering. The service's mutations are immediate and not
+     * undoable, so nothing here may call one; a stub keeps the test honest about that.
+     */
+    const stubService = (stated?: string) => ({
+        resolvePluginConfigValue: (id: string | null | undefined) => (stated !== undefined && id
+            ? { value: stated, overridden: true }
+            : { value: "inherited-id", overridden: false }),
+        onTagsChanged: () => () => undefined,
+    }) as unknown as AppTagService;
+
+    const render = (
+        plugins: PluginBuildConfigDeclaringPlugin[],
+        options: { appTagId?: string; service?: AppTagService | null } = {},
+    ) => renderToStaticMarkup(
+        <BuildDialogContent
+            info={{ ...withVariant, configurablePlugins: plugins }}
+            initialState={{
+                ...initialDialogState(null, "macos", "arm64"),
+                appTagId: options.appTagId ?? "tag-demo",
+            }}
+            initialPage="plugins"
+            copyright=""
+            signing={{}}
+            initialContent={{ encryptAssets: false, allowHttp: false }}
+            initialPlugins={[]}
+            appTagService={options.service ?? stubService()}
+            onChange={noop}
+            onPersistContent={async () => undefined}
+            onRescanPlugins={async () => []}
+            onEditIdentity={noop}
+            onEditSigning={noop}
+            onCommit={noop}
+            onCancel={noop}
+            runPreflight={async () => []}
+        />,
+    );
+
+    it("groups the fields under the plugin that declared them", () => {
+        const markup = render([declaring([appId])]);
+
+        expect(markup).toContain("Acme Storefront");
+        expect(markup).toContain("Storefront app id");
+        expect(markup).toContain('data-build-plugin-field="acme.storefront:appId"');
+    });
+
+    it("shows the inherited value as the placeholder, and no Restore, until the variant states one", () => {
+        const markup = render([declaring([appId])]);
+
+        expect(markup).toContain('placeholder="inherited-id"');
+        expect(markup).not.toContain("data-build-plugin-restore");
+    });
+
+    it("grows a Restore exactly where the variant states its own value", () => {
+        const markup = render([declaring([appId])], { service: stubService("demo-id") });
+
+        expect(markup).toContain('value="demo-id"');
+        expect(markup).toContain('data-build-plugin-restore="acme.storefront:appId"');
+    });
+
+    it("never shows a secret, and says which of the three states it is in", () => {
+        const secret: PluginBuildConfigFieldContribution = {
+            key: "uploadToken",
+            label: "Upload token",
+            type: "secret",
+            scope: "global",
+        };
+        // A global field reads the project's record, which this stub answers nothing for.
+        const empty = { resolvePluginConfigValue: () => ({ value: "", overridden: false }) } as unknown as AppTagService;
+        const markup = render([declaring([secret])], { service: empty });
+
+        expect(markup).toContain("Not set");
+        expect(markup).toContain("Enter a new value");
+        expect(markup).toContain('type="password"');
+    });
+
+    it("is absent when no installed plugin asks for anything", () => {
+        // The rail falls back to the first page it does show, and the walk is what it always was.
+        expect(render([])).not.toContain("data-build-plugin-field");
+    });
+
+    it("is absent when the only field belongs to a platform this build is not producing", () => {
+        // The selection is macOS alone, so a Windows-only field is not a question about this build.
+        const markup = render([declaring([{ ...appId, platforms: ["windows"] }])]);
+
+        expect(markup).not.toContain("data-build-plugin-field");
+        expect(markup).not.toContain("Storefront app id");
     });
 });
 
