@@ -88,6 +88,16 @@ export type LintContext = {
      */
     network: NetworkConfiguration;
     stories: readonly LintStoryEntry[];
+    /**
+     * Whether {@link stories} is the whole library.
+     *
+     * `false` when the index could not be read at all, or when a story in it failed to load - that
+     * story is simply absent from the list above, and a rule that asks "does this scene id still
+     * exist" would answer no for every scene in it. The same distinction `assetIndex.complete`
+     * draws, for the same reason: a rule must be able to tell an empty project from an unread one.
+     * A story that failed to load already reports itself; nothing else should pile on.
+     */
+    storiesComplete: boolean;
     blueprintDocument: BlueprintDocument | null;
     uiDocument: UIDocument | null;
     assets: readonly LintAssetEntry[];
@@ -116,6 +126,15 @@ export type LintContext = {
     /** The same cross-surface ambiguity for the `saved` scope, which is now project-level too. */
     savedNameCollisions: readonly PersistentNameCollision[];
     localization: LintLocalizationContext | null;
+    /**
+     * Named localization keys, by name - the registry `Get Text` picks from.
+     *
+     * Separate from {@link localization}, which is about translations of the script: a project can
+     * declare named keys with no target locale configured at all. `null` means the key document had
+     * not finished loading when the sweep started, which is not the same as a project with no keys
+     * and must not be read as one.
+     */
+    localizationKeyNames: ReadonlySet<string> | null;
     voice: LintVoiceContext | null;
     buildPlatforms: readonly GameBuildPlatform[];
     io: LintIo;

@@ -128,7 +128,7 @@ export class LintService extends Service<LintService> implements ILintService {
 
         this.contextFindings = [];
 
-        const stories = await this.loadStories(storyService);
+        const { stories, complete: storiesComplete } = await this.loadStories(storyService);
         const assets = this.collectAssets(assetsService);
 
         await referenceService.ensureReady().catch(error => {
@@ -173,6 +173,7 @@ export class LintService extends Service<LintService> implements ILintService {
             config: projectService.getLintingConfiguration(),
             network: projectService.getNetworkConfiguration(),
             stories,
+            storiesComplete,
             blueprintDocument: safely(() => uiGraphService.getDocument().blueprintDocument, null),
             uiDocument: safely(() => uiDocumentService.getDocument(), null),
             assets,
@@ -187,6 +188,13 @@ export class LintService extends Service<LintService> implements ILintService {
             persistentNameCollisions,
             savedNameCollisions,
             localization,
+            // Loaded in the background from the service's own init, so it can genuinely be absent
+            // here on a sweep run seconds after a project opens - which is why the field is
+            // nullable rather than an empty set.
+            localizationKeyNames: safely(() => {
+                const keys = localizationService.getKeysIfLoaded()?.keys;
+                return keys ? new Set(Object.keys(keys)) : null;
+            }, null),
             voice,
             buildPlatforms: normalizeBuildConfiguration(projectService.getProjectConfig().app?.build)?.platforms ?? [],
             io: this.createIo(assetsService),
@@ -263,23 +271,30 @@ export class LintService extends Service<LintService> implements ILintService {
     }
 
     /**
-     * Every story in the library, loaded. A story that will not open becomes a context finding
-     * rather than being dropped: silently linting the remaining eight of nine stories and reporting
-     * "no problems" is the worst answer available.
+     * Every story in the library, loaded, and whether that is all of them. A story that will not
+     * open becomes a context finding rather than being dropped: silently linting the remaining
+     * eight of nine stories and reporting "no problems" is the worst answer available.
+     *
+     * The flag is not cosmetic either: a rule that resolves an id against this list reads a story
+     * missing from it as a story that was deleted, so one unreadable document would produce a
+     * finding per reference into it, on top of the finding the failure already reports. See
+     * `LintContext.storiesComplete`.
      */
-    private async loadStories(storyService: StoryService): Promise<LintStoryEntry[]> {
+    private async loadStories(storyService: StoryService): Promise<{ stories: LintStoryEntry[]; complete: boolean }> {
         const stories: LintStoryEntry[] = [];
         let index: StoryLibraryIndex;
         try {
             index = storyService.getLibraryIndex();
         } catch (error) {
             console.warn("[LintService] story library unavailable", error);
-            return stories;
+            return { stories, complete: false };
         }
+        let complete = true;
         for (const entry of index.stories) {
             try {
                 stories.push({ id: entry.id, name: entry.name, document: await storyService.loadStory(entry.id) });
             } catch (error) {
+                complete = false;
                 console.warn(`[LintService] story ${entry.id} failed to load`, error);
                 this.contextFindings.push({
                     ruleId: "story/invalid-command",
@@ -290,7 +305,7 @@ export class LintService extends Service<LintService> implements ILintService {
                 });
             }
         }
-        return stories;
+        return { stories, complete };
     }
 
     private collectAssets(assetsService: AssetsService): LintAssetEntry[] {
