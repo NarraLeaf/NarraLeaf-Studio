@@ -103,6 +103,7 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
     BLUEPRINT_NODE_TYPE_LAYER_WAIT,
@@ -2710,11 +2711,13 @@ function resolveSelfOutput(
     // The layer family, kept out of the cross-product list above for the same reason the network one
     // is: `layer` is an INPUT pin name on three of these nodes and an output on exactly one, and
     // joining that list would hand the name to every node type in it. `Show Layer` publishes the
-    // handle every other layer node takes, and `Wait For Layer` publishes what the layer closed with;
-    // unregistered, both would read as `undefined` downstream with nothing said about it.
+    // handle every other layer node takes, `Wait For Layer` publishes what the layer closed with, and
+    // `Show Confirm` publishes which button was pressed and what it read; unregistered, all of them
+    // would read as `undefined` downstream with nothing said about it.
     if (
         (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_SHOW && portId === "layer") ||
-        (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_WAIT && portId === "result")
+        (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_WAIT && portId === "result") ||
+        (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_CONFIRM && (portId === "index" || portId === "label"))
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }

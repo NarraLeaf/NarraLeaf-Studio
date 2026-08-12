@@ -262,12 +262,20 @@ export function resolveEffectiveBlueprintNodePins(
     const valueTypes = readDynamicInputPinValueTypes(params, cfg.pinValueTypeParamKey);
     const dynamicPins: BlueprintNodePinDef[] = [];
     let dynOrdinal = 0;
+    // Counted per ADD rather than per pin: one add produces a whole group, so `dynOrdinal` runs at
+    // two per button on a node whose template makes an input and an output together.
+    const groupOrdinals = new Map<string, number>();
     for (const id of extraIds) {
         if (typedBasePins.some(p => p.id === id)) {
             continue;
         }
         dynOrdinal += 1;
         const template = readDynamicPinTemplate(cfg, id);
+        const groupId = readDynamicGroupBaseId(cfg, id);
+        if (groupId !== undefined && !groupOrdinals.has(groupId)) {
+            groupOrdinals.set(groupId, groupOrdinals.size + 1);
+        }
+        const groupOrdinal = groupId === undefined ? undefined : groupOrdinals.get(groupId);
         const kind = template?.kind ?? "input";
         const semantic = template?.semantic ?? "data";
         const isDataPin = semantic === "data";
@@ -285,8 +293,11 @@ export function resolveEffectiveBlueprintNodePins(
                 : undefined,
             label:
                 labels[id] ??
-                template?.label ??
-                `${cfg.labelPrefix ?? "Input"} ${fixedDataInputs.length + dynOrdinal}`,
+                (template
+                    ? cfg.numberGeneratedPinLabels && groupOrdinal !== undefined
+                        ? `${template.label} ${groupOrdinal}`
+                        : template.label
+                    : `${cfg.labelPrefix ?? "Input"} ${fixedDataInputs.length + dynOrdinal}`),
         });
     }
 
