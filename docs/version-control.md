@@ -973,10 +973,71 @@ window[RendererInterfaceKey].vcs
 原来那条「hash 编码自适应」的绊线随 `loreClient.ts` 一起删掉了：自有绑定按字段声明类型编码，
 上游修不修 `loreHash` handler 都与我们无关。
 
+## 9.1 比较界面：索引 + 详情 + presenter
+
+比较是一个编辑器标签页（`modules/vcs-changes`），不是面板也不是对话框：一次比较是一份文档，
+而工作区已经用标签页装文档，作者也因此能把它和正要改的编辑器并排放。
+
+左边是**索引**，右边是**详情**，这个分工是这块界面唯一的结构性约定：
+
+- **索引每个文件恒占一行**，与它内部有多少条改动、走的哪一档、被截断与否都无关。行尾放改动数。
+- **详情区一次只挂一个 presenter**（`ChangeDetailHost`，`data-change-presenter` 是它的抓手）。
+- 文件按**分类**分组（故事／人物／界面／素材／本地化／音频／工程／其他，见
+  `renderer/lib/vcs/changeCategory.ts`），组头带文件数，超过 `GROUP_COLLAPSE_THRESHOLD` 默认折叠。
+- **caveat 每组一次，绝不逐行**：哪些文件没被完整比较是组级的一句话，具体原因在各自的详情里。
+
+这四条替换掉的是「每个文档全展开纵向堆叠」，那种形态下四十个变更文件就是一个上千行的滚动列。
+
+### 加一个 presenter
+
+`renderer/lib/vcs/presenters/registry.ts`。`matches(entry)` 认领，`Detail` 画。
+`presenterFor` **永不返回 undefined**，认不出回落 `GenericChangeDetail`（就是那份通用的改动行列表）。
+写完把模块 import 进 `ChangeDetailHost.tsx` 的那张清单——注册发生在模块求值期。
+
+认领判据有两种：看 `entry.contentClass`（资产，由比较过程判定）或看 `entry.documentKind`（有 spec 的文档）。
+两个都匹配时后 import 的赢，`registry.test.ts` 钉着这条。
+
+**两侧的字节走 `comparisonSide.ts`**：修订侧 `readBlob`，工作树侧 `vcs.readWorkingFile`（路径校验 +
+大小上限，见 `managers/vcs/workingFile.ts`）。`useSideObjectUrl` 负责 `createObjectURL` 与撤销——
+一个 presenter 自己造 URL 就要自己负责撤销，而这个界面一次会看几十张几 MB 的图。
+
+### 五档，以及为什么 `content` 必须是独立一档
+
+`semantic` → `summary` → `structural` → `content` → `opaque`（`shared/documents/diff.ts`）。
+
+`content` 是「认出了格式、读了文件头」：位图给尺寸、音频给时长与采样率、字体给 family。
+它独立成档不是分类癖，是因为把它并进 `opaque` 会在屏幕上摆出一句假话——`opaque` 的说明是
+「未读取。太大、非文本或读不出，只报告大小」，而它正上方那行写着「1920×1080 → 1280×720」。
+**判据挂在 provider 上**：读了文件头的才配 `content`，`headBytes === 0` 的留在 `opaque`。
+
+⚠ **资产内容按 asset id 分片存放，文件名没有扩展名**（`assets/content/99/55/3d15abb…`）。
+任何按路径判类型的逻辑在真实工程上都会全部落空——`contentClass.ts` 因此在扩展名判不出时
+按魔数嗅探。**写这类逻辑前先看真实路径长什么样，别照着测试夹具想象。**
+
+### 两列蒙版：界面与蓝图
+
+`UIDocumentChangeDetail` / `UIGraphsChangeDetail`：左列旧版、右列新版，改动标在它所在的那一版上
+（删除只画旧侧、新增只画新侧、修改两侧都画）。四种色调收在 `changeMask.ts` **一处**——
+新增 `primary`、删除 `danger`、改属性 `warning`、仅移动位置最弱一档且无色相。
+
+界面那侧用 `GameSurfaceRenderer` 渲染历史文档（`passive` + `staticDocument` +
+`surfacePointerEvents:"none"`）。⚠ **`interactive` 必须留 ON**：`EditorNodeWrapper` 只在 interactive
+时写 `data-ui-element-id`，关掉就没有任何元素可寻址、蒙版全部落空。
+蓝图那侧不需要编译链路——IR 就在文件里（`program.graphs.<slot>.<id>.graph`，坐标在
+`meta.editorLayout`），画布自带平移缩放（ctrl+滚轮，与 UI 编辑器同一套速率），**两列共用一个
+变换，叠加在 `sharedGraphViewport` 之上**。
+
+**改动数与蒙版数必须对得上**，这是作者信任这个界面的全部依据：`accountedChanges` /
+`accountedGraphChanges` 对着真 spec diff 断言，定位不到的元素**计入一行说明而不是静默丢掉**。
+
 ## 10. 待解问题
 
-- **界面尚未对接**。渲染进程的框架层已落（`VersionControlService`：可用性、状态快照、历史缓存、
-  变更订阅），但还没有任何 VCS 界面消费它。
+- **resolve 面板没有做过目视验收**：它需要一个真实的合并冲突，而 Studio 里建不出分支、也没有服务器。
+  机制有单测（三态选择、未决拦住完成、`blocked` 的文件仍给整文件两个按钮），但没有人看过它一眼。
+- **`ui-document` / `ui-graphs` 没有 `merge3`，这是裁决不是欠账**：两个作者各自重排同一个界面树，
+  交织出的第三种布局能正常渲染、谁都没写过——正是 `DocumentMergeRefusal` 存在的那种静默失败。
+  真要做，先解决寻址：元素跨 surface 拖动时两侧地址不同（`uiDocumentDiff.ts` 顶部有说明）。
+- **故事没有专属 presenter**，仍走通用改动行；台词级的左右对照还没有。
 - **仓库来源已定，尚未实现**：项目目录 == 仓库根（`repositoryCreate` 就在项目根建 `.lore/`，
   没有第二种布局）。**不自动建库**——建库会在项目根写独占锁，必须是作者的显式决定。入口留在
   项目设置 + 新建项目向导，属 V1
