@@ -97,6 +97,37 @@ export const PLUGIN_RUNTIME_CAPABILITIES: readonly PluginRuntimeCapability[] =
     Object.values(PluginRuntimeCapability);
 
 /**
+ * The capabilities that can name a story scene, and so decide what a variant's package must keep.
+ *
+ * **Empty, and that is a reading of the nine above rather than an omission.** Go through them: a
+ * store holds the plugin's own keys, events observe what the game already did, state reads and
+ * writes story variables, saves list and load slots the game itself compiled, an overlay draws on
+ * top, assets resolve packaged URLs, and locale reads the language. None of them takes a scene, and
+ * none of them starts one.
+ *
+ * This replaced "does the package carry any plugin at all", which was the whole feature's undoing:
+ * the built-in Gallery ships in every package and declares `store` + `events`, so every project had
+ * a plugin and no project could ever drop a scene. A test that is true everywhere decides nothing.
+ *
+ * **The honest gap, which is not closed by this and would not be closed by blocking every plugin.**
+ * These are *declared* capabilities, not enforced ones. A plugin also contributes blueprint nodes,
+ * and a contributed node executes with the host API in reach - so a determined plugin can still
+ * reach past what its manifest says. Refusing every plugin would not fix that (the node would still
+ * run); it would only make a demo impossible for every project that ships the built-ins, which is
+ * every project. So the declaration is what the build acts on, and the gap is written down here
+ * rather than papered over. Closing it means enforcing the boundary at the host API, not widening
+ * this list.
+ */
+export const STORY_STARTING_RUNTIME_CAPABILITIES: readonly PluginRuntimeCapability[] = [];
+
+/** Whether a plugin's declared capabilities let it start a story. See the list above. */
+export function runtimeCapabilitiesCanStartStory(
+    capabilities: readonly PluginRuntimeCapability[] | undefined,
+): boolean {
+    return (capabilities ?? []).some(capability => STORY_STARTING_RUNTIME_CAPABILITIES.includes(capability));
+}
+
+/**
  * `app.game.sidecar` has no entry here on purpose: it exists exactly when
  * `contributes.sidecars` is non-empty. Declaring the sidecar *is* the request.
  */
