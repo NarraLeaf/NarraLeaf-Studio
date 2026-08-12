@@ -21,6 +21,7 @@ import type {
   IconButtonSelection,
   InlineRowItemContext,
 } from "@/apps/workspace/modules/properties/framework/types";
+import { DraftTextInput } from "@/lib/components/inputs/DraftTextInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
@@ -152,12 +153,17 @@ const TextBlueprintValueField = createBlueprintValueField({
   renderLiteralEditor: ({ data, liveElement }) => {
     const textProps = getTextProps(liveElement);
     return (
-      <textarea
+      <DraftTextInput
+        multiline
         className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-surface-sunken px-2 py-1.5 text-xs text-fg outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40"
         value={textProps.text}
         rows={4}
-        onChange={event => {
-          data.documentService.updateElementProps(liveElement.id, { text: event.target.value });
+        draftResetKey={liveElement.id}
+        readCommittedValue={() =>
+          getTextProps(data.documentService.getDocument().elements[liveElement.id] ?? liveElement).text
+        }
+        onCommit={next => {
+          data.documentService.updateElementProps(liveElement.id, { text: next });
         }}
       />
     );
