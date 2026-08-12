@@ -1,7 +1,9 @@
+import { isBuiltinAppTagId } from "@shared/types/appTag";
 import {
     isAppTagExpr,
     isStoryExpressionEvaluable,
     listSceneBlocksInDocumentOrder,
+    listSceneIdsInDocumentOrder,
     listScenesInDocumentOrder,
     storyExprChildren,
     storyExpressionMentionsAppTag,
@@ -13,6 +15,7 @@ import {
     type StoryExpr,
     type StoryExpression,
     type StoryScene,
+    type StorySceneId,
 } from "@shared/types/story";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import { formatStoryExpr } from "@shared/utils/storyExpressionParser";
@@ -47,11 +50,54 @@ import { formatStoryExpr } from "@shared/utils/storyExpressionParser";
  * one the player's machine performs. It is reported, never quietly accepted, and it is refused in
  * *every* build including the release one - `AppTag` has no play-time value, so such a comparison is
  * not a leak, it is a line that cannot be compiled at all.
+ *
+ * # Where a variant's story ends
+ *
+ * A `/cut` row names a variant by **id**, and it truncates when that id is the one being built and
+ * that variant is not release. Matched exactly, never through `resolveAppTag`: an unknown id
+ * resolves to release everywhere else in Studio, and a row naming a deleted variant that started
+ * truncating every release build would be the exact opposite of what deleting a variant means.
+ * Deleting a variant leaves its rows written and inert.
+ *
+ * A cut point removes itself, everything after it in its own list, and everything after each of its
+ * ancestors - so execution falls off the end of the scene, which is how a scene with no jump already
+ * ends. A cut point this build is not is removed as a bare row: it does nothing at play time, and
+ * leaving it in ships the id of a variant the player's edition is not.
+ *
+ * A cut point that is not at the top level of a scene is not a graph cut at all - whether the story
+ * ends there depends on a condition only the running game can answer - so it is refused before a
+ * build starts rather than guessed at here. See {@link collectNestedCutPoints}.
  */
 
-export type AppTagFoldOptions = {
+/** What one expression folds against: `AppTag` becomes the variant's name and nothing else. */
+export type AppTagNameOptions = {
     /** The variant's own name, exactly as the variant list stores it. Release is "Release". */
     tagName: string;
+};
+
+/** What a whole document folds against: the name expressions read, plus the id cut points name. */
+export type AppTagFoldOptions = AppTagNameOptions & {
+    /**
+     * The variant's own id. Compared with a `/cut` row's `appTagId` exactly; the release id cuts
+     * nothing, which is what makes a written cut point safe to keep after its variant is gone.
+     */
+    tagId: string;
+    /**
+     * Turns on the reachability sweep that drops the scenes the story can no longer get to.
+     *
+     * Absent drops nothing, and that is what every play-time caller passes. Dev Mode, the preview
+     * and "play from this row" all enter a scene the author picked rather than one the story
+     * reaches, so a sweep there would delete the scene about to be played.
+     */
+    sceneReachability?: SceneReachability;
+};
+
+export type SceneReachability = {
+    /**
+     * Scene ids something outside the document can start this story at - a blueprint's `Start Game`
+     * node. The story's own entry scene is always an entry and does not need listing.
+     */
+    entrySceneIds: readonly StorySceneId[];
 };
 
 /**
@@ -84,7 +130,7 @@ export type UnfoldableAppTagUse = {
     source: string;
 };
 
-export function foldStoryExpression(expr: StoryExpr, options: AppTagFoldOptions): AppTagFold {
+export function foldStoryExpression(expr: StoryExpr, options: AppTagNameOptions): AppTagFold {
     if (!storyExpressionMentionsAppTag(expr)) {
         return { ast: expr, mentioned: false, unfoldable: false };
     }
@@ -110,7 +156,7 @@ export function foldStoryExpression(expr: StoryExpr, options: AppTagFoldOptions)
  */
 export function staticConditionValue(
     condition: StoryConditionRef | undefined,
-    options: AppTagFoldOptions,
+    options: AppTagNameOptions,
 ): AppTagStaticTruth {
     if (!condition || condition.kind !== "expression") {
         return "unknown";
@@ -131,7 +177,7 @@ export function staticConditionValue(
  */
 export function collectUnfoldableAppTagUses(
     document: StoryDocument,
-    options: AppTagFoldOptions,
+    options: AppTagNameOptions,
 ): UnfoldableAppTagUse[] {
     const found: UnfoldableAppTagUse[] = [];
     for (const scene of listScenesInDocumentOrder(document)) {
@@ -154,20 +200,72 @@ export function collectUnfoldableAppTagUses(
     return found;
 }
 
+/** One `/cut` row that sits inside a condition or a group rather than at the top of its scene. */
+export type NestedCutPoint = {
+    storyId: string;
+    storyName: string;
+    sceneId: string;
+    sceneName: string;
+    blockId: StoryBlockId;
+    /** The variant the row names, so the report can print the word the author typed. */
+    appTagId: string;
+};
+
+/**
+ * Every cut point a build cannot honour: the ones that are not at the top level of their scene.
+ *
+ * `/if X { /cut Demo }` is not a graph cut. Whether the story ends there depends on `X`, which only
+ * the running game knows, and there is no "end the story" action to emit in its place - so the
+ * boundary of the package would have to be guessed. It is reported instead, in *every* build
+ * including release: the row is equally unanalysable there, and an author who only ever builds
+ * release should learn about it at their first build rather than at their first demo.
+ *
+ * Sweeps in authoring order and skips a disabled subtree, the same two rules
+ * {@link collectUnfoldableAppTagUses} follows: a disabled row is compiled out, so it decides
+ * nothing and can no more block a build than it can reach a player.
+ */
+export function collectNestedCutPoints(document: StoryDocument): NestedCutPoint[] {
+    const found: NestedCutPoint[] = [];
+    for (const scene of listScenesInDocumentOrder(document)) {
+        // `rootBlockIds` rather than a null `parentId`: it is the list the compiler walks, so it is
+        // what decides whether a row runs unconditionally when the scene is entered.
+        const roots = new Set<StoryBlockId>(scene.rootBlockIds);
+        const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
+        for (const block of blocks) {
+            const cut = asCutPoint(block);
+            if (!cut || roots.has(cut.id)) {
+                continue;
+            }
+            found.push({
+                storyId: document.id,
+                storyName: document.name,
+                sceneId: scene.id,
+                sceneName: scene.name,
+                blockId: cut.id,
+                appTagId: cut.payload.appTagId,
+            });
+        }
+    }
+    return found;
+}
+
 /**
  * The document a package under this variant carries.
  *
  * Pure: the project on disk is never touched, and calling this twice with the same arguments gives
  * the same answer. Two passes, in this order:
  *
- *  1. **Elimination.** A condition branch the variant cannot take, and a choice option it can never
- *     show, are deleted outright - block and whole descendant subtree, out of `scene.blocks`.
- *     Unlinking from `childrenIds` alone would leave every line of the branch sitting in the JSON,
- *     which is precisely the shipping-it-anyway this exists to stop.
+ *  1. **Elimination.** A condition branch the variant cannot take, a choice option it can never
+ *     show, and everything a cut point ends, are deleted outright - block and whole descendant
+ *     subtree, out of `scene.blocks`. Unlinking from `childrenIds` alone would leave every line of
+ *     the branch sitting in the JSON, which is precisely the shipping-it-anyway this exists to stop.
  *  2. **Folding.** Every remaining expression that mentions `AppTag` reduces to a literal, wherever
  *     it appears - a branch condition, a choice option's `hiddenWhen`, a loop's `until`, an inline
  *     interpolation, an assignment. Folding *everywhere* is what makes "AppTag has no play-time
  *     value" a fact rather than a claim about the places anyone remembered.
+ *  3. **Scene dropping**, when {@link AppTagFoldOptions.sceneReachability} asks for it. Last,
+ *     because which scenes the story can still get to is a property of the whole document and is
+ *     only settled once every scene has been cut down to what this variant runs.
  */
 export function applyAppTagToStoryDocument(document: StoryDocument, options: AppTagFoldOptions): StoryDocument {
     let changed = false;
@@ -178,7 +276,8 @@ export function applyAppTagToStoryDocument(document: StoryDocument, options: App
         scenes[sceneId] = next;
     }
     const pruned = changed ? { ...document, scenes } : document;
-    return foldExpressionsDeep(pruned, options);
+    const folded = foldExpressionsDeep(pruned, options);
+    return options.sceneReachability ? dropUnreachableScenes(folded, options.sceneReachability) : folded;
 }
 
 // ── Folding one tree ──────────────────────────────────────────────────────────────────────────────
@@ -296,6 +395,8 @@ const ALWAYS: StoryConditionRef = {
 
 type ConditionBranchBlock = StoryBlock & { kind: "control"; payload: Extract<StoryControlPayload, { control: "conditionBranch" }> };
 
+type CutPointBlock = StoryBlock & { kind: "control"; payload: Extract<StoryControlPayload, { control: "cut" }> };
+
 function isConditionBlock(block: StoryBlock): boolean {
     return block.kind === "control" && block.payload.control === "condition";
 }
@@ -303,6 +404,12 @@ function isConditionBlock(block: StoryBlock): boolean {
 function asConditionBranch(block: StoryBlock | undefined): ConditionBranchBlock | null {
     return block?.kind === "control" && block.payload.control === "conditionBranch"
         ? block as ConditionBranchBlock
+        : null;
+}
+
+function asCutPoint(block: StoryBlock | undefined): CutPointBlock | null {
+    return block?.kind === "control" && block.payload.control === "cut"
+        ? block as CutPointBlock
         : null;
 }
 
@@ -319,8 +426,27 @@ function pruneScene(scene: StoryScene, options: AppTagFoldOptions): StoryScene {
             removed.add(block.id);
             continue;
         }
+        if (asCutPoint(block)) {
+            // Every cut point goes, this variant's included - the one that takes effect adds the
+            // rest of the story below, and the rest carry the id of a variant this edition is not.
+            removed.add(block.id);
+            continue;
+        }
         if (isConditionBlock(block)) {
             planCondition(scene, block, options, removed, rewritten);
+        }
+    }
+    // The release edition is the whole story, so nothing it is built as can end one early. Checked
+    // once rather than per row, which also keeps the walk below off every release build.
+    if (!isBuiltinAppTagId(options.tagId)) {
+        const live = listSceneBlocksInDocumentOrder(scene, { skipSubtree: entry => Boolean(entry.disabled) });
+        for (const block of live) {
+            const cut = asCutPoint(block);
+            // Exact, and never through `resolveAppTag`: an id no variant answers to must cut nothing,
+            // where resolution would answer release and truncate every release build instead.
+            if (cut && cut.payload.appTagId === options.tagId) {
+                addCutTail(scene, cut.id, removed);
+            }
         }
     }
 
@@ -328,6 +454,58 @@ function pruneScene(scene: StoryScene, options: AppTagFoldOptions): StoryScene {
         return scene;
     }
     return rebuildScene(scene, expandToSubtrees(scene, removed), rewritten);
+}
+
+/**
+ * Everything a cut point ends: itself, every following sibling at its own level, and - walking up to
+ * the scene root - every following sibling of each of its ancestors. Each contributes only its own
+ * id; `expandToSubtrees` closes the set over descendants, so this is one more contributor to the
+ * scene's single removal set rather than a second pass over the blocks.
+ *
+ * An ancestor is never removed itself, only what follows it: the rows before the cut inside that
+ * container are the ones the story still plays on its way to the ending.
+ */
+function addCutTail(scene: StoryScene, cutId: StoryBlockId, removed: Set<StoryBlockId>): void {
+    const parents = childToParent(scene);
+    const climbed = new Set<StoryBlockId>();
+    let cursor: StoryBlockId | undefined = cutId;
+    let inclusive = true;
+    while (cursor && !climbed.has(cursor)) {
+        climbed.add(cursor);
+        const parentId = parents.get(cursor);
+        const siblings = parentId ? scene.blocks[parentId]?.childrenIds ?? [] : scene.rootBlockIds;
+        const position = siblings.indexOf(cursor);
+        if (position < 0) {
+            // Neither a root nor listed by any parent - a block only corruption produces. The row
+            // itself still goes; there is no list to read a "rest of the story" out of.
+            if (inclusive) {
+                removed.add(cursor);
+            }
+            return;
+        }
+        for (const siblingId of siblings.slice(inclusive ? position : position + 1)) {
+            removed.add(siblingId);
+        }
+        cursor = parentId;
+        inclusive = false;
+    }
+}
+
+/**
+ * Who lists each block as a child. Read from `childrenIds` rather than from `parentId`, because
+ * `childrenIds` is what the compiler walks and what `rebuildScene` writes - a stale `parentId` would
+ * point the climb at a container the row is no longer inside.
+ */
+function childToParent(scene: StoryScene): Map<StoryBlockId, StoryBlockId> {
+    const parents = new Map<StoryBlockId, StoryBlockId>();
+    for (const block of Object.values(scene.blocks)) {
+        for (const childId of block.childrenIds) {
+            if (!parents.has(childId)) {
+                parents.set(childId, block.id);
+            }
+        }
+    }
+    return parents;
 }
 
 /**
@@ -444,6 +622,89 @@ function rebuildScene(
         rootBlockIds: scene.rootBlockIds.filter(blockId => !removed.has(blockId)),
         blocks,
     };
+}
+
+// ── Dropping the scenes the story can no longer reach ─────────────────────────────────────────────
+
+/**
+ * The document without the scenes nothing can get to any more.
+ *
+ * This is what makes a demo a demo rather than the whole script with an early ending: the chapters
+ * past the cut are still whole scenes in `scenes`, and a scene left in that record ships every line
+ * it holds.
+ *
+ * Conservative in exactly one direction, because the two mistakes are not comparable: keeping an
+ * unreachable scene costs bytes, while dropping a reachable one ships a game that stops dead when a
+ * player walks into the gap. So the sweep starts from every scene the runtime can enter and follows
+ * only edges it can read; anything it cannot read is the caller's cue not to ask for the sweep at
+ * all (see {@link SceneReachability}).
+ */
+function dropUnreachableScenes(document: StoryDocument, reachability: SceneReachability): StoryDocument {
+    const reachable = reachableSceneIds(document, reachability.entrySceneIds);
+    const entries = Object.entries(document.scenes ?? {});
+    if (entries.every(([sceneId]) => reachable.has(sceneId))) {
+        return document;
+    }
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of entries) {
+        if (reachable.has(sceneId)) {
+            scenes[sceneId] = scene;
+        }
+    }
+    // The two order lists are pruned with it. A stale id in either is tolerated by every reader, but
+    // it would still state a position for a scene that is not in the package.
+    return {
+        ...document,
+        scenes,
+        chapters: (document.chapters ?? []).map(chapter => ({
+            ...chapter,
+            sceneIds: (chapter.sceneIds ?? []).filter(sceneId => reachable.has(sceneId)),
+        })),
+        ...(document.unassignedSceneIds
+            ? { unassignedSceneIds: document.unassignedSceneIds.filter(sceneId => reachable.has(sceneId)) }
+            : {}),
+    };
+}
+
+/**
+ * Every scene the story can still be in, from the scenes it can be entered at outwards.
+ *
+ * The story's own start is `entrySceneId` when it names a scene the document has, and otherwise the
+ * first scene in authoring order - the same fallback `resolveDefaultLaunchScene` takes at boot, so a
+ * project that never marked an entry does not lose the scene its game opens in.
+ *
+ * The only edge is a `jump`, which is the only construct in a story document that names a scene, and
+ * a disabled one is not an edge: the compiler drops a disabled subtree before it emits anything, so
+ * such a jump provably cannot run in this package.
+ */
+function reachableSceneIds(document: StoryDocument, externalEntries: readonly StorySceneId[]): Set<StorySceneId> {
+    const ordered = listSceneIdsInDocumentOrder(document);
+    const start = document.entrySceneId && document.scenes[document.entrySceneId]
+        ? document.entrySceneId
+        : ordered[0];
+    const reachable = new Set<StorySceneId>();
+    const queue: StorySceneId[] = [];
+    const enter = (sceneId: StorySceneId | undefined): void => {
+        if (!sceneId || reachable.has(sceneId) || !document.scenes[sceneId]) {
+            return;
+        }
+        reachable.add(sceneId);
+        queue.push(sceneId);
+    };
+    enter(start);
+    for (const sceneId of externalEntries) {
+        enter(sceneId);
+    }
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+        const scene = document.scenes[queue[cursor]];
+        const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
+        for (const block of blocks) {
+            if (block.kind === "jump") {
+                enter(block.payload.targetSceneId);
+            }
+        }
+    }
+    return reachable;
 }
 
 // ── Folding everything a document holds ───────────────────────────────────────────────────────────

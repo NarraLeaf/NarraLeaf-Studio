@@ -957,6 +957,11 @@ export class GameBuildManager {
             await this.optimizeCompiledSite(session, webArtifact.appDir, projectConfig);
             this.ensureNotCancelled(session);
         }
+        // From one compile only: both read the same project under the same variant, so the second
+        // has nothing to say that the first did not.
+        for (const notice of (desktopArtifact ?? webArtifact)?.notices ?? []) {
+            this.emit(session, { level: "info", source: "Build", message: notice });
+        }
         // The player-facing notice, written once and shipped by every target that has a place to
         // put it. Into the web site's root directly, since that root IS what gets served; for the
         // desktop packages it is handed to electron-builder as an extra file, which is what puts

@@ -21,7 +21,12 @@ import { ConsoleService, type ConsoleLogLevel } from "./ConsoleService";
 import { CharacterService } from "./CharacterService";
 import { StoryService } from "../story/StoryService";
 import { collectInvalidBlocks, type InvalidStoryBlockRef } from "../story/storyModel";
-import { collectUnfoldableAppTagUses, type UnfoldableAppTagUse } from "@shared/story/appTagFold";
+import {
+    collectNestedCutPoints,
+    collectUnfoldableAppTagUses,
+    type NestedCutPoint,
+    type UnfoldableAppTagUse,
+} from "@shared/story/appTagFold";
 import { AppTagService } from "../appTag/AppTagService";
 import { translate, translateN } from "@/lib/i18n";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
@@ -260,6 +265,36 @@ export class BuildService extends Service<BuildService> {
             });
             return this.state;
         }
+        // The other half of the same gate, over the same documents the sweep above just read.
+        //
+        // A cut point inside a condition or a group cannot be honoured: whether the story ends there
+        // depends on a test only the running game performs, and there is no "end the story" action to
+        // emit instead - so the package's content boundary would have to be guessed. That is the
+        // unconditional class exactly, and refusing is the alternative to shipping a boundary nobody
+        // chose. Release refuses it too: the row is equally unanalysable there, and an author who
+        // only ever builds release should learn about it at their first build, not their first demo.
+        const nestedCuts = await this.collectNestedCutPoints();
+        if (nestedCuts.length > 0) {
+            const consoleService = this.tryGetConsole();
+            const appTags = this.getContext().services.get<AppTagService>(Services.AppTags);
+            for (const cut of nestedCuts) {
+                consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate("build.cutPointNested", {
+                    story: cut.storyName,
+                    scene: cut.sceneName,
+                    // `getTag`, not `resolveTag`: an id no variant answers to must not print as
+                    // "Release", which is the one variant a cut point can never mean.
+                    variant: appTags.getTag(cut.appTagId)?.name ?? cut.appTagId,
+                }), { source: BUILD_CONSOLE_SOURCE });
+            }
+            this.updateState({
+                status: "error",
+                startedAt,
+                finishedAt: Date.now(),
+                platforms,
+                error: translateN("build.cutPointNestedSummary", nestedCuts.length, { count: nestedCuts.length }),
+            });
+            return this.state;
+        }
         // Third of the unconditional correctness gates, and placed here for the same reason the
         // invalid-command gate is first: it is free. It walks the blueprint document already in
         // memory, so a build that will be refused anyway does not first pay for a media probe.
@@ -355,6 +390,28 @@ export class BuildService extends Service<BuildService> {
             } catch (error) {
                 // A story that will not load is the packer's problem to report, not ours to mask.
                 console.error(`[Build] could not scan story ${entry.id} for AppTag comparisons`, error);
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Every cut point that is not at the top level of its scene, across every story - the same reach
+     * as the two sweeps above, and free for the same reason: by now each document is in the story
+     * service's cache, so this reads memory rather than disk.
+     *
+     * Takes no variant. A cut point inside a condition is unanalysable under every one of them,
+     * release included, so one refusal covers them all.
+     */
+    private async collectNestedCutPoints(): Promise<NestedCutPoint[]> {
+        const story = this.getContext().services.get<StoryService>(Services.Story);
+        const found: NestedCutPoint[] = [];
+        for (const entry of story.getLibraryIndex().stories) {
+            try {
+                found.push(...collectNestedCutPoints(await story.loadStory(entry.id)));
+            } catch (error) {
+                // A story that will not load is the packer's problem to report, not ours to mask.
+                console.error(`[Build] could not scan story ${entry.id} for cut points`, error);
             }
         }
         return found;

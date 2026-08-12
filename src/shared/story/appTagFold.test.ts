@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import {
     STORY_DOCUMENT_SCHEMA_VERSION,
     type StoryBlock,
@@ -10,6 +11,7 @@ import {
 import { createStoryExpressionScope, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import {
     applyAppTagToStoryDocument,
+    collectNestedCutPoints,
     collectUnfoldableAppTagUses,
     foldStoryExpression,
     staticConditionValue,
@@ -24,6 +26,10 @@ import {
  * parent points at, and a test that only checked the links would pass on a package that still
  * carried the demo's dialogue.
  */
+
+/** The two editions every document case below is produced as. */
+const RELEASE = { tagName: "Release", tagId: APP_TAG_ID_RELEASE };
+const DEMO = { tagName: "Demo", tagId: "tag-demo" };
 
 const SCOPE = createStoryExpressionScope(
     [{ name: "gold", ref: { scope: "scene", variableId: "var-gold" } }],
@@ -206,7 +212,7 @@ describe("applyAppTagToStoryDocument", () => {
             { branch: "if", source: "AppTag == \"Demo\"", line: "only in the demo" },
             { branch: "else", line: "everywhere else" },
         ]));
-        const out = applyAppTagToStoryDocument(built, { tagName: "Release" });
+        const out = applyAppTagToStoryDocument(built, RELEASE);
         const result = out.scenes["scene-1"];
 
         expect(Object.keys(result.blocks)).not.toContain("branch-0");
@@ -223,7 +229,7 @@ describe("applyAppTagToStoryDocument", () => {
             { branch: "elseIf", source: "gold > 0", line: "rich" },
             { branch: "else", line: "poor" },
         ]));
-        const result = applyAppTagToStoryDocument(built, { tagName: "Demo" }).scenes["scene-1"];
+        const result = applyAppTagToStoryDocument(built, DEMO).scenes["scene-1"];
 
         expect(result.blocks.cond.childrenIds).toEqual(["branch-0"]);
         expect(result.blocks["line-1"]).toBeUndefined();
@@ -235,7 +241,7 @@ describe("applyAppTagToStoryDocument", () => {
             { branch: "if", source: "AppTag == \"Demo\"", line: "demo" },
             { branch: "else", line: "everywhere else" },
         ]));
-        const result = applyAppTagToStoryDocument(built, { tagName: "Release" }).scenes["scene-1"];
+        const result = applyAppTagToStoryDocument(built, RELEASE).scenes["scene-1"];
         const head = result.blocks["branch-1"];
 
         expect(head.kind === "control" && head.payload.control === "conditionBranch" && head.payload.branch).toBe("if");
@@ -247,7 +253,7 @@ describe("applyAppTagToStoryDocument", () => {
 
     it("drops the whole condition when no branch survives", () => {
         const built = document(conditionScene([{ branch: "if", source: "AppTag == \"Demo\"", line: "demo" }]));
-        const result = applyAppTagToStoryDocument(built, { tagName: "Release" }).scenes["scene-1"];
+        const result = applyAppTagToStoryDocument(built, RELEASE).scenes["scene-1"];
 
         expect(result.rootBlockIds).toEqual([]);
         expect(Object.keys(result.blocks)).toEqual([]);
@@ -258,7 +264,7 @@ describe("applyAppTagToStoryDocument", () => {
             { branch: "if", source: "gold > 0", line: "rich" },
             { branch: "else", line: "poor" },
         ]));
-        expect(applyAppTagToStoryDocument(built, { tagName: "Release" })).toBe(built);
+        expect(applyAppTagToStoryDocument(built, RELEASE)).toBe(built);
     });
 
     it("does not let a disabled branch decide the chain", () => {
@@ -269,7 +275,7 @@ describe("applyAppTagToStoryDocument", () => {
             { branch: "elseIf", source: "AppTag == \"Demo\"", line: "also demo" },
             { branch: "else", line: "everywhere else" },
         ]));
-        const result = applyAppTagToStoryDocument(built, { tagName: "Demo" }).scenes["scene-1"];
+        const result = applyAppTagToStoryDocument(built, DEMO).scenes["scene-1"];
 
         expect(result.blocks["line-1"]).toBeTruthy();
         expect(result.blocks["line-2"]).toBeUndefined();
@@ -291,7 +297,7 @@ describe("applyAppTagToStoryDocument", () => {
             }),
             block({ id: "opt-line", kind: "nodeAction", parentId: "opt", payload: { action: "narration", text: segment("thanks") } }),
         ], ["choice"]));
-        const result = applyAppTagToStoryDocument(built, { tagName: "Release" }).scenes["scene-1"];
+        const result = applyAppTagToStoryDocument(built, RELEASE).scenes["scene-1"];
 
         expect(result.blocks.opt).toBeUndefined();
         expect(result.blocks["opt-line"]).toBeUndefined();
@@ -315,7 +321,7 @@ describe("applyAppTagToStoryDocument", () => {
                 },
             }),
         ], ["loop", "line"]));
-        const result = applyAppTagToStoryDocument(built, { tagName: "Demo" }).scenes["scene-1"];
+        const result = applyAppTagToStoryDocument(built, DEMO).scenes["scene-1"];
         const loop = result.blocks.loop;
         const line = result.blocks.line;
 
@@ -325,5 +331,209 @@ describe("applyAppTagToStoryDocument", () => {
         // beside a tree that says `"Demo"` would be two answers to one question.
         expect(line.kind === "nodeAction" && line.payload.action === "narration" && line.payload.text.rich)
             .toEqual([{ interpolation: { kind: "expression", expression: { source: "\"Demo\"", ast: { kind: "literal", value: "Demo" } } } }]);
+    });
+});
+
+// ── Cut points and the scenes they orphan ─────────────────────────────────────────────────────────
+
+function namedScene(id: string, name: string, blocks: StoryBlock[], rootBlockIds: string[]): StoryScene {
+    return {
+        id,
+        name,
+        runtimeName: id,
+        rootBlockIds,
+        blocks: Object.fromEntries(blocks.map(entry => [entry.id, entry])),
+    };
+}
+
+/** A story of several scenes, all filed under one chapter - the shape `createStory` produces. */
+function story(scenes: StoryScene[], entrySceneId?: string): StoryDocument {
+    return {
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        id: "story-1",
+        name: "Story",
+        chapters: [{ id: "chapter-1", name: "Chapter 1", sceneIds: scenes.map(entry => entry.id) }],
+        scenes: Object.fromEntries(scenes.map(entry => [entry.id, entry])),
+        ...(entrySceneId ? { entrySceneId } : {}),
+    };
+}
+
+function line(id: string, text: string, parentId: string | null = null): StoryBlock {
+    return block({ id, kind: "nodeAction", parentId, payload: { action: "narration", text: segment(text) } });
+}
+
+type CutPlacement = { parentId?: string | null; disabled?: boolean };
+
+function cut(id: string, appTagId: string, extra?: CutPlacement): StoryBlock {
+    return block({ id, kind: "control", payload: { control: "cut", appTagId }, ...extra });
+}
+
+function jump(id: string, targetSceneId: string): StoryBlock {
+    return block({ id, kind: "jump", payload: { targetSceneId } });
+}
+
+/** `before`, the cut point, `after`, then a group holding one line. */
+function cutScene(appTagId: string, extra?: CutPlacement): StoryScene {
+    return namedScene("scene-1", "Intro", [
+        line("a", "before the cut"),
+        cut("c", appTagId, extra),
+        line("b", "after the cut"),
+        block({ id: "group", kind: "control", childrenIds: ["inner"], payload: { control: "sequence" } }),
+        line("inner", "inside the group", "group"),
+    ], ["a", "c", "b", "group"]);
+}
+
+describe("cut points", () => {
+    it("ends the scene at the row, block map and all", () => {
+        const result = applyAppTagToStoryDocument(story([cutScene("tag-demo")]), DEMO).scenes["scene-1"];
+
+        expect(result.rootBlockIds).toEqual(["a"]);
+        // The rows after it are gone from the record, not merely unlinked - a block left there ships
+        // its every line whatever `rootBlockIds` says.
+        expect(Object.keys(result.blocks)).toEqual(["a"]);
+    });
+
+    it("drops the row and nothing else when the build is another variant", () => {
+        const result = applyAppTagToStoryDocument(story([cutScene("tag-demo")]), RELEASE).scenes["scene-1"];
+
+        expect(result.rootBlockIds).toEqual(["a", "b", "group"]);
+        // The row itself still goes: it does nothing at play time, and leaving it in ships the id of
+        // a variant the player's edition is not.
+        expect(result.blocks.c).toBeUndefined();
+        expect(result.blocks.inner).toBeTruthy();
+    });
+
+    it("cuts nothing for a variant the project no longer has", () => {
+        // Deleting a variant keeps its rows and makes them inert. A stale row that started
+        // truncating builds would be the exact opposite of that.
+        const result = applyAppTagToStoryDocument(story([cutScene("tag-deleted")]), DEMO).scenes["scene-1"];
+
+        expect(result.rootBlockIds).toEqual(["a", "b", "group"]);
+        expect(result.blocks.c).toBeUndefined();
+    });
+
+    it("cuts nothing when it names the release variant", () => {
+        const result = applyAppTagToStoryDocument(story([cutScene(APP_TAG_ID_RELEASE)]), DEMO).scenes["scene-1"];
+
+        expect(result.rootBlockIds).toEqual(["a", "b", "group"]);
+    });
+
+    it("lets a disabled cut point decide nothing", () => {
+        const result = applyAppTagToStoryDocument(story([cutScene("tag-demo", { disabled: true })]), DEMO)
+            .scenes["scene-1"];
+
+        expect(result.rootBlockIds).toEqual(["a", "b", "group"]);
+    });
+
+    it("keeps what came before it inside every container it sits in", () => {
+        const built = story([namedScene("scene-1", "Intro", [
+            block({ id: "group", kind: "control", childrenIds: ["kept", "c", "dropped"], payload: { control: "sequence" } }),
+            line("kept", "still played", "group"),
+            cut("c", "tag-demo", { parentId: "group" }),
+            line("dropped", "after the cut", "group"),
+            line("tail", "after the group"),
+        ], ["group", "tail"])]);
+        const result = applyAppTagToStoryDocument(built, DEMO).scenes["scene-1"];
+
+        expect(result.rootBlockIds).toEqual(["group"]);
+        expect(result.blocks.group.childrenIds).toEqual(["kept"]);
+        expect(result.blocks.dropped).toBeUndefined();
+        expect(result.blocks.tail).toBeUndefined();
+    });
+});
+
+describe("collectNestedCutPoints", () => {
+    it("names the story, the scene, the row and the variant it names", () => {
+        const built = story([namedScene("scene-1", "Intro", [
+            block({ id: "group", kind: "control", childrenIds: ["c"], payload: { control: "sequence" } }),
+            cut("c", "tag-demo", { parentId: "group" }),
+        ], ["group"])]);
+
+        expect(collectNestedCutPoints(built)).toEqual([{
+            storyId: "story-1",
+            storyName: "Story",
+            sceneId: "scene-1",
+            sceneName: "Intro",
+            blockId: "c",
+            appTagId: "tag-demo",
+        }]);
+    });
+
+    it("says nothing about a cut point at the top of its scene", () => {
+        expect(collectNestedCutPoints(story([cutScene("tag-demo")]))).toEqual([]);
+    });
+
+    it("says nothing about a row inside a disabled group", () => {
+        const built = story([namedScene("scene-1", "Intro", [
+            block({
+                id: "group",
+                kind: "control",
+                childrenIds: ["c"],
+                payload: { control: "sequence" },
+                disabled: true,
+            }),
+            cut("c", "tag-demo", { parentId: "group" }),
+        ], ["group"])]);
+
+        expect(collectNestedCutPoints(built)).toEqual([]);
+    });
+});
+
+describe("dropping the scenes the story can no longer reach", () => {
+    /** Intro ends at the cut for the demo, and Ending is only reachable through the jump after it. */
+    function twoScenes(): StoryDocument {
+        return story([
+            namedScene("scene-1", "Intro", [
+                line("a", "hello"),
+                cut("c", "tag-demo"),
+                jump("j", "scene-2"),
+            ], ["a", "c", "j"]),
+            namedScene("scene-2", "Ending", [line("b", "the secret ending")], ["b"]),
+        ], "scene-1");
+    }
+
+    it("drops the scene the cut orphaned, prose and all", () => {
+        const result = applyAppTagToStoryDocument(twoScenes(), { ...DEMO, sceneReachability: { entrySceneIds: [] } });
+
+        expect(result.scenes["scene-2"]).toBeUndefined();
+        // The assertion that matters: the words are not in the bytes, not merely out of the graph.
+        expect(JSON.stringify(result)).not.toContain("the secret ending");
+        expect(result.chapters[0].sceneIds).toEqual(["scene-1"]);
+    });
+
+    it("keeps a scene the story still jumps to", () => {
+        const result = applyAppTagToStoryDocument(twoScenes(), { ...RELEASE, sceneReachability: { entrySceneIds: [] } });
+
+        expect(result.scenes["scene-2"]).toBeTruthy();
+    });
+
+    it("keeps a scene something outside the story starts at", () => {
+        const result = applyAppTagToStoryDocument(twoScenes(), {
+            ...DEMO,
+            sceneReachability: { entrySceneIds: ["scene-2"] },
+        });
+
+        expect(result.scenes["scene-2"]).toBeTruthy();
+    });
+
+    it("drops nothing at all when the sweep was not asked for", () => {
+        // What a project with an indirect jump gets: a blueprint that can name any scene while the
+        // game runs leaves the caller no way to answer, so the story ships whole rather than
+        // partly swept.
+        const result = applyAppTagToStoryDocument(twoScenes(), DEMO);
+
+        expect(result.scenes["scene-2"]).toBeTruthy();
+        expect(JSON.stringify(result)).toContain("the secret ending");
+    });
+
+    it("starts at the first scene when the author marked no entry", () => {
+        const built = story([
+            namedScene("scene-1", "Intro", [line("a", "hello")], ["a"]),
+            namedScene("scene-2", "Ending", [line("b", "unreached")], ["b"]),
+        ]);
+        const result = applyAppTagToStoryDocument(built, { ...DEMO, sceneReachability: { entrySceneIds: [] } });
+
+        expect(result.scenes["scene-1"]).toBeTruthy();
+        expect(result.scenes["scene-2"]).toBeUndefined();
     });
 });
