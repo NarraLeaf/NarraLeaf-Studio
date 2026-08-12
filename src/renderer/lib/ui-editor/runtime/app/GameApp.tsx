@@ -138,6 +138,7 @@ import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
 import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from "./layers/LayerStackController";
 import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
+import { buildCompositeView } from "./layers/compositeView";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -395,7 +396,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     // screen with another, and a layer replaces nothing. An empty stack is what makes paging behave
     // exactly as it did before layers existed.
     const layerStack = useMemo(() => providedLayerStack ?? new LayerStackController(), [providedLayerStack]);
-    const layers = useLayerStack(layerStack);
+    const layerState = useLayerStack(layerStack);
+    const layers = layerState.layers;
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
     const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSession] = useState<NlrStageSession | null>(null);
@@ -2308,6 +2310,26 @@ export function GameApp(props: GameAppProps): ReactNode {
         layers: visibleLayers.map(item => item.layer),
     });
 
+    /**
+     * Which layers this render left off the screen, told to the stack that holds them.
+     *
+     * A layer naming a surface the running bundle does not have is filtered out above, so the stack
+     * says it is present while nothing of it is drawn. Removing one starts no exit animation, and
+     * the presence group therefore never reports one finished: `Hide Layer` waited for a frame that
+     * was never coming, and a mutually exclusive group stayed occupied by something invisible. The
+     * stack settles those waits itself once it knows which of its layers have no frame to lose.
+     */
+    const renderedLayerKeys = new Set(nlrPreloadDone ? visibleLayers.map(item => item.layer.key) : []);
+    const unrenderedLayerKeys = layers
+        .filter(layer => !renderedLayerKeys.has(layer.key))
+        .map(layer => layer.key);
+    const unrenderedLayerKeysRef = useRef<readonly string[]>(unrenderedLayerKeys);
+    unrenderedLayerKeysRef.current = unrenderedLayerKeys;
+    const unrenderedLayerKeysToken = unrenderedLayerKeys.join(" ");
+    useEffect(() => {
+        layerStack.setUnrenderedLayers(unrenderedLayerKeysRef.current);
+    }, [layerStack, unrenderedLayerKeysToken]);
+
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
         prepaintReadyKeys.has(activeEntry.key) &&
@@ -2920,6 +2942,31 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const gameViewport = nlrSession ? { width: nlrSession.width, height: nlrSession.height } : null;
 
+    /**
+     * What a host overlay is handed, built only if there is one asking.
+     *
+     * A function rather than a value so the composite is described for a reader that exists: a
+     * packaged game renders no overlays at all, and it should not pay a walk of the stack per frame
+     * to tell nobody what is on it.
+     */
+    const overlayContext = (): GameAppOverlayContext => ({
+        core,
+        activeSurface,
+        widgetRuntimeStore,
+        fastForwardToNextChoice: fastForwardToNextChoiceInGame,
+        storyRuntime,
+        saves: savesBridge,
+        composite: buildCompositeView({
+            activePageEntry: activeEntry,
+            layers,
+            queued: layerState.queued,
+            renderedLayerKeys,
+            resolution: compositeInput,
+            exitPending: layerState.exitPending,
+            surfaceName: surfaceId => findSurface(bundle, surfaceId)?.name ?? null,
+        }),
+    });
+
     if (!host.ready || !core || !hostAdapterBundle) {
         // Keep the same root element shape as the ready branch below: switching the root type
         // (Fragment → Provider) when the host becomes ready would make React unmount and
@@ -2927,7 +2974,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return (
             <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
                 {renderFrame({ activeSurface, gameViewport, children: null })}
-                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime, saves: savesBridge })}
+                {renderOverlays?.(overlayContext())}
             </GameLocalizationContext.Provider>
         );
     }
@@ -3185,7 +3232,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
             {renderFrame({ activeSurface, gameViewport, children: content })}
-            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime, saves: savesBridge })}
+            {renderOverlays?.(overlayContext())}
         </GameLocalizationContext.Provider>
     );
 }
