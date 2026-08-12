@@ -253,6 +253,16 @@ export const build = {
         one: "构建已中止：有 {count} 条无效指令，详见控制台",
         other: "构建已中止：有 {count} 条无效指令，详见控制台",
     },
+    appTagUnresolved: "{story} / {scene} 中 AppTag 没有得出固定值：{source}",
+    appTagUnresolvedSummary: {
+        one: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
+        other: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
+    },
+    cutPointNested: "{story} / {scene} 中 {variant} 的截断点位于条件或分组内部，请把它移到场景顶层",
+    cutPointNestedSummary: {
+        one: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
+        other: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
+    },
     mediaNeedsConverting: "{asset} 无法播放，请在素材面板中转换",
     mediaNotPlayable: "{asset} 不含音频也不含视频，请替换或删除该文件",
     mediaSummary: {

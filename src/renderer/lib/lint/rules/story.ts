@@ -1,6 +1,7 @@
 import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import type { BlueprintDocument, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import {
+    collectAppTagComparisonNames,
     duplicateSceneLabels,
     listSceneBlocksInDocumentOrder,
     listSceneLabels,
@@ -8,6 +9,7 @@ import {
     sceneLabelNames,
     type StoryBlock,
     type StoryBlockId,
+    type StoryExpr,
     type StoryScene,
     type StorySceneId,
 } from "@shared/types/story";
@@ -593,4 +595,79 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
             return findings;
         },
     },
+    {
+        /**
+         * `AppTag == "Demo"` where the project has no variant called `Demo`.
+         *
+         * A warning rather than an error, and never a build gate: the comparison is perfectly
+         * well-formed and folds to a constant `false`, so nothing is broken - what it means is that
+         * the content behind it ships in no build at all. Deleting a variant on purpose is an
+         * ordinary thing to do, and it must not lock the author out of every build until they have
+         * been through every row that named it.
+         *
+         * Names are compared exactly, case included, because that is what the fold does.
+         */
+        id: "story/app-tag-unknown",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyAppTagUnknown",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            const known = new Set(ctx.appTags.map(tag => tag.name));
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const block of liveBlocks(scene)) {
+                    for (const name of appTagNamesNamedByBlock(block)) {
+                        if (known.has(name)) {
+                            continue;
+                        }
+                        findings.push({
+                            ruleId: "story/app-tag-unknown",
+                            messageKey: "lint.rule.storyAppTagUnknown.message",
+                            messageParams: { name },
+                            location: storyLocation(entry, scene, block.id),
+                            target: blockTarget(entry, scene, block.id),
+                        });
+                    }
+                }
+            }
+            return findings;
+        },
+    },
 ];
+
+/**
+ * Every variant name one row compares `AppTag` against.
+ *
+ * The payload is walked structurally rather than field by field, for the reason the fold does the
+ * same: an expression sits in a branch condition, a choice option's two conditions, a loop's
+ * `until`, an assignment and an inline interpolation, and a list of those would be one edit behind
+ * the next schema version. A row that names the same variant twice reports it once.
+ */
+function appTagNamesNamedByBlock(block: StoryBlock): string[] {
+    const found: string[] = [];
+    const seen = new Set<string>();
+    const walk = (value: unknown, visited: Set<object>): void => {
+        if (!value || typeof value !== "object") {
+            return;
+        }
+        const expression = value as { source?: unknown; ast?: unknown };
+        if (typeof expression.source === "string" && expression.ast && typeof expression.ast === "object") {
+            for (const name of collectAppTagComparisonNames(expression.ast as StoryExpr)) {
+                if (!seen.has(name)) {
+                    seen.add(name);
+                    found.push(name);
+                }
+            }
+            return;
+        }
+        if (visited.has(value)) {
+            return;
+        }
+        visited.add(value);
+        for (const child of Array.isArray(value) ? value : Object.values(value)) {
+            walk(child, visited);
+        }
+    };
+    walk(block.payload, new Set<object>());
+    return found;
+}
