@@ -2,16 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
     APP_TAG_ID_RELEASE,
     APP_TAG_SCHEMA_VERSION,
+    appTagMechanismKey,
     countAppTagReferences,
     findAppTagByName,
     hasAppTag,
+    hasAppTagReachableScenes,
     listAppTags,
     migrateProjectAppTagDocument,
     normalizeAppTagPluginConfig,
+    normalizeAppTagReachableScenes,
     normalizeProjectAppTags,
     resolveAppTag,
     resolveAppTagIdentity,
     resolveAppTagPluginConfigValue,
+    resolveAppTagReachableScenes,
     uniqueAppTagName,
     variantStorablePluginConfig,
     type AppTagBaseIdentity,
@@ -296,5 +300,104 @@ describe("app tag plugin config", () => {
             "acme.steam": { branch: "beta" },
             "acme.uninstalled": { anything: "kept" },
         });
+    });
+});
+
+describe("app tag scene declarations", () => {
+    const NODE = appTagMechanismKey({
+        kind: "startStoryNode",
+        blueprintId: "bp-1",
+        graphKind: "event",
+        graphId: "ev-1",
+        nodeId: "n-1",
+    });
+
+    it("keeps well-formed pairs and drops what cannot be one", () => {
+        expect(normalizeAppTagReachableScenes({
+            [NODE]: [
+                { storyId: " story-1 ", sceneId: " scene-1 " },
+                { storyId: "story-1", sceneId: "scene-1" },
+                { storyId: "story-1", sceneId: "  " },
+                { storyId: 7, sceneId: "scene-2" },
+                "nonsense",
+            ],
+            "  ": [{ storyId: "story-1", sceneId: "scene-9" }],
+            "plugin:acme.thing": "not a list",
+        })).toEqual({ [NODE]: [{ storyId: "story-1", sceneId: "scene-1" }] });
+    });
+
+    it("keeps a declared empty list, which is not the same as no declaration", () => {
+        // Absent means undeclared and the build stops; empty means the author said this mechanism
+        // starts nothing here, and it does not.
+        const declared = normalizeAppTagReachableScenes({ [NODE]: [] });
+
+        expect(declared[NODE]).toEqual([]);
+        expect(hasAppTagReachableScenes(declared)).toBe(true);
+    });
+
+    it("keeps a declaration whose scene the project no longer has", () => {
+        // Dropping it would delete the author's answer and turn their next build into a refusal they
+        // never asked for. Reporting the stale scene is the surfaces' job, not the normalizer's.
+        expect(normalizeAppTagReachableScenes({ [NODE]: [{ storyId: "gone", sceneId: "gone" }] }))
+            .toEqual({ [NODE]: [{ storyId: "gone", sceneId: "gone" }] });
+    });
+
+    it("reads an unusable record as empty rather than throwing", () => {
+        expect(normalizeAppTagReachableScenes(undefined)).toEqual({});
+        expect(normalizeAppTagReachableScenes("nonsense")).toEqual({});
+        expect(normalizeAppTagReachableScenes([])).toEqual({});
+    });
+
+    it("lets a variant replace the project's list rather than adding to it", () => {
+        // A demo whose chapter select offers one chapter is stating a smaller set; a union would
+        // hand it the chapters it exists to leave out.
+        const tag: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            reachableScenes: { [NODE]: [{ storyId: "s", sceneId: "chapter-1" }] },
+        };
+        const base = {
+            [NODE]: [
+                { storyId: "s", sceneId: "chapter-1" },
+                { storyId: "s", sceneId: "chapter-2" },
+            ],
+            "plugin:acme.thing": [{ storyId: "s", sceneId: "gallery" }],
+        };
+
+        expect(resolveAppTagReachableScenes(tag, base)).toEqual({
+            [NODE]: [{ storyId: "s", sceneId: "chapter-1" }],
+            // Untouched keys stay inherited, which is what "states only what it says differently" means.
+            "plugin:acme.thing": [{ storyId: "s", sceneId: "gallery" }],
+        });
+    });
+
+    it("gives the three mechanism kinds keys that cannot collide", () => {
+        const keys = [
+            appTagMechanismKey({ kind: "scriptBlueprint", blueprintId: "shared-id" }),
+            appTagMechanismKey({ kind: "plugin", pluginId: "shared-id" }),
+            NODE,
+        ];
+
+        expect(new Set(keys).size).toBe(3);
+    });
+
+    it("carries both records through a document migration", () => {
+        const document = migrateProjectAppTagDocument({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [{ id: "demo", name: "Demo", reachableScenes: { [NODE]: [] } }],
+            reachableScenes: { [NODE]: [{ storyId: "s", sceneId: "sc" }] },
+        });
+
+        expect(document.reachableScenes).toEqual({ [NODE]: [{ storyId: "s", sceneId: "sc" }] });
+        expect(document.tags[0].reachableScenes).toEqual({ [NODE]: [] });
+    });
+
+    it("omits the record entirely when nothing is declared", () => {
+        const document = migrateProjectAppTagDocument({ schemaVersion: APP_TAG_SCHEMA_VERSION, tags: [] });
+
+        expect(document.reachableScenes).toBeUndefined();
+        expect(normalizeProjectAppTags([{ id: "demo", name: "Demo", reachableScenes: {} }])[0].reachableScenes)
+            .toBeUndefined();
     });
 });
