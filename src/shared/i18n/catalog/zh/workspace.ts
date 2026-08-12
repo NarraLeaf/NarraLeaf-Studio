@@ -610,11 +610,16 @@ export const workspace = {
             // 没有消息的版本会在上面的列表里用自己的编号称呼自己。
             commitPlaceholder: "这次改了什么？（可选）",
             commitMessage: "版本说明",
+            authorLabel: "这些版本记在谁名下",
+            authorPlaceholder: "你的名字",
+            authorSave: "保存这个名字",
             // 绝不是瞬时的：管线要先把这个窗口没保存的东西落完，再暂存整个工程，然后等后端把它的
             // store 写到磁盘上。
             committing: "正在提交这个版本…",
             // 「还没人看过」，这和「干净」不是一回事——而这个区别很重要，因为「看」就是一次扫描，
             // 这个界面绝不自己发起。
+            nothingToCommit: "自上个版本以来没有变更",
+            closingWithApp: "Studio 正在关闭，重启后再试",
             changesUnknown: "未检查",
             noChanges: "没有变更",
             changesCount: "{count} 项变更",
@@ -640,8 +645,35 @@ export const workspace = {
             // 作者会以为自己看全了要提交的东西，然后就提交了。
             changesMore: "还有 {count} 项未显示",
             // 检查点是 Studio 按计时器记下的；写一天下来会有几十个。
+            command: {
+                openRail: "打开版本控制",
+                commit: "提交版本",
+                refreshChanges: "检查变更",
+                compareChanges: "与上一个版本比较变更",
+            },
+            filterPlaceholder: "按名称或编号查找版本",
+            filterNoMatch: "已读取的 {count} 个版本里没有匹配",
+            today: "今天",
+            yesterday: "昨天",
+            compareBase: {
+                set: "让其他版本与这个版本比较",
+                clear: "不再与这个版本比较",
+                current: "正在与 {version} 比较",
+                compare: "与 {version} 比较",
+            },
             showCheckpoints: "显示 {count} 个检查点",
             hideCheckpoints: "隐藏检查点",
+            systemMessage: {
+                unnamed: "未命名的版本",
+                enabled: "已启用版本控制",
+                created: "已创建工程",
+                merge: "合并",
+                checkpoint: "检查点",
+                checkpointClose: "关闭工程前的检查点",
+                checkpointBuild: "构建前的检查点",
+                checkpointRestore: "还原前的检查点",
+                restored: "还原到 {version}",
+            },
             // 版本控制是**可选能力**——Epic 不为 macOS Intel 与 Windows ARM64 提供原生后端——所以
             // 这两句话不一样，因为作者只有其中一种情况能自己动手。两者都不渲染成禁用控件：在那些
             // 机器上这个功能从未发货，灰掉的轨道会把一台好机器说成装坏了。
