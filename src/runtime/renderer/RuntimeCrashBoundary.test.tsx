@@ -17,6 +17,7 @@ vi.mock("@/lib/i18n", () => ({
 }));
 
 import { RuntimeCrashBoundary } from "./RuntimeCrashBoundary";
+import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
 
 function Exploding(): never {
     throw new TypeError("Cannot read properties of undefined (reading 'designSize')");
@@ -28,6 +29,9 @@ describe("RuntimeCrashBoundary", () => {
         bridge = { log: (level, message) => { logged.push({ level, message }); } };
         // React prints the caught error itself; the test is not interested in its copy.
         vi.spyOn(console, "error").mockImplementation(() => undefined);
+        window.sessionStorage.clear();
+        clearAutomaticRestarts();
+        setRuntimeCrashPolicy("details");
     });
 
     afterEach(() => {
@@ -62,6 +66,53 @@ describe("RuntimeCrashBoundary", () => {
         bridge = null;
 
         expect(() => render(<RuntimeCrashBoundary><Exploding /></RuntimeCrashBoundary>)).not.toThrow();
+        expect(screen.getByText("game.crash.title")).toBeTruthy();
+    });
+
+    it("keeps the stack off the screen when the project asked for the log only", () => {
+        setRuntimeCrashPolicy("log");
+
+        render(<RuntimeCrashBoundary><Exploding /></RuntimeCrashBoundary>);
+
+        // The message still stands; what a player cannot act on does not.
+        expect(screen.getByText("game.crash.title")).toBeTruthy();
+        expect(screen.queryByText("game.crash.showDetails")).toBeNull();
+        // And the failure is still recorded, which is the floor under all three policies.
+        expect(logged).toHaveLength(1);
+    });
+
+    it("restarts instead of drawing anything when the project asked it to", () => {
+        setRuntimeCrashPolicy("restart");
+        const reload = vi.fn();
+        Object.defineProperty(window, "location", {
+            configurable: true,
+            value: { ...window.location, reload },
+        });
+
+        render(<RuntimeCrashBoundary><Exploding /></RuntimeCrashBoundary>);
+
+        expect(reload).toHaveBeenCalledTimes(1);
+        expect(logged.some(entry => entry.message.includes("policy: restart"))).toBe(true);
+    });
+
+    it("stops restarting and shows the screen once it is clearly not working", () => {
+        setRuntimeCrashPolicy("restart");
+        const reload = vi.fn();
+        Object.defineProperty(window, "location", {
+            configurable: true,
+            value: { ...window.location, reload },
+        });
+
+        // Three restarts already spent on this failure: the fourth has to become a screen, or the
+        // player watches a window flicker forever with nothing to read.
+        for (let attempt = 0; attempt < 3; attempt++) {
+            cleanup();
+            render(<RuntimeCrashBoundary><Exploding /></RuntimeCrashBoundary>);
+        }
+        cleanup();
+        render(<RuntimeCrashBoundary><Exploding /></RuntimeCrashBoundary>);
+
+        expect(reload).toHaveBeenCalledTimes(3);
         expect(screen.getByText("game.crash.title")).toBeTruthy();
     });
 

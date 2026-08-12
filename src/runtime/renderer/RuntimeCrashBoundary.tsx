@@ -1,6 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { CRASH_LOOP_LIMIT } from "@shared/utils/crashLoop";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 import { readRuntimeTestSignalReporter } from "../gameTestSignal";
+import { claimAutomaticRestart, getRuntimeCrashPolicy } from "./crashPolicy";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
 
 interface RuntimeCrashBoundaryProps {
@@ -61,6 +63,22 @@ export class RuntimeCrashBoundary extends Component<RuntimeCrashBoundaryProps, R
             });
         } catch {
             /* Same. A watching test missing one frame is not worth a second failure. */
+        }
+
+        // Reported first, restarted second. A build that restarts itself is usually one nobody is
+        // watching, which makes the log line the only thing that will ever be read about this.
+        //
+        // Bounded by the same count as the shell's own loop guard: a game that fails on the way up
+        // would otherwise reload forever, showing a flickering window and never the message. Once
+        // it gives up, the screen below is drawn instead, which is the only state a person can act
+        // from.
+        if (getRuntimeCrashPolicy() === "restart" && claimAutomaticRestart(CRASH_LOOP_LIMIT)) {
+            try {
+                bridge?.log("error", "[Crash] Restarting the game (policy: restart)");
+            } catch {
+                /* The restart matters more than the note about it. */
+            }
+            window.location.reload();
         }
     }
 

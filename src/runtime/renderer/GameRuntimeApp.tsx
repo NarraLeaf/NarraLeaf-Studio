@@ -15,6 +15,7 @@ import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFra
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
+import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
 import { readRuntimeTestSignalReporter } from "../gameTestSignal";
@@ -75,6 +76,11 @@ function useRuntimePack(): {
                  * live in an effect; the difference is that nothing it does is visible in that first
                  * frame, so a commit's delay costs nothing there.
                  */
+                // Before `setPack`, with the palette and for a related reason: anything that
+                // throws while this pack is being applied has to find the policy already in place.
+                // On the desktop shell this only confirms what the process argument said; on the
+                // web export, which has no such channel, it is the first answer there is.
+                setRuntimeCrashPolicy(nextPack.crash?.policy);
                 setActiveBrandPalette(nextPack.bundle.brand ?? BUILTIN_BRAND_COLORS);
                 setPack(nextPack);
                 setError(null);
@@ -551,6 +557,15 @@ export function GameRuntimeApp() {
         subscribeCloseRequested,
         saveStore,
     ]);
+
+    // The game is up: whatever automatic restarts it took to get here are spent, and the next
+    // failure is a new incident rather than the same one continuing. Without this, a game that
+    // crashed on Monday would refuse to restart itself on Tuesday.
+    useEffect(() => {
+        if (runtimeReady && host) {
+            clearAutomaticRestarts();
+        }
+    }, [runtimeReady, host]);
 
     const getScale = useCallback(() => renderScale, [renderScale]);
 

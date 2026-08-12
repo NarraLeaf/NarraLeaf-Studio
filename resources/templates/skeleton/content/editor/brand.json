@@ -27,6 +27,7 @@
     { "id": "surface.raised", "name": "Panel", "value": "#15171D" },
     { "id": "surface.overlay", "name": "Raised fill", "value": "#222630" },
     { "id": "text.subtle", "name": "Subtle text", "value": "#6E7681" },
-    { "id": "border.strong", "name": "Selected border", "value": "nlbrand:primary/0.7" }
+    { "id": "border.strong", "name": "Selected border", "value": "nlbrand:primary/0.7" },
+    { "id": "surface.active", "name": "Active fill", "value": "#1D414D" }
   ]
 }

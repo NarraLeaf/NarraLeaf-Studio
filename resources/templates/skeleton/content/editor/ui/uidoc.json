@@ -43917,66 +43917,6 @@
                       "value": 1
                     }
                   ]
-                },
-                {
-                  "key": "borderStyle",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "none"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderWidth",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "nlbrand:container.border"
-                    }
-                  ],
-                  "transition": {
-                    "type": "tween",
-                    "durationMs": 140,
-                    "easing": "easeOut"
-                  }
-                },
-                {
-                  "key": "effectTextShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ],
-                  "transition": {
-                    "type": "tween",
-                    "durationMs": 140,
-                    "easing": "easeOut"
-                  }
-                },
-                {
-                  "key": "effectGlow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ],
-                  "transition": {
-                    "type": "tween",
-                    "durationMs": 140,
-                    "easing": "easeOut"
-                  }
                 }
               ]
             },
@@ -43989,7 +43929,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:surface.active"
                     }
                   ],
                   "transition": {
@@ -44015,84 +43955,6 @@
                       "value": 1
                     }
                   ]
-                },
-                {
-                  "key": "borderStyle",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "solid"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderWidth",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 2
-                    }
-                  ]
-                },
-                {
-                  "key": "borderColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "nlbrand:primary"
-                    }
-                  ],
-                  "transition": {
-                    "type": "tween",
-                    "durationMs": 140,
-                    "easing": "easeOut"
-                  }
-                },
-                {
-                  "key": "effectTextShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": {
-                        "storage": "layer",
-                        "layer": {
-                          "offsetX": 0,
-                          "offsetY": 0,
-                          "blur": 12,
-                          "spread": 0,
-                          "color": "nlbrand:primary"
-                        }
-                      }
-                    }
-                  ],
-                  "transition": {
-                    "type": "tween",
-                    "durationMs": 140,
-                    "easing": "easeOut"
-                  }
-                },
-                {
-                  "key": "effectGlow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": {
-                        "storage": "layer",
-                        "layer": {
-                          "offsetX": 0,
-                          "offsetY": 0,
-                          "blur": 14,
-                          "spread": 2,
-                          "color": "nlbrand:primary"
-                        }
-                      }
-                    }
-                  ],
-                  "transition": {
-                    "type": "tween",
-                    "durationMs": 140,
-                    "easing": "easeOut"
-                  }
                 }
               ]
             }
