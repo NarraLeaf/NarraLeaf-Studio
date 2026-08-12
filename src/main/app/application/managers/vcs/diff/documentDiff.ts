@@ -210,6 +210,23 @@ export function specForDocumentPath(path: string): AnyDocumentSpec | undefined {
 export const CONTENT_HEAD_READ_CEILING = 2 * 1024 * 1024;
 
 /**
+ * Largest file either side of a comparison will hand the renderer **to draw**.
+ *
+ * A judgement on the same terms as the three ceilings above - nobody has measured a corpus of
+ * project art, and this is meant to be re-set the first time a real production turns up rather
+ * than defended as a measurement. 16 MiB is where a still stops being something an author put on
+ * screen and starts being a source file they keep beside it: a 4096x4096 sprite sheet with alpha
+ * lands under it, a layered master export does not. The bytes cross the process boundary
+ * base64-encoded, so the transfer costs about a third more again, per side.
+ *
+ * It bounds the WORKING-TREE side only, and the asymmetry is the same one
+ * {@link CONTENT_HEAD_READ_CEILING} describes with the sides the other way round: on disk a size
+ * is known before a byte is read, so the refusal costs nothing, while `storageGet` answers with a
+ * whole blob or nothing and a revision's size is only known once it has already been paid for.
+ */
+export const COMPARISON_PREVIEW_BYTE_CEILING = 16 * 1024 * 1024;
+
+/**
  * How many bytes reading this path would cost, or **0 for do not read it**.
  *
  * The one place the question "is this worth reading" is answered, so both comparison flows
@@ -247,6 +264,31 @@ export function planPathRead(
         return 0;
     }
     return baseSize + headSize;
+}
+
+/**
+ * What kind of thing a path holds, when both sides' bytes are already in hand.
+ *
+ * A path the NAME could not place is placed from its bytes, and doing it where the bytes already
+ * are costs no read at all. It is also the only place the revision side can do it, having no
+ * ranged fetch - and it is what stops every asset in a real project
+ * (`assets/content/<shard>/<shard>/<id>`, no extension anywhere) from being described as two byte
+ * counts. The newer side is asked first: it is what the file IS now.
+ *
+ * `declared` is for a caller that already settled the class some other way - the working-tree
+ * comparison sniffs a bounded prefix off disk before it plans anything.
+ */
+export function classOfReadSides(
+    path: string,
+    head: Buffer | null,
+    base: Buffer | null,
+    declared?: ContentClass,
+): ContentClass {
+    const named = declared ?? contentClassOf(path);
+    if (named !== "unknown") {
+        return named;
+    }
+    return (head ? contentClassOfBytes(head) : null) ?? (base ? contentClassOfBytes(base) : null) ?? named;
 }
 
 /** Compare two versions of one document, degrading through the four tiers as needed. */
@@ -313,16 +355,7 @@ export function diffDocumentBytes(request: DocumentDiffRequest, options: Documen
     // handing it to a header reader would produce "Studio does not recognise this format"
     // about a format Studio recognises perfectly well.
     //
-    // A path the NAME could not place is placed from its bytes here, and this is the cheapest
-    // place in the engine to do it: both sides are already in memory, so it costs no read at
-    // all. It is also the only place the revision side can do it, having no ranged fetch - and
-    // it is what stops every asset in a real project (`assets/content/<shard>/<shard>/<id>`,
-    // no extension anywhere) from falling through to two byte counts. The newer side is asked
-    // first: it is what the file IS now.
-    const named = request.contentClass ?? contentClassOf(request.path);
-    const contentClass = named === "unknown"
-        ? contentClassOfBytes(head) ?? contentClassOfBytes(base) ?? named
-        : named;
+    const contentClass = classOfReadSides(request.path, head, base, request.contentClass);
     if (!contentClassIsReadable(contentClass)) {
         return diffDocumentContent({
             path: request.path,
