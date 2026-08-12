@@ -1,3 +1,4 @@
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { DEFAULT_LINTING_CONFIGURATION, DEFAULT_NETWORK_CONFIGURATION } from "../workspace/project/configuration";
 import type { LintContext } from "./context";
 
@@ -24,6 +25,9 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         // about what happens when it is not.
         assetIndex: { complete: true, gaps: [] },
         characters: [],
+        // The release variant, because every project has it and a rule that saw an empty list would
+        // be reading a state no project can be in.
+        appTags: [RELEASE_APP_TAG],
         variableRegistry: [],
         persistentNameCollisions: [],
         savedNameCollisions: [],

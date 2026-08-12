@@ -32,6 +32,8 @@ import { normalizeAudioClipRegion } from "@shared/types/audio";
 import type { BrandColor } from "@shared/types/brand";
 import { migrateProjectBrandDocument, normalizeProjectBrandColors } from "@shared/types/brand";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { applyAppTagToStoryDocument } from "@shared/story/appTagFold";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
@@ -60,7 +62,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const variableTables = await loadVariableRuntimeTables(context.projectPath, uigraphsRaw.blueprintDocument);
     const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
-    const storyLibrary = await loadStoryLibrary(context.projectPath);
+    const storyLibrary = await loadStoryLibrary(context.projectPath, context.appTag?.name ?? RELEASE_APP_TAG.name);
     const localization = await loadGameLocalization(context.projectPath);
     const voice = await loadGameVoice(context.projectPath);
     const audio = await loadGameAudio(context.projectPath);
@@ -198,7 +200,16 @@ async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprin
     return out;
 }
 
-async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrary | undefined> {
+/**
+ * Every story the project has, as the bundle will carry it.
+ *
+ * `appTagName` is where the build variant stops being a label and starts deciding bytes. The story
+ * compiler runs inside the shipped game, not here, so these documents ARE the story a player gets:
+ * whatever survives this function ships verbatim. Folding them here - the last point where a
+ * document is still a value rather than a serialized pack - is what makes a variant-only branch
+ * absent from the package rather than merely unreachable in it.
+ */
+async function loadStoryLibrary(projectPath: string, appTagName: string): Promise<DevModeStoryLibrary | undefined> {
     const indexPath = path.join(projectPath, "editor", "story", "index.json");
     const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
     if (!index) {
@@ -220,7 +231,7 @@ async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrar
         if (document.id !== entry.id) {
             throw new Error(`Story document id mismatch: expected ${entry.id}, received ${document.id}`);
         }
-        documents[entry.id] = document;
+        documents[entry.id] = applyAppTagToStoryDocument(document, { tagName: appTagName });
         stories.push({
             ...entry,
             documentPath: storyDocumentRelativePath(entry.id),

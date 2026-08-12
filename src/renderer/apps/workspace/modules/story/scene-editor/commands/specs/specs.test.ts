@@ -523,6 +523,10 @@ describe("variables", () => {
         expect(declare("/local flag 1 type=bool")).toMatchObject({ valueType: "boolean", defaultValue: 1 });
         // A declaration into an occupied name is refused, not overwritten.
         expect(issuesOf("/local gold")).toEqual(["duplicateVariable"]);
+        // `AppTag` is the build variant to every expression, so a variable could never be read by
+        // its bare name. Refused at the declaration rather than at the first line that uses it.
+        expect(issuesOf("/local AppTag")).toEqual(["reservedVariableName"]);
+        expect(issuesOf("/local apptag")).toEqual(["reservedVariableName"]);
     });
 
     /**

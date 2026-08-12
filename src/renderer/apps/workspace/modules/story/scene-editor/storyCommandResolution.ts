@@ -1,8 +1,14 @@
+import { APP_TAG_ID_RELEASE, RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { StoryLiteralValue, StoryVariableRef, StoryVariableValueType } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
 import { inferStoryExpressionType } from "@shared/utils/storyExpressionEval";
 import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
-import { createStoryExpressionScope, formatStoryExpressionName, parseStoryExpression } from "@shared/utils/storyExpressionParser";
+import {
+    createStoryExpressionScope,
+    formatStoryExpressionName,
+    isAdvisoryStoryExpressionIssue,
+    parseStoryExpression,
+} from "@shared/utils/storyExpressionParser";
 import {
     allowsFreeValue,
     freeTargetKind,
@@ -403,8 +409,12 @@ function resolveExpression(
     }
 
     const { expression, issues } = parseStoryExpression(source, expressionScope(context));
-    if (issues.length > 0) {
-        return { issue: { code: "expressionError", span, value: source, issue: issues[0] } };
+    // Advisory issues carry a perfectly good tree, so they must not stop a line committing - a
+    // comparison against a variant that was deleted on purpose is a note, not a broken row. The
+    // condition editor's field renders them, and the project sweep reports every one of them.
+    const blocking = issues.filter(issue => !isAdvisoryStoryExpressionIssue(issue));
+    if (blocking.length > 0) {
+        return { issue: { code: "expressionError", span, value: source, issue: blocking[0] } };
     }
 
     if (type.expects === "boolean") {
@@ -437,7 +447,19 @@ function matchCompoundAssignment(value: string): { op: "+" | "-" | "*" | "/"; re
 export function expressionScope(context: StoryCommandContext): StoryExpressionScope {
     return createStoryExpressionScope(
         context.variables.map(entry => ({ name: entry.name, ref: entry.ref })),
-        { scenes: context.scenes, options: context.choiceOptions, blueprints: context.valueBlueprints },
+        {
+            scenes: context.scenes,
+            options: context.choiceOptions,
+            blueprints: context.valueBlueprints,
+            // The release variant under its STORED name, undoing the substitution the context makes
+            // for the slot that stores an id. `AppTag == "…"` is a string comparison the shipped game
+            // performs with no catalogue in reach, so the only name it can ever match is the one the
+            // variant list holds - and offering the translated word here would accept a line the
+            // build then folds to false.
+            appTags: context.appTags.map(tag => (
+                tag.id === APP_TAG_ID_RELEASE ? { id: tag.id, name: RELEASE_APP_TAG.name } : tag
+            )),
+        },
     );
 }
 

@@ -234,6 +234,12 @@ export const build = {
         one: "Build stopped: {count} invalid command. See the console.",
         other: "Build stopped: {count} invalid commands. See the console.",
     },
+    /** The AppTag gate. Same shape as the invalid-command pair above: a line per site, then a count. */
+    appTagUnresolved: "AppTag is compared with a value the build cannot read in {story} / {scene}: {source}",
+    appTagUnresolvedSummary: {
+        one: "Build stopped: {count} AppTag comparison is not against a fixed name. See the console.",
+        other: "Build stopped: {count} AppTag comparisons are not against a fixed name. See the console.",
+    },
     /**
      * The media gate. One line per asset, then one summary.
      *

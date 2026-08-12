@@ -1,3 +1,4 @@
+import type { ProjectAppTag } from "@shared/types/appTag";
 import type { StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -103,6 +104,16 @@ export type LintContext = {
      */
     assetIndex: ReferenceIndexResult;
     characters: readonly LintCharacterEntry[];
+    /**
+     * Every build variant the project has, release included - the list `AppTag == "Demo"` is checked
+     * against.
+     *
+     * Names as stored, never as displayed. The release variant shows a translated word on screen but
+     * is stored as "Release", and an expression compares strings at play time with no catalogue in
+     * reach, so a rule that checked the displayed name would pass a line the build then folds to
+     * `false`.
+     */
+    appTags: readonly ProjectAppTag[];
     /**
      * The project variable registry, BOTH scopes, exactly as the service holds it.
      *

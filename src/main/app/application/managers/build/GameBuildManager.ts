@@ -92,7 +92,7 @@ import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManife
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { readProjectAppTagsFromDir } from "../../utils/appTagsFile";
-import { hasAppTag, isBuiltinAppTagId, resolveAppTag, type AppTagOverrides } from "@shared/types/appTag";
+import { hasAppTag, isBuiltinAppTagId, resolveAppTag, type AppTagOverrides, type ProjectAppTag } from "@shared/types/appTag";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
@@ -832,7 +832,8 @@ export class GameBuildManager {
                 `macOS builds require a Mac; Linux builds require a Unix host.`,
             );
         }
-        const identity = this.resolveIdentity(session, projectConfig, projectPath, await this.resolveBuildVariant(session, projectPath, request));
+        const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        const identity = this.resolveIdentity(session, projectConfig, projectPath, appTag.overrides);
         // Everything the credentials this build needs unseals to. Resolved here,
         // before the compile: a credential this machine cannot use fails the
         // build either way, and finding out after several minutes of packing
@@ -905,6 +906,9 @@ export class GameBuildManager {
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
+                // What the story documents in this pack are folded against. Both compiles below get
+                // it: the desktop pack and the web/mobile one are the same game under one variant.
+                appTag: { id: appTag.id, name: appTag.name },
                 encryptionKey,
                 ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
                 // The compile runs in a utility process, so the build dependency
@@ -937,6 +941,7 @@ export class GameBuildManager {
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging-web"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
+                appTag: { id: appTag.id, name: appTag.name },
                 shell: "web",
             }, {
                 onStart: worker => { session.worker = worker; },
@@ -1842,17 +1847,23 @@ export class GameBuildManager {
     }
 
     /**
-     * The variant this build is, as the overrides it states.
+     * The variant this build is.
      *
      * An id naming a variant the project does not have throws instead of falling back to release.
      * The author picked a variant by name; producing the release identity under that name is a build
      * that lies about what it is, and every check downstream would agree with it.
+     *
+     * The whole tag rather than just its overrides, because the variant now decides two different
+     * things: the overrides state the build's identity, and the NAME is what the story documents are
+     * folded against (`AppTag == "Demo"`). Handing back one of the two would leave the other reading
+     * the tag again somewhere else, and a build whose identity and whose story disagreed about which
+     * variant it is is exactly the failure the whole feature is about.
      */
     private async resolveBuildVariant(
         session: BuildSession,
         projectPath: string,
         request: GameBuildRequest,
-    ): Promise<AppTagOverrides> {
+    ): Promise<ProjectAppTag> {
         const appTags = await readProjectAppTagsFromDir(projectPath);
         const requested = request.appTagId?.trim();
         if (requested && !hasAppTag(appTags, requested)) {
@@ -1862,7 +1873,7 @@ export class GameBuildManager {
         if (!isBuiltinAppTagId(tag.id)) {
             this.emit(session, { level: "info", source: "Build", message: `building the "${tag.name}" variant` });
         }
-        return tag.overrides;
+        return tag;
     }
 
     private resolveIdentity(
