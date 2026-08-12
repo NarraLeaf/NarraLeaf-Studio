@@ -36,7 +36,11 @@ export const build = {
     },
     outputDir: "Output folder",
     chooseFolder: "Choose folder…",
+    // The rail. Five of these name a section a finding can be filed against; `variant` names the
+    // page that picks which edition every other page describes, and is shown only for a project that
+    // has an edition to pick.
     section: {
+        variant: "Variant",
         targets: "Targets",
         identity: "Identity",
         // Short enough for the rail; the section itself covers protection too.
@@ -50,9 +54,16 @@ export const build = {
         arm64: "ARM (arm64)",
         universal: "Universal",
     },
+    // The first page: which edition is being built, and what that edition comes to.
+    variant: {
+        // Beside a value the selected variant does not state, so a reading that matches the App page
+        // says why on the same line that an overridden one does.
+        inherited: "From the project",
+        blocking: "Blocking this build",
+        blockingNone: "Nothing is blocking this build.",
+    },
     identity: {
-        // Which edition of the project this build is. First in the section, because the three
-        // readings under it are the values that variant ships.
+        // Names the choice made on the first page, and labels the list that makes it.
         variant: "Build variant",
         // Sits beside a reading the selected variant states rather than inherits, so a value that
         // differs from the App page has its reason on the same line.
@@ -171,6 +182,8 @@ export const build = {
         "version-invalid": "Version {version} is not a valid semantic version; the build will fail.",
         "version-missing": "No version set; the game builds as 0.0.0.",
         "identifier-missing": "No project identifier; using the app id {appId}.",
+        // The build refuses the same file, so this says what stopped rather than what was assumed.
+        "variants-unreadable": "The project's build variants could not be read: {reason}",
         // Platform-neutral: a mobile build falls back to the shell's own
         // placeholder icon, not to Electron's.
         "icon-missing": "No app icon set; the NarraLeaf icon ships instead.",

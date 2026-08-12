@@ -107,6 +107,12 @@ export type BuildPreflightCode =
     | "version-invalid"
     | "version-missing"
     | "identifier-missing"
+    /**
+     * The project's build variants are on disk but could not be read, so nothing here knows which
+     * identity this build would carry. The build itself refuses the same file, so this is an error
+     * rather than a note about a degraded reading.
+     */
+    | "variants-unreadable"
     | "icon-missing"
     | "icon-unusable"
     | "icon-low-resolution"
@@ -329,6 +335,24 @@ const BUILDER_EXT_TOKEN: Record<Exclude<GameBuildFormat, "dir">, string> = {
     aab: "aab",
     ipa: "ipa",
 };
+
+/**
+ * What every artifact of a build is named from.
+ *
+ * Derived from the project's own name and the variant's name, deliberately not from a variant's
+ * overridden `displayName`: the file names a project and an edition of it, while `displayName` names
+ * the application a player installs. Two variants that rename the application to the same thing
+ * still write different files, and - the reason this exists - a variant that overrides nothing no
+ * longer writes byte-identical file names to the release build, which silently overwrote it when
+ * both were built into one output folder.
+ *
+ * `null` is the release variant, whose artifacts are named from the project alone. Its names are
+ * therefore exactly what they were before variants existed.
+ */
+export function gameBuildArtifactBaseName(projectName: string, variantName: string | null): string {
+    const base = sanitizeProjectFileName(projectName);
+    return variantName === null ? base : `${base}-${sanitizeProjectFileName(variantName)}`;
+}
 
 /**
  * The artifactName pattern handed to electron-builder. Lives here (rather than

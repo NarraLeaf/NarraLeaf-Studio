@@ -14,6 +14,7 @@ import {
     deriveGameAppId,
     deriveIosBundleVersion,
     GAME_BUILD_FORMATS_BY_PLATFORM,
+    gameBuildArtifactBaseName,
     hostCanBuildTarget,
     isDesktopBuildPlatform,
     isMobileBuildPlatform,
@@ -49,7 +50,6 @@ import {
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import { Fs } from "@shared/utils/fs";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
-import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import {
     buildDependencyPlatformKey,
     checkBuildDependencies,
@@ -92,7 +92,7 @@ import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManife
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { readProjectAppTagsFromDir } from "../../utils/appTagsFile";
-import { hasAppTag, isBuiltinAppTagId, resolveAppTag, type AppTagOverrides } from "@shared/types/appTag";
+import { hasAppTag, isBuiltinAppTagId, resolveAppTag, type ProjectAppTag } from "@shared/types/appTag";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
@@ -419,11 +419,17 @@ export class GameBuildManager {
     public async preflight(projectPath: string, request: GameBuildRequest): Promise<BuildPreflightFinding[]> {
         const normalizedProjectPath = path.resolve(projectPath);
         const projectConfig = await readProjectConfigFromDir(normalizedProjectPath).catch(() => null);
-        // Swallowed here and not in `start`: a check pass must report on what it could read rather
-        // than fail, and a variant file it could not read leaves the identity findings describing the
-        // project's own values. `start` reads the same file strictly, so a build under an unreadable
-        // variant file stops there rather than shipping the wrong name.
-        const appTags = await readProjectAppTagsFromDir(normalizedProjectPath).catch(() => []);
+        // Reported rather than swallowed: `start` reads the same file strictly and refuses the build,
+        // so a check pass that answered "no variants" would clear a build that then dies on the file
+        // it never mentioned. The identity readings below fall back to the project's own values,
+        // which is all there is left to describe.
+        let appTags: ProjectAppTag[] = [];
+        let variantsUnreadable: string | null = null;
+        try {
+            appTags = await readProjectAppTagsFromDir(normalizedProjectPath);
+        } catch (error) {
+            variantsUnreadable = error instanceof Error ? error.message : String(error);
+        }
         const overrides = resolveAppTag(appTags, request.appTagId).overrides;
         const hostPlatform = currentGameBuildPlatform();
         const targets = normalizeTargets(request.targets);
@@ -462,6 +468,14 @@ export class GameBuildManager {
         const productName = overrides.displayName ?? projectConfig?.name?.trim() ?? "";
         const version = overrides.version ?? readProjectVersion(projectConfig);
         const identifier = overrides.identifier ?? readProjectIdentifier(projectConfig);
+        if (variantsUnreadable) {
+            findings.push({
+                code: "variants-unreadable",
+                severity: "error",
+                section: "identity",
+                detail: { reason: variantsUnreadable },
+            });
+        }
         if (!version) {
             findings.push({ code: "version-missing", severity: "warning", section: "identity" });
         } else if (!isValidProjectVersion(version)) {
@@ -1842,7 +1856,11 @@ export class GameBuildManager {
     }
 
     /**
-     * The variant this build is, as the overrides it states.
+     * The variant this build is.
+     *
+     * The whole tag rather than only its overrides, because the artifacts are named after the
+     * variant as well as the project - see {@link gameBuildArtifactBaseName} - and the name is only
+     * here.
      *
      * An id naming a variant the project does not have throws instead of falling back to release.
      * The author picked a variant by name; producing the release identity under that name is a build
@@ -1852,7 +1870,7 @@ export class GameBuildManager {
         session: BuildSession,
         projectPath: string,
         request: GameBuildRequest,
-    ): Promise<AppTagOverrides> {
+    ): Promise<ProjectAppTag> {
         const appTags = await readProjectAppTagsFromDir(projectPath);
         const requested = request.appTagId?.trim();
         if (requested && !hasAppTag(appTags, requested)) {
@@ -1862,22 +1880,26 @@ export class GameBuildManager {
         if (!isBuiltinAppTagId(tag.id)) {
             this.emit(session, { level: "info", source: "Build", message: `building the "${tag.name}" variant` });
         }
-        return tag.overrides;
+        return tag;
     }
 
     private resolveIdentity(
         session: BuildSession,
         projectConfig: ProjectConfigData | null,
         projectPath: string,
-        overrides: AppTagOverrides,
+        variant: ProjectAppTag,
     ): { appId: string; productName: string; artifactBaseName: string; version: string; copyright?: string } {
-        // The variant's value wherever it states one. Only these three: everything else about a
-        // build - icons, signing, what the pack contains - is the project's and is shared by every
-        // variant of it.
-        const productName = overrides.displayName
-            || projectConfig?.name?.trim()
+        const overrides = variant.overrides;
+        // What the project itself is called. Kept apart from the product name below, because the
+        // artifacts are named from this and the edition, never from a variant's renamed application.
+        const projectName = projectConfig?.name?.trim()
             || path.basename(projectPath)
             || "NarraLeaf Game";
+        // The variant's value wherever it states one. Only these three: everything else about a
+        // build - icons, signing, what the pack contains - is the project's and is shared by every
+        // variant of it. `??` on all three: an override is absent or it is a value, and `||` would
+        // have made an empty one mean "inherited" for one key and not for the others.
+        const productName = overrides.displayName ?? projectName;
         const version = overrides.version ?? readProjectVersion(projectConfig);
         if (version && !isValidProjectVersion(version)) {
             throw new Error(
@@ -1907,7 +1929,10 @@ export class GameBuildManager {
         return {
             appId,
             productName,
-            artifactBaseName: sanitizeProjectFileName(productName),
+            artifactBaseName: gameBuildArtifactBaseName(
+                projectName,
+                isBuiltinAppTagId(variant.id) ? null : variant.name,
+            ),
             // Same fallback electron-builder applies via the app manifest, so
             // web artifact names line up with the desktop ones.
             version: version ?? "0.0.0",
