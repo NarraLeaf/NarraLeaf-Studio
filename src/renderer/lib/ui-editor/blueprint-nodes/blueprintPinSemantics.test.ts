@@ -17,12 +17,17 @@
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_IF_ELSE_BRANCH_PINS,
+    BLUEPRINT_LAYER_CONFIRM_BUTTON_PINS,
     BLUEPRINT_SWITCH_STRING_CASE_PINS,
     blueprintNodeExecOutputPinIds,
     blueprintNodeExecPins,
     listKnownBlueprintNodeTypes,
 } from "@shared/blueprint/blueprintPinSemantics";
-import { BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE, BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
+    BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+    BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
+} from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "./BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "./registerCoreBlueprintNodes";
 import { resolveEffectiveBlueprintNodePins } from "./effectivePins";
@@ -41,6 +46,13 @@ function representativeParams(def: BlueprintNodeDef): Record<string, unknown> {
         return {
             [BLUEPRINT_SWITCH_STRING_CASE_PINS.storageKey]: [
                 "case_1_value", "case_1_output", "case_2_value", "case_2_output",
+            ],
+        };
+    }
+    if (def.type === BLUEPRINT_NODE_TYPE_LAYER_CONFIRM) {
+        return {
+            [BLUEPRINT_LAYER_CONFIRM_BUTTON_PINS.storageKey]: [
+                "button_1_label", "button_1_pressed", "button_2_label", "button_2_pressed",
             ],
         };
     }
