@@ -104,7 +104,7 @@ const branch = (id: string, arm: "if" | "elseIf" | "else", children: BlockSpec[]
     children,
 });
 
-function blueprintWithStartStory(params: Record<string, unknown>): BlueprintDocument {
+function blueprintWithStartStory(params: Record<string, unknown>, wiredPins: string[] = []): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {
@@ -120,7 +120,13 @@ function blueprintWithStartStory(params: Record<string, unknown>): BlueprintDocu
                         events: {
                             "ev-1": {
                                 id: "ev-1",
-                                graph: { nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } } },
+                                graph: {
+                                    nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } },
+                                    edges: wiredPins.map(port => ({
+                                        from: { nodeId: "n-source", port: "value" },
+                                        to: { nodeId: "n-1", port },
+                                    })),
+                                },
                             },
                         },
                         functions: {},
@@ -128,6 +134,8 @@ function blueprintWithStartStory(params: Record<string, unknown>): BlueprintDocu
                 },
             },
         },
+        // No owner record names the blueprint, which this rule reads anyway: an entry that can start
+        // a scene is worth reading wherever it sits. See `blueprintDocumentGraphCarriers`.
         ownerRecords: {},
     } as BlueprintDocument;
 }
@@ -607,10 +615,21 @@ describe("story/unreachable-scene", () => {
         expect(run("story/unreachable-scene", ctx)).toEqual([]);
     });
 
-    it("goes silent when a Start Game node wires its target instead of picking one", () => {
+    it("goes silent when a Start Game node picks no target at all", () => {
         const ctx = createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Prologue", []), scene("sc2", "Cut", [])], "sc1")],
             blueprintDocument: blueprintWithStartStory({ storyId: "s1" }),
+        });
+        expect(run("story/unreachable-scene", ctx)).toEqual([]);
+    });
+
+    it("goes silent when a Start Game node wires its target, picked scene and all", () => {
+        // The wire wins over the picker at execution time, so the picked scene says nothing about
+        // where this node starts play - and a rule that read it would call every other scene orphaned
+        // on the strength of a value the running game ignores.
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Prologue", []), scene("sc2", "Cut", [])], "sc1")],
+            blueprintDocument: blueprintWithStartStory({ storyId: "s1", sceneId: "sc1" }, ["sceneId"]),
         });
         expect(run("story/unreachable-scene", ctx)).toEqual([]);
     });

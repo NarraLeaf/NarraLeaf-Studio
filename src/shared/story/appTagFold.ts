@@ -3,7 +3,6 @@ import {
     isAppTagExpr,
     isStoryExpressionEvaluable,
     listSceneBlocksInDocumentOrder,
-    listSceneIdsInDocumentOrder,
     listScenesInDocumentOrder,
     storyExprChildren,
     storyExpressionMentionsAppTag,
@@ -19,6 +18,7 @@ import {
 } from "@shared/types/story";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import { formatStoryExpr } from "@shared/utils/storyExpressionParser";
+import { reachableSceneIds } from "./storyReachability";
 
 /**
  * `AppTag` is decided when the package is produced, and this is the one module that decides it.
@@ -640,7 +640,14 @@ function rebuildScene(
  * all (see {@link SceneReachability}).
  */
 function dropUnreachableScenes(document: StoryDocument, reachability: SceneReachability): StoryDocument {
-    const reachable = reachableSceneIds(document, reachability.entrySceneIds);
+    // `documentOrder`, because this decides bytes: the story's own start is `entrySceneId` when it
+    // names a scene the document has, and otherwise the first scene in authoring order - the same
+    // fallback `resolveDefaultLaunchScene` takes at boot. A project that never marked an entry must
+    // not lose the scene its game opens in.
+    const reachable = reachableSceneIds(document, {
+        entrySceneIds: reachability.entrySceneIds,
+        fallback: "documentOrder",
+    });
     const entries = Object.entries(document.scenes ?? {});
     if (entries.every(([sceneId]) => reachable.has(sceneId))) {
         return document;
@@ -664,47 +671,6 @@ function dropUnreachableScenes(document: StoryDocument, reachability: SceneReach
             ? { unassignedSceneIds: document.unassignedSceneIds.filter(sceneId => reachable.has(sceneId)) }
             : {}),
     };
-}
-
-/**
- * Every scene the story can still be in, from the scenes it can be entered at outwards.
- *
- * The story's own start is `entrySceneId` when it names a scene the document has, and otherwise the
- * first scene in authoring order - the same fallback `resolveDefaultLaunchScene` takes at boot, so a
- * project that never marked an entry does not lose the scene its game opens in.
- *
- * The only edge is a `jump`, which is the only construct in a story document that names a scene, and
- * a disabled one is not an edge: the compiler drops a disabled subtree before it emits anything, so
- * such a jump provably cannot run in this package.
- */
-function reachableSceneIds(document: StoryDocument, externalEntries: readonly StorySceneId[]): Set<StorySceneId> {
-    const ordered = listSceneIdsInDocumentOrder(document);
-    const start = document.entrySceneId && document.scenes[document.entrySceneId]
-        ? document.entrySceneId
-        : ordered[0];
-    const reachable = new Set<StorySceneId>();
-    const queue: StorySceneId[] = [];
-    const enter = (sceneId: StorySceneId | undefined): void => {
-        if (!sceneId || reachable.has(sceneId) || !document.scenes[sceneId]) {
-            return;
-        }
-        reachable.add(sceneId);
-        queue.push(sceneId);
-    };
-    enter(start);
-    for (const sceneId of externalEntries) {
-        enter(sceneId);
-    }
-    for (let cursor = 0; cursor < queue.length; cursor += 1) {
-        const scene = document.scenes[queue[cursor]];
-        const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
-        for (const block of blocks) {
-            if (block.kind === "jump") {
-                enter(block.payload.targetSceneId);
-            }
-        }
-    }
-    return reachable;
 }
 
 // ── Folding everything a document holds ───────────────────────────────────────────────────────────
