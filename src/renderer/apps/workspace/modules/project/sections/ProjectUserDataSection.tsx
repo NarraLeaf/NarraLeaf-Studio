@@ -61,7 +61,12 @@ export function ProjectUserDataSection({ config, uiService }: ProjectSectionProp
                 {locations.map(location => (
                     <div key={location.platform} className="grid gap-0.5">
                         <span className="text-2xs text-fg-subtle">{t(`project.userData.platform.${location.platform}`)}</span>
-                        <span className="min-w-0 break-all font-mono text-2xs text-fg-muted">{location.display}</span>
+                        {/* `break-words` rather than `break-all`: a path in a 320px panel has to
+                            wrap, but breaking it wherever the line happens to end splits the app id
+                            down the middle (…narraleaf.game / s.demo), which reads as two different
+                            names. This breaks at the spaces and slashes first and only cuts a token
+                            that cannot fit a line on its own. */}
+                        <span className="min-w-0 break-words font-mono text-2xs text-fg-muted">{location.display}</span>
                     </div>
                 ))}
             </div>
@@ -69,7 +74,7 @@ export function ProjectUserDataSection({ config, uiService }: ProjectSectionProp
             <div className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3">
                 {USER_DATA_CONTENT_GROUPS.map(group => (
                     <div key={group.id} className="grid gap-0.5">
-                        <span className="min-w-0 break-all font-mono text-2xs text-fg-muted">
+                        <span className="min-w-0 break-words font-mono text-2xs text-fg-muted">
                             {group.subdirectory === "." ? group.pattern : `${group.subdirectory}/${group.pattern}`}
                         </span>
                         <span className="text-2xs text-fg-subtle">{t(`project.userData.content.${group.id}`)}</span>
