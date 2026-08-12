@@ -1,3 +1,4 @@
+import type {ContentClass} from "../vcs/contentClass";
 import type {DocumentKind} from "./types";
 
 /**
@@ -237,6 +238,20 @@ export interface DocumentDiffEntry {
     readonly kind: DocumentChangeKind;
     /** The document format, when a spec claims this path. Absent is the ordinary answer. */
     readonly documentKind?: DocumentKind;
+    /**
+     * What kind of thing the file holds, as the comparison settled it.
+     *
+     * **Carried rather than re-derived, because the renderer cannot derive it.** A class is
+     * normally read off the extension (`shared/vcs/contentClass.ts`), and the files this matters
+     * most for have none: Studio stores an asset's contents under its id, sharded two levels deep
+     * - `assets/content/99/55/3d15abb…` - so every sprite and every background in a real project
+     * answers `unknown` to a name-only classifier. The producer has the bytes in hand and settles
+     * it from the header, which is a thing only it can do.
+     *
+     * Absent means nobody settled it: a path the comparison deliberately did not read, where the
+     * name is all there is and a consumer may classify by name itself.
+     */
+    readonly contentClass?: ContentClass;
     readonly diff: DocumentDiff;
 }
 

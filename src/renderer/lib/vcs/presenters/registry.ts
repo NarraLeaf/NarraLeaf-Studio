@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import type { DocumentChange, DocumentDiffEntry } from "@shared/documents/diff";
+import type { ComparisonSides } from "./comparisonSide";
 import { genericChangePresenter } from "./GenericChangeDetail";
 
 /**
@@ -20,6 +21,17 @@ export interface ChangePresenterProps {
     readonly entry: DocumentDiffEntry;
     /** The selected change; absent means the selection is the whole document. */
     readonly change?: DocumentChange;
+    /**
+     * Which two versions this comparison is between, for a presenter that shows the file rather
+     * than describing it. See `comparisonSide.ts`.
+     *
+     * Optional because the change model does not carry it and a presenter does not have to want
+     * it: a list of rows is the same list whoever produced it. A presenter that needs bytes and
+     * is given no sides has nothing to read and must degrade rather than guess - there is no
+     * default pair of versions, and inventing one would draw a file from a version nobody asked
+     * about.
+     */
+    readonly sides?: ComparisonSides;
 }
 
 export interface ChangePresenter {

@@ -12,6 +12,7 @@ import {
 } from "./handlers/fsAction";
 import {
     VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
+    VcsReadWorkingFileHandler,
     VcsReadRevisionDocumentsHandler, VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
     VcsDiffRevisionsHandler, VcsDiffWorkingTreeHandler,
     VcsInitRepositoryHandler,
@@ -320,6 +321,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsGetStatusHandler(),
         new VcsGetHistoryHandler(),
         new VcsReadBlobHandler(),
+        new VcsReadWorkingFileHandler(),
         new VcsReadRevisionDocumentsHandler(),
         new VcsGetChangedPathsHandler(),
         new VcsDiffRevisionsHandler(),

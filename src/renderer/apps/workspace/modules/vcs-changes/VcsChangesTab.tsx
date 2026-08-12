@@ -13,6 +13,7 @@ import { buildChangeIndex, type ChangeIndexGroup } from "@/lib/vcs/changeIndex";
 import { ChangeIndexPane } from "@/lib/vcs/ChangeIndexPane";
 import { IndexDivider, INDEX_DEFAULT_WIDTH } from "@/lib/vcs/IndexDivider";
 import { ChangeDetailHost } from "@/lib/vcs/presenters/ChangeDetailHost";
+import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import { useDocumentDiff, type DocumentDiffRequest } from "@/lib/vcs/useDocumentDiff";
 import { shortRevision } from "../../components/layout/versionRailModel";
 import { VcsResolvePanel } from "./VcsResolvePanel";
@@ -110,6 +111,24 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
     const firstVisible = index.groups.find(isOpen)?.rows[0] ?? null;
     const selected = index.rows.find(row => row.path === selectedPath) ?? firstVisible;
 
+    /**
+     * The two versions this tab is between, for a presenter that shows the file itself.
+     *
+     * Named here because this is the only place that knows: the change model says what differs and
+     * deliberately not where it came from. The working tree's older side is the revision it was
+     * compared against, which a repository with nothing recorded yet does not have - and then
+     * there is no older side at all rather than one to guess at.
+     */
+    const comparison = useMemo<ComparisonSides>(
+        () => (mode.mode === "between"
+            ? { before: { at: "revision", revision: mode.from }, after: { at: "revision", revision: mode.to } }
+            : {
+                before: result?.head ? { at: "revision", revision: result.head } : null,
+                after: { at: "working-tree" },
+            }),
+        [mode.mode, mode.mode === "between" ? mode.from : null, mode.mode === "between" ? mode.to : null, result?.head],
+    );
+
     const [indexWidth, setIndexWidth] = useState(INDEX_DEFAULT_WIDTH);
     const heading = comparisonHeading(mode, result?.head, t);
     const hasRows = index.rows.length > 0;
@@ -200,7 +219,7 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
 
                     <div className="min-h-0 min-w-0 flex-1">
                         {selected
-                            ? <ChangeDetailHost key={selected.path} entry={selected.entry} />
+                            ? <ChangeDetailHost key={selected.path} entry={selected.entry} sides={comparison} />
                             : <EmptyState size="sm" description={t("documentDiff.shell.selectPrompt")} />}
                     </div>
                 </div>
