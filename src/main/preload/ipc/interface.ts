@@ -541,6 +541,23 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.signingMacIdentities, {}) as Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>,
     },
 
+    /**
+     * Plugin build-config secrets, in the same machine vault. The value goes up
+     * once and a handle comes back; there is no way to read a value back out.
+     */
+    pluginBuildSecret: {
+        /** `value` is plain text. Do not log it or keep it after the call. */
+        set: (value: string, handle?: string) =>
+            ipcClient.invoke(IPCEventType.pluginBuildSecretSet, { value, handle }) as Promise<
+                RequestStatus<{ handle: string; available: boolean }>
+            >,
+        /** False means "set, but not on this machine" as well as "never set". */
+        available: (handle: string) =>
+            ipcClient.invoke(IPCEventType.pluginBuildSecretAvailable, { handle }) as Promise<
+                RequestStatus<{ available: boolean }>
+            >,
+    },
+
     blueprintPersistence: {
         getAll: (projectRef: BlueprintPersistenceProjectRef) =>
             ipcClient.invoke(IPCEventType.blueprintPersistenceGetAll, { projectRef }) as Promise<RequestStatus<{ values: Record<string, unknown> }>>,

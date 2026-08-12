@@ -4,9 +4,15 @@ import {
     type PluginRuntimeCapability,
 } from "../types/pluginPermissions";
 import { pluginIconExtension, pluginIconExtensionList } from "./pluginIcon";
+import { GAME_BUILD_FORMATS_BY_PLATFORM, type GameBuildPlatform } from "../types/gameBuild";
 import {
+    PLUGIN_BUILD_CONFIG_SCOPES,
+    PLUGIN_BUILD_CONFIG_TYPES,
     PluginManifestVersion,
     type NormalizedPluginManifestV2,
+    type PluginBuildConfigFieldContribution,
+    type PluginBuildConfigScope,
+    type PluginBuildConfigType,
     type PluginBuildDependencyContribution,
     type PluginBuildDependencyTargetContribution,
     type PluginContributes,
@@ -147,6 +153,10 @@ function validateIcon(value: unknown): string | undefined | { error: string } {
  * a test may reach while running is gated separately by its own `requires`
  * (see `src/renderer/lib/testing/types.ts`). Adding a permission here would ask
  * the author to approve something that cannot happen without them asking for it.
+ *
+ * `contributes.buildConfig` is absent for the same reason and a simpler one: a
+ * declared field is a blank the author fills in, and filling it in gives the
+ * plugin no reach it did not already have.
  */
 function derivePermissionsFromContributes(
     contributes: Required<PluginContributes>,
@@ -193,7 +203,15 @@ const CONTRIBUTES_KEYS = [
     "runtimeCapabilities",
     "sidecars",
     "buildDependencies",
+    "buildConfig",
 ] as const;
+
+/**
+ * Every platform a build can target, read off the format table so the two cannot disagree: the table
+ * is a `Record<GameBuildPlatform, ...>`, so a platform added to the union without a row there fails
+ * to compile long before it could reach a manifest.
+ */
+const BUILD_CONFIG_PLATFORMS = Object.keys(GAME_BUILD_FORMATS_BY_PLATFORM) as GameBuildPlatform[];
 
 /**
  * Desktop platforms only. Web has no process to spawn and the mobile shells are
@@ -255,6 +273,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         runtimeCapabilities: [],
         sidecars: [],
         buildDependencies: [],
+        buildConfig: [],
     };
     if (value === undefined) {
         return empty;
@@ -330,7 +349,117 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         result.sidecars = sidecars;
     }
 
+    if (value.buildConfig !== undefined) {
+        const fields = validateBuildConfig(value.buildConfig, pluginId);
+        if (typeof fields === "string") {
+            return fields;
+        }
+        result.buildConfig = fields;
+    }
+
     return result;
+}
+
+/**
+ * Build config field declarations.
+ *
+ * Unlike the other contributed identifiers these keys are *not* prefixed with the plugin id: the
+ * store is already per plugin, so a prefix would only repeat the plugin id inside every key. They
+ * must be unique within the plugin, which is the whole of what keys a value.
+ *
+ * Nothing here is validated against the project - a field is a question, and whether the author has
+ * answered it is decided where the build is described, not here.
+ */
+function validateBuildConfig(
+    value: unknown,
+    pluginId: string,
+): PluginBuildConfigFieldContribution[] | string {
+    if (!Array.isArray(value)) {
+        return "Plugin contributes.buildConfig must be an array of field objects";
+    }
+    const seen = new Set<string>();
+    const fields: PluginBuildConfigFieldContribution[] = [];
+    for (const item of value) {
+        if (!isRecord(item)) {
+            return "Plugin contributes.buildConfig entries must be objects";
+        }
+        const key = typeof item.key === "string" ? item.key.trim() : "";
+        if (!key) {
+            return `Plugin contributes.buildConfig entries must declare a key (plugin "${pluginId}")`;
+        }
+        if (seen.has(key)) {
+            return `Plugin contributes.buildConfig declares "${key}" more than once`;
+        }
+        seen.add(key);
+
+        // The label is what the author sees; a blank one produces a field nothing on screen
+        // identifies, which is worse than a manifest that fails to install.
+        const label = typeof item.label === "string" ? item.label.trim() : "";
+        if (!label) {
+            return `Plugin contributes.buildConfig["${key}"] must declare a label`;
+        }
+
+        const type = item.type;
+        if (!PLUGIN_BUILD_CONFIG_TYPES.includes(type as PluginBuildConfigType)) {
+            return `Plugin contributes.buildConfig["${key}"] type must be one of: `
+                + PLUGIN_BUILD_CONFIG_TYPES.join(", ");
+        }
+        const scope = item.scope;
+        if (!PLUGIN_BUILD_CONFIG_SCOPES.includes(scope as PluginBuildConfigScope)) {
+            return `Plugin contributes.buildConfig["${key}"] scope must be one of: `
+                + PLUGIN_BUILD_CONFIG_SCOPES.join(", ");
+        }
+
+        const platforms = validateBuildConfigPlatforms(item.platforms, key);
+        if (typeof platforms === "string") {
+            return platforms;
+        }
+
+        const description = typeof item.description === "string" && item.description.trim()
+            ? item.description.trim()
+            : undefined;
+        fields.push({
+            key,
+            label,
+            type: type as PluginBuildConfigType,
+            scope: scope as PluginBuildConfigScope,
+            ...(description ? { description } : {}),
+            ...(platforms ? { platforms } : {}),
+            ...(item.required === true ? { required: true } : {}),
+        });
+    }
+    return fields;
+}
+
+/**
+ * The platforms a field applies to, or `undefined` for "every platform".
+ *
+ * An empty list is refused rather than read as "every platform": it is a field that applies nowhere,
+ * so nothing would ever ask for it, and the author would never learn why the value they were told to
+ * supply has no place to be typed.
+ */
+function validateBuildConfigPlatforms(
+    value: unknown,
+    key: string,
+): GameBuildPlatform[] | undefined | string {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (!Array.isArray(value) || value.length === 0) {
+        return `Plugin contributes.buildConfig["${key}"] platforms must be a non-empty array, or absent for every platform`;
+    }
+    const platforms: GameBuildPlatform[] = [];
+    for (const item of value) {
+        const platform = typeof item === "string" ? item.trim() : "";
+        if (!BUILD_CONFIG_PLATFORMS.includes(platform as GameBuildPlatform)) {
+            return `Plugin contributes.buildConfig["${key}"] names an unknown platform: ${String(item)} `
+                + `(known: ${BUILD_CONFIG_PLATFORMS.join(", ")})`;
+        }
+        if (!platforms.includes(platform as GameBuildPlatform)) {
+            platforms.push(platform as GameBuildPlatform);
+        }
+    }
+    return platforms;
 }
 
 function validateRuntimeCapabilities(value: unknown): PluginRuntimeCapability[] | string {

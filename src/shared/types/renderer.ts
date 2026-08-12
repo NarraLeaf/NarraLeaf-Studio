@@ -724,6 +724,26 @@ export interface RendererPreloadedInterface {
         macIdentities(): Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>;
     };
 
+    /**
+     * Plugin build-config secrets, in the same machine vault the signing
+     * passwords live in. The value goes up once and a handle comes back; there is
+     * no entry that reads a value out.
+     */
+    pluginBuildSecret: {
+        /**
+         * Seal `value` and answer the handle the project stores. Pass `handle` to
+         * fill in one the project already refers to. `value` is plain text - do
+         * not log it or hold it after the call resolves.
+         */
+        set(value: string, handle?: string): Promise<RequestStatus<{ handle: string; available: boolean }>>;
+        /**
+         * Whether the secret behind a handle is on this machine. False is the
+         * ordinary answer for a project a collaborator configured, and means
+         * "set, not available here" rather than "empty".
+         */
+        available(handle: string): Promise<RequestStatus<{ available: boolean }>>;
+    };
+
     blueprintPersistence: {
         getAll(projectRef: BlueprintPersistenceProjectRef): Promise<RequestStatus<{ values: Record<string, unknown> }>>;
         getValue(projectRef: BlueprintPersistenceProjectRef, key: string): Promise<RequestStatus<{ value: unknown }>>;

@@ -444,4 +444,108 @@ describe("SigningVault", () => {
         await vault.import({ ...pfxImport(), label: "second" });
         expect((await fs.stat(path.join(root, "credentials.json"))).mode & 0o777).toBe(0o600);
     });
+
+    /**
+     * Plugin build secrets share the index, the sealing and the file mode, and share nothing else:
+     * what the project stores is a handle, and no read path but `resolvePluginSecret` answers a
+     * value.
+     */
+    describe("plugin build secrets", () => {
+        const TOKEN = "steam-build-token-4f2a";
+
+        const indexText = () => fs.readFile(path.join(root, "credentials.json"), "utf8");
+
+        it("seals the value and answers a handle to store", async () => {
+            const vault = makeVault();
+            const result = await vault.setPluginSecret(TOKEN);
+
+            expect(result).toEqual({ handle: "cred-1", available: true });
+            // The whole reason the project stores a handle: the value is not in the file.
+            expect(await indexText()).not.toContain(TOKEN);
+            await expect(vault.resolvePluginSecret("cred-1")).resolves.toBe(TOKEN);
+        });
+
+        it("answers availability without handing back the value", async () => {
+            const vault = makeVault();
+            const { handle } = await vault.setPluginSecret(TOKEN);
+
+            await expect(vault.pluginSecretAvailable(handle)).resolves.toBe(true);
+            // The state of a project a collaborator configured: the handle is in the document, the
+            // secret is on their machine and not on this one.
+            await expect(vault.pluginSecretAvailable("cred-does-not-exist")).resolves.toBe(false);
+            await expect(vault.resolvePluginSecret("cred-does-not-exist")).resolves.toBeNull();
+        });
+
+        it("fills in a handle the project already refers to", async () => {
+            const vault = makeVault();
+            const result = await vault.setPluginSecret(TOKEN, "handle-from-a-collaborator");
+
+            expect(result).toEqual({ handle: "handle-from-a-collaborator", available: true });
+            await expect(vault.resolvePluginSecret("handle-from-a-collaborator")).resolves.toBe(TOKEN);
+        });
+
+        it("records the handle but not the value when the keyring refuses", async () => {
+            const vault = makeVault(fakeSealer(false));
+            const result = await vault.setPluginSecret(TOKEN);
+
+            expect(result).toEqual({ handle: "cred-1", available: false });
+            expect(await indexText()).not.toContain(TOKEN);
+            await expect(vault.pluginSecretAvailable("cred-1")).resolves.toBe(false);
+            await expect(vault.resolvePluginSecret("cred-1")).resolves.toBeNull();
+        });
+
+        it("drops the previous ciphertext when a re-set cannot seal", async () => {
+            const shared = fakeSealer();
+            const vault = makeVault(shared);
+            const { handle } = await vault.setPluginSecret(TOKEN);
+
+            shared.available = false;
+            // A build must not quietly use the value the author has just replaced.
+            await expect(vault.setPluginSecret("a different token", handle))
+                .resolves.toEqual({ handle, available: false });
+
+            shared.available = true;
+            await expect(vault.resolvePluginSecret(handle)).resolves.toBeNull();
+        });
+
+        it("refuses a blank value: clearing is the project's business, not the vault's", async () => {
+            const vault = makeVault();
+
+            await expect(vault.setPluginSecret("")).rejects.toThrow(/needs a value/);
+        });
+
+        it("cannot masquerade as a signing credential", async () => {
+            const vault = makeVault();
+            const credential = await vault.import(pfxImport());
+            const { handle } = await vault.setPluginSecret(TOKEN);
+
+            await expect(vault.list()).resolves.toEqual([expect.objectContaining({ id: credential.id })]);
+            await expect(vault.get(handle)).resolves.toBeNull();
+            await expect(vault.resolveMaterial(handle)).resolves.toBeNull();
+            // And the reverse: a credential id is not a handle.
+            await expect(vault.resolvePluginSecret(credential.id)).resolves.toBeNull();
+        });
+
+        it("leaves the file as it was on a machine that has none", async () => {
+            const vault = makeVault();
+            await vault.import(pfxImport());
+
+            expect(JSON.parse(await indexText())).not.toHaveProperty("pluginSecrets");
+        });
+
+        it("keeps the credentials when the stored secret list is unusable", async () => {
+            const vault = makeVault();
+            const credential = await vault.import(pfxImport());
+            const file = JSON.parse(await indexText());
+            await fs.writeFile(
+                path.join(root, "credentials.json"),
+                JSON.stringify({ ...file, pluginSecrets: "nonsense" }),
+            );
+
+            // Read as none rather than quarantined: the credentials point at key material on disk
+            // that nothing else records, and a bad neighbouring field must not cost them.
+            await expect(vault.list()).resolves.toEqual([expect.objectContaining({ id: credential.id })]);
+            await expect(vault.pluginSecretAvailable("anything")).resolves.toBe(false);
+        });
+    });
 });

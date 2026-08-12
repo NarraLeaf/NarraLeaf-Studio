@@ -76,6 +76,7 @@ describe("sidecar preflight", () => {
                 locales: [],
                 runtimeCapabilities: [],
                 buildDependencies: [],
+                buildConfig: [],
                 sidecars: sidecars.map(sidecar => ({
                     kind: "executable",
                     transport: "stdio-jsonl",

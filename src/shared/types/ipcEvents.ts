@@ -228,6 +228,9 @@ export enum IPCEventType {
     signingKeystoreAliases = "signing.keystoreAliases",
     signingMacIdentities = "signing.macIdentities",
 
+    pluginBuildSecretSet = "pluginBuildSecret.set",
+    pluginBuildSecretAvailable = "pluginBuildSecret.available",
+
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
     blueprintPersistenceSetValue = "blueprintPersistence.setValue",
@@ -734,7 +737,7 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -2061,6 +2064,57 @@ export type IPCSigningEvents = {
         data: Record<string, never>,
         response: {
             identities: MacSigningIdentity[];
+        };
+    };
+};
+
+/**
+ * Plugin build-config secrets, sealed in the same machine vault the signing
+ * passwords live in.
+ *
+ * Two events, and there is deliberately no third. The value goes up once, when
+ * the author types it, and what comes back is a handle - the project file stores
+ * that. Nothing here reads a secret back: unsealing happens in the main process
+ * alone, when a build needs the value, and a "read it" event would be the whole
+ * point of the vault undone.
+ */
+export type IPCPluginBuildSecretEvents = {
+    /**
+     * Seal a value and answer the handle to store. The payload is plaintext - do
+     * not log it, do not keep it, do not send it anywhere else.
+     */
+    [IPCEventType.pluginBuildSecretSet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** Plain text, one way only. */
+            value: string;
+            /**
+             * The handle to fill in, when the project already refers to one and
+             * the author is supplying the value on this machine. Omit to mint one.
+             */
+            handle?: string;
+        },
+        response: {
+            /** What the project stores in place of the value. */
+            handle: string;
+            /** False when the OS keyring refused; the handle exists, the value was not stored. */
+            available: boolean;
+        };
+    };
+    /**
+     * Whether the secret behind a handle is on this machine and can be unsealed.
+     * False is the ordinary answer for a project a collaborator configured, and
+     * means "set, not available here" rather than "empty".
+     */
+    [IPCEventType.pluginBuildSecretAvailable]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            handle: string;
+        },
+        response: {
+            available: boolean;
         };
     };
 };

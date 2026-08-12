@@ -86,9 +86,12 @@ import type {
     AppTagBaseIdentity,
     AppTagIdentity,
     AppTagOverrideKey,
+    AppTagPluginConfig,
+    AppTagResolvedValue,
     ProjectAppTag,
     ProjectAppTagDocument,
 } from "@shared/types/appTag";
+import type { PluginBuildConfigField } from "@shared/types/plugins";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
 import type {
@@ -108,7 +111,12 @@ import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
-import type { GameBuildRequest, GameBuildStateSnapshot, GameBuildStatus } from "@shared/types/gameBuild";
+import type {
+    GameBuildPlatform,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GameBuildStatus,
+} from "@shared/types/gameBuild";
 import type {
     ConsoleAppendInput,
     ConsoleChannelDefinition,
@@ -560,6 +568,29 @@ interface IAppTagService extends IService {
     clearOverride(id: string, key: AppTagOverrideKey): boolean;
     clearAllOverrides(id: string): boolean;
     listOverriddenKeys(id: string): AppTagOverrideKey[];
+    /** The project's own plugin build values - what a variant states nothing against. */
+    getProjectPluginConfig(): AppTagPluginConfig;
+    /** Only what this variant states. Empty for the release tag, which stores nothing. */
+    getVariantPluginConfig(id: string | null | undefined): AppTagPluginConfig;
+    resolvePluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform?: GameBuildPlatform,
+    ): AppTagResolvedValue;
+    /** Routed by the field's scope; a blank value clears it. */
+    setPluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        value: string,
+        platform?: GameBuildPlatform,
+    ): boolean;
+    /** Restore one field to the inherited value by removing it. */
+    clearPluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform?: GameBuildPlatform,
+    ): boolean;
+    clearAllPluginConfig(id: string): boolean;
     /** Refuses the release tag. References are not rewritten; they resolve to release. */
     deleteTag(id: string): boolean;
 }
