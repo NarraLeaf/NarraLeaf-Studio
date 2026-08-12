@@ -9,10 +9,13 @@ import type { TranslationKey } from "@shared/i18n";
  * are named after what happened rather than after a colour: swapping the palette is a change to
  * {@link CHANGE_MASK_CLASS} and to nothing else.
  *
- * **The tones follow the index's row tints and are not a second scheme.** `CHANGE_KIND_TINT` in
- * `documentChangeView.ts` marks an addition `text-success` and a removal `text-danger`, so one
- * element that appeared is green in the list and green on the canvas. A canvas that used its own
- * colours would make the same change look like two changes to anyone reading both.
+ * **A removal is `danger` on both the canvas and the index row, and an addition is not.** The list's
+ * `CHANGE_KIND_TINT` marks an addition `text-success`; here it is `primary`. That divergence is
+ * deliberate and was decided by looking at the two together: a mask sits ON the author's artwork,
+ * where green competes with the art itself and where red beside green is the one pairing a
+ * colour-blind reader cannot separate. A glyph in a text list has neither problem. The cost is real
+ * and accepted - the same addition is a green `+` in the index and a blue wash on the canvas - and
+ * it is confined to this map, so reverting is one line.
  *
  * **A mask is a wash, not a lid.** Every one of them is a translucent fill under a solid border,
  * because the question an author brings here is what the marked thing LOOKS like now - a colour
@@ -30,7 +33,7 @@ export type ChangeMaskTone = "added" | "removed" | "changed" | "moved";
  * decides which scene runs next. It reads as "something happened here" and stops there.
  */
 export const CHANGE_MASK_CLASS: Record<ChangeMaskTone, string> = {
-    added: "border-success bg-success/20",
+    added: "border-primary bg-primary/20",
     removed: "border-danger bg-danger/20",
     changed: "border-warning bg-warning/20",
     moved: "border-edge-strong bg-fill-subtle",
@@ -43,7 +46,7 @@ export const CHANGE_MASK_CLASS: Record<ChangeMaskTone, string> = {
  * `border-*` and `fill` for `bg-*` (design-system.md §1), and a stroke is neither of those roles.
  */
 export const CHANGE_MASK_STROKE: Record<ChangeMaskTone, string> = {
-    added: "stroke-success",
+    added: "stroke-primary",
     removed: "stroke-danger",
     changed: "stroke-warning",
     moved: "stroke-fg-subtle",

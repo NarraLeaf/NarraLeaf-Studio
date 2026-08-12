@@ -499,6 +499,12 @@ export const storyInspector = {
         // tested before the body, so a condition already true means the group never runs.
         untilHint: "The group repeats while this is false and stops when it becomes true. The condition is checked before each pass.",
         breakHint: "Leaves the repeat group containing this row. It has no effect outside a repeat group.",
+        cutVariant: "Build variant",
+        cutHint: "This build ends at this line and contains nothing after it. Every other build is unchanged and does not contain this line.",
+        // The row still names a variant the project no longer has. It reads the release values like
+        // every other stranded reference, and a cut point on the release build ends nothing.
+        cutMissingVariant: "Deleted variant, now read as {name}",
+        cutNoVariants: "No variants",
         branch: "Branch",
         elseHint: "Else branch runs when previous branches do not match.",
     },

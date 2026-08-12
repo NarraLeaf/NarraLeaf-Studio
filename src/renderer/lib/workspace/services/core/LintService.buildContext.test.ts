@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { AssetType } from "../assets/assetTypes";
 import { buildReferenceIndex, type AssetReference } from "../references/referenceModel";
 import { ReferenceService } from "../references/ReferenceService";
@@ -70,6 +71,9 @@ function mount(options: { assetIds: string[]; references: AssetReference[] }): L
                         return referenceService;
                     case Services.Character:
                         return { listCharacter: () => [] };
+                    // `listTags` synthesizes the release variant, so this list is never empty.
+                    case Services.AppTags:
+                        return { listTags: () => [RELEASE_APP_TAG] };
                     case Services.VariableRegistry:
                         return { listEntries: () => [], listEntriesInScope: () => [] };
                     case Services.Localization:

@@ -1,4 +1,4 @@
-import { Aperture, Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
+import { Aperture, Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
@@ -469,11 +469,12 @@ export function canAcceptChildren(block: StoryBlock | undefined): boolean {
     if (!block) {
         return false;
     }
-    // `label`, `goto` and `break` are the control rows that are NOT containers: a label is a point,
-    // a goto is a move and a break is an exit - none has a body. Everything else under `control`
-    // groups rows.
+    // `label`, `goto`, `break` and `cut` are the control rows that are NOT containers: a label is a
+    // point, a goto is a move, a break is an exit and a cut is an ending - none has a body.
+    // Everything else under `control` groups rows.
     if (block.kind === "control"
-        && (block.payload.control === "label" || block.payload.control === "goto" || block.payload.control === "break")) {
+        && (block.payload.control === "label" || block.payload.control === "goto"
+            || block.payload.control === "break" || block.payload.control === "cut")) {
         return false;
     }
     return block.kind === "control" ||
@@ -547,6 +548,7 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
     label: Bookmark,
     goto: CornerUpLeft,
     break: LogOut,
+    cut: SeparatorHorizontal,
     control: Settings2,
     jump: Route,
     invalid: TriangleAlert,
@@ -599,6 +601,7 @@ function rowCommandId(block: StoryBlock): string | null {
                 case "race": return "race";
                 case "sequence": return "sequence";
                 case "break": return "break";
+                case "cut": return "cut";
                 case "label": return "label";
                 case "goto": return "goto";
                 default: return null;
