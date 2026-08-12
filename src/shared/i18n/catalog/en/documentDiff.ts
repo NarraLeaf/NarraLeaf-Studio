@@ -572,6 +572,13 @@ export const documentDiff = {
         },
         /** One mark. Its own words are in the row underneath, which the mark selects. */
         markLabel: "Show this change",
+        /**
+         * Back to the whole graph in the frame, after dragging or zooming.
+         *
+         * The blueprint editor's words for the same control, because it is the same picture and
+         * the same result; a second phrase for it would read as a second behaviour.
+         */
+        fitView: "Fit view",
         oneChange: "Showing one change.",
         showAll: "Show every change",
         /**

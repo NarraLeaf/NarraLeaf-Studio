@@ -331,6 +331,125 @@ describe("marks on the blueprint canvas", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Moving the blueprint canvas
+// ---------------------------------------------------------------------------
+
+/**
+ * What is left of pan and zoom once layout is taken away.
+ *
+ * The gesture itself is not here and cannot be: with every rect zero, "the picture followed the
+ * pointer" is not a question jsdom can answer, and the anchor a wheel zooms about is read off a
+ * rect. What is here is the arithmetic the gesture drives, which is where the two column canvases
+ * would come apart if they were ever going to - every card is positioned from a number this
+ * component computed, and those numbers are in the markup.
+ */
+describe("dragging and magnifying the blueprint canvas", () => {
+    const canvases = (container: HTMLElement): HTMLElement[] =>
+        [...container.querySelectorAll<HTMLElement>("[data-graph-canvas]")];
+
+    /** Every node card of one column, as the geometry the component gave it. */
+    const cards = (canvas: HTMLElement): string[] =>
+        [...canvas.querySelectorAll<HTMLElement>(":scope > div")].map(
+            card => `${card.style.left}|${card.style.top}|${card.style.width}|${card.style.height}`,
+        );
+
+    /** How far each card of one column travelled between two readings of it. */
+    const offsets = (from: string[], to: string[]): string[] =>
+        from.map((was, index) => {
+            const [left, top] = was.split("|");
+            const [now, nowTop] = (to[index] ?? "").split("|");
+            return `${Number.parseFloat(now!) - Number.parseFloat(left!)}`
+                + `|${Number.parseFloat(nowTop!) - Number.parseFloat(top!)}`;
+        });
+
+    const twoSides = () => {
+        const base = uigraphs([graphNode("n-a", 0, 0), graphNode("n-b", 400, 0)]);
+        const head = uigraphs([graphNode("n-a", 0, 0), graphNode("n-b", 400, 200), graphNode("n-c", 800, 0)]);
+        sideDocuments.set("before", base);
+        sideDocuments.set("after", head);
+        return render(<ChangeDetailHost entry={graphEntry(base, head)} sides={SIDES} />);
+    };
+
+    it("zooms both columns by the same amount from a wheel over either of them", () => {
+        const { container } = twoSides();
+        const [before, after] = canvases(container);
+        expect(before && after).toBeTruthy();
+
+        // `n-a` is at the same coordinates in both versions, and the shared viewport is what puts
+        // it in the same place twice.
+        expect(cards(before!)[0]).toBe(cards(after!)[0]);
+        const wasFitted = cards(before!);
+
+        fireEvent.wheel(before!, { deltaY: -100, ctrlKey: true });
+
+        expect(cards(before!)[0]).not.toBe(wasFitted[0]);
+        // The wheel happened over the old version's column; the new version's moved with it.
+        expect(cards(before!)[0]).toBe(cards(after!)[0]);
+    });
+
+    it("drags both columns together from the background of either", () => {
+        const { container } = twoSides();
+        const [before, after] = canvases(container);
+        const start = [cards(before!), cards(after!)];
+
+        fireEvent.pointerDown(before!, { button: 0, pointerId: 7, clientX: 40, clientY: 20 });
+        fireEvent.pointerMove(window, { pointerId: 7, clientX: 65, clientY: 5 });
+        fireEvent.pointerUp(window, { pointerId: 7 });
+
+        const moved = [cards(before!), cards(after!)];
+        expect(moved[0]).not.toEqual(start[0]);
+        // One pull, one distance, every card of both columns - so a node nobody touched is still
+        // opposite itself. The two sides hold a different number of nodes, which is why this is a
+        // set of travels rather than a list of them.
+        expect(new Set([
+            ...offsets(start[0]!, moved[0]!),
+            ...offsets(start[1]!, moved[1]!),
+        ])).toEqual(new Set(["25|-15"]));
+    });
+
+    it("leaves a wheel with no modifier to the pane the canvas is scrolled inside", () => {
+        const { container } = twoSides();
+        const [before] = canvases(container);
+        const wasFitted = cards(before!);
+
+        fireEvent.wheel(before!, { deltaY: -100 });
+
+        expect(cards(before!)).toEqual(wasFitted);
+    });
+
+    it("offers the whole graph back, and only once there is something to come back from", () => {
+        const { container } = twoSides();
+        const [before, after] = canvases(container);
+        const fitted = [cards(before!), cards(after!)];
+
+        const fit = () => container.querySelector<HTMLButtonElement>("[data-graph-fit]")!;
+        expect(fit().disabled).toBe(true);
+
+        fireEvent.wheel(before!, { deltaY: -100, ctrlKey: true });
+        expect(fit().disabled).toBe(false);
+
+        fireEvent.click(fit());
+        expect([cards(before!), cards(after!)]).toEqual(fitted);
+        expect(fit().disabled).toBe(true);
+    });
+
+    /**
+     * The count is the one thing this pane is trusted for, and a view is not a filter: a node
+     * dragged off the visible part of the frame is out of sight, never out of the tally.
+     */
+    it("marks the same changes at every zoom", () => {
+        const { container } = twoSides();
+        const [before] = canvases(container);
+        const marked = marks(container).length;
+
+        fireEvent.wheel(before!, { deltaY: -100, ctrlKey: true });
+
+        expect(marks(container)).toHaveLength(marked);
+        expect(container.textContent).not.toContain("documentDiff.canvas.notMarked");
+    });
+});
+
+// ---------------------------------------------------------------------------
 // When the canvas cannot draw
 // ---------------------------------------------------------------------------
 
