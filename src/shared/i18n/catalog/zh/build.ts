@@ -37,10 +37,16 @@ export const build = {
     },
     outputDir: "输出目录",
     chooseFolder: "选择文件夹…",
+    // 侧边导航。其中六项对应检查结果可以归属的分区；`variant` 是选择构建版本的那一页，
+    // 它决定其余各页描述的是哪一个版本，只在工程存在可选版本时出现；`plugins` 只在有插件
+    // 索要取值时出现。
     section: {
+        variant: "版本",
         targets: "目标",
         identity: "标识",
         content: "内容与保护",
+        // 插件索要的取值。随包发布的插件列在「内容与保护」里，那是另一回事。
+        plugins: "插件",
         signing: "签名",
         output: "输出",
     },
@@ -50,8 +56,26 @@ export const build = {
         arm64: "ARM（arm64）",
         universal: "通用",
     },
+    // 第一页：本次构建产出哪一个版本，以及该版本发布的值。
+    variant: {
+        // 标在「该版本自己未填写」的读数旁边，使继承来的值与被覆盖的值在同一行都给出出处
+        inherited: "来自工程",
+        // 该版本的剧情止于何处。数的是指向它的截断行，因此正式版恒为完整剧情
+        boundary: "内容",
+        endsNever: "剧情播放至结尾",
+        endsAt: {
+            one: "在 {count} 个截断行处结束，其后的内容不在这份构建里",
+            other: "在 {count} 个截断行处结束，其后的内容不在这份构建里",
+        },
+        variantRows: {
+            one: "有 {count} 行读取了构建版本，在不同版本里可能不同",
+            other: "有 {count} 行读取了构建版本，在不同版本里可能不同",
+        },
+        blocking: "阻止本次构建",
+        blockingNone: "没有阻止本次构建的问题",
+    },
     identity: {
-        // 本次构建属于工程的哪一个发行版本；放在该分区最前，因为下面三行读数都是该版本发布的值
+        // 第一页所做的选择的名称，同时用作那份列表的标签
         variant: "构建版本",
         // 标在「由该版本自己填写、而非继承」的读数旁边，使与「应用」页不一致的值在同一行给出原因
         fromVariant: "来自该构建版本",
@@ -81,6 +105,19 @@ export const build = {
         network: "网络策略",
         networkAllowHttp: "允许明文 HTTP",
         networkStrict: "禁止明文 HTTP",
+    },
+    // 插件页。字段名与说明都来自插件清单，这里只写密文相关的措辞——密文是这一页唯一
+    // 不会显示出来的取值。
+    pluginConfig: {
+        secretUnset: "未设置",
+        // 凭据库还没有回答时的说法。那时只知道「已设置」，写成下面两种读法中的任何一种，
+        // 都会是一个片刻之后自我撤回的判断。
+        secretSet: "已设置",
+        secretHere: "已设置，本机可以读取",
+        secretElsewhere: "在其他设备上设置，本机没有它的值",
+        secretEnter: "输入新的值",
+        clear: "清除",
+        secretFailed: "无法在本机保存这个值",
     },
     signing: {
         empty: "选择一个可签名的目标后，这里会列出对应平台",
@@ -169,11 +206,17 @@ export const build = {
         "version-invalid": "版本号 {version} 不是合法的语义化版本，构建会失败",
         "version-missing": "未设置版本号，将以 0.0.0 构建",
         "identifier-missing": "项目没有标识符，将使用应用 ID {appId}",
+        // 构建本身同样拒绝这个文件，所以这里说明的是中止的原因，而不是替代的取值
+        "variants-unreadable": "无法读取工程的构建版本：{reason}",
         "icon-missing": "未设置应用图标，将使用 NarraLeaf 图标",
         "icon-unusable": "{platform} 图标无法读取，将使用 NarraLeaf 图标",
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
         "icon-stale": "{platform} 图标尚未烘焙，请打开 项目 ▸ 应用 生成",
         "plugins-invalid": "插件校验失败：\n{errors}",
+        // {platforms} 是这一个取值需要覆盖的平台：按平台存放时是它所属的那一个，否则是本次
+        // 构建的全部平台。它永远不为空，两种情形下句子读起来一样。
+        "plugin-config-missing": "构建 {platforms} 需要 {plugin} 的「{field}」，该值尚未填写",
+        "plugin-secret-unavailable": "{plugin} 的「{field}」已设置，但值不在本机；密文不会随工程流转；在此重新输入即可构建 {platforms}",
         "build-dependency-unavailable":
             "{plugin} 在 {platform} 上需要构建依赖 {dependency}，本机没有缓存，也无法从 {url} 获取（{reason}）；"
             + "自行下载并另存为 {path} 即可离线构建",
@@ -220,6 +263,16 @@ export const build = {
     invalidCommandSummary: {
         one: "构建已中止：有 {count} 条无效指令，详见控制台",
         other: "构建已中止：有 {count} 条无效指令，详见控制台",
+    },
+    appTagUnresolved: "{story} / {scene} 中 AppTag 没有得出固定值：{source}",
+    appTagUnresolvedSummary: {
+        one: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
+        other: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
+    },
+    cutPointNested: "{story} / {scene} 中 {variant} 的截断点位于条件或分组内部，请把它移到场景顶层",
+    cutPointNestedSummary: {
+        one: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
+        other: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
     },
     mediaNeedsConverting: "{asset} 无法播放，请在素材面板中转换",
     mediaNotPlayable: "{asset} 不含音频也不含视频，请替换或删除该文件",

@@ -19,4 +19,13 @@ export const game = {
             engine: "{error}",
         },
     },
+    crash: {
+        title: "游戏已停止工作",
+        detail: "存档不受影响。重新启动会回到游戏的标题画面。",
+        restart: "重新启动",
+        showDetails: "详细信息",
+        copyDetails: "复制详情",
+        copied: "已复制到剪贴板",
+        copyFailed: "复制失败：{error}",
+    },
 } satisfies LocaleNamespace<"game">;

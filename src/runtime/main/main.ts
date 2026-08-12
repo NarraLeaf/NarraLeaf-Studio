@@ -4,7 +4,7 @@ import os from "os";
 import path from "path";
 import { Readable } from "stream";
 import { nativeImage } from "electron";
-import { app, BrowserWindow, ipcMain, Menu, protocol, session } from "electron/main";
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session } from "electron/main";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { GameTestEvent } from "@shared/types/gameTest";
 import {
@@ -39,6 +39,8 @@ import {
 } from "./runtimeStorage";
 import { collectPackSidecars, SidecarHost } from "./sidecarHost";
 import { resolveRuntimeUserDataDir } from "./userDataDir";
+import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
+import { isCrashLooping, recordCrash } from "@shared/utils/crashLoop";
 
 const appDir = __dirname;
 
@@ -94,6 +96,14 @@ const userDataDir = useSiblingUserData
         warn: message => { console.warn(`[GameRuntime] ${message}`); },
     });
 
+/**
+ * Everything this process and the game have to say, on disk.
+ *
+ * Installed here rather than at app-ready because the failures worth having a log for include the
+ * ones during startup, and because it is the first moment the profile directory is known.
+ */
+const logRuntime = installRuntimeLogSink(userDataDir);
+
 
 /** Node inspector / Chromium remote-debugging switches refused in production. */
 const DEBUG_SWITCHES = [
@@ -106,7 +116,14 @@ const DEBUG_SWITCHES = [
 ];
 
 let packPromise: Promise<GameRuntimePackV1> | null = null;
+/** The game's own name, once the pack has been read. Titles the crash dialogs. */
+let loadedPackName: string | null = null;
 let mainWindow: BrowserWindow | null = null;
+/** When the game's page process died, newest last. Only the last minute is kept. */
+let windowCrashHistory: number[] = [];
+/** True while a hang question is on screen, and between asking for a reload and it happening. */
+let hangPromptOpen = false;
+let expectedProcessSwap = false;
 let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
 let saveStore: RuntimeSaveStore | null = null;
@@ -253,8 +270,7 @@ function createSidecarHost(pack: GameRuntimePackV1): SidecarHost {
         mode: pack.mode,
         game: { name: pack.project.name, version: pack.project.version ?? null },
         log: (level, message) => {
-            const sink = level === "error" ? "error" : level === "warning" ? "warn" : "log";
-            console[sink](`[GameRuntime] ${message}`);
+            logRuntime(level, message);
         },
         send: message => {
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -361,15 +377,46 @@ function describeRuntimeError(error: unknown): { message: string; stack?: string
  */
 process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
     const described = describeRuntimeError(error);
+    const headline = origin === "unhandledRejection"
+        ? `Unhandled rejection: ${described.message}`
+        : described.message;
     emitTestEvent({
         kind: "runtime-error",
         scope: "main",
-        message: origin === "unhandledRejection"
-            ? `Unhandled rejection: ${described.message}`
-            : described.message,
+        message: headline,
         ...(described.stack ? { stack: described.stack } : {}),
     });
+    // Written before the box below, so the record survives even if drawing it is what fails. Both
+    // are new: this used to report to a test nobody was running and then let the process disappear
+    // off the player's screen without a word.
+    logRuntime("error", `[Crash] ${headline}${described.stack ? `\n${described.stack}` : ""}`);
+    reportFatalRuntimeError(headline);
 });
+
+/**
+ * Tell the player the game is going down, on its way down.
+ *
+ * `showErrorBox` because it is synchronous and needs no window: by this point the process has
+ * milliseconds left, and the window is often the thing that died. The stack stays in the log - a
+ * player cannot act on it, and the author asking for it can be pointed at a file.
+ *
+ * Wrapped whole. A failure to report a fatal error must not become a second fatal error.
+ */
+function reportFatalRuntimeError(headline: string): void {
+    try {
+        dialog.showErrorBox(
+            gameDisplayName(),
+            `${headline}\n\nThe game has to close. Details were written to ${runtimeLogPath(userDataDir)}`,
+        );
+    } catch {
+        /* No window server, or a dialog that refused. The log line above is the report. */
+    }
+}
+
+/** The game's own name once the pack has been read, and something honest before that. */
+function gameDisplayName(): string {
+    return loadedPackName ?? app.getName();
+}
 
 function emitTestEvent(event: GameTestEvent): void {
     if (testSubscribers.size === 0) {
@@ -495,6 +542,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     };
     win.on("enter-full-screen", emitFullscreen(true));
     win.on("leave-full-screen", emitFullscreen(false));
+    installWindowCrashHandling(win);
     if (devToolsEnabled) {
         win.webContents.on("before-input-event", (_event, input) => {
             if (input.type === "keyUp" && input.key === "F12") {
@@ -563,7 +611,127 @@ function applyRuntimeMenu(): void {
     }
 }
 
+/**
+ * The three ways a game window can stop working without anything throwing in JavaScript: its page
+ * process exits, it stops answering, or a helper process it depends on dies.
+ *
+ * All three were silent. The page process dying takes the window down with it, so what the player
+ * saw was a game that closed itself; a hang looked like a very long load. Recovering is a reload -
+ * the game reopens at its title screen with every save intact - so that is what gets offered, and
+ * a window that keeps dying stops being offered it rather than trapping the player in a dialog.
+ *
+ * The wording is duplicated from `game.crash.*` rather than read from it. Everything player-facing
+ * in this process is a literal for the same reason: the catalog carries every locale of every
+ * Studio string, and pulling it in here would put all of it in the main bundle of every shipped
+ * game to say four sentences. The renderer's copy is the one that has to be kept in step.
+ */
+function installWindowCrashHandling(win: BrowserWindow): void {
+    win.webContents.on("render-process-gone", (_event, details) => {
+        if (!details.reason || details.reason === "clean-exit") {
+            return;
+        }
+        logRuntime("error", `[Crash] The game window's renderer exited: ${details.reason} (exit code ${details.exitCode})`);
+        if (expectedProcessSwap) {
+            expectedProcessSwap = false;
+            return;
+        }
+        void offerWindowReload(win, details.reason);
+    });
+    win.webContents.on("did-finish-load", () => {
+        expectedProcessSwap = false;
+    });
+    win.on("unresponsive", () => {
+        logRuntime("warning", "[Crash] The game window stopped responding");
+        void offerHangReload(win);
+    });
+    win.on("responsive", () => {
+        logRuntime("info", "[Crash] The game window is responding again");
+        hangPromptOpen = false;
+    });
+    win.webContents.on("preload-error", (_event, preloadPath, error) => {
+        // Without the preload there is no bridge, so the page cannot read its pack, its saves, or
+        // anything else. It would draw a black screen and look like a game that simply does not run.
+        logRuntime("error", `[Crash] Preload script failed (${preloadPath}): ${describeRuntimeError(error).message}`);
+    });
+}
+
+async function offerWindowReload(win: BrowserWindow, reason: string): Promise<void> {
+    if (isQuitting || win.isDestroyed()) {
+        return;
+    }
+    const now = Date.now();
+    windowCrashHistory = recordCrash(windowCrashHistory, now);
+    if (isCrashLooping(windowCrashHistory)) {
+        logRuntime("error", "[Crash] The game window has stopped working repeatedly; not offering a reload again.");
+        reportFatalRuntimeError(`The game window stopped working (${reason}).`);
+        // Before the quit, always: the window's close guard holds the close open while it asks the
+        // renderer for a decision, and the renderer is the thing that just died. Without this the
+        // quit waits out that timeout in front of a player who has already been told it is over.
+        isQuitting = true;
+        app.quit();
+        return;
+    }
+
+    try {
+        const answer = await dialog.showMessageBox(win, {
+            type: "error",
+            title: gameDisplayName(),
+            message: "The game stopped working.",
+            detail: "Restarting reopens the game at its title screen. Saved games are not affected.",
+            buttons: ["Restart", "Quit"],
+            defaultId: 0,
+            cancelId: 1,
+            noLink: true,
+        });
+        if (win.isDestroyed()) {
+            return;
+        }
+        if (answer.response === 0) {
+            expectedProcessSwap = true;
+            win.reload();
+            return;
+        }
+    } catch (error) {
+        logRuntime("warning", `[Crash] Could not ask about restarting: ${describeRuntimeError(error).message}`);
+    }
+    isQuitting = true;
+    app.quit();
+}
+
+async function offerHangReload(win: BrowserWindow): Promise<void> {
+    if (hangPromptOpen || isQuitting || win.isDestroyed()) {
+        return;
+    }
+    hangPromptOpen = true;
+    try {
+        const answer = await dialog.showMessageBox(win, {
+            type: "warning",
+            title: gameDisplayName(),
+            message: "The game is not responding.",
+            detail: "Restarting reopens the game at its title screen. Progress since the last save is lost.",
+            buttons: ["Keep waiting", "Restart"],
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true,
+        });
+        if (answer.response === 1 && !win.isDestroyed()) {
+            // Navigation is decided in this process rather than in the page, so it lands even
+            // though the page is not answering. Chromium discards the hung process on the way,
+            // which arrives as a renderer that disappeared - hence the flag.
+            expectedProcessSwap = true;
+            win.reload();
+        }
+    } catch (error) {
+        logRuntime("warning", `[Crash] Could not ask about restarting the hung window: ${describeRuntimeError(error).message}`);
+    } finally {
+        hangPromptOpen = false;
+    }
+}
+
 function applyRuntimeAppIdentity(pack: GameRuntimePackV1): void {
+    // Also the title of any error box after this point. Before it there is no name to use, which
+    // is itself a fact worth keeping honest rather than papering over with the product's name.
+    loadedPackName = pack.project.name;
     app.setName(pack.project.name);
     app.setAboutPanelOptions({
         applicationName: pack.project.name,
@@ -837,8 +1005,8 @@ function registerRuntimeIpc(): void {
         mainWindow?.setFullScreen(fullscreen === true);
     });
     ipcMain.on("runtime:log", (_event, data: { level?: string; message?: string }) => {
-        const level = data?.level === "error" ? "error" : data?.level === "warning" ? "warn" : "log";
-        console[level](`[GameRuntime] ${String(data?.message ?? "")}`);
+        const level = data?.level === "error" ? "error" : data?.level === "warning" ? "warning" : "info";
+        logRuntime(level, String(data?.message ?? ""));
     });
     // The renderer's uncaught errors and the engine reaching an ending. Validated rather than
     // trusted (toGameTestEvent stamps the scope and refuses anything else), and dropped on the

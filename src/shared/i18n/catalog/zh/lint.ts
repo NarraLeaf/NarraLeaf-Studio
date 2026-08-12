@@ -97,6 +97,11 @@ export const lint = {
             description: "场景里没有内容",
             message: "这个场景里没有任何行",
         },
+        storyAppTagUnknown: {
+            title: "未知的构建变体",
+            description: "行里比较的变体在工程中不存在",
+            message: "没有名为「{name}」的构建变体，这一行不会出现在任何构建里",
+        },
         blueprintReferenceMissing: {
             title: "指向不存在的对象",
             description: "节点指向了工程里已经没有的东西",

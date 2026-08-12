@@ -120,6 +120,15 @@ export type GameRuntimeArtifactCompileInput = {
     /** Runtime entries of enabled plugins to ship inside the pack. */
     runtimePlugins?: GameRuntimePluginSource[];
     /**
+     * The build variant this artifact is. Absent is the release variant, which is what every preview
+     * compile passes - nothing about a preview picks one.
+     *
+     * It reaches the bundle assembler and decides what the story documents contain, so it is not a
+     * label on the output: two artifacts compiled from one project under two variants carry
+     * different story bytes.
+     */
+    appTag?: { id: string; name: string };
+    /**
      * `<platform>-<arch>` this app dir's native payload is built for - the key
      * plugin sidecar binaries are declared under. A production build passes the
      * target's key; a preview passes the host's own, so an author can exercise a
@@ -183,6 +192,15 @@ export type GameRuntimeArtifactCompileResult = {
     packPath: string;
     pack: GameRuntimePackV1;
     copiedAssetCount: number;
+    /**
+     * Lines the caller has to put in the build console: decisions the compile made that change what
+     * ships and that the author cannot see from the artifact.
+     *
+     * They travel on the result because the compile runs in a utility process, which has no channel
+     * to the workspace window - `console.log` there reaches Studio's terminal, not the console the
+     * author is reading.
+     */
+    notices: string[];
 };
 
 /**
@@ -252,6 +270,7 @@ export async function compileGameRuntimeArtifact(
         throw new Error(`Blueprint script compile failed:\n${detail}`);
     }
     const bundleId = crypto.randomUUID();
+    const notices: string[] = [];
     const bundle = await assembleDevModeBundleFromProjectPath({
         projectPath: input.projectPath,
         bundleId,
@@ -259,6 +278,9 @@ export async function compileGameRuntimeArtifact(
         blueprintCompiledScripts: blueprintScripts.scripts,
         blueprintScriptsCompileOk: blueprintScripts.ok,
         blueprintScriptsCompileErrors: blueprintScripts.errors,
+        ...(input.appTag ? { appTag: input.appTag } : {}),
+        hasRuntimePlugins: (input.runtimePlugins?.length ?? 0) > 0,
+        onNotice: message => notices.push(message),
     });
 
     // Everything below either writes loose files or streams into the store; on
@@ -385,6 +407,7 @@ export async function compileGameRuntimeArtifact(
             packPath,
             pack,
             copiedAssetCount: Object.keys(assetManifest).length,
+            notices,
         };
     } catch (error) {
         if (target.kind === "sealed") {

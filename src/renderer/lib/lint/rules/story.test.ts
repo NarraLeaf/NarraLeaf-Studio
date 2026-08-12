@@ -3,13 +3,15 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument, type StoryScene } from "@shared/types/story";
+import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
+import { EMPTY_STORY_EXPRESSION_SCOPE, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import { createTestLintContext } from "../testContext";
 import type { LintContext, LintStoryEntry } from "../context";
 import type { LintFinding, LintRuleId } from "../types";
 import { STORY_LINT_RULES } from "./story";
 
 /**
- * The nine `story` rules.
+ * The ten `story` rules.
  *
  * Every rule is checked both ways - a fixture that must produce a finding and one that must produce
  * nothing - because a rule that never fires and a rule that always fires are equally useless and
@@ -661,5 +663,71 @@ describe("story/empty-scene", () => {
             ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [{ ...narration("b1"), disabled: true }])])),
         );
         expect(findings).toHaveLength(1);
+    });
+});
+
+// --- story/app-tag-unknown --------------------------------------------------
+
+/** `if AppTag == "<name>"`, as the branch block a scene really holds. */
+function appTagBranch(id: string, name: string): BlockSpec {
+    return {
+        id,
+        kind: "control",
+        payload: {
+            control: "conditionBranch",
+            branch: "if",
+            condition: {
+                kind: "expression",
+                expression: parseStoryExpression(
+                    `AppTag == ${JSON.stringify(name)}`,
+                    EMPTY_STORY_EXPRESSION_SCOPE,
+                ).expression,
+            },
+        },
+        children: [narration(`${id}-line`)],
+    };
+}
+
+describe("story/app-tag-unknown", () => {
+    const withTags = (entry: LintStoryEntry, tags: ProjectAppTag[]): LintContext =>
+        createTestLintContext({ stories: [entry], appTags: tags });
+
+    it("reports a comparison against a variant the project does not have", () => {
+        const findings = run(
+            "story/app-tag-unknown",
+            withTags(story("s1", "Main", [scene("sc1", "Prologue", [condition("c1", [appTagBranch("b1", "Demo")])])]), [RELEASE_APP_TAG]),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyAppTagUnknown.message");
+        expect(findings[0].messageParams).toEqual({ name: "Demo" });
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "b1" });
+    });
+
+    it("says nothing about a variant the project has", () => {
+        const tags = [RELEASE_APP_TAG, { id: "t-demo", name: "Demo", overrides: {} }];
+        expect(run(
+            "story/app-tag-unknown",
+            withTags(story("s1", "Main", [scene("sc1", "Prologue", [condition("c1", [appTagBranch("b1", "Demo")])])]), tags),
+        )).toEqual([]);
+    });
+
+    it("matches the variant's name exactly, the way the fold does", () => {
+        const tags = [RELEASE_APP_TAG, { id: "t-demo", name: "Demo", overrides: {} }];
+        expect(run(
+            "story/app-tag-unknown",
+            withTags(story("s1", "Main", [scene("sc1", "Prologue", [condition("c1", [appTagBranch("b1", "demo")])])]), tags),
+        )).toHaveLength(1);
+    });
+
+    it("says nothing about a disabled row", () => {
+        const findings = run(
+            "story/app-tag-unknown",
+            withTags(
+                story("s1", "Main", [scene("sc1", "Prologue", [{ ...condition("c1", [appTagBranch("b1", "Demo")]), disabled: true }])]),
+                [RELEASE_APP_TAG],
+            ),
+        );
+        expect(findings).toEqual([]);
     });
 });

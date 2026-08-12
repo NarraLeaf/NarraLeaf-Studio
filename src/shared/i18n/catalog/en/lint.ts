@@ -106,6 +106,11 @@ export const lint = {
             description: "A scene with no content",
             message: "This scene has no rows",
         },
+        storyAppTagUnknown: {
+            title: "Unknown build variant",
+            description: "A row compared with a variant the project does not have",
+            message: "No build variant is named \"{name}\", so this row is in no build",
+        },
         blueprintReferenceMissing: {
             title: "Missing target",
             description: "A node naming something the project no longer has",

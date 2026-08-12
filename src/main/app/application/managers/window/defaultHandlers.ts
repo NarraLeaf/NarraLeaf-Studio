@@ -74,6 +74,8 @@ import {
     GameBuildStartHandler,
 } from "./handlers/gameBuildAction";
 import {
+    PluginBuildSecretAvailableHandler,
+    PluginBuildSecretSetHandler,
     SigningImportHandler,
     SigningInspectHandler,
     SigningKeystoreAliasesHandler,
@@ -239,6 +241,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new SigningInspectHandler(),
         new SigningKeystoreAliasesHandler(),
         new SigningMacIdentitiesHandler(),
+
+        // Plugin build-config secrets (same vault; the value goes up, a handle comes back)
+        new PluginBuildSecretSetHandler(),
+        new PluginBuildSecretAvailableHandler(),
 
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),

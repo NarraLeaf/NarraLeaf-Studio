@@ -73,6 +73,7 @@ export const HELP_TOPIC_IDS = [
     "versionServer",
     "freeze",
     "build",
+    "buildVariant",
     "appTags",
     "icons",
     "signing",
@@ -341,10 +342,17 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["icons", "signing", "assetProtection", "lint"],
         learnMore: DOCS_URL,
     },
+    // The build dialog's first page. Separate from `appTags`, which answers what a variant is and
+    // how one is edited: this one answers what picking it here does to the build.
+    {
+        id: "buildVariant",
+        section: "ship",
+        related: ["appTags", "build"],
+    },
     {
         id: "appTags",
         section: "ship",
-        related: ["build", "lint"],
+        related: ["build", "buildVariant", "lint"],
     },
     {
         id: "icons",
