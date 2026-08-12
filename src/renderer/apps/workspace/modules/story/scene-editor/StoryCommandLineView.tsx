@@ -81,6 +81,11 @@ export type StoryCommandLineContextValue = {
      * committed `/set` row names its variable with the very word the line would have used.
      */
     projectVariableName?: StoryRowLookups["projectVariableName"];
+    /**
+     * The name of a build variant, for the rows that name one. Derived from {@link commandContext} for
+     * the same reason as the two tables above it.
+     */
+    appTagName?: StoryRowLookups["appTagName"];
     /** What a name on a line could refer to — the picker lists for every subject a row names. */
     commandContext?: StoryCommandContext;
 };
@@ -141,6 +146,10 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         appearanceName: (characterId, refId) =>
             commandContext?.appearanceByCharacterId[characterId]?.find(ref => ref.id === refId)?.name ?? null,
         appearanceOptions: characterId => commandContext?.appearanceByCharacterId[characterId] ?? [],
+        // Off the same table the slot offers from, so a cut point row names its variant with the word
+        // the line would have been typed with. `null` for a deleted one, which is what the row then
+        // says instead.
+        appTagName: appTagId => commandContext?.appTags.find(tag => tag.id === appTagId)?.name ?? null,
         commandContext,
     }), [assets, commandContext, hideParamNames, slashAtAlias, tracks]);
     return <StoryCommandLineContext.Provider value={value}>{children}</StoryCommandLineContext.Provider>;

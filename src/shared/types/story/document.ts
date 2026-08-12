@@ -820,6 +820,34 @@ export type StoryControlPayload =
            */
           control: "goto";
           targetLabel: string;
+      }
+    | {
+          /**
+           * Where one build variant's story ends. The rest of the scene, and everything the story
+           * reaches after it, is not in that variant's package; every other variant does not have
+           * this row at all.
+           *
+           * Control flow rather than a block kind of its own: it says where playback of an edition
+           * stops, which is the same question `break` and `goto` answer for a loop and a scene. Not
+           * a container — it carries nothing and takes no children, so `canAcceptChildren` refuses
+           * it the way it refuses the other three single-instruction control rows.
+           *
+           * Names the variant by its id, under the field name every stored reference to a variant
+           * uses (`APP_TAG_REFERENCE_FIELDS`), so renaming a variant cannot invalidate the
+           * row and the "how many things use this variant" sweep counts it without being taught
+           * about story rows. An id no variant answers to resolves to release, and a cut point
+           * naming release cuts nothing — which is what makes deleting a variant safe to do with
+           * its rows still written.
+           *
+           * **No schema bump.** The payload is additive: a document that predates it simply has no
+           * such row, so the migration ladder gains no step. It is the one direction that decides
+           * this, and here it is benign - an older Studio meets an unknown control payload, reads
+           * the row as an ordinary group and compiles it as one, which emits nothing because the
+           * row has no children. Nothing it can do with the document is silently wrong; it just
+           * does not know what the row means.
+           */
+          control: "cut";
+          appTagId: string;
       };
 
 export type StoryJumpPayload = {
