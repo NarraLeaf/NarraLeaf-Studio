@@ -186,7 +186,7 @@ export class LintService extends Service<LintService> implements ILintService {
             assetIndex: referenceService.getIndexResult(),
             characters,
             // `listTags()`, which synthesizes the release variant, so the list is never empty and
-            // `AppTag == "Release"` resolves in a project that has authored no variants at all.
+            // `AppTag == "main"` resolves in a project that has authored no variants at all.
             appTags: services.get<AppTagService>(Services.AppTags).listTags(),
             variableRegistry,
             persistentNameCollisions,

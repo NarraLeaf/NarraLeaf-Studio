@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { join } from "@shared/utils/path";
-import { APP_TAG_ID_RELEASE, APP_TAG_SCHEMA_VERSION, type AppTagBaseIdentity } from "@shared/types/appTag";
+import { APP_TAG_ID_RELEASE, APP_TAG_SCHEMA_VERSION, RELEASE_APP_TAG, type AppTagBaseIdentity } from "@shared/types/appTag";
 import type { PluginBuildConfigField } from "@shared/types/plugins";
 import { Services, type WorkspaceContext } from "../services";
 import { AppTagService } from "./AppTagService";
@@ -185,14 +185,12 @@ describe("AppTagService", () => {
         expect(service.getTag(other.id)?.name).toBe("demo 2");
     });
 
-    it("refuses to let a variant take the release tag's name, under either spelling", async () => {
+    it("refuses to let a variant take the release tag's name", async () => {
         const { service } = await createHarness();
 
-        const model = service.createTag({ name: "Release" });
-        const shown = service.createTag({ name: "正式版", reservedNames: ["正式版"] });
+        const created = service.createTag({ name: RELEASE_APP_TAG.name });
 
-        expect(service.getTag(model.id)?.name).toBe("Release 2");
-        expect(service.getTag(shown.id)?.name).toBe("正式版 2");
+        expect(service.getTag(created.id)?.name).toBe(`${RELEASE_APP_TAG.name} 2`);
     });
 
     it("lets a rename keep its own name, rather than numbering a variant against itself", async () => {

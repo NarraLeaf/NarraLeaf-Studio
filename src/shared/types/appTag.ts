@@ -171,12 +171,18 @@ export interface ProjectAppTag {
  * Synthesized on every read rather than seeded into the document, because it is what resolution
  * falls back to: a stored release tag could be deleted by a bad merge or a hand edit, and every
  * unresolvable reference in the project would then have nowhere to land. It carries no overrides -
- * it is the project's own values - and its name is the untranslated fallback for callers with no
- * catalog (compiler messages, exported files). Surfaces show the translated name.
+ * it is the project's own values.
+ *
+ * Its name is fixed. `main` is the word for the trunk the project is built from, and it is
+ * deliberately the same word in every language: nothing translates it, and no surface substitutes
+ * anything for it. A story expression compares `AppTag` against a string, and that comparison is
+ * performed by the shipped game, where no catalogue exists - so `AppTag == "main"` has to mean the
+ * same thing in every author's Studio and in the build. A name that changed with the interface
+ * language would read true in one author's Studio and fold to false in the package.
  */
 export const RELEASE_APP_TAG: ProjectAppTag = Object.freeze({
     id: APP_TAG_ID_RELEASE,
-    name: "Release",
+    name: "main",
     overrides: Object.freeze({}) as AppTagOverrides,
     builtin: true as const,
 }) as ProjectAppTag;
@@ -430,8 +436,7 @@ export function resolveAppTag(
  *
  * Case-insensitive, because the names are matched case-insensitively wherever they are typed - a
  * "demo" beside a "Demo" would resolve to neither. `taken` is every name the result must differ
- * from, which the caller assembles: the other tags, plus whatever the release tag is called on
- * screen, which this module cannot know because it has no catalog.
+ * from: the other tags, plus the release tag's own name, which no surface spells differently.
  */
 export function uniqueAppTagName(taken: readonly string[], desired: string): string {
     const base = desired.trim() || RELEASE_APP_TAG.name;

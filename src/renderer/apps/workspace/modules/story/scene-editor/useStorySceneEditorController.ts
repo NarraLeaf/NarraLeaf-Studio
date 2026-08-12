@@ -484,9 +484,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             puppetByCharacterId,
             audioTracks,
             appTags,
-            // The release variant's name is a catalog string, and the projection this feeds is pure,
-            // so the word is resolved here and handed over.
-            releaseAppTagName: translate("project.appTags.releaseName"),
         }),
         [appTags, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );

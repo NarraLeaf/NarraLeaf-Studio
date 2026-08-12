@@ -1,4 +1,3 @@
-import { APP_TAG_ID_RELEASE, RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { StoryLiteralValue, StoryVariableRef, StoryVariableValueType } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
 import { inferStoryExpressionType } from "@shared/utils/storyExpressionEval";
@@ -451,14 +450,7 @@ export function expressionScope(context: StoryCommandContext): StoryExpressionSc
             scenes: context.scenes,
             options: context.choiceOptions,
             blueprints: context.valueBlueprints,
-            // The release variant under its STORED name, undoing the substitution the context makes
-            // for the slot that stores an id. `AppTag == "…"` is a string comparison the shipped game
-            // performs with no catalogue in reach, so the only name it can ever match is the one the
-            // variant list holds - and offering the translated word here would accept a line the
-            // build then folds to false.
-            appTags: context.appTags.map(tag => (
-                tag.id === APP_TAG_ID_RELEASE ? { id: tag.id, name: RELEASE_APP_TAG.name } : tag
-            )),
+            appTags: context.appTags,
         },
     );
 }

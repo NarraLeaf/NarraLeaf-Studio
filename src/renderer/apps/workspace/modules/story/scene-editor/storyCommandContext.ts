@@ -30,27 +30,19 @@ function assetRefs(assets: AssetsMap | undefined, type: AssetType): StoryCommand
 /**
  * The build variants a row may name, release first.
  *
- * Two things happen here that the service cannot do:
- *
- * - The release variant is added when the caller did not supply it, so this table is never empty. A
- *   context built without a service (a test, a surface mounted before the project finished opening)
- *   must still resolve the one variant every project has, rather than report it as unknown.
- * - Its name is replaced by the word the author sees. The model carries the untranslated "Release"
- *   because it has no catalog to read; the author types what is on screen, so this table has to
- *   spell it the same way the panel does.
+ * One thing happens here that the service cannot do: the release variant is added when the caller
+ * did not supply it, so this table is never empty. A context built without a service (a test, a
+ * surface mounted before the project finished opening) must still resolve the one variant every
+ * project has, rather than report it as unknown.
  */
 function appTagRefs(
     tags: readonly { id: string; name: string }[] | undefined,
-    releaseName: string | undefined,
 ): StoryCommandNamedRef[] {
-    const shown = releaseName?.trim() || RELEASE_APP_TAG.name;
-    const refs = (tags ?? []).map(tag => (
-        tag.id === APP_TAG_ID_RELEASE ? { id: tag.id, name: shown } : { id: tag.id, name: tag.name }
-    ));
+    const refs = (tags ?? []).map(tag => ({ id: tag.id, name: tag.name }));
     if (refs.some(ref => ref.id === APP_TAG_ID_RELEASE)) {
         return refs;
     }
-    return [{ id: APP_TAG_ID_RELEASE, name: shown }, ...refs];
+    return [{ id: APP_TAG_ID_RELEASE, name: RELEASE_APP_TAG.name }, ...refs];
 }
 
 /**
@@ -245,8 +237,6 @@ export function buildStoryCommandContext(input: {
      * list, and a slot that takes a variant must never be a dropdown with nothing in it.
      */
     appTags?: readonly { id: string; name: string }[];
-    /** How the release variant is named on screen. Passed in, because this projection has no catalog. */
-    releaseAppTagName?: string;
 }): StoryCommandContext {
     // What a `/show` row can name after the character: a preset character's poses, a layered one's
     // tags (across every axis — the engine resolves each against the group that owns it, so the
@@ -291,7 +281,7 @@ export function buildStoryCommandContext(input: {
         // The one scan, shared with the compiler's `goto` validation (§12.9) - not a completion-layer
         // special case, just another table this projection carries.
         labels: sceneLabelNames(input.scene),
-        appTags: appTagRefs(input.appTags, input.releaseAppTagName),
+        appTags: appTagRefs(input.appTags),
         variables: variableEntries(
             input.document,
             input.scene,

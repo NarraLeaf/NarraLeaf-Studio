@@ -527,28 +527,33 @@ export const help = {
                 + "- Icons come from the project's icon page. A platform whose icon has not been generated builds "
                 + "with the NarraLeaf icon.",
         },
+        // `main` is the release variant's name, and it is the same word in every language: a story
+        // expression compares it as a string inside the shipped game, where no catalog is reached.
+        // Written out here rather than interpolated because a topic body is one static string.
         buildVariant: {
             title: "Which variant a build produces",
             body:
-                "A build produces one variant of the project. Release carries the project's own "
-                + "application name, identifier and version; another variant carries what it states "
-                + "instead.\n"
+                "A build produces one variant of the project. The variant named main carries the "
+                + "project's own application name, identifier and version; another variant carries "
+                + "what it states instead.\n"
                 + "\n"
                 + "- The pages after this one describe the selected variant.\n"
                 + "- File names carry the variant, so two variants built into one folder do not replace "
                 + "each other.\n"
-                + "- This page appears once the project has a variant beside Release.",
+                + "- This page appears once the project has a variant beside main.",
         },
         appTags: {
             title: "Build variants",
             body:
-                "A variant is one edition of the project, such as a demo. Every project has the Release "
-                + "variant, and each variant added beside it starts out identical to Release.\n"
+                "A variant is one edition of the project, such as a demo. Every project has the variant "
+                + "named main, and each variant added beside it starts out identical to main. The name "
+                + "main is the same in every language, so an expression comparing against it means the "
+                + "same thing in the built game.\n"
                 + "\n"
-                + "- A variant stores only what it says differently. A field left empty shows the Release "
+                + "- A variant stores only what it says differently. A field left empty shows the main "
                 + "value and follows it.\n"
-                + "- Restore removes what the variant said, so the field follows Release again.\n"
-                + "- Deleting a variant does not rewrite what pointed at it. Those places read Release "
+                + "- Restore removes what the variant said, so the field follows main again.\n"
+                + "- Deleting a variant does not rewrite what pointed at it. Those places read main "
                 + "from then on, and the count beside Delete says how many there are.",
         },
         icons: {

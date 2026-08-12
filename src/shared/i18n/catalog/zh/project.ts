@@ -99,8 +99,6 @@ export const project = {
         add: "新增版本",
         newTagName: "新版本",
         nameTitle: "名称",
-        // 每个工程都有、其余版本都以它为准的那一个。名字写在显示它的地方，模型层没有文案表可读。
-        releaseName: "正式版",
         fields: {
             displayName: "应用名称",
             identifier: "标识符",
@@ -115,10 +113,11 @@ export const project = {
         },
         delete: "删除",
         deleteConfirm: "删除「{name}」？",
-        // 如实说明后果：指向该版本的引用不会被改写，从此按正式版的值读取。
+        // 如实说明后果：指向该版本的引用不会被改写，从此按发布版本的值读取。`{name}` 是发布版本的
+        // 名称，插值而不是写死在这里，将来改名时这句会跟着改。
         deleteDetail: {
-            one: "{count} 处引用将回落到正式版",
-            other: "{count} 处引用将回落到正式版",
+            one: "{count} 处引用将回落到 {name}",
+            other: "{count} 处引用将回落到 {name}",
         },
         // 后果的另一半，说的是那些写在剧本里的引用：截断点会保留下来，而不指向任何版本的截断点不再截断
         deleteDetailCuts: {
