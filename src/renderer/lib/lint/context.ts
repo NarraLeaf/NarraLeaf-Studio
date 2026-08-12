@@ -1,3 +1,4 @@
+import type { ProjectAppTag } from "@shared/types/appTag";
 import type { StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -88,6 +89,16 @@ export type LintContext = {
      */
     network: NetworkConfiguration;
     stories: readonly LintStoryEntry[];
+    /**
+     * Whether {@link stories} is the whole library.
+     *
+     * `false` when the index could not be read at all, or when a story in it failed to load - that
+     * story is simply absent from the list above, and a rule that asks "does this scene id still
+     * exist" would answer no for every scene in it. The same distinction `assetIndex.complete`
+     * draws, for the same reason: a rule must be able to tell an empty project from an unread one.
+     * A story that failed to load already reports itself; nothing else should pile on.
+     */
+    storiesComplete: boolean;
     blueprintDocument: BlueprintDocument | null;
     uiDocument: UIDocument | null;
     assets: readonly LintAssetEntry[];
@@ -104,6 +115,24 @@ export type LintContext = {
     assetIndex: ReferenceIndexResult;
     characters: readonly LintCharacterEntry[];
     /**
+     * Every build variant the project has, release included - the list `AppTag == "Demo"` is checked
+     * against.
+     *
+     * Names as stored. Every surface shows a variant under the name stored here, the release one
+     * included - it is called "main" in every language - so what a rule checks and what the build
+     * folds against are the same string.
+     */
+    appTags: readonly ProjectAppTag[];
+    /**
+     * Every web address any build of this project could open - the project's own list plus what each
+     * variant states, in the form a match compares.
+     *
+     * The union rather than one variant's list, because a rule is not building anything: an address
+     * only the demo declares is opened by the demo, and reporting it against the release list would
+     * be a finding an author cannot act on without deleting a working link.
+     */
+    declaredExternalLinks: readonly string[];
+    /**
      * The project variable registry, BOTH scopes, exactly as the service holds it.
      *
      * One list rather than two because an entry carries its own `scope`, and a rule that needs one
@@ -116,6 +145,15 @@ export type LintContext = {
     /** The same cross-surface ambiguity for the `saved` scope, which is now project-level too. */
     savedNameCollisions: readonly PersistentNameCollision[];
     localization: LintLocalizationContext | null;
+    /**
+     * Named localization keys, by name - the registry `Get Text` picks from.
+     *
+     * Separate from {@link localization}, which is about translations of the script: a project can
+     * declare named keys with no target locale configured at all. `null` means the key document had
+     * not finished loading when the sweep started, which is not the same as a project with no keys
+     * and must not be read as one.
+     */
+    localizationKeyNames: ReadonlySet<string> | null;
     voice: LintVoiceContext | null;
     buildPlatforms: readonly GameBuildPlatform[];
     io: LintIo;

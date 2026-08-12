@@ -11113,8 +11113,173 @@
         "program": {
           "kind": "graph",
           "graphs": {
-            "eventIds": [],
-            "events": {},
+            "eventIds": [
+              "0d2f6a41-5b7c-4f18-9c0e-6a4d18b2e7c3"
+            ],
+            "events": {
+              "0d2f6a41-5b7c-4f18-9c0e-6a4d18b2e7c3": {
+                "id": "0d2f6a41-5b7c-4f18-9c0e-6a4d18b2e7c3",
+                "name": "Layer 1",
+                "graph": {
+                  "nodes": {
+                    "init.get": {
+                      "id": "init.get",
+                      "type": "blueprint.game.getAutoForward",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 80,
+                          "y": 160
+                        }
+                      }
+                    },
+                    "init.head": {
+                      "id": "init.head",
+                      "type": "blueprint.event.head.surfaceInit",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 80,
+                          "y": 240
+                        }
+                      }
+                    },
+                    "init.if": {
+                      "id": "init.if",
+                      "type": "blueprint.flow.ifElse",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 340,
+                          "y": 240
+                        }
+                      }
+                    },
+                    "init.on.ref": {
+                      "id": "init.on.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                        "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 600,
+                          "y": 100
+                        }
+                      }
+                    },
+                    "init.on.set": {
+                      "id": "init.on.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "selected"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 600,
+                          "y": 180
+                        }
+                      }
+                    },
+                    "init.off.ref": {
+                      "id": "init.off.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                        "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 600,
+                          "y": 320
+                        }
+                      }
+                    },
+                    "init.off.set": {
+                      "id": "init.off.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "default"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 600,
+                          "y": 400
+                        }
+                      }
+                    }
+                  },
+                  "edges": [
+                    {
+                      "from": {
+                        "nodeId": "init.head",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "init.if",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.get",
+                        "port": "autoForward"
+                      },
+                      "to": {
+                        "nodeId": "init.if",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.if",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "init.on.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.on.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "init.on.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.if",
+                        "port": "else"
+                      },
+                      "to": {
+                        "nodeId": "init.off.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.off.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "init.off.set",
+                        "port": "element"
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "graphKind": "event"
+                  }
+                }
+              }
+            },
             "functionIds": [],
             "functions": {}
           }
@@ -11217,6 +11382,84 @@
                           "y": 0
                         }
                       }
+                    },
+                    "auto.state": {
+                      "id": "auto.state",
+                      "type": "blueprint.game.getAutoForward",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "auto.if": {
+                      "id": "auto.if",
+                      "type": "blueprint.flow.ifElse",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "auto.on.ref": {
+                      "id": "auto.on.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                        "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "auto.on.set": {
+                      "id": "auto.on.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "selected"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 80
+                        }
+                      }
+                    },
+                    "auto.off.ref": {
+                      "id": "auto.off.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                        "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 240
+                        }
+                      }
+                    },
+                    "auto.off.set": {
+                      "id": "auto.off.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "default"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 320
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -11248,6 +11491,66 @@
                       "to": {
                         "nodeId": "n4",
                         "port": "autoForward"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n4",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "auto.if",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "auto.state",
+                        "port": "autoForward"
+                      },
+                      "to": {
+                        "nodeId": "auto.if",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "auto.if",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "auto.on.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "auto.on.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "auto.on.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "auto.if",
+                        "port": "else"
+                      },
+                      "to": {
+                        "nodeId": "auto.off.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "auto.off.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "auto.off.set",
+                        "port": "element"
                       }
                     }
                   ],

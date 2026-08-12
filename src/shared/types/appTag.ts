@@ -1,3 +1,11 @@
+import type { GameBuildPlatform } from "./gameBuild";
+import {
+    isPlatformScopedBuildConfig,
+    isVariantScopedBuildConfig,
+    pluginBuildConfigStorageKey,
+    type PluginBuildConfigField,
+} from "./plugins";
+
 /**
  * App tags - the build variants a project can be shipped as.
  *
@@ -13,6 +21,13 @@
  * nothing is the project, and "restore this key to the inherited value" is `delete overrides[key]`
  * rather than a second place to store the same number. The release tag has no overrides by
  * construction: it *is* the value everything else inherits from.
+ *
+ * A tag also carries a **plugin build config record** and a **scene declaration record**, both under
+ * exactly the same rule: only what this variant says differently, absent means inherited, restore is
+ * a delete. They are separate records rather than more keys in the first because their keys are not
+ * known here - one set is declared by whatever plugins are installed, the other by whatever the
+ * project holds that a build cannot read - while the identity keys are a closed list this module
+ * owns.
  *
  * There is deliberately **no enabled flag**. A tag exists or it does not, and its existence is the
  * whole fact - the editor, the checks and the build surface all ask the same question of the same
@@ -71,7 +86,16 @@
  * can see and edit, not a rejected edit and a field that snaps back.
  */
 
-/** Persisted document version for `editor/app-tags.json`. Independent of every other document. */
+/**
+ * Persisted document version for `editor/app-tags.json`. Independent of every other document.
+ *
+ * Not bumped when plugin build config was added, nor when scene declarations were. The version
+ * exists so a document this Studio cannot read is refused rather than half-understood, and a document
+ * written before either simply has neither: the new keys are absent, which is exactly what "this
+ * project configures no plugin" and "this project has declared nothing" mean. Nothing already on disk
+ * is read differently, so there is nothing for a bump to protect - and bumping would make every older
+ * Studio refuse the whole document, trading keys it would have ignored for a project it cannot open.
+ */
 export const APP_TAG_SCHEMA_VERSION = 1 as const;
 
 export type AppTagSchemaVersion = typeof APP_TAG_SCHEMA_VERSION;
@@ -109,6 +133,87 @@ export type AppTagOverrides = {
     version?: string;
 };
 
+/**
+ * Values the installed plugins asked the author for, keyed by plugin id and then by the storage key
+ * the field's scope produces (see {@link pluginBuildConfigStorageKey}).
+ *
+ * Two records of this shape exist: one at the document root, holding the project's own values, and
+ * one per tag, holding only what that variant says differently. That is the same pair the identity
+ * overrides form, and it is read the same way - absent key means inherited, clearing is a delete.
+ *
+ * Keyed by plugin id and not flattened into one namespace so an uninstalled plugin's values are
+ * identifiable as a block: nothing here drops a key merely because no installed plugin claims it,
+ * because "the plugin is not installed on this machine" and "the author cleared this" have to stay
+ * different facts. A collaborator who opens the project without the plugin must not silently write
+ * its values away.
+ *
+ * A `secret` field's value is a handle, not the secret. See `PluginBuildConfigFieldContribution`.
+ */
+export type AppTagPluginConfig = Record<string, Record<string, string>>;
+
+/** One scene an author says a mechanism can start. Carries the story, because a jump never crosses one. */
+export type AppTagDeclaredScene = {
+    storyId: string;
+    sceneId: string;
+};
+
+/**
+ * What the author says each unreadable mechanism can start, keyed by {@link appTagMechanismKey}.
+ *
+ * Three things in a project can name a scene the build cannot read: a `Start Story` node whose
+ * target is wired, a TypeScript blueprint, and a plugin that could reach the host API. Left alone
+ * each of them means the build has to ship every story whole - it cannot prove any scene is
+ * unreachable while something it cannot read might name it. This record is how an author answers
+ * instead of being stopped, and it is the same root-plus-variant pair {@link AppTagPluginConfig}
+ * uses: the root is the project's own answer, a tag states only what it says differently, absent is
+ * inherited, and restoring is a delete.
+ *
+ * Per variant because that is the whole point of the feature: a demo's chapter select offers one
+ * chapter where the main build offers ten, and the same node is the mechanism in both.
+ *
+ * **A declaration is a scene list and nothing else.** There is deliberately no "reaches any scene"
+ * value - an author who could write one would write it once, and every later demo would ship the
+ * whole book with nothing on screen to say so. A mechanism that genuinely starts nothing under this
+ * variant is spelled as an empty list, which is a different fact from an absent key: absent means
+ * undeclared and the build stops, empty means declared to start nothing and it does not.
+ */
+export type AppTagReachableScenes = Record<string, AppTagDeclaredScene[]>;
+/**
+ * The web addresses a build may hand to the player's browser, in the order the author listed them.
+ *
+ * Two records of this shape exist - one at the document root and one per tag - under the same rule
+ * the plugin values follow: absent means inherited, and restoring is a delete. It belongs to the
+ * variant rather than to the project because the demo build links to the full game's store page and
+ * the release build does not, so "which pages exist" is a fact about the edition being shipped.
+ *
+ * The list is a whole value rather than a keyed record: a variant states its own list or it states
+ * nothing, because a per-entry override would need an expression for "the project lists this one and
+ * this variant does not", which is a second way of saying a list the variant states itself.
+ *
+ * **This is not a network permission.** Nothing is fetched and nothing comes back into the game; a
+ * page opens in the browser the player already uses. So it is neither gated on the project's Allow
+ * HTTP setting nor disabled with it, and the two must not be folded together.
+ */
+export type AppTagExternalLinks = string[];
+
+/**
+ * The page a build shows when its story falls off the end.
+ *
+ * A surface id, or the empty string for "show nothing" - which is what every build did before this
+ * existed and what a project that never picks one keeps doing. Stored under the same rule the two
+ * records above follow: absent on a variant means inherited, and restoring is a delete.
+ *
+ * Per variant because that is what a cut point creates. A demo ends where the author cut it, and the
+ * page it lands on is a thank-you with a store link on it; the full game ends where the story ends,
+ * and lands on credits or on nothing at all. The same story document produces both.
+ *
+ * **The empty string is a value on a variant and an absence on the project.** A variant that states
+ * `""` says it shows nothing when its story ends, which is different from reading the project's
+ * choice; on the project's own record there is nothing to inherit from, so blank and absent are one
+ * fact and the blank one is not written.
+ */
+export type AppTagEndingSurfaceId = string;
+
 export interface ProjectAppTag {
     /** Stable. What every stored reference holds, so renaming a tag never invalidates one. */
     id: string;
@@ -116,8 +221,50 @@ export interface ProjectAppTag {
     name: string;
     /** Only what this tag says differently. See {@link AppTagOverrides}. */
     overrides: AppTagOverrides;
+    /**
+     * Only the plugin values this variant states itself. Absent when it states none, so a tag that
+     * configures nothing is byte-identical to one written before plugins could ask for anything.
+     */
+    pluginConfig?: AppTagPluginConfig;
+    /** Only the scene declarations this variant states itself. See {@link AppTagReachableScenes}. */
+    reachableScenes?: AppTagReachableScenes;
+    /**
+     * Only the addresses this variant states itself. Absent when it states none, which is how it
+     * says "the project's list"; an empty array is a variant that states it may open nothing.
+     */
+    externalLinks?: AppTagExternalLinks;
+    /**
+     * Only the ending page this variant states itself. See {@link AppTagEndingSurfaceId}: absent is
+     * the project's choice, and an empty string is this variant saying it shows nothing.
+     */
+    endingSurfaceId?: AppTagEndingSurfaceId;
     /** Set on the release tag. Derived from the id, never authored, never stored. */
     builtin?: true;
+}
+
+/** The three mechanisms a scene declaration can be about. */
+export type AppTagMechanismRef =
+    | { kind: "startStoryNode"; blueprintId: string; graphKind: string; graphId: string; nodeId: string }
+    | { kind: "scriptBlueprint"; blueprintId: string }
+    | { kind: "plugin"; pluginId: string };
+
+/**
+ * The stable key a declaration is filed under.
+ *
+ * Keyed by what the mechanism *is* rather than by where it sits on a canvas, so moving a node,
+ * renaming a blueprint or reordering an event layer never orphans a declaration. The three kinds are
+ * prefixed rather than sharing one namespace: a plugin id and a blueprint id are both opaque strings,
+ * and a collision would silently hand one mechanism's scene list to another.
+ */
+export function appTagMechanismKey(ref: AppTagMechanismRef): string {
+    switch (ref.kind) {
+        case "startStoryNode":
+            return `node:${ref.blueprintId}:${ref.graphKind}:${ref.graphId}:${ref.nodeId}`;
+        case "scriptBlueprint":
+            return `blueprint:${ref.blueprintId}`;
+        case "plugin":
+            return `plugin:${ref.pluginId}`;
+    }
 }
 
 /**
@@ -126,12 +273,18 @@ export interface ProjectAppTag {
  * Synthesized on every read rather than seeded into the document, because it is what resolution
  * falls back to: a stored release tag could be deleted by a bad merge or a hand edit, and every
  * unresolvable reference in the project would then have nowhere to land. It carries no overrides -
- * it is the project's own values - and its name is the untranslated fallback for callers with no
- * catalog (compiler messages, exported files). Surfaces show the translated name.
+ * it is the project's own values.
+ *
+ * Its name is fixed. `main` is the word for the trunk the project is built from, and it is
+ * deliberately the same word in every language: nothing translates it, and no surface substitutes
+ * anything for it. A story expression compares `AppTag` against a string, and that comparison is
+ * performed by the shipped game, where no catalogue exists - so `AppTag == "main"` has to mean the
+ * same thing in every author's Studio and in the build. A name that changed with the interface
+ * language would read true in one author's Studio and fold to false in the package.
  */
 export const RELEASE_APP_TAG: ProjectAppTag = Object.freeze({
     id: APP_TAG_ID_RELEASE,
-    name: "Release",
+    name: "main",
     overrides: Object.freeze({}) as AppTagOverrides,
     builtin: true as const,
 }) as ProjectAppTag;
@@ -141,6 +294,35 @@ export type ProjectAppTagDocument = {
     schemaVersion: AppTagSchemaVersion;
     /** Author-created tags only. The release tag is never stored; see {@link RELEASE_APP_TAG}. */
     tags: ProjectAppTag[];
+    /**
+     * The project's own plugin values - what every variant inherits, and what the release tag reads.
+     *
+     * At the document root rather than on a tag because the release tag is synthesized and stores
+     * nothing: there is no record on it for a value to live in, and inventing one would be a second
+     * answer to "what does an unstated key resolve to". Absent when the project configures nothing.
+     */
+    pluginConfig?: AppTagPluginConfig;
+    /**
+     * The project's own scene declarations - what every variant inherits, and what the release tag
+     * reads. At the root for the reason {@link pluginConfig} is: the release tag is synthesized and
+     * stores nothing, so there is no record on it for a value to live in.
+     */
+    reachableScenes?: AppTagReachableScenes;
+    /**
+     * The project's own addresses - what every variant inherits, and what the release tag reads.
+     *
+     * At the document root for the reason `pluginConfig` is: the release tag is synthesized and
+     * stores nothing, so there is no record on it for a value to live in.
+     */
+    externalLinks?: AppTagExternalLinks;
+    /**
+     * The project's own ending page - what every variant inherits, and what the release tag reads.
+     *
+     * At the root for the reason `externalLinks` is, and absent when blank for the reason that one
+     * is absent when empty: on the record every other record is read against, "the project picks
+     * none" and "the key is not there" are one fact.
+     */
+    endingSurfaceId?: AppTagEndingSurfaceId;
     meta?: {
         createdAt?: string;
         updatedAt?: string;
@@ -174,12 +356,251 @@ export function normalizeProjectAppTag(raw: unknown): ProjectAppTag | null {
         return null;
     }
     const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : id;
+    const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
+    const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
 
     return {
         id,
         name,
         overrides: normalizeAppTagOverrides(record.overrides),
+        // Omitted when empty rather than written as `{}`, so adopting this feature does not rewrite
+        // every tag in every project the author merely opened.
+        ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
+        ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
+        // Kept whenever the key is present, empty array included: "this variant opens nothing" is a
+        // statement, and dropping an empty list would silently hand it the project's own list.
+        ...(record.externalLinks === undefined
+            ? {}
+            : { externalLinks: normalizeAppTagExternalLinks(record.externalLinks) }),
+        // Kept whenever the key is present, blank included, for the reason the list above is: on a
+        // variant "" is the statement "this edition shows nothing when its story ends", and dropping
+        // it would silently hand the variant the project's page instead.
+        ...(record.endingSurfaceId === undefined
+            ? {}
+            : { endingSurfaceId: normalizeAppTagEndingSurfaceId(record.endingSurfaceId) }),
     };
+}
+
+/** A surface id as it is stored and compared: trimmed, or blank for anything that is not one. */
+export function normalizeAppTagEndingSurfaceId(raw: unknown): AppTagEndingSurfaceId {
+    return typeof raw === "string" ? raw.trim() : "";
+}
+
+/**
+ * One entry, as it is stored and compared: an absolute `http:` or `https:` address in the form
+ * `URL` parses it back to. Null for anything else, which is what refuses it at the point the author
+ * types it.
+ *
+ * Parsed rather than pattern-matched because parsing is also what the match at run time does, and
+ * two readings of one address is how an entry gets stored in a spelling that never matches. The
+ * scheme list is the security-bearing half: without it a declared `file:` entry would make this a
+ * way to open local files, and a declared `javascript:` one a way to run script.
+ */
+export function normalizeExternalLinkUrl(raw: unknown): string | null {
+    if (typeof raw !== "string" || !raw.trim()) {
+        return null;
+    }
+    let parsed: URL;
+    try {
+        parsed = new URL(raw.trim());
+    } catch {
+        return null;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return null;
+    }
+    return parsed.href;
+}
+
+/**
+ * A declared list as the rest of Studio may assume it: every entry absolute, `http(s)`, in its
+ * parsed form, no duplicates, author order kept.
+ */
+export function normalizeAppTagExternalLinks(raw: unknown): AppTagExternalLinks {
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    const links: string[] = [];
+    for (const entry of raw) {
+        const url = normalizeExternalLinkUrl(entry);
+        // First wins, as everywhere else a duplicate is dropped: the two entries open the same page,
+        // and the later one is the copy.
+        if (url && !links.includes(url)) {
+            links.push(url);
+        }
+    }
+    return links;
+}
+
+/**
+ * Whether `url` is one of the addresses `declared` names.
+ *
+ * **Exact, on the parsed form, with no wildcards and no prefixes.** Prefix matching was refused
+ * because `https://store.example.com` would then also match `https://store.example.com.evil.test` -
+ * the host is a suffix-structured name, so a prefix over the whole address is not a prefix over the
+ * authority. An author who needs three pages declares three.
+ *
+ * A request that does not parse, or that names any other scheme, is not declared by construction:
+ * the normalizer answers null for it and null is compared against nothing.
+ */
+export function isExternalLinkDeclared(
+    declared: readonly string[] | undefined,
+    url: string,
+): boolean {
+    const requested = normalizeExternalLinkUrl(url);
+    if (!requested || !declared) {
+        return false;
+    }
+    return declared.some(entry => normalizeExternalLinkUrl(entry) === requested);
+}
+
+/**
+ * A plugin config record as the rest of Studio may assume it: plugin ids and storage keys non-blank,
+ * values non-blank strings, empty plugin records dropped.
+ *
+ * Structural only - it judges the shape, never the meaning. It cannot ask whether a key is declared,
+ * because the declarations come from the installed plugins and this module has none; and it must
+ * not, because the plugin that owns a key may simply not be installed here and dropping the key
+ * would delete a collaborator's work. Deciding a key belongs on the project rather than on a variant
+ * needs the declaration, and that is {@link variantStorablePluginConfig}.
+ */
+export function normalizeAppTagPluginConfig(raw: unknown): AppTagPluginConfig {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const config: AppTagPluginConfig = {};
+    for (const [rawPluginId, rawValues] of Object.entries(raw as Record<string, unknown>)) {
+        const pluginId = rawPluginId.trim();
+        if (!pluginId || !rawValues || typeof rawValues !== "object" || Array.isArray(rawValues)) {
+            continue;
+        }
+        const values: Record<string, string> = {};
+        for (const [rawKey, rawValue] of Object.entries(rawValues as Record<string, unknown>)) {
+            const key = rawKey.trim();
+            // Blank is not a value: it is a field the author has not filled in, and the only spelling
+            // of that is the key being absent.
+            if (!key || typeof rawValue !== "string" || !rawValue.trim()) {
+                continue;
+            }
+            values[key] = rawValue.trim();
+        }
+        if (Object.keys(values).length > 0) {
+            config[pluginId] = values;
+        }
+    }
+    return config;
+}
+
+/** Whether a record says anything at all. `{}` and `{ "acme.plugin": {} }` both say nothing. */
+export function hasAppTagPluginConfig(config: AppTagPluginConfig | undefined): boolean {
+    return Boolean(config && Object.values(config).some(values => Object.keys(values).length > 0));
+}
+
+/**
+ * A scene declaration record as the rest of Studio may assume it: mechanism keys non-blank, every
+ * entry a `(storyId, sceneId)` pair of non-blank strings, duplicates within one list collapsed.
+ *
+ * Structural only, exactly like {@link normalizeAppTagPluginConfig}, and for the sharper version of
+ * the same reason. It cannot ask whether a mechanism still exists - the blueprint document and the
+ * installed plugin list are not here - and it must not, because "the plugin is not installed on this
+ * machine" and "the author deleted this declaration" have to stay different facts. A declaration
+ * naming a scene the project no longer has is a finding for the surfaces to report, not a key for
+ * this function to quietly discard: discarding it would delete the author's answer and turn their
+ * next build into a refusal they never asked for.
+ *
+ * A mechanism key mapped to an empty list survives, because that is how "this one starts nothing
+ * under this variant" is written. Only a key that is not a list at all is dropped.
+ */
+export function normalizeAppTagReachableScenes(raw: unknown): AppTagReachableScenes {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const declared: AppTagReachableScenes = {};
+    for (const [rawKey, rawScenes] of Object.entries(raw as Record<string, unknown>)) {
+        const key = rawKey.trim();
+        if (!key || !Array.isArray(rawScenes)) {
+            continue;
+        }
+        const scenes: AppTagDeclaredScene[] = [];
+        const seen = new Set<string>();
+        for (const entry of rawScenes) {
+            if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+                continue;
+            }
+            const record = entry as Record<string, unknown>;
+            const storyId = typeof record.storyId === "string" ? record.storyId.trim() : "";
+            const sceneId = typeof record.sceneId === "string" ? record.sceneId.trim() : "";
+            const pair = `${storyId}:${sceneId}`;
+            if (!storyId || !sceneId || seen.has(pair)) {
+                continue;
+            }
+            seen.add(pair);
+            scenes.push({ storyId, sceneId });
+        }
+        declared[key] = scenes;
+    }
+    return declared;
+}
+
+/** Whether a record declares anything. An empty record is a project that has answered nothing. */
+export function hasAppTagReachableScenes(declared: AppTagReachableScenes | undefined): boolean {
+    return Boolean(declared && Object.keys(declared).length > 0);
+}
+
+/**
+ * What this tag says every mechanism can start: the project's own answers, with the tag's own
+ * answers replacing them key by key.
+ *
+ * Replacing rather than merging the two lists, and that is the whole meaning of an override: a demo
+ * whose chapter select offers one chapter is stating a smaller set, and a union would hand it the
+ * nine chapters it exists to leave out.
+ */
+export function resolveAppTagReachableScenes(
+    tag: ProjectAppTag,
+    base: AppTagReachableScenes | undefined,
+): AppTagReachableScenes {
+    return { ...(base ?? {}), ...(tag.reachableScenes ?? {}) };
+}
+
+/**
+ * `config` with the entries a declared field says belong on the project removed.
+ *
+ * A `global`- or `platform`-scoped field has one value for the whole project, so a variant record
+ * holding one is not a smaller override - it is a second answer to a question that has one, and
+ * every reader would have to decide which of the two wins. Dropping it here is what makes "this
+ * field is the same for every variant" a fact about the storage rather than a convention the
+ * surfaces agree to keep.
+ *
+ * Only entries whose field is present in `fields` are judged. A key no declared field claims is left
+ * exactly where it is: its plugin may be uninstalled or disabled on this machine, and a variant that
+ * loses its values because a collaborator opened the project without the plugin is the one failure
+ * this whole record shape exists to avoid.
+ */
+export function variantStorablePluginConfig(
+    config: AppTagPluginConfig,
+    fields: readonly PluginBuildConfigField[],
+): AppTagPluginConfig {
+    const rooted = fields.filter(field => !isVariantScopedBuildConfig(field.scope));
+    if (rooted.length === 0) {
+        return config;
+    }
+    const result: AppTagPluginConfig = {};
+    for (const [pluginId, values] of Object.entries(config)) {
+        const kept: Record<string, string> = {};
+        for (const [storageKey, value] of Object.entries(values)) {
+            // Matched by prefix so a platform-scoped field's `key@windows` spellings are covered
+            // without enumerating the platforms it happens to name.
+            const misplaced = rooted.some(field => field.pluginId === pluginId
+                && (storageKey === field.key || storageKey.startsWith(`${field.key}@`)));
+            if (!misplaced) {
+                kept[storageKey] = value;
+            }
+        }
+        if (Object.keys(kept).length > 0) {
+            result[pluginId] = kept;
+        }
+    }
+    return result;
 }
 
 /** Known keys only, blanks dropped. An unknown key is discarded rather than carried. */
@@ -237,10 +658,24 @@ export function migrateProjectAppTagDocument(raw: unknown): ProjectAppTagDocumen
     const meta = record.meta && typeof record.meta === "object" && !Array.isArray(record.meta)
         ? record.meta as ProjectAppTagDocument["meta"]
         : undefined;
+    const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
+    const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
+    const externalLinks = normalizeAppTagExternalLinks(record.externalLinks);
+    const endingSurfaceId = normalizeAppTagEndingSurfaceId(record.endingSurfaceId);
 
     return {
         schemaVersion: APP_TAG_SCHEMA_VERSION,
         tags: normalizeProjectAppTags(record.tags),
+        ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
+        ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
+        // Omitted when empty, unlike a variant's own list: the root record is what a variant that
+        // states nothing reads, and "the project declares none" and "the key is absent" are the
+        // same fact there.
+        ...(externalLinks.length > 0 ? { externalLinks } : {}),
+        // Omitted when blank, unlike a variant's own key and for the same reason the list above is:
+        // this is the record a variant that states nothing reads, so there is nothing for a blank to
+        // mean that absence does not already say.
+        ...(endingSurfaceId ? { endingSurfaceId } : {}),
         ...(meta ? { meta } : {}),
     };
 }
@@ -288,8 +723,7 @@ export function resolveAppTag(
  *
  * Case-insensitive, because the names are matched case-insensitively wherever they are typed - a
  * "demo" beside a "Demo" would resolve to neither. `taken` is every name the result must differ
- * from, which the caller assembles: the other tags, plus whatever the release tag is called on
- * screen, which this module cannot know because it has no catalog.
+ * from: the other tags, plus the release tag's own name, which no surface spells differently.
  */
 export function uniqueAppTagName(taken: readonly string[], desired: string): string {
     const base = desired.trim() || RELEASE_APP_TAG.name;
@@ -354,6 +788,98 @@ export function resolveAppTagIdentity(tag: ProjectAppTag, base: AppTagBaseIdenti
             : { value: override, overridden: true };
     }
     return resolved;
+}
+
+/**
+ * What one plugin field is set to for this tag, and whether the tag is the reason for it.
+ *
+ * The same `{ value, overridden }` answer {@link resolveAppTagIdentity} gives, for the same reason:
+ * an inherited value and a stated one are the same string, and a surface that cannot tell them apart
+ * cannot say whether restoring would change anything.
+ *
+ * `base` is the project's own record - the document root. A `global`- or `platform`-scoped field
+ * reads it and nothing else, so `overridden` is false for those by construction: the variant has no
+ * say, which is what those scopes mean.
+ *
+ * A blank answer means the field has never been filled in. For a `secret` field a non-blank answer
+ * is a handle, and whether the secret behind it is on *this* machine is a separate question that
+ * only the machine's vault can answer.
+ */
+export function resolveAppTagPluginConfigValue(
+    tag: ProjectAppTag,
+    base: AppTagPluginConfig,
+    field: PluginBuildConfigField,
+    platform?: GameBuildPlatform,
+): AppTagResolvedValue {
+    const storageKey = pluginBuildConfigStorageKey(
+        field.key,
+        isPlatformScopedBuildConfig(field.scope) ? platform : undefined,
+    );
+    const inherited = base[field.pluginId]?.[storageKey] ?? "";
+    if (!isVariantScopedBuildConfig(field.scope)) {
+        return { value: inherited, overridden: false };
+    }
+    const stated = tag.pluginConfig?.[field.pluginId]?.[storageKey];
+    return stated === undefined
+        ? { value: inherited, overridden: false }
+        : { value: stated, overridden: true };
+}
+
+/** A resolved list, and whether the variant is the reason for it. */
+export type AppTagResolvedExternalLinks = {
+    value: AppTagExternalLinks;
+    /** True when the tag states the list itself, false when it is reading the project's. */
+    overridden: boolean;
+};
+
+/**
+ * Which addresses a build under this tag may open, and whether the tag is the reason.
+ *
+ * The same `{ value, overridden }` answer the identity keys and the plugin fields give, for the
+ * same reason: an inherited list and a stated one look identical, and a surface that cannot tell
+ * them apart cannot say whether restoring would change anything.
+ *
+ * `base` is the project's own list - the document root. The release tag stores nothing, so it always
+ * reads that.
+ */
+export function resolveAppTagExternalLinks(
+    tag: ProjectAppTag,
+    base: readonly string[] | undefined,
+): AppTagResolvedExternalLinks {
+    const inherited = normalizeAppTagExternalLinks(base ?? []);
+    if (tag.externalLinks === undefined) {
+        return { value: inherited, overridden: false };
+    }
+    return { value: normalizeAppTagExternalLinks(tag.externalLinks), overridden: true };
+}
+
+/** A resolved ending page, and whether the variant is the reason for it. */
+export type AppTagResolvedEndingSurface = {
+    /** The surface a build under this tag shows when its story ends. Blank shows nothing. */
+    value: AppTagEndingSurfaceId;
+    /** True when the tag states it itself, false when it is reading the project's choice. */
+    overridden: boolean;
+};
+
+/**
+ * Which page a build under this tag shows when its story falls off the end, and whether the tag is
+ * the reason.
+ *
+ * The same `{ value, overridden }` answer every other resolved key gives, for the same reason: an
+ * inherited id and a stated one are the same string, and a surface that cannot tell them apart
+ * cannot say whether restoring would change anything.
+ *
+ * `base` is the project's own choice - the document root. The release tag stores nothing, so it
+ * always reads that.
+ */
+export function resolveAppTagEndingSurface(
+    tag: ProjectAppTag,
+    base: string | undefined,
+): AppTagResolvedEndingSurface {
+    if (tag.endingSurfaceId === undefined) {
+        return { value: normalizeAppTagEndingSurfaceId(base), overridden: false };
+    }
+    return { value: normalizeAppTagEndingSurfaceId(tag.endingSurfaceId), overridden: true };
 }
 
 /**

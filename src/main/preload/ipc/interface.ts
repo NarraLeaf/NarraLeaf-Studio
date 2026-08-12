@@ -5,6 +5,7 @@ import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu"
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
@@ -159,6 +160,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             onFullscreenChanged: (handler: (payload: { isFullscreen: boolean }) => void) =>
                 ipcClient.onMessage(IPCEventType.appWindowFullscreenChanged, handler),
         },
+        /**
+         * The same controls, for a window this one detached part of itself into. Named rather than
+         * implicit: a detached popup sends IPC through its opener, so `control.close()` from the
+         * buttons drawn in it would close this window instead.
+         */
+        detachedControl: (key: string, control: "status" | "minimize" | "toggleMaximize" | "close") =>
+            ipcClient.invoke(IPCEventType.appDetachedWindowControl, { key, control }),
     },
     fs: {
         stat: (path: string) => ipcClient.invoke(IPCEventType.fsStat, { path }),
@@ -544,6 +552,23 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.signingMacIdentities, {}) as Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>,
     },
 
+    /**
+     * Plugin build-config secrets, in the same machine vault. The value goes up
+     * once and a handle comes back; there is no way to read a value back out.
+     */
+    pluginBuildSecret: {
+        /** `value` is plain text. Do not log it or keep it after the call. */
+        set: (value: string, handle?: string) =>
+            ipcClient.invoke(IPCEventType.pluginBuildSecretSet, { value, handle }) as Promise<
+                RequestStatus<{ handle: string; available: boolean }>
+            >,
+        /** False means "set, but not on this machine" as well as "never set". */
+        available: (handle: string) =>
+            ipcClient.invoke(IPCEventType.pluginBuildSecretAvailable, { handle }) as Promise<
+                RequestStatus<{ available: boolean }>
+            >,
+    },
+
     blueprintPersistence: {
         getAll: (projectRef: BlueprintPersistenceProjectRef) =>
             ipcClient.invoke(IPCEventType.blueprintPersistenceGetAll, { projectRef }) as Promise<RequestStatus<{ values: Record<string, unknown> }>>,
@@ -559,6 +584,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         fetch: (projectPath: string, request: BlueprintNetworkFetchRequest) =>
             ipcClient.invoke(IPCEventType.blueprintNetworkFetch, { projectPath, request }) as Promise<
                 RequestStatus<{ result: BlueprintNetworkFetchResult }>
+            >,
+    },
+
+    blueprintExternalLink: {
+        open: (projectPath: string, request: BlueprintOpenExternalRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintExternalLinkOpen, { projectPath, request }) as Promise<
+                RequestStatus<{ result: BlueprintOpenExternalResult }>
             >,
     },
 

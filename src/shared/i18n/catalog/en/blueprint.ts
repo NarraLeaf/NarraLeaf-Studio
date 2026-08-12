@@ -2,6 +2,13 @@
 export const blueprint = {
     header: {
         title: "Blueprint",
+        /** The pop-out control on the title row, and what a middle click there does. */
+        detach: "Open in a separate window",
+        detachFailed: "The separate window could not be opened. The blueprint stayed in the workspace.",
+    },
+    /** Shared by every blueprint entry: the card or button that leads into a blueprint. */
+    entry: {
+        openInWindow: "Right click to open in a separate window",
     },
     tab: {
         title: "Blueprint",
@@ -415,6 +422,7 @@ export const blueprint = {
         addReturnValue: "Add return value",
         addValue: "Add value",
         after: "After",
+        appTag: "App Tag",
         alt: "Alt",
         animation: "Animation",
         animationToken: "AnimationToken",
@@ -688,6 +696,7 @@ export const blueprint = {
         fetch: "Fetch",
         readResponseText: "Read Response Text",
         readResponseJson: "Read Response JSON",
+        getAppTag: "Get App Tag",
         getAutoForward: "Get Auto Forward",
         getBgmVolume: "Get BGM Volume",
         getButtonEnabled: "Get Button Enabled",
@@ -989,6 +998,7 @@ export const blueprint = {
         onKeyDown: "On Key Down",
         onKeyUp: "On Key Up",
         onPreferenceChanged: "On Preference Changed",
+        openLink: "Open Link",
         openPage: "Open page",
         or: "Or",
         padEnd: "Pad End",

@@ -3,13 +3,15 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument, type StoryScene } from "@shared/types/story";
+import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
+import { EMPTY_STORY_EXPRESSION_SCOPE, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import { createTestLintContext } from "../testContext";
 import type { LintContext, LintStoryEntry } from "../context";
 import type { LintFinding, LintRuleId } from "../types";
 import { STORY_LINT_RULES } from "./story";
 
 /**
- * The nine `story` rules.
+ * The ten `story` rules.
  *
  * Every rule is checked both ways - a fixture that must produce a finding and one that must produce
  * nothing - because a rule that never fires and a rule that always fires are equally useless and
@@ -102,7 +104,7 @@ const branch = (id: string, arm: "if" | "elseIf" | "else", children: BlockSpec[]
     children,
 });
 
-function blueprintWithStartStory(params: Record<string, unknown>): BlueprintDocument {
+function blueprintWithStartStory(params: Record<string, unknown>, wiredPins: string[] = []): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {
@@ -118,7 +120,13 @@ function blueprintWithStartStory(params: Record<string, unknown>): BlueprintDocu
                         events: {
                             "ev-1": {
                                 id: "ev-1",
-                                graph: { nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } } },
+                                graph: {
+                                    nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } },
+                                    edges: wiredPins.map(port => ({
+                                        from: { nodeId: "n-source", port: "value" },
+                                        to: { nodeId: "n-1", port },
+                                    })),
+                                },
                             },
                         },
                         functions: {},
@@ -126,6 +134,8 @@ function blueprintWithStartStory(params: Record<string, unknown>): BlueprintDocu
                 },
             },
         },
+        // No owner record names the blueprint, which this rule reads anyway: an entry that can start
+        // a scene is worth reading wherever it sits. See `blueprintDocumentGraphCarriers`.
         ownerRecords: {},
     } as BlueprintDocument;
 }
@@ -605,10 +615,21 @@ describe("story/unreachable-scene", () => {
         expect(run("story/unreachable-scene", ctx)).toEqual([]);
     });
 
-    it("goes silent when a Start Game node wires its target instead of picking one", () => {
+    it("goes silent when a Start Game node picks no target at all", () => {
         const ctx = createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Prologue", []), scene("sc2", "Cut", [])], "sc1")],
             blueprintDocument: blueprintWithStartStory({ storyId: "s1" }),
+        });
+        expect(run("story/unreachable-scene", ctx)).toEqual([]);
+    });
+
+    it("goes silent when a Start Game node wires its target, picked scene and all", () => {
+        // The wire wins over the picker at execution time, so the picked scene says nothing about
+        // where this node starts play - and a rule that read it would call every other scene orphaned
+        // on the strength of a value the running game ignores.
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Main", [scene("sc1", "Prologue", []), scene("sc2", "Cut", [])], "sc1")],
+            blueprintDocument: blueprintWithStartStory({ storyId: "s1", sceneId: "sc1" }, ["sceneId"]),
         });
         expect(run("story/unreachable-scene", ctx)).toEqual([]);
     });
@@ -661,5 +682,172 @@ describe("story/empty-scene", () => {
             ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [{ ...narration("b1"), disabled: true }])])),
         );
         expect(findings).toHaveLength(1);
+    });
+});
+
+// --- story/app-tag-unknown --------------------------------------------------
+
+/** `if AppTag == "<name>"`, as the branch block a scene really holds. */
+function appTagBranch(id: string, name: string): BlockSpec {
+    return {
+        id,
+        kind: "control",
+        payload: {
+            control: "conditionBranch",
+            branch: "if",
+            condition: {
+                kind: "expression",
+                expression: parseStoryExpression(
+                    `AppTag == ${JSON.stringify(name)}`,
+                    EMPTY_STORY_EXPRESSION_SCOPE,
+                ).expression,
+            },
+        },
+        children: [narration(`${id}-line`)],
+    };
+}
+
+describe("story/app-tag-unknown", () => {
+    const withTags = (entry: LintStoryEntry, tags: ProjectAppTag[]): LintContext =>
+        createTestLintContext({ stories: [entry], appTags: tags });
+
+    it("reports a comparison against a variant the project does not have", () => {
+        const findings = run(
+            "story/app-tag-unknown",
+            withTags(story("s1", "Main", [scene("sc1", "Prologue", [condition("c1", [appTagBranch("b1", "Demo")])])]), [RELEASE_APP_TAG]),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyAppTagUnknown.message");
+        expect(findings[0].messageParams).toEqual({ name: "Demo" });
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "b1" });
+    });
+
+    it("says nothing about a variant the project has", () => {
+        const tags = [RELEASE_APP_TAG, { id: "t-demo", name: "Demo", overrides: {} }];
+        expect(run(
+            "story/app-tag-unknown",
+            withTags(story("s1", "Main", [scene("sc1", "Prologue", [condition("c1", [appTagBranch("b1", "Demo")])])]), tags),
+        )).toEqual([]);
+    });
+
+    it("accepts the release variant by name, in a project that authored none of its own", () => {
+        // `main` is what the release variant is called in every language, so a line comparing
+        // against it is the one variant reference every project can write.
+        expect(run(
+            "story/app-tag-unknown",
+            withTags(story("s1", "Main", [scene("sc1", "Prologue", [condition("c1", [appTagBranch("b1", "main")])])]), [RELEASE_APP_TAG]),
+        )).toEqual([]);
+    });
+
+    it("matches the variant's name exactly, the way the fold does", () => {
+        const tags = [RELEASE_APP_TAG, { id: "t-demo", name: "Demo", overrides: {} }];
+        expect(run(
+            "story/app-tag-unknown",
+            withTags(story("s1", "Main", [scene("sc1", "Prologue", [condition("c1", [appTagBranch("b1", "demo")])])]), tags),
+        )).toHaveLength(1);
+    });
+
+    it("says nothing about a disabled row", () => {
+        const findings = run(
+            "story/app-tag-unknown",
+            withTags(
+                story("s1", "Main", [scene("sc1", "Prologue", [{ ...condition("c1", [appTagBranch("b1", "Demo")]), disabled: true }])]),
+                [RELEASE_APP_TAG],
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+});
+
+const cut = (id: string, appTagId = "t-demo"): BlockSpec => ({
+    id,
+    kind: "control",
+    payload: { control: "cut", appTagId },
+});
+
+describe("story/cut-point-orphan", () => {
+    const demo: ProjectAppTag = { id: "t-demo", name: "Demo", overrides: {} };
+
+    it("reports a cut point in a project whose only variant is the release one", () => {
+        const findings = run(
+            "story/cut-point-orphan",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Prologue", [narration("n1"), cut("c1")])])],
+                appTags: [RELEASE_APP_TAG],
+            }),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyCutPointOrphan.message");
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "c1" });
+    });
+
+    it("says nothing while the project has a variant, whatever the row names", () => {
+        // Including a row naming a variant that is gone: `story/app-tag-unknown` owns that, and this
+        // rule is about the project having nowhere for any cut point to point.
+        expect(run(
+            "story/cut-point-orphan",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Prologue", [narration("n1"), cut("c1", "t-gone")])])],
+                appTags: [RELEASE_APP_TAG, demo],
+            }),
+        )).toEqual([]);
+    });
+
+    it("says nothing about a disabled row", () => {
+        expect(run(
+            "story/cut-point-orphan",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Prologue", [{ ...cut("c1"), disabled: true }])])],
+                appTags: [RELEASE_APP_TAG],
+            }),
+        )).toEqual([]);
+    });
+});
+
+describe("story/cut-point-unreachable", () => {
+    it("reports a cut point in a scene nothing can get to", () => {
+        const findings = run(
+            "story/cut-point-unreachable",
+            createTestLintContext({
+                stories: [story("s1", "Main", [
+                    scene("sc1", "Prologue", [narration("n1")]),
+                    scene("sc2", "Orphan", [narration("n2"), cut("c1"), narration("n3")]),
+                ], "sc1")],
+            }),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyCutPointUnreachable.message");
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "c1" });
+    });
+
+    it("says nothing about a cut point the story can reach", () => {
+        expect(run(
+            "story/cut-point-unreachable",
+            createTestLintContext({
+                stories: [story("s1", "Main", [
+                    scene("sc1", "Prologue", [jump("j1", "sc2")]),
+                    scene("sc2", "Chapter", [narration("n2"), cut("c1"), narration("n3")]),
+                ], "sc1")],
+            }),
+        )).toEqual([]);
+    });
+
+    it("stays silent when an entry point cannot be read at all", () => {
+        // The same guard `story/unreachable-scene` carries: a wired Start Story target means no
+        // reachability claim can be made, and a rule that flagged every cut point over it is one an
+        // author switches off.
+        expect(run(
+            "story/cut-point-unreachable",
+            createTestLintContext({
+                stories: [story("s1", "Main", [
+                    scene("sc1", "Prologue", [narration("n1")]),
+                    scene("sc2", "Orphan", [narration("n2"), cut("c1"), narration("n3")]),
+                ], "sc1")],
+                blueprintDocument: blueprintWithStartStory({ storyId: "s1", sceneId: "sc2" }, ["sceneId"]),
+            }),
+        )).toEqual([]);
     });
 });

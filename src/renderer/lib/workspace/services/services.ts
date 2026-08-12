@@ -86,9 +86,13 @@ import type {
     AppTagBaseIdentity,
     AppTagIdentity,
     AppTagOverrideKey,
+    AppTagPluginConfig,
+    AppTagResolvedExternalLinks,
+    AppTagResolvedValue,
     ProjectAppTag,
     ProjectAppTagDocument,
 } from "@shared/types/appTag";
+import type { PluginBuildConfigField } from "@shared/types/plugins";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
 import type {
@@ -108,7 +112,12 @@ import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
-import type { GameBuildRequest, GameBuildStateSnapshot, GameBuildStatus } from "@shared/types/gameBuild";
+import type {
+    GameBuildPlatform,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GameBuildStatus,
+} from "@shared/types/gameBuild";
 import type {
     ConsoleAppendInput,
     ConsoleChannelDefinition,
@@ -560,6 +569,39 @@ interface IAppTagService extends IService {
     clearOverride(id: string, key: AppTagOverrideKey): boolean;
     clearAllOverrides(id: string): boolean;
     listOverriddenKeys(id: string): AppTagOverrideKey[];
+    /** The project's own plugin build values - what a variant states nothing against. */
+    getProjectPluginConfig(): AppTagPluginConfig;
+    /** Only what this variant states. Empty for the release tag, which stores nothing. */
+    getVariantPluginConfig(id: string | null | undefined): AppTagPluginConfig;
+    resolvePluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform?: GameBuildPlatform,
+    ): AppTagResolvedValue;
+    /** Routed by the field's scope; a blank value clears it. */
+    setPluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        value: string,
+        platform?: GameBuildPlatform,
+    ): boolean;
+    /** Restore one field to the inherited value by removing it. */
+    clearPluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform?: GameBuildPlatform,
+    ): boolean;
+    clearAllPluginConfig(id: string): boolean;
+    /** The project's own declared web addresses - what a variant that states none opens. */
+    getProjectExternalLinks(): string[];
+    /** What this variant may open, and whether it is the reason. */
+    resolveExternalLinks(id: string | null | undefined): AppTagResolvedExternalLinks;
+    /** States the list; on the release tag it states the project's. Non-web entries are dropped. */
+    setExternalLinks(id: string | null | undefined, links: readonly string[]): boolean;
+    /** Restore a variant to the project's list by removing its own. Refuses the release tag. */
+    clearExternalLinks(id: string): boolean;
+    /** Every address any build of this project could open, project and variants together. */
+    listDeclaredExternalLinks(): string[];
     /** Refuses the release tag. References are not rewritten; they resolve to release. */
     deleteTag(id: string): boolean;
 }

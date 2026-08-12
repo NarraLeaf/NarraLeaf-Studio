@@ -14,6 +14,7 @@ import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/u
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
+import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
 import { readRuntimeTestSignalReporter } from "../gameTestSignal";
@@ -91,14 +92,15 @@ function useRuntimePack(): {
     return { pack, error };
 }
 
+/**
+ * A game that could not read its own pack.
+ *
+ * The same screen a render failure gets, because they are the same event to a player: the game
+ * does not come up. It used to be a full-width stack trace on a red panel, which told the player
+ * nothing they could use and did not even say the game was not coming back.
+ */
 function RuntimeErrorScreen(props: { message: string }): ReactNode {
-    return (
-        <div className="flex h-screen w-screen items-center justify-center bg-neutral-950 p-8 text-neutral-100">
-            <pre className="max-h-full max-w-full overflow-auto whitespace-pre-wrap rounded border border-red-800/70 bg-red-950/50 p-4 text-xs leading-relaxed text-red-100">
-                {props.message}
-            </pre>
-        </div>
-    );
+    return <RuntimeCrashScreen details={props.message} />;
 }
 
 function RuntimeLoadingScreen(): ReactNode {
@@ -398,6 +400,18 @@ export function GameRuntimeApp() {
     }, [bridge]);
 
     /**
+     * The Open Link node's request. Handed to the shell, which decides it: the desktop bridge
+     * forwards it to the main process, the web bridge checks it in the page. Neither reads anything
+     * this side supplied except the address.
+     */
+    const openExternal = useCallback<NonNullable<GameAppHost["openExternal"]>>(async request => {
+        if (!bridge) {
+            return { outcome: "failed", error: "Runtime bridge unavailable" };
+        }
+        return bridge.externalLink.open(request);
+    }, [bridge]);
+
+    /**
      * A model bundle resolves to the URL of its *entry file*, not of the asset id.
      *
      * The engine's `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against whatever
@@ -496,6 +510,10 @@ export function GameRuntimeApp() {
             bundle: pack.bundle,
             sessionKey: `${pack.bundle.bundleId}:${pack.bundle.revision}:${entrySurfaceId ?? ""}`,
             entrySurfaceId,
+            // As the pack states it, resolved for the variant this build was produced as. Absent is
+            // a build that shows nothing when its story ends, which is what every pack made before
+            // this field carries and what every pack whose project picked no page carries.
+            endingSurfaceId: pack.endingSurfaceId,
             ready: runtimeReady,
             bootAction: pack.entry.kind === "story"
                 ? { kind: "story", storyId: pack.entry.storyId, sceneId: pack.entry.sceneId }
@@ -513,10 +531,12 @@ export function GameRuntimeApp() {
             subscribeCloseRequested,
             listPuppetBackendModules,
             networkFetch,
+            openExternal,
         };
     }, [
         entrySurfaceId,
         networkFetch,
+        openExternal,
         getFullscreen,
         listPuppetBackendModules,
         log,

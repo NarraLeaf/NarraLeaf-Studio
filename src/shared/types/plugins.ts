@@ -1,3 +1,4 @@
+import type { GameBuildPlatform } from "./gameBuild";
 import type {
     PluginIdentity,
     PluginInstallPermission,
@@ -129,6 +130,99 @@ export type PluginBuildDependencyContribution = {
     targets: Record<PluginBinaryPlatformKey, PluginBuildDependencyTargetContribution>;
 };
 
+/** How a build config value is typed. See {@link PluginBuildConfigFieldContribution}. */
+export const PLUGIN_BUILD_CONFIG_TYPES = ["text", "secret"] as const;
+
+export type PluginBuildConfigType = (typeof PLUGIN_BUILD_CONFIG_TYPES)[number];
+
+/**
+ * Which builds share one value.
+ *
+ * The four are the two independent axes a build varies along - the variant it is built as, and the
+ * platform it is built for - so a field says which of them its value depends on rather than being
+ * stored once per build and re-typed for every combination.
+ */
+export const PLUGIN_BUILD_CONFIG_SCOPES = ["global", "variant", "platform", "variant-platform"] as const;
+
+export type PluginBuildConfigScope = (typeof PLUGIN_BUILD_CONFIG_SCOPES)[number];
+
+/**
+ * One value a plugin needs the author to supply before a build can ship - a storefront app id, a
+ * publisher account name, an upload token.
+ *
+ * # Declared, never registered
+ *
+ * There is no runtime registration API for this and there must not be one. A build has to be
+ * describable before any plugin code runs - the dialog lists the fields, and the checks refuse a
+ * build that is missing a required one - and no plugin code runs during a build at all. A field that
+ * only existed once the plugin had loaded could not be asked about at either moment.
+ *
+ * # It grants nothing
+ *
+ * Declaring a field derives no install permission, for the reason `contributes.tests` derives none:
+ * it is data the author fills in, not a capability the plugin gains. Nothing here can be read,
+ * written or acted on except by the author typing into the field the declaration produced.
+ *
+ * # Where the value goes
+ *
+ * A `text` value is stored in the project (in `editor/app-tags.json`, under the variant that states
+ * it), so a collaborator who checks the project out has it. A `secret` value is not: the project
+ * stores a handle, and the value itself is sealed on the machine that entered it. A handle whose
+ * secret is not on this machine reads as set-but-unavailable, which is the normal state for a
+ * project someone else configured.
+ */
+export type PluginBuildConfigFieldContribution = {
+    /** Unique within the plugin. Keys the stored value; never displayed. */
+    key: string;
+    /** Author-facing name of the field. */
+    label: string;
+    /** One line saying what the value is for. */
+    description?: string;
+    /** `text` is stored in the project; `secret` is not - the project stores a handle. */
+    type: PluginBuildConfigType;
+    /** Which builds share one value. */
+    scope: PluginBuildConfigScope;
+    /** Platforms the field applies to. Absent means every platform. */
+    platforms?: GameBuildPlatform[];
+    /** A build that would ship without a value for this field is refused. */
+    required?: boolean;
+};
+
+/**
+ * One declared field with the plugin that declared it.
+ *
+ * The declaration alone cannot key a value: two plugins may both call a field `appId`, and the store
+ * is per plugin. Everything that resolves, writes or checks a value works with this shape rather
+ * than passing the plugin id alongside the field and relying on callers to keep the two together.
+ */
+export type PluginBuildConfigField = PluginBuildConfigFieldContribution & {
+    pluginId: string;
+    /** The declaring plugin's name, for surfaces that group fields by plugin. */
+    pluginName: string;
+};
+
+/** Whether a variant may state its own value, or the project holds the only one. */
+export function isVariantScopedBuildConfig(scope: PluginBuildConfigScope): boolean {
+    return scope === "variant" || scope === "variant-platform";
+}
+
+/** Whether the field takes one value per platform rather than one value overall. */
+export function isPlatformScopedBuildConfig(scope: PluginBuildConfigScope): boolean {
+    return scope === "platform" || scope === "variant-platform";
+}
+
+/**
+ * Where one field's value sits inside a plugin's record: the field key, and the platform appended
+ * when the scope takes one value per platform.
+ *
+ * Flattening the platform into the key rather than nesting a second record keeps the store one shape
+ * - `Record<pluginId, Record<storageKey, string>>` - so one normalizer covers every scope and a
+ * scope added later needs no new storage.
+ */
+export function pluginBuildConfigStorageKey(key: string, platform?: GameBuildPlatform): string {
+    return platform ? `${key}@${platform}` : key;
+}
+
 export type PluginContributes = {
     /** Blueprint node types this plugin provides (editor def + runtime execute). */
     blueprintNodes?: string[];
@@ -169,6 +263,12 @@ export type PluginContributes = {
     sidecars?: PluginSidecarContribution[];
     /** External binaries fetched (and cached) at build time. */
     buildDependencies?: PluginBuildDependencyContribution[];
+    /**
+     * Values the author supplies before a build can ship. Declaration only - see
+     * {@link PluginBuildConfigFieldContribution} for why there is no registration API and why this
+     * grants the plugin nothing.
+     */
+    buildConfig?: PluginBuildConfigFieldContribution[];
 };
 
 export type PluginManifestV2 = Omit<PluginIdentity, "id" | "name" | "version"> & Required<Pick<PluginIdentity, "id" | "name" | "version">> & {

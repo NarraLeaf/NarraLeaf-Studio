@@ -848,6 +848,21 @@ export const BLUEPRINT_NODE_TYPE_LAYER_CONFIRM = "blueprint.layer.confirm" as co
 // ids from when the category was named "Page"; only the palette label changed.
 export const BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN = "blueprint.app.getFullscreen" as const;
 export const BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN = "blueprint.app.setFullscreen" as const;
+/**
+ * Hand one web address to the player's browser.
+ *
+ * Only the addresses the build's variant declares are opened, and the shell that opens the page is
+ * what enforces that - not this node and not the graph. The `url` pin may be wired: the declaration
+ * is the boundary, so a computed address is as safe as a picked one, and one that is not declared
+ * leaves by `Failed` wherever it came from.
+ */
+export const BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL = "blueprint.app.openExternal" as const;
+
+/** Inspector param holding the picked address; read only when the `url` pin is unwired. */
+export const BLUEPRINT_EXTERNAL_LINK_PARAM_URL = "url";
+
+/** `dynamicOptionsSource` id for the addresses the project and its variants declare. */
+export const BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE = "externalLinks";
 export const BLUEPRINT_NODE_TYPE_GAME_START_STORY = "blueprint.game.startStory" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME = "blueprint.game.isInGame" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY = "blueprint.game.isGameOverlay" as const;
@@ -902,6 +917,17 @@ export const BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED = "blueprint.game.isScene
 export const BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED = "blueprint.game.isOptionPicked" as const;
 /** Wipe the running game's visited record. The `Clear Text Read` of this family. */
 export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisited" as const;
+/**
+ * The build variant this package is, as its name - the blueprint spelling of the story language's
+ * `AppTag`.
+ *
+ * Unlike every other reader in this family it has no play-time value at all. The name is decided
+ * when the package is produced, so `@shared/blueprint/appTagGraphFold` substitutes it and removes
+ * this node before the graph reaches a pack; a graph the fold cannot reduce to a decided branch is
+ * refused rather than shipped. A node that reaches the running game is therefore one only Dev Mode
+ * or the preview is executing, and both of those are always the release edition.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG = "blueprint.game.getAppTag" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;

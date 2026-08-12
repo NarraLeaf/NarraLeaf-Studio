@@ -3,6 +3,13 @@ import type { LocaleNamespace } from "../types";
 export const blueprint = {
     header: {
         title: "蓝图",
+        /** 标题行上的弹出按钮，中键点击标题行同此。 */
+        detach: "在独立窗口中打开",
+        detachFailed: "独立窗口未能打开，蓝图仍留在工作区",
+    },
+    /** Shared by every blueprint entry: the card or button that leads into a blueprint. */
+    entry: {
+        openInWindow: "右键在独立窗口中打开",
     },
     tab: {
         title: "蓝图",
@@ -414,6 +421,7 @@ export const blueprint = {
         addReturnValue: "添加返回值",
         addValue: "添加值",
         after: "结束后",
+        appTag: "应用标签",
         alt: "Alt",
         animation: "动画",
         animationToken: "动画令牌",
@@ -687,6 +695,7 @@ export const blueprint = {
         fetch: "发起请求",
         readResponseText: "读取响应文本",
         readResponseJson: "读取响应 JSON",
+        getAppTag: "获取应用标签",
         getAutoForward: "获取自动前进",
         getBgmVolume: "获取背景音乐音量",
         getButtonEnabled: "获取按钮启用状态",
@@ -988,6 +997,7 @@ export const blueprint = {
         onKeyDown: "按键按下时",
         onKeyUp: "按键抬起时",
         onPreferenceChanged: "偏好变更时",
+        openLink: "打开链接",
         openPage: "打开页面",
         or: "或",
         padEnd: "尾部填充",

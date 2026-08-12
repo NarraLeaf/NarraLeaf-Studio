@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { join } from "@shared/utils/path";
-import { APP_TAG_ID_RELEASE, APP_TAG_SCHEMA_VERSION, type AppTagBaseIdentity } from "@shared/types/appTag";
+import { APP_TAG_ID_RELEASE, APP_TAG_SCHEMA_VERSION, RELEASE_APP_TAG, type AppTagBaseIdentity } from "@shared/types/appTag";
+import type { PluginBuildConfigField } from "@shared/types/plugins";
 import { Services, type WorkspaceContext } from "../services";
 import { AppTagService } from "./AppTagService";
 
@@ -184,14 +185,12 @@ describe("AppTagService", () => {
         expect(service.getTag(other.id)?.name).toBe("demo 2");
     });
 
-    it("refuses to let a variant take the release tag's name, under either spelling", async () => {
+    it("refuses to let a variant take the release tag's name", async () => {
         const { service } = await createHarness();
 
-        const model = service.createTag({ name: "Release" });
-        const shown = service.createTag({ name: "正式版", reservedNames: ["正式版"] });
+        const created = service.createTag({ name: RELEASE_APP_TAG.name });
 
-        expect(service.getTag(model.id)?.name).toBe("Release 2");
-        expect(service.getTag(shown.id)?.name).toBe("正式版 2");
+        expect(service.getTag(created.id)?.name).toBe(`${RELEASE_APP_TAG.name} 2`);
     });
 
     it("lets a rename keep its own name, rather than numbering a variant against itself", async () => {
@@ -248,5 +247,273 @@ describe("AppTagService", () => {
         expect(ids(service)).toEqual([APP_TAG_ID_RELEASE]);
         expect(service.resolveTag("demo").id).toBe(APP_TAG_ID_RELEASE);
         await expect(service.save(service.getDocument())).rejects.toThrow(/could not be read/);
+    });
+});
+
+/**
+ * Plugin build config through the service: where a value lands is the field's scope's business, and
+ * the two records - the project's and the variant's - are written, cleared and saved as one document.
+ */
+const buildField = (
+    key: string,
+    scope: PluginBuildConfigField["scope"],
+    type: PluginBuildConfigField["type"] = "text",
+): PluginBuildConfigField => ({
+    pluginId: "acme.steam",
+    pluginName: "Steam",
+    key,
+    label: key,
+    type,
+    scope,
+});
+
+describe("AppTagService plugin config", () => {
+    it("writes a global field on the project whatever variant is selected", async () => {
+        const { service, files } = await createHarness();
+        const demo = service.createTag({ name: "Demo" });
+
+        expect(service.setPluginConfigValue(demo.id, buildField("appId", "global"), " 480 ")).toBe(true);
+        await service.flushPendingChanges();
+
+        expect(service.getProjectPluginConfig()).toEqual({ "acme.steam": { appId: "480" } });
+        expect(service.getVariantPluginConfig(demo.id)).toEqual({});
+        expect(JSON.parse(files.get(DOCUMENT)!).pluginConfig).toEqual({ "acme.steam": { appId: "480" } });
+    });
+
+    it("writes a variant field on the variant, and on the project under the release tag", async () => {
+        const { service } = await createHarness();
+        const demo = service.createTag({ name: "Demo" });
+        const field = buildField("branch", "variant");
+
+        service.setPluginConfigValue(APP_TAG_ID_RELEASE, field, "default");
+        service.setPluginConfigValue(demo.id, field, "beta");
+
+        expect(service.resolvePluginConfigValue(APP_TAG_ID_RELEASE, field))
+            .toEqual({ value: "default", overridden: false });
+        expect(service.resolvePluginConfigValue(demo.id, field)).toEqual({ value: "beta", overridden: true });
+    });
+
+    it("keys a platform-scoped field per platform", async () => {
+        const { service } = await createHarness();
+        const field = buildField("depot", "platform");
+
+        service.setPluginConfigValue(null, field, "1001", "windows");
+
+        expect(service.getProjectPluginConfig()).toEqual({ "acme.steam": { "depot@windows": "1001" } });
+        expect(service.resolvePluginConfigValue(null, field, "windows"))
+            .toEqual({ value: "1001", overridden: false });
+        expect(service.resolvePluginConfigValue(null, field, "linux")).toEqual({ value: "", overridden: false });
+    });
+
+    it("clears by deleting, so the variant inherits again", async () => {
+        const { service } = await createHarness();
+        const demo = service.createTag({ name: "Demo" });
+        const field = buildField("branch", "variant");
+        service.setPluginConfigValue(null, field, "default");
+        service.setPluginConfigValue(demo.id, field, "beta");
+
+        // A blank value is the same act as clearing: "" is not a value a build can ship with.
+        expect(service.setPluginConfigValue(demo.id, field, "  ")).toBe(true);
+
+        expect(service.resolvePluginConfigValue(demo.id, field)).toEqual({ value: "default", overridden: false });
+        expect(service.getVariantPluginConfig(demo.id)).toEqual({});
+    });
+
+    it("leaves no empty record behind when the last value goes", async () => {
+        const { service, files } = await createHarness();
+        const field = buildField("appId", "global");
+        service.setPluginConfigValue(null, field, "480");
+        await service.flushPendingChanges();
+
+        service.clearPluginConfigValue(null, field);
+        await service.flushPendingChanges();
+
+        expect(service.getProjectPluginConfig()).toEqual({});
+        expect(JSON.parse(files.get(DOCUMENT)!)).not.toHaveProperty("pluginConfig");
+    });
+
+    it("sweeps a variant entry for a field the project owns", async () => {
+        const stored = JSON.stringify({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [{ id: "demo", name: "Demo", overrides: {}, pluginConfig: { "acme.steam": { appId: "999" } } }],
+        });
+        const { service } = await createHarness(stored);
+        const field = buildField("appId", "global");
+
+        // The scope arrives with the write, which is the only moment the service can know it. Until
+        // then the stray entry is inert - resolution never reads it - but it is not left behind.
+        service.setPluginConfigValue("demo", field, "480");
+
+        expect(service.getVariantPluginConfig("demo")).toEqual({});
+        expect(service.resolvePluginConfigValue("demo", field)).toEqual({ value: "480", overridden: false });
+    });
+
+    it("keeps the values of a plugin that is not installed here", async () => {
+        const stored = JSON.stringify({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [{ id: "demo", name: "Demo", overrides: {}, pluginConfig: { "acme.absent": { token: "kept" } } }],
+            pluginConfig: { "acme.absent": { license: "kept" } },
+        });
+        const { service, files } = await createHarness(stored);
+
+        service.setPluginConfigValue("demo", buildField("branch", "variant"), "beta");
+        await service.flushPendingChanges();
+
+        const written = JSON.parse(files.get(DOCUMENT)!);
+        expect(written.pluginConfig).toEqual({ "acme.absent": { license: "kept" } });
+        expect(written.tags[0].pluginConfig).toEqual({
+            "acme.absent": { token: "kept" },
+            "acme.steam": { branch: "beta" },
+        });
+    });
+
+    it("refuses a variant that does not exist", async () => {
+        const { service } = await createHarness();
+
+        expect(service.setPluginConfigValue("no-such-tag", buildField("branch", "variant"), "beta")).toBe(false);
+        expect(service.clearAllPluginConfig("no-such-tag")).toBe(false);
+        expect(service.clearAllPluginConfig(APP_TAG_ID_RELEASE)).toBe(false);
+    });
+
+    it("marks the project dirty when only the project's own record changed", async () => {
+        const { service } = await createHarness();
+        const revision = service.getRevision();
+
+        service.setPluginConfigValue(null, buildField("appId", "global"), "480");
+
+        expect(service.isDirty()).toBe(true);
+        expect(service.getRevision()).toBe(revision + 1);
+    });
+
+    it("clears every value a variant states in one act", async () => {
+        const { service } = await createHarness();
+        const demo = service.createTag({ name: "Demo" });
+        service.setPluginConfigValue(demo.id, buildField("branch", "variant"), "beta");
+        service.setPluginConfigValue(demo.id, buildField("token", "variant", "secret"), "handle-1");
+
+        expect(service.clearAllPluginConfig(demo.id)).toBe(true);
+        expect(service.getVariantPluginConfig(demo.id)).toEqual({});
+    });
+});
+
+describe("app tag external links", () => {
+    it("writes the project's own list at the document root", async () => {
+        const { service, files } = await createHarness();
+
+        expect(service.setExternalLinks(null, [" https://example.com/store ", "not a url"])).toBe(true);
+        await service.flushPendingChanges();
+
+        expect(service.getProjectExternalLinks()).toEqual(["https://example.com/store"]);
+        expect(JSON.parse(files.get(DOCUMENT)!).externalLinks).toEqual(["https://example.com/store"]);
+    });
+
+    it("lets a variant state its own list, and restores it by removing the key", async () => {
+        const { service, files } = await createHarness();
+        service.setExternalLinks(null, ["https://example.com/store"]);
+        const demo = service.createTag({ name: "Demo" });
+
+        expect(service.resolveExternalLinks(demo.id))
+            .toEqual({ value: ["https://example.com/store"], overridden: false });
+
+        service.setExternalLinks(demo.id, ["https://example.com/store", "https://example.com/full"]);
+        expect(service.resolveExternalLinks(demo.id).overridden).toBe(true);
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).tags[0].externalLinks).toHaveLength(2);
+
+        expect(service.clearExternalLinks(demo.id)).toBe(true);
+        expect(service.resolveExternalLinks(demo.id))
+            .toEqual({ value: ["https://example.com/store"], overridden: false });
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).tags[0]).not.toHaveProperty("externalLinks");
+    });
+
+    it("keeps a variant that states it opens nothing apart from one that inherits", async () => {
+        const { service } = await createHarness();
+        service.setExternalLinks(null, ["https://example.com/store"]);
+        const demo = service.createTag({ name: "Demo" });
+
+        service.setExternalLinks(demo.id, []);
+
+        expect(service.resolveExternalLinks(demo.id)).toEqual({ value: [], overridden: true });
+    });
+
+    it("answers every address any build could open, project and variants together", async () => {
+        const { service } = await createHarness();
+        service.setExternalLinks(null, ["https://example.com/store"]);
+        const demo = service.createTag({ name: "Demo" });
+        service.setExternalLinks(demo.id, ["https://example.com/store", "https://example.com/full"]);
+
+        expect(service.listDeclaredExternalLinks())
+            .toEqual(["https://example.com/store", "https://example.com/full"]);
+    });
+
+    it("refuses a variant that does not exist, and the release tag for a restore", async () => {
+        const { service } = await createHarness();
+
+        expect(service.setExternalLinks("no-such-tag", ["https://example.com/"])).toBe(false);
+        expect(service.clearExternalLinks(APP_TAG_ID_RELEASE)).toBe(false);
+    });
+});
+
+describe("app tag ending page", () => {
+    it("writes the project's own page at the document root", async () => {
+        const { service, files } = await createHarness();
+
+        expect(service.setEndingSurface(null, " surface-credits ")).toBe(true);
+        await service.flushPendingChanges();
+
+        expect(service.getProjectEndingSurfaceId()).toBe("surface-credits");
+        expect(JSON.parse(files.get(DOCUMENT)!).endingSurfaceId).toBe("surface-credits");
+    });
+
+    it("lets a variant state its own page, and restores it by removing the key", async () => {
+        const { service, files } = await createHarness();
+        service.setEndingSurface(null, "surface-credits");
+        const demo = service.createTag({ name: "Demo" });
+
+        expect(service.resolveEndingSurface(demo.id))
+            .toEqual({ value: "surface-credits", overridden: false });
+
+        service.setEndingSurface(demo.id, "surface-thanks");
+        expect(service.resolveEndingSurface(demo.id))
+            .toEqual({ value: "surface-thanks", overridden: true });
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).tags[0].endingSurfaceId).toBe("surface-thanks");
+
+        expect(service.clearEndingSurface(demo.id)).toBe(true);
+        expect(service.resolveEndingSurface(demo.id))
+            .toEqual({ value: "surface-credits", overridden: false });
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).tags[0]).not.toHaveProperty("endingSurfaceId");
+    });
+
+    it("keeps a variant that states it shows nothing apart from one that inherits", async () => {
+        const { service, files } = await createHarness();
+        service.setEndingSurface(null, "surface-credits");
+        const demo = service.createTag({ name: "Demo" });
+
+        service.setEndingSurface(demo.id, "");
+
+        expect(service.resolveEndingSurface(demo.id)).toEqual({ value: "", overridden: true });
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).tags[0].endingSurfaceId).toBe("");
+    });
+
+    it("removes the project's key when the project picks no page", async () => {
+        const { service, files } = await createHarness();
+        service.setEndingSurface(null, "surface-credits");
+
+        service.setEndingSurface(null, "");
+        await service.flushPendingChanges();
+
+        expect(service.getProjectEndingSurfaceId()).toBe("");
+        expect(JSON.parse(files.get(DOCUMENT)!)).not.toHaveProperty("endingSurfaceId");
+    });
+
+    it("refuses a variant that does not exist, and the release tag for a restore", async () => {
+        const { service } = await createHarness();
+
+        expect(service.setEndingSurface("no-such-tag", "surface-credits")).toBe(false);
+        expect(service.clearEndingSurface(APP_TAG_ID_RELEASE)).toBe(false);
     });
 });

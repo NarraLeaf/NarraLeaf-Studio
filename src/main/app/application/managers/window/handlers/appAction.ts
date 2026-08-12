@@ -92,6 +92,21 @@ export class AppWindowControlHandler extends IPCHandler<IPCEventType.appWindowCo
     }
 }
 
+export class AppDetachedWindowControlHandler extends IPCHandler<IPCEventType.appDetachedWindowControl> {
+    readonly name = IPCEventType.appDetachedWindowControl;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appDetachedWindowControl]["data"]) {
+        const status = window.controlDetachedWindow(data.key, data.control);
+        if (!status) {
+            // The window is gone, or was never this one's to drive. Either way the renderer's
+            // buttons are pointing at nothing, and saying so is better than a silent no-op.
+            return this.failed(`No detached window "${data.key}" belongs to this window`);
+        }
+        return this.success({ status });
+    }
+}
+
 export class AppWindowEditCommandHandler extends IPCHandler<IPCEventType.appWindowEditCommand> {
     readonly name = IPCEventType.appWindowEditCommand;
     readonly type = IPCMessageType.message;

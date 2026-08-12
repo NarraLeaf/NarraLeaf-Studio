@@ -36,6 +36,7 @@ export const project = {
     group: {
         details: "Details",
         appTags: "Build variants",
+        userData: "Player files",
         icons: "Icons",
         dependencies: "Dependencies",
         saving: "Saving",
@@ -79,6 +80,25 @@ export const project = {
         descriptionPlaceholder: "Describe your project…",
         required: "Required",
     },
+    // Where a shipped game writes what belongs to the player. Stated, not offered: nothing on this
+    // part is a setting, and it names no storefront, because which of them to hand this to is the
+    // author's decision. The description says what the paths are, and stops there.
+    userData: {
+        description: "Where a shipped game keeps the player's saves and progress. The folder is named "
+            + "after the identifier, so renaming the application leaves it where it is.",
+        copy: "Copy locations",
+        copied: "Locations copied.",
+        copyFailed: "Could not copy the locations.",
+        platform: {
+            windows: "Windows",
+            macos: "macOS",
+            linux: "Linux",
+        },
+        content: {
+            saves: "Save slots",
+            persistence: "Persistent variables, unlocked content, and plugin data",
+        },
+    },
     // Build variants: the editions the same project ships as. What a variant is and what inheriting
     // means live in the `appTags` help topic, reached by the `?` on this heading; the words here name
     // controls and say what pressing one does.
@@ -86,9 +106,6 @@ export const project = {
         add: "Add variant",
         newTagName: "New Variant",
         nameTitle: "Name",
-        // The variant every project has and every other variant is read against. Named where it is
-        // shown rather than in the model, which has no catalog to read.
-        releaseName: "Release",
         fields: {
             displayName: "Application name",
             identifier: "Identifier",
@@ -97,6 +114,27 @@ export const project = {
         // Sits beside a field only while that field states a value of its own, so it is the mark of
         // an override as well as the way out of one.
         restore: "Restore",
+        // Heading for the scene lists, shown only where the project holds something that can start a
+        // scene the build cannot read. Each list below it is labelled with that thing's own name.
+        reachableTitle: "Scenes these can start",
+        // The addresses a build of this variant may hand to the player's browser. Named for what the
+        // list decides rather than for the mechanism, and stated as a group: a variant has its own
+        // list or reads the project's.
+        links: {
+            title: "Links the game can open",
+            add: "Add link",
+            remove: "Remove link",
+            placeholder: "https://example.com/store",
+            invalid: "Only addresses starting with http:// or https:// can be opened.",
+        },
+        // The page a build of this variant shows when its story runs out of rows. Named for what an
+        // author sees happen rather than for the engine event behind it.
+        ending: {
+            title: "Page shown when the story ends",
+            // A real choice, not the empty state: the last frame stays on screen, which is what
+            // every build did before this field existed.
+            none: "Show nothing",
+        },
         // Beside Delete inside an open variant: the count the confirmation is about to be about.
         usedBy: {
             one: "Used by {count} reference",
@@ -105,10 +143,17 @@ export const project = {
         delete: "Delete",
         deleteConfirm: "Delete \"{name}\"?",
         // The honest consequence: nothing pointing at this variant is rewritten, so those references
-        // read the release values from now on.
+        // read the release values from now on. `{name}` is the release variant's name, interpolated
+        // rather than written here so this line follows it if it is ever renamed.
         deleteDetail: {
-            one: "{count} reference falls back to Release.",
-            other: "{count} references fall back to Release.",
+            one: "{count} reference falls back to {name}.",
+            other: "{count} references fall back to {name}.",
+        },
+        // The second half of that consequence, for the references that are rows in the script: a cut
+        // point is kept, and one that names no variant ends nothing.
+        deleteDetailCuts: {
+            one: "{count} cut point stays in the script and stops taking effect.",
+            other: "{count} cut points stay in the script and stop taking effect.",
         },
     },
     assets: {

@@ -11,6 +11,7 @@ import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -86,6 +87,7 @@ export enum IPCEventType {
     getPlatform = "getPlatform",
     appTerminate = "app.terminate",
     appWindowControl = "app.window.setControl",
+    appDetachedWindowControl = "app.window.detachedControl",
     appWindowEditCommand = "app.window.editCommand",
     appWindowClose = "app.window.close",
     appWindowCloseWith = "app.window.closeWith",
@@ -230,11 +232,15 @@ export enum IPCEventType {
     signingKeystoreAliases = "signing.keystoreAliases",
     signingMacIdentities = "signing.macIdentities",
 
+    pluginBuildSecretSet = "pluginBuildSecret.set",
+    pluginBuildSecretAvailable = "pluginBuildSecret.available",
+
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
     blueprintPersistenceSetValue = "blueprintPersistence.setValue",
     blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
     blueprintNetworkFetch = "blueprintNetwork.fetch",
+    blueprintExternalLinkOpen = "blueprintExternalLink.open",
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -377,6 +383,29 @@ export type IPCEvents = {
      * Used by the renderer when a native Edit-menu command routed to a surface action should
      * fall back to normal text editing because the user is in a text field.
      */
+    /**
+     * Drive one of the sending window's DETACHED windows (see `detachedWindowGuard`).
+     *
+     * A detached window is frameless and wears the editor's own title row as its title bar, so its
+     * minimise / maximise / close buttons are drawn by the renderer - but that renderer is the
+     * opener's, and every other window-control call resolves to "the window that sent this IPC".
+     * Sent blind, those buttons would drive the workspace window instead of the one they are drawn
+     * in. Hence the key: the popup names itself, and the main process looks it up among the
+     * children of the sender, which is also what stops a window from reaching another's.
+     */
+    [IPCEventType.appDetachedWindowControl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** The detached window's key, as given to `window.open`'s frame name. */
+            key: string,
+            /** `status` only reads; the rest act and then report where the window ended up. */
+            control: "status" | "minimize" | "toggleMaximize" | "close",
+        },
+        response: {
+            status: WindowVisibilityStatus,
+        };
+    };
     [IPCEventType.appWindowEditCommand]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
@@ -737,7 +766,7 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -2081,6 +2110,57 @@ export type IPCSigningEvents = {
     };
 };
 
+/**
+ * Plugin build-config secrets, sealed in the same machine vault the signing
+ * passwords live in.
+ *
+ * Two events, and there is deliberately no third. The value goes up once, when
+ * the author types it, and what comes back is a handle - the project file stores
+ * that. Nothing here reads a secret back: unsealing happens in the main process
+ * alone, when a build needs the value, and a "read it" event would be the whole
+ * point of the vault undone.
+ */
+export type IPCPluginBuildSecretEvents = {
+    /**
+     * Seal a value and answer the handle to store. The payload is plaintext - do
+     * not log it, do not keep it, do not send it anywhere else.
+     */
+    [IPCEventType.pluginBuildSecretSet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** Plain text, one way only. */
+            value: string;
+            /**
+             * The handle to fill in, when the project already refers to one and
+             * the author is supplying the value on this machine. Omit to mint one.
+             */
+            handle?: string;
+        },
+        response: {
+            /** What the project stores in place of the value. */
+            handle: string;
+            /** False when the OS keyring refused; the handle exists, the value was not stored. */
+            available: boolean;
+        };
+    };
+    /**
+     * Whether the secret behind a handle is on this machine and can be unsealed.
+     * False is the ordinary answer for a project a collaborator configured, and
+     * means "set, not available here" rather than "empty".
+     */
+    [IPCEventType.pluginBuildSecretAvailable]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            handle: string;
+        },
+        response: {
+            available: boolean;
+        };
+    };
+};
+
 export type IPCBlueprintPersistenceEvents = {
     [IPCEventType.blueprintPersistenceGetAll]: {
         type: IPCMessageType.request,
@@ -2141,6 +2221,28 @@ export type IPCBlueprintPersistenceEvents = {
         },
         response: {
             result: BlueprintNetworkFetchResult;
+        };
+    };
+    /**
+     * One Open Link node request, decided and performed by the main process on the Dev Mode
+     * preview's behalf.
+     *
+     * The renderer sends the address and never the permission: the handler reads the project's own
+     * declared addresses off disk and refuses anything else, which is what makes Dev Mode behave
+     * like the shipped game rather than like a window with Studio's privileges behind it.
+     *
+     * The project path, not a window handle, identifies whose declaration applies - the same shape
+     * the Fetch channel above uses.
+     */
+    [IPCEventType.blueprintExternalLinkOpen]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            request: BlueprintOpenExternalRequest;
+        },
+        response: {
+            result: BlueprintOpenExternalResult;
         };
     };
 };

@@ -35,7 +35,7 @@ const CONTEXT: StoryCommandContext = {
         { id: "t_amb", name: "Ambience" },
     ],
     labels: ["intro", "after refusal"],
-    appTags: [{ id: "release", name: "Release" }, { id: "demo", name: "Demo" }],
+    appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var_gold" }, valueType: "number", defaultValue: 10 },
         { name: "met", ref: { scope: "saved", variableId: "var_met" }, valueType: "boolean" },
@@ -523,6 +523,10 @@ describe("variables", () => {
         expect(declare("/local flag 1 type=bool")).toMatchObject({ valueType: "boolean", defaultValue: 1 });
         // A declaration into an occupied name is refused, not overwritten.
         expect(issuesOf("/local gold")).toEqual(["duplicateVariable"]);
+        // `AppTag` is the build variant to every expression, so a variable could never be read by
+        // its bare name. Refused at the declaration rather than at the first line that uses it.
+        expect(issuesOf("/local AppTag")).toEqual(["reservedVariableName"]);
+        expect(issuesOf("/local apptag")).toEqual(["reservedVariableName"]);
     });
 
     /**

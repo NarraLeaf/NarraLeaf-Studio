@@ -149,6 +149,14 @@ export const settings = {
                 command: "高亮指令行",
             },
         },
+        detachedEditorOnClose: {
+            label: "独立编辑器关闭窗口后的行为",
+            description: "在独立窗口中打开的编辑器，关窗后回到工作区或随窗口一同关闭",
+            options: {
+                restoreTab: "回到工作区",
+                close: "关闭编辑器",
+            },
+        },
         editorLineNumbers: {
             label: "显示行号",
             description: "用于从资产库打开文件的内建文本编辑器",

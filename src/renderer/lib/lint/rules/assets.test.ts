@@ -371,3 +371,61 @@ describe("assets/unreadable", () => {
         expect(await runRule("assets/unreadable", ctx)).toEqual([]);
     });
 });
+
+describe("assets/oversized", () => {
+    function runOversized(ctx: LintContext, maxMegabytes = 1): Promise<LintFinding[]> {
+        const rule = ASSETS_LINT_RULES.find(entry => entry.id === "assets/oversized")!;
+        return Promise.resolve(rule.run(ctx, { maxMegabytes }));
+    }
+
+    /** One reference outside the stories, which is what makes the solver call an asset carried. */
+    function widgetReference(assetId: string): AssetReference {
+        return {
+            id: `ui:w1:${assetId}`,
+            assetId,
+            kind: "uiElement",
+            label: "Title art",
+            field: "imageFill",
+        };
+    }
+
+    const big = 4 * 1024 * 1024;
+
+    it("reports a carried file over the declared size", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("cover", { meta: { size: big } })],
+            assetReferences: new Map([["cover", [widgetReference("cover")]]]),
+        });
+
+        const findings = await runOversized(ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.assetsOversized.message");
+        expect(findings[0].messageParams).toEqual({ asset: "cover.png", size: "4.0 MB", limit: "1.0 MB" });
+        expect(findings[0].target).toEqual({ kind: "asset", assetId: "cover", assetType: AssetType.Image });
+    });
+
+    it("says nothing about a file under the declared size", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("cover", { meta: { size: 1024 } })],
+            assetReferences: new Map([["cover", [widgetReference("cover")]]]),
+        });
+
+        expect(await runOversized(ctx)).toEqual([]);
+    });
+
+    it("leaves an asset no build carries to assets/unused", async () => {
+        const ctx = createTestLintContext({ assets: [asset("cover", { meta: { size: big } })] });
+
+        expect(await runOversized(ctx)).toEqual([]);
+    });
+
+    it("says nothing about a record that has never been measured", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("cover", { meta: {} })],
+            assetReferences: new Map([["cover", [widgetReference("cover")]]]),
+        });
+
+        expect(await runOversized(ctx)).toEqual([]);
+    });
+});

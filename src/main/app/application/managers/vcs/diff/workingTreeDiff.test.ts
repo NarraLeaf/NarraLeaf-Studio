@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { VcsChangeKind, VcsFileChange, VcsStatus } from "@shared/types/vcs";
-import { CONTENT_HEAD_READ_CEILING, DIFF_MOVE_CONFIRM_BYTE_CEILING, DIFF_PATH_LIMIT } from "./documentDiff";
+import {
+    CONTENT_HEAD_READ_CEILING,
+    DIFF_MOVE_CONFIRM_BYTE_CEILING,
+    DIFF_PARSE_BYTE_CEILING,
+    DIFF_PATH_LIMIT,
+} from "./documentDiff";
 import { diffWorkingTree, type WorkingTreeDiffSource } from "./workingTreeDiff";
 
 /**
@@ -457,6 +462,44 @@ describe("an asset stored under its id", () => {
         // that answer exists: nothing in the path says `bitmap` and the renderer never sees a
         // byte of the file until it asks for one.
         expect(result.documents[0].contentClass).toBe("bitmap");
+    });
+
+    it("places an asset that was deleted, out of the bytes it had already pulled", async () => {
+        // The defect this pins was only visible on a DELETION, and only on the surface furthest
+        // from here: with nothing on disk to probe, a deleted sprite reached the comparison as
+        // `unknown`, so the pane that draws pictures declined it and the author was told
+        // "removed, 900 B" about a file whose whole point is what it looked like.
+        const { source, reads } = sourceOf(
+            statusOf([fileChange(SHARD, "deleted")]),
+            { [SHARD]: png(1024, 1024, 900) },
+            {},
+        );
+
+        const result = await diffWorkingTree(source);
+
+        expect(result.documents[0].kind).toBe("removed");
+        expect(result.documents[0].contentClass).toBe("bitmap");
+        // Non-vacuous in the direction that matters: no `head:` probe was added to buy this. The
+        // recorded read is the one the plan was always going to make, and the working tree is
+        // never touched for a file that is not there.
+        expect(reads).toEqual(["entriesAt:r1", "readAt:r1"]);
+    });
+
+    it("leaves a deletion nobody opened unplaced rather than reading it to find out", async () => {
+        // The ceiling, from the side that has no way around it: `storageGet` answers with a whole
+        // blob or nothing, so placing this one would mean pulling every byte of it for a few dozen
+        // at the front. `unknown` is the honest answer for a file nobody opened.
+        const { source, reads } = sourceOf(
+            statusOf([fileChange(SHARD, "deleted")]),
+            { [SHARD]: png(4096, 4096, DIFF_PARSE_BYTE_CEILING + 1024) },
+            {},
+        );
+
+        const result = await diffWorkingTree(source);
+
+        expect(reads).toEqual(["entriesAt:r1"]);
+        expect(result.documents[0].kind).toBe("removed");
+        expect(result.documents[0].contentClass).toBe("unknown");
     });
 
     it("probes nothing whose name already answers, and nothing that is gone", async () => {

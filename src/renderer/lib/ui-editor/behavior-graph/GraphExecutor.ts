@@ -101,6 +101,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
                         eventId: trace.eventId,
                         graphId: trace.graphId,
                         nodeId: currentCursor,
+                        surfaceId: trace.surfaceId,
                     });
                 }
                 throw new BlueprintGraphExecutionError(message, currentCursor);
@@ -175,6 +176,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
                         eventId: trace.eventId,
                         graphId: trace.graphId,
                         nodeId,
+                        surfaceId: trace.surfaceId,
                     });
                 }
                 throw err instanceof BlueprintGraphExecutionError ? err : new BlueprintGraphExecutionError(message, nodeId);

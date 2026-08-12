@@ -35,6 +35,16 @@ export const appTagsSpec = defineDocumentSpec<ProjectAppTagDocument>({
         if (record.tags !== undefined && !Array.isArray(record.tags)) {
             context.corrupt(`"tags" must be an array, got ${typeof record.tags}`);
         }
+        // Same hazard as `tags`, and the values at stake are ones the author typed into a build
+        // dialog: the normalizer answers an empty record for anything it cannot read, and the first
+        // edit would write that back over whatever was there.
+        if (record.pluginConfig !== undefined
+            && (typeof record.pluginConfig !== "object"
+                || record.pluginConfig === null
+                || Array.isArray(record.pluginConfig))
+        ) {
+            context.corrupt(`"pluginConfig" must be an object, got ${typeof record.pluginConfig}`);
+        }
         return migrateProjectAppTagDocument(record);
     },
     // No authored name: there is one of these per project and the history UI labels it by kind.

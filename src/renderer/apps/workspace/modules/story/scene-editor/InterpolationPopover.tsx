@@ -9,6 +9,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useTranslation } from "@/lib/i18n";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
+import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { rememberInterpolationKind, type StoryVariableOption } from "./storyInterpolation";
 
 const MENU_Z = 80;
@@ -102,7 +103,7 @@ export function InterpolationPopover(props: {
             target: { scope: opt.scope, variableId: opt.id },
         });
     };
-    const openEditor = () => {
+    const openEditor = (options?: BlueprintOpenOptions) => {
         let id = blueprintId;
         if (!id) {
             id = blueprintService?.ensureStoryActionBlueprint({ mode: "value" }) ?? "";
@@ -114,7 +115,7 @@ export function InterpolationPopover(props: {
         // Persist the (possibly just-created) binding before navigating to the blueprint editor —
         // otherwise the uncommitted id is dropped and the entry shows "No blueprint" on return.
         props.onCommitTextEdit?.();
-        openBlueprint({ blueprintId: id, ownerKind: "storyAction", title: t("story.interpolation.storyValueTitle") });
+        openBlueprint({ blueprintId: id, ownerKind: "storyAction", title: t("story.interpolation.storyValueTitle") }, options);
     };
 
     const variableOptions: SelectOption[] = allVariables.length
