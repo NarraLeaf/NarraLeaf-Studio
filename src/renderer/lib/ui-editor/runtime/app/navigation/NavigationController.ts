@@ -133,7 +133,7 @@ export class NavigationController {
         this.tryCompleteTransitionWait();
     }
 
-    /** AnimatePresence finished exiting all layers (wait mode). */
+    /** The page lane's AnimatePresence finished exiting every outgoing page (wait mode). */
     public markAllExited(): void {
         this.wait.exitDone = true;
         this.tryCompleteTransitionWait();
