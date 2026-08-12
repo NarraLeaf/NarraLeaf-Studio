@@ -730,6 +730,7 @@ function NestedSurfaceInstance(props: {
             contentStyle={{ width: "100%", height: "100%" }}
             presentZIndex={10 + layerIndex}
             exitZIndex={runtimeInput.exitBehind ? 0 : 30 + layerIndex}
+            exitHoldMs={timings.exitMs}
             interactive={effectiveInteractive}
             resolveExit={resolveExit}
             onPrepaintReady={handlePrepaintReady}
