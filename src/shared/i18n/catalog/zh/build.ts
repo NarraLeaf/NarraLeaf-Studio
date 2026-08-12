@@ -37,7 +37,10 @@ export const build = {
     },
     outputDir: "输出目录",
     chooseFolder: "选择文件夹…",
+    // 侧边导航。其中五项对应检查结果可以归属的分区；`variant` 是选择构建版本的那一页，
+    // 它决定其余各页描述的是哪一个版本，只在工程存在可选版本时出现。
     section: {
+        variant: "版本",
         targets: "目标",
         identity: "标识",
         content: "内容与保护",
@@ -50,8 +53,15 @@ export const build = {
         arm64: "ARM（arm64）",
         universal: "通用",
     },
+    // 第一页：本次构建产出哪一个版本，以及该版本发布的值。
+    variant: {
+        // 标在「该版本自己未填写」的读数旁边，使继承来的值与被覆盖的值在同一行都给出出处
+        inherited: "来自工程",
+        blocking: "阻止本次构建",
+        blockingNone: "没有阻止本次构建的问题",
+    },
     identity: {
-        // 本次构建属于工程的哪一个发行版本；放在该分区最前，因为下面三行读数都是该版本发布的值
+        // 第一页所做的选择的名称，同时用作那份列表的标签
         variant: "构建版本",
         // 标在「由该版本自己填写、而非继承」的读数旁边，使与「应用」页不一致的值在同一行给出原因
         fromVariant: "来自该构建版本",
@@ -169,6 +179,8 @@ export const build = {
         "version-invalid": "版本号 {version} 不是合法的语义化版本，构建会失败",
         "version-missing": "未设置版本号，将以 0.0.0 构建",
         "identifier-missing": "项目没有标识符，将使用应用 ID {appId}",
+        // 构建本身同样拒绝这个文件，所以这里说明的是中止的原因，而不是替代的取值
+        "variants-unreadable": "无法读取工程的构建版本：{reason}",
         "icon-missing": "未设置应用图标，将使用 NarraLeaf 图标",
         "icon-unusable": "{platform} 图标无法读取，将使用 NarraLeaf 图标",
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",

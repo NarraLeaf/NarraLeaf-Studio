@@ -4,12 +4,13 @@ import { getInterface } from "@/lib/app/bridge";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type {
     BuildPreflightFinding,
-    BuildPreflightSection,
     GameBuildPlatform,
     GameBuildRequest,
     GameBuildStateSnapshot,
     GameBuildStatus,
 } from "@shared/types/gameBuild";
+// Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
+import type { BuildDialogPage } from "@/apps/workspace/modules/actions/buildDialogState";
 import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { collectBlueprintNetworkNodes } from "@/lib/lint/rules";
@@ -43,8 +44,12 @@ type BuildServiceEvents = {
  */
 export type BuildDialogDraft = {
     request: GameBuildRequest;
-    /** Section the dialog was showing, so reopening lands where the user left. */
-    section: BuildPreflightSection;
+    /**
+     * Page the dialog was showing, so reopening lands where the user left. A page rather than a
+     * finding's section: the dialog has one page no finding can name, and a page that is not shown
+     * for this project is clamped to the first one that is.
+     */
+    page: BuildDialogPage;
 };
 
 const IDLE_STATE: GameBuildStateSnapshot = { status: "idle" };
