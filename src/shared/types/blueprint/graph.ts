@@ -796,8 +796,8 @@ export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
  * Pop the page opened last and reveal whatever it covered - the other half of Go Page.
  *
  * Every page a game opens over a running story (save, load, config, backlog) needs a way out, and
- * Go Page is not it: navigation is a stack, so "go to the page I came from" pushes a third layer
- * over the two already there and the game is still buried. The host has had `navigation.closeLayer`
+ * Go Page is not it: navigation is a stack, so "go to the page I came from" pushes a third page
+ * over the two already there and the game is still buried. The host has had `navigation.pageBack`
  * since the stack existed; until this node there was no way for an author to reach it.
  */
 export const BLUEPRINT_NODE_TYPE_PAGE_BACK = "blueprint.page.back" as const;

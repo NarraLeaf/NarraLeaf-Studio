@@ -116,7 +116,7 @@ export class NavigationController {
         return reduction.transition ? this.beginTransitionWait(reduction.transition) : Promise.resolve();
     }
 
-    /** Pop to `targetIndex` (default: one layer); resolves immediately when there is nothing to close. */
+    /** Pop to `targetIndex` (default: one page); resolves immediately when there is nothing to close. */
     public close(input: NavigationCloseInput): Promise<void> {
         const reduction = this.dispatch({ type: "CLOSE", ...input });
         return reduction.transition ? this.beginTransitionWait(reduction.transition) : Promise.resolve();

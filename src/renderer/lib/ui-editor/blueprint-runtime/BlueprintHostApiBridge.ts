@@ -250,7 +250,7 @@ export type BlueprintHostApiRuntime = {
     navigation: {
         openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
         getPageProps: () => Record<string, unknown>;
-        closeLayer: () => Promise<void>;
+        pageBack: () => Promise<void>;
         clearPages: () => Promise<void>;
         clearGameOverlay: () => Promise<void>;
         quitApplication: () => Promise<void>;
@@ -628,7 +628,7 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onSubscribeGamePreferences?: (listener: () => void) => () => void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
-    onCloseLayer: () => void | Promise<void>;
+    onPageBack: () => void | Promise<void>;
     /** Empty the page stack down to its root. Hosts without a page stack leave it unset. */
     onClearPages?: () => void | Promise<void>;
     /** Dismiss pages opened over a running game; a no-op when no game is running. */
@@ -1778,7 +1778,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onSubscribeGamePreferences,
         emit,
         onOpenSurface,
-        onCloseLayer,
+        onPageBack,
         onClearPages,
         onClearGameOverlay,
         onQuitApplication,
@@ -1940,9 +1940,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const targetSurfaceId = String(surfaceId ?? "").trim();
                 if (!targetSurfaceId) {
                     // "None" in the page dropdown means no page, not one page fewer. This used to
-                    // alias Go back, so an author who picked None to dismiss an overlay two layers
-                    // deep landed on the layer underneath and had no way to say what they meant.
-                    await (onClearPages ?? onCloseLayer)();
+                    // alias Go back, so an author who picked None to dismiss an overlay two pages
+                    // deep landed on the page underneath and had no way to say what they meant.
+                    await (onClearPages ?? onPageBack)();
                     emitHostCall(emit, cap, "return");
                     return;
                 }
@@ -1961,16 +1961,16 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "return");
                 return props;
             },
-            closeLayer: async () => {
-                const cap = "navigation.closeLayer";
+            pageBack: async () => {
+                const cap = "navigation.pageBack";
                 emitHostCall(emit, cap, "call");
-                await onCloseLayer();
+                await onPageBack();
                 emitHostCall(emit, cap, "return");
             },
             clearPages: async () => {
                 const cap = "navigation.clearPages";
                 emitHostCall(emit, cap, "call");
-                await (onClearPages ?? onCloseLayer)();
+                await (onClearPages ?? onPageBack)();
                 emitHostCall(emit, cap, "return");
             },
             clearGameOverlay: async () => {
