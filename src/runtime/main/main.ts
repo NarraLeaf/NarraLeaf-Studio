@@ -1,5 +1,6 @@
 import fsSync from "fs";
 import fs from "fs/promises";
+import os from "os";
 import path from "path";
 import { Readable } from "stream";
 import { nativeImage } from "electron";
@@ -37,28 +38,34 @@ import {
     RuntimeSaveStore,
 } from "./runtimeStorage";
 import { collectPackSidecars, SidecarHost } from "./sidecarHost";
+import { resolveRuntimeUserDataDir } from "./userDataDir";
 
 const appDir = __dirname;
 
 /**
- * Early mode marker from the loose app manifest, readable synchronously before
+ * Early facts from the loose app manifest, readable synchronously before
  * app-ready so path setup and the debugger guard run before Chromium does any
  * work. The pack's own `mode` (which may live in the consolidated store) stays
  * authoritative for everything decided after the pack is open; a stripped or
  * tampered manifest only ever downgrades to the stricter checks below.
  */
-function readShellMode(): "preview" | "production" {
+function readShellManifest(): { mode: "preview" | "production"; userDataDirName: string | null } {
     try {
         const manifest = JSON.parse(fsSync.readFileSync(path.join(appDir, "package.json"), "utf-8")) as {
-            narraleaf?: { mode?: unknown };
+            narraleaf?: { mode?: unknown; userDataDir?: unknown };
         };
-        return manifest.narraleaf?.mode === "production" ? "production" : "preview";
+        const userDataDir = manifest.narraleaf?.userDataDir;
+        return {
+            mode: manifest.narraleaf?.mode === "production" ? "production" : "preview",
+            userDataDirName: typeof userDataDir === "string" && userDataDir.trim() ? userDataDir.trim() : null,
+        };
     } catch {
-        return "preview";
+        return { mode: "preview", userDataDirName: null };
     }
 }
 
-const shellMode = readShellMode();
+const shellManifest = readShellManifest();
+const shellMode = shellManifest.mode;
 
 /**
  * A test asked for this game to run with no way out to the network.
@@ -69,11 +76,23 @@ const shellMode = readShellMode();
  */
 const testNetworkBlocked = process.env.NARRALEAF_TEST_NETWORK === "blocked";
 
-// Preview keeps saves next to the compiled app; a shipped game has no sibling
-// userData dir and uses the OS per-user location derived from the app name.
+// Preview keeps saves next to the compiled app; a shipped game names its
+// per-user directory explicitly (see resolvePlayerDataDir).
 const previewUserDataDir = path.resolve(appDir, "..", "userData");
 const useSiblingUserData = shellMode !== "production" && fsSync.existsSync(previewUserDataDir);
-const userDataDir = useSiblingUserData ? previewUserDataDir : app.getPath("userData");
+const userDataDir = useSiblingUserData
+    ? previewUserDataDir
+    : resolveRuntimeUserDataDir(shellManifest.userDataDirName, {
+        platform: process.platform,
+        appDataDir: app.getPath("appData"),
+        shellUserDataDir: app.getPath("userData"),
+        homeDir: os.homedir(),
+        xdgDataHome: process.env.XDG_DATA_HOME,
+        exists: target => fsSync.existsSync(target),
+        makeDirectory: target => { fsSync.mkdirSync(target, { recursive: true }); },
+        move: (from, to) => { fsSync.renameSync(from, to); },
+        warn: message => { console.warn(`[GameRuntime] ${message}`); },
+    });
 
 
 /** Node inspector / Chromium remote-debugging switches refused in production. */
@@ -151,7 +170,10 @@ protocol.registerSchemesAsPrivileged([
     },
 ]);
 
-if (useSiblingUserData) {
+// Both the sibling preview directory and a shipped game's named one differ from
+// what the shell resolved on its own, and everything Chromium keeps here (caches,
+// cookies, local storage) has to follow the same move as the player's files.
+if (userDataDir !== app.getPath("userData")) {
     app.setPath("userData", userDataDir);
 }
 

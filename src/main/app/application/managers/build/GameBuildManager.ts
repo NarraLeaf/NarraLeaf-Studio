@@ -906,6 +906,7 @@ export class GameBuildManager {
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
                 encryptionKey,
+                appId: identity.appId,
                 ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
                 // The compile runs in a utility process, so the build dependency
                 // cache root travels with the input rather than being read from

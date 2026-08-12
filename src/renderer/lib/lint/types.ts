@@ -30,6 +30,7 @@ export type LintCategory =
     | "portability"
     | "network"
     | "story"
+    | "blueprint"
     | "variables"
     | "text"
     | "localization"
@@ -42,6 +43,9 @@ export const LINT_CATEGORY_ORDER: readonly LintCategory[] = [
     "portability",
     "network",
     "story",
+    // Beside `story` rather than after `network`: the two answer the same question about the two
+    // halves of a project - does every route this names still lead somewhere.
+    "blueprint",
     "variables",
     "text",
     "localization",
@@ -79,6 +83,9 @@ export type LintRuleId =
     | "story/dead-end"
     | "story/unreachable-scene"
     | "story/empty-scene"
+    | "blueprint/reference-missing"
+    | "blueprint/unreachable-node"
+    | "blueprint/empty-event"
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"

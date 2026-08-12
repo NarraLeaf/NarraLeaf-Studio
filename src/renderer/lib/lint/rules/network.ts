@@ -5,6 +5,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
+import { blueprintNodeJumpTarget, listBlueprintGraphSites } from "../blueprintSites";
 import type { LintContext } from "../context";
 import type { LintFinding, LintRule } from "../types";
 
@@ -42,64 +43,29 @@ export type BlueprintNetworkNodeSite = {
 /**
  * Every network node in the document, wherever it lives.
  *
- * Events, functions **and macros**: a Fetch buried in a macro ships exactly like one on an event,
- * and the reference indexer already learned that omitting macros hides real usage.
+ * Events, functions **and macros** - the walk itself lives in `listBlueprintGraphSites`, which every
+ * blueprint-reading rule shares: a Fetch buried in a macro ships exactly like one on an event, and
+ * the reference indexer already learned that omitting macros hides real usage.
  *
  * Exported because the build gate runs this same sweep. Two implementations of "does this project
  * use the network" would be two chances to disagree, and the one that decides whether a build ships
  * is the one that must not be wrong.
  */
 export function collectBlueprintNetworkNodes(document: BlueprintDocument | null): BlueprintNetworkNodeSite[] {
-    if (!document) {
-        return [];
-    }
     const sites: BlueprintNetworkNodeSite[] = [];
-
-    // A blueprint reaches the editor through its owner, so a finding without a resolvable ownerKey
-    // renders as a row that cannot navigate anywhere (`jumpToSearchTarget` returns false and the
-    // report does not check). Blueprints with no owner record are skipped rather than reported
-    // un-navigable - they are not reachable in the editor either.
-    const ownerKeyByBlueprintId = new Map<string, string>();
-    for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
-        for (const blueprintId of [record.activeBlueprintId, ...record.privateBlueprintIds]) {
-            if (blueprintId && !ownerKeyByBlueprintId.has(blueprintId)) {
-                ownerKeyByBlueprintId.set(blueprintId, ownerKey);
+    for (const site of listBlueprintGraphSites(document)) {
+        for (const node of Object.values(site.ir.nodes ?? {})) {
+            if (!NETWORK_NODE_TYPES.has(node.type)) {
+                continue;
             }
-        }
-    }
-
-    for (const blueprint of Object.values(document.blueprints)) {
-        const ownerKey = ownerKeyByBlueprintId.get(blueprint.id);
-        if (!ownerKey || blueprint.program.kind !== "graph") {
-            continue;
-        }
-        const graphs = blueprint.program.graphs;
-        const slots = [
-            ...Object.entries(graphs.events).map(([graphId, slot]) => ({ focus: "event" as const, graphId, ir: slot.graph })),
-            ...Object.entries(graphs.functions).map(([graphId, slot]) => ({ focus: "function" as const, graphId, ir: slot.graph })),
-            ...Object.entries(graphs.macros ?? {}).map(([graphId, slot]) => ({ focus: "macro" as const, graphId, ir: slot.graph })),
-        ];
-        for (const { focus, graphId, ir } of slots) {
-            for (const node of Object.values(ir?.nodes ?? {})) {
-                if (!NETWORK_NODE_TYPES.has(node.type)) {
-                    continue;
-                }
-                sites.push({
-                    blueprintId: blueprint.id,
-                    blueprintName: blueprint.name,
-                    graphId,
-                    nodeId: node.id,
-                    nodeType: node.type,
-                    target: {
-                        kind: "blueprint",
-                        blueprintId: blueprint.id,
-                        ownerKey,
-                        focusNodeId: node.id,
-                        ...(focus === "event" ? { focusEventId: graphId } : {}),
-                        ...(focus === "function" ? { focusFunctionId: graphId } : {}),
-                    },
-                });
-            }
+            sites.push({
+                blueprintId: site.blueprintId,
+                blueprintName: site.blueprintName,
+                graphId: site.graphId,
+                nodeId: node.id,
+                nodeType: node.type,
+                target: blueprintNodeJumpTarget(site, node.id),
+            });
         }
     }
     return sites;
