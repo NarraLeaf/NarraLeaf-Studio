@@ -837,18 +837,22 @@ function EndingField({
                 </Button>
             )}
         >
-            <Select
-                size="sm"
-                fullWidth
-                portalMenu
-                className="min-w-0"
-                options={options}
-                value={surfaceId}
-                disabled={disabled}
-                ariaLabel={label}
-                data-app-tag-ending={tagId}
-                onChange={value => service?.setEndingSurface(tagId, String(value))}
-            />
+            {/* The handle is on a wrapper rather than on `Select`, which destructures a fixed prop
+                list and would drop a data attribute silently - the very trap its `aria-label` note
+                documents. */}
+            <div className="min-w-0" data-app-tag-ending={tagId}>
+                <Select
+                    size="sm"
+                    fullWidth
+                    portalMenu
+                    className="min-w-0"
+                    options={options}
+                    value={surfaceId}
+                    disabled={disabled}
+                    ariaLabel={label}
+                    onChange={value => service?.setEndingSurface(tagId, String(value))}
+                />
+            </div>
         </Field>
     );
 }
