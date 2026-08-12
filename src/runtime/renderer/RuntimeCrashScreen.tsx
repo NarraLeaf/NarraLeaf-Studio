@@ -49,40 +49,48 @@ export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenPro
     };
 
     return (
-        <div className="flex h-screen w-screen items-center justify-center bg-black p-8 text-white">
-            <div className="w-full max-w-xl">
-                <h1 className="text-lg font-medium">{t("game.crash.title")}</h1>
-                <p className="mt-2 text-sm text-white/60">{t("game.crash.detail")}</p>
+        /* Scrolls, and only centres while there is room to.
+           A game window may be 480x320, and this screen has to work there: with the details open
+           its content is taller than that, and a centred flex child that overflows loses its top
+           to a scrollbar that does not exist. What the player saw was the stack trace, no title,
+           and a Restart button cut off above the first pixel. `min-h-full` on the centring row
+           lets short content sit in the middle and tall content grow the scroll container. */
+        <div className="h-screen w-screen overflow-y-auto bg-black text-white">
+            <div className="flex min-h-full items-center justify-center p-8">
+                <div className="w-full max-w-xl">
+                    <h1 className="text-lg font-medium">{t("game.crash.title")}</h1>
+                    <p className="mt-2 text-sm text-white/60">{t("game.crash.detail")}</p>
 
-                <button
-                    type="button"
-                    onClick={handleRestart}
-                    className="mt-6 inline-flex min-h-9 items-center rounded-md border border-white/20 bg-white/10 px-4 text-sm text-white transition-colors hover:bg-white/20"
-                >
-                    {t("game.crash.restart")}
-                </button>
-
-                <details className="mt-6">
-                    <summary className="cursor-default text-xs text-white/50 hover:text-white/80">
-                        {t("game.crash.showDetails")}
-                    </summary>
-                    {/* Selectable, because a player who cannot copy can still drag across it. */}
-                    <pre className="mt-2 max-h-64 select-text overflow-auto whitespace-pre-wrap break-all rounded-md border border-white/10 bg-white/5 p-3 text-xs leading-relaxed text-white/70">
-                        {details}
-                    </pre>
                     <button
                         type="button"
-                        onClick={() => void handleCopy()}
-                        className="mt-2 text-xs text-white/50 underline-offset-2 hover:text-white/80 hover:underline"
+                        onClick={handleRestart}
+                        className="mt-6 inline-flex min-h-9 items-center rounded-md border border-white/20 bg-white/10 px-4 text-sm text-white transition-colors hover:bg-white/20"
                     >
-                        {t("game.crash.copyDetails")}
+                        {t("game.crash.restart")}
                     </button>
-                    {copyState && (
-                        <p className={`mt-2 text-xs ${copyState.ok ? "text-white/50" : "text-red-300"}`} role="status">
-                            {copyState.text}
-                        </p>
-                    )}
-                </details>
+
+                    <details className="mt-6">
+                        <summary className="cursor-default text-xs text-white/50 hover:text-white/80">
+                            {t("game.crash.showDetails")}
+                        </summary>
+                        {/* Selectable, because a player who cannot copy can still drag across it. */}
+                        <pre className="mt-2 max-h-64 select-text overflow-auto whitespace-pre-wrap break-all rounded-md border border-white/10 bg-white/5 p-3 text-xs leading-relaxed text-white/70">
+                            {details}
+                        </pre>
+                        <button
+                            type="button"
+                            onClick={() => void handleCopy()}
+                            className="mt-2 text-xs text-white/50 underline-offset-2 hover:text-white/80 hover:underline"
+                        >
+                            {t("game.crash.copyDetails")}
+                        </button>
+                        {copyState && (
+                            <p className={`mt-2 text-xs ${copyState.ok ? "text-white/50" : "text-red-300"}`} role="status">
+                                {copyState.text}
+                            </p>
+                        )}
+                    </details>
+                </div>
             </div>
         </div>
     );
