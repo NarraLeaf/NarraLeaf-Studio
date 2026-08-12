@@ -510,6 +510,8 @@ export const workspace = {
                 voice: "ボイスのライブラリ",
                 variables: "変数の登録",
                 audioTracks: "オーディオトラック",
+                appTags: "ビルドバリアント",
+                brand: "ブランドの配色",
                 characters: "キャラクター",
                 project: "プロジェクトの設定",
                 assets: "アセットのライブラリ",

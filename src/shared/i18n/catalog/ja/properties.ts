@@ -10,6 +10,7 @@ export const properties = {
         motionKeyframe: "モーションのキーフレーム",
         storyMotion: "ストーリーモーション",
         scene: "シーン",
+        component: "コンポーネント",
         character: "キャラクター",
     },
     scene: {
@@ -20,6 +21,7 @@ export const properties = {
         typeGameUi: "ゲーム UI",
         typePage: "ページ",
         backgroundColor: "背景色",
+        backgroundImage: "背景画像",
         animation: "アニメーション",
         logic: "ロジック",
     },
@@ -40,12 +42,21 @@ export const properties = {
         unlockAspect: "縦横比の固定を解除",
         resetRotation: "回転をリセット",
         toggleVisibility: "表示を切り替え",
+        animation: "アニメーション",
         uiElement: "UI 要素",
         linkedComponent: "リンクされたコンポーネント",
     },
     linkedComponent: {
         missing: "コンポーネントが見つからない",
-        info: "リンクされたインスタンス。リンクを外すまで、変えられるのは位置、大きさ、回転だけ",
+        info: "リンクされたインスタンス。リンクを外すまで、変えられるのはパラメータと位置、大きさ、回転だけ",
+    },
+    componentParams: {
+        title: "パラメータ",
+        none: "パラメータがない",
+        add: "パラメータを追加",
+        remove: "パラメータを削除",
+        namePlaceholder: "名前",
+        defaultPlaceholder: "初期値",
     },
     binding: {
         notReady: "このコントロールのブループリントがまだ用意できていない",
@@ -127,6 +138,10 @@ export const properties = {
         label: "参照",
         building: "プロジェクトを調べている…",
         none: "どこからも参照されていない",
+        // 索引が何も見つけられず、かつプロジェクトの一部を読めなかったときに `none` の代わりに出す。
+        // ここからは両者が同じに見えるが、手を打ってよいのは片方だけ。
+        unknown: "使われているかどうか分からない",
+        unknownDetail: "{location} を読めなかった",
         count: {
             other: "参照 {count} 件",
         },

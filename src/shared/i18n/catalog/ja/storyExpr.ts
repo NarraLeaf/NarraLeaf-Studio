@@ -25,6 +25,8 @@ export const storyExpr = {
         blueprintTakesNoArguments: "\"{name}\" はブループリントで、ブループリントの呼び出しは引数を取らない",
         ambiguousReference: "\"{name}\" という名前のものが複数ある。どちらかの名前を変える",
         blueprintShadowsFunction: "\"{name}\" は組み込み関数なので、ブループリントの名前にはできない。ブループリントの名前を変えるか、'{name}'() と書いて呼び出す",
+        // 助言。この行自体は正しく、確定する。言っているのは、この中身がどのビルドにも入らないこと。
+        unknownAppTagName: "\"{name}\" という名前のビルドバリアントはないので、これは決して真にならない",
     },
     /** 解析の先で *コマンドライン* が追加で見るもの。スロットが特定の形を求める場合。 */
     check: {
@@ -52,6 +54,7 @@ export const storyExpr = {
         unknownScene: "\"{value}\" というシーンがない",
         unknownAudioTrack: "\"{value}\" というオーディオトラックがない",
         unknownLabel: "このシーンに \"{value}\" というラベルはない",
+        unknownAppTag: "\"{value}\" というビルドバリアントはない",
         unknownVariable: "\"{value}\" という変数がない",
         unknownForm: "{characterName} に \"{value}\" という表情はない",
         notPuppetCharacter: "{value} はランタイムが描くものではないので、設定できるモーションもスキンもない",
@@ -63,6 +66,7 @@ export const storyExpr = {
         // `{variable}` は必ず代入先で、式の側ではない。宣言された型を持つのは `/set` の左辺だけ。
         expressionTypeMismatch: "\"{variable}\" が持つのは {expected} なので、{received} は入れられない",
         duplicateVariable: "\"{value}\" はすでにある。別の名前にするか、/set で値を変える",
+        reservedVariableName: "\"{value}\" は式の中でビルドバリアントを指す。別の名前にする",
         unknownTarget: "\"{value}\" という名前のものは舞台に出ていない",
         unsupportedOption: "\"{value}\" はここでは使えない。使える値は {allowed}",
         missingCore: "/{token} にはまだ{slot}が要る",

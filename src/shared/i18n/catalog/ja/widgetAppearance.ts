@@ -8,7 +8,6 @@ export const widgetAppearance = {
     variant: {
         nameLabel: "バリアント名",
         untitled: "無題のバリアント",
-        defaultName: "バリアント {index}",
         addTitle: "バリアントを追加（現在のものを複製）",
         setDefaultTitle: "既定のバリアントにする",
         deleteTitle: "バリアントを削除",

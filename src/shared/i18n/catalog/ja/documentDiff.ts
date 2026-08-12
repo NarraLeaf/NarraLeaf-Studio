@@ -24,6 +24,26 @@ export const documentDiff = {
         changed: "変更（{fromBytes} → {toBytes}）",
         unread: "変更あり。中身は見ていない",
     },
+    /**
+     * アセット。中身ではなくファイルの見出しだけを読む。
+     *
+     * 出すのは `vcs/diff/contentDiff.ts`。どの行も条件付きで、長さをファイルの末尾に書く容器は
+     * 長さを言えず、名前の表が前半に無いフォントは字族を言えない。
+     *
+     * `changed` / `notInspected` / `unrecognized` は別々の 3 つで、3 文のまま保つ。見出しは読めて
+     * 数値が同じ、今回はそのバイト列に手を付けていない、この形式について Studio はこれ以上言えない。
+     */
+    content: {
+        size: "大きさ（{fromBytes} → {toBytes}）",
+        dimensions: "寸法（{fromWidth}×{fromHeight} → {toWidth}×{toHeight}）",
+        duration: "長さ（{fromSeconds} 秒 → {toSeconds} 秒）",
+        sampleRate: "サンプルレート（{fromHertz} Hz → {toHertz} Hz）",
+        family: "字族（{from} → {to}）",
+        changed: "中身が変わった",
+        notInspected: "中身が変わった。見出しは読んでいない",
+        unrecognized: "中身が変わった。Studio はこの形式を知らない",
+        moved: "{from} から移動",
+    },
     /** 第 2 段階。それぞれの版が自分について言っていること。 */
     summary: {
         title: "名前",
@@ -45,8 +65,10 @@ export const documentDiff = {
      * 空の行よりはるかにましだから。
      */
     count: {
+        appTags: "ビルドバリアント",
         assets: "アセット",
         audioTracks: "オーディオトラック",
+        brandColors: "ブランドの色",
         characterGroups: "キャラクターグループ",
         characters: "キャラクター",
         localizationKeys: "ローカライズのキー",
@@ -54,6 +76,11 @@ export const documentDiff = {
         storyChapters: "チャプター",
         storyScenes: "シーン",
         translationUnits: "翻訳",
+        uiBlueprints: "ブループリント",
+        uiComponents: "コンポーネント",
+        uiElements: "インターフェースの要素",
+        uiGraphNodes: "ブループリントのノード",
+        uiSurfaces: "サーフェス",
         variables: "変数",
         voiceUnits: "ボイスの行",
     },
@@ -146,6 +173,84 @@ export const documentDiff = {
         removed: "翻訳を削除",
         changed: "翻訳を変更",
     },
+    /**
+     * インターフェースのドキュメント。サーフェスと、その上の要素。
+     *
+     * 作者自身の言葉（サーフェス名、要素名）は `subject` が持ち、これらのラベルの隣に描かれるので、
+     * ここでは名乗り直さない。`element*` は断片で、「要素を変更」の下にぶら下がり、
+     * その要素のどの部分が変わったかだけを言う。
+     */
+    uiDocument: {
+        renamed: "インターフェースの名前を変更",
+        surfaceAdded: "サーフェスを追加（要素 {elements} 件）",
+        surfaceRemoved: "サーフェスを削除（要素 {elements} 件）",
+        surfaceChanged: "サーフェスを変更",
+        surfaceRenamed: "名前を変更",
+        /** サーフェスを組むための設計上の領域。描画の解像度ではない。 */
+        surfaceDesignSize: "設計サイズ（{fromWidth}×{fromHeight} → {toWidth}×{toHeight}）",
+        surfaceSettings: "背景かページアニメーションを変更",
+        surfaceRoot: "ルート要素が変わった",
+        surfaceField: "{field} を変更",
+        componentAdded: "コンポーネントを追加（要素 {elements} 件）",
+        componentRemoved: "コンポーネントを削除（要素 {elements} 件）",
+        componentChanged: "コンポーネントを変更",
+        componentRenamed: "名前を変更",
+        componentField: "{field} を変更",
+        elementAdded: "要素を追加",
+        elementRemoved: "要素を削除",
+        elementChanged: "要素を変更",
+        elementRenamed: "名前を変更",
+        /** ウィジェットの種類が変わった。テキストがボタンになるなど。2 つの種別は値の組として描かれる。 */
+        elementType: "要素の種類が変わった",
+        /** 親の付け替え。同じ親の中の並べ替えではない。それを言うのは `elementOrder`。 */
+        elementMoved: "別の親の下へ移動",
+        elementOrder: "子要素を並べ替え",
+        elementLayout: "位置か大きさを変更",
+        elementStyle: "スタイルを変更",
+        elementProps: "中身を変更",
+        elementBehavior: "ふるまいを変更",
+        elementBinding: "結びつけを変更",
+        elementAnimation: "アニメーションを変更",
+        elementField: "{field} を変更",
+    },
+    /**
+     * ブループリントのドキュメント。インターフェースの裏側のロジック。
+     *
+     * この段階の形が回っている中心は `nodeMoved`。ノードを動かしてもプレイヤーの見るものは変わらない。
+     * それをパラメータの変更と同じ言葉で言うのは、「版面を整えた」を「ゲームのふるまいを変えた」と
+     * 同じ高さに置くこと。だから 1 行を自分で持ち、自分の印を持つ。
+     *
+     * ノードに名前を付ける行はここに 1 つも無い。ノードの種別は `blueprint.event.head.appBoot` のような
+     * 識別子で、人間向けの名前はエディタ側の表から来る。識別子をそのまま作者の前に置けば、
+     * 作者自身が書いた言葉として読まれてしまう。
+     */
+    uiGraphs: {
+        /** ホストのスロットで今どのブループリントが効いているか。 */
+        ownerRecord: "効いているブループリントが変わった",
+        blueprintAdded: "ブループリントを追加（ノード {nodes} 件）",
+        blueprintRemoved: "ブループリントを削除（ノード {nodes} 件）",
+        blueprintChanged: "ブループリントを変更",
+        blueprintRenamed: "名前を変更",
+        /** TypeScript のブループリント。プログラム全体が 1 つのソース。 */
+        blueprintSource: "コードを変更",
+        blueprintField: "{field} を変更",
+        graphAdded: "グラフを追加（ノード {nodes} 件）",
+        graphRemoved: "グラフを削除（ノード {nodes} 件）",
+        graphChanged: "グラフを変更",
+        graphRenamed: "名前を変更",
+        graphField: "{field} を変更",
+        graphOrder: "グラフを並べ替え",
+        nodeAdded: "ノードを追加",
+        nodeRemoved: "ノードを削除",
+        nodeChanged: "ノードを変更",
+        nodeParams: "取る値を変更",
+        /** キャンバス上で動かしただけ。同じくらい読み飛ばしやすいように、平らに言う。 */
+        nodeMoved: "キャンバス上で移動",
+        nodeType: "ノードの種類が変わった",
+        nodeField: "{field} を変更",
+        edgeAdded: "つながりを追加",
+        edgeRemoved: "つながりを削除",
+    },
     /** 第 1 段階、`assets.metadata.<type>.json` の 1 断片。アセットに付けた作者のメタデータ。 */
     assets: {
         added: "アセットを追加",
@@ -165,6 +270,8 @@ export const documentDiff = {
         summaryHint: "中身は比べていない。ここに出るのは、それぞれの版が自分について報告している数",
         structural: "構造",
         structuralHint: "JSON の構造だけで比べているので、生成された id や並べ替えた一覧も変更として出る",
+        content: "形式の情報のみ",
+        contentHint: "比べたのはファイルが自分について言っている情報で、中身そのものは比べていない",
         opaque: "未読",
         opaqueHint: "大きすぎるか、テキストでないか、読めない。分かるのは大きさだけ",
     },
@@ -176,15 +283,92 @@ export const documentDiff = {
         emptyFormatting: "書式だけが変わった",
         emptyUntracked: "エディタが見ている範囲に変化はない",
         emptyCounts: "合計は変わっていない",
-        notInspected: "このファイルは中を見ていない",
         moreInGroup: "この中にあと {count} 件",
-        viewAll: "{count} 件すべてを見る",
         showing: "{total} 件中 {shown} 件を表示",
     },
     rail: {
-        expand: "中の変更を表示",
-        collapse: "中の変更を隠す",
         compareWithPrevious: "前のバージョンと比べる",
+    },
+    /** その形式のための詳細が書かれている場合に、そこが足す言葉（`renderer/lib/vcs/presenters`）。変更が何を言うかは上の段階のキーのまま。 */
+    presenter: {
+        /** 2 つのバージョンの呼び名。どの形式でも 1 組だけ持ち、同じ比較の中で言い方が割れないようにする。 */
+        before: "変更前",
+        after: "変更後",
+        image: {
+            modeLabel: "比べ方",
+            sideBySide: "並べる",
+            swipe: "スライドで分ける",
+            difference: "差分",
+            splitPosition: "分ける位置",
+            /** 差分は画素どうしが 1 対 1 で対応していないと引き算できない。 */
+            sizeDiffers: "2 つのバージョンで寸法が違うので、画素ごとには比べられない",
+            /** 絵の場所に出うる 4 つの状態。それぞれ別の事実なので、1 文にまとめない。 */
+            tooLarge: "このファイルは大きすぎて、ここには出せない",
+            unsupported: "この画像形式はここには出せない",
+            unreadable: "この画像を読めない",
+        },
+        audio: {
+            play: "再生",
+            pause: "一時停止",
+            /** デコードして分かるチャンネル数。 */
+            mono: "モノラル",
+            stereo: "ステレオ",
+            channels: "{count} チャンネル",
+            /**
+             * 波形の場所に出うる 4 つの状態。
+             *
+             * `tooLarge` はファイルの話で、そもそも読んでいない。`tooLong` は音そのものの話で、
+             * バイト列は手元にあるが、デコードに要るメモリがプレビューの枠を超える。だから下の数値は
+             * いつもどおり出し、波形だけを描かない。
+             */
+            tooLarge: "このファイルは大きすぎて、ここでは再生できない",
+            tooLong: "この音声は長すぎて、ここではプレビューできない",
+            unreadable: "この音声を読めない",
+        },
+        font: {
+            sizeLabel: "文字の大きさ",
+            /** 見本には日本語も混ぜる。ラテン文字だけでは、日本語の字形が一緒に入っているか分からない。 */
+            sample: "The quick brown fox 0123 日本語の組版見本",
+            unreadable: "このフォントを読み込めない",
+            tooLarge: "このファイルは大きすぎて、ここには出せない",
+        },
+        brand: {
+            added: "追加",
+            removed: "削除",
+            unreadable: "この配色を読めない",
+            tooLarge: "このファイルは大きすぎて、ここには出せない",
+            unchangedOne: "変わっていない色があと 1 件",
+            unchangedMany: "変わっていない色があと {count} 件",
+            /** 同じ配色の別の項目を指しているのに、最後まで色に行き着かない値。名前が無いか、環になっている。 */
+            unresolved: "色なし",
+        },
+    },
+    /** 変更されたファイルの見出し。ディスク上のフォルダ名ではなく、作者がそれを編集するパネルの名前で呼ぶ。 */
+    category: {
+        story: "ストーリー",
+        characters: "キャラクター",
+        interface: "インターフェース",
+        assets: "アセット",
+        localization: "ローカライズ",
+        audio: "オーディオ",
+        settings: "プロジェクト",
+        other: "その他",
+    },
+    /** 比較の 2 列。左が変更されたファイルの索引、右がそのうち 1 件の中の変更。 */
+    shell: {
+        fileList: "変更されたファイル",
+        resize: "ファイル一覧の幅を変える",
+        selectPrompt: "見出しを開いてファイルを選ぶと、その中の変更が出る",
+        changes: {
+            other: "{count} 件の変更",
+        },
+        fileAdded: "追加",
+        fileRemoved: "削除",
+        fileMoved: "移動",
+        /** 見出しの下で一度だけ言い、行ごとには繰り返さない。どれに当たったかは、そのファイルの詳細が言う。 */
+        partial: {
+            other: "この中に、最後まで比べられなかったファイルが {count} 件ある",
+        },
     },
     tab: {
         workingTree: "変更",
@@ -224,6 +408,12 @@ export const documentDiff = {
         takeAllMine: "すべて自分のものを残す",
         takeAllTheirs: "すべて相手のものを残す",
         rowsOmitted: "ここに載っていないファイルがあと {count} 件ある。上の 2 つのリンクでまとめて選ぶ",
+        /** 2 列。左が衝突しているファイル、右が選んだファイルの中の変更。 */
+        fileList: "衝突しているファイル",
+        decision: "どちらを残すか",
+        /** 3 つの状態のうち、印を持つ唯一の状態。マージの完了を止めているのはこれなので、一目で見つかる必要がある。 */
+        pending: "未選択",
+        selectPrompt: "ファイルを選ぶと、その中の変更が出る",
         finish: "マージを完了する",
         finishUndecided: {
             other: "どちらを残すか決まっていないファイルが {count} 件ある",
@@ -270,5 +460,39 @@ export const documentDiff = {
                 unreadable: "2 つのバージョンのうち一方を読めなかったので、ファイル全体を採るしかない",
             },
         },
+    },
+    /** 1 つのページ、1 つのグラフの 2 つのバージョンを並べて描き、変更をその場に重ねる。2 つのキャンバスで同じ言葉を使う。 */
+    canvas: {
+        before: "変更前",
+        after: "変更後",
+        surfaceLabel: "ページ",
+        graphLabel: "ブループリント",
+        unnamed: "名前なし",
+        /** `moved` がいちばん薄く描かれる理由をそのまま書く。ゲームのふるまいは変わらない。 */
+        legend: {
+            added: "追加",
+            removed: "削除",
+            changed: "変更",
+            moved: "位置だけ",
+        },
+        markLabel: "この変更を見る",
+        /** ブループリントエディタと同じ語。同じ図で同じ結果になるので、言い換えると別のふるまいに読まれる。 */
+        fitView: "全体を表示",
+        oneChange: "今は 1 件だけを見ている",
+        showAll: "すべての変更を表示",
+        /** キャンバスに印が付いていない変更を 1 行で言う。9 件に印を付けて残り 3 件を黙るのは、全部で 9 件だと言うのと同じ。 */
+        notMarked: {
+            other: "ここに印の付いていない変更があと {count} 件ある：",
+        },
+        onOtherPages: "他のページに {count} 件",
+        onOtherGraphs: "他のブループリントに {count} 件",
+        offCanvas: "ページの上に描けないものが {count} 件",
+        /** コンポーネントの中の要素はもともと id を持たない。同じコンポーネントのどの実体も内側の id を共有するので、付ければどの配置か分からなくなる。 */
+        unplaced: "画面上で位置を決められないものが {count} 件",
+        notDrawn: "このバージョンのページは描けない",
+        emptyGraph: "このグラフにノードがない",
+        tooLarge: "このファイルは大きすぎて、ここには描けない",
+        unreadable: "このファイルをインターフェースのドキュメントとして読めない：{error}",
+        readFailed: "このバージョンを読めない：{error}",
     },
 } satisfies LocaleNamespace<"documentDiff">;

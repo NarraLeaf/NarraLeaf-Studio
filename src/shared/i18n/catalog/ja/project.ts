@@ -13,6 +13,12 @@ export const project = {
             title: "ゲーム",
             description: "セーブ、プレイヤーの初期値、オーディオトラック",
         },
+        // 今そこにある 1 つの部分ではなく、ページの名前を付ける。今日あるのは配色だが、
+        // 文字組みなどプロジェクトの見た目はここに合流していく。
+        design: {
+            title: "デザイン",
+            description: "色と、その色で塗られるコントロール",
+        },
         project: {
             title: "プロジェクト",
             description: "検査のルールと、ビルドを止める条件",
@@ -30,11 +36,17 @@ export const project = {
     // その下の行が言う。
     group: {
         details: "詳細",
+        appTags: "ビルドバリアント",
+        userData: "プレイヤーのファイル",
         icons: "アイコン",
         dependencies: "依存関係",
         saving: "セーブ",
         playerDefaults: "プレイヤーの初期値",
         audioTracks: "オーディオトラック",
+        // ブランドのサブページの 2 つの部分。作者が決める色と、それに従うスロット。
+        // このページの残りの言葉は、id の元になるモデルの隣、`brand` 名前空間にある。
+        brandColors: "色",
+        brandControls: "コントロール",
         security: "セキュリティ",
         signing: "署名",
         optimization: "最適化",
@@ -67,6 +79,73 @@ export const project = {
         copyrightTextHelper: "ゲームと並べて COPYRIGHT.txt として配布する。空のままならファイルは作られない",
         descriptionPlaceholder: "プロジェクトの説明…",
         required: "必須",
+    },
+    userData: {
+        description: "配布したゲームがプレイヤーのセーブと進行を置く場所。フォルダの名前は識別子から決まるので、"
+            + "アプリケーション名を変えても場所は動かない",
+        copy: "場所をコピー",
+        copied: "場所をコピーした",
+        copyFailed: "場所をコピーできなかった",
+        platform: {
+            windows: "Windows",
+            macos: "macOS",
+            linux: "Linux",
+        },
+        content: {
+            saves: "セーブのスロット",
+            persistence: "永続変数、解放された中身、プラグインのデータ",
+        },
+    },
+    // ビルドバリアント。同じプロジェクトが名乗る版のこと。バリアントとは何か、継承が何を意味するかは
+    // 見出しの `?` から開く `appTags` のヘルプトピックにある。ここの言葉はコントロールの名前と、
+    // 押したときに何が起きるかだけ。
+    appTags: {
+        add: "バリアントを追加",
+        newTagName: "新しいバリアント",
+        nameTitle: "名前",
+        fields: {
+            displayName: "アプリケーション名",
+            identifier: "識別子",
+            version: "バージョン",
+        },
+        // フィールドが自分の値を持っている間だけ隣に出る。上書きの印であり、そこから戻る道でもある。
+        restore: "継承に戻す",
+        // シーンの一覧の見出し。ビルドが読めないシーンを開始しうるものがプロジェクトにあるときだけ出る。
+        // 下のそれぞれの一覧には、そのもの自身の名前が付く。
+        reachableTitle: "ここから始められるシーン",
+        // このバリアントのビルドがプレイヤーのブラウザに渡してよいアドレス。仕組みではなく、
+        // 一覧が何を決めるかで名前を付ける。バリアントは自分の一覧を持つか、プロジェクトのものを読む。
+        links: {
+            title: "ゲームが開けるリンク",
+            add: "リンクを追加",
+            remove: "リンクを削除",
+            placeholder: "https://example.com/store",
+            invalid: "開けるのは http:// または https:// で始まるアドレスだけ",
+        },
+        // このバリアントのビルドで、ストーリーの行が尽きたときに出すページ。裏側のエンジンのイベントではなく、
+        // 作者から見て何が起きるかで名前を付ける。
+        ending: {
+            // 空の状態ではなく 1 つの選択。最後のフレームが画面に残る。このフィールドができる前は
+            // どのビルドもそうしていた。
+            title: "ストーリーが終わったときに出すページ",
+            none: "何も出さない",
+        },
+        // 開いているバリアントの削除の隣。これから確認する対象の件数。
+        usedBy: {
+            other: "{count} 箇所から使われている",
+        },
+        delete: "削除",
+        deleteConfirm: "「{name}」を削除する？",
+        // 起きることをそのまま書く。このバリアントを指すものは書き換えられないので、以後はリリースの値を読む。
+        // `{name}` はリリースのバリアントの名前。名前が変わってもこの文が付いていくように、ここには書かず埋め込む。
+        deleteDetail: {
+            other: "{count} 箇所の参照が {name} に戻る",
+        },
+        // その帰結のもう半分。スクリプトの行になっている参照について。カットポイントは残り、
+        // どのバリアントも名指さないカットポイントは何も終わらせない。
+        deleteDetailCuts: {
+            other: "スクリプトの {count} 箇所のカットポイントは残り、効かなくなる",
+        },
     },
     assets: {
         master: "アプリのアイコンを選ぶ",
@@ -248,6 +327,31 @@ export const project = {
             landscape: "横向き",
             portrait: "縦向き",
             auto: "端末に合わせる",
+        },
+        stageFitTitle: "画面への合わせ方",
+        /**
+         * 何をするかではなく、どこに効くかを書く。何をするかは見出しと 2 つの選択肢が既に言っており、
+         * この列は約 200px しかないので、長い文は 1 行 1 語で折り返す。
+         */
+        stageFitDescription: "モバイル向けのビルドと開発モードに効く。デスクトップと Web は常に黒帯で収める",
+        stageFit: {
+            contain: "黒帯で収める",
+            cover: "埋めて切り取る",
+        },
+        /** 消えるものではなく残るもので名前を付ける。作者が決めるのは何を残すか。 */
+        cropAnchorYTitle: "縦に残す位置",
+        cropAnchorYDescription: "画面が舞台より横に広いときに残る",
+        cropAnchorY: {
+            top: "上",
+            center: "中央",
+            bottom: "下",
+        },
+        cropAnchorXTitle: "横に残す位置",
+        cropAnchorXDescription: "画面が舞台より横に狭いときに残る",
+        cropAnchorX: {
+            left: "左",
+            center: "中央",
+            right: "右",
         },
     },
     dependencies: {

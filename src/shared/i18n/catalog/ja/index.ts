@@ -51,6 +51,9 @@ import { lint } from "./lint";
 import { documentDiff } from "./documentDiff";
 import { test } from "./test";
 import { help } from "./help";
+import { update } from "./update";
+import { brand } from "./brand";
+import { game } from "./game";
 import type { LocaleMessages } from "../types";
 
 export const ja = {
@@ -93,4 +96,7 @@ export const ja = {
     documentDiff,
     test,
     help,
+    update,
+    brand,
+    game,
 } satisfies LocaleMessages;

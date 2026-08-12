@@ -20,6 +20,11 @@ export const lint = {
             title: "使われていないアセット",
             description: "プロジェクトのどこからも参照されていないアセット",
             message: "{asset} はどこからも使われていない",
+            // 参照の索引がプロジェクト全体を覆えていないとき、一覧の代わりに出す 3 つ。
+            // 場所を名指すことが要点で、「索引が不完全」とだけ言っても作者には見に行く先が無い。
+            messageIndexUnresolved: "使われていないアセットを一覧にできない：{location} が指すアセットを特定できない",
+            messageIndexUnreadable: "使われていないアセットを一覧にできない：{location} を読めなかった",
+            messageIndexNotBuilt: "使われていないアセットを一覧にできない：プロジェクトを調べられなかった",
         },
         assetsMissing: {
             title: "アセットが見つからない",
@@ -31,6 +36,13 @@ export const lint = {
             description: "ファイルを読めないか、デコードできない",
             message: "{asset} をデコードできない",
             messageMissingBytes: "{asset} をディスクから読めない",
+        },
+        assetsOversized: {
+            title: "大きすぎるファイル",
+            description: "ビルドが運ぶファイルのうち、このプロジェクトが決めた大きさを超えるもの",
+            // 数字を 2 つとも文に入れる。このファイルが何 MB で、プロジェクトが何と言ったか。
+            // 出どころの設定ページを開かなくても、この所見だけで手を打てるようにする。
+            message: "{asset} は {size} で、ビルドが運ぶべき {limit} を超えている",
         },
         portabilityAssetName: {
             title: "安全でないファイル名",
@@ -98,6 +110,51 @@ export const lint = {
             description: "中身のないシーン",
             message: "このシーンに行がない",
         },
+        storyAppTagUnknown: {
+            title: "知らないビルドバリアント",
+            description: "プロジェクトに無いバリアントと比べている行",
+            message: "\"{name}\" という名前のビルドバリアントはないので、この行はどのビルドにも入らない",
+        },
+        storyCutPointOrphan: {
+            title: "バリアントの無いカットポイント",
+            description: "ビルドバリアントが 1 つも無いまま書かれたカットポイント",
+            // 行は間違いというより効かない状態なので、作者がしたことではなく、今それが何をするかを言う。
+            // 打つ手はどちらも完全な答えなので、両方とも文に入れる。
+            message: "このプロジェクトにはビルドバリアントが無いので、このカットポイントは何も終わらせない。バリアントを足すか、この行を消す",
+        },
+        storyCutPointUnreachable: {
+            title: "届かないカットポイント",
+            description: "どこからもたどり着けないシーンにあるカットポイント",
+            message: "このシーンにはどこからも到達しないので、このカットポイントはどのビルドも終わらせない",
+        },
+        blueprintReferenceMissing: {
+            title: "行き先が無い",
+            description: "プロジェクトにもう無いものを名指すノード",
+            // 総称の受け皿。解決できた種別にはそれぞれ専用の文が下にある。作者が手を打てない語が
+            // まさに「何か」だから。
+            message: "プロジェクトにもう無いものを名指している",
+            messageSurface: "もう存在しないページを開く",
+            messageStory: "もう存在しないストーリーを開始する",
+            messageScene: "もう存在しないシーンを名指している",
+            messageChoice: "もう存在しない選択肢を名指している",
+            messageCharacter: "もう存在しないキャラクターを名指している",
+            messageTextKey: "プロジェクトが宣言していないテキストキーを名指している",
+        },
+        blueprintUnreachableNode: {
+            title: "到達しないノード",
+            description: "そのグラフのどの入口からもたどり着けないノード",
+            message: "このノードにはどこからも到達しないので、実行されない",
+        },
+        blueprintEmptyEvent: {
+            title: "何もしないイベント",
+            description: "実行するものが何もつながっていないイベントレイヤー",
+            message: "このイベントは何も実行しない",
+        },
+        blueprintExternalLinkUndeclared: {
+            title: "宣言されていないリンク",
+            description: "どのビルドバリアントも宣言していないアドレスを持つリンクを開くノード",
+            message: "{url} はどのビルドバリアントも宣言していないので、どのビルドもこれを開かない",
+        },
         variablesUndeclared: {
             title: "宣言のない変数",
             description: "宣言せずに使っている変数",
@@ -160,6 +217,15 @@ export const lint = {
             description: "対応する行がもう無い録音",
             message: "対応する行のない {locale} の録音が {count} 件ある",
         },
+        brandBrokenLink: {
+            title: "切れた色のリンク",
+            description: "解決できない配色の項目を指している色",
+            // この 3 つは他の多くのルールと違い、自分で場所を名乗る。所見はプロジェクトの下に置かれ、
+            // 隣の位置の列には何も出ないので、{where} だけが 1 つ 1 つを見分ける手がかりになる。
+            message: "{where} が使っている {color} は配色に無い",
+            messageChain: "{where} が使っている {color} は {missing} へつながっているが、その色は配色に無い",
+            messageCycle: "{where} が使っている {color} は、リンクが自分自身に戻ってきている",
+        },
     },
     message: {
         ruleFailed: "{rule} を実行できなかった",
@@ -170,10 +236,13 @@ export const lint = {
         portability: "移植性",
         network: "ネットワーク",
         story: "ストーリー",
+        blueprint: "ブループリント",
         variables: "変数",
         text: "テキスト",
         localization: "ローカライズ",
         voice: "ボイス",
+        // リンクのプロトコルではなく、作者が直しに行くパネルの名前を付ける。
+        brand: "ブランドの配色",
     },
     severity: {
         error: "エラー",

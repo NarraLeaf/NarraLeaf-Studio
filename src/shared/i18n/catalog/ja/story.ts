@@ -392,6 +392,7 @@ export const story = {
         labelName: "ラベル",
         scene: "シーン",
         track: "オーディオトラック",
+        appTag: "ビルドバリアント",
         displayName: "表示名",
         seekTime: "秒",
         // カメラ
@@ -566,6 +567,7 @@ export const story = {
             scene: "シーン",
             audioTrack: "オーディオトラック",
             label: "このシーンの中のラベル",
+            appTag: "ビルドバリアント",
             variable: "変数",
             content: "新しい中身。対象に応じた型で書く",
             color: "色",
@@ -630,6 +632,11 @@ export const story = {
         setBackground: "背景を決める",
         transform: "変形",
         invalidHint: "確定できない",
+        // 行に出るのは短いほう。文になっているのはツールチップのほう。
+        cutPoint: "他のビルドには無い",
+        cutPointTitle: "{name} のビルドはこの行で終わる。他のどのビルドにもこの行は入らない",
+        cutPointInactive: "バリアントなし",
+        cutPointInactiveTitle: "この行が終わらせていたバリアントは削除されたので、何も終わらせていない",
         tempSpeaker: "名前だけ",
         createCharacter: "キャラクター「{name}」を作成",
         voiceOutdated: "ボイスが古い。ボイスの表を開く",
@@ -840,6 +847,9 @@ export const story = {
         // 語だけからそれを当てられる作者はいない。
         label: { label: "ラベル", detail: "/goto の行き先として、このシーンの中に目印を置く" },
         goto: { label: "ラベルへ", detail: "再生位置をこのシーンのラベルへ移す。/jump と違い、シーンは動き続ける" },
+        // 切る行為ではなく、できあがる行の名前を付ける。「カット」だけでは編集の切り取りに読める。
+        // 名前が背負えない半分、すなわちこの行が 1 つのビルドだけのものだという事実は詳細に置く。
+        cut: { label: "カットポイント", detail: "あるビルドバリアントのストーリーをこの行で終わらせる。他のビルドにこの行は入らない" },
         blueprint: { label: "ブループリント", detail: "ストーリーアクションブループリントを実行する" },
         blink: { label: "フラッシュ", detail: "画面が瞬く演出" },
         vignette: { label: "ビネット", detail: "画面の四隅を暗くする演出" },
@@ -890,6 +900,7 @@ export const story = {
         label: "ラベル",
         goto: "ラベルへ",
         break: "中断",
+        cut: "カットポイント",
         jump: "ジャンプ",
         note: "メモ",
         invalid: "不正",
@@ -953,6 +964,10 @@ export const story = {
         label: "ラベル {name}",
         goto: "{name} へ移動",
         break: "繰り返しから抜ける",
+        cut: "{name} はここで終わる",
+        // 名指しできるバリアントが無い。行が持つ id に応えるものが無いか、読み手にバリアントの一覧が
+        // 無いか。どちらでも真であることだけを言う。削除されたと名指しするのは、一覧を持つ行の印のほう。
+        cutUnknown: "カットポイント",
         jump: "{scene} へジャンプ",
         note: "メモ",
         invalid: "不正なコマンド",
