@@ -70,6 +70,11 @@ export const settings = {
             label: "Developer options",
             description: "Right-click menus gain a section for copying the ID of the item clicked.",
         },
+        confirmQuit: {
+            label: "Confirm before quitting with ⌘Q",
+            description: "⌘Q quits once it has been held down. A short press does nothing.",
+            unsupportedPlatform: "Not available on this operating system.",
+        },
         themeMode: {
             label: "Theme",
             description: "Color theme for the Studio interface.",

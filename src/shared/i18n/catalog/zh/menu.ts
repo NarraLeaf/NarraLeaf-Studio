@@ -9,6 +9,7 @@ export const menu = {
         hideOthers: "隐藏其他",
         unhide: "全部显示",
         quit: "退出 {name}",
+        holdToQuit: "按住 ⌘Q 退出",
     },
     tray: {
         openLauncher: "打开启动器",
