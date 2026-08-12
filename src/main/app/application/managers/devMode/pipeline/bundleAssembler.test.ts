@@ -6,7 +6,7 @@ import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
 import { DEFAULT_PLAYER_PREFERENCES } from "@shared/types/preference";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
-import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
+import { APP_TAG_ID_RELEASE, appTagMechanismKey } from "@shared/types/appTag";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import {
     loadAutoSaveConfiguration,
@@ -540,15 +540,74 @@ describe("bundleAssembler scene drop plan", () => {
         expect(notices).toHaveLength(1);
     });
 
-    it("ships every story whole when the pack carries a plugin", () => {
+    it("still drops scenes when the pack carries the built-in plugins", () => {
+        // This was "the pack carries a plugin, so ship everything", and the built-in Gallery is in
+        // every package - so no project could ever drop a scene. None of the nine declared
+        // capabilities can name one.
         const notices: string[] = [];
         const plan = planSceneDrop(
-            context({ hasRuntimePlugins: true, onNotice: message => notices.push(message) }),
+            context({
+                runtimePlugins: [
+                    { id: "narraleaf.gallery", name: "Gallery", runtimeCapabilities: ["store", "events"] },
+                    { id: "narraleaf.quick-save", name: "Quick Save", runtimeCapabilities: ["saves.read", "saves.write"] },
+                ],
+                onNotice: message => notices.push(message),
+            }),
             "tag-demo",
             [],
         );
 
-        expect(plan).toBeNull();
-        expect(notices).toHaveLength(1);
+        expect(plan).toEqual(new Map());
+        expect(notices).toEqual([]);
+    });
+
+    it("takes the author's declaration for a Start Game node instead of shipping whole", () => {
+        const notices: string[] = [];
+        const mechanismKey = appTagMechanismKey({
+            kind: "startStoryNode",
+            blueprintId: "bp-1",
+            graphKind: "event",
+            graphId: "e-1",
+            nodeId: "n-1",
+        });
+        const plan = planSceneDrop(
+            context({
+                onNotice: message => notices.push(message),
+                declaredScenes: { [mechanismKey]: [{ storyId: "story-1", sceneId: "chapter-3" }] },
+            }),
+            "tag-demo",
+            [graphBlueprint(startGame({ storyId: "story-1", sceneId: "" }))],
+        );
+
+        expect(notices).toEqual([]);
+        expect(plan?.get("story-1")).toEqual({ entrySceneIds: ["chapter-3"] });
+    });
+
+    it("takes a declaration for a TypeScript blueprint too", () => {
+        const mechanismKey = appTagMechanismKey({ kind: "scriptBlueprint", blueprintId: "bp-2" });
+        const plan = planSceneDrop(
+            context({ declaredScenes: { [mechanismKey]: [{ storyId: "story-1", sceneId: "chapter-1" }] } }),
+            "tag-demo",
+            [scriptBlueprint()],
+        );
+
+        expect(plan?.get("story-1")).toEqual({ entrySceneIds: ["chapter-1"] });
+    });
+
+    it("names the plugin it is shipping whole for", () => {
+        const notices: string[] = [];
+        const plan = planSceneDrop(
+            context({
+                runtimePlugins: [{ id: "acme.launcher", name: "Launcher", runtimeCapabilities: ["store"] }],
+                onNotice: message => notices.push(message),
+            }),
+            "tag-demo",
+            [],
+        );
+
+        // No capability can start a story today, so nothing here blocks. The name is carried anyway,
+        // because the first capability that can will be reported against a plugin the author owns.
+        expect(plan).toEqual(new Map());
+        expect(notices).toEqual([]);
     });
 });

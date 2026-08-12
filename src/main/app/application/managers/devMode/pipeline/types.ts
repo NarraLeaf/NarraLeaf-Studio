@@ -1,4 +1,6 @@
+import type { AppTagReachableScenes } from "@shared/types/appTag";
 import type { DevModeBundle } from "@shared/types/devMode";
+import type { PluginRuntimeCapability } from "@shared/types/pluginPermissions";
 
 /**
  * Abstraction for where Dev Mode loads UI assets from.
@@ -24,13 +26,25 @@ export type DevModeBundleLoadContext = {
      */
     appTag?: { id: string; name: string };
     /**
-     * Whether this pack ships third-party runtime code.
+     * The third-party runtime code this pack ships, and what each piece of it declared it may do.
      *
-     * Only one thing reads it: a plugin runs inside the game with the host API in reach, so it can
-     * start any scene by a name nothing here can predict, and a pack that carries one has to keep
-     * every scene. Absent is "no plugins", which is what Dev Mode and Preview mean.
+     * Only the declarations are read, and only to ask whether a plugin can start a story. This was
+     * "does the pack carry any plugin at all", which decided nothing: the built-in Gallery ships in
+     * every package, so every project had a plugin and no project could ever drop a scene. See
+     * `STORY_STARTING_RUNTIME_CAPABILITIES`, which also states the gap this leaves open and why
+     * refusing every plugin would not close it. Absent is "no plugins", which is what Dev Mode and
+     * Preview mean.
      */
-    hasRuntimePlugins?: boolean;
+    runtimePlugins?: readonly { id: string; name: string; runtimeCapabilities: readonly PluginRuntimeCapability[] }[];
+    /**
+     * What the author says each mechanism the build cannot read can start, already resolved for
+     * {@link appTag} - the project's own declarations with this variant's own replacing them.
+     *
+     * This is what turns a refusal into an answer. Without it a wired `Start Story` node, a
+     * TypeScript blueprint or a story-starting plugin means the whole story ships, and the author has
+     * no way to say otherwise. Absent is "nothing declared".
+     */
+    declaredScenes?: AppTagReachableScenes;
     /**
      * Reports a decision the author has to be told about - today, a story shipped whole because the
      * project can reach a scene by a name no static read resolves. Plain English, like every other
