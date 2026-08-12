@@ -134,6 +134,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
     BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
@@ -264,6 +265,8 @@ import {
     normalizeBlueprintVector2D,
 } from "@shared/types/blueprint/valueTypes";
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { BLUEPRINT_APP_TAG_OUTPUT_PIN_ID } from "./appTagNodes";
 import type { BehaviorGraphValueExecution } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -1571,6 +1574,25 @@ function resolveVisitedNodeOutput(
 }
 
 /**
+ * `Get App Tag` - the build variant's name.
+ *
+ * Constant by construction, and the constant is the release name. The fold
+ * (`@shared/blueprint/appTagGraphFold`) substitutes the variant being packaged and deletes this node
+ * on the way into every bundle, and a graph it cannot reduce is refused at the build gate - so a
+ * node that survives to be read here belongs to a graph only Dev Mode or the preview is running,
+ * and neither of those ever assembles a bundle as anything but the release edition.
+ *
+ * Registered rather than left out because a pure node nobody registers here resolves to `undefined`
+ * downstream with no error and no diagnostic, which would read on screen as an empty variant name.
+ */
+function resolveAppTagNodeOutput(nodeType: string, portId: string): unknown {
+    if (nodeType !== BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG || portId !== BLUEPRINT_APP_TAG_OUTPUT_PIN_ID) {
+        return undefined;
+    }
+    return RELEASE_APP_TAG.name;
+}
+
+/**
  * `Get Character` - the addressable one. Kept out of {@link resolveGameNodeOutput} and dispatched
  * ahead of it because that function matches on bare port ids across the whole game family, and this
  * node's outputs would otherwise be captured by the speaker-scoped branches.
@@ -2758,6 +2780,10 @@ function resolveSelfOutput(
     );
     if (visitedOutput !== undefined) {
         return visitedOutput;
+    }
+    const appTagOutput = resolveAppTagNodeOutput(selfNode.type, portId);
+    if (appTagOutput !== undefined) {
+        return appTagOutput;
     }
     const getCharacterOutput = resolveGetCharacterNodeOutput(
         selfNode.type,

@@ -288,6 +288,21 @@ export const build = {
         other: "Build stopped: {count} AppTag expressions do not reduce to a fixed value. See the console.",
     },
     /**
+     * The blueprint half of the same gate: a graph whose variant test does not come out a constant.
+     *
+     * The first line is deliberately the sibling of `appTagUnresolved` above, because it reports the
+     * same fact about the same feature and an author meets both in the same console. Three lines
+     * rather than one, because the three refusals are three different things to change; each states
+     * what is wrong and then the move that fixes it, the way the cut-point line does.
+     */
+    appTagGraphUnresolved: "App Tag does not reduce to a fixed value in {blueprint} / {graph}. Compare it with a variant name, or use its value directly.",
+    appTagGraphUnknownNode: "{blueprint} / {graph} tests the variant and also uses a node this build cannot read. Move the variant test to a graph without that node.",
+    appTagGraphFnHead: "The variant test in {blueprint} / {graph} decides whether an Fn exists. Move the Fn out of the branch it decides.",
+    appTagGraphSummary: {
+        one: "Build stopped: {count} blueprint graph does not reduce its variant test to a fixed value. See the console.",
+        other: "Build stopped: {count} blueprint graphs do not reduce their variant tests to a fixed value. See the console.",
+    },
+    /**
      * The cut-point gate, beside the one above and refused in every build for the same reason.
      *
      * The remedy is the whole message after the fact, because there is exactly one: a cut point ends
