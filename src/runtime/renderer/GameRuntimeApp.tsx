@@ -510,6 +510,10 @@ export function GameRuntimeApp() {
             bundle: pack.bundle,
             sessionKey: `${pack.bundle.bundleId}:${pack.bundle.revision}:${entrySurfaceId ?? ""}`,
             entrySurfaceId,
+            // As the pack states it, resolved for the variant this build was produced as. Absent is
+            // a build that shows nothing when its story ends, which is what every pack made before
+            // this field carries and what every pack whose project picked no page carries.
+            endingSurfaceId: pack.endingSurfaceId,
             ready: runtimeReady,
             bootAction: pack.entry.kind === "story"
                 ? { kind: "story", storyId: pack.entry.storyId, sceneId: pack.entry.sceneId }

@@ -208,6 +208,16 @@ export type GameRuntimePackV1 = {
      */
     externalLinks?: string[];
     /**
+     * The page this build shows when its story falls off the end, resolved for the variant it was
+     * compiled as.
+     *
+     * Absent on packs produced before this field existed, on projects that picked none, and on a
+     * variant that states it shows nothing. All three mean the same thing to the runtime and it is
+     * the behaviour every build had before this field: the story stops and the stage stays where it
+     * is. There is deliberately no default page - a screen nobody authored is worse than no screen.
+     */
+    endingSurfaceId?: string;
+    /**
      * Stage fit + crop anchor. Absent on packs produced before this field existed, which the runtime
      * reads as `contain` — the behaviour every one of those packs shipped with.
      */

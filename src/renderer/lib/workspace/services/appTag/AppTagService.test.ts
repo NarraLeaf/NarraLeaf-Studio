@@ -454,3 +454,66 @@ describe("app tag external links", () => {
         expect(service.clearExternalLinks(APP_TAG_ID_RELEASE)).toBe(false);
     });
 });
+
+describe("app tag ending page", () => {
+    it("writes the project's own page at the document root", async () => {
+        const { service, files } = await createHarness();
+
+        expect(service.setEndingSurface(null, " surface-credits ")).toBe(true);
+        await service.flushPendingChanges();
+
+        expect(service.getProjectEndingSurfaceId()).toBe("surface-credits");
+        expect(JSON.parse(files.get(DOCUMENT)!).endingSurfaceId).toBe("surface-credits");
+    });
+
+    it("lets a variant state its own page, and restores it by removing the key", async () => {
+        const { service, files } = await createHarness();
+        service.setEndingSurface(null, "surface-credits");
+        const demo = service.createTag({ name: "Demo" });
+
+        expect(service.resolveEndingSurface(demo.id))
+            .toEqual({ value: "surface-credits", overridden: false });
+
+        service.setEndingSurface(demo.id, "surface-thanks");
+        expect(service.resolveEndingSurface(demo.id))
+            .toEqual({ value: "surface-thanks", overridden: true });
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).tags[0].endingSurfaceId).toBe("surface-thanks");
+
+        expect(service.clearEndingSurface(demo.id)).toBe(true);
+        expect(service.resolveEndingSurface(demo.id))
+            .toEqual({ value: "surface-credits", overridden: false });
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).tags[0]).not.toHaveProperty("endingSurfaceId");
+    });
+
+    it("keeps a variant that states it shows nothing apart from one that inherits", async () => {
+        const { service, files } = await createHarness();
+        service.setEndingSurface(null, "surface-credits");
+        const demo = service.createTag({ name: "Demo" });
+
+        service.setEndingSurface(demo.id, "");
+
+        expect(service.resolveEndingSurface(demo.id)).toEqual({ value: "", overridden: true });
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).tags[0].endingSurfaceId).toBe("");
+    });
+
+    it("removes the project's key when the project picks no page", async () => {
+        const { service, files } = await createHarness();
+        service.setEndingSurface(null, "surface-credits");
+
+        service.setEndingSurface(null, "");
+        await service.flushPendingChanges();
+
+        expect(service.getProjectEndingSurfaceId()).toBe("");
+        expect(JSON.parse(files.get(DOCUMENT)!)).not.toHaveProperty("endingSurfaceId");
+    });
+
+    it("refuses a variant that does not exist, and the release tag for a restore", async () => {
+        const { service } = await createHarness();
+
+        expect(service.setEndingSurface("no-such-tag", "surface-credits")).toBe(false);
+        expect(service.clearEndingSurface(APP_TAG_ID_RELEASE)).toBe(false);
+    });
+});

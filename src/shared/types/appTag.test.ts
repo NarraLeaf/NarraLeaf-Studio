@@ -16,6 +16,7 @@ import {
     normalizeExternalLinkUrl,
     normalizeProjectAppTags,
     resolveAppTag,
+    resolveAppTagEndingSurface,
     resolveAppTagExternalLinks,
     resolveAppTagIdentity,
     resolveAppTagPluginConfigValue,
@@ -475,5 +476,56 @@ describe("app tag external links", () => {
         }).externalLinks).toEqual(["https://example.com/"]);
         expect(migrateProjectAppTagDocument({ schemaVersion: APP_TAG_SCHEMA_VERSION, tags: [] }).externalLinks)
             .toBeUndefined();
+    });
+});
+
+describe("app tag ending page", () => {
+    it("reads a variant's own page, and the project's when it states none", () => {
+        const inheriting: ProjectAppTag = { id: "demo", name: "Demo", overrides: {} };
+        const stating: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            endingSurfaceId: "surface-thanks",
+        };
+
+        expect(resolveAppTagEndingSurface(inheriting, "surface-credits"))
+            .toEqual({ value: "surface-credits", overridden: false });
+        expect(resolveAppTagEndingSurface(stating, "surface-credits"))
+            .toEqual({ value: "surface-thanks", overridden: true });
+    });
+
+    it("treats a stated blank page as a statement, not as inheritance", () => {
+        const stored = normalizeProjectAppTags([{ id: "demo", name: "Demo", endingSurfaceId: "  " }]);
+
+        expect(stored[0].endingSurfaceId).toBe("");
+        expect(resolveAppTagEndingSurface(stored[0], "surface-credits"))
+            .toEqual({ value: "", overridden: true });
+    });
+
+    it("leaves a variant that never stated one inheriting", () => {
+        const stored = normalizeProjectAppTags([{ id: "demo", name: "Demo" }]);
+
+        expect(stored[0].endingSurfaceId).toBeUndefined();
+        expect(resolveAppTagEndingSurface(stored[0], "surface-credits"))
+            .toEqual({ value: "surface-credits", overridden: false });
+    });
+
+    it("carries the project's own page through a document migration, dropping a blank one", () => {
+        expect(migrateProjectAppTagDocument({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [],
+            endingSurfaceId: " surface-credits ",
+        }).endingSurfaceId).toBe("surface-credits");
+        expect(migrateProjectAppTagDocument({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [],
+            endingSurfaceId: "   ",
+        }).endingSurfaceId).toBeUndefined();
+    });
+
+    it("gives the release tag the project's page and nothing of its own", () => {
+        expect(resolveAppTagEndingSurface(resolveAppTag([], "release"), "surface-credits"))
+            .toEqual({ value: "surface-credits", overridden: false });
     });
 });
