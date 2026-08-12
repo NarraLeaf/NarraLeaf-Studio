@@ -118,14 +118,26 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         onPrepaintReady,
         onEnterComplete,
     } = props;
-    const [surfaceInteractive, setSurfaceInteractive] = useState(false);
+    /**
+     * The entry whose arrival has finished, if it is this one.
+     *
+     * Deliberately not "is this entry interactive": arriving happens once per entry, while `active`
+     * goes both ways for as long as the entry lives - a modal layer opening over it takes input
+     * away, and that layer closing hands it back. Folding the two together left the second half
+     * unreachable, because the only thing that could set it was a callback that had already fired.
+     *
+     * Stored as the key it was observed for, in the same shape as the subscription flag below, so a
+     * new entry in this slot starts over without a reset step to forget.
+     */
+    const [enteredEntryKey, setEnteredEntryKey] = useState<string | null>(null);
     const [surfaceRuntimeSubscriptionsReadyKey, setSurfaceRuntimeSubscriptionsReadyKey] = useState<string | null>(null);
     const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState({
         beforeSurfaceExit: 0,
         afterSurfaceEnter: 0,
     });
     const transitionStateRef = useRef({ isEntering: true, isExiting: false });
-    const effectiveInteractive = active && surfaceInteractive;
+    const enteredThisEntry = enteredEntryKey === entry.key;
+    const effectiveInteractive = active && enteredThisEntry;
     const effectiveKeyboardInteractive = keyboardOwner && blueprintLifecycleReady;
     const surfaceRuntimeSubscriptionsReady = surfaceRuntimeSubscriptionsReadyKey === entry.key;
     const surfaceBlueprintLifecycleReady = blueprintLifecycleReady && surfaceRuntimeSubscriptionsReady;
@@ -240,15 +252,16 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             if (entryKey !== entry.key) {
                 return;
             }
-            setSurfaceInteractive(false);
-            onInteractionReadyChange(entry.key, false);
+            // Leaving un-arrives the entry, which drops it out of the readiness report below. An
+            // entry that never finished arriving is already out of it, and React skips the
+            // re-render, so there is nothing to report either way.
+            setEnteredEntryKey(null);
             runTransitionCommands(lifecycleRef.current.beforeExit(hostAdapterBundle.runtimeScopeId, surface.id));
         },
         [
             entry.key,
             hostAdapterBundle.runtimeScopeId,
             lifecycleRef,
-            onInteractionReadyChange,
             runTransitionCommands,
             surface.id,
         ],
@@ -258,32 +271,38 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         (entryKey: string) => {
             if (entryKey === entry.key) {
                 runTransitionCommands(lifecycleRef.current.enterComplete(hostAdapterBundle.runtimeScopeId, surface.id));
-                setSurfaceInteractive(active);
-                onInteractionReadyChange(entry.key, active);
+                setEnteredEntryKey(entry.key);
             }
             onEnterComplete(entryKey);
         },
         [
-            active,
             entry.key,
             hostAdapterBundle.runtimeScopeId,
             lifecycleRef,
             onEnterComplete,
-            onInteractionReadyChange,
             runTransitionCommands,
             surface.id,
         ],
     );
 
+    /**
+     * Tell the host whether this entry takes input, in both directions, from the same expression the
+     * layer is rendered with - so what the host believes cannot drift from what is on screen. Split
+     * across the transition callbacks it used to be, only the losing direction had anywhere to fire
+     * from: going inert had an owner, coming back did not. (Unmount is the exception, below: there
+     * is no render left to derive it from.)
+     *
+     * Pointer state is dropped on the way out only. An entry that is arriving has none to drop, and
+     * one being handed input back has none left from when it lost it.
+     */
     useEffect(() => {
-        if (active) {
-            return;
+        if (!active) {
+            widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
         }
-        setSurfaceInteractive(false);
-        widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
-        onInteractionReadyChange(entry.key, false);
+        onInteractionReadyChange(entry.key, active && enteredThisEntry);
     }, [
         active,
+        enteredThisEntry,
         entry.key,
         hostAdapterBundle.runtimeScopeId,
         onInteractionReadyChange,
