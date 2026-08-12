@@ -5,6 +5,7 @@ import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu"
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
@@ -576,6 +577,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         fetch: (projectPath: string, request: BlueprintNetworkFetchRequest) =>
             ipcClient.invoke(IPCEventType.blueprintNetworkFetch, { projectPath, request }) as Promise<
                 RequestStatus<{ result: BlueprintNetworkFetchResult }>
+            >,
+    },
+
+    blueprintExternalLink: {
+        open: (projectPath: string, request: BlueprintOpenExternalRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintExternalLinkOpen, { projectPath, request }) as Promise<
+                RequestStatus<{ result: BlueprintOpenExternalResult }>
             >,
     },
 

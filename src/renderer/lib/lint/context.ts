@@ -124,6 +124,15 @@ export type LintContext = {
      */
     appTags: readonly ProjectAppTag[];
     /**
+     * Every web address any build of this project could open - the project's own list plus what each
+     * variant states, in the form a match compares.
+     *
+     * The union rather than one variant's list, because a rule is not building anything: an address
+     * only the demo declares is opened by the demo, and reporting it against the release list would
+     * be a finding an author cannot act on without deleting a working link.
+     */
+    declaredExternalLinks: readonly string[];
+    /**
      * The project variable registry, BOTH scopes, exactly as the service holds it.
      *
      * One list rather than two because an entry carries its own `scope`, and a rule that needs one

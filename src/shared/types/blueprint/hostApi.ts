@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 32 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 33 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -184,6 +184,28 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: true,
             input: { fullscreen: false },
             output: null,
+        },
+        /**
+         * Hand one web address to the player's own browser - a store page, a patch note, a support
+         * form.
+         *
+         * In `navigation` rather than in `network`, and not gated on the project's Allow HTTP
+         * setting: nothing is requested and nothing comes back into the game, so a build with the
+         * network switched off may still open a page, and one with it switched on gains nothing
+         * here. Conflating the two would make an author turn the network on to link to their own
+         * store.
+         *
+         * **Only addresses the build's variant declared are reachable.** The check is made by the
+         * process that would perform the act (see `@shared/types/blueprint/externalLink`), never by
+         * the caller, and a refusal is a result the graph branches on rather than an exception.
+         */
+        openExternal: {
+            capabilityId: "navigation.openExternal",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { url: "" },
+            output: { outcome: "opened", error: null },
         },
     },
     widget: {

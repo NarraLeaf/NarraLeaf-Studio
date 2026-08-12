@@ -3,6 +3,7 @@ import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
@@ -771,6 +772,21 @@ export interface RendererPreloadedInterface {
             projectPath: string,
             request: BlueprintNetworkFetchRequest,
         ): Promise<RequestStatus<{ result: BlueprintNetworkFetchResult }>>;
+    };
+
+    blueprintExternalLink: {
+        /**
+         * One Open Link node request, decided and performed by the main process for a Dev Mode
+         * preview.
+         *
+         * `projectPath` decides whose declared addresses apply; the handler reads them off disk
+         * rather than taking the renderer's word for it, so a preview refuses exactly what the
+         * shipped game refuses.
+         */
+        open(
+            projectPath: string,
+            request: BlueprintOpenExternalRequest,
+        ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>>;
     };
 
     pluginPermissions: {

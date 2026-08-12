@@ -207,6 +207,11 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
     network: {
         fetch: request => ipcRenderer.invoke("runtime:network:fetch", request),
     },
+    // Forwarded, never decided here: this side runs alongside the author's graph, and the process
+    // that opens the page is the one that checks the pack's declared addresses.
+    externalLink: {
+        open: request => ipcRenderer.invoke("runtime:external:open", request),
+    },
     sidecar,
 };
 

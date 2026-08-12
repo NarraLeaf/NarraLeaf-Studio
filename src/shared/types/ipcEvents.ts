@@ -11,6 +11,7 @@ import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -238,6 +239,7 @@ export enum IPCEventType {
     blueprintPersistenceSetValue = "blueprintPersistence.setValue",
     blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
     blueprintNetworkFetch = "blueprintNetwork.fetch",
+    blueprintExternalLinkOpen = "blueprintExternalLink.open",
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -2195,6 +2197,28 @@ export type IPCBlueprintPersistenceEvents = {
         },
         response: {
             result: BlueprintNetworkFetchResult;
+        };
+    };
+    /**
+     * One Open Link node request, decided and performed by the main process on the Dev Mode
+     * preview's behalf.
+     *
+     * The renderer sends the address and never the permission: the handler reads the project's own
+     * declared addresses off disk and refuses anything else, which is what makes Dev Mode behave
+     * like the shipped game rather than like a window with Studio's privileges behind it.
+     *
+     * The project path, not a window handle, identifies whose declaration applies - the same shape
+     * the Fetch channel above uses.
+     */
+    [IPCEventType.blueprintExternalLinkOpen]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            request: BlueprintOpenExternalRequest;
+        },
+        response: {
+            result: BlueprintOpenExternalResult;
         };
     };
 };

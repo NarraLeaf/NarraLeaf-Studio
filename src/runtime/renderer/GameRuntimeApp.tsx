@@ -400,6 +400,18 @@ export function GameRuntimeApp() {
     }, [bridge]);
 
     /**
+     * The Open Link node's request. Handed to the shell, which decides it: the desktop bridge
+     * forwards it to the main process, the web bridge checks it in the page. Neither reads anything
+     * this side supplied except the address.
+     */
+    const openExternal = useCallback<NonNullable<GameAppHost["openExternal"]>>(async request => {
+        if (!bridge) {
+            return { outcome: "failed", error: "Runtime bridge unavailable" };
+        }
+        return bridge.externalLink.open(request);
+    }, [bridge]);
+
+    /**
      * A model bundle resolves to the URL of its *entry file*, not of the asset id.
      *
      * The engine's `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against whatever
@@ -515,10 +527,12 @@ export function GameRuntimeApp() {
             subscribeCloseRequested,
             listPuppetBackendModules,
             networkFetch,
+            openExternal,
         };
     }, [
         entrySurfaceId,
         networkFetch,
+        openExternal,
         getFullscreen,
         listPuppetBackendModules,
         log,

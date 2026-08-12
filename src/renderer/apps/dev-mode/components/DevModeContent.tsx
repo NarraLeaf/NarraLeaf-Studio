@@ -966,6 +966,26 @@ export function DevModeContent(props: DevModeContentProps) {
         return result.data.result;
     }, [projectPath]);
 
+    /**
+     * The Open Link node's request, handed to the main process.
+     *
+     * The project path travels with it because the handler reads the project's own declared
+     * addresses off disk and refuses anything else - the same refusal the shipped game makes, in
+     * the same kind of process. Nothing here consults Studio's own external-link path.
+     */
+    const openExternal = useCallback<NonNullable<GameAppHost["openExternal"]>>(async request => {
+        if (!projectPath) {
+            return { outcome: "failed", error: "Open Link: no project is open" };
+        }
+        const result = await getInterface().blueprintExternalLink.open(projectPath, request);
+        if (!result.success) {
+            // The channel itself failed, which is Studio malfunctioning rather than the link being
+            // refused. Reported on the node's failure branch anyway: the graph has to go somewhere.
+            return { outcome: "failed", error: result.error ?? "Open Link failed" };
+        }
+        return result.data.result;
+    }, [projectPath]);
+
     const saveStore = useMemo<GameAppSaveStore>(() => ({
         write: async (id, savedGame, capture, metadata) => {
             const ref = requireProjectRef("Save Game");
@@ -1214,6 +1234,7 @@ export function DevModeContent(props: DevModeContentProps) {
             subscribeFullscreenChanged,
             subscribeCloseRequested,
             networkFetch,
+            openExternal,
         };
     }, [
         bootAction,
@@ -1221,6 +1242,7 @@ export function DevModeContent(props: DevModeContentProps) {
         getFullscreen,
         log,
         networkFetch,
+        openExternal,
         onDebugEvent,
         persistenceAdapter,
         quitApplication,
