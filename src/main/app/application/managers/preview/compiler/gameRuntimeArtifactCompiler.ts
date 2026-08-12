@@ -15,6 +15,7 @@ import {
     type GameRuntimeProjectIconPlatform,
     normalizeGameRuntimeViewportConfig,
 } from "@shared/types/gameRuntime";
+import type { AppTagReachableScenes } from "@shared/types/appTag";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { readProjectIconSet, resolveIconFile, resolveIconSource } from "@shared/types/projectIcons";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
@@ -128,6 +129,14 @@ export type GameRuntimeArtifactCompileInput = {
      * different story bytes.
      */
     appTag?: { id: string; name: string };
+    /**
+     * What the author says each mechanism the build cannot read can start, already resolved for
+     * {@link appTag}. Absent is "nothing declared", which is what every preview compile passes.
+     *
+     * Read only by `planSceneDrop`. Without it a project with a chapter select ships every story
+     * whole under every variant, which is the whole of what makes a demo a demo.
+     */
+    declaredScenes?: AppTagReachableScenes;
     /**
      * `<platform>-<arch>` this app dir's native payload is built for - the key
      * plugin sidecar binaries are declared under. A production build passes the
@@ -279,7 +288,14 @@ export async function compileGameRuntimeArtifact(
         blueprintScriptsCompileOk: blueprintScripts.ok,
         blueprintScriptsCompileErrors: blueprintScripts.errors,
         ...(input.appTag ? { appTag: input.appTag } : {}),
-        hasRuntimePlugins: (input.runtimePlugins?.length ?? 0) > 0,
+        // The declarations, not the count. A pack that merely carries a plugin can still drop a
+        // scene; one that carries a plugin able to start a story cannot.
+        runtimePlugins: (input.runtimePlugins ?? []).map(plugin => ({
+            id: plugin.manifest.id,
+            name: plugin.manifest.name ?? plugin.manifest.id,
+            runtimeCapabilities: plugin.manifest.contributes.runtimeCapabilities ?? [],
+        })),
+        ...(input.declaredScenes ? { declaredScenes: input.declaredScenes } : {}),
         onNotice: message => notices.push(message),
     });
 

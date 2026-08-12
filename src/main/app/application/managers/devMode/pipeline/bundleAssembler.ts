@@ -36,7 +36,14 @@ import { normalizeAudioClipRegion } from "@shared/types/audio";
 import type { BrandColor } from "@shared/types/brand";
 import { migrateProjectBrandDocument, normalizeProjectBrandColors } from "@shared/types/brand";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
-import { APP_TAG_ID_RELEASE, isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
+import {
+    APP_TAG_ID_RELEASE,
+    appTagMechanismKey,
+    isBuiltinAppTagId,
+    RELEASE_APP_TAG,
+    type AppTagMechanismRef,
+} from "@shared/types/appTag";
+import { runtimeCapabilitiesCanStartStory } from "@shared/types/pluginPermissions";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
@@ -236,7 +243,15 @@ type SceneDropPlan = Map<string, SceneReachability> | null;
  *    even when the inspector still holds a picked value, because the pin is what the running game
  *    reads;
  *  - a blueprint written in TypeScript, which can call `game.startStory` with anything it computes;
- *  - a runtime plugin, which runs with the same host API in reach.
+ *  - a runtime plugin whose declared capabilities let it start a story.
+ *
+ * **Each of the three can be answered instead of merely suffered.** An author who states which
+ * scenes a mechanism starts (`context.declaredScenes`) turns it from a reason to ship everything
+ * into an ordinary set of entries. That is the only reason this function ever drops anything in a
+ * real project: a chapter select is a wired node, and before declarations existed one of them was
+ * enough to make every demo the whole book. The renderer refuses the build before it reaches here
+ * when a mechanism is undeclared, so these notices are the second line of defence rather than the
+ * first - and they still have to be right, because Dev Mode and the preview do not run that gate.
  *
  * Saved games are deliberately not in that list. A save carries compiled action ids, not a scene, and
  * the story it resolves them against is the one compiled from this very package - so it cannot name
@@ -250,13 +265,31 @@ export function planSceneDrop(
     if (isBuiltinAppTagId(appTagId)) {
         return null;
     }
-    if (context.hasRuntimePlugins) {
-        context.onNotice?.("a plugin can start any scene, so every story ships whole");
-        return null;
+    const declared = context.declaredScenes ?? {};
+    const entries: { storyId: string; sceneId: string }[] = [];
+    /** Whether this mechanism is answered; collects its scenes when it is. */
+    const answered = (mechanism: AppTagMechanismRef): boolean => {
+        const scenes = declared[appTagMechanismKey(mechanism)];
+        if (!scenes) {
+            return false;
+        }
+        entries.push(...scenes);
+        return true;
+    };
+
+    for (const plugin of context.runtimePlugins ?? []) {
+        if (runtimeCapabilitiesCanStartStory(plugin.runtimeCapabilities)
+            && !answered({ kind: "plugin", pluginId: plugin.id })) {
+            context.onNotice?.(`the ${plugin.name} plugin can start any scene, so every story ships whole`);
+            return null;
+        }
     }
-    if (blueprints.some(blueprint => blueprint.program.kind !== "graph")) {
-        context.onNotice?.("a TypeScript blueprint can start any scene, so every story ships whole");
-        return null;
+    for (const blueprint of blueprints) {
+        if (blueprint.program.kind !== "graph"
+            && !answered({ kind: "scriptBlueprint", blueprintId: blueprint.id })) {
+            context.onNotice?.(`the TypeScript blueprint ${blueprint.name} can start any scene, so every story ships whole`);
+            return null;
+        }
     }
     const scan = scanStoryEntryPoints(
         blueprintGraphCarriers(blueprints),
@@ -264,13 +297,33 @@ export function planSceneDrop(
         // scene id no story has is dropped by the sweep's own seed filter rather than here.
         () => true,
     );
-    if (scan.undecidable.length > 0) {
-        context.onNotice?.("a Start Game node picks its scene while the game runs, so every story ships whole");
-        return null;
+    for (const undecided of scan.undecidable) {
+        if (!answered({
+            kind: "startStoryNode",
+            blueprintId: undecided.blueprintId,
+            graphKind: undecided.graphKind,
+            graphId: undecided.graphId,
+            nodeId: undecided.nodeId,
+        })) {
+            context.onNotice?.("a Start Game node picks its scene while the game runs, so every story ships whole");
+            return null;
+        }
     }
+
     const byStory = new Map<string, SceneReachability>();
+    const add = (storyId: string, sceneId: string): void => {
+        const existing = byStory.get(storyId);
+        byStory.set(storyId, { entrySceneIds: [...(existing?.entrySceneIds ?? []), sceneId] });
+    };
     for (const [storyId, sceneIds] of scan.byStory) {
-        byStory.set(storyId, { entrySceneIds: [...sceneIds] });
+        for (const sceneId of sceneIds) {
+            add(storyId, sceneId);
+        }
+    }
+    // A declared scene is an entry exactly like a picked one. One that no longer exists is dropped by
+    // the sweep's own seed filter, which is also what reports it to the author through the solver.
+    for (const entry of entries) {
+        add(entry.storyId, entry.sceneId);
     }
     return byStory;
 }

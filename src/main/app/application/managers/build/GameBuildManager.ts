@@ -99,6 +99,7 @@ import {
     isBuiltinAppTagId,
     resolveAppTag,
     resolveAppTagPluginConfigValue,
+    resolveAppTagReachableScenes,
     type AppTagPluginConfig,
     type ProjectAppTag,
     type ProjectAppTagDocument,
@@ -875,6 +876,13 @@ export class GameBuildManager {
             );
         }
         const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        // What the author says each mechanism the build cannot read can start. Read here rather than
+        // inside the compile because both compiles below are the same game under one variant, and two
+        // reads of the same file could straddle a write.
+        const declaredScenes = resolveAppTagReachableScenes(
+            appTag,
+            (await readProjectAppTagDocumentFromDir(projectPath).catch(() => null))?.reachableScenes,
+        );
         const identity = this.resolveIdentity(session, projectConfig, projectPath, appTag);
         // Everything the credentials this build needs unseals to. Resolved here,
         // before the compile: a credential this machine cannot use fails the
@@ -951,6 +959,7 @@ export class GameBuildManager {
                 // What the story documents in this pack are folded against. Both compiles below get
                 // it: the desktop pack and the web/mobile one are the same game under one variant.
                 appTag: { id: appTag.id, name: appTag.name },
+                declaredScenes,
                 encryptionKey,
                 appId: identity.appId,
                 ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
@@ -985,6 +994,7 @@ export class GameBuildManager {
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
                 appTag: { id: appTag.id, name: appTag.name },
+                declaredScenes,
                 shell: "web",
             }, {
                 onStart: worker => { session.worker = worker; },
