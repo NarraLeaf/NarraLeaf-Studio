@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF,
+    BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LAYER_HIDE,
     BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
@@ -21,6 +22,13 @@ import {
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
 } from "@shared/types/blueprint/graph";
+import { resolveBlueprintLabel } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
+import { allBuiltinBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/built-in";
+import {
+    generateNextDynamicInputPinIds,
+    getDynamicInputPinRemovalIds,
+    resolveEffectiveBlueprintCatalogEntry,
+} from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraph } from "@shared/types/ui-editor/graph";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -373,3 +381,192 @@ function createLayerHostOn(stack: LayerStackController, runtimeScopeId: string):
     } as unknown as UIHostAdapter;
     return { stack, api, adapter, logs };
 }
+
+/**
+ * A `Show Confirm` card with its buttons already added, each answer wired to its own record.
+ *
+ * The pin ids are spelled the way the canvas spells them, so the params under test are the params
+ * an author's node actually carries.
+ */
+function confirmGraph(options: {
+    surfaceId?: string;
+    buttons: readonly string[];
+    /** Pins to drop from the stored list, standing in for a button removed from the middle. */
+    dropPinIds?: readonly string[];
+}): UIGraph {
+    const params: Record<string, unknown> = {
+        surfaceId: options.surfaceId ?? "confirm",
+        message: "Delete this save?",
+    };
+    const pinIds: string[] = [];
+    options.buttons.forEach((text, i) => {
+        const base = `button_${i + 1}`;
+        params[`${base}_label`] = text;
+        pinIds.push(`${base}_label`, `${base}_pressed`);
+    });
+    const dropped = new Set(options.dropPinIds ?? []);
+    const kept = pinIds.filter(id => !dropped.has(id));
+    params.__confirmButtonPins = kept;
+
+    const nodes: Record<string, unknown> = {
+        act: { id: "act", type: BLUEPRINT_NODE_TYPE_LAYER_CONFIRM, params },
+        readIndex: { id: "readIndex", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "index" } },
+        readLabel: { id: "readLabel", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "label" } },
+    };
+    const edges: unknown[] = [
+        { from: { nodeId: "act", port: "index" }, to: { nodeId: "readIndex", port: "value" } },
+        { from: { nodeId: "act", port: "label" }, to: { nodeId: "readLabel", port: "value" } },
+        { from: { nodeId: "readIndex", port: "next" }, to: { nodeId: "readLabel", port: "in" } },
+    ];
+    // Every exec output, Dismissed included, records which way the flow left and then reads both
+    // data outputs - so a route that is right and an output that is empty cannot pass for each other.
+    for (const portId of [...kept.filter(id => id.endsWith("_pressed")), "dismissed"]) {
+        const storeId = `store_${portId}`;
+        nodes[storeId] = {
+            id: storeId,
+            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+            params: { variableId: "took", value: portId },
+        };
+        edges.push({ from: { nodeId: "act", port: portId }, to: { nodeId: storeId, port: "in" } });
+        edges.push({ from: { nodeId: storeId, port: "next" }, to: { nodeId: "readIndex", port: "in" } });
+    }
+
+    return {
+        id: "confirm",
+        entries: { main: { start: { nodeId: "act", port: "in" } } },
+        nodes,
+        edges,
+    } as unknown as UIGraph;
+}
+
+/** The handle of the layer a running graph has just put up. */
+async function awaitMountedLayer(stack: LayerStackController): Promise<string> {
+    for (let i = 0; i < 100; i += 1) {
+        const key = stack.getState()[0]?.key;
+        if (key) {
+            return key;
+        }
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    throw new Error("no layer was mounted");
+}
+
+describe("Show Confirm", () => {
+    it("puts the question up modally, in its own group, with the buttons as page props", async () => {
+        const host = createLayerHost();
+        const running = runGraph(confirmGraph({ buttons: ["Delete", "Cancel"] }), host);
+        const key = await awaitMountedLayer(host.stack);
+        const layer = host.stack.getState()[0]!;
+        expect(layer).toMatchObject({ surfaceId: "confirm", modal: true, group: "confirm" });
+        expect(layer.props).toMatchObject({
+            message: "Delete this save?",
+            buttons: [
+                { id: "button-0", text: "Delete", index: 0, disabled: false },
+                { id: "button-1", text: "Cancel", index: 1, disabled: false },
+            ],
+        });
+        host.stack.closeWithResult(key, 0);
+        await running;
+    });
+
+    it("leaves through the button that was pressed and publishes Index and Label downstream", async () => {
+        const host = createLayerHost();
+        const running = runGraph(confirmGraph({ buttons: ["Delete", "Cancel"] }), host);
+        const key = await awaitMountedLayer(host.stack);
+        host.stack.closeWithResult(key, 1);
+        // Both reads go through a downstream node on purpose: that is the path the whitelist in
+        // graphParamResolvers.ts governs, and the one that yields `undefined` in silence without it.
+        expect(await running).toMatchObject({ took: "button_2_pressed", index: 1, label: "Cancel" });
+    });
+
+    it("routes by the pin an add produced, not by position, after a button is deleted", async () => {
+        const host = createLayerHost();
+        const running = runGraph(
+            confirmGraph({
+                buttons: ["Delete", "Rename", "Cancel"],
+                dropPinIds: ["button_2_label", "button_2_pressed"],
+            }),
+            host,
+        );
+        const key = await awaitMountedLayer(host.stack);
+        expect(host.stack.getState()[0]!.props).toMatchObject({
+            buttons: [
+                { text: "Delete", index: 0 },
+                { text: "Cancel", index: 1 },
+            ],
+        });
+        // Answer 1 is Cancel now, and its branch is still the one its own add produced.
+        host.stack.closeWithResult(key, 1);
+        expect(await running).toMatchObject({ took: "button_3_pressed", index: 1, label: "Cancel" });
+    });
+
+    it("a dismissal is not an answer: it leaves through Dismissed with no index", async () => {
+        const host = createLayerHost();
+        const running = runGraph(confirmGraph({ buttons: ["Delete", "Cancel"] }), host);
+        await awaitMountedLayer(host.stack);
+        expect(host.stack.dismissTop()).toBe(true);
+        expect(await running).toMatchObject({ took: "dismissed", index: -1, label: "" });
+    });
+
+    it("an index no button carries leaves through Dismissed rather than guessing a branch", async () => {
+        const host = createLayerHost();
+        const running = runGraph(confirmGraph({ buttons: ["Delete", "Cancel"] }), host);
+        const key = await awaitMountedLayer(host.stack);
+        host.stack.closeWithResult(key, 7);
+        expect(await running).toMatchObject({ took: "dismissed", index: -1 });
+    });
+
+    it("names the page it could not find", async () => {
+        const host = createLayerHost();
+        const failure = runGraph(confirmGraph({ surfaceId: "gone", buttons: ["Ok"] }), host);
+        await expect(failure).rejects.toBeInstanceOf(BlueprintGraphExecutionError);
+        await expect(failure).rejects.toThrow(/gone/);
+    });
+
+    /**
+     * What an author reads on the card, resolved through the two functions the canvas itself calls:
+     * `resolveEffectiveBlueprintCatalogEntry` for the pins and `resolveBlueprintLabel` for the text
+     * drawn beside each one.
+     *
+     * A template label is otherwise rendered verbatim, which prints `Button` over three different
+     * buttons and `Pressed` over three different branches - and the card offers nothing else to
+     * tell them apart by.
+     */
+    it("numbers the buttons on the card so the third one can be told from the first", () => {
+        const def = allBuiltinBlueprintNodes.find(node => node.type === BLUEPRINT_NODE_TYPE_LAYER_CONFIRM)!;
+        const entry = resolveEffectiveBlueprintCatalogEntry(def, {
+            __confirmButtonPins: [
+                "button_1_label", "button_1_pressed",
+                "button_2_label", "button_2_pressed",
+                "button_3_label", "button_3_pressed",
+            ],
+        });
+        const labelOf = (pinId: string) => entry.pins.find(pin => pin.id === pinId)?.label;
+        expect([1, 2, 3].map(n => labelOf(`button_${n}_label`))).toEqual(["Button 1", "Button 2", "Button 3"]);
+        expect([1, 2, 3].map(n => labelOf(`button_${n}_pressed`))).toEqual(["Pressed 1", "Pressed 2", "Pressed 3"]);
+
+        // And through the localization hop, where an ordinal label has no catalogue entry of its
+        // own: the number survives and the word is still translated.
+        const zh = ((key: string) => (key === "blueprint.port.button" ? "按钮" : key)) as never;
+        expect(
+            entry.pins.filter(pin => pin.id.endsWith("_label")).map(pin => resolveBlueprintLabel(pin.label!, zh)),
+        ).toEqual(["按钮 1", "按钮 2", "按钮 3"]);
+    });
+
+    /**
+     * A button and its branch are added in one go, and removed the same way. Pinned because the
+     * exec output is what a deletion is most likely to strand: it is not a data input, so the
+     * removal path had no reason of its own to know about it.
+     */
+    it("adds and removes a button and its branch together", () => {
+        const def = allBuiltinBlueprintNodes.find(node => node.type === BLUEPRINT_NODE_TYPE_LAYER_CONFIRM)!;
+        expect(generateNextDynamicInputPinIds(def, {})).toEqual(["button_1_label", "button_1_pressed"]);
+        expect(
+            getDynamicInputPinRemovalIds(
+                def,
+                { __confirmButtonPins: ["button_1_label", "button_1_pressed"] },
+                "button_1_label",
+            ),
+        ).toEqual(["button_1_label", "button_1_pressed"]);
+    });
+});

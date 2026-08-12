@@ -254,6 +254,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Wait For Layer": "blueprint.node.waitForLayer",
     "Close This Layer": "blueprint.node.closeThisLayer",
     "Is Layer Mounted": "blueprint.node.isLayerMounted",
+    "Show Confirm": "blueprint.node.showConfirm",
     "Memo": "blueprint.node.memo",
     "Clear Page": "blueprint.node.clearPage",
     "Greater Than": "blueprint.node.greaterThan",
@@ -499,6 +500,7 @@ const CATEGORY_KEYS: Record<string, TranslationKey> = {
 
 /** Port / inspector / option label -> translation key, keyed by the original English label. */
 const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
+    "Add Button": "blueprint.port.addButton",
     "Add Case": "blueprint.port.addCase",
     "Add If condition": "blueprint.port.addIfCondition",
     "Add parameter": "blueprint.port.addParameter",
@@ -668,6 +670,10 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Mode": "blueprint.port.mode",
     "Modal": "blueprint.port.modal",
     "Dismissible": "blueprint.port.dismissible",
+    "Dismissed": "blueprint.port.dismissed",
+    "Message": "blueprint.port.message",
+    "Pressed": "blueprint.port.pressed",
+    "Tag": "blueprint.port.tag",
     "Group": "blueprint.port.group",
     "NVL Mode": "blueprint.port.nvlMode",
     "Name": "blueprint.port.name",
@@ -762,8 +768,21 @@ export function resolveBlueprintCategoryLabel(category: string, t: Translate): s
     return key ? t(key) : category;
 }
 
-/** Localize a port / inspector / option label, falling back to the original English text when unmapped. */
+/**
+ * Localize a port / inspector / option label, falling back to the original English text when
+ * unmapped.
+ *
+ * A trailing ordinal is translated by its stem and put back: pins generated in groups are labelled
+ * `Button 1`, `Button 2` and so on to tell them apart, and mapping each of those separately would
+ * mean a catalogue entry per button an author might ever add. The exact text is tried first, so a
+ * label that genuinely reads as one phrase - `Case 0`, `Then 1` - keeps its own translation.
+ */
 export function resolveBlueprintLabel(text: string, t: Translate): string {
     const key = PORT_LABEL_KEYS[text];
-    return key ? t(key) : text;
+    if (key) {
+        return t(key);
+    }
+    const ordinal = /^(.*\S)\s+(\d+)$/.exec(text);
+    const stemKey = ordinal ? PORT_LABEL_KEYS[ordinal[1]] : undefined;
+    return stemKey ? `${t(stemKey)} ${ordinal![2]}` : text;
 }

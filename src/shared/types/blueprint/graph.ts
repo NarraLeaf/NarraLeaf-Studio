@@ -834,6 +834,16 @@ export const BLUEPRINT_NODE_TYPE_LAYER_WAIT = "blueprint.layer.wait" as const;
  */
 export const BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF = "blueprint.layer.closeSelf" as const;
 export const BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED = "blueprint.layer.isMounted" as const;
+/**
+ * Ask a question over the page that is already on screen, and continue on the answer.
+ *
+ * `Show Layer` and `Wait For Layer` fused, with one exec output per button, because that is the
+ * shape a question has: every answer leads somewhere different. Assembled out of the two nodes it
+ * stands for, the same graph is a handle, a wait, and a switch over an index whose meaning lives
+ * nowhere on the canvas - three rows of bookkeeping between the question and the branches that
+ * answer it.
+ */
+export const BLUEPRINT_NODE_TYPE_LAYER_CONFIRM = "blueprint.layer.confirm" as const;
 // App window nodes. The older node types in this group keep their `blueprint.page.*`
 // ids from when the category was named "Page"; only the palette label changed.
 export const BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN = "blueprint.app.getFullscreen" as const;
