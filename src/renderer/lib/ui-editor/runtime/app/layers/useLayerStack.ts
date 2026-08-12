@@ -1,7 +1,13 @@
 import { useSyncExternalStore } from "react";
-import type { LayerStackController, SurfaceLayerEntry } from "./LayerStackController";
+import type { LayerStackController, LayerStackSnapshot } from "./LayerStackController";
 
-/** Subscribe a React tree to a LayerStackController's stack. */
-export function useLayerStack(controller: LayerStackController): readonly SurfaceLayerEntry[] {
-    return useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
+/**
+ * Subscribe a React tree to a LayerStackController.
+ *
+ * The whole snapshot rather than the mounted layers alone: a layer joining the queue and an exit
+ * animation finishing both change what the stack is doing without changing what is on screen, and
+ * the composite-stack panel exists to show exactly those two.
+ */
+export function useLayerStack(controller: LayerStackController): LayerStackSnapshot {
+    return useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
 }

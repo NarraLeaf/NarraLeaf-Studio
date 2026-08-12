@@ -236,6 +236,61 @@ describe("LayerStackController", () => {
         await expect(controller.hideAndWaitForExit(queued)).resolves.toBe(true);
     });
 
+    it("hiding a layer the host never put on screen does not wait for an exit", async () => {
+        const controller = new LayerStackController();
+        const key = mountSurfaceLayer(controller, { surfaceId: "deleted" });
+        // What the host reports when the running bundle has no surface with that id: the stack holds
+        // the layer and the screen never had it, so no exit animation is ever going to be reported.
+        controller.setUnrenderedLayers([key]);
+        await expect(controller.hideAndWaitForExit(key)).resolves.toBe(true);
+    });
+
+    it("a group held by a layer that was never on screen is given back", () => {
+        const controller = new LayerStackController();
+        const held = mountSurfaceLayer(controller, { surfaceId: "deleted", group: "confirm" });
+        const queued = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        controller.setUnrenderedLayers([held]);
+        unmountSurfaceLayer(controller, held);
+        // No exit to wait for, so the queue moves on the removal itself. Waiting for one would hold
+        // the group forever behind something nobody could see.
+        expect(controller.getState().map(layer => layer.key)).toEqual([queued]);
+    });
+
+    it("a removal with nothing to animate leaves an exit already running alone", async () => {
+        const controller = new LayerStackController();
+        const onScreen = mountSurfaceLayer(controller, { surfaceId: "confirm" });
+        const neverRendered = mountSurfaceLayer(controller, { surfaceId: "deleted" });
+        controller.setUnrenderedLayers([neverRendered]);
+        let settled = false;
+        unmountSurfaceLayer(controller, onScreen);
+        const waiting = controller.waitForExitComplete().then(() => {
+            settled = true;
+        });
+        unmountSurfaceLayer(controller, neverRendered);
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        controller.notifyExitComplete();
+        await waiting;
+        expect(settled).toBe(true);
+    });
+
+    it("the snapshot reports the queue and the pending exit, not only the screen", () => {
+        const controller = new LayerStackController();
+        const shown = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const before = controller.getSnapshot();
+        const queued = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const afterQueue = controller.getSnapshot();
+        // Queueing changes nothing on screen, and a reader of the stack still has to see it.
+        expect(afterQueue).not.toBe(before);
+        expect(afterQueue.layers).toBe(before.layers);
+        expect(afterQueue.queued.map(layer => layer.key)).toEqual([queued]);
+        expect(afterQueue.exitPending).toBe(false);
+        unmountSurfaceLayer(controller, shown);
+        expect(controller.getSnapshot().exitPending).toBe(true);
+        controller.notifyExitComplete();
+        expect(controller.getSnapshot().exitPending).toBe(false);
+    });
+
     it("the snapshot identity only changes when the stack does", () => {
         // useSyncExternalStore re-renders on every changed snapshot identity and loops on an unstable
         // one, so this is load-bearing rather than tidiness.
