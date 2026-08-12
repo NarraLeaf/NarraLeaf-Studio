@@ -238,20 +238,55 @@ export const documentDiff = {
     },
     /** 某一种格式自己的详情面板所加的词（`renderer/lib/vcs/presenters`）。变更本身怎么读仍在上面的分档键里。 */
     presenter: {
+        /** 两个版本的称呼，所有格式共用一份，避免同一个词在一次对比里出现两种写法。 */
+        before: "更改前",
+        after: "更改后",
         image: {
             modeLabel: "对比方式",
             sideBySide: "并排",
             swipe: "滑动分割",
             difference: "差异",
             splitPosition: "分割位置",
-            before: "更改前",
-            after: "更改后",
             /** 差异模式要求两边像素一一对应，尺寸不同就无从相减。 */
             sizeDiffers: "两个版本尺寸不同，无法逐像素比较",
             /** 画面位置上可能出现的四种状态，各自是不同的事实，不合并成一句。 */
             tooLarge: "该文件过大，无法在此显示",
             unsupported: "该图片格式无法在此显示",
             unreadable: "该图片无法读取",
+        },
+        audio: {
+            play: "播放",
+            pause: "暂停",
+            /** 解码后得到的声道数。 */
+            mono: "单声道",
+            stereo: "立体声",
+            channels: "{count} 声道",
+            /**
+             * 波形位置上可能出现的四种状态。
+             *
+             * `tooLarge` 说的是文件，它从未被读取；`tooLong` 说的是声音本身：字节已经在手上，
+             * 解码它要占用的内存超出预览允许的额度，所以下方的数字照常给出，只是不画波形。
+             */
+            tooLarge: "该文件过大，无法在此播放",
+            tooLong: "该音轨过长，无法在此预览",
+            unreadable: "该音频无法读取",
+        },
+        font: {
+            sizeLabel: "字号",
+            /** 样张同时含中英文：只看拉丁字母看不出中文字形是否随字体一起装上。 */
+            sample: "The quick brown fox 0123 汉字排版样张",
+            unreadable: "该字体无法加载",
+            tooLarge: "该文件过大，无法在此显示",
+        },
+        brand: {
+            added: "新增",
+            removed: "删除",
+            unreadable: "该调色板无法读取",
+            tooLarge: "该文件过大，无法在此显示",
+            unchangedOne: "另有 1 个颜色未变",
+            unchangedMany: "另有 {count} 个颜色未变",
+            /** 指向本调色板另一个条目、但最终没有落到颜色上的值：名字不存在，或者成环。 */
+            unresolved: "无颜色",
         },
     },
     /** 变更文件的分组标题，用作者编辑它们的面板名，而不是它们在磁盘上的目录名。 */
@@ -368,5 +403,38 @@ export const documentDiff = {
                 unreadable: "两个版本中有一个无法读取，因此只能整份取一边",
             },
         },
+    },
+    /** 把一个页面 / 一张图的两个版本并排画出来，改动直接盖在原处。两块画布共用同一套词。 */
+    canvas: {
+        before: "更改前",
+        after: "更改后",
+        surfaceLabel: "页面",
+        graphLabel: "蓝图",
+        unnamed: "未命名",
+        /** `moved` 特意写清楚它为什么画得最淡：它不改变游戏的行为。 */
+        legend: {
+            added: "新增",
+            removed: "删除",
+            changed: "已修改",
+            moved: "仅位置变动",
+        },
+        markLabel: "查看这条改动",
+        oneChange: "当前只看一条改动",
+        showAll: "显示全部改动",
+        /** 画布没有标出来的那些改动，一行说清；标了九条却不说另外三条，读起来就像一共只有九条。 */
+        notMarked: {
+            one: "另有 {count} 条改动没有标在这里：",
+            other: "另有 {count} 条改动没有标在这里：",
+        },
+        onOtherPages: "{count} 条在其他页面",
+        onOtherGraphs: "{count} 条在其他蓝图",
+        offCanvas: "{count} 条无法画在页面上",
+        /** 组件内部的元素本来就不带 id：同一个组件的每个实例共用内部 id，带上就分不清是哪一处放置。 */
+        unplaced: "{count} 条在画面上定位不到",
+        notDrawn: "该版本的页面无法绘制",
+        emptyGraph: "这张图里没有节点",
+        tooLarge: "该文件过大，无法在此绘制",
+        unreadable: "该文件无法按界面文档读取：{error}",
+        readFailed: "该版本无法读取：{error}",
     },
 } satisfies LocaleNamespace<"documentDiff">;

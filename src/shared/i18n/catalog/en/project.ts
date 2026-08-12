@@ -36,6 +36,7 @@ export const project = {
     group: {
         details: "Details",
         appTags: "Build variants",
+        userData: "Player files",
         icons: "Icons",
         dependencies: "Dependencies",
         saving: "Saving",
@@ -78,6 +79,25 @@ export const project = {
         copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. Left empty, no file is shipped.",
         descriptionPlaceholder: "Describe your project…",
         required: "Required",
+    },
+    // Where a shipped game writes what belongs to the player. Stated, not offered: nothing on this
+    // part is a setting, and it names no storefront, because which of them to hand this to is the
+    // author's decision. The description says what the paths are, and stops there.
+    userData: {
+        description: "Where a shipped game keeps the player's saves and progress. The folder is named "
+            + "after the identifier, so renaming the application leaves it where it is.",
+        copy: "Copy locations",
+        copied: "Locations copied.",
+        copyFailed: "Could not copy the locations.",
+        platform: {
+            windows: "Windows",
+            macos: "macOS",
+            linux: "Linux",
+        },
+        content: {
+            saves: "Save slots",
+            persistence: "Persistent variables, unlocked content, and plugin data",
+        },
     },
     // Build variants: the editions the same project ships as. What a variant is and what inheriting
     // means live in the `appTags` help topic, reached by the `?` on this heading; the words here name

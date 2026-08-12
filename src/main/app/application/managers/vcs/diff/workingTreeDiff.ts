@@ -8,6 +8,7 @@ import {
 } from "@shared/vcs/contentClass";
 import { LABEL_MOVED, type ContentSide } from "./contentDiff";
 import {
+    classOfReadSides,
     DIFF_MOVE_CONFIRM_BYTE_CEILING,
     DIFF_PATH_LIMIT,
     DIFF_TOTAL_BYTE_BUDGET,
@@ -315,13 +316,31 @@ export async function diffWorkingTree(
             if (!base && !bytes) {
                 continue;
             }
+            /**
+             * The class again, now that there are bytes - which for a DELETION is the only chance
+             * there is.
+             *
+             * `classifyFiles` cannot place a removal: the probe it uses is a positioned read of
+             * the working file, and the file is gone. So an asset deleted out of the content
+             * store, where the path carries no extension, reached the renderer as `unknown` and
+             * was drawn as the sentence "removed, 58.7 KB" - with no picture of what went, which
+             * is the one thing worth seeing about a deletion.
+             *
+             * **This costs no read.** Both buffers are the ones the plan already paid for, and
+             * every ceiling that decided whether to pay is untouched: a path over them arrives
+             * here with nothing in hand and stays `unknown`, which is the honest answer for a
+             * file nobody opened. The recorded side deliberately gets no probe of its own - the
+             * backend has no ranged fetch, so a header from a revision costs the whole blob, and
+             * sniffing one would be a read this comparison had already decided against.
+             */
+            const readClass = classOfReadSides(file.path, bytes, base, contentClass);
             documents.push({
                 path: file.path,
                 kind: file.kind,
                 ...documentKind,
-                contentClass,
+                contentClass: readClass,
                 diff: diffDocumentBytes(
-                    { path: file.path, base, head: bytes, spec, contentClass },
+                    { path: file.path, base, head: bytes, spec, contentClass: readClass },
                     { limit, onDegrade: options.onDegrade },
                 ),
             });
@@ -359,8 +378,10 @@ export async function diffWorkingTree(
  * is, so a 200 MB video costs the same as a 2 KB icon.
  *
  * A deleted file is skipped rather than probed: there is nothing on disk to probe, and the
- * recorded side has no ranged fetch. Its class stays whatever its name said, which is all
- * anyone had before - and a removal is one row either way.
+ * recorded side has no ranged fetch, so a header from a revision would cost the whole blob. Its
+ * class stays whatever its name said until the loop in {@link diffWorkingTree} reaches it with the
+ * recorded bytes the plan already pulled, where `classOfReadSides` places it for nothing. Over the
+ * ceilings that decide whether to pull them, nothing is in hand and the class stays `unknown`.
  *
  * The probe result is deliberately NOT kept as a provider's header. A provider wants kilobytes
  * and gets them from a whole-file read the plan already paid for; passing it a few dozen bytes
