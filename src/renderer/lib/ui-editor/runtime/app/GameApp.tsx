@@ -134,6 +134,9 @@ import {
 import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
+import { LayerStackController, type SurfaceLayerEntry } from "./layers/LayerStackController";
+import { useLayerStack } from "./layers/useLayerStack";
+import { resolveCompositeInput } from "./layers/compositeInput";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -155,6 +158,18 @@ const NLR_BOOT_PRELOAD_TIMEOUT_MS = 45_000;
 // alternative is the player paying for it on a button they just pressed. Bounded only so a broken
 // asset degrades to "start pays for it" instead of never starting.
 const STAGE_WARMUP_TIMEOUT_MS = 30_000;
+
+/**
+ * Where the layer stack starts counting, in the surface layer's own index space.
+ *
+ * Not simply one past however many page entries happen to be mounted. A page entry on its way out is
+ * drawn at `30 + layerIndex` so it can pass over the page arriving underneath it, and a layer sitting
+ * immediately above the page lane would be crossed by that exit - a modal would disappear behind the
+ * screen it was covering, for the length of one transition. Starting the layers clear of the page
+ * lane's exit band keeps a layer above the pages whatever the pages are doing, and keeps each layer's
+ * own z fixed instead of shifting as a transition opens and closes.
+ */
+const LAYER_STACK_INDEX_BASE = 32;
 
 /**
  * A pending mount or game entry that was abandoned because something took over: a newer bundle
@@ -222,6 +237,12 @@ export type GameAppProps = {
      * workspace story preview).
      */
     pluginHost?: RuntimePluginHostController;
+    /**
+     * The layer stack composited over the page lane. Supplied by a caller that needs to reach it -
+     * `mountSurfaceLayer` takes the controller - and otherwise created here and left empty, which is
+     * every host today.
+     */
+    layerStack?: LayerStackController;
 };
 
 /**
@@ -232,7 +253,16 @@ export type GameAppProps = {
  * differ only in the injected GameAppHost.
  */
 export function GameApp(props: GameAppProps): ReactNode {
-    const { host, rendererRegistry, getScale, renderFrame, renderPlaceholder, renderOverlays, pluginHost } = props;
+    const {
+        host,
+        rendererRegistry,
+        getScale,
+        renderFrame,
+        renderPlaceholder,
+        renderOverlays,
+        pluginHost,
+        layerStack: providedLayerStack,
+    } = props;
     const bundle = host.bundle;
     const core = useBlueprintRuntimeCore(bundle, {
         persistenceAdapter: host.persistenceAdapter,
@@ -360,6 +390,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const navigation = useMemo(() => new NavigationController(), []);
     const navState = useSurfaceNavigation(navigation);
     const { navStack, visibleEntries, presenceMode: surfacePresenceMode } = navState;
+    // Beside the page lane, never inside it: the navigation machine's rules are about replacing one
+    // screen with another, and a layer replaces nothing. An empty stack is what makes paging behave
+    // exactly as it did before layers existed.
+    const layerStack = useMemo(() => providedLayerStack ?? new LayerStackController(), [providedLayerStack]);
+    const layers = useLayerStack(layerStack);
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
     const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSession] = useState<NlrStageSession | null>(null);
@@ -513,6 +548,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         setPrepaintReadyKeys(new Set());
         setInteractionReadyKeys(new Set());
         navigation.reset(surface ? createNavEntry(surface.id, "forward", false) : null);
+        layerStack.clear();
         widgetPatchesByScopeRef.current = {};
         setWidgetPatchesByScope({});
         gameHiddenNavKeysRef.current = new Set();
@@ -626,7 +662,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         setStudioPageHiddenForGame(true);
         resetSurfaceInteractionReadiness();
         navigation.hideAllForGame();
-    }, [navigation, resetSurfaceInteractionReadiness]);
+        // Layers are not serialised, so nothing about them survives a load, and the two callers of
+        // this are exactly the moments the game takes the screen: starting a story and applying a
+        // save. A layer left standing across either would belong to a run that no longer exists.
+        layerStack.clear();
+    }, [layerStack, navigation, resetSurfaceInteractionReadiness]);
 
     const clearGameHiddenStudioPages = useCallback(() => {
         const emptyKeys = new Set<string>();
@@ -729,7 +769,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return closeToIndex(lastHidden);
     }, [closeToIndex, navigation]);
 
-    const goBack = useCallback((): Promise<void> => {
+    const goBackPage = useCallback((): Promise<void> => {
         const currentStack = navigation.getState().navStack;
         if (currentStack.length <= 1) {
             return Promise.resolve();
@@ -754,6 +794,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         prefersReducedMotion,
         resetSurfaceInteractionReadiness,
     ]);
+
+    /**
+     * Back, over the whole composite: close the top layer when that layer allows it, and otherwise do
+     * exactly what Back has always done to the page stack.
+     *
+     * Only the top layer is consulted. One that refuses dismissal reports so and Back falls through
+     * to the page lane, which is the behaviour with no layers at all.
+     */
+    const goBack = useCallback((): Promise<void> => {
+        if (layerStack.dismissTop()) {
+            return Promise.resolve();
+        }
+        return goBackPage();
+    }, [goBackPage, layerStack]);
 
     const makeStateAccessors = useCallback(
         (runtimeScopeId: string): SurfaceStateAccessors | null => {
@@ -2138,10 +2192,44 @@ export function GameApp(props: GameAppProps): ReactNode {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bootReady, bundle.bundleId]);
 
+    const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
+        ? visibleEntries
+            .filter(entry => entry.sessionKey === host.sessionKey)
+            .filter(entry => !studioPageHiddenForGame || !gameHiddenNavKeys.has(entry.key))
+            .map(entry => {
+                const visibleSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === entry.surfaceId);
+                return visibleSurface ? { entry, surface: visibleSurface } : null;
+            })
+            .filter((item): item is { entry: GameAppNavEntry; surface: UISurface } => Boolean(item))
+        : [];
+
+    const visibleLayers = layers
+        .map(layer => {
+            const layerSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === layer.surfaceId);
+            return layerSurface ? { layer, surface: layerSurface } : null;
+        })
+        .filter((item): item is { layer: SurfaceLayerEntry; surface: UISurface } => Boolean(item));
+
+    /**
+     * Who takes pointer input and who takes the keys, across the page lane and the layers at once.
+     *
+     * The single place either question is answered. With an empty layer stack it reduces to the
+     * comparison the surface layers used to make for themselves - the entry the page stack is
+     * settling on, and nothing else.
+     */
+    const compositeInput = resolveCompositeInput({
+        pageEntries: visibleSurfaceEntries.map(item => item.entry),
+        activePageKey: activeEntry?.key ?? null,
+        layers: visibleLayers.map(item => item.layer),
+    });
+
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
         prepaintReadyKeys.has(activeEntry.key) &&
-        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)),
+        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)) &&
+        // The app-level keyDown/keyUp dispatch belongs to the page lane, so it stops the moment a
+        // layer takes the keyboard - otherwise Escape would reach the page under an open modal.
+        compositeInput.keyboardOwnerKey === activeEntry.key,
     );
 
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
@@ -2887,17 +2975,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         />
     );
 
-    const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
-        ? visibleEntries
-            .filter(entry => entry.sessionKey === host.sessionKey)
-            .filter(entry => !studioPageHiddenForGame || !gameHiddenNavKeys.has(entry.key))
-            .map(entry => {
-                const visibleSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === entry.surfaceId);
-                return visibleSurface ? { entry, surface: visibleSurface } : null;
-            })
-            .filter((item): item is { entry: GameAppNavEntry; surface: UISurface } => Boolean(item))
-        : [];
-
     // `nl-motion-keep` + `reducedMotion="never"` hold the game's own motion outside the Studio
     // reduced-motion preference (styles.css and the MotionConfig in lib/renderApp): what plays
     // in here is the author's work, and it has to move the way it will move for a player. The
@@ -2946,7 +3023,48 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     nestedSurfaceRuntime={nestedSurfaceRuntime}
                                     blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
                                     reducedMotion={prefersReducedMotion === true}
-                                    active={entry.key === activeEntry.key}
+                                    active={compositeInput.interactiveKeys.has(entry.key)}
+                                    keyboardOwner={compositeInput.keyboardOwnerKey === entry.key}
+                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
+                                    onPrepaintReady={handleSurfaceLayerPrepaintReady}
+                                    onEnterComplete={markActiveEnterComplete}
+                                />
+                            ))
+                            : null}
+                    </AnimatePresence>
+                    {/* The layers get their own presence group, sharing the stacking context above
+                        so z order still runs straight through both. Two reasons it is not one group:
+                        the page lane switches to `mode="wait"` for transitions that have to empty the
+                        screen first, which is a rule about replacing a screen and not about a layer
+                        that is merely present through it; and `onExitComplete` fires for the whole
+                        group, so a layer closing would settle a page transition that is still
+                        running. Both would only misfire once a layer exists — which is exactly the
+                        kind of thing that has to be impossible rather than untested. */}
+                    <AnimatePresence custom="forward" initial={false} mode="sync">
+                        {nlrPreloadDone
+                            ? visibleLayers.map(({ layer, surface }, index) => (
+                                <AppSurfaceLayerWithAdapter
+                                    key={layer.key}
+                                    uidoc={bundle.ui.uidoc}
+                                    blueprintDocument={bundle.ui.localBlueprints}
+                                    persistentVariables={bundle.ui.persistentVariables}
+                                    core={core}
+                                    entry={layer}
+                                    layerIndex={LAYER_STACK_INDEX_BASE + index}
+                                    surface={surface}
+                                    rendererRegistry={rendererRegistry}
+                                    scale={scale}
+                                    createHostAdapterBundle={createHostAdapterBundle}
+                                    widgetPatchesByScope={widgetPatchesByScope}
+                                    widgetPatchesByScopeRef={widgetPatchesByScopeRef}
+                                    widgetRuntimeStore={widgetRuntimeStore}
+                                    lifecycleRef={lifecycleRef}
+                                    nestedSurfaceRuntime={nestedSurfaceRuntime}
+                                    blueprintLifecycleReady={prepaintReadyKeys.has(layer.key)}
+                                    reducedMotion={prefersReducedMotion === true}
+                                    active={compositeInput.interactiveKeys.has(layer.key)}
+                                    keyboardOwner={compositeInput.keyboardOwnerKey === layer.key}
+                                    scrim={layer.scrim}
                                     onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                     onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                     onEnterComplete={markActiveEnterComplete}
