@@ -4,6 +4,7 @@ import {
     useMemo,
     useRef,
     useState,
+    type CSSProperties,
     type MutableRefObject,
     type ReactNode,
 } from "react";
@@ -22,6 +23,7 @@ import { getSurfaceAnimationTimings } from "@/lib/ui-editor/runtime/surfaceAnima
 import {
     getSurfaceLayerBackgroundColor,
     getSurfaceLayerBackgroundImageOpacity,
+    SURFACE_LAYER_SCRIM_COLOR,
 } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -68,7 +70,20 @@ type AppSurfaceLayerCommonProps = {
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     blueprintLifecycleReady: boolean;
     reducedMotion: boolean;
+    /**
+     * Whether this entry takes pointer input, as resolved across the whole composite stack (see
+     * `layers/compositeInput`). Not "is this the top of the page stack" any more: a layer above it may
+     * have taken input away from it, and more than one entry can be live at once.
+     */
     active: boolean;
+    /**
+     * Whether keyboard events belong to this entry. Exactly one entry in the composite has it, which
+     * is why it is a separate answer from `active` rather than the same flag read twice: with a modal
+     * layer over a non-modal one, both are clickable and only the modal has the keys.
+     */
+    keyboardOwner: boolean;
+    /** Paint a dimming sheet behind this entry's own background. */
+    scrim?: boolean;
     onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
     onPrepaintReady: (entryKey: string) => void;
     onEnterComplete: (entryKey: string) => void;
@@ -97,6 +112,8 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         blueprintLifecycleReady,
         reducedMotion,
         active,
+        keyboardOwner,
+        scrim = false,
         onInteractionReadyChange,
         onPrepaintReady,
         onEnterComplete,
@@ -109,7 +126,7 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
     });
     const transitionStateRef = useRef({ isEntering: true, isExiting: false });
     const effectiveInteractive = active && surfaceInteractive;
-    const effectiveKeyboardInteractive = active && blueprintLifecycleReady;
+    const effectiveKeyboardInteractive = keyboardOwner && blueprintLifecycleReady;
     const surfaceRuntimeSubscriptionsReady = surfaceRuntimeSubscriptionsReadyKey === entry.key;
     const surfaceBlueprintLifecycleReady = blueprintLifecycleReady && surfaceRuntimeSubscriptionsReady;
     // SurfaceAnimationLayer keeps new layers hidden until prepaint is ready. Widget init must run during that
@@ -176,6 +193,15 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
     );
 
     const layerBackgroundColor = getSurfaceLayerBackgroundColor(surface, entry.presentation);
+    // The animation layer already covers the whole viewport, so the scrim goes on it rather than on
+    // an extra element. As a gradient over the scrim colour, not instead of it: an entry may carry a
+    // background of its own, and that one has to stay on top of the sheet it is being lifted off.
+    const layerBackgroundStyle: CSSProperties = scrim
+        ? {
+            backgroundColor: SURFACE_LAYER_SCRIM_COLOR,
+            backgroundImage: `linear-gradient(${layerBackgroundColor}, ${layerBackgroundColor})`,
+        }
+        : { backgroundColor: layerBackgroundColor };
 
     // The Page's own animation may have to wait for its contents to leave first, so the delays come
     // from the timing plan rather than straight off the settings. Cached on the bundle's element
@@ -279,7 +305,7 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             // Nested in-tree layers (SurfaceElementTree) keep the default scale of 1.
             scale={scale}
             className="absolute inset-0 flex items-center justify-center"
-            style={{ backgroundColor: layerBackgroundColor }}
+            style={layerBackgroundStyle}
             presentZIndex={10 + layerIndex}
             exitZIndex={entry.exitBehind ? 0 : 30 + layerIndex}
             surfaceId={surface.id}
