@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
@@ -341,6 +342,83 @@ describe("blueprint/empty-event", () => {
         const findings = await run(
             "blueprint/empty-event",
             createTestLintContext({ blueprintDocument: documentWithGraphs({ functions: { fn: {} } }) }),
+        );
+        expect(findings).toEqual([]);
+    });
+});
+
+describe("blueprint/external-link-undeclared", () => {
+    /** `On App Boot -> Open Link`, holding whatever address is passed. */
+    const openLinkGraph = (url: string): BlueprintGraphIr => ({
+        nodes: {
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+            link: { id: "link", type: BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL, params: { url } },
+        },
+        edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "link", port: "in" } }],
+    });
+
+    it("reports an address no variant declares", async () => {
+        const findings = await run(
+            "blueprint/external-link-undeclared",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: openLinkGraph("https://gone.example.com/") } }),
+                declaredExternalLinks: ["https://store.example.com/"],
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            ruleId: "blueprint/external-link-undeclared",
+            messageKey: "lint.rule.blueprintExternalLinkUndeclared.message",
+            messageParams: { url: "https://gone.example.com/" },
+            location: { kind: "blueprint", blueprintId: "bp1", graphId: "onBoot", nodeId: "link" },
+        });
+    });
+
+    it("says nothing about an address a variant declares, whatever spelling it was typed in", async () => {
+        const findings = await run(
+            "blueprint/external-link-undeclared",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: openLinkGraph("https://store.example.com") } }),
+                // Only the demo variant declares it; the union is what a rule reads, because the
+                // demo build is a build.
+                declaredExternalLinks: ["https://store.example.com/"],
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a wired pin, where the address is not the node's to state", async () => {
+        const graph = openLinkGraph("https://gone.example.com/");
+        const findings = await run(
+            "blueprint/external-link-undeclared",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: {
+                        onBoot: {
+                            nodes: {
+                                ...graph.nodes,
+                                literal: { id: "literal", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "https://x/" } },
+                            },
+                            edges: [
+                                ...(graph.edges ?? []),
+                                { from: { nodeId: "literal", port: "value" }, to: { nodeId: "link", port: "url" } },
+                            ],
+                        },
+                    },
+                }),
+                declaredExternalLinks: [],
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about an unfinished node", async () => {
+        const findings = await run(
+            "blueprint/external-link-undeclared",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: openLinkGraph("") } }),
+                declaredExternalLinks: ["https://store.example.com/"],
+            }),
         );
         expect(findings).toEqual([]);
     });

@@ -5,7 +5,10 @@
  */
 
 import {
+    BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE,
+    BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
@@ -244,6 +247,60 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             const fullscreen = mode === "toggle" ? !(await api.navigation.getFullscreen()) : mode === "enter";
             await api.navigation.setFullscreen(fullscreen);
             return { nextPort: "next" };
+        },
+    },
+    {
+        /**
+         * A link out of the game: a store page, a patch note, a support form.
+         *
+         * The picker offers the addresses the project and its variants declare, because those are
+         * the ones a build can open - the shell refuses everything else, in the process that would
+         * open the page. Wiring the pin instead is allowed for the same reason: the declaration is
+         * the boundary, so a computed address cannot reach anything a picked one could not.
+         *
+         * `Failed` covers both an address this build does not declare and a browser that would not
+         * open it, with `Error` saying which. They share a pin because the author's answer to both
+         * is the same - the player did not get the page, so show them something else - and a graph
+         * that has to branch on a refusal it cannot fix is a branch that never runs in a build.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+        displayName: "Open Link",
+        category: "App",
+        keywords: ["link", "url", "browser", "external", "open", "web", "store", "page", "site"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            {
+                id: BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "URL",
+            },
+            execNext,
+            { id: "failed", kind: "output", semantic: "exec", label: "Failed" },
+            { id: "error", kind: "output", semantic: "data", valueType: "string", label: "Error" },
+        ],
+        inspectorParams: [
+            {
+                key: BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
+                label: "URL",
+                kind: "select",
+                dynamicOptionsSource: BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE,
+            },
+        ],
+        async execute(ctx) {
+            const url = String(readPin(ctx, BLUEPRINT_EXTERNAL_LINK_PARAM_URL) ?? "").trim();
+            if (!url) {
+                throw new BlueprintGraphExecutionError("Open Link: pick or wire an address", ctx.node.id);
+            }
+            const result = await requireHostApi(ctx).navigation.openExternal({ url });
+            return {
+                nextPort: result.outcome === "opened" ? "next" : "failed",
+                outputValues: { error: result.error },
+            };
         },
     },
     {

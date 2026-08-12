@@ -1,5 +1,9 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type {
+    BlueprintOpenExternalRequest,
+    BlueprintOpenExternalResult,
+} from "@shared/types/blueprint/externalLink";
+import type {
     BlueprintNetworkFetchRequest,
     BlueprintNetworkFetchResult,
 } from "@shared/types/blueprint/network";
@@ -256,6 +260,15 @@ export type BlueprintHostApiRuntime = {
         quitApplication: () => Promise<void>;
         getFullscreen: () => Promise<boolean>;
         setFullscreen: (fullscreen: boolean) => Promise<void>;
+        /**
+         * Open one web address in the player's browser.
+         *
+         * The host does not decide: it hands the request to whatever the shell supplied, and the
+         * shell's own process checks it against the addresses the build declared. Nothing here
+         * consults the project's network setting, because no request is made - see
+         * `@shared/types/blueprint/externalLink`.
+         */
+        openExternal: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
     };
     widget: {
         setVisible: (elementId: string, visible: boolean) => Promise<void>;
@@ -659,6 +672,14 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * there is no main process to reach and no project network policy to enforce.
      */
     onNetworkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    /**
+     * Opens one web address in the player's browser, in a process that can check it.
+     *
+     * Absent in every environment with nowhere to send it - the editor preview, and the story
+     * preview. There the node reports a `failed` result saying so rather than throwing, the same
+     * degradation the Fetch node takes: a Page previewed in Studio should still lay out.
+     */
+    onOpenExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -1774,6 +1795,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetTrackVolume,
         onSetTrackVolume,
         onNetworkFetch,
+        onOpenExternal,
         audioTracks,
         onSubscribeGamePreferences,
         emit,
@@ -2013,6 +2035,24 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("setFullscreen: application window is not available");
                     }
                     await onSetFullscreen(fullscreen === true);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            openExternal: async (request: BlueprintOpenExternalRequest) => {
+                const cap = "navigation.openExternal";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onOpenExternal) {
+                        // No backend = nowhere to send it (editor preview, story preview). Reported
+                        // as a result rather than thrown, so a Page being previewed in Studio still
+                        // lays out and the author's own branch is what runs.
+                        return {
+                            outcome: "failed" as const,
+                            error: "Links cannot be opened here. Run the project in Dev Mode to open one.",
+                        };
+                    }
+                    return await onOpenExternal(request);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

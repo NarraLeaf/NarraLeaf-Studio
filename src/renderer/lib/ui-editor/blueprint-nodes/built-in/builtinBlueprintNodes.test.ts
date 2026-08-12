@@ -221,6 +221,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
@@ -317,6 +318,10 @@ const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
     fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
 };
 
+/** A host that declares no addresses, which is what an unconfigured project is. */
+const NO_DECLARED_LINKS: BlueprintHostApiRuntime["navigation"]["openExternal"] =
+    async () => ({ outcome: "refused", error: "not declared" });
+
 function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAdapter {
     return {
         host: "player",
@@ -336,6 +341,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     quitApplication: async () => undefined,
                     getFullscreen: async () => false,
                     setFullscreen: async () => undefined,
+                    openExternal: NO_DECLARED_LINKS,
                 },
                 widget: {} as any,
                 state: {
@@ -429,7 +435,8 @@ function createPageNavigationHostAdapter(
     openedPageProps: unknown[] = [],
     pageProps: Record<string, unknown> = {},
     quitApplicationCalls: boolean[] = [],
-    fullscreen: { current: boolean; setCalls: boolean[] } = { current: false, setCalls: [] },
+    fullscreen: { current: boolean; setCalls: boolean[] } | undefined = { current: false, setCalls: [] },
+    openedExternalUrls: string[] = [],
 ): UIHostAdapter {
     return {
         host: "player",
@@ -452,10 +459,16 @@ function createPageNavigationHostAdapter(
                     quitApplication: async () => {
                         quitApplicationCalls.push(true);
                     },
-                    getFullscreen: async () => fullscreen.current,
+                    getFullscreen: async () => fullscreen?.current === true,
                     setFullscreen: async (next: boolean) => {
-                        fullscreen.setCalls.push(next);
-                        fullscreen.current = next;
+                        if (fullscreen) {
+                            fullscreen.setCalls.push(next);
+                            fullscreen.current = next;
+                        }
+                    },
+                    openExternal: async request => {
+                        openedExternalUrls.push(request.url);
+                        return { outcome: "opened", error: null };
                     },
                 },
                 widget: {
@@ -607,6 +620,7 @@ function createGameSaveHostAdapter(options: {
                     quitApplication: async () => undefined,
                     getFullscreen: async () => false,
                     setFullscreen: async () => undefined,
+                    openExternal: NO_DECLARED_LINKS,
                 },
                 widget: {} as any,
                 state: {
@@ -1569,6 +1583,53 @@ describe("built-in blueprint nodes", () => {
         // An unset or unknown dropdown value falls back to toggle.
         expect(await runSetFullscreen(undefined, false)).toEqual([true]);
         expect(await runSetFullscreen("bogus", true)).toEqual([false]);
+    });
+
+    it("hands Open Link to the host and branches on what it answers", async () => {
+        registerCoreBlueprintNodes();
+
+        const runOpenLink = async (adapter: UIHostAdapter, locals: Record<string, unknown>) => {
+            await executeGraph({
+                graph: {
+                    id: "openLink",
+                    entries: { main: { start: { nodeId: "open", port: "in" } } },
+                    nodes: {
+                        open: {
+                            id: "open",
+                            type: BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+                            params: { url: "https://store.example.com/app/480" },
+                        },
+                        opened: { id: "opened", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "opened" } },
+                        failed: { id: "failed", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "failed" } },
+                    },
+                    edges: [
+                        { from: { nodeId: "open", port: "next" }, to: { nodeId: "opened", port: "in" } },
+                        { from: { nodeId: "open", port: "failed" }, to: { nodeId: "failed", port: "in" } },
+                        { from: { nodeId: "open", port: "error" }, to: { nodeId: "failed", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "open", port: "in" } },
+                hostAdapter: adapter,
+                blueprintLocals: locals,
+            });
+            return locals;
+        };
+
+        // The address reaches the host untouched; the host is what decides it.
+        const openedUrls: string[] = [];
+        const opened: Record<string, unknown> = {};
+        await runOpenLink(
+            createPageNavigationHostAdapter([], {}, [], [], [], {}, [], undefined, openedUrls),
+            opened,
+        );
+        expect(openedUrls).toEqual(["https://store.example.com/app/480"]);
+        expect(opened).toHaveProperty("opened");
+        expect(opened).not.toHaveProperty("failed");
+
+        // A refusal is a branch with a reason on it, not a thrown error.
+        const refused: Record<string, unknown> = {};
+        await runOpenLink(createPersistenceHostAdapter({}), refused);
+        expect(refused).toMatchObject({ failed: "not declared" });
     });
 
     it("executes Start Game as a terminal host API node", async () => {

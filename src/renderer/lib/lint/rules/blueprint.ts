@@ -1,6 +1,10 @@
 import type { TranslationKey } from "@shared/i18n/catalog";
+import { normalizeExternalLinkUrl } from "@shared/types/appTag";
 import type { BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE,
+    BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
     isBlueprintEventDispatchHeadType,
@@ -78,6 +82,10 @@ export const REFERENCE_KIND_BY_OPTIONS_SOURCE: Readonly<Record<string, Blueprint
  * available here - it reports zero findings and reads as a clean project.
  */
 export const UNCHECKED_OPTIONS_SOURCES: ReadonlySet<string> = new Set([
+    // The declared web addresses, checked by `blueprint/external-link-undeclared` instead. Its
+    // findings read differently from a dangling id: the value is the thing itself rather than a
+    // reference to one, so the message names the address, and a wired pin is not judged at all.
+    BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE,
     // Resolved against fn visibility rules that depend on the calling blueprint's owner; the graph
     // editor reports an unresolvable call as `fn.call_target_not_found` with that context in hand.
     "callableFns",
@@ -345,6 +353,57 @@ function runEmptyEvent(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+// ---------------------------------------------------------------------------
+// blueprint/external-link-undeclared
+// ---------------------------------------------------------------------------
+
+/**
+ * An Open Link node holding an address no variant of this project declares.
+ *
+ * The address on the node is not what decides anything at run time - the shell opens only what the
+ * build declared, and refuses this one. So the node is a button that will not work, and the two
+ * ways to reach that state are both invisible from the graph: the declaration was removed after the
+ * node was made, or the file was edited by hand.
+ *
+ * **A wired pin is not judged.** The value then comes from somewhere this sweep cannot read, and the
+ * declaration is the boundary regardless - a computed address cannot open anything a picked one
+ * could not. Reporting it would be a warning about a graph that is entirely correct.
+ *
+ * An unset picker is left alone for the same reason `blueprint/reference-missing` leaves one alone:
+ * it is an unfinished node, visible as an empty select, and the node says so when it runs.
+ */
+function runExternalLinkUndeclared(ctx: LintContext): LintFinding[] {
+    registerCoreBlueprintNodes();
+    const declared = new Set(
+        ctx.declaredExternalLinks
+            .map(entry => normalizeExternalLinkUrl(entry))
+            .filter((entry): entry is string => entry !== null),
+    );
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        const wired = collectWiredInputPorts(site.ir);
+        for (const node of Object.values(site.ir.nodes ?? {})) {
+            if (node.type !== BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL
+                || wired.get(node.id)?.has(BLUEPRINT_EXTERNAL_LINK_PARAM_URL)
+            ) {
+                continue;
+            }
+            const value = String(node.params?.[BLUEPRINT_EXTERNAL_LINK_PARAM_URL] ?? "").trim();
+            if (!value || declared.has(normalizeExternalLinkUrl(value) ?? value)) {
+                continue;
+            }
+            findings.push({
+                ruleId: "blueprint/external-link-undeclared",
+                messageKey: "lint.rule.blueprintExternalLinkUndeclared.message" as TranslationKey,
+                messageParams: { url: value },
+                location: blueprintLocation(site, node.id),
+                target: blueprintNodeJumpTarget(site, node.id),
+            });
+        }
+    }
+    return findings;
+}
+
 export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
     {
         id: "blueprint/reference-missing",
@@ -369,5 +428,15 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "info",
         slug: "blueprintEmptyEvent",
         run: ctx => runEmptyEvent(ctx),
+    },
+    {
+        id: "blueprint/external-link-undeclared",
+        category: "blueprint",
+        // A warning rather than an error: the button does nothing in the build, which is the same
+        // standing as an unreachable node, and the fix may be to declare the address rather than to
+        // change the graph. An error would refuse the build over a link the author is about to add.
+        defaultSeverity: "warning",
+        slug: "blueprintExternalLinkUndeclared",
+        run: ctx => runExternalLinkUndeclared(ctx),
     },
 ];

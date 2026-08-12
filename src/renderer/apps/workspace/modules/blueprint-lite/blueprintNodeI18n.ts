@@ -337,6 +337,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "On Key Down": "blueprint.node.onKeyDown",
     "On Key Up": "blueprint.node.onKeyUp",
     "On Preference Changed": "blueprint.node.onPreferenceChanged",
+    "Open Link": "blueprint.node.openLink",
     "Open page": "blueprint.node.openPage",
     "Or": "blueprint.node.or",
     "Pad End": "blueprint.node.padEnd",

@@ -103,6 +103,7 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
     BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
@@ -2657,6 +2658,12 @@ function resolveSelfOutput(
     // Play Sound hands its handle to the transport nodes that follow, so the handle has to survive
     // the hop through the node output store the same way an animation token does.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY && portId === "handle") {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // Open Link publishes why it failed. Kept out of the cross-product list for the reason the
+    // network family below is: `error` is not a port name that list carries, and joining it would
+    // hand `error` to every node type in it.
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL && portId === "error") {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     // The network family, kept out of the cross-product list above on purpose: `response`, `text`

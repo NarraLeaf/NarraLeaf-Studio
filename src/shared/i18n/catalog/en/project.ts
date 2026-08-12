@@ -114,6 +114,16 @@ export const project = {
         // Sits beside a field only while that field states a value of its own, so it is the mark of
         // an override as well as the way out of one.
         restore: "Restore",
+        // The addresses a build of this variant may hand to the player's browser. Named for what the
+        // list decides rather than for the mechanism, and stated as a group: a variant has its own
+        // list or reads the project's.
+        links: {
+            title: "Links the game can open",
+            add: "Add link",
+            remove: "Remove link",
+            placeholder: "https://example.com/store",
+            invalid: "Only addresses starting with http:// or https:// can be opened.",
+        },
         // Beside Delete inside an open variant: the count the confirmation is about to be about.
         usedBy: {
             one: "Used by {count} reference",
