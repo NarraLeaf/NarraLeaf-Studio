@@ -9,6 +9,7 @@ import { translate, useTranslation } from "@/lib/i18n";
 import {
     deriveGameAppId,
     GAME_BUILD_ARCHS_BY_PLATFORM,
+    gameBuildArtifactBaseName,
     hostCanBuildTarget,
     platformFromSystem,
     predictGameBuildArtifacts,
@@ -22,8 +23,9 @@ import {
     type GameBuildPlatform,
     type GameBuildRequest,
 } from "@shared/types/gameBuild";
-import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import {
+    APP_TAG_OVERRIDE_KEYS,
+    isBuiltinAppTagId,
     RELEASE_APP_TAG,
     resolveAppTagIdentity,
     type AppTagBaseIdentity,
@@ -56,6 +58,8 @@ import type {
 import { getInterface } from "@/lib/app/bridge";
 import { openProjectPanel } from "../project";
 import {
+    appTagSelection,
+    BUILD_DIALOG_SECTIONS,
     DESKTOP_PLATFORMS,
     DIALOG_PLATFORMS,
     OFFERED_FORMATS,
@@ -66,6 +70,8 @@ import {
     stateToRequest,
     toggleFormat,
     togglePlatform,
+    visibleBuildDialogPages,
+    type BuildDialogPage,
     type BuildDialogState,
 } from "./buildDialogState";
 import { BuildIconRow } from "./BuildIconRow";
@@ -73,21 +79,15 @@ import { SigningSummary } from "./BuildSigningSection";
 import { PROJECT_ICON_TARGETS } from "@shared/types/projectIcons";
 
 /**
- * The rail, in order. Exported so a test can hold it against
- * `BuildPreflightSection`: a section the type knows about and this list does not
- * is invisible - its findings render nowhere, and a blocking one sends the
- * author to a section that is not there.
- */
-export const SECTIONS: BuildPreflightSection[] = ["targets", "identity", "content", "signing", "output"];
-
-/**
- * Which topic answers for each section of the rail.
+ * Which topic answers for each page of the rail.
  *
- * Three of the five are about the shipped files rather than about the build: what is inside them,
- * how big they are, and who they say they came from. Those have topics of their own, and the two
- * that are genuinely about the run share the build topic.
+ * Three of the five sections are about the shipped files rather than about the build: what is inside
+ * them, how big they are, and who they say they came from. Those have topics of their own, and the
+ * two that are genuinely about the run share the build topic. The variant page decides which edition
+ * every page after it describes, which is a subject of its own.
  */
-const SECTION_HELP_TOPICS: Record<BuildPreflightSection, HelpTopicId> = {
+const PAGE_HELP_TOPICS: Record<BuildDialogPage, HelpTopicId> = {
+    variant: "buildVariant",
     targets: "build",
     identity: "icons",
     content: "assetProtection",
@@ -99,8 +99,12 @@ const SECTION_HELP_TOPICS: Record<BuildPreflightSection, HelpTopicId> = {
 export type BuildDialogInfo = {
     hostPlatform: GameBuildDesktopPlatform;
     hostArch: string;
-    /** Sanitized base name the artifacts are named from. */
-    artifactBaseName: string;
+    /**
+     * The project's own name - what the artifacts are named from, together with the selected
+     * variant's name. Held rather than a pre-sanitized base name, because the base name depends on
+     * a selection this dialog owns; `gameBuildArtifactBaseName` is where the two meet, on both
+     * sides of the bridge.
+     */
     productName: string;
     appId: string;
     /**
@@ -179,7 +183,7 @@ export function buildPluginEntries(
 export function BuildDialogContent({
     info,
     initialState,
-    initialSection,
+    initialPage,
     copyright,
     signing,
     initialContent,
@@ -195,7 +199,7 @@ export function BuildDialogContent({
 }: {
     info: BuildDialogInfo;
     initialState: BuildDialogState;
-    initialSection: BuildPreflightSection;
+    initialPage: BuildDialogPage;
     /**
      * Identity and signing as the project currently records them.
      *
@@ -208,7 +212,7 @@ export function BuildDialogContent({
     signing: SigningConfiguration;
     initialContent: BuildContentSettings;
     initialPlugins: BuildPluginEntry[];
-    onChange: (request: GameBuildRequest, section: BuildPreflightSection) => void;
+    onChange: (request: GameBuildRequest, page: BuildDialogPage) => void;
     /** Writes one Content setting through. Rejects when it did not land, so the switch can go back. */
     onPersistContent: (patch: Partial<BuildContentSettings>) => Promise<void>;
     /** Re-derives the dependency table from current usage and persists it. */
@@ -223,23 +227,41 @@ export function BuildDialogContent({
 }) {
     const { t } = useTranslation();
     const [state, setState] = useState<BuildDialogState>(initialState);
+    /** The variant every page after the first one describes. */
+    const variant = useMemo(
+        () => info.appTags.find(tag => tag.id === state.appTagId) ?? RELEASE_APP_TAG,
+        [info.appTags, state.appTagId],
+    );
     /**
      * The three identity values as the selected variant will ship them - the same fold the pipeline
      * applies, on the same three keys.
      *
-     * Computed once here rather than inside each section, because two of them report it: Identity
-     * says what the package will claim to be, and Output predicts the file names, which are built
-     * from the product name and the version. Folding twice is how those two would come to disagree.
+     * Computed once here rather than inside each page, because three of them report it: Variant
+     * summarizes what this edition ships, Identity says what the package will claim to be, and
+     * Output predicts the file names, which carry the version. Folding more than once is how those
+     * would come to disagree.
      */
     const identity = useMemo(
-        () => resolveAppTagIdentity(
-            info.appTags.find(tag => tag.id === state.appTagId) ?? RELEASE_APP_TAG,
-            info.baseIdentity,
-        ),
-        [info.appTags, info.baseIdentity, state.appTagId],
+        () => resolveAppTagIdentity(variant, info.baseIdentity),
+        [info.baseIdentity, variant],
     );
-    const [section, setSection] = useState<BuildPreflightSection>(initialSection);
+    /**
+     * A project whose only variant is the release one has nothing to pick, so the page that picks is
+     * dropped and the walk is what it was before variants existed.
+     */
+    const pages = useMemo(
+        () => visibleBuildDialogPages(info.appTags.some(tag => !isBuiltinAppTagId(tag.id))),
+        [info.appTags],
+    );
+    // A draft parked on a page that is no longer shown (the last variant was deleted meanwhile)
+    // lands on the first one instead of on a step the rail cannot reach.
+    const [page, setPage] = useState<BuildDialogPage>(
+        () => (pages.includes(initialPage) ? initialPage : pages[0]),
+    );
     const [findings, setFindings] = useState<BuildPreflightFinding[]>([]);
+    // Whether preflight has answered at least once. The variant page reports what is blocking the
+    // build, and "nothing" before the first check is a verdict that withdraws itself 250ms later.
+    const [checked, setChecked] = useState(false);
     const [content, setContent] = useState<BuildContentSettings>(initialContent);
     const [plugins, setPlugins] = useState<BuildPluginEntry[]>(initialPlugins);
     // Which Content write is in flight, so its own switch spins and the other one waits.
@@ -303,8 +325,8 @@ export function BuildDialogContent({
     // Park every change on the service, so closing the dialog (to fix an icon,
     // say) never loses the selection.
     useEffect(() => {
-        onChange(request, section);
-    }, [onChange, request, section]);
+        onChange(request, page);
+    }, [onChange, request, page]);
 
     // Re-check, debounced.
     //
@@ -324,6 +346,7 @@ export function BuildDialogContent({
                 const result = await runPreflight(request);
                 if (!cancelled) {
                     setFindings(result);
+                    setChecked(true);
                 }
             })();
         }, 250);
@@ -364,13 +387,13 @@ export function BuildDialogContent({
         // Never a disabled button: a build that cannot run sends the user to the
         // reason instead of going grey and silent.
         if (blocking.length > 0) {
-            setSection(blocking[0].section);
+            setPage(blocking[0].section);
             return;
         }
         onCommit(request);
     };
 
-    const isLastSection = section === SECTIONS[SECTIONS.length - 1];
+    const isLastPage = page === pages[pages.length - 1];
 
     return (
         // Negative margins undo DialogContainer's content padding so the rail and
@@ -379,40 +402,51 @@ export function BuildDialogContent({
         <div className="-mx-6 -my-4 flex flex-col text-sm">
             <div className="flex h-96 items-stretch">
                 <nav className="w-32 shrink-0 space-y-0.5 border-r border-edge p-2">
-                    {SECTIONS.map(id => (
+                    {pages.map(id => (
                         <button
                             key={id}
                             type="button"
-                            onClick={() => setSection(id)}
+                            onClick={() => setPage(id)}
                             className={cn(
                                 "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs",
                                 "transition-colors duration-150",
                                 "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
-                                section === id ? "bg-primary/15 text-fg" : "text-fg-muted hover:bg-fill",
+                                page === id ? "bg-primary/15 text-fg" : "text-fg-muted hover:bg-fill",
                             )}
                         >
                             <span className="flex-1 truncate">{t(`build.section.${id}`)}</span>
-                            <SeverityDot severity={severityBySection[id]} />
+                            {/* No dot on the variant page: no finding names it, and one there would
+                                have to stand for a section the author is already being sent to. */}
+                            <SeverityDot severity={id === "variant" ? undefined : severityBySection[id]} />
                         </button>
                     ))}
                 </nav>
 
-                <div className="min-w-0 flex-1 overflow-y-auto px-4 py-3" data-help-topic={SECTION_HELP_TOPICS[section]}>
-                    {section === "targets" && (
-                        <TargetsSection info={info} state={state} findings={findings} onChange={update} />
-                    )}
-                    {section === "identity" && (
-                        <IdentitySection
+                <div className="min-w-0 flex-1 overflow-y-auto px-4 py-3" data-help-topic={PAGE_HELP_TOPICS[page]}>
+                    {page === "variant" && (
+                        <VariantPage
                             info={info}
                             state={state}
                             identity={identity}
+                            findings={findings}
+                            checked={checked}
+                            onChange={update}
+                            onOpenSection={setPage}
+                        />
+                    )}
+                    {page === "targets" && (
+                        <TargetsSection info={info} state={state} findings={findings} onChange={update} />
+                    )}
+                    {page === "identity" && (
+                        <IdentitySection
+                            info={info}
+                            identity={identity}
                             copyright={copyright}
                             findings={findings}
-                            onChange={update}
                             onEdit={onEditIdentity}
                         />
                     )}
-                    {section === "content" && (
+                    {page === "content" && (
                         <ContentSection
                             info={info}
                             state={state}
@@ -425,32 +459,39 @@ export function BuildDialogContent({
                             onRescanPlugins={() => { void rescanPlugins(); }}
                         />
                     )}
-                    {section === "signing" && (
+                    {page === "signing" && (
                         <SigningSummary platforms={signablePlatforms} signing={signing}>
                             <Findings findings={findings} section="signing" />
                             <EditInProject label={t("build.signing.editInProject")} onClick={onEditSigning} />
                         </SigningSummary>
                     )}
-                    {section === "output" && (
-                        <OutputSection info={info} state={state} identity={identity} findings={findings} onChange={update} />
+                    {page === "output" && (
+                        <OutputSection
+                            info={info}
+                            state={state}
+                            variant={variant}
+                            identity={identity}
+                            findings={findings}
+                            onChange={update}
+                        />
                     )}
                 </div>
             </div>
 
             <div className="group/help flex items-center justify-end gap-2 border-t border-edge bg-surface-overlay px-6 py-3">
-                {/* Answers for the section on screen. A dialog is the one place `F1` is easy to
-                    miss, and three of these five sections decide something about the shipped
-                    files that cannot be seen from the switch itself. */}
-                <HelpTrigger topic={SECTION_HELP_TOPICS[section]} className="mr-auto" />
+                {/* Answers for the page on screen. A dialog is the one place `F1` is easy to
+                    miss, and most of these pages decide something about the shipped files that
+                    cannot be seen from the switch itself. */}
+                <HelpTrigger topic={PAGE_HELP_TOPICS[page]} className="mr-auto" />
                 <Button variant="secondary" onClick={onCancel}>
                     {t("common.cancel")}
                 </Button>
-                {isLastSection ? (
+                {isLastPage ? (
                     <Button variant="primary" onClick={commit}>
                         {t("build.dialog.start")}
                     </Button>
                 ) : (
-                    <Button variant="primary" onClick={() => setSection(SECTIONS[SECTIONS.indexOf(section) + 1])}>
+                    <Button variant="primary" onClick={() => setPage(pages[pages.indexOf(page) + 1])}>
                         {t("common.next")}
                     </Button>
                 )}
@@ -537,6 +578,153 @@ function Findings({ findings, section }: { findings: BuildPreflightFinding[]; se
                     {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, t))}
                 </p>
             ))}
+        </div>
+    );
+}
+
+/**
+ * Which edition of the project this build is, and what that choice comes to.
+ *
+ * The first page, and shown only where there is something to choose (see
+ * `visibleBuildDialogPages`), because every page after it describes the variant picked here. The
+ * summary under the list answers the two questions an author has before walking the rest: what this
+ * edition ships as, and what is stopping the build.
+ */
+function VariantPage({
+    info,
+    state,
+    identity,
+    findings,
+    checked,
+    onChange,
+    onOpenSection,
+}: {
+    info: BuildDialogInfo;
+    state: BuildDialogState;
+    identity: AppTagIdentity;
+    findings: BuildPreflightFinding[];
+    /** False until preflight has answered once; see `checked` in {@link BuildDialogContent}. */
+    checked: boolean;
+    onChange: (next: BuildDialogState) => void;
+    onOpenSection: (section: BuildPreflightSection) => void;
+}) {
+    const { t } = useTranslation();
+    const selected = state.appTagId || RELEASE_APP_TAG.id;
+
+    return (
+        <div className="grid gap-3">
+            {/* The handle stays on the container it was on when this was a `Select`, so anything
+                that reads the selection off the dialog keeps reading it in one place. */}
+            <div
+                role="radiogroup"
+                aria-label={t("build.identity.variant")}
+                className="grid gap-0.5"
+                data-build-app-tag={selected}
+            >
+                {info.appTags.map(tag => (
+                    <button
+                        key={tag.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={tag.id === selected}
+                        data-build-app-tag-option={tag.id}
+                        onClick={() => onChange({ ...state, appTagId: appTagSelection(tag.id) })}
+                        className={cn(
+                            "flex w-full items-center rounded-md px-2 py-1.5 text-left text-xs",
+                            // `.nl-focus-ring` rather than a Tailwind ring: `styles.css` drops
+                            // `box-shadow` on every native control, so a ring on a `<button>` is
+                            // dead code (design-system §5), and a keyboard walking this list needs
+                            // to be visible.
+                            "nl-focus-ring transition-colors duration-150",
+                            tag.id === selected ? "bg-primary/15 text-fg" : "text-fg-muted hover:bg-fill",
+                        )}
+                    >
+                        <span className="min-w-0 flex-1 truncate">{tag.name}</span>
+                    </button>
+                ))}
+            </div>
+
+            {/* One fact per line, so a further fact about the selected variant is one more line
+                rather than a rearrangement. */}
+            <div className="grid gap-2 border-t border-edge pt-3">
+                {APP_TAG_OVERRIDE_KEYS.map(key => (
+                    <VariantFact
+                        key={key}
+                        label={t(`project.appTags.fields.${key}`)}
+                        value={identity[key].value}
+                        note={identity[key].overridden
+                            ? t("build.identity.fromVariant")
+                            : t("build.variant.inherited")}
+                    />
+                ))}
+            </div>
+
+            {checked && <VariantBlocking findings={findings} onOpenSection={onOpenSection} />}
+        </div>
+    );
+}
+
+/** One resolved value of the selected variant, and where it comes from. */
+function VariantFact({ label, value, note }: { label: string; value: string; note: string }) {
+    const { t } = useTranslation();
+    return (
+        <Field label={label}>
+            <span className="flex min-w-0 items-baseline gap-2">
+                {value.trim()
+                    ? <span className="min-w-0 truncate text-fg">{value}</span>
+                    : <span className="text-2xs text-fg-subtle">{t("build.identity.notSet")}</span>}
+                <span className="shrink-0 text-2xs text-fg-subtle">{note}</span>
+            </span>
+        </Field>
+    );
+}
+
+/**
+ * What is stopping this build, filed under the page that can fix it.
+ *
+ * Grouped by page rather than listed flat because the remedy is the page: a row is the way there,
+ * which is the same journey the Build button makes when it refuses.
+ */
+function VariantBlocking({
+    findings,
+    onOpenSection,
+}: {
+    findings: BuildPreflightFinding[];
+    onOpenSection: (section: BuildPreflightSection) => void;
+}) {
+    const { t } = useTranslation();
+    const blocking = findings.filter(finding => finding.severity === "error");
+
+    return (
+        <div className="grid gap-1 border-t border-edge pt-3">
+            <span className="text-xs text-fg">{t("build.variant.blocking")}</span>
+            {blocking.length === 0 ? (
+                <span className="text-2xs leading-relaxed text-fg-muted">{t("build.variant.blockingNone")}</span>
+            ) : BUILD_DIALOG_SECTIONS.map(section => {
+                const mine = blocking.filter(finding => finding.section === section);
+                if (mine.length === 0) {
+                    return null;
+                }
+                return (
+                    <div key={section} className="grid gap-0.5">
+                        <span className="text-2xs text-fg-subtle">{t(`build.section.${section}`)}</span>
+                        {mine.map(finding => (
+                            <button
+                                key={`${finding.code}-${finding.detail?.platform ?? ""}`}
+                                type="button"
+                                onClick={() => onOpenSection(section)}
+                                className={cn(
+                                    "w-full rounded-md px-1.5 py-1 text-left",
+                                    "whitespace-pre-wrap text-2xs leading-relaxed text-danger",
+                                    "nl-focus-ring transition-colors duration-150 hover:bg-fill",
+                                )}
+                            >
+                                {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, t))}
+                            </button>
+                        ))}
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -671,22 +859,20 @@ function CrossBuildNote({ info, state }: { info: BuildDialogInfo; state: BuildDi
  * The section stays in the rail regardless: preflight files `version-invalid`, `version-missing`,
  * `identifier-missing` and every icon finding here, and a finding with no section to render it in is
  * a blocked build with nothing on screen to say why.
+ *
+ * Which variant these readings are of is picked on the first page. One picker, and it is not here.
  */
 function IdentitySection({
     info,
-    state,
     identity,
     copyright,
     findings,
-    onChange,
     onEdit,
 }: {
     info: BuildDialogInfo;
-    state: BuildDialogState;
     identity: AppTagIdentity;
     copyright: string;
     findings: BuildPreflightFinding[];
-    onChange: (next: BuildDialogState) => void;
     onEdit: () => void;
 }) {
     const { t } = useTranslation();
@@ -700,22 +886,6 @@ function IdentitySection({
     const appId = deriveGameAppId(identity.identifier.value, identity.displayName.value || info.productName);
     return (
         <div className="grid gap-3">
-            {/* First, because it decides what every reading under it says. */}
-            <Field label={t("build.identity.variant")}>
-                {/* The handle is on the wrapper: `Select` takes named props only and spreads
-                    nothing, so a `data-*` written on it is dropped without a compile error. */}
-                <span className="block min-w-0" data-build-app-tag={state.appTagId || RELEASE_APP_TAG.id}>
-                    <Select
-                        size="sm"
-                        fullWidth
-                        className="min-w-0"
-                        ariaLabel={t("build.identity.variant")}
-                        options={info.appTags.map(tag => ({ value: tag.id, label: tag.name }))}
-                        value={state.appTagId || info.appTags[0]?.id || ""}
-                        onChange={value => onChange({ ...state, appTagId: String(value) })}
-                    />
-                </span>
-            </Field>
             <Field label={t("build.identity.version")}>
                 {/* The error colour is what the `error` input variant used to carry. The sentence
                     itself is in the findings below; this is the pointer to which field it is about. */}
@@ -1027,27 +1197,30 @@ function PluginStatus({ plugin }: { plugin: BuildPluginEntry }) {
     );
 }
 
-function OutputSection({
+export function OutputSection({
     info,
     state,
+    variant,
     identity,
     findings,
     onChange,
 }: {
     info: BuildDialogInfo;
     state: BuildDialogState;
+    variant: ProjectAppTag;
     identity: AppTagIdentity;
     findings: BuildPreflightFinding[];
     onChange: (next: BuildDialogState) => void;
 }) {
     const { t } = useTranslation();
     const request = useMemo(() => stateToRequest(state), [state]);
-    // Named from the selected variant, because the pipeline names them from the same two values: a
-    // variant that renames the application or bumps the version writes differently named files, and
-    // a prediction reading the project's would list names no build produces.
-    const artifactBaseName = identity.displayName.overridden
-        ? sanitizeProjectFileName(identity.displayName.value)
-        : info.artifactBaseName;
+    // The same call the pipeline makes, on the same two names, so a predicted name and the file the
+    // build writes cannot differ. A variant that overrides nothing still writes its own files, which
+    // is why the prediction changes when the selection does even though nothing else on this page has.
+    const artifactBaseName = gameBuildArtifactBaseName(
+        info.productName,
+        isBuiltinAppTagId(variant.id) ? null : variant.name,
+    );
     const artifacts = useMemo(() => predictGameBuildArtifacts({
         artifactBaseName,
         // Mirrors the pipeline's own fallback, so the preview matches a build
@@ -1171,7 +1344,6 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
     const info: BuildDialogInfo = {
         hostPlatform,
         hostArch,
-        artifactBaseName: sanitizeProjectFileName(productName),
         productName,
         appId: deriveGameAppId(projectConfig.identifier, productName),
         // Release first, straight off the service, so the list here is the list the App page shows.
@@ -1230,7 +1402,9 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
         : { ...restored, appTagId: "" };
 
     let request: GameBuildRequest = stateToRequest(initialState);
-    let section: BuildPreflightSection = draft?.section ?? "targets";
+    // The dialog clamps this to a page it is actually showing, which is where the list of variants
+    // is in hand.
+    let page: BuildDialogPage = draft?.page ?? "variant";
 
     const dialogId = uiService.dialogs.show({
         title: translate("build.dialog.title"),
@@ -1242,7 +1416,7 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
             <BuildDialogContent
                 info={info}
                 initialState={initialState}
-                initialSection={section}
+                initialPage={page}
                 copyright={typeof projectConfig.metadata?.copyright === "string" ? projectConfig.metadata.copyright : ""}
                 signing={projectService.getSigningConfiguration()}
                 initialContent={{
@@ -1250,10 +1424,10 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                     allowHttp: projectService.getNetworkConfiguration().allowHttp,
                 }}
                 initialPlugins={initialPlugins}
-                onChange={(nextRequest, nextSection) => {
+                onChange={(nextRequest, nextPage) => {
                     request = nextRequest;
-                    section = nextSection;
-                    buildService.setDraft({ request: nextRequest, section: nextSection });
+                    page = nextPage;
+                    buildService.setDraft({ request: nextRequest, page: nextPage });
                 }}
                 onPersistContent={async patch => {
                     // The dialog's only write, and not a best-effort one. A silently dropped

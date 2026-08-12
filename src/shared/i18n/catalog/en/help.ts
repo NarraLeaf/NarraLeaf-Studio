@@ -527,6 +527,18 @@ export const help = {
                 + "- Icons come from the project's icon page. A platform whose icon has not been generated builds "
                 + "with the NarraLeaf icon.",
         },
+        buildVariant: {
+            title: "Which variant a build produces",
+            body:
+                "A build produces one variant of the project. Release carries the project's own "
+                + "application name, identifier and version; another variant carries what it states "
+                + "instead.\n"
+                + "\n"
+                + "- The pages after this one describe the selected variant.\n"
+                + "- File names carry the variant, so two variants built into one folder do not replace "
+                + "each other.\n"
+                + "- This page appears once the project has a variant beside Release.",
+        },
         appTags: {
             title: "Build variants",
             body:

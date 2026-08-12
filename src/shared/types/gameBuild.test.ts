@@ -6,6 +6,7 @@ import {
     deriveAndroidVersionCode,
     deriveGameAppId,
     deriveIosBundleVersion,
+    gameBuildArtifactBaseName,
     gameBuildArtifactNamePattern,
     hostCanBuildTarget,
     isDesktopBuildPlatform,
@@ -180,6 +181,24 @@ describe("predictGameBuildArtifacts", () => {
         });
         // macOS offers arm64 first.
         expect(predicted.name).toBe("MyGame-1.2.0-mac-arm64.dmg");
+    });
+});
+
+describe("gameBuildArtifactBaseName", () => {
+    it("names a release build from the project alone, exactly as it always did", () => {
+        expect(gameBuildArtifactBaseName("My Game", null)).toBe("My-Game");
+    });
+
+    it("names a variant's build from the project and the edition", () => {
+        // The point of the helper: a variant that overrides nothing used to write the release
+        // build's file names, so building both into one folder left one of them.
+        expect(gameBuildArtifactBaseName("My Game", "Demo")).toBe("My-Game-Demo");
+        expect(gameBuildArtifactBaseName("My Game", null))
+            .not.toBe(gameBuildArtifactBaseName("My Game", "Demo"));
+    });
+
+    it("sanitizes both halves", () => {
+        expect(gameBuildArtifactBaseName("My: Game", "All ages / cut")).toBe("My-Game-All-ages-cut");
     });
 });
 
