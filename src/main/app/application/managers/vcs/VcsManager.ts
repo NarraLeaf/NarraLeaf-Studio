@@ -25,6 +25,7 @@ import type {
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
 import { composeVcsIdentity } from "@shared/types/vcs";
@@ -48,6 +49,8 @@ import { diffWorkingTree } from "./diff/workingTreeDiff";
 import { materializeRevisionSnapshot, type RevisionSnapshotResult } from "./revisionSnapshot";
 // Same argument: policy plus `fs`, with the reader imported for types alone.
 import { applyRevisionRestore, planRevisionRestore, readWorkingSetPaths } from "./revisionRestore";
+// Same argument again: `fs` and the working-set predicate, and no backend anywhere in it.
+import { readWorkingSetFile } from "./workingFile";
 
 /**
  * Owns Lore state for open projects.
@@ -1014,6 +1017,18 @@ export class VcsManager extends Manager {
                 request.path,
             );
         });
+    }
+
+    /**
+     * The same file as the working tree holds it now - {@link readBlob}'s other side.
+     *
+     * Outside the per-project serialization, and that is the point rather than an oversight: it
+     * touches no store handle and no session, so queueing it behind an in-flight commit would make
+     * looking at a sprite wait on a write it has nothing to do with. What it reads may therefore be
+     * mid-restore, which is the same thing the author would see by opening the file themselves.
+     */
+    public async readWorkingFile(request: VcsWorkingFileRequest): Promise<Buffer> {
+        return readWorkingSetFile(request.projectPath, request.path);
     }
 
     /** Batched sibling of readBlob; reuses one revision-tree handle. */

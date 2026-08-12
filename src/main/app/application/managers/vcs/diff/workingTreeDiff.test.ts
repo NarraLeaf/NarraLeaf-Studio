@@ -453,6 +453,10 @@ describe("an asset stored under its id", () => {
         expect(result.documents[0].diff.tier).toBe("content");
         expect(result.documents[0].diff.changes.map((change) => change.label.key))
             .toEqual(["documentDiff.content.notInspected"]);
+        // What the probe learned is carried out to whoever draws this, and it is the only place
+        // that answer exists: nothing in the path says `bitmap` and the renderer never sees a
+        // byte of the file until it asks for one.
+        expect(result.documents[0].contentClass).toBe("bitmap");
     });
 
     it("probes nothing whose name already answers, and nothing that is gone", async () => {
