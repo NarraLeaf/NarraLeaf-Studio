@@ -97,6 +97,34 @@ function emitExecutionCancelled(input: {
     });
 }
 
+/**
+ * Report a failed execution.
+ *
+ * Every dispatcher below ends in the same three-branch catch, and this is the branch that has to
+ * carry `surfaceId`: a host turns these into the list an author reads, and one emit site that
+ * forgets the surface is one failure that arrives with nowhere to look. Mirrors
+ * {@link emitExecutionCancelled} so the pair is written the same way.
+ */
+function emitExecutionError(input: {
+    debug: DebugBridge;
+    executionId: string;
+    message: string;
+    blueprintId?: string;
+    eventId?: string;
+    nodeId?: string;
+    surfaceId?: string;
+}): void {
+    input.debug.emit({
+        type: "execution.error",
+        executionId: input.executionId,
+        message: input.message,
+        blueprintId: input.blueprintId,
+        eventId: input.eventId,
+        nodeId: input.nodeId,
+        surfaceId: input.surfaceId,
+    });
+}
+
 function newExecutionId(): string {
     return typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
@@ -456,13 +484,7 @@ export async function dispatchBlueprintUiEvent(options: {
                 return true;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({
-                type: "execution.error",
-                executionId,
-                message,
-                blueprintId,
-                eventId: eventName,
-            });
+            emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
         } finally {
             execution?.finish();
         }
@@ -539,6 +561,7 @@ export async function dispatchBlueprintUiEvent(options: {
                         graphId: graph.id,
                         blueprintId,
                         eventId: eventName,
+                        surfaceId,
                         emit: e => debug.emit(e),
                     },
                 });
@@ -564,24 +587,19 @@ export async function dispatchBlueprintUiEvent(options: {
             return true;
         }
         if (err instanceof BlueprintGraphExecutionError) {
-            debug.emit({
-                type: "execution.error",
+            emitExecutionError({
+                debug,
                 executionId,
                 message: err.message,
                 blueprintId,
                 eventId: eventName,
                 nodeId: err.nodeId,
+                surfaceId,
             });
             return true;
         }
         const message = err instanceof Error ? err.message : String(err);
-        debug.emit({
-            type: "execution.error",
-            executionId,
-            message,
-            blueprintId,
-            eventId: eventName,
-        });
+        emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
     } finally {
         execution?.finish();
     }
@@ -778,6 +796,7 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
                         graphId: graph.id,
                         blueprintId: listener.blueprintId,
                         eventId,
+                        surfaceId,
                         emit: e => debug.emit(e),
                     },
                 });
@@ -796,18 +815,19 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
                 continue;
             }
             if (err instanceof BlueprintGraphExecutionError) {
-                debug.emit({
-                    type: "execution.error",
+                emitExecutionError({
+                    debug,
                     executionId,
                     message: err.message,
                     blueprintId: listener.blueprintId,
                     eventId,
                     nodeId: err.nodeId,
+                    surfaceId,
                 });
                 continue;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({ type: "execution.error", executionId, message, blueprintId: listener.blueprintId, eventId });
+            emitExecutionError({ debug, executionId, message, blueprintId: listener.blueprintId, eventId, surfaceId });
         } finally {
             execution?.finish();
         }
@@ -1050,6 +1070,7 @@ export async function dispatchWidgetsBlueprintEvent(options: {
                             graphId: graph.id,
                             blueprintId,
                             eventId: eventName,
+                            surfaceId,
                             emit: e => debug.emit(e),
                         },
                     });
@@ -1068,18 +1089,19 @@ export async function dispatchWidgetsBlueprintEvent(options: {
                     continue;
                 }
                 if (err instanceof BlueprintGraphExecutionError) {
-                    debug.emit({
-                        type: "execution.error",
+                    emitExecutionError({
+                        debug,
                         executionId,
                         message: err.message,
                         blueprintId,
                         eventId: eventName,
                         nodeId: err.nodeId,
+                        surfaceId,
                     });
                     continue;
                 }
                 const message = err instanceof Error ? err.message : String(err);
-                debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+                emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
             } finally {
                 execution?.finish();
             }
@@ -1162,6 +1184,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
                         graphId: graph.id,
                         blueprintId: target.blueprintId,
                         eventId: eventName,
+                        surfaceId,
                         emit: e => debug.emit(e),
                     },
                 });
@@ -1180,18 +1203,26 @@ export async function dispatchBlueprintBroadcastEvent(options: {
                 continue;
             }
             if (err instanceof BlueprintGraphExecutionError) {
-                debug.emit({
-                    type: "execution.error",
+                emitExecutionError({
+                    debug,
                     executionId,
                     message: err.message,
                     blueprintId: target.blueprintId,
                     eventId: eventName,
                     nodeId: err.nodeId,
+                    surfaceId,
                 });
                 continue;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({ type: "execution.error", executionId, message, blueprintId: target.blueprintId, eventId: eventName });
+            emitExecutionError({
+                debug,
+                executionId,
+                message,
+                blueprintId: target.blueprintId,
+                eventId: eventName,
+                surfaceId,
+            });
         } finally {
             execution?.finish();
         }
@@ -1285,6 +1316,7 @@ export async function invokeBlueprintFnCall(options: {
                   executionId: options.callerExecutionId,
                   graphId: graph.id,
                   blueprintId: decl.blueprintId,
+                  surfaceId,
                   emit: e => debug.emit(e),
               }
             : undefined,
@@ -1389,7 +1421,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                 return;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+            emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
         } finally {
             execution?.finish();
         }
@@ -1464,6 +1496,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                         graphId: graph.id,
                         blueprintId,
                         eventId: eventName,
+                        surfaceId,
                         emit: e => debug.emit(e),
                     },
                 });
@@ -1489,18 +1522,19 @@ export async function dispatchSurfaceBlueprintEvent(options: {
             return;
         }
         if (err instanceof BlueprintGraphExecutionError) {
-            debug.emit({
-                type: "execution.error",
+            emitExecutionError({
+                debug,
                 executionId,
                 message: err.message,
                 blueprintId,
                 eventId: eventName,
                 nodeId: err.nodeId,
+                surfaceId,
             });
             return;
         }
         const message = err instanceof Error ? err.message : String(err);
-        debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+        emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
     } finally {
         execution?.finish();
     }
@@ -1592,7 +1626,8 @@ export async function dispatchGlobalBlueprintEvent(options: {
                 return;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+            // The global blueprint belongs to no surface, so this one reports without a place.
+            emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName });
         } finally {
             execution?.finish();
         }
@@ -1689,8 +1724,8 @@ export async function dispatchGlobalBlueprintEvent(options: {
             return;
         }
         if (err instanceof BlueprintGraphExecutionError) {
-            debug.emit({
-                type: "execution.error",
+            emitExecutionError({
+                debug,
                 executionId,
                 message: err.message,
                 blueprintId,
@@ -1700,7 +1735,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
             return;
         }
         const message = err instanceof Error ? err.message : String(err);
-        debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+        emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName });
     } finally {
         execution?.finish();
     }

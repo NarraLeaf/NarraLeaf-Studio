@@ -22,8 +22,11 @@ export type GameAppLogLevel = "info" | "warning" | "error";
  *    that throws while a row is running, and a near miss for anything asynchronous — the row named
  *    is where playback WAS, which is a real place to start looking and not a claim about the cause.
  *  - `session`: nothing was running that could be blamed (a boot failure, a reload failure). No row.
+ *  - `interface`: a Game UI blueprint threw. It has no story row at all — the author was not writing
+ *    a story when they wrote it — so the place it names is a SURFACE (see
+ *    {@link GameAppRuntimeIssue.surfaceId}) and the row fields stay empty.
  */
-export type GameAppIssueOrigin = "compile" | "playHead" | "session";
+export type GameAppIssueOrigin = "compile" | "playHead" | "session" | "interface";
 
 /**
  * A runtime failure with its authored origin attached. See {@link GameAppHost.reportIssue}.
@@ -39,6 +42,12 @@ export type GameAppRuntimeIssue = {
     origin: GameAppIssueOrigin;
     /** Studio story block this came from; absent when nothing could be attributed. */
     blockId?: string;
+    /**
+     * UI surface this came from — the other kind of place a failure can have, and the only one an
+     * `interface` issue has. Carried as an id for the same reason `blockId` is: the runtime knows
+     * which surface it was running and nothing about what the author named it.
+     */
+    surfaceId?: string;
     /** The underlying stack, when there was one. Kept for the cases a location cannot explain. */
     stack?: string;
 };

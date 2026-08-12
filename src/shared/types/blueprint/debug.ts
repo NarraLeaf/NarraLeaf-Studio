@@ -23,6 +23,15 @@ export type BlueprintDebugEvent =
           eventId?: string;
           graphId?: string;
           nodeId?: string;
+          /**
+           * The UI surface whose graph failed, when the failure happened on one.
+           *
+           * The rest of this event names OUR ids - a blueprint, a graph, a node - none of which an
+           * author can find their way back from. A surface id resolves against the document they
+           * drew, which is what lets a host say "the Quick Menu" rather than "bp:8f2c1a…". Absent on
+           * the global blueprint, which belongs to no surface.
+           */
+          surfaceId?: string;
       };
 
 export type BlueprintDebugEventLogLevel = "error" | "warning" | "log" | "verbose";
