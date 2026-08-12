@@ -128,6 +128,10 @@ const bridge: GameRuntimePreloadBridge = {
     // Says out loud what the no-op above implies, so callers gate on it instead of registering a
     // handler that can never run (runtime plugins surface it as events.available("closeRequested")).
     capabilities: { closeRequested: false },
+    // A page has no channel that arrives before its own scripts, so this build cannot answer until
+    // the pack has been fetched. `null` says exactly that, and the renderer keeps its default
+    // until `readPack` resolves rather than treating unknown as an answer.
+    crashPolicy: null,
     save: {
         write: async (id, savedGame, capture, metadata) =>
             (await getStorage()).writeSave(id, savedGame, capture, metadata),

@@ -143,6 +143,36 @@ describe("game runtime artifact compiler", () => {
         });
     });
 
+    it("puts the project's crash policy on the pack, which is how it reaches the game", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, { app: { crash: { policy: "log" } } });
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47321));
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.crash).toEqual({ policy: "log" });
+    });
+
+    it("falls back to showing the error for a project that never chose", async () => {
+        // Every build made before this setting existed behaved this way, so a project that has
+        // never opened the control must keep shipping what it already shipped.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47321));
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.crash).toEqual({ policy: "details" });
+    });
+
     it("copies plugin runtime entries into the pack", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
@@ -945,6 +975,7 @@ async function createMinimalProject(
     options: {
         assets?: Record<string, unknown>;
         blueprintDocument?: Record<string, unknown>;
+        app?: Record<string, unknown>;
     } = {},
 ): Promise<void> {
     await fs.mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
@@ -954,6 +985,7 @@ async function createMinimalProject(
         JSON.stringify({
             name: "Fixture Project",
             identifier: "fixture.project",
+            ...(options.app ? { app: options.app } : {}),
             metadata: {
                 version: "1.2.3",
                 custom: true,
