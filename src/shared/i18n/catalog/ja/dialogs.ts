@@ -62,6 +62,8 @@ export const dialogs = {
         chapter: "チャプター",
         component: "コンポーネント",
         asset: "アセット",
+        page: "ページ",
+        gameUi: "ゲーム UI",
         image: "画像",
         audio: "音声",
         video: "動画",

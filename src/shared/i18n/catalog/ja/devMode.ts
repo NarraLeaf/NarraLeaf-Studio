@@ -16,6 +16,9 @@ export const devMode = {
         sessionFailure: "セッションを開始できなかった",
         atLine: "{line} 行目 · {scene}",
         inScene: "{scene} 内",
+        // ゲーム UI のブループリントが失敗した。作者はシーンを書いていたのではなくインターフェースを
+        // 描いていたので、指し示す場所はストーリーの行ではなく、その描いていたサーフェス。
+        onSurface: "{surface} 上",
         noLocation: "どの行かをたどれなかった",
         viaPlayHead: "再生位置",
         openInStudio: "Studio で開く",
@@ -128,8 +131,10 @@ export const devMode = {
         droppedBacklog: "落としたバックログの行：{total} 件中 {count} 件。対応する行がもう存在しない",
         unclaimedOnLoad: "宣言された変数のないキー：{count}",
         missingElement: "このセーブは、ストーリーにもう無い要素を立たせようとしている：{id}",
-        sessionRestored: "直前の実行を開始し直した",
-        sessionLost: "実行を開始し直せなかった",
+        unresolvedIds: "コンパイル後の id：{ids}",
+        gameUnchanged: "走っているゲームは変わっていない",
+        gameRestored: "走っているゲームは元に戻した",
+        gameLost: "走っているゲームを元に戻せなかった",
         persistent: "永続",
         noPersistent: "宣言された永続変数がない",
         otherKeys: "その他のキー",

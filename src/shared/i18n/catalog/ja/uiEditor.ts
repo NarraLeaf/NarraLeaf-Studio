@@ -7,6 +7,22 @@ export const uiEditor = {
         pageDescription: "ページはタイトル、設定、セーブ、履歴、ギャラリーのような 1 画面まるごとのもの",
         gameUiDescription: "ゲーム UI はプレイ中に働くもの。ダイアログ、選択肢、HUD、ショートカット、通知など",
     },
+    // ゲーム UI が取れる 5 つの舞台スロット。作成ダイアログ、サーフェス一覧、プロパティパネル、
+    // テンプレートストアで作者は同じ 5 つに出会うので、名前はここで 1 度だけ決める。
+    stageSlot: {
+        onStage: "舞台上",
+        dialog: "ダイアログ",
+        notification: "通知",
+        choice: "選択肢",
+        nvl: "NVL",
+    },
+    stageSlotDescription: {
+        onStage: "ゲームが動いている間はいつでも使える",
+        dialog: "会話と地の文の主役になるインターフェース",
+        notification: "実行中の短いメッセージと通知",
+        choice: "プレイヤーの選択肢のメニューと確認",
+        nvl: "全画面のノベルモードの履歴",
+    },
     panel: {
         interfaceType: "インターフェースの種類",
         createPage: "ページを作成",
@@ -127,6 +143,15 @@ export const uiEditor = {
         aspect: "縦横比",
         safeArea: "セーフエリア",
         off: "オフ",
+        /** レターボックスの帯がすべての余白を飲み込んだとき。端末の側は本当に何も被っていない。 */
+        noOverlap: "重なりなし",
+        /** 余白の読み上げに使う辺の名前。「下 58」のように行の途中に入る。 */
+        inset: {
+            top: "上",
+            right: "右",
+            bottom: "下",
+            left: "左",
+        },
     },
     templateStore: {
         open: "テンプレートから始める",
@@ -161,13 +186,6 @@ export const uiEditor = {
         placement: {
             page: "新しいページ",
             gameUi: "ゲーム UI · {slot}",
-        },
-        slot: {
-            onStage: "舞台上",
-            dialog: "ダイアログ",
-            notification: "通知",
-            choice: "選択肢",
-            nvl: "NVL",
         },
         error: {
             load: "テンプレートストアを読み込めなかった",
