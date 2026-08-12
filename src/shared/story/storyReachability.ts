@@ -8,6 +8,7 @@ import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/gr
 import {
     listSceneBlocksInDocumentOrder,
     listSceneIdsInDocumentOrder,
+    type StoryBlockId,
     type StoryDocument,
     type StorySceneId,
 } from "@shared/types/story";
@@ -69,9 +70,29 @@ export type UndecidableStoryEntry = {
     missing: ("storyId" | "sceneId")[];
 };
 
+/**
+ * One `Start Story` node that named a scene, kept so a caller can say *which* node put a scene in.
+ *
+ * Beside {@link StoryEntryPointScan.byStory} rather than folded into it, because the two questions
+ * have different shapes: deciding what to keep wants a set, and explaining what was kept wants every
+ * node that named it - two nodes can name the same scene, and a report that showed one of them would
+ * be pointing at an arbitrary half of the reason.
+ */
+export type StoryEntrySite = {
+    storyId: string;
+    sceneId: StorySceneId;
+    blueprintId: string;
+    blueprintName?: string;
+    graphKind: "event" | "function" | "macro";
+    graphId: string;
+    nodeId: string;
+};
+
 export type StoryEntryPointScan = {
     /** Scene ids play can begin at, per story id. Only scenes the story actually has. */
     byStory: Map<string, Set<StorySceneId>>;
+    /** Every node behind an entry in {@link byStory}, in scan order. */
+    sites: StoryEntrySite[];
     /** Empty when every entry could be read. Non-empty means no reachability claim can be made. */
     undecidable: UndecidableStoryEntry[];
 };
@@ -119,6 +140,7 @@ export function scanStoryEntryPoints(
     storyHasScene: (storyId: string, sceneId: string) => boolean,
 ): StoryEntryPointScan {
     const byStory = new Map<string, Set<StorySceneId>>();
+    const sites: StoryEntrySite[] = [];
     const undecidable: UndecidableStoryEntry[] = [];
 
     for (const carrier of carriers) {
@@ -149,55 +171,92 @@ export function scanStoryEntryPoints(
             } else {
                 byStory.set(storyId, new Set([sceneId]));
             }
+            sites.push({
+                storyId,
+                sceneId,
+                blueprintId: carrier.blueprintId,
+                ...(carrier.blueprintName === undefined ? {} : { blueprintName: carrier.blueprintName }),
+                graphKind: carrier.graphKind,
+                graphId: carrier.graphId,
+                nodeId: node.id,
+            });
         }
     }
 
-    return { byStory, undecidable };
+    return { byStory, sites, undecidable };
 }
 
+/** Why one scene is in the answer. The first reason the walk found, which is the shortest one. */
+export type StorySceneReach =
+    /** The scene the author marked as the story's entry. */
+    | { kind: "entryScene" }
+    /** The first scene in document order - what the game boots when nothing is marked. */
+    | { kind: "documentOrder" }
+    /** Named from outside the document. Which node named it is the caller's to say; see {@link StoryEntrySite}. */
+    | { kind: "external" }
+    /** A jump the runtime can take, from a scene that is itself in the answer. */
+    | { kind: "jump"; fromSceneId: StorySceneId; blockId: StoryBlockId };
+
 /**
- * Every scene the story can be in, from the scenes it can be entered at outwards.
+ * Every scene the story can be in, and why each one is in.
+ *
+ * One walk answers both, deliberately. What a build keeps and what a report says it kept have to be
+ * the same set for the same stated reasons; computing the explanation separately would let a package
+ * drop a scene the console had just finished justifying.
+ *
+ * The reason recorded is the first one the walk finds, which is the shortest route in - a scene
+ * reached from the entry in two hops and also named by a `Start Story` node reports the hop it was
+ * discovered by. Every reason it records is a live route, so any of them answers "why is this here".
  *
  * Conservative in exactly one direction, because the two mistakes are not comparable: keeping an
  * unreachable scene costs bytes, while dropping a reachable one ships a game that stops dead when a
  * player walks into the gap. So this follows only edges it can read, and a caller that cannot read
  * every way into a scene must not ask at all.
  */
-export function reachableSceneIds(
+export function traceReachableScenes(
     document: StoryDocument,
     options: { entrySceneIds?: Iterable<StorySceneId>; fallback: StoryEntryFallback },
-): Set<StorySceneId> {
-    const reachable = new Set<StorySceneId>();
+): Map<StorySceneId, StorySceneReach> {
+    const reached = new Map<StorySceneId, StorySceneReach>();
     const queue: StorySceneId[] = [];
     // Seeds are filtered like edges are: a caller that names a scene of another story - or one this
     // variant has already cut - must not put an id in the result that the document cannot back.
-    const enter = (sceneId: StorySceneId | undefined): void => {
-        if (!sceneId || reachable.has(sceneId) || !document.scenes?.[sceneId]) {
+    const enter = (sceneId: StorySceneId | undefined, reach: StorySceneReach): void => {
+        if (!sceneId || reached.has(sceneId) || !document.scenes?.[sceneId]) {
             return;
         }
-        reachable.add(sceneId);
+        reached.set(sceneId, reach);
         queue.push(sceneId);
     };
 
     if (document.entrySceneId && document.scenes?.[document.entrySceneId]) {
-        enter(document.entrySceneId);
+        enter(document.entrySceneId, { kind: "entryScene" });
     } else if (options.fallback === "documentOrder") {
-        enter(listSceneIdsInDocumentOrder(document)[0]);
+        enter(listSceneIdsInDocumentOrder(document)[0], { kind: "documentOrder" });
     }
     for (const sceneId of options.entrySceneIds ?? []) {
-        enter(sceneId);
+        enter(sceneId, { kind: "external" });
     }
 
     for (let cursor = 0; cursor < queue.length; cursor += 1) {
-        const scene = document.scenes[queue[cursor]];
+        const fromSceneId = queue[cursor];
+        const scene = document.scenes[fromSceneId];
         const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
         for (const block of blocks) {
             if (block.kind === "jump") {
-                enter(block.payload.targetSceneId);
+                enter(block.payload.targetSceneId, { kind: "jump", fromSceneId, blockId: block.id });
             }
         }
     }
-    return reachable;
+    return reached;
+}
+
+/** {@link traceReachableScenes} without the reasons, for callers that only decide keep or drop. */
+export function reachableSceneIds(
+    document: StoryDocument,
+    options: { entrySceneIds?: Iterable<StorySceneId>; fallback: StoryEntryFallback },
+): Set<StorySceneId> {
+    return new Set(traceReachableScenes(document, options).keys());
 }
 
 /** Every graph a loaded blueprint carries, as carriers. */
