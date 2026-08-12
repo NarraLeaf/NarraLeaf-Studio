@@ -15,7 +15,7 @@ export const menu = {
         hideOthers: "ほかを隠す",
         unhide: "すべてを表示",
         quit: "{name} を終了",
-        holdToQuit: "終了するには ⌘Q を押し続ける",
+        pressAgainToQuit: "終了するにはもう一度 ⌘Q を押す",
     },
     /**
      * トレイ（通知領域）のメニュー。ウィンドウを 1 つも開かないまま Studio が動き続けるので、

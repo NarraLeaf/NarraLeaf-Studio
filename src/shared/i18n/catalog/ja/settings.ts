@@ -74,7 +74,7 @@ export const settings = {
         },
         confirmQuit: {
             label: "⌘Q で終了するときに確認する",
-            description: "⌘Q を押し続けると終了する。短く押しただけでは終了しない",
+            description: "⌘Q を続けて 2 回押すと終了する。1 回だけでは終了しない",
             unsupportedPlatform: "この項目はこのオペレーティングシステムでは使用できない",
         },
         themeMode: {

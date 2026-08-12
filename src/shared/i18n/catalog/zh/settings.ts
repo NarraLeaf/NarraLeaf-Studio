@@ -68,7 +68,7 @@ export const settings = {
         },
         confirmQuit: {
             label: "在使用 ⌘Q 退出时二次确认",
-            description: "按住 ⌘Q 才会退出，短按不退出",
+            description: "连按两次 ⌘Q 才会退出，按一次不退出",
             unsupportedPlatform: "此选项不适用于此操作系统",
         },
         themeMode: {

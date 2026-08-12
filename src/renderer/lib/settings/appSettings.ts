@@ -187,7 +187,7 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: DEVELOPER_MODE_DEFAULT,
     },
     {
-        // Applied by the main process (`HoldToQuitManager`), which is the only place the keystroke
+        // Applied by the main process (`ConfirmQuitManager`), which is the only place the keystroke
         // can be seen at all: ⌘Q reaches Studio as the App menu's key equivalent, and swallowing it
         // has to happen before the menu acts on it.
         //
@@ -200,7 +200,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Boolean,
         label: "Confirm before quitting with ⌘Q",
         labelKey: "settings.items.confirmQuit.label",
-        description: "⌘Q quits once it has been held down. A short press does nothing.",
+        description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
         descriptionKey: "settings.items.confirmQuit.description",
         defaultValue: CONFIRM_QUIT_DEFAULT,
         availability: async () => {

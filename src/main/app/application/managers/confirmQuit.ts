@@ -2,29 +2,30 @@ import { BrowserWindow, screen } from "electron";
 import { CONFIRM_QUIT_DEFAULT, CONFIRM_QUIT_KEY } from "@shared/constants/quit";
 import type { BaseApp } from "../baseApp";
 import { getMainTranslator } from "../i18n";
-import { decideHoldAction } from "./holdToQuitDecision";
+import { decideQuitAction } from "./confirmQuitDecision";
 
 /**
- * How long ⌘Q must stay down before the quit goes through.
+ * How long the second ⌘Q has to arrive in.
  *
- * Long enough that no keystroke meant for something else lasts it out, short enough that someone
- * who meant to quit does not wonder whether the key registered. The overlay's bar is driven by the
- * same number, so it always finishes exactly as the quit starts.
+ * Long enough to be a deliberate second press rather than a race, short enough that the answer is
+ * never in doubt: a ⌘Q typed minutes after a forgotten one must be a first press again, or the
+ * confirmation has quietly stopped confirming anything. The overlay's bar drains over the same
+ * number, so what is left of the window is on screen rather than guessed at.
  */
-const HOLD_DURATION_MS = 1000;
+const CONFIRM_WINDOW_MS = 2000;
 
 const OVERLAY_WIDTH = 320;
 const OVERLAY_HEIGHT = 104;
 
 /**
- * The overlay's document, loaded once from a `data:` URL and then re-driven per hold.
+ * The overlay's document, loaded once from a `data:` URL and then re-driven per press.
  *
  * Deliberately not a Studio window: it has no preload, no IPC, no permissions entry and no theme
  * of its own. It is drawn over whatever the author was looking at - another app's window included -
  * so it takes the fixed dark treatment every operating-system HUD uses rather than following the
  * interface theme, which would make it invisible against half the things it can appear over.
  *
- * Both strings and the bar are set at show time (see `runOverlayScript`), so a language changed
+ * Both the string and the bar are set at show time (see `overlayScript`), so a language changed
  * mid-session needs no reload.
  */
 const OVERLAY_HTML = `<!doctype html>
@@ -72,7 +73,7 @@ const OVERLAY_HTML = `<!doctype html>
         overflow: hidden;
     }
     #bar {
-        width: 0%;
+        width: 100%;
         height: 100%;
         border-radius: inherit;
         background: #ffffff;
@@ -88,52 +89,52 @@ const OVERLAY_HTML = `<!doctype html>
 </html>`;
 
 /**
- * Turns ⌘Q from a keystroke into a gesture that has to be held, on macOS, when the author asked
- * for it (`app.confirmQuit`).
+ * Makes ⌘Q take two presses before Studio goes away, on macOS, when the author asked for it
+ * (`app.confirmQuit`).
  *
  * ## Why the main process, and why this listener
  *
  * ⌘Q is not a shortcut Studio registers: it is the App menu's key equivalent (`role: "quit"` in
  * {@link menuManager.ts}), which macOS acts on before any window sees it. `before-input-event` is
  * the one hook that runs earlier still - Electron documents it as preventing "the page keydown/keyup
- * events *and the menu shortcuts*" - so swallowing the keystroke there is what makes the hold
+ * events *and the menu shortcuts*" - so swallowing the keystroke there is what makes a first press
  * possible at all. Nothing about the menu item changes; with the preference off, this class does
  * not call `preventDefault` and ⌘Q quits on the keystroke exactly as it always did.
  *
- * ## What ends a hold
+ * ## Why two presses rather than a held key
  *
- * Releasing ⌘ ends it, and so does pressing anything else, or Studio ceasing to be the active app.
- * Releasing only Q while ⌘ stays down does *not*, and cannot: macOS does not deliver key-up events
- * for ordinary keys while Command is held, which is a property of the platform's event stream
- * rather than of Electron. The `keyUp` branch below still handles Q for the layouts and platforms
- * where it does arrive. Chrome, whose behaviour this mirrors, has the same limit for the same
- * reason.
+ * A held ⌘Q would have to be measured against the release that ends it, and macOS does not deliver
+ * key-up for ordinary keys while Command is down. Counting presses needs no release at all, so the
+ * gesture is decided entirely by events the platform is certain to report.
  *
- * The listener is attached to every `webContents` rather than to a window list, because a hold has
- * to survive whichever surface happens to be focused - a workspace, the launcher, a detached
- * editor, DevTools - and windows come and go beneath it.
+ * ## What forgets the first press
+ *
+ * The window expiring, anything else being typed, and Studio ceasing to be the active app. The
+ * listener is attached to every `webContents` rather than to a window list, because the two presses
+ * do not have to land on the same surface - the first may be typed in a workspace and the second
+ * after clicking into the launcher - and windows come and go beneath it.
  *
  * ## Where it does not apply
  *
  * The keystroke has to reach a Studio surface for any of this to happen. ⌘Q pressed while Studio is
  * active with no window open at all - it stays resident in the Dock, see `handleLastWindowClosed` -
  * goes to the App menu and quits at once, and so does Quit from the Dock's own menu. Both are
- * deliberate: there is no author-facing surface to lose in either case, and no key-up will ever be
- * reported to end a hold that could be started.
+ * deliberate: there is no author-facing surface to lose in either case.
  */
-export class HoldToQuitManager {
+export class ConfirmQuitManager {
     private overlay: BrowserWindow | null = null;
     private overlayReady: Promise<BrowserWindow> | null = null;
     private timer: NodeJS.Timeout | null = null;
     /**
-     * Which hold the overlay work in flight belongs to.
+     * Which pending press the overlay work in flight belongs to.
      *
-     * Building the overlay is asynchronous and a hold is a keystroke long, so the load can outlive
-     * the hold that asked for it. Everything that resumes after an `await` compares this first;
-     * without it, a tap of ⌘Q leaves an overlay on screen with nothing behind it.
+     * Building the overlay is asynchronous and the window it announces is two seconds long, so a
+     * load can outlive the press that asked for it. Everything that resumes after an `await`
+     * compares this first; without it, a ⌘Q the author thought better of leaves an overlay on
+     * screen with nothing behind it.
      */
-    private holdToken = 0;
-    private holding = false;
+    private pressToken = 0;
+    private pending = false;
 
     constructor(private readonly app: BaseApp) { }
 
@@ -151,12 +152,12 @@ export class HoldToQuitManager {
             });
         });
 
-        // Cmd+Tab, a click into another app, the screen locking: the keys are still down as far as
-        // Studio can tell, and nothing more will ever arrive to say otherwise. Ending the hold is
-        // the only answer that cannot quit an app the author has walked away from.
+        // Cmd+Tab, a click into another app, the screen locking: whatever the author is doing now,
+        // it is not finishing a gesture they started in Studio. Forgetting the first press is the
+        // only answer that cannot quit an app they have walked away from.
         //
         // The overlay is excluded because it is a window of ours: were it ever to take key status
-        // it would blur the window the author is actually in, and this would cancel every hold.
+        // it would blur the window the author is actually in, and this would clear every press.
         this.app.electronApp.on("browser-window-blur", (_event, window) => {
             if (window !== this.overlay) {
                 this.cancel();
@@ -165,28 +166,32 @@ export class HoldToQuitManager {
     }
 
     /**
-     * Whether ⌘Q should be held rather than acted on. Read per keystroke: the preference is a
-     * switch in another window, and the answer has to be the current one, not the launch one.
+     * Whether ⌘Q needs its second press. Read per keystroke: the preference is a switch in another
+     * window, and the answer has to be the current one, not the launch one.
      */
-    private isArmed(): boolean {
+    private isEnabled(): boolean {
         const stored = this.app.globalState.get(CONFIRM_QUIT_KEY);
         return typeof stored === "boolean" ? stored : CONFIRM_QUIT_DEFAULT;
     }
 
     private handleInput(event: Electron.Event, input: Electron.Input): void {
-        // `isArmed()` is only consulted for the chord itself, so a hold already running is still
-        // cancellable by the ordinary rules if the preference is switched off mid-keystroke.
-        const decision = decideHoldAction(input, { armed: this.isArmed(), holding: this.holding });
+        // `isEnabled()` is only consulted for the chord itself, so a press already waiting is still
+        // forgotten by the ordinary rules if the preference is switched off in between.
+        const decision = decideQuitAction(input, { enabled: this.isEnabled(), pending: this.pending });
         switch (decision) {
-            case "begin":
+            case "prime":
                 // preventDefault is what keeps the App menu from acting on the keystroke; without
-                // it the quit happens instantly and the hold is decoration.
+                // it the quit happens on the first press and the second is decoration.
                 event.preventDefault();
-                this.begin();
+                this.prime();
+                return;
+            case "quit":
+                event.preventDefault();
+                this.clearPending();
+                this.app.logger.info("[Quit] Second ⌘Q received; quitting.");
+                this.app.quit();
                 return;
             case "swallow":
-                // Auto-repeat. Letting one through would quit halfway into a hold the author could
-                // still have abandoned.
                 event.preventDefault();
                 return;
             case "cancel":
@@ -197,40 +202,41 @@ export class HoldToQuitManager {
         }
     }
 
-    private begin(): void {
-        this.holding = true;
-        const token = ++this.holdToken;
+    private prime(): void {
+        this.pending = true;
+        const token = ++this.pressToken;
 
         this.timer = setTimeout(() => {
             this.timer = null;
-            this.holding = false;
-            // Retires the token as `cancel` does: a slow first load still in flight must not put an
-            // overlay back on screen behind the quit that has just started.
-            this.holdToken++;
-            this.hideOverlay();
-            this.app.logger.info("[Quit] Hold completed; quitting.");
-            this.app.quit();
-        }, HOLD_DURATION_MS);
+            this.app.logger.info("[Quit] No second ⌘Q; the quit was not confirmed.");
+            this.cancel();
+        }, CONFIRM_WINDOW_MS);
 
         void this.showOverlay(token).catch((error) => {
-            // A hold with no overlay is a quit that gives no warning, which is worse than one that
-            // does not happen: there is nothing on screen to explain why the key did nothing.
-            this.app.logger.warn("[Quit] Failed to show the hold overlay; cancelling the hold.", error);
+            // A pending press with no overlay is a ⌘Q that appears to have done nothing, with a
+            // live quit hiding behind it. Better to forget it and let the next press be a first
+            // one than to leave a ⌘Q standing that the author has no way of knowing about.
+            this.app.logger.warn("[Quit] Failed to show the confirmation overlay; forgetting the press.", error);
             this.cancel();
         });
     }
 
-    private cancel(): void {
-        if (!this.holding) {
-            return;
-        }
-        this.holding = false;
-        this.holdToken++;
+    /** Drops the pending press and everything that belongs to it, without deciding anything. */
+    private clearPending(): void {
+        this.pending = false;
+        this.pressToken++;
         if (this.timer) {
             clearTimeout(this.timer);
             this.timer = null;
         }
         this.hideOverlay();
+    }
+
+    private cancel(): void {
+        if (!this.pending) {
+            return;
+        }
+        this.clearPending();
     }
 
     private hideOverlay(): void {
@@ -241,38 +247,39 @@ export class HoldToQuitManager {
 
     private async showOverlay(token: number): Promise<void> {
         const overlay = await this.ensureOverlay();
-        if (token !== this.holdToken) {
+        if (token !== this.pressToken) {
             return;
         }
 
         overlay.setBounds(this.overlayBounds());
         const { t } = getMainTranslator(this.app);
-        await overlay.webContents.executeJavaScript(this.overlayScript(t("menu.app.holdToQuit")));
-        if (token !== this.holdToken) {
+        await overlay.webContents.executeJavaScript(this.overlayScript(t("menu.app.pressAgainToQuit")));
+        if (token !== this.pressToken) {
             return;
         }
 
         // showInactive, not show: the window the author is typing in has to keep key status, or the
-        // key-up that ends the hold is delivered somewhere this class cannot see it.
+        // second press is delivered somewhere this class cannot see it.
         overlay.showInactive();
     }
 
     /**
-     * Sets the overlay's text and restarts its bar from zero.
+     * Sets the overlay's text and drains its bar from full to empty over the confirmation window,
+     * so what is running out is the time left rather than time spent.
      *
      * Restarting a CSS transition needs the intermediate value to be laid out before the target is
      * set, which is what reading `offsetWidth` in the middle forces; without it the browser
-     * collapses both assignments into one and the bar simply appears full.
+     * collapses both assignments into one and the bar simply appears empty.
      */
     private overlayScript(label: string): string {
         return `(() => {
             document.getElementById("label").textContent = ${JSON.stringify(label)};
             const bar = document.getElementById("bar");
             bar.style.transition = "none";
-            bar.style.width = "0%";
-            void bar.offsetWidth;
-            bar.style.transition = "width ${HOLD_DURATION_MS}ms linear";
             bar.style.width = "100%";
+            void bar.offsetWidth;
+            bar.style.transition = "width ${CONFIRM_WINDOW_MS}ms linear";
+            bar.style.width = "0%";
         })()`;
     }
 
@@ -295,13 +302,13 @@ export class HoldToQuitManager {
     }
 
     /**
-     * The overlay window, built on the first hold and kept for the rest of the session.
+     * The overlay window, built on the first press and kept for the rest of the session.
      *
-     * Built late because most sessions never hold ⌘Q at all, and kept because building it is the
-     * one slow part of the gesture: the first hold pays for a window and a document load inside its
-     * first second, every later one is instant.
+     * Built late because most sessions never press ⌘Q at all, and kept because building it is the
+     * one slow part of the gesture: the first press pays for a window and a document load out of
+     * its two-second window, every later one is instant.
      *
-     * It is a real `BrowserWindow`, so from the first hold onwards Electron's `window-all-closed`
+     * It is a real `BrowserWindow`, so from the first press onwards Electron's `window-all-closed`
      * stops firing. Nothing turns on that event: residency is driven by `WindowManager`'s own
      * "window-closed", whose registry this window is not in, and the listener that would otherwise
      * matter (the one in `baseApp` that stops Electron quitting on the last close) only does
@@ -328,8 +335,8 @@ export class HoldToQuitManager {
             maximizable: false,
             fullscreenable: false,
             skipTaskbar: true,
-            // Non-activating, so the author's window keeps key status while this is up. Everything
-            // this class knows about the keyboard arrives through that window.
+            // Non-activating, so the author's window keeps key status while this is up. The second
+            // press arrives through that window, not through this one.
             focusable: false,
             acceptFirstMouse: false,
             // NSPanel rather than NSWindow: it floats without joining the window cycle, which is
@@ -359,7 +366,7 @@ export class HoldToQuitManager {
                 return overlay;
             })
             .catch((error) => {
-                // Leave nothing half-built behind: the next hold should get a fresh attempt rather
+                // Leave nothing half-built behind: the next press should get a fresh attempt rather
                 // than a promise that has already failed.
                 this.overlayReady = null;
                 if (!overlay.isDestroyed()) {
