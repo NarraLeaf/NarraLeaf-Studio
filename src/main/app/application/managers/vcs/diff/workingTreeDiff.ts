@@ -277,6 +277,10 @@ export async function diffWorkingTree(
         }
         const spec = specForDocumentPath(file.path);
         const documentKind = spec ? { documentKind: spec.kind } : {};
+        // Settled once for every branch below, off `classifyFiles` - which probed the header of
+        // every path whose name said nothing, so a content-store asset is placed here rather than
+        // being reported as `unknown` to whatever draws it.
+        const contentClass = classOf(file.path);
 
         const movedFrom = pairing.moves.get(file.path);
         if (movedFrom !== undefined) {
@@ -284,6 +288,7 @@ export async function diffWorkingTree(
                 path: file.path,
                 kind: "moved",
                 ...documentKind,
+                contentClass,
                 diff: {
                     changes: [{ path: [], kind: "moved", label: { key: LABEL_MOVED, params: { from: movedFrom } } }],
                     complete: true,
@@ -296,7 +301,13 @@ export async function diffWorkingTree(
 
         if (planned.has(file.path)) {
             if (readFailure) {
-                documents.push({ path: file.path, kind: file.kind, ...documentKind, diff: unreadDocumentDiff(file.kind) });
+                documents.push({
+                    path: file.path,
+                    kind: file.kind,
+                    ...documentKind,
+                    contentClass,
+                    diff: unreadDocumentDiff(file.kind),
+                });
                 continue;
             }
             const base = before ? pairing.recorded.get(file.was) ?? recordedBytes.get(file.was) ?? null : null;
@@ -308,8 +319,9 @@ export async function diffWorkingTree(
                 path: file.path,
                 kind: file.kind,
                 ...documentKind,
+                contentClass,
                 diff: diffDocumentBytes(
-                    { path: file.path, base, head: bytes, spec, contentClass: classOf(file.path) },
+                    { path: file.path, base, head: bytes, spec, contentClass },
                     { limit, onDegrade: options.onDegrade },
                 ),
             });
@@ -320,8 +332,9 @@ export async function diffWorkingTree(
             path: file.path,
             kind: file.kind,
             ...documentKind,
+            contentClass,
             diff: diffDocumentContent(
-                { path: file.path, base: sideOf(before), head: sideOf(after), contentClass: classOf(file.path) },
+                { path: file.path, base: sideOf(before), head: sideOf(after), contentClass },
                 { limit, onDegrade: options.onDegrade },
             ),
         });
@@ -532,6 +545,8 @@ function unreadEntry(path: string, kind: DocumentChangeKind): DocumentDiffEntry 
         path,
         kind,
         ...(spec ? { documentKind: spec.kind } : {}),
+        // The name only: this is the path a comparison takes before anything has been classified.
+        contentClass: contentClassOf(path),
         diff: unreadDocumentDiff(kind),
     };
 }

@@ -77,6 +77,8 @@ import type {
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingFileRead,
+    VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "./vcs";
 
@@ -284,6 +286,7 @@ export enum IPCEventType {
     vcsGetStatus = "vcs.getStatus",
     vcsGetHistory = "vcs.getHistory",
     vcsReadBlob = "vcs.readBlob",
+    vcsReadWorkingFile = "vcs.readWorkingFile",
     vcsReadRevisionDocuments = "vcs.readRevisionDocuments",
     vcsGetChangedPaths = "vcs.getChangedPaths",
     vcsDiffRevisions = "vcs.diffRevisions",
@@ -859,6 +862,19 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: VcsBlobRequest,
         response: { contentBase64: string };
+    };
+    /**
+     * The same file as the working tree holds it now - the other side of a comparison.
+     *
+     * Narrow on purpose: one versioned path, under a size ceiling, and nothing else. See
+     * `managers/vcs/workingFile.ts` for what it refuses and why each refusal is a refusal
+     * rather than an empty answer.
+     */
+    [IPCEventType.vcsReadWorkingFile]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: VcsWorkingFileRequest,
+        response: VcsWorkingFileRead;
     };
     /**
      * Every document at one revision, in one round trip.
