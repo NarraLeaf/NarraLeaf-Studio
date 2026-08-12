@@ -1191,6 +1191,21 @@ export function DevModeContent(props: DevModeContentProps) {
             listener();
             return true;
         }),
+        // Forwarded, never decided here. The main process looks the plugin up in the install
+        // registry and checks that plugin's own declared patterns - the same manifest the packaged
+        // game reads out of its pack - so a preview opens exactly what the shipped game opens.
+        navigation: {
+            openExternal: async (ownerPluginId, request) => {
+                const result = await getInterface().blueprintExternalLink
+                    .openForPlugin(ownerPluginId, request);
+                if (!result.success) {
+                    // The channel failed, which is Studio malfunctioning rather than the address
+                    // being refused. Reported as a failure so a plugin tells the two apart.
+                    return { outcome: "failed", error: result.error ?? "Open Link failed" };
+                }
+                return result.data.result;
+            },
+        },
         log: (level, message) => {
             if (level === "error") {
                 console.error(`[DevMode] ${message}`);

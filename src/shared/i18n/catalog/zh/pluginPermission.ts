@@ -56,6 +56,8 @@ export const pluginPermission = {
             sidecarNote: "此插件会在你构建的游戏中附带并运行一个原生程序",
             buildDependency: "构建时下载",
             runtime: "游戏内能力",
+            externalLink: "从游戏跳转出去",
+            externalLinkNote: "此插件可以把玩家带到这些地址，它们会在游戏之外打开",
             studio: "Studio 权限",
         },
         sidecarPlatforms: "运行平台：{platforms}",

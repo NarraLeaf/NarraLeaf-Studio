@@ -17,6 +17,10 @@
 
 import type { ReactElement } from "react";
 import type {
+    BlueprintOpenExternalRequest,
+    BlueprintOpenExternalResult,
+} from "@shared/types/blueprint/externalLink";
+import type {
     RuntimePluginEventMap,
     RuntimePluginSaveMetadata,
     RuntimePluginStateChange,
@@ -106,6 +110,24 @@ export type RuntimePluginSidecarBackend = {
 };
 
 /**
+ * Opening an address outside the game on one plugin's behalf.
+ *
+ * `ownerPluginId` travels because the decision belongs to the process at the far end of this
+ * backend, and that process decides against *that plugin's* declared patterns. The loader is what
+ * fills the id in - a plugin never names itself - so the id is as trustworthy as the renderer is,
+ * which is the same posture the sidecar backend documents: the boundary that holds is that the
+ * patterns are read from the pack the player installed, so the worst a plugin can do with another
+ * plugin's id is open an address the game already shipped a declaration for and the author already
+ * approved. Nothing the renderer says widens that set.
+ */
+export type RuntimePluginNavigationBackend = {
+    openExternal(
+        ownerPluginId: string,
+        request: BlueprintOpenExternalRequest,
+    ): Promise<BlueprintOpenExternalResult>;
+};
+
+/**
  * What this environment can back. Everything is optional: the web export has no
  * sidecar, Dev Mode may not wire saves, and a bare test harness supplies none of
  * it.
@@ -119,4 +141,5 @@ export type RuntimePluginHost = {
     locale?: RuntimePluginLocaleBackend;
     assets?: RuntimePluginAssetsBackend;
     sidecar?: RuntimePluginSidecarBackend;
+    navigation?: RuntimePluginNavigationBackend;
 };
