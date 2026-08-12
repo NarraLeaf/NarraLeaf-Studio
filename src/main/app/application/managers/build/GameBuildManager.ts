@@ -666,8 +666,15 @@ export class GameBuildManager {
                 });
             }
         }
+        // Every enabled installed plugin, not the runtime selection above. The two differ: the
+        // selection is the plugins that ship *inside* the game, so a plugin with no runtime entry -
+        // one that only does something at build time - is not in it. Its fields still appear on the
+        // dialog's page, which folds the installed list, and a field the dialog marks required has
+        // to be a field the checks insist on, or the marker is a promise nothing keeps.
         findings.push(...await this.pluginConfigPreflight(
-            pluginSelection.selected.map(source => source.manifest),
+            (await this.app.pluginManager.listPlugins())
+                .filter(plugin => plugin.enabled)
+                .map(plugin => plugin.manifest),
             [...new Set(targets.map(target => target.platform))],
             variant,
             appTagDocument.pluginConfig ?? {},
@@ -1262,8 +1269,7 @@ export class GameBuildManager {
         projectPluginConfig: AppTagPluginConfig,
     ): Promise<BuildPreflightFinding[]> {
         const fields = collectPluginBuildConfigFields(
-            // The selection is drawn from enabled plugins alone (see `listRuntimePluginPackSources`),
-            // and `enabled` is what the fold reads.
+            // The caller has already dropped the disabled ones, which is what the fold reads.
             manifests.map(manifest => ({ pluginId: manifest.id, enabled: true, manifest })),
             platforms,
         );
