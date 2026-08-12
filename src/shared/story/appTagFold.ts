@@ -250,6 +250,82 @@ export function collectNestedCutPoints(document: StoryDocument): NestedCutPoint[
 }
 
 /**
+ * One `/cut` row a build can honour: a live row at the top level of its scene.
+ *
+ * Carries what it names and what applying it would do, because the two questions have one answer and
+ * two readers. The nested ones are not here at all - {@link collectNestedCutPoints} owns those, and a
+ * row a build refuses is not a row a build can measure.
+ */
+export type CutPointSite = {
+    storyId: string;
+    storyName: string;
+    sceneId: StorySceneId;
+    sceneName: string;
+    blockId: StoryBlockId;
+    /** The variant this row names, by id. Exactly as stored; never resolved. */
+    appTagId: string;
+    /**
+     * Whether applying this row would take any shipped content with it.
+     *
+     * False for a cut whose tail holds nothing but other cut points - a row at the very end of a
+     * scene with nothing after it, or one sitting below an unconditional jump. Such a row reads on
+     * the page as an ending and produces a package identical to the one without it, which is the
+     * failure the whole feature exists to prevent: an author believes they cut the story and every
+     * line of it ships.
+     *
+     * Judged on the rows this row removes, deliberately, and not on which scenes survive. A cut on
+     * one branch of a fork removes that branch's rows even where the story converges again further
+     * on and every scene stays reachable - it removed something, so it is doing its job, and saying
+     * otherwise would report the ordinary shape of a branching demo as a mistake.
+     *
+     * A disabled row is not content: the compiler drops it before the package is built, so a cut
+     * whose whole tail is disabled removes nothing that would have shipped.
+     */
+    removes: boolean;
+};
+
+/**
+ * Every cut point a build can honour, with what applying it would do.
+ *
+ * Reads the same removal machinery {@link applyAppTagToStoryDocument} uses ({@link addCutTail} and
+ * {@link expandToSubtrees}), never a second reading of "what does a cut point end". A check that
+ * measured the tail its own way would eventually disagree with the fold, and the author would be
+ * told a row cuts nothing while the package it produces is missing three chapters.
+ *
+ * Takes no variant: what a row names is on the row, and every caller filters. Sweeps in authoring
+ * order and skips a disabled subtree, the two rules the sweeps above follow.
+ */
+export function collectCutPoints(document: StoryDocument): CutPointSite[] {
+    const found: CutPointSite[] = [];
+    for (const scene of listScenesInDocumentOrder(document)) {
+        const roots = new Set<StoryBlockId>(scene.rootBlockIds);
+        const live = listSceneBlocksInDocumentOrder(scene, { skipSubtree: entry => Boolean(entry.disabled) });
+        const liveIds = new Set(live.map(block => block.id));
+        for (const block of live) {
+            const cut = asCutPoint(block);
+            if (!cut || !roots.has(cut.id)) {
+                continue;
+            }
+            const tail = new Set<StoryBlockId>();
+            addCutTail(scene, cut.id, tail);
+            const removed = expandToSubtrees(scene, tail);
+            found.push({
+                storyId: document.id,
+                storyName: document.name,
+                sceneId: scene.id,
+                sceneName: scene.name,
+                blockId: cut.id,
+                appTagId: cut.payload.appTagId,
+                removes: [...removed].some(blockId => blockId !== cut.id
+                    && liveIds.has(blockId)
+                    && !asCutPoint(scene.blocks[blockId])),
+            });
+        }
+    }
+    return found;
+}
+
+/**
  * The document a package under this variant carries.
  *
  * Pure: the project on disk is never touched, and calling this twice with the same arguments gives
