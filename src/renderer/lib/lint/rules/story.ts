@@ -1,5 +1,9 @@
-import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
-import type { BlueprintDocument, BlueprintGraphNode } from "@shared/types/blueprint/document";
+import {
+    blueprintDocumentGraphCarriers,
+    reachableSceneIds,
+    scanStoryEntryPoints,
+    type StoryEntryPointScan,
+} from "@shared/story/storyReachability";
 import {
     collectAppTagComparisonNames,
     duplicateSceneLabels,
@@ -11,7 +15,6 @@ import {
     type StoryBlockId,
     type StoryExpr,
     type StoryScene,
-    type StorySceneId,
 } from "@shared/types/story";
 import { collectInvalidBlocks } from "../../workspace/services/story/storyModel";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
@@ -174,46 +177,6 @@ function hasOutgoingTransfer(scene: StoryScene): boolean {
     return liveBlocks(scene).some(block => block.kind === "jump" || gotoTarget(block) !== null);
 }
 
-/** Every graph node of a blueprint document, across events, functions and macros. */
-function* eachBlueprintNode(document: BlueprintDocument | null): Generator<BlueprintGraphNode> {
-    if (!document) {
-        return;
-    }
-    for (const blueprint of Object.values(document.blueprints ?? {})) {
-        if (blueprint?.program?.kind !== "graph") {
-            continue;
-        }
-        const graphs = blueprint.program.graphs;
-        const carriers = [
-            ...Object.values(graphs.events ?? {}),
-            ...Object.values(graphs.functions ?? {}),
-            ...Object.values(graphs.macros ?? {}),
-        ];
-        for (const carrier of carriers) {
-            for (const node of Object.values(carrier?.graph?.nodes ?? {})) {
-                if (node) {
-                    yield node;
-                }
-            }
-        }
-    }
-}
-
-function stringParam(node: BlueprintGraphNode, key: string): string {
-    const value = node.params?.[key];
-    return typeof value === "string" ? value.trim() : "";
-}
-
-type EntryPointScan = {
-    /** Scene ids the project can start at, per story id. Only scenes that exist. */
-    byStory: Map<string, Set<StorySceneId>>;
-    /**
-     * A `Start Game` node whose target is wired rather than picked - a data-driven launcher. Which
-     * scene it starts is only knowable at runtime, so no reachability claim can be made at all.
-     */
-    indeterminate: boolean;
-};
-
 /**
  * Where play can begin.
  *
@@ -222,69 +185,35 @@ type EntryPointScan = {
  * every scene a blueprint's `Start Game` node names. Nothing else is an entry - in particular "the
  * first scene in document order" is NOT assumed, because a project that simply never marked an entry
  * would then have every scene but one declared unreachable.
+ *
+ * The blueprint half is `scanStoryEntryPoints`, the same scan the build's own scene sweep runs: a
+ * report that disagreed with a removal would tell an author a scene is orphaned while the package
+ * kept shipping it, or the reverse. The document half stays here because it is a rule of this
+ * report, not of the scan - which scenes an author marked is a different question from which ones a
+ * blueprint names.
+ *
+ * The graph walk reads every blueprint in the document, `ownerRecords` and all - deliberately unlike
+ * `listBlueprintGraphSites`; see `blueprintDocumentGraphCarriers` for why the entry scan cannot
+ * afford that skip.
  */
-function collectEntryPoints(ctx: LintContext): EntryPointScan {
-    const byStory = new Map<string, Set<StorySceneId>>();
-    let indeterminate = false;
-
-    const add = (storyId: string, sceneId: StorySceneId) => {
-        const entry = ctx.stories.find(story => story.id === storyId);
-        if (!entry || !entry.document.scenes[sceneId]) {
-            return;
-        }
-        const set = byStory.get(storyId);
-        if (set) {
-            set.add(sceneId);
-        } else {
-            byStory.set(storyId, new Set([sceneId]));
-        }
-    };
-
-    for (const node of eachBlueprintNode(ctx.blueprintDocument)) {
-        if (node.type !== BLUEPRINT_NODE_TYPE_GAME_START_STORY) {
-            continue;
-        }
-        const storyId = stringParam(node, "storyId");
-        const sceneId = stringParam(node, "sceneId");
-        if (!storyId || !sceneId) {
-            indeterminate = true;
-            continue;
-        }
-        add(storyId, sceneId);
-    }
-
+function collectEntryPoints(ctx: LintContext): StoryEntryPointScan {
+    const scan = scanStoryEntryPoints(
+        blueprintDocumentGraphCarriers(ctx.blueprintDocument),
+        (storyId, sceneId) => Boolean(ctx.stories.find(story => story.id === storyId)?.document.scenes[sceneId]),
+    );
     for (const entry of ctx.stories) {
         const entrySceneId = entry.document.entrySceneId;
-        if (entrySceneId && entry.document.scenes[entrySceneId]) {
-            add(entry.id, entrySceneId);
-        }
-    }
-
-    return { byStory, indeterminate };
-}
-
-/** The scenes reachable from a set of entry scenes by following live jumps. */
-function reachableScenes(entry: LintStoryEntry, entrySceneIds: ReadonlySet<StorySceneId>): Set<StorySceneId> {
-    const reachable = new Set<StorySceneId>(entrySceneIds);
-    const queue = [...entrySceneIds];
-    for (let cursor = 0; cursor < queue.length; cursor++) {
-        const scene = entry.document.scenes[queue[cursor]];
-        if (!scene) {
+        if (!entrySceneId || !entry.document.scenes[entrySceneId]) {
             continue;
         }
-        for (const block of liveBlocks(scene)) {
-            if (block.kind !== "jump") {
-                continue;
-            }
-            const target = block.payload.targetSceneId;
-            if (!target || !entry.document.scenes[target] || reachable.has(target)) {
-                continue;
-            }
-            reachable.add(target);
-            queue.push(target);
+        const scenes = scan.byStory.get(entry.id);
+        if (scenes) {
+            scenes.add(entrySceneId);
+        } else {
+            scan.byStory.set(entry.id, new Set([entrySceneId]));
         }
     }
-    return reachable;
+    return scan;
 }
 
 export const STORY_LINT_RULES: readonly LintRule[] = [
@@ -544,11 +473,11 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "storyUnreachableScene",
         run(ctx) {
-            const { byStory, indeterminate } = collectEntryPoints(ctx);
+            const { byStory, undecidable } = collectEntryPoints(ctx);
             // Guard (mandatory): a rule that flags every scene because it could not find the entry is
             // worse than no rule. A wired `Start Game` target silences the rule project-wide, and a
             // story with no entry of its own is skipped rather than declared entirely unreachable.
-            if (indeterminate || byStory.size === 0) {
+            if (undecidable.length > 0 || byStory.size === 0) {
                 return [];
             }
 
@@ -558,7 +487,10 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                 if (!entrySceneIds || entrySceneIds.size === 0) {
                     continue;
                 }
-                const reachable = reachableScenes(entry, entrySceneIds);
+                // `none`, not the document-order fallback the build sweep takes: the entries above
+                // are the whole claim this rule makes, and guessing at a story with no marked entry
+                // would declare every scene but the first one unreachable.
+                const reachable = reachableSceneIds(entry.document, { entrySceneIds, fallback: "none" });
                 for (const scene of listScenesInDocumentOrder(entry.document)) {
                     if (!scene || reachable.has(scene.id)) {
                         continue;

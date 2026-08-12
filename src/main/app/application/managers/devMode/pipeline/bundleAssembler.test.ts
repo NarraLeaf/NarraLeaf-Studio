@@ -445,14 +445,30 @@ describe("bundleAssembler brand palette", () => {
 });
 
 describe("bundleAssembler scene drop plan", () => {
-    function graphBlueprint(nodes: Record<string, unknown>): Blueprint {
+    function graphBlueprint(nodes: Record<string, unknown>, wiredPins: string[] = []): Blueprint {
         return {
             id: "bp-1",
             name: "Menu",
             owner: { kind: "surface", surfaceId: "s1" },
             frontend: "visual",
             programKind: "graph",
-            program: { kind: "graph", graphs: { events: { "e-1": { id: "e-1", graph: { nodes } } } } },
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        "e-1": {
+                            id: "e-1",
+                            graph: {
+                                nodes,
+                                edges: wiredPins.map(port => ({
+                                    from: { nodeId: "n-source", port: "value" },
+                                    to: { nodeId: "n-1", port },
+                                })),
+                            },
+                        },
+                    },
+                },
+            },
         } as unknown as Blueprint;
     }
 
@@ -494,6 +510,18 @@ describe("bundleAssembler scene drop plan", () => {
         const notices: string[] = [];
         const plan = planSceneDrop(context({ onNotice: message => notices.push(message) }), "tag-demo", [
             graphBlueprint(startGame({ storyId: "story-1", sceneId: "" })),
+        ]);
+
+        expect(plan).toBeNull();
+        expect(notices).toHaveLength(1);
+    });
+
+    it("ships every story whole when a Start Game node wires its scene, picked value and all", () => {
+        // The wire is what the running game reads, so the picked scene is not the scene this node
+        // starts. Sweeping on it would drop the chapters the launcher actually reaches.
+        const notices: string[] = [];
+        const plan = planSceneDrop(context({ onNotice: message => notices.push(message) }), "tag-demo", [
+            graphBlueprint(startGame({ storyId: "story-1", sceneId: "scene-7" }), ["sceneId"]),
         ]);
 
         expect(plan).toBeNull();

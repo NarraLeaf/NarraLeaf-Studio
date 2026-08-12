@@ -3,7 +3,6 @@ import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBluep
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type {
     Blueprint,
-    BlueprintGraphNode,
     BlueprintPersistentVariable,
     SharedBlueprintAsset,
 } from "@shared/types/blueprint/document";
@@ -39,7 +38,7 @@ import { migrateProjectBrandDocument, normalizeProjectBrandColors } from "@share
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
 import { APP_TAG_ID_RELEASE, isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
-import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
+import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
@@ -233,7 +232,9 @@ type SceneDropPlan = Map<string, SceneReachability> | null;
  * correct one until a player walked into the gap. Three things make it unreadable, all of them the
  * same fact - a scene named by a value that only exists while the game runs:
  *
- *  - a `Start Game` node whose story or scene is wired rather than picked;
+ *  - a `Start Game` node whose story or scene is wired rather than picked - and a wired pin counts
+ *    even when the inspector still holds a picked value, because the pin is what the running game
+ *    reads;
  *  - a blueprint written in TypeScript, which can call `game.startStory` with anything it computes;
  *  - a runtime plugin, which runs with the same host API in reach.
  *
@@ -257,47 +258,21 @@ export function planSceneDrop(
         context.onNotice?.("a TypeScript blueprint can start any scene, so every story ships whole");
         return null;
     }
+    const scan = scanStoryEntryPoints(
+        blueprintGraphCarriers(blueprints),
+        // Every named target is kept: the story documents have not been read at plan time, and a
+        // scene id no story has is dropped by the sweep's own seed filter rather than here.
+        () => true,
+    );
+    if (scan.undecidable.length > 0) {
+        context.onNotice?.("a Start Game node picks its scene while the game runs, so every story ships whole");
+        return null;
+    }
     const byStory = new Map<string, SceneReachability>();
-    for (const node of eachBlueprintGraphNode(blueprints)) {
-        if (node.type !== BLUEPRINT_NODE_TYPE_GAME_START_STORY) {
-            continue;
-        }
-        const storyId = readNodeStringParam(node, "storyId");
-        const sceneId = readNodeStringParam(node, "sceneId");
-        if (!storyId || !sceneId) {
-            context.onNotice?.("a Start Game node picks its scene while the game runs, so every story ships whole");
-            return null;
-        }
-        const existing = byStory.get(storyId);
-        byStory.set(storyId, { entrySceneIds: [...(existing?.entrySceneIds ?? []), sceneId] });
+    for (const [storyId, sceneIds] of scan.byStory) {
+        byStory.set(storyId, { entrySceneIds: [...sceneIds] });
     }
     return byStory;
-}
-
-function* eachBlueprintGraphNode(blueprints: readonly Blueprint[]): Generator<BlueprintGraphNode> {
-    for (const blueprint of blueprints) {
-        if (blueprint.program.kind !== "graph") {
-            continue;
-        }
-        const { events, functions, macros } = blueprint.program.graphs;
-        const carriers = [
-            ...Object.values(events ?? {}),
-            ...Object.values(functions ?? {}),
-            ...Object.values(macros ?? {}),
-        ];
-        for (const carrier of carriers) {
-            for (const node of Object.values(carrier?.graph?.nodes ?? {})) {
-                if (node) {
-                    yield node;
-                }
-            }
-        }
-    }
-}
-
-function readNodeStringParam(node: BlueprintGraphNode, key: string): string {
-    const value = node.params?.[key];
-    return typeof value === "string" ? value.trim() : "";
 }
 
 /**
