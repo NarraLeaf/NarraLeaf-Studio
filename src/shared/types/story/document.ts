@@ -102,6 +102,10 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // runtime, falls off the end of `evaluateCall` with `undefined`, and reads `AppTag == "Demo"` as
 // false - a demo-only branch that silently never runs, in a story that otherwise plays. Refusing the
 // document is the point.
+// v16 also carries the `cut` control payload, which would not have needed a version of its own: an
+// older Studio reads it as an ordinary group with no children and compiles nothing, which is not a
+// wrong answer, only an incomplete one. It rides along because the two shipped together and one
+// stamp cannot describe half a document.
 export const STORY_DOCUMENT_SCHEMA_VERSION = 16 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
@@ -853,12 +857,13 @@ export type StoryControlPayload =
            * naming release cuts nothing — which is what makes deleting a variant safe to do with
            * its rows still written.
            *
-           * **No schema bump.** The payload is additive: a document that predates it simply has no
-           * such row, so the migration ladder gains no step. It is the one direction that decides
-           * this, and here it is benign - an older Studio meets an unknown control payload, reads
-           * the row as an ordinary group and compiles it as one, which emits nothing because the
-           * row has no children. Nothing it can do with the document is silently wrong; it just
-           * does not know what the row means.
+           * **Needed no version of its own.** The payload is additive: a document that predates it
+           * simply has no such row, so the migration ladder gains no step. It is the one direction
+           * that decides this, and here it is benign - an older Studio meets an unknown control
+           * payload, reads the row as an ordinary group and compiles it as one, which emits nothing
+           * because the row has no children. Nothing it can do with the document is silently wrong;
+           * it just does not know what the row means. It is stamped v16 because `AppTag` shipped in
+           * the same document and that one does have to be refused.
            */
           control: "cut";
           appTagId: string;
