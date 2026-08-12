@@ -484,4 +484,69 @@ export const documentDiff = {
             },
         },
     },
+    /**
+     * Two versions of one page or one graph, drawn side by side with what changed washed over it.
+     *
+     * Shared by both canvases (`renderer/lib/vcs/presenters`), because they are one idea seen twice
+     * and an author reads them in the same minute - a word that differed between them would read as
+     * a difference in what happened.
+     *
+     * Nothing here restates what a change SAYS. That is under the tier keys above and is the same
+     * wherever the change is drawn; these are only the words the canvas itself adds.
+     */
+    canvas: {
+        before: "Before",
+        after: "After",
+        /** Accessible names for the two selectors. The current value is the trigger's own text. */
+        surfaceLabel: "Page",
+        graphLabel: "Graph",
+        /** A page or a graph whose author never named it. Never an id: they did not type that. */
+        unnamed: "Untitled",
+        /**
+         * What the four washes mean.
+         *
+         * `moved` is the odd one out and is worded to say why it is drawn faintly: an element
+         * re-ordered under its parent or a node dragged across the canvas changed nothing about
+         * what the game does.
+         */
+        legend: {
+            added: "Added",
+            removed: "Removed",
+            changed: "Changed",
+            moved: "Moved only",
+        },
+        /** One mark. Its own words are in the row underneath, which the mark selects. */
+        markLabel: "Show this change",
+        oneChange: "Showing one change.",
+        showAll: "Show every change",
+        /**
+         * The changes this canvas is not marking, said in one line and never in silence.
+         *
+         * A canvas that marks nine of twelve and says nothing is read as a complete answer, and the
+         * author concludes the change they were looking for did not happen. The three parts stay
+         * apart because the next move differs for each of them.
+         */
+        notMarked: {
+            one: "{count} change is not marked here:",
+            other: "{count} changes are not marked here:",
+        },
+        onOtherPages: "{count} on other pages",
+        onOtherGraphs: "{count} in other graphs",
+        /** Inside a component definition, outside every page, or about the file itself. */
+        offCanvas: "{count} cannot be drawn on a page",
+        /**
+         * Marked nowhere because the drawn page has no handle on the element.
+         *
+         * Content inside a component instance is the expected case: every placement of one
+         * definition shares the element ids inside it, so that content carries no id at all and six
+         * placements would otherwise be indistinguishable.
+         */
+        unplaced: "{count} could not be located",
+        /** Four reasons a column has no picture in it, and they stay four. */
+        notDrawn: "This version of the page could not be drawn.",
+        emptyGraph: "This graph has no nodes.",
+        tooLarge: "This file is too large to draw here.",
+        unreadable: "This file could not be read as an interface document: {error}",
+        readFailed: "This version could not be read: {error}",
+    },
 } as const;

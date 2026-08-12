@@ -369,4 +369,37 @@ export const documentDiff = {
             },
         },
     },
+    /** 把一个页面 / 一张图的两个版本并排画出来，改动直接盖在原处。两块画布共用同一套词。 */
+    canvas: {
+        before: "更改前",
+        after: "更改后",
+        surfaceLabel: "页面",
+        graphLabel: "蓝图",
+        unnamed: "未命名",
+        /** `moved` 特意写清楚它为什么画得最淡：它不改变游戏的行为。 */
+        legend: {
+            added: "新增",
+            removed: "删除",
+            changed: "已修改",
+            moved: "仅位置变动",
+        },
+        markLabel: "查看这条改动",
+        oneChange: "当前只看一条改动",
+        showAll: "显示全部改动",
+        /** 画布没有标出来的那些改动，一行说清；标了九条却不说另外三条，读起来就像一共只有九条。 */
+        notMarked: {
+            one: "另有 {count} 条改动没有标在这里：",
+            other: "另有 {count} 条改动没有标在这里：",
+        },
+        onOtherPages: "{count} 条在其他页面",
+        onOtherGraphs: "{count} 条在其他蓝图",
+        offCanvas: "{count} 条无法画在页面上",
+        /** 组件内部的元素本来就不带 id：同一个组件的每个实例共用内部 id，带上就分不清是哪一处放置。 */
+        unplaced: "{count} 条在画面上定位不到",
+        notDrawn: "该版本的页面无法绘制",
+        emptyGraph: "这张图里没有节点",
+        tooLarge: "该文件过大，无法在此绘制",
+        unreadable: "该文件无法按界面文档读取：{error}",
+        readFailed: "该版本无法读取：{error}",
+    },
 } satisfies LocaleNamespace<"documentDiff">;
