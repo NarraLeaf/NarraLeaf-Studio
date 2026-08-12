@@ -9,7 +9,7 @@ import {
 import { setDeveloperModeForTesting } from "./developerMode";
 
 const copied: string[] = [];
-vi.mock("@/lib/app/diagnostics/copyText", () => ({
+vi.mock("@shared/utils/copyText", () => ({
     copyTextToClipboard: (text: string) => {
         copied.push(text);
         return Promise.resolve();
