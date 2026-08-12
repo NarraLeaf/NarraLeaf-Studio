@@ -61,6 +61,11 @@ export const documentDiff = {
         storyChapters: "章节",
         storyScenes: "场景",
         translationUnits: "译文",
+        uiBlueprints: "蓝图",
+        uiComponents: "组件",
+        uiElements: "界面元素",
+        uiGraphNodes: "蓝图节点",
+        uiSurfaces: "界面",
         variables: "变量",
         voiceUnits: "语音",
     },
@@ -122,6 +127,82 @@ export const documentDiff = {
         added: "新增译文",
         removed: "删除译文",
         changed: "译文改动",
+    },
+    /**
+     * 界面文档：界面与界面上的元素。
+     *
+     * 作者自己写的字（界面名、元素名）由 subject 带，画在这些标签旁边，所以这里不再重复它。
+     * `element*` 那几条是碎句：它们挂在「元素改动」下面，只说这个元素的哪一部分变了。
+     */
+    uiDocument: {
+        renamed: "界面文档改名",
+        surfaceAdded: "新增界面（{elements} 个元素）",
+        surfaceRemoved: "删除界面（{elements} 个元素）",
+        surfaceChanged: "界面改动",
+        surfaceRenamed: "改名",
+        /** 界面排版所用的设计区域，不是渲染分辨率。 */
+        surfaceDesignSize: "设计尺寸（{fromWidth}×{fromHeight} → {toWidth}×{toHeight}）",
+        surfaceSettings: "背景或页面动画改动",
+        surfaceRoot: "根元素改变",
+        surfaceField: "{field} 改动",
+        componentAdded: "新增组件（{elements} 个元素）",
+        componentRemoved: "删除组件（{elements} 个元素）",
+        componentChanged: "组件改动",
+        componentRenamed: "改名",
+        componentField: "{field} 改动",
+        elementAdded: "新增元素",
+        elementRemoved: "删除元素",
+        elementChanged: "元素改动",
+        elementRenamed: "改名",
+        /** 换了控件类型，比如文本变成按钮；两个类型 id 画成「旧 → 新」一对。 */
+        elementType: "元素类型改变",
+        /** 换了父级，不是同级重排——重排是 elementOrder 那条。 */
+        elementMoved: "移到了别的父级下",
+        elementOrder: "子元素顺序调整",
+        elementLayout: "位置或尺寸改动",
+        elementStyle: "样式改动",
+        elementProps: "内容改动",
+        elementBehavior: "行为改动",
+        elementBinding: "绑定改动",
+        elementAnimation: "动画改动",
+        elementField: "{field} 改动",
+    },
+    /**
+     * 蓝图文档：界面背后的逻辑。
+     *
+     * `nodeMoved` 是这一层的形状所围绕的那一条。拖动节点不改变玩家看到的任何东西，用跟改参数
+     * 一样的话去说它，就等于把「顺手理了理版面」抬到跟「改了游戏行为」同一级。所以它自成一行、
+     * 自带一个标记。
+     *
+     * 这里没有任何一条给节点起名字：节点类型是 `blueprint.event.head.appBoot` 这样的标识符，
+     * 它的人类名字来自编辑器自己的一张表，把标识符摆在作者面前会被读成作者自己写的字。
+     */
+    uiGraphs: {
+        /** 一个宿主槽位当前生效的是哪个蓝图。 */
+        ownerRecord: "生效蓝图改变",
+        blueprintAdded: "新增蓝图（{nodes} 个节点）",
+        blueprintRemoved: "删除蓝图（{nodes} 个节点）",
+        blueprintChanged: "蓝图改动",
+        blueprintRenamed: "改名",
+        /** TypeScript 蓝图，整个程序就是一份代码。 */
+        blueprintSource: "代码改动",
+        blueprintField: "{field} 改动",
+        graphAdded: "新增图（{nodes} 个节点）",
+        graphRemoved: "删除图（{nodes} 个节点）",
+        graphChanged: "图改动",
+        graphRenamed: "改名",
+        graphField: "{field} 改动",
+        graphOrder: "图的顺序调整",
+        nodeAdded: "新增节点",
+        nodeRemoved: "删除节点",
+        nodeChanged: "节点改动",
+        nodeParams: "取值改动",
+        /** 在画布上拖动过。说得平直，是为了让它同样容易被略过。 */
+        nodeMoved: "在画布上移动",
+        nodeType: "节点类型改变",
+        nodeField: "{field} 改动",
+        edgeAdded: "新增连线",
+        edgeRemoved: "删除连线",
     },
     assets: {
         added: "新增素材",
