@@ -1,4 +1,5 @@
 import fs from "fs";
+import { dialog } from "electron";
 import { AppEventToken } from "@shared/types/app";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType } from "@shared/types/ipcEvents";
@@ -13,6 +14,9 @@ import { getWindowBackgroundColor } from "@/app/application/theme";
 import { applyTrafficLightPositionForZoom, applyZoomFactorToWebContents, windowTypeUsesZoom } from "@/app/application/zoom";
 import { ZOOM_PERCENT_DEFAULT, nextZoomPercent, normalizeZoomPercent } from "@shared/constants/zoom";
 import { decideWindowNavigation } from "./navigationGuard";
+import { describeWindowSubject } from "./windowCrash";
+import { isCrashLooping, recordCrash } from "@shared/utils/crashLoop";
+import { getMainTranslator } from "@/app/application/i18n";
 
 export interface WindowConfig<T extends WindowAppType> {
     windowType: T;
@@ -40,6 +44,12 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     private config: WindowConfig<T>;
     private closeGuard?: (window: AppWindow<T>) => boolean;
     private closeGuardBypassed: boolean = false;
+    /** When this window's page process died, newest last. Only the last minute is kept. */
+    private crashHistory: number[] = [];
+    /** True while a hang question is on screen, so `unresponsive` cannot stack a second one. */
+    private hangPromptOpen: boolean = false;
+    /** True between asking for a reload and the page process it replaces going away. */
+    private expectedProcessSwap: boolean = false;
 
     constructor(app: App, config: WindowConfig<T>, props: WindowProps[T]) {
         const windowConfig: WindowConfig<T> = {
@@ -467,9 +477,11 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         // report that is impossible to act on without a timestamp.
         win.on("unresponsive", () => {
             this.getApp().logger.warn(`[Window] The ${this.getWindowType()} window stopped responding`);
+            void this.offerReloadForHang();
         });
         win.on("responsive", () => {
             this.getApp().logger.info(`[Window] The ${this.getWindowType()} window is responding again`);
+            this.hangPromptOpen = false;
         });
 
         webContents.on("render-process-gone", (_event, details) => {
@@ -484,10 +496,125 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             );
             this.getEvents().emit("render-process-gone", this, details.reason, `Exit Code: ${details.exitCode}`);
 
-            win.destroy();
+            // A reload this process asked for discards the old page process, which arrives here
+            // looking exactly like a crash. Asking about it would mean a dialog every time someone
+            // answered the last one with "reload".
+            if (this.expectedProcessSwap) {
+                this.expectedProcessSwap = false;
+                return;
+            }
+            void this.offerReloadForCrash(details.reason);
+        });
+
+        webContents.on("did-finish-load", () => {
+            this.expectedProcessSwap = false;
         });
 
         this.autoFocus();
+    }
+
+    /**
+     * The page process died on its own: out of memory, a GPU fault, a kill from the system.
+     *
+     * This used to destroy the window on the spot. From the author's side that is a window that
+     * vanishes: no message, nothing to click, and the project apparently closed itself. A reload
+     * rebuilds the page from disk and is usually enough, so it is offered - except in a crash
+     * loop, where a fourth reload only buys a fourth dialog.
+     *
+     * Not during a quit. Windows die as part of shutting down, and a modal question at that point
+     * would hold the quit open on an answer nobody is there to give.
+     */
+    private async offerReloadForCrash(reason: string): Promise<void> {
+        const win = this.getBrowserWindow();
+        if (this.getApp().isQuitting()) {
+            win.destroy();
+            return;
+        }
+
+        this.crashHistory = recordCrash(this.crashHistory, Date.now());
+        const looping = isCrashLooping(this.crashHistory);
+        const { t } = getMainTranslator(this.getApp());
+        const subject = describeWindowSubject((this.getProps() as { projectPath?: string } | undefined)?.projectPath);
+        const buttons = looping
+            ? [t("crash.rendererGone.close")]
+            : [t("crash.rendererGone.reload"), t("crash.rendererGone.close")];
+
+        let choice = buttons.length - 1;
+        try {
+            const answer = await dialog.showMessageBox(win, {
+                type: "error",
+                title: t("crash.rendererGone.title"),
+                message: subject
+                    ? t("crash.rendererGone.messageProject", { project: subject })
+                    : t("crash.rendererGone.message"),
+                detail: looping
+                    ? t("crash.rendererGone.detailRepeated", { reason })
+                    : t("crash.rendererGone.detail", { reason }),
+                buttons,
+                defaultId: 0,
+                cancelId: buttons.length - 1,
+                noLink: true,
+            });
+            choice = answer.response;
+        } catch (error) {
+            // A dialog that cannot be shown must not leave a dead window on screen forever.
+            this.getApp().logger.warn("[Crash] Could not ask about reloading the window:", error);
+        }
+
+        if (win.isDestroyed()) {
+            return;
+        }
+        if (!looping && choice === 0) {
+            this.getApp().logger.info(`[Crash] Reloading the ${this.getWindowType()} window after a renderer exit`);
+            this.expectedProcessSwap = true;
+            this.reload();
+            return;
+        }
+        win.destroy();
+    }
+
+    /**
+     * The window is still there but has not answered for some time.
+     *
+     * One question per hang: `unresponsive` fires again while the answer is still on screen, and a
+     * stack of identical dialogs in front of a frozen window is worse than the freeze. The flag is
+     * cleared by `responsive`, so a window that recovers and hangs again is asked about again.
+     */
+    private async offerReloadForHang(): Promise<void> {
+        const win = this.getBrowserWindow();
+        if (this.hangPromptOpen || this.getApp().isQuitting()) {
+            return;
+        }
+        this.hangPromptOpen = true;
+
+        try {
+            const { t } = getMainTranslator(this.getApp());
+            const subject = describeWindowSubject((this.getProps() as { projectPath?: string } | undefined)?.projectPath);
+            const answer = await dialog.showMessageBox(win, {
+                type: "warning",
+                title: t("crash.unresponsive.title"),
+                message: subject
+                    ? t("crash.unresponsive.messageProject", { project: subject })
+                    : t("crash.unresponsive.message"),
+                detail: t("crash.unresponsive.detail"),
+                buttons: [t("crash.unresponsive.wait"), t("crash.unresponsive.reload")],
+                defaultId: 0,
+                cancelId: 0,
+                noLink: true,
+            });
+            if (answer.response === 1 && !win.isDestroyed()) {
+                this.getApp().logger.info(`[Crash] Reloading the ${this.getWindowType()} window after a hang`);
+                // Navigation is decided in this process, not in the page, so it lands even though
+                // the page is not answering. Chromium discards the hung process on the way, which
+                // arrives here as a renderer that disappeared - hence the flag.
+                this.expectedProcessSwap = true;
+                this.reload();
+            }
+        } catch (error) {
+            this.getApp().logger.warn("[Crash] Could not ask about reloading the hung window:", error);
+        } finally {
+            this.hangPromptOpen = false;
+        }
     }
 
     private autoFocus(): void {

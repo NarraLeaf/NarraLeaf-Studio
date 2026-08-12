@@ -34,6 +34,7 @@ import { isMainDevMode, parseMainCommandLine } from "./commandLine";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
 import { installFileLogSink } from "./logging/fileLogSink";
+import { getMainTranslator } from "./i18n";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
 
 export interface AppDependencies {
@@ -478,18 +479,72 @@ export class BaseApp {
         this.quitting = false;
     }
 
+    /**
+     * End the process, having said so and offered to come back.
+     *
+     * The exit is not negotiable - this is called for failures that leave the process unable to be
+     * trusted with the next write. What is negotiable is what happens next, and "start it again"
+     * is what almost everyone wants: before this, a fatal error was an error box quoting a stack
+     * trace and then an application that was simply gone, with every window it had open.
+     *
+     * Everything here is written so that failing to ask still exits. The prompt reads global state
+     * for the language and talks to the window server, both of which can be exactly what has just
+     * broken, so a failure anywhere in it falls through to the same exit.
+     */
     public crash(error: string | Error): void {
         const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
         this.logger.error("[App] Fatal error, terminating:", message);
         try {
             if (this.electronApp.isReady()) {
-                dialog.showErrorBox(`${APP_DISPLAY_NAME}: Fatal Error`, message);
+                if (this.askToRestartAfterCrash(message)) {
+                    this.electronApp.relaunch();
+                }
             } else {
                 console.error(message);
             }
+        } catch (promptError) {
+            console.error(message);
+            console.error("Failed to report the fatal error:", promptError);
         } finally {
             this.electronApp.exit(1);
         }
+    }
+
+    /**
+     * The native prompt behind {@link crash}. Returns whether to come back up.
+     *
+     * Synchronous, because the process is on its way out and there is nothing left to await in.
+     * Only the first line of the failure is shown: the rest is a stack trace, which belongs in the
+     * log this names rather than wrapped across a message box.
+     */
+    private askToRestartAfterCrash(message: string): boolean {
+        const logsDir = path.join(this.getUserDataDir(), "logs");
+        const headline = message.split("\n", 1)[0] ?? message;
+        let title = `${APP_DISPLAY_NAME}: Fatal Error`;
+        let body = headline;
+        let detail = `The report is in ${logsDir}.`;
+        let buttons = ["Restart", "Quit"];
+        try {
+            const { t } = getMainTranslator(this);
+            title = t("crash.fatal.title");
+            body = `${t("crash.fatal.message")}\n\n${headline}`;
+            detail = t("crash.fatal.detail", { path: logsDir });
+            buttons = [t("crash.fatal.restart"), t("crash.fatal.quit")];
+        } catch (translationError) {
+            this.logger.warn("[App] Could not translate the fatal error prompt:", translationError);
+        }
+
+        const choice = dialog.showMessageBoxSync({
+            type: "error",
+            title,
+            message: body,
+            detail,
+            buttons,
+            defaultId: 0,
+            cancelId: 1,
+            noLink: true,
+        });
+        return choice === 0;
     }
 
     public isDevMode(): boolean {
@@ -598,6 +653,46 @@ export class BaseApp {
                 `[Crash] Child process "${details.type}"${details.name ? ` (${details.name})` : ""} exited: `
                 + `${details.reason} (exit code ${details.exitCode})`,
             );
+        });
+        this.markSessionRunning();
+    }
+
+    /**
+     * Leave a file behind for as long as this session is running, and find out whether the last
+     * one managed to remove its own.
+     *
+     * The failures worth knowing about are the ones that write nothing: a process killed by the
+     * system, a native fault below JavaScript, a machine that lost power. All of them leave a log
+     * that simply stops, which reads the same as a clean quit. This is the one line that tells the
+     * two apart, and it is in the log every support bundle carries.
+     *
+     * Best-effort throughout. A profile directory that cannot be written is a problem for other
+     * reasons, and none of them are made better by refusing to start.
+     */
+    private markSessionRunning(): void {
+        const marker = path.join(this.getUserDataDir(), "session.running");
+        try {
+            if (fs.existsSync(marker)) {
+                this.logger.warn(
+                    "[Crash] The previous session did not shut down cleanly."
+                    + " Anything it had not written to disk was lost.",
+                );
+            }
+            fs.mkdirSync(path.dirname(marker), { recursive: true });
+            fs.writeFileSync(marker, new Date().toISOString(), "utf-8");
+        } catch (error) {
+            this.logger.warn("[Crash] Could not record the session marker:", error);
+            return;
+        }
+
+        // `will-quit` rather than `before-quit`: the latter fires on quits that are still
+        // cancellable, and removing the marker there would call a cancelled quit a clean exit.
+        this.electronApp.on("will-quit", () => {
+            try {
+                fs.rmSync(marker, { force: true });
+            } catch (error) {
+                this.logger.warn("[Crash] Could not clear the session marker:", error);
+            }
         });
     }
 
