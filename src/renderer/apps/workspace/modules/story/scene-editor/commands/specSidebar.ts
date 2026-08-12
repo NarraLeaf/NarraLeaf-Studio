@@ -6,8 +6,9 @@ import {
     type StoryCommandGroup,
     type StoryCommandGroupId,
 } from "../storyCommandCategories";
+import type { StoryCommandContext } from "../storyCommandValues";
 import { listCommandSpecs, type AnyStoryCommandSpec } from "./registry";
-import { specPaletteCommands } from "./specPalette";
+import { availableSpecCommands, specPaletteCommands } from "./specPalette";
 
 /**
  * The subject × verb menu, derived from the spec registry.
@@ -152,6 +153,20 @@ export function dedupeToPrimarySubject(
     }
     return groups
         .map(entry => ({ ...entry, commands: entry.commands.filter(command => home.get(command.id) === entry.group.id) }))
+        .filter(entry => entry.commands.length > 0);
+}
+
+/**
+ * The same gate {@link availableSpecCommands} applies to a flat list, applied to the browse groups: a
+ * command with nothing to name in this project is dropped, and a group left empty by that goes with
+ * it rather than showing as a heading over nothing.
+ */
+export function availableSidebarGroups(
+    groups: readonly StoryCommandSidebarGroup[],
+    context: StoryCommandContext,
+): readonly StoryCommandSidebarGroup[] {
+    return groups
+        .map(entry => ({ ...entry, commands: availableSpecCommands(entry.commands, context) }))
         .filter(entry => entry.commands.length > 0);
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { Package } from "lucide-react";
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
-import { appTagParam, asAppTagId, defineStoryCommand } from "./commands/spec";
+import { getCommandSpec, getDefById } from "./commands/registry";
+import { specPaletteCommands, availableSpecCommands } from "./commands/specPalette";
 import { buildStoryCommandContext } from "./storyCommandContext";
 import { getCommandCandidates } from "./storyCommandCandidates";
 import { resolveCommandLine } from "./storyCommandResolution";
@@ -13,10 +13,10 @@ import { EMPTY_STORY_COMMAND_CONTEXT, type StoryCommandContext } from "./storyCo
  * The `appTag` command slot: a closed set of names offered from, and resolved against, the project's
  * build variants.
  *
- * No command declares the slot yet - the ones that will are the content rules - so the def below is
- * built here rather than taken from the registry. What these hold is the pair that has to agree with
- * the variant registry whichever command arrives first: what the menu offers, and what a typed name
- * turns into once the row commits.
+ * Exercised through `/cut`, the command that declares the slot. What these hold is the pair that has
+ * to agree with the variant registry: what the menu offers, and what a typed name turns into once the
+ * row commits - plus the two rules that make a written row survive the registry changing under it
+ * (a rename keeps resolving, a deletion leaves a row that ends nothing).
  */
 
 const CONTEXT: StoryCommandContext = {
@@ -28,32 +28,9 @@ const CONTEXT: StoryCommandContext = {
     ],
 };
 
-/**
- * A spec built the way a real command is - through `defineStoryCommand`, off the shared
- * `appTagParam()` fragment - and projected onto a def the way the registry projects one
- * (`specToDef`, which is private to it). The registry itself cannot supply one: it lists the
- * commands that exist, and this slot is declared by none of them yet.
- */
-const SPEC = defineStoryCommand({
-    id: "variant",
-    token: "variant",
-    category: "flow",
-    icon: Package,
-    examples: ["/variant Demo"],
-    params: { tag: appTagParam() },
-    build: (args, ctx) => ({
-        id: ctx.generateId(),
-        kind: "note" as const,
-        parentId: null,
-        childrenIds: [],
-        // What a real command's `build` does with this slot: read the id out and store that.
-        payload: { text: { textId: ctx.generateId(), value: asAppTagId(args.tag) ?? "", role: "note" as const } },
-    }),
-});
-
-const PARAM: StoryCommandParam = { name: "tag", ...SPEC.params.tag };
-
-const DEF: StoryCommandDef = { token: SPEC.token, commandId: SPEC.id, params: [PARAM] };
+const SPEC = getCommandSpec("cut")!;
+const DEF = getDefById("cut") as StoryCommandDef;
+const PARAM: StoryCommandParam = DEF.params[0];
 
 function commandLine(value: string): StoryCommandLine {
     return {
@@ -72,10 +49,12 @@ describe("app tag command slot - candidates", () => {
         CONTEXT,
     );
 
-    it("offers every variant the project has, release first", () => {
+    it("offers the variants the author created, in the order the project lists them", () => {
         const candidates = candidatesFor("");
 
-        expect(candidates.map(candidate => candidate.value)).toEqual(["Release", "Demo", "Bonus"]);
+        // Release is deliberately absent: it is what every unresolvable reference falls back to, and a
+        // line ending it would end the edition every other one is read against.
+        expect(candidates.map(candidate => candidate.value)).toEqual(["Demo", "Bonus"]);
         expect(candidates[0].mark).toEqual({ kind: "appTag" });
     });
 
@@ -117,16 +96,25 @@ describe("app tag command slot - resolution", () => {
             .toEqual(["ambiguousName"]);
     });
 
+    it("still takes the release variant's name, which is what a stranded row reads as", () => {
+        // Not offered, but legal: a deleted variant's id resolves to release, so a row holding it has
+        // to be a state the whole seam can express rather than one only the payload can.
+        expect(resolveCommandLine(commandLine("Release"), CONTEXT).args.tag)
+            .toEqual({ kind: "appTag", appTagId: APP_TAG_ID_RELEASE });
+    });
+
     it("reaches a payload through the real spec path: fragment, resolve, build", () => {
         const { args } = resolveCommandLine(commandLine("Demo"), CONTEXT);
         let next = 0;
-        const block = SPEC.build!(args as never, { generateId: () => `id-${++next}` } as never);
+        const block = SPEC.build!(args, { generateId: () => `id-${++next}`, context: CONTEXT });
 
         // The fragment declares the slot core and positional, and `asAppTagId` hands `build` the id
-        // rather than the name - the two halves a real command would rely on.
+        // rather than the name - the two halves the command relies on.
         expect(PARAM.core).toBe(true);
         expect(PARAM.positional).toBe(true);
-        expect(block.kind === "note" ? block.payload.text.value : null).toBe("tag-demo");
+        expect(block).toMatchObject({ kind: "control", payload: { control: "cut", appTagId: "tag-demo" } });
+        // No children, ever: a cut point is an ending, not a container.
+        expect(block.childrenIds).toEqual([]);
     });
 
     it("keeps resolving a row through a rename, because the row holds the id", () => {
@@ -171,5 +159,31 @@ describe("app tag command slot - the release variant is always there", () => {
             { id: APP_TAG_ID_RELEASE, name: "正式版" },
             { id: "tag-demo", name: "Demo" },
         ]);
+    });
+});
+
+describe("the cut command is offered only where it has something to name", () => {
+    const idsIn = (context: StoryCommandContext) =>
+        availableSpecCommands(specPaletteCommands(), context).map(command => command.id);
+
+    it("is listed once the project has a variant of its own", () => {
+        expect(idsIn(CONTEXT)).toContain("cut");
+    });
+
+    it("is not listed in a project that has only the release variant", () => {
+        const bare: StoryCommandContext = {
+            ...EMPTY_STORY_COMMAND_CONTEXT,
+            appTags: [{ id: APP_TAG_ID_RELEASE, name: "Release" }],
+        };
+
+        expect(idsIn(bare)).not.toContain("cut");
+        // The gate is per command, not a filter over the catalogue: everything else still lists.
+        expect(idsIn(bare).length).toBe(specPaletteCommands().length - 1);
+    });
+
+    it("gates the menus and not the parser - a typed line still reaches the command", () => {
+        // Hiding a spec must not make its token unknown, or a scene written before the variant was
+        // deleted would stop reading back as the command that wrote it.
+        expect(getDefById("cut")).not.toBeNull();
     });
 });

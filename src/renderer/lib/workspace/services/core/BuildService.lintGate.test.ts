@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { GameBuildRequest } from "@shared/types/gameBuild";
 import type { StoryDocument } from "@shared/types/story";
 import type { LintReport, LintReportEntry, LintRuleId, LintSeverity } from "@/lib/lint/types";
@@ -169,6 +170,9 @@ function mount(options: {
                         return consoleService;
                     case Services.Story:
                         return story;
+                    // Every project has the release variant, so the AppTag gate always resolves a name.
+                    case Services.AppTags:
+                        return { resolveTag: () => RELEASE_APP_TAG };
                     case Services.MediaSupport:
                         return media;
                     case Services.UIGraph:

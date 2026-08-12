@@ -7,13 +7,17 @@ import {
     hasAppTag,
     listAppTags,
     migrateProjectAppTagDocument,
+    normalizeAppTagPluginConfig,
     normalizeProjectAppTags,
     resolveAppTag,
     resolveAppTagIdentity,
+    resolveAppTagPluginConfigValue,
     uniqueAppTagName,
+    variantStorablePluginConfig,
     type AppTagBaseIdentity,
     type ProjectAppTag,
 } from "./appTag";
+import type { PluginBuildConfigField } from "./plugins";
 
 /**
  * The model half of build variants: what a stored list is allowed to say, what a tag resolves to,
@@ -175,5 +179,124 @@ describe("app tag references", () => {
         cyclic.self = cyclic;
 
         expect(countAppTagReferences([cyclic], ["demo"])).toEqual({ demo: 1 });
+    });
+});
+
+/**
+ * The plugin half: what a stored record may say, what a variant may say it differently, and the
+ * one rule that separates the two - a field with a single value for the whole project cannot be
+ * stated on a variant, so nothing reads one that is.
+ */
+const buildField = (
+    pluginId: string,
+    key: string,
+    scope: PluginBuildConfigField["scope"],
+): PluginBuildConfigField => ({
+    pluginId,
+    pluginName: pluginId,
+    key,
+    label: key,
+    type: "text",
+    scope,
+});
+
+describe("app tag plugin config", () => {
+    it("keeps well-formed values and drops what says nothing", () => {
+        expect(normalizeAppTagPluginConfig({
+            "acme.steam": { appId: " 480 ", blank: "   ", missing: 7 },
+            "acme.empty": {},
+            "  ": { appId: "1" },
+            broken: [],
+        })).toEqual({ "acme.steam": { appId: "480" } });
+    });
+
+    it("reads an unusable record as empty rather than throwing", () => {
+        expect(normalizeAppTagPluginConfig(undefined)).toEqual({});
+        expect(normalizeAppTagPluginConfig("nonsense")).toEqual({});
+        expect(normalizeAppTagPluginConfig([{ appId: "480" }])).toEqual({});
+    });
+
+    it("omits the record entirely when a tag states nothing", () => {
+        const normalized = normalizeProjectAppTags([
+            { id: "demo", name: "Demo", pluginConfig: { "acme.steam": {} } },
+        ]);
+
+        expect(normalized[0].pluginConfig).toBeUndefined();
+    });
+
+    it("carries the project's own record through a document migration", () => {
+        const document = migrateProjectAppTagDocument({
+            schemaVersion: APP_TAG_SCHEMA_VERSION,
+            tags: [],
+            pluginConfig: { "acme.steam": { appId: "480" } },
+        });
+
+        expect(document.pluginConfig).toEqual({ "acme.steam": { appId: "480" } });
+    });
+
+    it("leaves a document that predates plugin config without the key", () => {
+        const document = migrateProjectAppTagDocument({ schemaVersion: APP_TAG_SCHEMA_VERSION, tags: [] });
+
+        expect(document.pluginConfig).toBeUndefined();
+    });
+
+    it("reads a variant's own value, and the project's when it states none", () => {
+        const demo: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            pluginConfig: { "acme.steam": { branch: "beta" } },
+        };
+        const base = { "acme.steam": { branch: "default", appId: "480" } };
+
+        expect(resolveAppTagPluginConfigValue(demo, base, buildField("acme.steam", "branch", "variant")))
+            .toEqual({ value: "beta", overridden: true });
+        expect(resolveAppTagPluginConfigValue(demo, base, buildField("acme.steam", "appId", "variant")))
+            .toEqual({ value: "480", overridden: false });
+        expect(resolveAppTagPluginConfigValue(demo, base, buildField("acme.steam", "unset", "variant")))
+            .toEqual({ value: "", overridden: false });
+    });
+
+    it("reads a global field from the project even when the variant holds one", () => {
+        const demo: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            pluginConfig: { "acme.steam": { appId: "999" } },
+        };
+
+        expect(resolveAppTagPluginConfigValue(demo, { "acme.steam": { appId: "480" } }, buildField("acme.steam", "appId", "global")))
+            .toEqual({ value: "480", overridden: false });
+    });
+
+    it("keys a platform-scoped field per platform", () => {
+        const demo: ProjectAppTag = {
+            id: "demo",
+            name: "Demo",
+            overrides: {},
+            pluginConfig: { "acme.steam": { "depot@windows": "1001" } },
+        };
+        const field = buildField("acme.steam", "depot", "variant-platform");
+
+        expect(resolveAppTagPluginConfigValue(demo, {}, field, "windows"))
+            .toEqual({ value: "1001", overridden: true });
+        expect(resolveAppTagPluginConfigValue(demo, {}, field, "macos"))
+            .toEqual({ value: "", overridden: false });
+    });
+
+    it("drops a variant entry for a field the project owns, and leaves undeclared keys alone", () => {
+        const stored = {
+            "acme.steam": { appId: "999", branch: "beta", "depot@windows": "1001" },
+            "acme.uninstalled": { anything: "kept" },
+        };
+
+        expect(variantStorablePluginConfig(stored, [
+            buildField("acme.steam", "appId", "global"),
+            buildField("acme.steam", "branch", "variant"),
+            buildField("acme.steam", "depot", "platform"),
+        ])).toEqual({
+            "acme.steam": { branch: "beta" },
+            "acme.uninstalled": { anything: "kept" },
+        });
     });
 });

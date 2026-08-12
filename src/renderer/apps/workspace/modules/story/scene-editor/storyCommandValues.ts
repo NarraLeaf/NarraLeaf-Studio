@@ -306,6 +306,8 @@ export type StoryCommandResolutionIssue =
     | { code: "expressionTypeMismatch"; span: StoryCommandSpan; value: string; variable: string; expected: StoryVariableValueType; received: StoryExprType }
     /** `/local gold` where a variable of that name already exists in that scope. */
     | { code: "duplicateVariable"; span: StoryCommandSpan; value: string }
+    /** `/local AppTag` - a name the expression language reads as something other than a variable. */
+    | { code: "reservedVariableName"; span: StoryCommandSpan; value: string }
     /** `/set += 1` - a compound assignment with no variable to compound against. */
     | { code: "compoundWithoutTarget"; span: StoryCommandSpan; value: string };
 

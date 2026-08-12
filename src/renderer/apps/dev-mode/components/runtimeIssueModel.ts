@@ -20,6 +20,7 @@ import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import { projectSceneTimeline } from "./storyRuntimeDebugModel";
 import type { GameAppRuntimeIssue } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryBlockId, StoryDocument, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 
@@ -40,7 +41,11 @@ import type { StoryBlockId, StoryDocument, StoryId, StoryScene, StorySceneId } f
  * whole bundle, and omitting `ui` costs exactly the names of the registry-declared variables.
  */
 export type StoryRowBundle = Pick<DevModeBundle, "storyLibrary"> & {
-    ui?: Pick<DevModeBundle["ui"], "savedVariables" | "persistentVariables">;
+    ui?: Pick<DevModeBundle["ui"], "savedVariables" | "persistentVariables">
+        // The interface half of the same job: a Game UI blueprint failure names a surface rather than
+        // a row, and `uidoc` is where a surface id becomes the name the author gave it. Optional for
+        // the same reason the rest of `ui` is — a fixture may hand over a story library alone.
+        & Partial<Pick<DevModeBundle["ui"], "uidoc">>;
 };
 
 export function buildStoryRowLookups(
@@ -148,6 +153,13 @@ export function locateStoryBlock(
     return null;
 }
 
+/** Where a Game UI failure happened, in the terms the interface editor names things by. */
+export type SurfaceLocation = {
+    surfaceId: string;
+    /** What the author called it, or the id when the document no longer has that surface. */
+    surfaceName: string;
+};
+
 /** A reported failure, with wherever it turned out to be. */
 export type LocatedRuntimeIssue = {
     /** Stable per-entry key for React, and what dismissal addresses. */
@@ -158,7 +170,46 @@ export type LocatedRuntimeIssue = {
     stack?: string;
     /** Null when the failure could not be pinned to a row — a boot failure, or a deleted block. */
     location: StoryBlockLocation | null;
+    /**
+     * The surface it happened on, for a failure that happened on one. Absent rather than null, like
+     * `stack`: a story failure has no surface to report and should not carry an empty field saying so.
+     */
+    surface?: SurfaceLocation;
 };
+
+/**
+ * Name the surface a failure came from.
+ *
+ * Falls back to the id rather than to nothing: a surface deleted since the bundle was built still
+ * happened somewhere, and an id an author can search for beats "unknown".
+ */
+export function locateSurface(bundle: StoryRowBundle, surfaceId: string | undefined): SurfaceLocation | null {
+    if (!surfaceId) {
+        return null;
+    }
+    const surface = bundle.ui?.uidoc?.surfaces.find(entry => entry.id === surfaceId);
+    return { surfaceId, surfaceName: surface?.name || surfaceId };
+}
+
+/**
+ * Turn a blueprint failure into a reportable issue, or null for a debug event that is not one.
+ *
+ * The whole reason this exists: an `execution.error` used to travel no further than the debug stream
+ * a Dev Mode window forwards to the Workspace console, so a node that threw inside a Game UI slot
+ * surface — a dialogue box, a quick menu, a choice list — produced NOTHING an author could see. The
+ * button just did not work. Every host that owns an issue list runs its debug events through here.
+ */
+export function blueprintDebugEventIssue(event: BlueprintDebugEvent): GameAppRuntimeIssue | null {
+    if (event.type !== "execution.error") {
+        return null;
+    }
+    return {
+        level: "error",
+        message: event.message,
+        origin: "interface",
+        ...(event.surfaceId ? { surfaceId: event.surfaceId } : {}),
+    };
+}
 
 /**
  * How many issues the window keeps.
@@ -189,13 +240,22 @@ export function countRuntimeIssues(issues: readonly LocatedRuntimeIssue[]): {
  * rather than by entry: a row inside a loop reports the same failure on every pass and each report
  * is a new entry, so an acknowledgement keyed on entries would be undone a frame after it was made.
  */
-function issueKey(issue: Pick<LocatedRuntimeIssue, "level" | "message"> & { blockId?: string }): string {
-    return `${issue.level}\u0000${issue.blockId ?? ""}\u0000${issue.message}`;
+function issueKey(
+    issue: Pick<LocatedRuntimeIssue, "level" | "message"> & { blockId?: string; surfaceId?: string },
+): string {
+    return `${issue.level}\u0000${issue.blockId ?? ""}\u0000${issue.surfaceId ?? ""}\u0000${issue.message}`;
 }
 
 /** That identity, for a located issue — the form every caller outside this file has. */
 export function runtimeIssueKey(issue: LocatedRuntimeIssue): string {
-    return issueKey({ ...issue, ...(issue.location ? { blockId: issue.location.blockId } : {}) });
+    return issueKey({
+        ...issue,
+        ...(issue.location ? { blockId: issue.location.blockId } : {}),
+        // The surface is part of the place for the same reason the block is: a quick menu and a
+        // settings page can fail to reach the running game word for word, and collapsing those two
+        // into one entry would hide the second surface entirely.
+        ...(issue.surface ? { surfaceId: issue.surface.surfaceId } : {}),
+    });
 }
 
 /**
@@ -225,6 +285,7 @@ export function locateRuntimeIssue(
     issue: GameAppRuntimeIssue,
     id: string,
 ): LocatedRuntimeIssue {
+    const surface = locateSurface(bundle, issue.surfaceId);
     return {
         id,
         level: issue.level,
@@ -232,5 +293,6 @@ export function locateRuntimeIssue(
         origin: issue.origin,
         ...(issue.stack ? { stack: issue.stack } : {}),
         location: locateStoryBlock(bundle, issue.blockId),
+        ...(surface ? { surface } : {}),
     };
 }

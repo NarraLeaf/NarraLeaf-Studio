@@ -6,19 +6,32 @@ import {
     APP_TAG_OVERRIDE_KEYS,
     createEmptyAppTagDocument,
     hasAppTag,
+    hasAppTagPluginConfig,
     isBuiltinAppTagId,
     listAppTags,
+    normalizeAppTagPluginConfig,
     normalizeProjectAppTags,
     RELEASE_APP_TAG,
     resolveAppTag,
     resolveAppTagIdentity,
+    resolveAppTagPluginConfigValue,
     uniqueAppTagName,
+    variantStorablePluginConfig,
     type AppTagBaseIdentity,
     type AppTagIdentity,
     type AppTagOverrideKey,
+    type AppTagPluginConfig,
+    type AppTagResolvedValue,
     type ProjectAppTag,
     type ProjectAppTagDocument,
 } from "@shared/types/appTag";
+import type { GameBuildPlatform } from "@shared/types/gameBuild";
+import {
+    isPlatformScopedBuildConfig,
+    isVariantScopedBuildConfig,
+    pluginBuildConfigStorageKey,
+    type PluginBuildConfigField,
+} from "@shared/types/plugins";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -121,9 +134,14 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         }
         // This write supersedes whatever the timer was going to do.
         this.autoSaver.cancel();
+        const { pluginConfig: rawPluginConfig, ...rest } = document;
+        const pluginConfig = normalizeAppTagPluginConfig(rawPluginConfig);
         const updated: ProjectAppTagDocument = {
-            ...document,
+            ...rest,
             tags: normalizeProjectAppTags(document.tags),
+            // Spread onto a document the key was destructured out of, so a record emptied by the
+            // author's last clear leaves the file rather than sitting there as `{}`.
+            ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
             meta: {
                 ...document.meta,
                 updatedAt: new Date().toISOString(),
@@ -204,7 +222,41 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         const document = this.getDocument();
         // Re-normalized on every mutation rather than only on load, so nothing a caller does can put
         // a duplicate id, a stored release tag or a blank override into memory.
-        document.tags = normalizeProjectAppTags(mutator([...document.tags]));
+        this.applyDocumentMutation(document => {
+            document.tags = mutator([...document.tags]);
+        });
+    }
+
+    /**
+     * The one write path. Mutate the document, re-normalize both halves of it, then commit.
+     *
+     * Re-normalized on every mutation rather than only on load, so nothing a caller does can put a
+     * duplicate id, a stored release tag, a blank override or a blank plugin value into memory.
+     */
+    private applyDocumentMutation(mutate: (document: ProjectAppTagDocument) => void): void {
+        const document = this.getDocument();
+        mutate(document);
+        document.tags = normalizeProjectAppTags(document.tags);
+        const pluginConfig = normalizeAppTagPluginConfig(document.pluginConfig);
+        if (hasAppTagPluginConfig(pluginConfig)) {
+            document.pluginConfig = pluginConfig;
+        } else {
+            // Deleted rather than left as `{}`, so clearing the last value returns the document to
+            // what it was before any plugin asked for anything.
+            delete document.pluginConfig;
+        }
+        this.commitMutation();
+    }
+
+    /**
+     * Everything a mutation owes regardless of which half of the document it touched.
+     *
+     * The project's own plugin values live at the document root rather than on a tag, so they cannot
+     * go through {@link applyTagMutation} - but they are the same document, the same autosave and
+     * the same event, and splitting the bookkeeping is how one of the two ends up not marking the
+     * project dirty.
+     */
+    private commitMutation(): void {
         this.revision += 1;
         this.setDirty(true);
         this.autoSaver.schedule();
@@ -328,6 +380,144 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         return APP_TAG_OVERRIDE_KEYS.filter(key => tag.overrides[key] !== undefined);
     }
 
+    /** The project's own plugin values - what a variant states nothing against. A copy. */
+    public getProjectPluginConfig(): AppTagPluginConfig {
+        return clonePluginConfig(this.getDocument().pluginConfig ?? {});
+    }
+
+    /** Only the plugin values this variant states itself. A copy; empty for the release tag. */
+    public getVariantPluginConfig(id: string | null | undefined): AppTagPluginConfig {
+        const tag = this.resolveTag(id);
+        return clonePluginConfig(tag.pluginConfig ?? {});
+    }
+
+    /**
+     * What one plugin field is set to under `id`, and whether the variant states it.
+     *
+     * `platform` is read only for the platform-taking scopes; passing one for a `global` or
+     * `variant` field is harmless and passing none for a platform-scoped field answers blank, which
+     * is the honest reading of "no platform, so no value for one".
+     */
+    public resolvePluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform?: GameBuildPlatform,
+    ): AppTagResolvedValue {
+        return resolveAppTagPluginConfigValue(
+            this.resolveTag(id),
+            this.getDocument().pluginConfig ?? {},
+            field,
+            platform,
+        );
+    }
+
+    /**
+     * State one plugin field's value.
+     *
+     * Where it lands is the field's business, not the caller's: a `global`- or `platform`-scoped
+     * field is written on the project whatever variant is selected, because it has one value for the
+     * whole project, and so is a variant-scoped field written while the release tag is selected - the
+     * release tag stores nothing, and the project's record is what it reads.
+     *
+     * A blank value clears it, for the reason {@link setOverride} gives: "" is not a value a build
+     * can ship with, and clearing a field is how an author says "inherit this again".
+     */
+    public setPluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        value: string,
+        platform?: GameBuildPlatform,
+    ): boolean {
+        const next = value.trim();
+        if (!next) {
+            return this.clearPluginConfigValue(id, field, platform);
+        }
+        return this.writePluginConfigValue(id, field, platform, next);
+    }
+
+    /**
+     * Restore one plugin field to the inherited value, or - on the project's own record - unset it.
+     *
+     * A delete, not a write of the inherited string: storing what was inherited would freeze it, and
+     * the next edit to the project would leave this variant quietly saying the old thing.
+     */
+    public clearPluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform?: GameBuildPlatform,
+    ): boolean {
+        return this.writePluginConfigValue(id, field, platform, null);
+    }
+
+    /** Restore every plugin value this variant states. Same delete rule, applied across the record. */
+    public clearAllPluginConfig(id: string): boolean {
+        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
+            return false;
+        }
+        this.applyTagMutation(tags => tags.map(tag => (
+            tag.id === id ? { ...tag, pluginConfig: {} } : tag
+        )));
+        return true;
+    }
+
+    /**
+     * Write or delete one field's value in whichever record the field's scope says owns it.
+     *
+     * Writing a field a variant cannot state also sweeps that field off every variant. Such an entry
+     * is inert - resolution never reads it - but leaving it there would let one field have two
+     * stored answers, and a later reader could pick either. It is swept here rather than on load
+     * because only a caller holding the declaration knows the scope: a sweep that guessed would
+     * delete the values of a plugin that is merely not installed on this machine.
+     */
+    private writePluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform: GameBuildPlatform | undefined,
+        value: string | null,
+    ): boolean {
+        const storageKey = pluginBuildConfigStorageKey(
+            field.key,
+            isPlatformScopedBuildConfig(field.scope) ? platform : undefined,
+        );
+        const trimmedId = typeof id === "string" ? id.trim() : "";
+        const onProject = !isVariantScopedBuildConfig(field.scope)
+            || !trimmedId
+            || isBuiltinAppTagId(trimmedId);
+
+        if (!onProject && !this.getTag(trimmedId)) {
+            return false;
+        }
+        this.applyDocumentMutation(document => {
+            if (onProject) {
+                document.pluginConfig = writePluginValue(
+                    document.pluginConfig ?? {},
+                    field.pluginId,
+                    storageKey,
+                    value,
+                );
+                if (!isVariantScopedBuildConfig(field.scope)) {
+                    document.tags = document.tags.map(tag => ({
+                        ...tag,
+                        pluginConfig: variantStorablePluginConfig(tag.pluginConfig ?? {}, [field]),
+                    }));
+                }
+                return;
+            }
+            document.tags = document.tags.map(tag => (tag.id === trimmedId
+                ? {
+                    ...tag,
+                    pluginConfig: writePluginValue(
+                        tag.pluginConfig ?? {},
+                        field.pluginId,
+                        storageKey,
+                        value,
+                    ),
+                }
+                : tag));
+        });
+        return true;
+    }
+
     /**
      * Delete a variant. Refuses the release tag - it is what every unresolvable reference falls back
      * to, and a project with no variant to build is not a state the rest of Studio can read.
@@ -355,4 +545,38 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
     private storage(): DocumentStorage {
         return createProjectDocumentStorage(this.getContext());
     }
+}
+
+/**
+ * `config` with one key set, or removed when `value` is null.
+ *
+ * Copied rather than mutated because these records sit inside the tags the service hands out, and a
+ * caller holding a previous list must not watch it change underneath.
+ */
+function writePluginValue(
+    config: AppTagPluginConfig,
+    pluginId: string,
+    storageKey: string,
+    value: string | null,
+): AppTagPluginConfig {
+    const next = clonePluginConfig(config);
+    if (value === null) {
+        delete next[pluginId]?.[storageKey];
+        // The plugin's record goes when its last value does, so an uninstalled plugin does not leave
+        // its name in the document as the only evidence it was ever configured.
+        if (next[pluginId] && Object.keys(next[pluginId]).length === 0) {
+            delete next[pluginId];
+        }
+        return next;
+    }
+    next[pluginId] = { ...next[pluginId], [storageKey]: value };
+    return next;
+}
+
+function clonePluginConfig(config: AppTagPluginConfig): AppTagPluginConfig {
+    const clone: AppTagPluginConfig = {};
+    for (const [pluginId, values] of Object.entries(config)) {
+        clone[pluginId] = { ...values };
+    }
+    return clone;
 }

@@ -92,8 +92,14 @@ export type GameBuildRequest = {
     openWhenDone?: boolean;
 };
 
-/** Which build-dialog section a preflight finding belongs to. */
-export type BuildPreflightSection = "targets" | "identity" | "content" | "signing" | "output";
+/**
+ * Which build-dialog section a preflight finding belongs to.
+ *
+ * `plugins` is the one section whose page is not always on screen: it exists only where an installed
+ * plugin declares a value for the platforms being built. That is safe because a finding in it can
+ * only come from a declared field, which is the same fact that puts the page there.
+ */
+export type BuildPreflightSection = "targets" | "identity" | "content" | "plugins" | "signing" | "output";
 
 /**
  * "error" blocks the build (the pipeline would throw); "warning" ships but
@@ -107,11 +113,29 @@ export type BuildPreflightCode =
     | "version-invalid"
     | "version-missing"
     | "identifier-missing"
+    /**
+     * The project's build variants are on disk but could not be read, so nothing here knows which
+     * identity this build would carry. The build itself refuses the same file, so this is an error
+     * rather than a note about a degraded reading.
+     */
+    | "variants-unreadable"
     | "icon-missing"
     | "icon-unusable"
     | "icon-low-resolution"
     | "icon-stale"
     | "plugins-invalid"
+    /**
+     * A plugin declared a value the build cannot ship without, and the variant being built has none.
+     * Reported once per value asked for, so a field taking one value per platform names the platform
+     * it is missing for.
+     */
+    | "plugin-config-missing"
+    /**
+     * A plugin secret the project names by handle whose value is not sealed on this machine. The
+     * ordinary state of a project a collaborator configured - key material never travels with a
+     * project - rather than a damaged one.
+     */
+    | "plugin-secret-unavailable"
     | "build-dependency-unavailable"
     | "sidecar-target-missing"
     | "sidecar-crossbuild-exec-bit"
@@ -329,6 +353,24 @@ const BUILDER_EXT_TOKEN: Record<Exclude<GameBuildFormat, "dir">, string> = {
     aab: "aab",
     ipa: "ipa",
 };
+
+/**
+ * What every artifact of a build is named from.
+ *
+ * Derived from the project's own name and the variant's name, deliberately not from a variant's
+ * overridden `displayName`: the file names a project and an edition of it, while `displayName` names
+ * the application a player installs. Two variants that rename the application to the same thing
+ * still write different files, and - the reason this exists - a variant that overrides nothing no
+ * longer writes byte-identical file names to the release build, which silently overwrote it when
+ * both were built into one output folder.
+ *
+ * `null` is the release variant, whose artifacts are named from the project alone. Its names are
+ * therefore exactly what they were before variants existed.
+ */
+export function gameBuildArtifactBaseName(projectName: string, variantName: string | null): string {
+    const base = sanitizeProjectFileName(projectName);
+    return variantName === null ? base : `${base}-${sanitizeProjectFileName(variantName)}`;
+}
 
 /**
  * The artifactName pattern handed to electron-builder. Lives here (rather than

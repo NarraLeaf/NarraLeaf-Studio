@@ -1,9 +1,13 @@
-import { Bookmark, CornerUpLeft, Flag, GitBranch, ListChecks, ListOrdered, LogOut, Repeat, Repeat2, Rows3, Workflow } from "lucide-react";
+import { Bookmark, CornerUpLeft, Flag, GitBranch, ListChecks, ListOrdered, LogOut, Repeat, Repeat2, Rows3, SeparatorHorizontal, Workflow } from "lucide-react";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import type { StoryBlock, StoryConditionRef } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
-import { asNumber, asText, defineStoryCommand } from "../spec";
+import { appTagParam, asAppTagId, asNumber, asText, defineStoryCommand } from "../spec";
 
-/** Control flow: `/if`, `/menu`, the two loops (`/repeat`, `/until`), `/break`, and the run-mode containers. */
+/**
+ * Control flow: `/if`, `/menu`, the two loops (`/repeat`, `/until`), `/break`, `/cut`, and the
+ * run-mode containers.
+ */
 
 export const ifCommand = defineStoryCommand({
     id: "if",
@@ -260,6 +264,44 @@ export const goto = defineStoryCommand({
     },
 });
 
+/**
+ * `/cut <variant>` - where the named build variant's story ends.
+ *
+ * One variant per row, single-valued. Cutting two variants at one point is two rows, which is also
+ * the only shape the reference sweep can count: it looks for an `appTagId` holding a variant id, and
+ * a list under that key would count as none while every test still passed.
+ *
+ * The release variant is not offerable (see {@link appTagParam}). A build that ends at a line ships
+ * nothing after it, and that is the whole story for the edition every other one is read against.
+ * Typing its name still resolves - it has to, since a deleted variant's id resolves to release - and
+ * such a row cuts nothing, which is exactly what makes written cut points safe to keep.
+ *
+ * Hidden from the browse surfaces in a project with no authored variant, because the row would then
+ * have nothing to name.
+ */
+export const cut = defineStoryCommand({
+    id: "cut",
+    token: "cut",
+    category: "flow",
+    icon: SeparatorHorizontal,
+    examples: ["/cut Demo"],
+    params: {
+        tag: appTagParam(),
+    },
+    available: context => context.appTags.some(tag => tag.id !== APP_TAG_ID_RELEASE),
+    build(args, ctx): StoryBlock {
+        return {
+            id: ctx.generateId(),
+            parentId: null,
+            childrenIds: [],
+            kind: "control",
+            // The id, never the typed name: the row has to keep naming the same variant after a
+            // rename, and the reference count reads this very field.
+            payload: { control: "cut", appTagId: asAppTagId(args.tag) ?? "" },
+        };
+    },
+});
+
 /** A Story Action Blueprint call - the blueprint itself is picked in the inspector. */
 export const blueprint = defineStoryCommand({
     id: "blueprint",
@@ -273,4 +315,4 @@ export const blueprint = defineStoryCommand({
     inspectorAfterCommit: true,
 });
 
-export const LOGIC_COMMANDS = [ifCommand, menu, repeat, until, breakLoop, parallel, race, sequence, label, goto, blueprint];
+export const LOGIC_COMMANDS = [ifCommand, menu, repeat, until, breakLoop, parallel, race, sequence, label, goto, cut, blueprint];

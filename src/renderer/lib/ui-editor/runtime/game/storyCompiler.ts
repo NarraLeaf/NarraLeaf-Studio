@@ -1872,6 +1872,14 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
         if (block.payload.control === "break") {
             return compileBreak(ctx, block);
         }
+        if (block.payload.control === "cut") {
+            // Nothing to emit. This compiler serves the editor's preview and Dev Mode, both of which
+            // play the story as the author sees it - the release edition, which no cut point ends.
+            // Where a variant's package is assembled is where the rows after this one are dropped;
+            // here the row is a marker and the scene carries on. Answered explicitly so it cannot
+            // fall into the group arm below and compile as an empty container.
+            return [];
+        }
         return compileControlGroup(ctx, block);
     }
 
@@ -1950,6 +1958,10 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
             // The preview compiles this row on its own, without the loop it belongs to. Emitting
             // `breakLoop()` there is an engine error at play time, so the preview holds instead.
             diagnostic(ctx, "warning", block.id, "Preview holds at the break; it needs its loop to do anything.");
+            return [];
+        }
+        if (block.payload.control === "cut") {
+            // A marker, not an action: no statement here and none in the walk above.
             return [];
         }
         return compileControlGroup(ctx, block);

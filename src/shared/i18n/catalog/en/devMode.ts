@@ -14,6 +14,9 @@ export const devMode = {
         sessionFailure: "Session failed to start",
         atLine: "Line {line} · {scene}",
         inScene: "In {scene}",
+        // A Game UI blueprint failed. It has no story row - the author was drawing an interface, not
+        // writing a scene - so the place it names is the surface they drew.
+        onSurface: "On {surface}",
         noLocation: "Could not be traced to a line",
         viaPlayHead: "where playback was",
         openInStudio: "Open in Studio",

@@ -829,3 +829,51 @@ describe("inferStoryExpressionType", () => {
         expect(storyExprTypeFits(infer("[1, 2]"), "json")).toBe(true);
     });
 });
+
+describe("AppTag", () => {
+    const parseWith = (source: string, appTags?: { id: string; name: string }[]) =>
+        parseStoryExpression(source, createStoryExpressionScope(VARIABLES, appTags ? { appTags } : {}));
+
+    it("reads as the build-variant constant, whatever its case", () => {
+        for (const source of ["AppTag", "apptag", "APPTAG"]) {
+            expect(parseWith(source).expression.ast, source).toEqual({ kind: "call", fn: "appTag", args: [] });
+        }
+    });
+
+    it("wins the bare name from a variable that shares it", () => {
+        const scope = createStoryExpressionScope([
+            ...VARIABLES,
+            { name: "AppTag", ref: { scope: "saved", variableId: "v_apptag" } as StoryVariableRef },
+        ]);
+        expect(parseStoryExpression("AppTag", scope).expression.ast).toEqual({ kind: "call", fn: "appTag", args: [] });
+        // Quoting is how that variable is still reachable - and how the printer spells it back.
+        expect(parseStoryExpression("'AppTag'", scope).expression.ast).toMatchObject({ kind: "var", name: "AppTag" });
+        expect(formatStoryExpressionName("AppTag")).toBe("'AppTag'");
+    });
+
+    it("prints back as the bare word, so a folded document round-trips", () => {
+        const ast = parseWith("AppTag == \"Demo\"").expression.ast;
+        expect(formatStoryExpr(ast)).toBe("(AppTag == \"Demo\")");
+        expect(parseWith(formatStoryExpr(ast)).expression.ast).toEqual(ast);
+    });
+
+    it("is a string, so a comparison is a condition and an assignment fits a string", () => {
+        const infer = (source: string) => inferStoryExpressionType(parseWith(source).expression.ast, () => undefined);
+        expect(infer("AppTag")).toBe("string");
+        expect(infer("AppTag == \"Demo\"")).toBe("boolean");
+    });
+
+    it("reports a name no variant has, and only where the caller can enumerate them", () => {
+        const tags = [{ id: "release", name: "Release" }, { id: "t1", name: "Demo" }];
+        expect(parseWith("AppTag == \"Demo\"", tags).issues).toEqual([]);
+        expect(parseWith("AppTag == \"demo\"", tags).issues)
+            .toEqual([{ code: "unknownAppTagName", span: { start: 0, end: 16 }, name: "demo" }]);
+        // No list, no opinion: the fold, the migration and the tests all parse without one.
+        expect(parseWith("AppTag == \"Nothing\"").issues).toEqual([]);
+    });
+
+    it("says nothing about a comparison with no fixed name to check", () => {
+        const tags = [{ id: "release", name: "Release" }];
+        expect(parseWith("AppTag == playerName", tags).issues).toEqual([]);
+    });
+});
