@@ -17,8 +17,10 @@ import type {
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingFileRead,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
+import { WorkingFileRefusedError } from "../../vcs/workingFile";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -226,6 +228,37 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
         return this.tryUse(async () => {
             const bytes = await window.app.getVcsManager().readBlob(request);
             return { contentBase64: bytes.toString("base64") };
+        });
+    }
+}
+
+/**
+ * The working tree's side of a comparison.
+ *
+ * Two shapes of answer, and the split is the contract rather than convenience. A file that is too
+ * large to draw comes back as `refusal`, because a project holding one is ordinary and the surface
+ * has a sentence for it. A path that escapes the project or sits outside version control comes
+ * back as a FAILURE, because no comparison can name one - asking for it means a caller built a
+ * path it should not have, and turning that into a tidy "not shown" would hide it forever.
+ */
+export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWorkingFile> {
+    readonly name = IPCEventType.vcsReadWorkingFile;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        request: IPCEvents[IPCEventType.vcsReadWorkingFile]["data"],
+    ): Promise<RequestStatus<VcsWorkingFileRead>> {
+        return this.tryUse(async () => {
+            try {
+                const bytes = await window.app.getVcsManager().readWorkingFile(request);
+                return { contentBase64: bytes.toString("base64") };
+            } catch (error) {
+                if (error instanceof WorkingFileRefusedError && error.refusal === "tooLarge") {
+                    return { contentBase64: null, refusal: "tooLarge" as const };
+                }
+                throw error;
+            }
         });
     }
 }
