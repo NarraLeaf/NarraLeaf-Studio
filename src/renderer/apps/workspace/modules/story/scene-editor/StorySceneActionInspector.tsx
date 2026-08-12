@@ -38,7 +38,7 @@ import { buildMergedVariableView } from "@shared/variables/mergedPersistentView"
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
 import { resolveAudioTrack } from "@shared/types/audioTrack";
-import { isBuiltinAppTagId } from "@shared/types/appTag";
+import { isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
@@ -2861,14 +2861,13 @@ function CutPointFields(props: {
     const { t } = useTranslation();
     const tags = useProjectAppTags();
     const authored = tags.filter(tag => !isBuiltinAppTagId(tag.id));
-    const releaseName = t("project.appTags.releaseName");
     const options: SelectOption[] = authored.map(tag => ({ value: tag.id, label: tag.name }));
     if (props.payload.appTagId && !authored.some(tag => tag.id === props.payload.appTagId)) {
         options.unshift({
             value: props.payload.appTagId,
             // A deleted variant resolves to release, and a cut point naming release ends nothing, so
             // that is what the row now does. The option says it rather than showing a dangling id.
-            label: t("storyInspector.control.cutMissingVariant", { name: releaseName }),
+            label: t("storyInspector.control.cutMissingVariant", { name: RELEASE_APP_TAG.name }),
         });
     }
     return (

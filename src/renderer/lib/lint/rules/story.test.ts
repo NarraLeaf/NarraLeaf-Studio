@@ -712,6 +712,15 @@ describe("story/app-tag-unknown", () => {
         )).toEqual([]);
     });
 
+    it("accepts the release variant by name, in a project that authored none of its own", () => {
+        // `main` is what the release variant is called in every language, so a line comparing
+        // against it is the one variant reference every project can write.
+        expect(run(
+            "story/app-tag-unknown",
+            withTags(story("s1", "Main", [scene("sc1", "Prologue", [condition("c1", [appTagBranch("b1", "main")])])]), [RELEASE_APP_TAG]),
+        )).toEqual([]);
+    });
+
     it("matches the variant's name exactly, the way the fold does", () => {
         const tags = [RELEASE_APP_TAG, { id: "t-demo", name: "Demo", overrides: {} }];
         expect(run(

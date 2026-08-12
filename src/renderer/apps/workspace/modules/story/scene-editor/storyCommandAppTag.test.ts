@@ -22,7 +22,7 @@ import { EMPTY_STORY_COMMAND_CONTEXT, type StoryCommandContext } from "./storyCo
 const CONTEXT: StoryCommandContext = {
     ...EMPTY_STORY_COMMAND_CONTEXT,
     appTags: [
-        { id: APP_TAG_ID_RELEASE, name: "Release" },
+        { id: APP_TAG_ID_RELEASE, name: "main" },
         { id: "tag-demo", name: "Demo" },
         { id: "tag-bonus", name: "Bonus" },
     ],
@@ -99,7 +99,7 @@ describe("app tag command slot - resolution", () => {
     it("still takes the release variant's name, which is what a stranded row reads as", () => {
         // Not offered, but legal: a deleted variant's id resolves to release, so a row holding it has
         // to be a state the whole seam can express rather than one only the payload can.
-        expect(resolveCommandLine(commandLine("Release"), CONTEXT).args.tag)
+        expect(resolveCommandLine(commandLine("main"), CONTEXT).args.tag)
             .toEqual({ kind: "appTag", appTagId: APP_TAG_ID_RELEASE });
     });
 
@@ -120,7 +120,7 @@ describe("app tag command slot - resolution", () => {
     it("keeps resolving a row through a rename, because the row holds the id", () => {
         const renamed: StoryCommandContext = {
             ...CONTEXT,
-            appTags: [{ id: APP_TAG_ID_RELEASE, name: "Release" }, { id: "tag-demo", name: "Trial" }],
+            appTags: [{ id: APP_TAG_ID_RELEASE, name: "main" }, { id: "tag-demo", name: "Trial" }],
         };
         const stored = resolveCommandLine(commandLine("Demo"), CONTEXT).args.tag;
 
@@ -141,22 +141,23 @@ describe("app tag command slot - the release variant is always there", () => {
             scene: null,
         });
 
-        expect(context.appTags).toEqual([{ id: APP_TAG_ID_RELEASE, name: "Release" }]);
+        expect(context.appTags).toEqual([{ id: APP_TAG_ID_RELEASE, name: "main" }]);
     });
 
-    it("spells release the way the surface spells it, not the way the model does", () => {
+    it("carries every variant under its stored name, release included", () => {
+        // No name is substituted anywhere: the release variant is called "main" in every language,
+        // so what the menu offers is what the shipped game compares against.
         const context = buildStoryCommandContext({
             assets: undefined,
             characters: [],
             document: null,
             sceneId: null,
             scene: null,
-            appTags: [{ id: APP_TAG_ID_RELEASE, name: "Release" }, { id: "tag-demo", name: "Demo" }],
-            releaseAppTagName: "正式版",
+            appTags: [{ id: APP_TAG_ID_RELEASE, name: "main" }, { id: "tag-demo", name: "Demo" }],
         });
 
         expect(context.appTags).toEqual([
-            { id: APP_TAG_ID_RELEASE, name: "正式版" },
+            { id: APP_TAG_ID_RELEASE, name: "main" },
             { id: "tag-demo", name: "Demo" },
         ]);
     });
@@ -173,7 +174,7 @@ describe("the cut command is offered only where it has something to name", () =>
     it("is not listed in a project that has only the release variant", () => {
         const bare: StoryCommandContext = {
             ...EMPTY_STORY_COMMAND_CONTEXT,
-            appTags: [{ id: APP_TAG_ID_RELEASE, name: "Release" }],
+            appTags: [{ id: APP_TAG_ID_RELEASE, name: "main" }],
         };
 
         expect(idsIn(bare)).not.toContain("cut");

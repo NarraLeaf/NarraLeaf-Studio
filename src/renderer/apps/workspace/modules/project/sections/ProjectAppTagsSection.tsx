@@ -27,13 +27,13 @@ import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { Button, Input } from "@/lib/components/elements";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
-import { appTagDisplayName } from "@/lib/workspace/services/appTag/appTagDisplay";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import {
     APP_TAG_OVERRIDE_KEYS,
     countAppTagReferences,
+    RELEASE_APP_TAG,
     resolveAppTagIdentity,
     type AppTagBaseIdentity,
     type AppTagOverrideKey,
@@ -125,23 +125,14 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
         return openIds.filter(id => known.has(id));
     }, [openIds, tags]);
 
-    /**
-     * The release tag's name on screen, which a new or renamed variant must differ from.
-     *
-     * Handed to the service rather than known by it: the model spells the release tag "Release"
-     * because it has no catalog, and a variant named the translated word would be a second answer to
-     * a name every surface resolves.
-     */
-    const reservedNames = useMemo(() => [t("project.appTags.releaseName")], [t]);
-
     const addTag = useCallback(() => {
         // The same name every time on purpose - the service numbers it, so pressing Add twice gives
         // two variants an author can tell apart rather than two rows reading "New Variant".
-        const created = tagService?.createTag({ name: t("project.appTags.newTagName"), reservedNames });
+        const created = tagService?.createTag({ name: t("project.appTags.newTagName") });
         if (created) {
             setOpenIds(prev => [...prev, created.id]);
         }
-    }, [reservedNames, t, tagService]);
+    }, [t, tagService]);
 
     const removeTag = useCallback(async (tag: ProjectAppTag) => {
         if (!tagService) {
@@ -149,12 +140,15 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
         }
         const uses = references[tag.id]?.total ?? 0;
         const cuts = references[tag.id]?.story ?? 0;
+        // The variant those references fall back to, read off the model rather than written into the
+        // sentence, so the copy follows a rename.
+        const fallback = { name: RELEASE_APP_TAG.name };
         // Two sentences when the script has cut points naming this variant: what happens to every
         // reference, and then what happens to those rows, which is not the same thing. They are kept,
         // and a kept cut point that names nothing ends nothing.
         const detail = cuts > 0
-            ? `${tn("project.appTags.deleteDetail", uses)} ${tn("project.appTags.deleteDetailCuts", cuts)}`
-            : tn("project.appTags.deleteDetail", uses);
+            ? `${tn("project.appTags.deleteDetail", uses, fallback)} ${tn("project.appTags.deleteDetailCuts", cuts)}`
+            : tn("project.appTags.deleteDetail", uses, fallback);
         const confirmed = await uiService?.showDestructiveConfirm(
             t("project.appTags.deleteConfirm", { name: tag.name }),
             detail,
@@ -199,7 +193,6 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
                             tag={tag}
                             base={base}
                             service={tagService}
-                            reservedNames={reservedNames}
                             uses={references[tag.id]?.total ?? 0}
                             onDelete={() => void removeTag(tag)}
                         />
@@ -221,14 +214,12 @@ function TagItem({
     tag,
     base,
     service,
-    reservedNames,
     uses,
     onDelete,
 }: {
     tag: ProjectAppTag;
     base: AppTagBaseIdentity;
     service: AppTagService | null;
-    reservedNames: readonly string[];
     uses: number;
     onDelete: () => void;
 }) {
@@ -237,8 +228,6 @@ function TagItem({
     const frozen = freeze.writes(!service);
 
     const identity = useMemo(() => resolveAppTagIdentity(tag, base), [base, tag]);
-    // The same call the build dialog's picker makes, so the release variant reads one way in both.
-    const displayName = appTagDisplayName(tag, t("project.appTags.releaseName"));
 
     return (
         <AccordionItem
@@ -253,7 +242,7 @@ function TagItem({
             }}
             title={
                 <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-fg">{displayName}</span>
+                    <span className="min-w-0 flex-1 truncate text-fg">{tag.name}</span>
                 </span>
             }
         >
@@ -277,7 +266,7 @@ function TagItem({
                             disabled={frozen.disabled}
                             label={t("project.appTags.nameTitle")}
                             handle={`${tag.id}:name`}
-                            onCommit={name => service?.renameTag(tag.id, name, reservedNames)}
+                            onCommit={name => service?.renameTag(tag.id, name)}
                         />
                     </Field>
                 )}

@@ -269,7 +269,7 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
      * It starts with no overrides, which is the whole of "inherits from release": a tag the author
      * has just made is the release build under another name until they say otherwise.
      */
-    public createTag(input?: { name?: string; reservedNames?: readonly string[] }): ProjectAppTag {
+    public createTag(input?: { name?: string }): ProjectAppTag {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const tag: ProjectAppTag = {
             id: uuidService.generate(),
@@ -277,7 +277,7 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             // offer ("New Variant"), and offering the same one twice is what a second press of Add
             // does - so pressing it twice must produce two names, not two rows nothing can tell
             // apart.
-            name: uniqueAppTagName(this.takenNames(null, input?.reservedNames), input?.name ?? ""),
+            name: uniqueAppTagName(this.takenNames(null), input?.name ?? ""),
             overrides: {},
         };
         this.applyTagMutation(tags => [...tags, tag]);
@@ -285,18 +285,12 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
     }
 
     /**
-     * Every name a new or renamed tag must differ from: the other stored tags, the release tag's
-     * own name, and whatever the caller says the release tag is called on screen.
-     *
-     * The last of those is why `reservedNames` exists at all. The model spells the release tag
-     * "Release" because it has no catalog to read, while the surface shows the translated word - and
-     * a tag named the translated word would collide with it everywhere a name is resolved, which the
-     * model alone cannot see.
+     * Every name a new or renamed tag must differ from: the other stored tags, and the release
+     * tag's own name, which is what every surface shows for it in every language.
      */
-    private takenNames(excludeId: string | null, reservedNames?: readonly string[]): string[] {
+    private takenNames(excludeId: string | null): string[] {
         return [
             RELEASE_APP_TAG.name,
-            ...(reservedNames ?? []),
             ...this.getDocument().tags.filter(tag => tag.id !== excludeId).map(tag => tag.name),
         ];
     }
@@ -313,12 +307,12 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
      * Stored references hold the id, so nothing has to be rewritten: every place naming this tag
      * follows the new name by construction.
      */
-    public renameTag(id: string, name: string, reservedNames?: readonly string[]): boolean {
+    public renameTag(id: string, name: string): boolean {
         const next = name.trim();
         if (!next || isBuiltinAppTagId(id) || !this.getTag(id)) {
             return false;
         }
-        const unique = uniqueAppTagName(this.takenNames(id, reservedNames), next);
+        const unique = uniqueAppTagName(this.takenNames(id), next);
         this.applyTagMutation(tags => tags.map(tag => (tag.id === id ? { ...tag, name: unique } : tag)));
         return true;
     }

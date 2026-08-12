@@ -71,7 +71,7 @@ import { formatStoryExpr } from "@shared/utils/storyExpressionParser";
 
 /** What one expression folds against: `AppTag` becomes the variant's name and nothing else. */
 export type AppTagNameOptions = {
-    /** The variant's own name, exactly as the variant list stores it. Release is "Release". */
+    /** The variant's own name, exactly as the variant list stores it. Release is "main". */
     tagName: string;
 };
 

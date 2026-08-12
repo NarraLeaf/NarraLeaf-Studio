@@ -864,7 +864,7 @@ describe("AppTag", () => {
     });
 
     it("reports a name no variant has, and only where the caller can enumerate them", () => {
-        const tags = [{ id: "release", name: "Release" }, { id: "t1", name: "Demo" }];
+        const tags = [{ id: "release", name: "main" }, { id: "t1", name: "Demo" }];
         expect(parseWith("AppTag == \"Demo\"", tags).issues).toEqual([]);
         expect(parseWith("AppTag == \"demo\"", tags).issues)
             .toEqual([{ code: "unknownAppTagName", span: { start: 0, end: 16 }, name: "demo" }]);
@@ -873,7 +873,7 @@ describe("AppTag", () => {
     });
 
     it("says nothing about a comparison with no fixed name to check", () => {
-        const tags = [{ id: "release", name: "Release" }];
+        const tags = [{ id: "release", name: "main" }];
         expect(parseWith("AppTag == playerName", tags).issues).toEqual([]);
     });
 });

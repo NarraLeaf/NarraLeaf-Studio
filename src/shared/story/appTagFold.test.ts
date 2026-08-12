@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
+import { APP_TAG_ID_RELEASE, RELEASE_APP_TAG } from "@shared/types/appTag";
 import {
     STORY_DOCUMENT_SCHEMA_VERSION,
     type StoryBlock,
@@ -28,7 +28,7 @@ import {
  */
 
 /** The two editions every document case below is produced as. */
-const RELEASE = { tagName: "Release", tagId: APP_TAG_ID_RELEASE };
+const RELEASE = { tagName: RELEASE_APP_TAG.name, tagId: APP_TAG_ID_RELEASE };
 const DEMO = { tagName: "Demo", tagId: "tag-demo" };
 
 const SCOPE = createStoryExpressionScope(
@@ -125,10 +125,17 @@ describe("foldStoryExpression", () => {
             .toEqual({ kind: "literal", value: "Demo" });
     });
 
+    it("reduces it to \"main\" in a release build, whatever the author's language", () => {
+        // Spelled out rather than read off the model: the word is what an author types into an
+        // expression, and it has to be the same one in every Studio and in the package.
+        expect(foldStoryExpression(parse("AppTag").ast, RELEASE).ast)
+            .toEqual({ kind: "literal", value: "main" });
+    });
+
     it("decides a comparison exactly and case-sensitively", () => {
         const ast = parse("AppTag == \"Demo\"").ast;
         expect(foldStoryExpression(ast, { tagName: "Demo" }).ast).toEqual({ kind: "literal", value: true });
-        expect(foldStoryExpression(ast, { tagName: "Release" }).ast).toEqual({ kind: "literal", value: false });
+        expect(foldStoryExpression(ast, { tagName: "main" }).ast).toEqual({ kind: "literal", value: false });
         expect(foldStoryExpression(ast, { tagName: "demo" }).ast).toEqual({ kind: "literal", value: false });
     });
 
@@ -147,7 +154,7 @@ describe("foldStoryExpression", () => {
     });
 
     it("short-circuits where the evaluator does", () => {
-        expect(foldStoryExpression(parse("AppTag == \"Demo\" && gold > 0").ast, { tagName: "Release" }).ast)
+        expect(foldStoryExpression(parse("AppTag == \"Demo\" && gold > 0").ast, { tagName: "main" }).ast)
             .toEqual({ kind: "literal", value: false });
         expect(foldStoryExpression(parse("AppTag == \"Demo\" || gold > 0").ast, { tagName: "Demo" }).ast)
             .toEqual({ kind: "literal", value: true });
@@ -158,7 +165,7 @@ describe("foldStoryExpression", () => {
         // every copy take the same branch.
         expect(foldStoryExpression(parse("AppTag == \"Demo\" ? random() : 0").ast, { tagName: "Demo" }).unfoldable)
             .toBe(true);
-        expect(foldStoryExpression(parse("AppTag == \"Demo\" ? random() : 0").ast, { tagName: "Release" }).ast)
+        expect(foldStoryExpression(parse("AppTag == \"Demo\" ? random() : 0").ast, { tagName: "main" }).ast)
             .toEqual({ kind: "literal", value: 0 });
     });
 });
@@ -178,7 +185,7 @@ describe("staticConditionValue", () => {
 
     it("decides a condition that names the variant", () => {
         expect(staticConditionValue(condition("AppTag == \"Demo\""), { tagName: "Demo" })).toBe("true");
-        expect(staticConditionValue(condition("AppTag == \"Demo\""), { tagName: "Release" })).toBe("false");
+        expect(staticConditionValue(condition("AppTag == \"Demo\""), { tagName: "main" })).toBe("false");
     });
 });
 
@@ -202,7 +209,7 @@ describe("collectUnfoldableAppTagUses", () => {
 
     it("says nothing about a comparison that decides", () => {
         const built = document(conditionScene([{ branch: "if", source: "AppTag == \"Demo\"", line: "demo" }]));
-        expect(collectUnfoldableAppTagUses(built, { tagName: "Release" })).toEqual([]);
+        expect(collectUnfoldableAppTagUses(built, { tagName: "main" })).toEqual([]);
     });
 });
 

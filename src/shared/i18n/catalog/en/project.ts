@@ -106,9 +106,6 @@ export const project = {
         add: "Add variant",
         newTagName: "New Variant",
         nameTitle: "Name",
-        // The variant every project has and every other variant is read against. Named where it is
-        // shown rather than in the model, which has no catalog to read.
-        releaseName: "Release",
         fields: {
             displayName: "Application name",
             identifier: "Identifier",
@@ -125,10 +122,11 @@ export const project = {
         delete: "Delete",
         deleteConfirm: "Delete \"{name}\"?",
         // The honest consequence: nothing pointing at this variant is rewritten, so those references
-        // read the release values from now on.
+        // read the release values from now on. `{name}` is the release variant's name, interpolated
+        // rather than written here so this line follows it if it is ever renamed.
         deleteDetail: {
-            one: "{count} reference falls back to Release.",
-            other: "{count} references fall back to Release.",
+            one: "{count} reference falls back to {name}.",
+            other: "{count} references fall back to {name}.",
         },
         // The second half of that consequence, for the references that are rows in the script: a cut
         // point is kept, and one that names no variant ends nothing.

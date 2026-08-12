@@ -287,7 +287,7 @@ export class BuildService extends Service<BuildService> {
                     story: cut.storyName,
                     scene: cut.sceneName,
                     // `getTag`, not `resolveTag`: an id no variant answers to must not print as
-                    // "Release", which is the one variant a cut point can never mean.
+                    // "main", which is the one variant a cut point can never mean.
                     variant: appTags.getTag(cut.appTagId)?.name ?? cut.appTagId,
                 }), { source: BUILD_CONSOLE_SOURCE });
             }

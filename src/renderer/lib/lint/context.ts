@@ -118,10 +118,9 @@ export type LintContext = {
      * Every build variant the project has, release included - the list `AppTag == "Demo"` is checked
      * against.
      *
-     * Names as stored, never as displayed. The release variant shows a translated word on screen but
-     * is stored as "Release", and an expression compares strings at play time with no catalogue in
-     * reach, so a rule that checked the displayed name would pass a line the build then folds to
-     * `false`.
+     * Names as stored. Every surface shows a variant under the name stored here, the release one
+     * included - it is called "main" in every language - so what a rule checks and what the build
+     * folds against are the same string.
      */
     appTags: readonly ProjectAppTag[];
     /**

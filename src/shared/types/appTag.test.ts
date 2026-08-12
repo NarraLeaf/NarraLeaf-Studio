@@ -59,7 +59,7 @@ describe("app tag list", () => {
         ]);
 
         expect(stored.map(entry => entry.id)).toEqual(["demo"]);
-        expect(listAppTags(stored)[0].name).toBe("Release");
+        expect(listAppTags(stored)[0].name).toBe("main");
     });
 
     it("keeps the first of two entries under one id", () => {
@@ -99,7 +99,7 @@ describe("app tag list", () => {
 
 describe("app tag names", () => {
     it("answers the desired name when nothing else has it", () => {
-        expect(uniqueAppTagName(["Release", "Bonus"], "Demo")).toBe("Demo");
+        expect(uniqueAppTagName(["main", "Bonus"], "Demo")).toBe("Demo");
     });
 
     it("numbers from 2, and keeps numbering past the first free-looking one", () => {
@@ -111,14 +111,12 @@ describe("app tag names", () => {
         expect(uniqueAppTagName(["demo"], "Demo")).toBe("Demo 2");
     });
 
-    it("treats whatever the caller says release is called as taken", () => {
-        // The model spells it "Release"; the surface may show a translated word, and a variant named
-        // that word would be a second answer to a name the command slot resolves.
-        expect(uniqueAppTagName(["Release", "正式版"], "正式版")).toBe("正式版 2");
+    it("keeps a variant off the release name, which is the same word in every language", () => {
+        expect(uniqueAppTagName(["main"], "main")).toBe("main 2");
     });
 
     it("falls back to the release name for a blank request rather than answering blank", () => {
-        expect(uniqueAppTagName([], "   ")).toBe("Release");
+        expect(uniqueAppTagName([], "   ")).toBe("main");
     });
 });
 
