@@ -88,6 +88,154 @@ describe("LayerStackController", () => {
         expect(listener).toHaveBeenCalledTimes(1);
     });
 
+    it("a second layer of the same group queues instead of stacking", () => {
+        const controller = new LayerStackController();
+        const first = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const second = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        expect(controller.getState().map(layer => layer.key)).toEqual([first]);
+        // A queued layer already has its handle, and counts as live: it has not closed, it has not
+        // started, and a `Wait For Layer` on it must not resolve early.
+        expect(controller.isPresent(second)).toBe(true);
+    });
+
+    it("a queued layer waits for the exit animation, not for the removal", () => {
+        const controller = new LayerStackController();
+        const first = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const second = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        unmountSurfaceLayer(controller, first);
+        // Removed, but still animating out: letting the next one in here is what puts two layers of
+        // one group on screen at once.
+        expect(controller.getState()).toEqual([]);
+        controller.notifyExitComplete();
+        expect(controller.getState().map(layer => layer.key)).toEqual([second]);
+    });
+
+    it("only one of a queue enters per exit", () => {
+        const controller = new LayerStackController();
+        const first = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const third = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        unmountSurfaceLayer(controller, first);
+        controller.notifyExitComplete();
+        expect(controller.getState()).toHaveLength(1);
+        expect(controller.isPresent(third)).toBe(true);
+    });
+
+    it("an ungrouped layer never queues", () => {
+        const controller = new LayerStackController();
+        mountSurfaceLayer(controller, { surfaceId: "a" });
+        mountSurfaceLayer(controller, { surfaceId: "b" });
+        expect(controller.getState()).toHaveLength(2);
+    });
+
+    it("hideGroup takes the group off screen and empties its queue", () => {
+        const controller = new LayerStackController();
+        mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const queued = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const other = mountSurfaceLayer(controller, { surfaceId: "hud", group: "hud" });
+        expect(controller.hideGroup("confirm")).toBe(true);
+        controller.notifyExitComplete();
+        expect(controller.getState().map(layer => layer.key)).toEqual([other]);
+        expect(controller.isPresent(queued)).toBe(false);
+    });
+
+    it("closing a scope closes every layer that scope showed", () => {
+        const controller = new LayerStackController();
+        const owned = mountSurfaceLayer(controller, { surfaceId: "confirm", ownerScopeId: "page:1" });
+        const alsoOwned = mountSurfaceLayer(controller, { surfaceId: "hud", ownerScopeId: "page:1" });
+        const other = mountSurfaceLayer(controller, { surfaceId: "hud", ownerScopeId: "page:2" });
+        expect(controller.hideOwnedBy("page:1")).toBe(true);
+        expect(controller.getState().map(layer => layer.key)).toEqual([other]);
+        expect(controller.isPresent(owned)).toBe(false);
+        expect(controller.isPresent(alsoOwned)).toBe(false);
+    });
+
+    it("a scope that showed nothing takes nothing with it", () => {
+        const controller = new LayerStackController();
+        mountSurfaceLayer(controller, { surfaceId: "confirm", ownerScopeId: "page:1" });
+        expect(controller.hideOwnedBy("page:2")).toBe(false);
+        // Nor does an unowned layer answer to the empty scope id every host without one reports.
+        expect(controller.hideOwnedBy("")).toBe(false);
+        expect(controller.getState()).toHaveLength(1);
+    });
+
+    it("a queued layer of a closing scope never gets its turn", () => {
+        const controller = new LayerStackController();
+        const first = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm", ownerScopeId: "page:1" });
+        const queued = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm", ownerScopeId: "page:1" });
+        controller.hideOwnedBy("page:1");
+        controller.notifyExitComplete();
+        expect(controller.getState()).toEqual([]);
+        expect(controller.isPresent(first)).toBe(false);
+        expect(controller.isPresent(queued)).toBe(false);
+    });
+
+    it("a close resolves whoever is waiting, with the value it closed with", async () => {
+        const controller = new LayerStackController();
+        const key = mountSurfaceLayer(controller, { surfaceId: "confirm" });
+        const waiting = controller.waitForClose(key);
+        expect(controller.closeWithResult(key, 1)).toBe(true);
+        await expect(waiting).resolves.toBe(1);
+    });
+
+    it("waiting resolves the caller before the exit animation finishes", async () => {
+        // The two halves of a close are deliberately on different clocks: the graph that opened a
+        // confirm runs on the answer, while the next layer of that group still waits for the screen.
+        const controller = new LayerStackController();
+        const key = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const waiting = controller.waitForClose(key);
+        controller.closeWithResult(key, "yes");
+        await expect(waiting).resolves.toBe("yes");
+    });
+
+    it("a layer closed any other way answers null", async () => {
+        const controller = new LayerStackController();
+        const key = mountSurfaceLayer(controller, { surfaceId: "confirm" });
+        const waiting = controller.waitForClose(key);
+        controller.dismissTop();
+        await expect(waiting).resolves.toBeNull();
+    });
+
+    it("waiting on a handle that names nothing answers null rather than hanging", async () => {
+        const controller = new LayerStackController();
+        await expect(controller.waitForClose("layer:gone:9")).resolves.toBeNull();
+    });
+
+    it("a load settles every waiter and every pending exit", async () => {
+        const controller = new LayerStackController();
+        const shown = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const queued = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const waiters = Promise.all([controller.waitForClose(shown), controller.waitForClose(queued)]);
+        const hiding = controller.hideAndWaitForExit(shown);
+        controller.clear();
+        await expect(waiters).resolves.toEqual([null, null]);
+        // The stack is empty, so nothing is left to animate out: a graph stopped inside Hide Layer
+        // would otherwise wait for a frame that is never coming.
+        await expect(hiding).resolves.toBe(true);
+        expect(controller.getState()).toEqual([]);
+    });
+
+    it("hiding settles once the exit animation reports in", async () => {
+        const controller = new LayerStackController();
+        const key = mountSurfaceLayer(controller, { surfaceId: "confirm" });
+        let settled = false;
+        const hiding = controller.hideAndWaitForExit(key).then(removed => {
+            settled = true;
+            return removed;
+        });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        controller.notifyExitComplete();
+        await expect(hiding).resolves.toBe(true);
+    });
+
+    it("hiding a layer that never got on screen does not wait for an exit", async () => {
+        const controller = new LayerStackController();
+        mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        const queued = mountSurfaceLayer(controller, { surfaceId: "confirm", group: "confirm" });
+        await expect(controller.hideAndWaitForExit(queued)).resolves.toBe(true);
+    });
+
     it("the snapshot identity only changes when the stack does", () => {
         // useSyncExternalStore re-renders on every changed snapshot identity and loops on an unstable
         // one, so this is load-bearing rather than tidiness.

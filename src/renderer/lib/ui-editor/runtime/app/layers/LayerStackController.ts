@@ -25,9 +25,9 @@ export type SurfaceLayerEntry = SurfaceNavigationEntry<PageProps, SurfaceNavigat
     scrim: boolean;
     /** Whether Go back closes it. */
     dismissible: boolean;
-    /** Mutual-exclusion group. Stored only; nothing reads it yet. */
+    /** Mutual-exclusion group: at most one layer of a group is on screen, the rest queue. */
     group: string | null;
-    /** The runtime scope that mounted this layer. Stored only; nothing reads it yet. */
+    /** The runtime scope that mounted this layer. When that scope closes, so does this layer. */
     ownerScopeId: string;
 };
 
@@ -53,7 +53,23 @@ export type SurfaceLayerMountRequest = {
  */
 export class LayerStackController {
     private layers: readonly SurfaceLayerEntry[] = [];
+    /**
+     * Layers whose group is occupied, in arrival order. They mount when {@link notifyExitComplete}
+     * reports the layer holding their group has finished leaving.
+     *
+     * A queued layer already has its handle: `show` mints the key before deciding whether the layer
+     * can go on screen yet, so the caller can hand that handle to `Wait For Layer` without having to
+     * know whether it queued. That is also why "is this handle still live" below counts a queued
+     * layer as live - it has not closed, it has not started.
+     */
+    private queued: SurfaceLayerEntry[] = [];
     private readonly listeners = new Set<() => void>();
+    /** Per layer key: everyone waiting for that layer to close, and for the value it closes with. */
+    private readonly closeWaiters = new Map<string, Set<(result: unknown) => void>>();
+    /** Everyone waiting for the exit animations now running to finish. */
+    private readonly exitWaiters = new Set<() => void>();
+    /** True between removing a mounted layer and the presence group reporting its exit done. */
+    private exitPending = false;
     private seq = 0;
 
     public getState = (): readonly SurfaceLayerEntry[] => {
@@ -72,7 +88,7 @@ export class LayerStackController {
         this.listeners.forEach(listener => listener());
     }
 
-    /** Push a layer on top. Returns its key, which is the handle every other call takes. */
+    /** Push a layer on top, or queue it when its group is taken. Returns the handle either way. */
     public show(request: SurfaceLayerMountRequest): string {
         this.seq += 1;
         // Prefixed so a layer key can never collide with a page entry's `${surfaceId}:${seq}`, which
@@ -80,6 +96,7 @@ export class LayerStackController {
         // same blueprint scope table.
         const key = `layer:${request.surfaceId}:${this.seq}`;
         const modal = request.modal === true;
+        const group = typeof request.group === "string" && request.group.trim() ? request.group.trim() : null;
         const entry: SurfaceLayerEntry = {
             key,
             runtimeScopeId: key,
@@ -93,20 +110,54 @@ export class LayerStackController {
             modal,
             scrim: request.scrim ?? modal,
             dismissible: request.dismissible ?? true,
-            group: request.group ?? null,
+            group,
             ownerScopeId: request.ownerScopeId ?? "",
         };
+        if (group && this.isGroupTaken(group)) {
+            this.queued.push(entry);
+            return key;
+        }
         this.emit([...this.layers, entry]);
         return key;
     }
 
     /** Remove one layer by handle. False when it is already gone. */
     public hide(key: string): boolean {
-        if (!this.layers.some(layer => layer.key === key)) {
+        return this.remove(layer => layer.key === key, null);
+    }
+
+    /**
+     * Remove one layer and settle the value it closes with, for whoever is waiting on that handle.
+     *
+     * This is what `Close This Layer` reaches: the waiter is resolved on this call rather than when
+     * the exit animation ends, so the graph that opened the layer runs on the beat the layer was
+     * answered. The queue is the other half and settles later - see {@link notifyExitComplete}.
+     */
+    public closeWithResult(key: string, result: unknown): boolean {
+        return this.remove(layer => layer.key === key, result);
+    }
+
+    /** Drop every layer of a group, on screen or still queued behind it. */
+    public hideGroup(group: string): boolean {
+        const name = group.trim();
+        if (!name) {
             return false;
         }
-        this.emit(this.layers.filter(layer => layer.key !== key));
-        return true;
+        return this.remove(layer => layer.group === name, null);
+    }
+
+    /**
+     * Drop every layer that the given runtime scope put on screen.
+     *
+     * The rule that makes a forgotten layer impossible: a layer belongs to whatever showed it, and a
+     * page leaving the screen (or a layer closing) takes its own with it. Cascades on its own - the
+     * layers removed here unmount, which closes THEIR scopes, which brings this round again.
+     */
+    public hideOwnedBy(ownerScopeId: string): boolean {
+        if (!ownerScopeId) {
+            return false;
+        }
+        return this.remove(layer => layer.ownerScopeId === ownerScopeId, null);
     }
 
     /**
@@ -120,16 +171,156 @@ export class LayerStackController {
         if (!top || !top.dismissible) {
             return false;
         }
-        this.emit(this.layers.slice(0, -1));
-        return true;
+        return this.remove(layer => layer.key === top.key, null);
     }
 
     /** Drop every layer. Layers are not serialised, so a load lands with an empty stack. */
     public clear(): void {
-        if (this.layers.length === 0) {
+        const closed = [...this.layers, ...this.queued];
+        this.queued = [];
+        if (this.layers.length > 0) {
+            this.emit([]);
+        }
+        for (const layer of closed) {
+            this.settleClose(layer.key, null);
+        }
+        // Nothing is left to animate out, so anything waiting on an exit is waiting on a frame that
+        // will never come. A load clearing the stack must not strand a graph mid-`Hide Layer`.
+        this.exitPending = false;
+        this.settleExit();
+    }
+
+    /** Whether this handle still names a live layer - on screen, or queued behind its group. */
+    public isPresent(key: string): boolean {
+        return this.layers.some(layer => layer.key === key) || this.queued.some(layer => layer.key === key);
+    }
+
+    /**
+     * Resolve when this layer closes, with the value it closed with.
+     *
+     * A handle that names nothing resolves to null straight away rather than hanging: by the time an
+     * author wires `Show Layer -> Wait For Layer` the layer may already have answered, and a wait
+     * that never returns would strand the graph on a race.
+     */
+    public waitForClose(key: string): Promise<unknown> {
+        if (!this.isPresent(key)) {
+            return Promise.resolve(null);
+        }
+        return new Promise(resolve => {
+            let waiters = this.closeWaiters.get(key);
+            if (!waiters) {
+                waiters = new Set();
+                this.closeWaiters.set(key, waiters);
+            }
+            waiters.add(resolve);
+        });
+    }
+
+    /** Resolve once the exit animations started by the last removal have finished. */
+    public waitForExitComplete(): Promise<void> {
+        if (!this.exitPending) {
+            return Promise.resolve();
+        }
+        return new Promise(resolve => {
+            this.exitWaiters.add(resolve);
+        });
+    }
+
+    /** {@link hide}, settling when the layer has finished animating out. */
+    public async hideAndWaitForExit(key: string): Promise<boolean> {
+        const removed = this.hide(key);
+        await this.waitForExitComplete();
+        return removed;
+    }
+
+    /** {@link hideGroup}, settling when the group has finished animating out. */
+    public async hideGroupAndWaitForExit(group: string): Promise<boolean> {
+        const removed = this.hideGroup(group);
+        await this.waitForExitComplete();
+        return removed;
+    }
+
+    /**
+     * The presence group reports every layer that was leaving has left.
+     *
+     * The one dequeue trigger. Taken from the animation rather than from a timer because the
+     * question a queue asks - "has the screen given that space back yet" - is answered by the
+     * animation and by nothing else; a duration guessed here would be wrong for every page whose
+     * exit an author retimes.
+     */
+    public notifyExitComplete(): void {
+        this.exitPending = false;
+        this.settleExit();
+        this.promoteQueued();
+    }
+
+    private isGroupTaken(group: string): boolean {
+        return this.layers.some(layer => layer.group === group) || this.queued.some(layer => layer.group === group);
+    }
+
+    private remove(match: (layer: SurfaceLayerEntry) => boolean, result: unknown): boolean {
+        const removed = this.layers.filter(match);
+        const dropped = this.queued.filter(match);
+        if (removed.length === 0 && dropped.length === 0) {
+            return false;
+        }
+        if (dropped.length > 0) {
+            this.queued = this.queued.filter(layer => !match(layer));
+        }
+        if (removed.length > 0) {
+            // Only a layer that was on screen has anything to animate out. One that never got past
+            // the queue leaves no frame behind, and waiting on its exit would wait forever.
+            this.exitPending = true;
+            this.emit(this.layers.filter(layer => !match(layer)));
+        }
+        for (const layer of [...removed, ...dropped]) {
+            this.settleClose(layer.key, result);
+        }
+        return true;
+    }
+
+    private settleClose(key: string, result: unknown): void {
+        const waiters = this.closeWaiters.get(key);
+        if (!waiters) {
             return;
         }
-        this.emit([]);
+        this.closeWaiters.delete(key);
+        waiters.forEach(resolve => resolve(result));
+    }
+
+    private settleExit(): void {
+        if (this.exitWaiters.size === 0) {
+            return;
+        }
+        const waiters = [...this.exitWaiters];
+        this.exitWaiters.clear();
+        waiters.forEach(resolve => resolve());
+    }
+
+    private promoteQueued(): void {
+        if (this.queued.length === 0) {
+            return;
+        }
+        const taken = new Set(
+            this.layers.map(layer => layer.group).filter((group): group is string => Boolean(group)),
+        );
+        const promoted: SurfaceLayerEntry[] = [];
+        const stillQueued: SurfaceLayerEntry[] = [];
+        for (const entry of this.queued) {
+            if (entry.group && taken.has(entry.group)) {
+                stillQueued.push(entry);
+                continue;
+            }
+            if (entry.group) {
+                taken.add(entry.group);
+            }
+            promoted.push(entry);
+        }
+        if (promoted.length === 0) {
+            return;
+        }
+        this.queued = stillQueued;
+        this.emit([...this.layers, ...promoted]);
     }
 }
 

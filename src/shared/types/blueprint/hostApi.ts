@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 33 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 34 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -106,6 +106,7 @@ export type BlueprintHostApiFamily = Record<string, BlueprintHostCapabilityContr
  */
 export type BlueprintHostApiContract = {
     navigation: BlueprintHostApiFamily;
+    layers: BlueprintHostApiFamily;
     widget: BlueprintHostApiFamily;
     state: BlueprintHostApiFamily;
     persistence: BlueprintHostApiFamily;
@@ -184,6 +185,75 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: true,
             input: { fullscreen: false },
             output: null,
+        },
+    },
+    /**
+     * Surfaces stacked over the page lane, rather than replacing it.
+     *
+     * Separate from `navigation` because none of it is navigation: a layer arrives over whatever is
+     * already on screen and leaves without revealing anything new, so the page stack is untouched
+     * from the moment one mounts to the moment it goes. Folding these into `navigation` would have
+     * put "replace the screen" and "cover the screen" behind the same six words.
+     *
+     * Three properties are enforced by the host rather than by the nodes:
+     *
+     *  - **A handle is minted by `show` and is the only way to name a layer.** There are no layer
+     *    names and no z indices; stacking order is mount order, which is what keeps an author from
+     *    building a screen that depends on one.
+     *  - **Every layer belongs to the scope that showed it and dies with it.** A page that navigates
+     *    away takes its layers, and so does a layer that closes with layers of its own. Forgetting
+     *    to hide one cannot leave an orphan on screen.
+     *  - **A `group` is mutually exclusive.** A second layer named into an occupied group waits for
+     *    the first one's exit to finish rather than stacking on top of it.
+     */
+    layers: {
+        show: {
+            capabilityId: "layers.show",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { surfaceId: "", props: {}, modal: false, dismissible: true, group: null },
+            output: "",
+        },
+        hide: {
+            capabilityId: "layers.hide",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: "" },
+            output: null,
+        },
+        hideGroup: {
+            capabilityId: "layers.hideGroup",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { group: "" },
+            output: null,
+        },
+        wait: {
+            capabilityId: "layers.wait",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { handle: "" },
+            output: null,
+        },
+        closeSelf: {
+            capabilityId: "layers.closeSelf",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { result: null },
+            output: null,
+        },
+        isMounted: {
+            capabilityId: "layers.isMounted",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { handle: "" },
+            output: false,
         },
     },
     widget: {

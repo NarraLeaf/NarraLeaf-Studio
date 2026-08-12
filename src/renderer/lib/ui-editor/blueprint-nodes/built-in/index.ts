@@ -17,6 +17,7 @@ import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { fnBlueprintNodes } from "./fnNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { gameBlueprintNodes } from "./gameNodes";
+import { layerBlueprintNodes } from "./layerNodes";
 import { listBlueprintNodes } from "./listNodes";
 import { localizationBlueprintNodes } from "./localizationNodes";
 import { voiceBlueprintNodes } from "./voiceNodes";
@@ -48,6 +49,7 @@ export { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 export { fnBlueprintNodes } from "./fnNodes";
 export { frameBlueprintNodes } from "./frameNodes";
 export { gameBlueprintNodes } from "./gameNodes";
+export { layerBlueprintNodes } from "./layerNodes";
 export { listBlueprintNodes } from "./listNodes";
 export { localizationBlueprintNodes } from "./localizationNodes";
 export { voiceBlueprintNodes } from "./voiceNodes";
@@ -73,6 +75,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...broadcastBlueprintNodes,
     ...fnBlueprintNodes,
     ...frameBlueprintNodes,
+    ...layerBlueprintNodes,
     ...componentBlueprintNodes,
     ...gameBlueprintNodes,
     ...visitedBlueprintNodes,

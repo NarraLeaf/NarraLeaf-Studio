@@ -246,6 +246,27 @@ export type BlueprintGamePreferenceVoiceEndMode = "fade" | "stop" | "none";
 
 export type BlueprintGamePreferenceValue = boolean | number | BlueprintGamePreferenceVoiceEndMode;
 
+/** One mount, as the host receives it: the options below, resolved, plus who is responsible for it. */
+export type BlueprintLayerShowRequest = {
+    surfaceId: string;
+    props: Record<string, unknown>;
+    modal: boolean;
+    dismissible: boolean;
+    group: string | null;
+    /** The runtime scope that asked for this layer; the layer closes when that scope does. */
+    ownerScopeId: string;
+};
+
+/** How a layer is put up. Everything but the page itself has a default. */
+export type BlueprintLayerShowOptions = {
+    /** Everything below goes inert and the keys belong to this layer. */
+    modal?: boolean;
+    /** Whether Go back closes it. Default true. */
+    dismissible?: boolean;
+    /** Mutual-exclusion group; a second layer of an occupied group queues behind the first. */
+    group?: string | null;
+};
+
 export type BlueprintHostApiRuntime = {
     navigation: {
         openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
@@ -256,6 +277,20 @@ export type BlueprintHostApiRuntime = {
         quitApplication: () => Promise<void>;
         getFullscreen: () => Promise<boolean>;
         setFullscreen: (fullscreen: boolean) => Promise<void>;
+    };
+    /** Surfaces stacked over the page lane. See the `layers` family in `@shared/types/blueprint/hostApi`. */
+    layers: {
+        /** Put a page up as a layer and return the handle that names it. */
+        show: (surfaceId: string, props?: unknown, options?: BlueprintLayerShowOptions) => Promise<string>;
+        /** Take that layer down, settling once it has finished animating out. */
+        hide: (handle: string) => Promise<void>;
+        /** Take a whole group down - what is on screen and what is queued behind it. */
+        hideGroup: (group: string) => Promise<void>;
+        /** Wait for that layer to close and read what it closed with. Null for a handle already gone. */
+        wait: (handle: string) => Promise<unknown>;
+        /** Close the layer the calling graph runs in. A no-op with a warning anywhere else. */
+        closeSelf: (result?: unknown) => Promise<void>;
+        isMounted: (handle: string) => boolean;
     };
     widget: {
         setVisible: (elementId: string, visible: boolean) => Promise<void>;
@@ -637,6 +672,25 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     /** Hosts without a real application window (story preview) leave these unset. */
     onGetFullscreen?: () => boolean | Promise<boolean>;
     onSetFullscreen?: (fullscreen: boolean) => void | Promise<void>;
+    /**
+     * The layer stack composited over the page lane.
+     *
+     * Absent in every host with nothing to stack onto - the editor preview and the workspace story
+     * preview both render one surface and no composite - where the whole family degrades to a warned
+     * no-op the way the sound family does, rather than throwing. `Show Layer` is the exception: it
+     * has to hand back a handle, so with no host it fails loudly instead of returning one that names
+     * nothing.
+     *
+     * `ownerScopeId` is filled in here rather than by the caller: it is this bundle's own
+     * `runtimeScopeId`, which is exactly the scope whose closing has to take the layer with it.
+     */
+    onShowLayer?: (request: BlueprintLayerShowRequest) => string;
+    onHideLayer?: (handle: string) => Promise<void> | void;
+    onHideLayerGroup?: (group: string) => Promise<void> | void;
+    onWaitLayer?: (handle: string) => Promise<unknown>;
+    /** Closes the layer whose runtime scope this is. False when this surface is not a layer. */
+    onCloseOwnLayer?: (runtimeScopeId: string, result: unknown) => boolean;
+    onIsLayerMounted?: (handle: string) => boolean;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -1785,6 +1839,12 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onQuitApplication,
         onGetFullscreen,
         onSetFullscreen,
+        onShowLayer,
+        onHideLayer,
+        onHideLayerGroup,
+        onWaitLayer,
+        onCloseOwnLayer,
+        onIsLayerMounted,
         onWidgetPatch,
         onElementFlush,
         widgetRuntimeStore,
@@ -2017,6 +2077,93 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
+            },
+        },
+        layers: {
+            show: async (surfaceId: string, props?: unknown, showOptions?: BlueprintLayerShowOptions) => {
+                const cap = "layers.show";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const targetSurfaceId = String(surfaceId ?? "").trim();
+                    if (!targetSurfaceId) {
+                        throw new Error("Show Layer: no page selected");
+                    }
+                    // Named ahead of the host call and by id: an author picked a page that has since
+                    // been deleted or renamed, and the id is the only thing that ties the failure
+                    // back to the node they have to fix.
+                    if (!document.surfaces.some(surface => surface.id === targetSurfaceId)) {
+                        throw new Error(`Show Layer: page not found: ${targetSurfaceId}`);
+                    }
+                    if (!onShowLayer) {
+                        throw new Error("Show Layer: this preview has no layer stack");
+                    }
+                    const group = typeof showOptions?.group === "string" && showOptions.group.trim()
+                        ? showOptions.group.trim()
+                        : null;
+                    return onShowLayer({
+                        surfaceId: targetSurfaceId,
+                        props: normalizeJsonRecord(props),
+                        modal: showOptions?.modal === true,
+                        dismissible: showOptions?.dismissible !== false,
+                        group,
+                        ownerScopeId: stateScopeId,
+                    });
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            hide: async (handle: string) => {
+                const cap = "layers.hide";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onHideLayer?.(String(handle ?? ""));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            hideGroup: async (group: string) => {
+                const cap = "layers.hideGroup";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onHideLayerGroup?.(String(group ?? "").trim());
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            wait: async (handle: string) => {
+                const cap = "layers.wait";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // No host, or a handle naming nothing, both answer null rather than hanging. A
+                    // wait that never returns is the one failure an author cannot see the shape of.
+                    return (await onWaitLayer?.(String(handle ?? ""))) ?? null;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            closeSelf: async (result?: unknown) => {
+                const cap = "layers.closeSelf";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (onCloseOwnLayer?.(stateScopeId, result ?? null) !== true) {
+                        // Not an error: the same page can be opened as a page and shown as a layer,
+                        // and one wired to close itself has to survive being opened the other way.
+                        emit({
+                            type: "devtools.log",
+                            level: "warn",
+                            message: "Close This Layer: this page is not a layer, so nothing was closed",
+                        });
+                    }
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isMounted: (handle: string) => {
+                const cap = "layers.isMounted";
+                emitHostCall(emit, cap, "call");
+                const mounted = onIsLayerMounted?.(String(handle ?? "")) === true;
+                emitHostCall(emit, cap, "return");
+                return mounted;
             },
         },
         widget: {
