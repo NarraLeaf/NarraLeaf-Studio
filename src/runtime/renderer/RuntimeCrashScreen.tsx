@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { useTranslation } from "@/lib/i18n";
+import { getRuntimeCrashPolicy } from "./crashPolicy";
 
 interface RuntimeCrashScreenProps {
     /** The failure, already flattened. Carries a stack when there was one. */
@@ -25,6 +26,13 @@ interface RuntimeCrashScreenProps {
 export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenProps): ReactNode {
     const { t } = useTranslation();
     const [copyState, setCopyState] = useState<{ ok: boolean; text: string } | null>(null);
+    /**
+     * Read at render rather than taken as a prop: every caller would have to pass the same value
+     * through, and one that forgot would be a build quietly showing a player what its author asked
+     * to keep to the log. Under `restart` this screen is only reached once restarting has been
+     * given up on, and what is wanted then is the message without the stack.
+     */
+    const showDetails = getRuntimeCrashPolicy() === "details";
 
     const handleCopy = async () => {
         try {
@@ -69,27 +77,29 @@ export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenPro
                         {t("game.crash.restart")}
                     </button>
 
-                    <details className="mt-6">
-                        <summary className="cursor-default text-xs text-white/50 hover:text-white/80">
-                            {t("game.crash.showDetails")}
-                        </summary>
-                        {/* Selectable, because a player who cannot copy can still drag across it. */}
-                        <pre className="mt-2 max-h-64 select-text overflow-auto whitespace-pre-wrap break-all rounded-md border border-white/10 bg-white/5 p-3 text-xs leading-relaxed text-white/70">
-                            {details}
-                        </pre>
-                        <button
-                            type="button"
-                            onClick={() => void handleCopy()}
-                            className="mt-2 text-xs text-white/50 underline-offset-2 hover:text-white/80 hover:underline"
-                        >
-                            {t("game.crash.copyDetails")}
-                        </button>
-                        {copyState && (
-                            <p className={`mt-2 text-xs ${copyState.ok ? "text-white/50" : "text-red-300"}`} role="status">
-                                {copyState.text}
-                            </p>
-                        )}
-                    </details>
+                    {showDetails && (
+                        <details className="mt-6">
+                            <summary className="cursor-default text-xs text-white/50 hover:text-white/80">
+                                {t("game.crash.showDetails")}
+                            </summary>
+                            {/* Selectable, because a player who cannot copy can still drag across it. */}
+                            <pre className="mt-2 max-h-64 select-text overflow-auto whitespace-pre-wrap break-all rounded-md border border-white/10 bg-white/5 p-3 text-xs leading-relaxed text-white/70">
+                                {details}
+                            </pre>
+                            <button
+                                type="button"
+                                onClick={() => void handleCopy()}
+                                className="mt-2 text-xs text-white/50 underline-offset-2 hover:text-white/80 hover:underline"
+                            >
+                                {t("game.crash.copyDetails")}
+                            </button>
+                            {copyState && (
+                                <p className={`mt-2 text-xs ${copyState.ok ? "text-white/50" : "text-red-300"}`} role="status">
+                                    {copyState.text}
+                                </p>
+                            )}
+                        </details>
+                    )}
                 </div>
             </div>
         </div>
