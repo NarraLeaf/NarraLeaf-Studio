@@ -44,6 +44,11 @@ import {
     type AppTagMechanismRef,
 } from "@shared/types/appTag";
 import { runtimeCapabilitiesCanStartStory } from "@shared/types/pluginPermissions";
+import {
+    collectTextIds,
+    restrictLocalizationToTextIds,
+    restrictVoiceToTextIds,
+} from "@shared/build/variantPayload";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
 import {
@@ -100,8 +105,17 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         ...sharedBlueprints.map(asset => asset.blueprint),
     ]);
     const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop);
-    const localization = await loadGameLocalization(context.projectPath);
-    const voice = await loadGameVoice(context.projectPath);
+    // Translations and voice lines are keyed by a row's `textId`, not by a scene, so dropping a scene
+    // leaves both behind: the prose is gone from the story document and still legible, in full, in
+    // every translation table the package carries. They are narrowed against the documents as this
+    // build actually holds them, which is why this happens here rather than in either loader.
+    const shippedTextIds = sceneDrop ? collectTextIds(storyLibrary?.documents ?? {}) : null;
+    const localization = restrictLocalization(
+        await loadGameLocalization(context.projectPath),
+        shippedTextIds,
+        context.onNotice,
+    );
+    const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
@@ -821,3 +835,42 @@ export const devModeDiskBundleSource: DevModeBundleSource = {
         return assembleDevModeBundleFromProjectPath(context);
     },
 };
+
+/**
+ * Keep the translations for rows this build still has.
+ *
+ * `textIds` is null for the release edition, where nothing was dropped and there is nothing to
+ * narrow against. The count is reported rather than silent: a translation that stops shipping is
+ * invisible in the artifact, and the one mistake worth catching early is a narrowing that took away
+ * a line the player can still reach.
+ */
+function restrictLocalization(
+    bundle: GameLocalizationBundle | undefined,
+    textIds: ReadonlySet<string> | null,
+    onNotice: DevModeBundleLoadContext["onNotice"],
+): GameLocalizationBundle | undefined {
+    if (!bundle || !textIds) {
+        return bundle;
+    }
+    const result = restrictLocalizationToTextIds(bundle, textIds);
+    if (result.removedUnitCount > 0) {
+        onNotice?.(`${result.removedUnitCount} translations belong to removed rows and do not ship`);
+    }
+    return result.bundle;
+}
+
+/** The same narrowing for voice lines; each one dropped also drops its recording from the package. */
+function restrictVoice(
+    bundle: GameVoiceBundle | undefined,
+    textIds: ReadonlySet<string> | null,
+    onNotice: DevModeBundleLoadContext["onNotice"],
+): GameVoiceBundle | undefined {
+    if (!bundle || !textIds) {
+        return bundle;
+    }
+    const result = restrictVoiceToTextIds(bundle, textIds);
+    if (result.removedUnitCount > 0) {
+        onNotice?.(`${result.removedUnitCount} voice lines belong to removed rows and do not ship`);
+    }
+    return result.bundle;
+}

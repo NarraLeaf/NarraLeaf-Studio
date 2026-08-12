@@ -18,9 +18,30 @@ export type CompileWorkerStartMessage = {
     input: GameRuntimeArtifactCompileInput;
 };
 
+/**
+ * What the shipped-content audit found in the package this compile produced.
+ *
+ * Declared here rather than imported from the audit's own module: that module is bundled with the
+ * renderer's aliases and loaded by path, so nothing on this side of the boundary can import from it
+ * without dragging the story compiler into the main bundle. The shapes are kept in step by the
+ * audit's own tests, which assert against this contract.
+ */
+export type ShippedContentAuditReport = {
+    checkedAssetCount: number;
+    failures: {
+        assetId: string;
+        origin: string;
+        reason: "missing" | "unreadable";
+        detail?: string;
+    }[];
+    storyErrors: { story: string; message: string }[];
+};
+
 export type CompileWorkerDoneMessage = {
     type: "done";
     result: GameRuntimeArtifactCompileResult;
+    /** Present only for an edition that removes content; every other build has nothing to audit. */
+    audit?: ShippedContentAuditReport;
 };
 
 export type CompileWorkerErrorMessage = {
