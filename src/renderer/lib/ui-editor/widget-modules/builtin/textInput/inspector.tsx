@@ -10,6 +10,7 @@ import type {
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { DraftTextInput } from "@/lib/components/inputs/DraftTextInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
@@ -92,11 +93,14 @@ const TextInputValueBlueprintField = createBlueprintValueField({
         }),
     getLiteralValue: ({ liveElement: live }) => getTextInputProps(live).value,
     renderLiteralEditor: ({ data, liveElement: live }) => (
-        <input
-            type="text"
+        <DraftTextInput
             className={TEXT_FIELD_CLASS}
             value={getTextInputProps(live).value}
-            onChange={event => patchTextInput(data, { value: event.target.value })}
+            draftResetKey={live.id}
+            // The document clamps this one to the configured maximum length, so the draft has to
+            // be reconciled against what it kept.
+            readCommittedValue={() => getLiveTextInputProps(data).value}
+            onCommit={next => patchTextInput(data, { value: next })}
         />
     ),
 });

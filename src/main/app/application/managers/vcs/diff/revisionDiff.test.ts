@@ -294,6 +294,10 @@ describe("what is never read", () => {
             "documentDiff.content.dimensions",
             "documentDiff.content.size",
         ]);
+        // Carried on the entry, not only used to pick a provider. The renderer cannot work this
+        // out for itself - there is no extension to read - so a comparison that kept the answer
+        // to itself would leave every sprite in a real project drawn as an unrecognised file.
+        expect(result.documents[0].contentClass).toBe("bitmap");
     });
 
     it("reads a small image, because its header is worth the bytes", async () => {
