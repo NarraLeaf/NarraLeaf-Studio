@@ -4,7 +4,7 @@ import { Button, Select, Switch } from "@/lib/components/elements";
 import { HelpTrigger, type HelpTopicId } from "@/lib/help";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { cn } from "@/lib/utils/cn";
-import { join } from "@shared/utils/path";
+import { basename, join } from "@shared/utils/path";
 import { translate, useTranslation } from "@/lib/i18n";
 import {
     deriveGameAppId,
@@ -1331,7 +1331,10 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
         : "linux";
     const hostArch = hostResult.success ? hostResult.data.arch : "x64";
     const localization = projectService.getLocalizationConfiguration();
-    const productName = projectConfig.name?.trim() || "NarraLeaf Game";
+    // The same three-step fallback the pipeline applies. Held together with it because both sides
+    // now feed `gameBuildArtifactBaseName`, and a prediction built from a different first argument
+    // is the drift that helper exists to remove.
+    const productName = projectConfig.name?.trim() || basename(projectPath) || "NarraLeaf Game";
     // A workspace without the service still gets the dialog, with the release variant alone - which
     // is what an unselected build produces anyway.
     let appTagService: AppTagService | null = null;
