@@ -218,15 +218,20 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
     // The Page's own animation may have to wait for its contents to leave first, so the delays come
     // from the timing plan rather than straight off the settings. Cached on the bundle's element
     // table, so this is the same object the element tree below resolves.
-    const animationDelays = useMemo(() => {
+    const animationTiming = useMemo(() => {
         const timings = getSurfaceAnimationTimings({
             elements: uidoc.elements,
             surface,
             reducedMotion,
             cache: true,
         });
-        return { enterMs: timings.ownEnterDelayMs, exitMs: timings.ownExitDelayMs };
+        return {
+            delays: { enterMs: timings.ownEnterDelayMs, exitMs: timings.ownExitDelayMs },
+            // Everything the departure takes, this Surface's elements included.
+            exitHoldMs: timings.exitMs,
+        };
     }, [reducedMotion, surface, uidoc.elements]);
+    const animationDelays = animationTiming.delays;
     const pageMotion = useMemo(
         () => resolvePageAnimationMotion({
             settings: surface.settings?.pageAnimation,
@@ -327,6 +332,7 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             style={layerBackgroundStyle}
             presentZIndex={10 + layerIndex}
             exitZIndex={entry.exitBehind ? 0 : 30 + layerIndex}
+            exitHoldMs={animationTiming.exitHoldMs}
             surfaceId={surface.id}
             surfaceKind={surface.kind}
             resolveExit={resolveExit}

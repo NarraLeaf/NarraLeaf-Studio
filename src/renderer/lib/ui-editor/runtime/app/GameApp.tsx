@@ -637,7 +637,9 @@ export function GameApp(props: GameAppProps): ReactNode {
      * This is what releases a queued layer of a mutually exclusive group, and what settles a
      * `Hide Layer`. Taken from the presence group rather than from a duration because the exit is
      * authored per page: a timer here would be wrong for every page whose animation someone retimes,
-     * and wrong in the direction that shows two layers of one group at once.
+     * and wrong in the direction that shows two layers of one group at once. The layer itself is
+     * what makes that safe to depend on - it bounds how long it waits for its own contents, so this
+     * arrives whatever the page turns out to be holding (see `SurfaceAnimationLayer`).
      */
     const handleLayerExitComplete = useCallback(() => {
         layerStack.notifyExitComplete();
@@ -3128,8 +3130,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                             ))
                             : null}
                     </AnimatePresence>
-                    {/* The layers get their own presence group, sharing the stacking context above
-                        so z order still runs straight through both. Two reasons it is not one group:
+                    {/* The layers get their own presence group. Both groups are children of the box
+                        above, so they share its stacking context and z order runs straight through
+                        both - and, equally, every z below is measured inside that box rather than
+                        against the page. Two reasons it is not one group:
                         the page lane switches to `mode="wait"` for transitions that have to empty the
                         screen first, which is a rule about replacing a screen and not about a layer
                         that is merely present through it; and `onExitComplete` fires for the whole
