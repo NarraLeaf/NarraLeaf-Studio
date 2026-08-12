@@ -31,6 +31,23 @@ export type SurfaceLayerEntry = SurfaceNavigationEntry<PageProps, SurfaceNavigat
     ownerScopeId: string;
 };
 
+/**
+ * Everything about the stack that a reader outside it can see at one instant.
+ *
+ * The queue and the pending exit are in here beside the mounted layers because they are the two
+ * pieces of state that change without the screen changing, and something that reports the stack has
+ * to see them: a layer waiting for its group is present as far as its handle is concerned, and an
+ * exit still running is why the one behind it has not arrived yet.
+ */
+export type LayerStackSnapshot = {
+    /** On screen, bottom to top. */
+    layers: readonly SurfaceLayerEntry[];
+    /** Waiting for an occupied group, in arrival order. */
+    queued: readonly SurfaceLayerEntry[];
+    /** True between removing a mounted layer and its exit animation reporting in. */
+    exitPending: boolean;
+};
+
 export type SurfaceLayerMountRequest = {
     surfaceId: string;
     props?: PageProps;
@@ -62,7 +79,21 @@ export class LayerStackController {
      * know whether it queued. That is also why "is this handle still live" below counts a queued
      * layer as live - it has not closed, it has not started.
      */
-    private queued: SurfaceLayerEntry[] = [];
+    private queued: readonly SurfaceLayerEntry[] = [];
+    /**
+     * Layers the host has on the stack but not on screen.
+     *
+     * Reported by whoever renders the stack, because only it knows what it could put up: a layer
+     * naming a surface the running bundle does not contain is filtered out of the render, so it is
+     * present here and absent from the screen at the same time. It matters for exactly one thing -
+     * removing such a layer starts no exit animation, and nothing will ever report one finished.
+     *
+     * Empty until a host says otherwise, so a stack driven with no renderer behind it (a test, or
+     * the moment before the first paint) keeps treating every removal as animated.
+     */
+    private unrenderedKeys: ReadonlySet<string> = new Set();
+    /** Rebuilt on demand and dropped on every change - see {@link getSnapshot}. */
+    private snapshot: LayerStackSnapshot | null = null;
     private readonly listeners = new Set<() => void>();
     /** Per layer key: everyone waiting for that layer to close, and for the value it closes with. */
     private readonly closeWaiters = new Map<string, Set<(result: unknown) => void>>();
@@ -76,6 +107,24 @@ export class LayerStackController {
         return this.layers;
     };
 
+    /**
+     * The whole of the stack's observable state, at a stable identity.
+     *
+     * Built when it is first asked for and kept until something changes, which is what
+     * `useSyncExternalStore` requires: a snapshot rebuilt per call re-renders forever, and one that
+     * outlives a change reports a stack that is no longer there.
+     */
+    public getSnapshot = (): LayerStackSnapshot => {
+        if (!this.snapshot) {
+            this.snapshot = {
+                layers: this.layers,
+                queued: this.queued,
+                exitPending: this.exitPending,
+            };
+        }
+        return this.snapshot;
+    };
+
     public subscribe = (listener: () => void): (() => void) => {
         this.listeners.add(listener);
         return () => {
@@ -83,8 +132,24 @@ export class LayerStackController {
         };
     };
 
+    /**
+     * Which layers the host has not put on screen. See {@link unrenderedKeys}.
+     *
+     * Does not notify: this describes the render that just happened rather than changing the stack,
+     * and a store that told React about the result of rendering would render again to hear it.
+     */
+    public setUnrenderedLayers(keys: readonly string[]): void {
+        this.unrenderedKeys = new Set(keys);
+    }
+
     private emit(next: readonly SurfaceLayerEntry[]): void {
         this.layers = next;
+        this.publish();
+    }
+
+    /** Drop the cached snapshot and tell everyone watching. */
+    private publish(): void {
+        this.snapshot = null;
         this.listeners.forEach(listener => listener());
     }
 
@@ -114,7 +179,8 @@ export class LayerStackController {
             ownerScopeId: request.ownerScopeId ?? "",
         };
         if (group && this.isGroupTaken(group)) {
-            this.queued.push(entry);
+            this.queued = [...this.queued, entry];
+            this.publish();
             return key;
         }
         this.emit([...this.layers, entry]);
@@ -177,16 +243,18 @@ export class LayerStackController {
     /** Drop every layer. Layers are not serialised, so a load lands with an empty stack. */
     public clear(): void {
         const closed = [...this.layers, ...this.queued];
+        const wasExitPending = this.exitPending;
         this.queued = [];
-        if (this.layers.length > 0) {
-            this.emit([]);
+        this.layers = [];
+        // Nothing is left to animate out, so anything waiting on an exit is waiting on a frame that
+        // will never come. A load clearing the stack must not strand a graph mid-`Hide Layer`.
+        this.exitPending = false;
+        if (closed.length > 0 || wasExitPending) {
+            this.publish();
         }
         for (const layer of closed) {
             this.settleClose(layer.key, null);
         }
-        // Nothing is left to animate out, so anything waiting on an exit is waiting on a frame that
-        // will never come. A load clearing the stack must not strand a graph mid-`Hide Layer`.
-        this.exitPending = false;
         this.settleExit();
     }
 
@@ -249,7 +317,11 @@ export class LayerStackController {
      * exit an author retimes.
      */
     public notifyExitComplete(): void {
+        const wasExitPending = this.exitPending;
         this.exitPending = false;
+        if (wasExitPending) {
+            this.publish();
+        }
         this.settleExit();
         this.promoteQueued();
     }
@@ -267,14 +339,28 @@ export class LayerStackController {
         if (dropped.length > 0) {
             this.queued = this.queued.filter(layer => !match(layer));
         }
+        // Only a layer that was on screen has anything to animate out. One that never got past the
+        // queue leaves no frame behind, and neither does one the host never rendered - a layer whose
+        // surface is missing from the running bundle is on this stack and has never been on screen.
+        // Waiting on either one's exit is waiting on a frame nobody is going to draw.
+        const animating = removed.some(layer => !this.unrenderedKeys.has(layer.key));
+        // A removal that animates nothing while another one still is has to leave that one alone:
+        // the exit already running is what the waiters and the queue are owed.
+        const settleNow = removed.length > 0 && !animating && !this.exitPending;
         if (removed.length > 0) {
-            // Only a layer that was on screen has anything to animate out. One that never got past
-            // the queue leaves no frame behind, and waiting on its exit would wait forever.
-            this.exitPending = true;
+            if (animating) {
+                this.exitPending = true;
+            }
             this.emit(this.layers.filter(layer => !match(layer)));
+        } else {
+            this.publish();
         }
         for (const layer of [...removed, ...dropped]) {
             this.settleClose(layer.key, result);
+        }
+        if (settleNow) {
+            this.settleExit();
+            this.promoteQueued();
         }
         return true;
     }
