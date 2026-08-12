@@ -330,7 +330,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 navigation: {
                     openSurface: async () => undefined,
                     getPageProps: () => ({}),
-                    closeLayer: async () => undefined,
+                    pageBack: async () => undefined,
                     clearPages: async () => undefined,
                     clearGameOverlay: async () => undefined,
                     quitApplication: async () => undefined,
@@ -446,7 +446,7 @@ function createPageNavigationHostAdapter(
                         openedPageProps.push(props);
                     },
                     getPageProps: () => pageProps,
-                    closeLayer: async () => undefined,
+                    pageBack: async () => undefined,
                     clearPages: async () => undefined,
                     clearGameOverlay: async () => undefined,
                     quitApplication: async () => {
@@ -601,7 +601,7 @@ function createGameSaveHostAdapter(options: {
                 navigation: {
                     openSurface: async () => undefined,
                     getPageProps: () => ({}),
-                    closeLayer: async () => undefined,
+                    pageBack: async () => undefined,
                     clearPages: async () => undefined,
                     clearGameOverlay: async () => undefined,
                     quitApplication: async () => undefined,

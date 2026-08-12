@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 32 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 33 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -137,8 +137,8 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: {},
             output: {},
         },
-        closeLayer: {
-            capabilityId: "navigation.closeLayer",
+        pageBack: {
+            capabilityId: "navigation.pageBack",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
