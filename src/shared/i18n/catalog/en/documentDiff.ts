@@ -460,8 +460,13 @@ export const documentDiff = {
      * three-way merge.
      *
      * `notSaved` is the sentence this whole surface is honest because of. Nothing readable records
-     * which conflicts have been decided, so the record is this window's - and saying so beats
-     * implying a progress that closing the tab would silently discard.
+     * which conflicts have been decided, so the record is Studio's rather than the repository's -
+     * and saying so beats implying a progress the project itself knows about.
+     *
+     * It used to add "only while this window is open", which was true and is no longer: the choices
+     * are kept in a draft beside the project (`mergeDecisionDraft`). What has not changed is the
+     * half that matters - not one file moves until Finish - so that is what the line now says, and
+     * nothing more. It is not the place to explain where a draft lives.
      */
     resolve: {
         tab: "Merge",
@@ -494,7 +499,7 @@ export const documentDiff = {
             one: "{count} file still needs a side",
             other: "{count} files still need a side",
         },
-        notSaved: "These choices are kept only while this window is open. Nothing is written until the merge is finished.",
+        notSaved: "Nothing is written to your files until the merge is finished.",
         abandon: "Abandon",
         abandonConfirm: "Abandon this merge?",
         abandonConfirmDetail:

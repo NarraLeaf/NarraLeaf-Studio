@@ -639,11 +639,16 @@ export const workspace = {
             // 正当なリビジョンになり、メッセージの無いものは上の一覧で自分の名を名乗る。
             commitPlaceholder: "何が変わったか（任意）",
             commitMessage: "バージョンのメッセージ",
+            authorLabel: "これらのバージョンを誰の名前で記録するか",
+            authorPlaceholder: "あなたの名前",
+            authorSave: "この名前を保存",
             // 一瞬では終わらない。このウィンドウの未保存の作業を落ち着かせ、プロジェクト全体を
             // 対象に取り、バックエンドが自分のストアをディスクに置くのを待つ。
             committing: "このバージョンを記録している…",
             // 「まだ誰も見ていない」であって「変更なし」ではない。その違いは重要で、見ることは
             // 走査であり、この画面は自分から走査しない。
+            nothingToCommit: "前のバージョンから変更はありません",
+            closingWithApp: "Studio を終了しています。再起動後にもう一度お試しください",
             changesUnknown: "未確認",
             noChanges: "変更なし",
             changesCount: "{count} 件が変化",
@@ -667,8 +672,35 @@ export const workspace = {
             // 記録しようとしているものをすべて見たつもりでバージョンを記録してしまう。
             changesMore: "ほかに {count} 件（未表示）",
             // チェックポイントは Studio が時間で記録したもの。書いている日には何十件も並ぶ。
+            command: {
+                openRail: "バージョン管理を開く",
+                commit: "バージョンを提出",
+                refreshChanges: "変更を確認",
+                compareChanges: "前のバージョンと変更を比較",
+            },
+            filterPlaceholder: "名前または番号でバージョンを探す",
+            filterNoMatch: "読み込んだ {count} 件のバージョンに一致はありません",
+            today: "今日",
+            yesterday: "昨日",
+            compareBase: {
+                set: "他のバージョンをこのバージョンと比較する",
+                clear: "このバージョンとの比較をやめる",
+                current: "{version} と比較中",
+                compare: "{version} と比較",
+            },
             showCheckpoints: "チェックポイント {count} 件を表示",
             hideCheckpoints: "チェックポイントを隠す",
+            systemMessage: {
+                unnamed: "名前のないバージョン",
+                enabled: "バージョン管理を有効にしました",
+                created: "プロジェクトを作成しました",
+                merge: "マージ",
+                checkpoint: "チェックポイント",
+                checkpointClose: "プロジェクトを閉じる前のチェックポイント",
+                checkpointBuild: "ビルド前のチェックポイント",
+                checkpointRestore: "復元前のチェックポイント",
+                restored: "{version} に戻しました",
+            },
             // バージョン管理は必須ではない。macOS Intel と Windows ARM64 向けのネイティブの実装が
             // 無いので、この 2 つは別のことを言う。作者が手を打てるのは一方だけだから。
             // どちらも無効化されたコントロールとしては描かない。それらの端末では最初から
@@ -904,8 +936,8 @@ export const workspace = {
             occurrences: "×{count}",
         },
         // タイトルバーのプロジェクト切り替え。現在のプロジェクト名と、最近のワークスペースの一覧。
-        // ここで選んだプロジェクトは自分のウィンドウで開き、このウィンドウは残る。
-        // だからラベルは「切り替え」ではなく「開く」と言う。
+        // ここで選んだプロジェクトはこのウィンドウでも新しいウィンドウでも開ける。
+        // だからラベルは「切り替え」ではなく「開く」と言い、どちらかは `openTarget` で決める。
         projectSwitcher: {
             openAnother: "別のプロジェクトを開く",
             recentProjects: "最近のプロジェクト",
@@ -914,6 +946,14 @@ export const workspace = {
             newProject: "新規プロジェクト…",
             noRecent: "最近のワークスペースがない",
             untitled: "無題のプロジェクト",
+            // プロジェクトを選んだあと、開く前に聞く。選んだプロジェクトの名前は本文が出すので、
+            // この行は画面にあるプロジェクトがどうなるかを言う。ボタンには書けない部分。
+            openTarget: {
+                title: "プロジェクトを開く",
+                detail: "このウィンドウで開くと「{current}」は閉じる。未保存の変更は自動で保存される",
+                thisWindow: "このウィンドウで開く",
+                newWindow: "新規ウィンドウで開く",
+            },
         },
         // `workspace.confirmBeforeClose` が有効なとき、ワークスペースを閉じる前に出るアプリ内の確認。
         closeConfirm: {

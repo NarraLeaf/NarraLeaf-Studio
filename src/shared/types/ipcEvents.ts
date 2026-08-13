@@ -333,10 +333,26 @@ export type RequestStatus<T> = {
     success: true;
     data: T;
     error?: never;
+    code?: never;
 } | {
     success: false;
     data?: never;
+    /**
+     * What went wrong, as a sentence. Written in English by whoever threw, and rendered verbatim
+     * wherever no {@link code} identifies it - which is the right default for a backend refusal
+     * that names its own remedy, and the wrong one for a situation the interface has words for.
+     */
     error?: string;
+    /**
+     * A stable identifier for a failure the renderer is expected to recognise, when the thrower
+     * gave itself one (`error.code`).
+     *
+     * Optional and additive: everything that threw a plain `Error` before still arrives with
+     * `error` alone and is shown as it always was. It exists because the alternative is matching
+     * on English prose - the renderer's only way to tell "nothing has changed since the last
+     * version", which is an ordinary answer, from a real failure - and prose is what gets reworded.
+     */
+    code?: string;
 };
 
 export type BlueprintPersistenceProjectRef = {

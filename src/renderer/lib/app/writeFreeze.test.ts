@@ -7,6 +7,7 @@ import {
     observeProjectWriteFreeze,
     observeRefusedWrites,
     refuseFrozenWrite,
+    thawForeignProjectWrites,
     thawProjectWrites,
     type RefusedWrite,
 } from "./writeFreeze";
@@ -161,5 +162,52 @@ describe("writeFreeze latch", () => {
 
         stop();
         warn.mockRestore();
+    });
+});
+
+/**
+ * Clearing a freeze that belongs to somebody else.
+ *
+ * `WorkspaceFreezeService` is a singleton re-initialised per project while this latch is
+ * module-level, so it clears the latch on startup - otherwise a freeze armed for the project that
+ * just closed would refuse writes for the one that just opened. That clear used to be
+ * unconditional, and it silently threw away the ONE freeze armed before the service exists: the
+ * merge freeze, which `workspaceProjectPreflight` has to arm before the first document is parsed.
+ *
+ * Measured on a real project opened mid-merge: the workspace came up fully writable, with the
+ * editors holding the author's own side of a conflicted file. The next auto-save would have written
+ * that over the merge's result - every conflict settled as "mine", nobody having chosen. The tests
+ * were green throughout, because nothing below the UI knew the freeze had been dropped.
+ */
+describe("thawForeignProjectWrites", () => {
+    const OTHER = "D:/projects/other-game";
+
+    it("keeps a freeze armed for the project being opened", () => {
+        freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "merge" } });
+        thawForeignProjectWrites(PROJECT);
+        expect(getProjectWriteFreeze()?.reason).toEqual({ kind: "merge" });
+    });
+
+    it("drops one left over from a different project", () => {
+        freezeProjectWrites({ projectPath: OTHER, reason: { kind: "manual" } });
+        thawForeignProjectWrites(PROJECT);
+        expect(getProjectWriteFreeze()).toBeNull();
+    });
+
+    it("recognises the same project spelled either way", () => {
+        // The main process hands back a path with the platform separator; the renderer's comes out
+        // of the project config. A raw string comparison answers "different project" for both, which
+        // would put this straight back to dropping the merge freeze on Windows only.
+        freezeProjectWrites({ projectPath: PROJECT.replace(/\//g, sep), reason: { kind: "merge" } });
+        thawForeignProjectWrites(`${PROJECT}/`);
+        expect(getProjectWriteFreeze()?.reason).toEqual({ kind: "merge" });
+    });
+
+    it("does nothing, and announces nothing, when there is no freeze", () => {
+        const seen: unknown[] = [];
+        const stop = observeProjectWriteFreeze(freeze => seen.push(freeze?.reason ?? null));
+        thawForeignProjectWrites(PROJECT);
+        expect(seen).toEqual([]);
+        stop();
     });
 });

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, FolderOpen, History, Loader2, Plus, X } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
+import { Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -17,15 +18,19 @@ import { openVersionRail } from "./versionRailController";
  * PyCharm-style project switcher for the title bar: the current project's name with a dropdown of
  * recent workspaces to jump between.
  *
- * **Every project it opens gets its own window; this one stays.** Picking another project leaves
- * the window it was picked from exactly where it was, so an author who wanted a look at a second
- * project has both rather than having traded one for the other - and nothing has to be saved,
- * check-pointed or reloaded to get the first one back. One project, one window still holds: a
- * project that is already open is focused rather than opened twice (see the main-process
- * `App.openProject`), so the list can never produce two windows over one project's files.
+ * **Picking a project asks where it should open** (see {@link OpenTargetDialog}): in this window,
+ * which closes the current project, or in a window of its own, which leaves this one where it is.
+ * Both are real intentions - "I am done here" and "I want a look at a second project" - and neither
+ * can be read off the click, which is why the menu asks rather than picking one. It used to pick
+ * "alongside" for the author, which is the wrong answer every time they meant to leave.
  *
- * The new window steps down and to the right of this one rather than landing on top of it, because
- * a second window that covers the first is indistinguishable from having replaced it.
+ * One project, one window still holds: a project that is already open is focused rather than opened
+ * twice (see the main-process `App.openProject`), so the list can never produce two windows over one
+ * project's files. That is also why the answer here is a request rather than a promise - a project
+ * that is already on screen is focused and this window is left alone, whichever button was pressed.
+ *
+ * A new window steps down and to the right of this one rather than landing on top of it, because a
+ * second window that covers the first is indistinguishable from having replaced it.
  *
  * Lives at the left of the title bar (before the action bar), so it reads as the window's identity
  * the way an IDE's project name does — and version control lives INSIDE its menu (see
@@ -39,6 +44,8 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     const openRecentProject = useOpenRecentProject();
 
     const [open, setOpen] = useState(false);
+    // The project the author picked, held while the dialog asks which window it should open in.
+    const [pending, setPending] = useState<PendingOpen | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
     const currentPath = context?.project.getConfig().projectPath ?? "";
@@ -78,13 +85,10 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
 
     const close = useCallback(() => setOpen(false), []);
 
-    const handleOpen = useCallback((projectPath: string) => {
+    const handleOpen = useCallback((project: RecentlyOpenedProject) => {
         setOpen(false);
-        // Opens alongside: the chosen project comes up in a window of its own and this one stays.
-        // A project that is already open is focused instead, so this never makes a second window
-        // over the same files.
-        void openRecentProject(projectPath);
-    }, [openRecentProject]);
+        setPending({ source: "recent", projectPath: project.path, name: project.name });
+    }, []);
 
     const handleOpenFolder = useCallback(() => {
         setOpen(false);
@@ -92,11 +96,33 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
             const result = await getInterface().selectFolder();
             if (result.success && result.data?.path) {
                 // Same gesture as the rows above it - a project the author already has, reached by
-                // path instead of by history - so it opens the same way.
-                await getInterface().workspace.launch({ projectPath: result.data.path });
+                // path instead of by history - so it asks the same question. The folder's own name
+                // is all there is to call it by: nothing has read the project's config yet.
+                setPending({
+                    source: "folder",
+                    projectPath: result.data.path,
+                    name: folderName(result.data.path),
+                });
             }
         })();
     }, []);
+
+    /**
+     * Carry out the choice the dialog collected.
+     *
+     * The two sources reach the same main-process entry point (`App.openProject`) by different
+     * calls, so the flag is passed on each rather than the paths being merged: `openRecent` is the
+     * history's own call and records the visit, `launch` is the one that takes a path nothing has
+     * seen before.
+     */
+    const openPending = useCallback((target: PendingOpen, replaceCurrentWindow: boolean) => {
+        setPending(null);
+        if (target.source === "recent") {
+            void openRecentProject(target.projectPath, { replaceCurrentWindow });
+            return;
+        }
+        void getInterface().workspace.launch({ projectPath: target.projectPath }, replaceCurrentWindow);
+    }, [openRecentProject]);
 
     const handleNewProject = useCallback(() => {
         setOpen(false);
@@ -151,7 +177,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                                 <RecentProjectRow
                                     key={project.path}
                                     project={project}
-                                    onSelect={() => handleOpen(project.path)}
+                                    onSelect={() => handleOpen(project)}
                                 />
                             ))}
                         </div>
@@ -165,7 +191,102 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                     <SwitcherAction icon={<Plus className="w-4 h-4" />} label={t("workspace.shell.projectSwitcher.newProject")} onClick={handleNewProject} />
                 </div>
             )}
+
+            <OpenTargetDialog
+                target={pending}
+                currentName={displayName}
+                onCancel={() => setPending(null)}
+                onChoose={openPending}
+            />
         </div>
+    );
+}
+
+/** A project the author has picked, waiting on the answer to "which window". */
+type PendingOpen = {
+    projectPath: string;
+    name: string;
+    /**
+     * Which call opens it. The history's rows and a hand-picked folder are the same intention but
+     * not the same call, and the dialog is downstream of both.
+     */
+    source: "recent" | "folder";
+};
+
+/** The last segment of a path, for a folder that has never been opened as a project. */
+function folderName(projectPath: string): string {
+    const segments = projectPath.split(/[\\/]+/).filter(Boolean);
+    return segments[segments.length - 1] ?? projectPath;
+}
+
+/**
+ * Where should the picked project open: here, or in a window of its own.
+ *
+ * Three answers, so this is a `Modal` with its own footer rather than `ConfirmModal` - a confirm
+ * dialog can only offer one action and a way out. "Open in this window" is the primary because it
+ * is the answer the gesture usually means: the author went to the project menu to leave the project
+ * they are in. The other two are ordinary buttons; neither is destructive, and this window's work is
+ * saved and check-pointed before it closes (`App.openProject`), so nothing here is a danger button.
+ *
+ * The path is shown under the name because two projects may be called the same thing, and this
+ * dialog is the last point at which the wrong one can be caught.
+ */
+function OpenTargetDialog({ target, currentName, onCancel, onChoose }: {
+    target: PendingOpen | null;
+    currentName: string;
+    onCancel: () => void;
+    onChoose: (target: PendingOpen, replaceCurrentWindow: boolean) => void;
+}) {
+    const { t } = useTranslation();
+
+    return (
+        <Modal
+            isOpen={target !== null}
+            onClose={onCancel}
+            title={t("workspace.shell.projectSwitcher.openTarget.title")}
+            // Wider than the `sm` confirm dialogs: three labelled buttons in one footer row overflow
+            // 500px in Japanese, and the project path this shows is long in every language.
+            size="md"
+            footer={
+                /* Wraps rather than squeezing: three labels in one 500px footer leave about 16px of
+                   slack in Japanese, and a longer translation would otherwise crush them together. */
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                        type="button"
+                        className={dialogFooterButtonClass({ variant: "secondary" })}
+                        onClick={onCancel}
+                    >
+                        {t("common.cancel")}
+                    </button>
+                    <button
+                        type="button"
+                        className={dialogFooterButtonClass({ variant: "secondary" })}
+                        onClick={() => target && onChoose(target, false)}
+                    >
+                        {t("workspace.shell.projectSwitcher.openTarget.newWindow")}
+                    </button>
+                    <button
+                        type="button"
+                        className={dialogFooterButtonClass({ variant: "primary" })}
+                        onClick={() => target && onChoose(target, true)}
+                    >
+                        {t("workspace.shell.projectSwitcher.openTarget.thisWindow")}
+                    </button>
+                </div>
+            }
+        >
+            <div className="flex flex-col gap-3">
+                <div className="min-w-0">
+                    <p className="text-sm text-fg truncate">{target?.name}</p>
+                    <p className="text-2xs text-fg-subtle truncate" data-tip={target?.projectPath}>
+                        {target?.projectPath}
+                    </p>
+                </div>
+                <p className="text-sm text-fg-muted">
+                    {t("workspace.shell.projectSwitcher.openTarget.detail", { current: currentName })}
+                </p>
+            </div>
+        </Modal>
     );
 }
 
