@@ -998,6 +998,37 @@ export function DevModeContent(props: DevModeContentProps) {
         return result.data.result;
     }, [projectPath]);
 
+    /**
+     * The two Progress nodes' requests, handed to the main process.
+     *
+     * The project path travels with them because the handler derives the title's progress key from
+     * the project's own identity - the same key the pack compiler would put in a build - so a
+     * preview reads and writes the file the shipped game will. Nothing here names a path.
+     */
+    const exportProgress = useCallback<NonNullable<GameAppHost["exportProgress"]>>(async request => {
+        if (!projectPath) {
+            return { outcome: "failed", error: "Export Progress: no project is open" };
+        }
+        const result = await getInterface().blueprintProgress.write(projectPath, request);
+        if (!result.success) {
+            // The channel itself failed, which is Studio malfunctioning rather than the write being
+            // refused. Reported on the node's failure branch anyway: the graph has to go somewhere.
+            return { outcome: "failed", error: result.error ?? "Export Progress failed" };
+        }
+        return result.data.result;
+    }, [projectPath]);
+
+    const importProgress = useCallback<NonNullable<GameAppHost["importProgress"]>>(async () => {
+        if (!projectPath) {
+            return { outcome: "failed", document: null, error: "Import Progress: no project is open" };
+        }
+        const result = await getInterface().blueprintProgress.read(projectPath);
+        if (!result.success) {
+            return { outcome: "failed", document: null, error: result.error ?? "Import Progress failed" };
+        }
+        return result.data.result;
+    }, [projectPath]);
+
     const saveStore = useMemo<GameAppSaveStore>(() => ({
         write: async (id, savedGame, capture, metadata) => {
             const ref = requireProjectRef("Save Game");
@@ -1262,6 +1293,8 @@ export function DevModeContent(props: DevModeContentProps) {
             subscribeCloseRequested,
             networkFetch,
             openExternal,
+            exportProgress,
+            importProgress,
         };
     }, [
         bootAction,
@@ -1270,6 +1303,8 @@ export function DevModeContent(props: DevModeContentProps) {
         log,
         networkFetch,
         openExternal,
+        exportProgress,
+        importProgress,
         onDebugEvent,
         persistenceAdapter,
         quitApplication,

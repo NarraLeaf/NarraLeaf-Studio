@@ -9,6 +9,7 @@ import {
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { WebGameStorage } from "./webStorage";
+import { webProgressBridge } from "./webProgress";
 
 /**
  * Web runtime shell. Loaded by the exported index.html BEFORE renderer.js, it
@@ -224,6 +225,15 @@ const bridge: GameRuntimePreloadBridge = {
                 : { outcome: "failed", error: "The browser did not open the link." };
         },
     },
+    /**
+     * The Export/Import Progress nodes, on a page.
+     *
+     * Present and refusing, unlike `sidecar` below, which is absent. The difference is what an
+     * author can do about it: a plugin that finds no sidecar degrades on its own, whereas a graph
+     * that lost this node would ship a button doing nothing at all. Here the node still runs and
+     * still leaves by `Failed` with a reason. See `webProgress.ts`.
+     */
+    progress: webProgressBridge,
     // `sidecar` is deliberately absent, not stubbed. A browser has no child
     // processes and never will, so there is no honest no-op: a stub would let a
     // plugin call start() and wait forever for a handshake nothing can answer.

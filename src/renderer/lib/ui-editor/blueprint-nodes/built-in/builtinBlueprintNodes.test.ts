@@ -328,6 +328,12 @@ const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
     fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
 };
 
+/** No host in these tests owns a filesystem, so neither progress node can do anything here. */
+const NO_PROGRESS_HOST: BlueprintHostApiRuntime["progress"] = {
+    export: async () => ({ outcome: "failed", error: "no progress store" }),
+    import: async () => ({ outcome: "failed", sceneId: "", error: "no progress store" }),
+};
+
 /** A host that declares no addresses, which is what an unconfigured project is. */
 const NO_DECLARED_LINKS: BlueprintHostApiRuntime["navigation"]["openExternal"] =
     async () => ({ outcome: "refused", error: "not declared" });
@@ -424,6 +430,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -570,6 +577,7 @@ function createPageNavigationHostAdapter(
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -733,6 +741,7 @@ function createGameSaveHostAdapter(options: {
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
                 },

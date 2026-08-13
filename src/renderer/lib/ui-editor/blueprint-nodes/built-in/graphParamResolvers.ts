@@ -108,6 +108,8 @@ import {
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
     BLUEPRINT_NODE_TYPE_LAYER_WAIT,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
+    BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS,
     BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
     BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
@@ -2724,6 +2726,17 @@ function resolveSelfOutput(
     // network family below is: `error` is not a port name that list carries, and joining it would
     // hand `error` to every node type in it.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL && portId === "error") {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // The progress pair, kept out of the cross-product list for the reason Open Link is: `error` is
+    // not a port name that list carries, and `sceneId` is the whole point of Import Progress - it
+    // hands the scene out as data for a later `Start Game`, so unregistered it would read as
+    // `undefined` there with nothing said about it.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS && portId === "error") ||
+        (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS
+            && (portId === "sceneId" || portId === "error"))
+    ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     // The network family, kept out of the cross-product list above on purpose: `response`, `text`

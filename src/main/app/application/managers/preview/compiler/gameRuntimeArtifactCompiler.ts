@@ -17,8 +17,9 @@ import {
     normalizeGameCrashPolicy,
     normalizeGameRuntimeViewportConfig,
 } from "@shared/types/gameRuntime";
-import type { AppTagPluginConfig, AppTagReachableScenes, ProjectAppTag } from "@shared/types/appTag";
+import type { AppTagBaseIdentity, AppTagPluginConfig, AppTagReachableScenes, ProjectAppTag } from "@shared/types/appTag";
 import { APP_TAG_ID_RELEASE, isBuiltinAppTagId } from "@shared/types/appTag";
+import { gameProgressKey } from "@shared/types/gameProgress";
 import { resolveShippedPluginBuildConfig } from "@shared/utils/pluginBuildConfig";
 import { collectReferencedAssetIds, restrictRecordToAssetIds } from "@shared/build/variantPayload";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -292,6 +293,7 @@ export async function compileGameRuntimeArtifact(
     const projectConfig = await readProjectConfig(input.projectPath);
     const externalLinks = await readDeclaredExternalLinks(input.projectPath, input.appTag?.id);
     const endingSurfaceId = await readEndingSurfaceId(input.projectPath, input.appTag?.id);
+    const progressKey = readProgressKey(projectConfig, input.projectPath);
     const pluginConfig = await readPluginConfigSource(input.projectPath, input.appTag?.id);
     const blueprintScripts = await compileAllBlueprintScriptsForProject(input.projectPath);
     if (!blueprintScripts.ok) {
@@ -440,6 +442,13 @@ export async function compileGameRuntimeArtifact(
             // the same tag that decides the build's name. Omitted when blank, which is the state
             // every build was in before this field and the one the runtime treats as "show nothing".
             ...(endingSurfaceId ? { endingSurfaceId } : {}),
+            // Unconditional and deliberately NOT resolved for `input.appTag`, unlike the two above:
+            // this is the one field whose whole job is to be the same in every variant, so that a
+            // demo and the full game - which have different app ids, different user-data
+            // directories and different protection keys - can still hand a playthrough to each
+            // other. See `@shared/types/gameProgress`. Omitted when the project names nothing the
+            // key could be derived from, which the shells read as "this build carries no progress".
+            ...(progressKey ? { progressKey } : {}),
             // Unconditional, unlike `network` above: the fit describes the game's art rather than a
             // shell mechanism, and the web export shares its pack with the mobile repack.
             viewport: normalizeGameRuntimeViewportConfig(
@@ -1470,6 +1479,32 @@ async function readEndingSurfaceId(projectPath: string, appTagId: string | undef
     const document = await readProjectAppTagDocumentFromDir(projectPath);
     const tag = resolveAppTag(document.tags, appTagId);
     return resolveAppTagEndingSurface(tag, document.endingSurfaceId).value;
+}
+
+/**
+ * The key every edition of this title carries, whichever variant is being built.
+ *
+ * The mirror image of {@link readDeclaredExternalLinks} and {@link readEndingSurfaceId}: those two
+ * resolve for the variant, because a demo links elsewhere and ends elsewhere. This one resolves for
+ * the RELEASE tag on purpose, because the file it names is the one thing the variants have to
+ * share - a demo that overrode `identifier` writes its saves where the release build cannot read
+ * them, and the whole feature is the channel that survives that.
+ *
+ * No app-tag document is read, unlike its two neighbours. The release tag is synthesized and carries
+ * no overrides by construction (see `RELEASE_APP_TAG`), so the project's own identity IS the release
+ * identity; going to disk for it would be a read whose answer is fixed. `resolveAppTagIdentity` is
+ * still what performs it, inside `gameProgressKey`, so the rule lives in one place.
+ *
+ * The project directory's name backs a project that has neither an identifier nor a name, which is
+ * the same fallback `pack.project.name` takes a few lines above.
+ */
+function readProgressKey(projectConfig: ProjectConfigData | null, projectPath: string): string {
+    const base: AppTagBaseIdentity = {
+        displayName: projectConfig?.name?.trim() || path.basename(projectPath) || "",
+        identifier: projectConfig?.identifier?.trim() ?? "",
+        version: readString(projectConfig?.metadata?.version) ?? "",
+    };
+    return gameProgressKey(base);
 }
 
 /**
