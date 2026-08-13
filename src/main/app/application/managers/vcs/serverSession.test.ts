@@ -110,26 +110,26 @@ describe("a sign-in address", () => {
  *
  * This is the difference between a form with two boxes an author was told to fill in by
  * somebody else, and a form with one box holding the thing they were actually given. A
- * real Hub writes seven audience entries for one host - every spelling the client
+ * real Team server writes seven audience entries for one host - every spelling the client
  * compares against - and two of them are the addresses Studio needs.
  */
 describe("reading the addresses out of a token", () => {
     const AUDIENCE = [
         "loreserver",
-        "https://hub.example.lan:41402",
-        "https://hub.example.lan:41402/",
-        "hub.example.lan",
-        "hub.example.lan:41337",
-        "lore://hub.example.lan:41337",
-        "lore://hub.example.lan:41337/",
+        "https://team.example.lan:41402",
+        "https://team.example.lan:41402/",
+        "team.example.lan",
+        "team.example.lan:41337",
+        "lore://team.example.lan:41337",
+        "lore://team.example.lan:41337/",
     ];
 
     it("takes the sign-in address from the audience, so nobody has to be told it", () => {
         const read = readSignInToken(tokenWith({ ...ACCOUNT, aud: AUDIENCE }));
-        expect(read.authUrl).toBe("https://hub.example.lan:41402");
+        expect(read.authUrl).toBe("https://team.example.lan:41402");
         // Once, though the audience names it twice. The trailing slash is one of the
         // spellings the audience carries on purpose and is not a second address.
-        expect(read.remotes).toEqual(["lore://hub.example.lan:41337"]);
+        expect(read.remotes).toEqual(["lore://team.example.lan:41337"]);
     });
 
     it("carries the fingerprint the server signs with, when the token names one", () => {
@@ -139,7 +139,7 @@ describe("reading the addresses out of a token", () => {
     });
 
     it("answers empty for a token that says none of it, rather than inventing one", () => {
-        // A plain loreserver's token, and a Hub older than the claim. Both stay working:
+        // A plain loreserver's token, and a Team server older than the claim. Both stay working:
         // empty is what makes the address field appear and the fingerprint be compared
         // by a person, which is what everybody did before this.
         const read = readSignInToken(tokenWith(ACCOUNT));
@@ -150,7 +150,7 @@ describe("reading the addresses out of a token", () => {
         expect(read.account.userId).toBe(ACCOUNT.sub);
     });
 
-    it("reads a single-valued audience, which is legal even though a Hub writes an array", () => {
+    it("reads a single-valued audience, which is legal even though a Team server writes an array", () => {
         expect(readSignInToken(tokenWith({ ...ACCOUNT, aud: "https://one.example.lan" })).authUrl)
             .toBe("https://one.example.lan");
     });
@@ -159,7 +159,7 @@ describe("reading the addresses out of a token", () => {
         // Refused before anything is dialled, which is what lets the rail keep the
         // address field hidden until this answer comes back.
         const attempt = signInToServer({ repositoryPath: "", offline: false, cache: false }, {
-            remoteUrl: "lore://hub.example.lan:41337",
+            remoteUrl: "lore://team.example.lan:41337",
             authUrl: "",
             token: tokenWith(ACCOUNT),
             userDataDir: "",
@@ -182,7 +182,7 @@ describe("comparing an authority against what a token vouched for", () => {
     const authority = (fields: Partial<VcsServerAuthority>): VcsServerAuthority => ({
         fingerprint: "AA:BB",
         expected: "",
-        subject: "CN=NarraLeaf Hub",
+        subject: "CN=NarraLeaf Team",
         expiresAt: "Aug 12 00:00:00 2036 GMT",
         path: "",
         canInstall: true,
@@ -210,11 +210,11 @@ describe("comparing an authority against what a token vouched for", () => {
 
 /** What this platform does about a certificate, and what it admits it cannot do. */
 describe("the install plan", () => {
-    const certificate = process.platform === "win32" ? "C:\Users\a b\hub.crt" : "/home/a b/hub.crt";
+    const certificate = process.platform === "win32" ? "C:\\Users\\a b\\team.crt" : "/home/a b/team.crt";
 
     it("names the certificate this machine holds, quoted for the shell it is pasted into", () => {
         const plan = authorityInstallPlan(certificate);
-        expect(plan.command).toContain("hub.crt");
+        expect(plan.command).toContain("team.crt");
         // A path with a space in it is ordinary on both platforms that have a per-user
         // store, and an unquoted one produces a command that fails on the second word.
         expect(plan.command).toMatch(/["']/);
