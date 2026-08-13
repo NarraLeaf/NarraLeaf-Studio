@@ -189,7 +189,12 @@ function mount(options: {
                             getDocument: () => ({ tags: [], reachableScenes: {} }),
                         };
                     case Services.Reference:
-                        return { getIndexResult: () => ({ complete: (options.referenceGaps ?? []).length === 0, gaps: options.referenceGaps ?? [] }) };
+                        return {
+                            // The gate asks the index to finish building before it reads it: a build
+                            // started from a freshly opened project is the caller that gets there first.
+                            ensureReady: async () => {},
+                            getIndexResult: () => ({ complete: (options.referenceGaps ?? []).length === 0, gaps: options.referenceGaps ?? [] }),
+                        };
                     case Services.MediaSupport:
                         return media;
                     case Services.UIGraph:
