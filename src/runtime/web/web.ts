@@ -3,7 +3,10 @@ import {
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
 } from "@shared/types/gameRuntime";
-import { resolveDeclaredExternalLink } from "@shared/types/blueprint/externalLink";
+import {
+    resolveDeclaredExternalLink,
+    resolvePluginExternalLinkAmong,
+} from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { WebGameStorage } from "./webStorage";
 
@@ -189,6 +192,30 @@ const bridge: GameRuntimePreloadBridge = {
             const decision = resolveDeclaredExternalLink(request, pack.externalLinks);
             if (!decision.allowed) {
                 console.warn(`[GameRuntime] Open Link refused: ${decision.result.error}`);
+                return decision.result;
+            }
+            const opened = window.open(decision.url, "_blank", "noopener,noreferrer");
+            return opened
+                ? { outcome: "opened", error: null }
+                : { outcome: "failed", error: "The browser did not open the link." };
+        },
+        /**
+         * A plugin's request, decided against that plugin's own declared patterns.
+         *
+         * Read out of the same pack, from the manifest that shipped inside it, and checked here for
+         * the reason above: a static site has no process behind it, so the page is the process that
+         * performs the act. A plugin id naming nothing in the pack declares nothing, which is what
+         * an unknown id resolves to.
+         *
+         * `window.open` on the web only ever hands the address to the browser, so a scheme the
+         * browser has no handler for simply does nothing visible - the same outcome a desktop
+         * player gets from a `steam:` link with Steam uninstalled, reported the same way.
+         */
+        openForPlugin: async (pluginId, request) => {
+            const pack = await readPack();
+            const decision = resolvePluginExternalLinkAmong(pack.plugins, pluginId, request);
+            if (!decision.allowed) {
+                console.warn(`[GameRuntime] Plugin Open Link refused: ${decision.result.error}`);
                 return decision.result;
             }
             const opened = window.open(decision.url, "_blank", "noopener,noreferrer");

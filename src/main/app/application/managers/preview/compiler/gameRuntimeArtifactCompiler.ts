@@ -17,7 +17,11 @@ import {
     normalizeGameCrashPolicy,
     normalizeGameRuntimeViewportConfig,
 } from "@shared/types/gameRuntime";
-import type { AppTagReachableScenes } from "@shared/types/appTag";
+import type { AppTagPluginConfig, AppTagReachableScenes, ProjectAppTag } from "@shared/types/appTag";
+import { APP_TAG_ID_RELEASE, isBuiltinAppTagId } from "@shared/types/appTag";
+import { resolveShippedPluginBuildConfig } from "@shared/utils/pluginBuildConfig";
+import { collectReferencedAssetIds, restrictRecordToAssetIds } from "@shared/build/variantPayload";
+import type { DevModeBundle } from "@shared/types/devMode";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { readProjectIconSet, resolveIconFile, resolveIconSource } from "@shared/types/projectIcons";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
@@ -288,6 +292,7 @@ export async function compileGameRuntimeArtifact(
     const projectConfig = await readProjectConfig(input.projectPath);
     const externalLinks = await readDeclaredExternalLinks(input.projectPath, input.appTag?.id);
     const endingSurfaceId = await readEndingSurfaceId(input.projectPath, input.appTag?.id);
+    const pluginConfig = await readPluginConfigSource(input.projectPath, input.appTag?.id);
     const blueprintScripts = await compileAllBlueprintScriptsForProject(input.projectPath);
     if (!blueprintScripts.ok) {
         const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
@@ -295,7 +300,7 @@ export async function compileGameRuntimeArtifact(
     }
     const bundleId = crypto.randomUUID();
     const notices: string[] = [];
-    const bundle = await assembleDevModeBundleFromProjectPath({
+    const assembled = await assembleDevModeBundleFromProjectPath({
         projectPath: input.projectPath,
         bundleId,
         revision: 1,
@@ -314,6 +319,17 @@ export async function compileGameRuntimeArtifact(
         ...(input.locale ? { locale: input.locale } : {}),
         onNotice: message => notices.push(message),
     });
+    // A variant that removed story also carries an asset library sized for the story it removed, and
+    // a package is public the moment someone opens it. The release edition removes nothing, so it
+    // narrows nothing: there is no unreachable content for it to be carrying.
+    const stripping = Boolean(input.appTag) && !isBuiltinAppTagId(input.appTag?.id ?? APP_TAG_ID_RELEASE);
+    const shipped = stripping
+        ? await planShippedAssets(input.projectPath, assembled, input.runtimePlugins ?? [])
+        : null;
+    const bundle = shipped?.bundle ?? assembled;
+    if (shipped && shipped.removedAssetCount > 0) {
+        notices.push(`${shipped.removedAssetCount} assets are unreachable in this edition and do not ship`);
+    }
 
     // Everything below either writes loose files or streams into the store; on
     // any failure the store handle is released so a failed compile leaks nothing.
@@ -332,6 +348,7 @@ export async function compileGameRuntimeArtifact(
             projectPath: input.projectPath,
             assetsDir,
             target,
+            include: shipped?.include ?? null,
         });
         // Baked character avatars are derived project files, not library assets, so the walk
         // above never sees them. Without this pass a packaged game resolves every avatar to
@@ -365,6 +382,7 @@ export async function compileGameRuntimeArtifact(
             projectPath: input.projectPath,
             runtimePlugins: input.runtimePlugins ?? [],
             target,
+            pluginConfig,
             ...(input.sidecarPlatformKey ? { sidecarPlatformKey: input.sidecarPlatformKey } : {}),
             ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
             ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
@@ -595,10 +613,88 @@ async function copyOptionalFile(sourcePath: string, targetPath: string): Promise
     }
 }
 
+/**
+ * Which library assets this build may carry, and the bundle narrowed to match.
+ *
+ * The answer is every asset id that occurs in the bytes that ship. Two of those bytes' own tables
+ * are keyed by asset id over the whole library - the display names a story row shows, and the clip
+ * regions marked on audio - so they would answer "all of them" whatever the story does; they are
+ * held out of the sweep and narrowed to its result afterwards, which is sound because a subset adds
+ * no id back.
+ *
+ * What this cannot see is an id the running game computes rather than stores. That is refused before
+ * a build starts rather than guessed at here: an asset picked by an expression is exactly the shape
+ * that would go missing from a shipped game with nothing anywhere saying so.
+ */
+async function planShippedAssets(
+    projectPath: string,
+    bundle: DevModeBundle,
+    runtimePlugins: readonly GameRuntimePluginSource[],
+): Promise<{ bundle: DevModeBundle; include: Set<string>; removedAssetCount: number }> {
+    const libraryAssetIds = await readLibraryAssetIds(projectPath);
+    const assetNames = bundle.storyLibrary?.assetNames ?? {};
+    const clips = bundle.audio?.clips ?? {};
+    // A plugin's published data ships inside the pack and a plugin can ask for an asset's URL, so a
+    // catalogue naming one is a reference like any other. It is swept from the same files the plugin
+    // copier reads rather than from its output, because that copier runs after the assets are chosen.
+    const pluginData = await Promise.all(runtimePlugins.map(plugin => readPublishedPluginData({
+        projectPath,
+        manifest: plugin.manifest,
+    })));
+    const swept = {
+        bundle: {
+            ...bundle,
+            ...(bundle.storyLibrary ? { storyLibrary: { ...bundle.storyLibrary, assetNames: {} } } : {}),
+            ...(bundle.audio ? { audio: { ...bundle.audio, clips: {} } } : {}),
+        },
+        pluginData,
+    };
+    const include = collectReferencedAssetIds(swept, libraryAssetIds);
+    return {
+        bundle: {
+            ...bundle,
+            ...(bundle.storyLibrary
+                ? {
+                    storyLibrary: {
+                        ...bundle.storyLibrary,
+                        assetNames: restrictRecordToAssetIds(assetNames, include).record,
+                    },
+                }
+                : {}),
+            ...(bundle.audio
+                ? { audio: { ...bundle.audio, clips: restrictRecordToAssetIds(clips, include).record } }
+                : {}),
+        },
+        include,
+        removedAssetCount: libraryAssetIds.size - include.size,
+    };
+}
+
+/** Every asset id the project's library declares, across all shards. */
+async function readLibraryAssetIds(projectPath: string): Promise<Set<string>> {
+    const ids = new Set<string>();
+    for (const type of ASSET_TYPES) {
+        const metadata = await readOptionalJson<Record<string, unknown>>(
+            path.join(projectPath, "assets", `assets.metadata.${type}.json`),
+        );
+        for (const assetId of Object.keys(metadata ?? {})) {
+            ids.add(assetId);
+        }
+    }
+    return ids;
+}
+
 async function copyProjectAssets(input: {
     projectPath: string;
     assetsDir: string;
     target: PackTarget;
+    /**
+     * The ids this build is allowed to carry, or null to carry the library whole.
+     *
+     * Null is the release edition and every preview: nothing was removed from the story, so no asset
+     * can have lost its last reference, and narrowing there could only ever take something away.
+     */
+    include: ReadonlySet<string> | null;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
     for (const type of ASSET_TYPES) {
@@ -608,6 +704,9 @@ async function copyProjectAssets(input: {
             continue;
         }
         for (const [assetId, rawAsset] of Object.entries(metadata)) {
+            if (input.include && !input.include.has(assetId)) {
+                continue;
+            }
             const normalized = normalizeAssetRecord(assetId, type, rawAsset);
             const sourcePath = resolveAssetSourcePath(input.projectPath, normalized);
             if (BUNDLE_ASSET_TYPES.has(type)) {
@@ -916,6 +1015,8 @@ async function copyRuntimePlugins(input: {
     hostUserDataDir?: string;
     /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
+    /** What each plugin's declared fields resolve against. See {@link readPluginConfigSource}. */
+    pluginConfig: { tag: ProjectAppTag; base: AppTagPluginConfig };
 }): Promise<GameRuntimePackPluginEntry[]> {
     const entries: GameRuntimePackPluginEntry[] = [];
     for (const plugin of input.runtimePlugins) {
@@ -948,11 +1049,19 @@ async function copyRuntimePlugins(input: {
                 ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             })
             : [];
+        // Per plugin and nothing wider: the entry a plugin reads at runtime is its own, so a value
+        // one plugin's author typed is never in front of another's code.
+        const buildConfig = resolveShippedPluginBuildConfig(
+            { pluginId: plugin.manifest.id, manifest: plugin.manifest },
+            input.pluginConfig.tag,
+            input.pluginConfig.base,
+        );
         entries.push({
             manifest: plugin.manifest,
             entryRelativePath: relativePath,
             ...(data ? { data } : {}),
             ...(sidecars.length > 0 ? { sidecars } : {}),
+            ...(Object.keys(buildConfig).length > 0 ? { buildConfig } : {}),
         });
     }
     return entries;
@@ -1361,6 +1470,28 @@ async function readEndingSurfaceId(projectPath: string, appTagId: string | undef
     const document = await readProjectAppTagDocumentFromDir(projectPath);
     const tag = resolveAppTag(document.tags, appTagId);
     return resolveAppTagEndingSurface(tag, document.endingSurfaceId).value;
+}
+
+/**
+ * The two records a plugin's declared fields are resolved against: the variant being compiled, and
+ * the project's own values that every variant inherits.
+ *
+ * The pair travels rather than a finished answer, because the answer is per plugin and the plugins
+ * are not known here - a field belongs to whichever plugin declared it, and only the copy pass
+ * knows which plugins this pack ships. Resolution itself is `resolveShippedPluginBuildConfig`.
+ *
+ * A document that will not parse propagates, as it does for the addresses and the ending page: a
+ * build that could not read its variant record has no business guessing what the author typed.
+ */
+async function readPluginConfigSource(
+    projectPath: string,
+    appTagId: string | undefined,
+): Promise<{ tag: ProjectAppTag; base: AppTagPluginConfig }> {
+    const document = await readProjectAppTagDocumentFromDir(projectPath);
+    return {
+        tag: resolveAppTag(document.tags, appTagId),
+        base: document.pluginConfig ?? {},
+    };
 }
 
 async function readOptionalJson<T>(filePath: string): Promise<T | null> {

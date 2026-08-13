@@ -138,6 +138,22 @@ export type GameRuntimePackPluginEntry = {
      * has no sidecar for that id", and the plugin degrades rather than assumes.
      */
     sidecars?: GameRuntimePackSidecarEntry[];
+    /**
+     * What the author filled in for this plugin's `contributes.buildConfig` fields, resolved for
+     * the variant this pack was compiled as and keyed by field key. It is how a plugin's runtime
+     * learns the storefront id or account name its build was configured with; without it the
+     * declarations reach the build dialog and stop there.
+     *
+     * A `secret` field is never here. The project holds a handle for one, not the value, and this
+     * record ships to every player - see `resolveShippedPluginBuildConfig`, which is the only thing
+     * that fills it in. Neither is a platform-scoped field yet: one pack serves several platforms,
+     * and those values are keyed per platform.
+     *
+     * Absent on packs built before this channel existed, on plugins that declare no fields, and
+     * when nothing was filled in - all three mean the same thing to the plugin, which is that it
+     * was told nothing and must degrade.
+     */
+    buildConfig?: Record<string, string>;
 };
 
 /**
@@ -435,6 +451,21 @@ export type GameRuntimeNetworkBridge = {
 
 export type GameRuntimeExternalLinkBridge = {
     open(request: BlueprintOpenExternalRequest): Promise<BlueprintOpenExternalResult>;
+    /**
+     * The same act on a plugin's behalf, decided against a different declaration.
+     *
+     * A separate method rather than an optional field on the request, because the two are separate
+     * regimes and a single entry point taking "who is asking" would make the caller's word part of
+     * how the project's own declaration is read. Here the plugin id selects *which* declaration
+     * applies and can only ever select one that shipped: the far side looks the id up in
+     * `pack.plugins[].manifest.contributes.externalLinks`, so an id naming nothing in the pack
+     * declares nothing and an id naming another plugin reaches that plugin's approved patterns and
+     * no further.
+     */
+    openForPlugin(
+        pluginId: string,
+        request: BlueprintOpenExternalRequest,
+    ): Promise<BlueprintOpenExternalResult>;
 };
 
 export type GameRuntimePreloadBridge = {

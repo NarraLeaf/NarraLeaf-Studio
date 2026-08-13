@@ -64,6 +64,8 @@ export const pluginPermission = {
             sidecarNote: "This plugin ships a native program that runs inside the game you build.",
             buildDependency: "Build-time downloads",
             runtime: "In your game",
+            externalLink: "Links out of your game",
+            externalLinkNote: "This plugin can send the player to these addresses, opened outside the game.",
             studio: "Studio permissions",
         },
         sidecarPlatforms: "Runs on {platforms}",
