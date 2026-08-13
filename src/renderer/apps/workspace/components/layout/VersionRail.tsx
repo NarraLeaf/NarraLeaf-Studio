@@ -17,6 +17,7 @@ import {
     GitCompare,
     GitMerge,
     History,
+    KeyRound,
     Loader2,
     Plus,
     RefreshCw,
@@ -24,7 +25,7 @@ import {
     X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { VcsChangeKind, VcsFileChange, VcsSyncState } from "@shared/types/vcs";
+import type { VcsChangeKind, VcsFileChange, VcsServerReach, VcsSignInProblem, VcsSyncState } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
@@ -317,7 +318,13 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                         {t(busyKey(busy))}
                     </p>
                 )}
-                {error && <p className="px-3 py-2 text-2xs text-danger">{error}</p>}
+                {/* Not when the server section is already saying, in a sentence somebody
+                    can act on, that this installation has to sign in first: the string
+                    underneath it would be the client library's own, in English, naming a
+                    verb no author has heard of. */}
+                {error && !surface.remoteNeedsSignIn && (
+                    <p className="px-3 py-2 text-2xs text-danger">{error}</p>
+                )}
             </div>
         </div>
     );
@@ -745,14 +752,191 @@ function CommitForm({ surface }: { surface: VersionSurface }) {
  * thing that reaches out. A row that phoned home on mount would put those two seconds on the path
  * of opening the panel, and would do it again on every project.
  *
- * **The credential fields are absent until the server refuses us.** Lore's token login needs both a
- * token and an https auth endpoint, and a bare server on a LAN has neither and needs neither -
- * measured. Asking for them up front would put two mandatory-looking boxes in front of every author
- * for a case most will never hit; asking at the moment of refusal puts them exactly where the
- * question arises. That is also why the common setup is genuinely one field: the backend keeps only
- * the ORIGIN of the URL it is given and identifies the repository by its own id, so a per-project
- * address is not a thing that exists.
+ * **The credential fields are behind a press, never in front of one.** Signing in needs both a
+ * token and an https address, and a bare server on a LAN has neither and needs neither - measured.
+ * Two mandatory-looking boxes in front of every author, for a case most will never meet, is the
+ * thing to avoid; a single quiet line that opens them is not. It is a line rather than a state
+ * reached only by being refused, because a server that wants a token wants it before the first
+ * push, and finding that out by being turned away costs two seconds and teaches nothing.
+ *
+ * That is also why the common setup is genuinely one field: the backend keeps only the ORIGIN of
+ * the URL it is given and identifies the repository by its own id, so a per-project address is not
+ * a thing that exists.
  */
+/**
+ * Signing in to the server this project is pointed at, and saying who is signed in.
+ *
+ * **The whole point of it is on the last line**: while a session is in force, what goes on a
+ * revision is the name the server knows this account by, not what somebody typed into their own
+ * settings - so the panel says that name, where it came from, and nothing else.
+ *
+ * The refusal sentences are not decoration either. The backend answers an untrusted certificate,
+ * a port nothing listens on, an unresolvable name and an endpoint speaking plain HTTP with one
+ * identical sentence, so the reason arrives here as a code and this is where it becomes something
+ * a person can act on. The certificate case is the one worth reading twice: nothing inside Studio
+ * can trust an authority on this machine's behalf, so it names the fingerprint to compare and
+ * sends them to the person who runs the server.
+ */
+function SignInSection({ surface }: { surface: VersionSurface }) {
+    const { t } = useTranslation();
+    const { serverSession, signIn, busy } = surface;
+    const [open, setOpen] = useState(false);
+    const [address, setAddress] = useState("");
+    const [token, setToken] = useState("");
+    const running = busy !== null;
+
+    if (serverSession) {
+        return (
+            <div data-vcs-seam="server-identity" className="mt-1 flex items-baseline gap-1.5">
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-muted" title={serverSession.account.identity}>
+                    {t("workspace.shell.versionControl.server.signIn.signedInAs", {
+                        name: serverSession.account.displayName,
+                    })}
+                </span>
+                <button
+                    type="button"
+                    onClick={() => void surface.signOutOfServer()}
+                    disabled={running}
+                    className="shrink-0 text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg disabled:opacity-50"
+                >
+                    {t("workspace.shell.versionControl.server.signIn.signOut")}
+                </button>
+            </div>
+        );
+    }
+
+    if (!open) {
+        return (
+            <button
+                type="button"
+                onClick={() => setOpen(true)}
+                disabled={running}
+                className="mt-1 flex items-center gap-1.5 text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg disabled:opacity-50"
+            >
+                <KeyRound className="h-3 w-3" />
+                {t("workspace.shell.versionControl.server.signIn.open")}
+            </button>
+        );
+    }
+
+    const submit = () => {
+        if (!address.trim() || !token.trim()) return;
+        void surface.signInToServer(address.trim(), token.trim()).then(signedIn => {
+            if (!signedIn) return;
+            setOpen(false);
+            // The token is not kept for a moment longer than the call that used it. Nothing
+            // here needs it again, and a box still holding a credential is one a screenshot,
+            // a screen share or the next person at this desk can read.
+            setToken("");
+        });
+    };
+
+    return (
+        <div data-vcs-seam="sign-in-form" className="mt-2">
+            <label className="block text-2xs tracking-wide text-fg-subtle">
+                {t("workspace.shell.versionControl.server.signIn.addressLabel")}
+            </label>
+            <Input
+                size="sm"
+                autoFocus
+                value={address}
+                onChange={event => setAddress(event.target.value)}
+                disabled={running}
+                placeholder={t("workspace.shell.versionControl.server.signIn.addressPlaceholder")}
+                className="mt-1 text-2xs"
+            />
+            <label className="mt-2 block text-2xs tracking-wide text-fg-subtle">
+                {t("workspace.shell.versionControl.server.signIn.tokenLabel")}
+            </label>
+            <Input
+                size="sm"
+                value={token}
+                onChange={event => setToken(event.target.value)}
+                onKeyDown={event => {
+                    if (event.key === "Enter") {
+                        event.preventDefault();
+                        submit();
+                    }
+                    if (event.key === "Escape") {
+                        event.preventDefault();
+                        setOpen(false);
+                    }
+                }}
+                disabled={running}
+                placeholder={t("workspace.shell.versionControl.server.signIn.tokenPlaceholder")}
+                className="mt-1 text-2xs"
+            />
+            <p className="mt-1 text-2xs text-fg-subtle">
+                {t("workspace.shell.versionControl.server.signIn.hint")}
+            </p>
+            {/* `break-words` earns its place on exactly one of these sentences: the certificate
+                one ends in a 95-character fingerprint with no spaces in it, and a rail 320px wide
+                cuts it off two thirds of the way through - which leaves the author comparing a
+                fingerprint against half of one. Ordinary prose is unaffected; only a word that
+                cannot fit at all is broken. */}
+            {signIn && !signIn.ok && (
+                <p data-vcs-seam="sign-in-problem" className="mt-1.5 break-words text-2xs text-danger">
+                    {describeSignInProblem(signIn.problem, t)}
+                </p>
+            )}
+            <div className="mt-2 flex items-center gap-1.5">
+                <button
+                    type="button"
+                    onClick={submit}
+                    disabled={running || !address.trim() || !token.trim()}
+                    className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-2xs text-on-primary transition-opacity cursor-default hover:opacity-90 disabled:opacity-50"
+                >
+                    {busy === "remote"
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <KeyRound className="h-3 w-3" />}
+                    {t("workspace.shell.versionControl.server.signIn.submit")}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    disabled={running}
+                    className="flex h-7 items-center justify-center rounded-md border border-edge px-2 text-2xs text-fg-muted transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
+                >
+                    {t("workspace.shell.versionControl.server.signIn.cancel")}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * One sentence per way a sign-in can fail, in the reader's own language.
+ *
+ * Built here rather than passed through from the backend because the backend cannot tell four
+ * of these apart - see {@link SignInSection} - and because the one sentence that has to be acted
+ * on by a person, the certificate, names a command that is not Studio's to run.
+ */
+function describeSignInProblem(
+    problem: VcsSignInProblem,
+    t: (key: TranslationKey, params?: Record<string, string | number>) => string,
+): string {
+    const key = "workspace.shell.versionControl.server.signIn.problem" as const;
+    switch (problem.kind) {
+        case "scheme":
+            return t(`${key}.scheme`);
+        case "token":
+            return t(`${key}.token`);
+        case "certificate":
+            return t(`${key}.certificate`, { fingerprint: problem.fingerprint || "-" });
+        case "unreachable":
+            return t(`${key}.unreachable`, { detail: problem.detail });
+        case "refused":
+            return t(`${key}.refused`, { detail: problem.detail });
+        default:
+            return t(`${key}.unknown`, { detail: problem.detail });
+    }
+}
+
+/** What reaching the server after signing in came to, said as a sentence rather than a number. */
+function describeReach(reach: VcsServerReach): TranslationKey {
+    return `workspace.shell.versionControl.server.signIn.reach.${reach}` as TranslationKey;
+}
+
 function ServerSection({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
     const { remote, syncState, busy } = surface;
@@ -823,6 +1007,19 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                         {t("workspace.shell.versionControl.server.cancel")}
                     </button>
                 </div>
+                {/* A refusal leaves this form open, so this is where somebody is standing
+                    when a server turns them away for having no token. Until they have one
+                    the address is never written, and the sign-in drawn beside a configured
+                    server is therefore never drawn at all — on exactly the servers signing
+                    in exists for. */}
+                {surface.remoteNeedsSignIn && (
+                    <>
+                        <p className="mt-2 text-2xs text-danger">
+                            {t("workspace.shell.versionControl.server.signIn.required")}
+                        </p>
+                        <SignInSection surface={surface} />
+                    </>
+                )}
                 {/* Only while a server is already configured: this is the way to undo the
                     connection, and offering it during first setup would be a control for
                     leaving a state the author has not entered. */}
@@ -859,6 +1056,19 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                     <Cloud className="h-3 w-3" />
                     {t("workspace.shell.versionControl.server.connect")}
                 </button>
+                {/* A server that demands a token refuses to be pointed at until this
+                    installation has one, so the address is never written and the row that
+                    normally offers a sign-in - the one beside a configured server - is
+                    never drawn. Offered here, the only place left, or there is no way in
+                    at all to exactly the servers signing in exists for. */}
+                {surface.remoteNeedsSignIn && (
+                    <>
+                        <p className="mt-2 text-2xs text-danger">
+                            {t("workspace.shell.versionControl.server.signIn.required")}
+                        </p>
+                        <SignInSection surface={surface} />
+                    </>
+                )}
             </div>
         );
     }
@@ -905,6 +1115,24 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                         : <RefreshCw className="h-3 w-3" />}
                 </button>
             </div>
+
+            <SignInSection surface={surface} />
+
+            {/* Said once, at the moment somebody connects, and as a sentence rather than two
+                version numbers to compare. Studio pins a client library and the server runs
+                whatever its operator installed; knowing which pairs work is not something to
+                ask an author for. */}
+            {surface.signIn?.ok && (
+                <p
+                    data-vcs-seam="server-reach"
+                    className={cn(
+                        "mt-1.5 text-2xs",
+                        surface.signIn.reach === "ready" ? "text-fg-subtle" : "text-warning",
+                    )}
+                >
+                    {t(describeReach(surface.signIn.reach))}
+                </p>
+            )}
 
             {/* Both buttons are always present once a server is configured, and neither is hidden
                 by what the last check happened to say. The check is optional - the author may

@@ -73,9 +73,11 @@ import type {
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
+    VcsSignInOutcome,
     VcsSyncState,
     VcsThreeWayResult,
     VcsWorkingFileRead,
@@ -309,6 +311,9 @@ export enum IPCEventType {
     vcsGetRemote = "vcs.getRemote",
     vcsSetRemote = "vcs.setRemote",
     vcsGetSyncState = "vcs.getSyncState",
+    vcsGetServerSession = "vcs.getServerSession",
+    vcsSignIn = "vcs.signIn",
+    vcsSignOut = "vcs.signOut",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
     vcsClone = "vcs.clone",
@@ -1058,6 +1063,32 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string },
         response: VcsSyncState;
+    };
+    /** Local read: who this installation is signed in to this project's server as. */
+    [IPCEventType.vcsGetServerSession]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: { session: VcsServerSession | null };
+    };
+    /**
+     * **Goes to the network**, twice: the sign-in endpoint and then the server itself.
+     *
+     * The token travels one way only. It is handed to the backend's own store and is never
+     * written to Studio's state, logged, or returned in the response.
+     */
+    [IPCEventType.vcsSignIn]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; authUrl: string; token: string },
+        response: VcsSignInOutcome;
+    };
+    /** Local: clears the stored token as well as Studio's record of whose it was. */
+    [IPCEventType.vcsSignOut]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: { session: null };
     };
     [IPCEventType.vcsPush]: {
         type: IPCMessageType.request,

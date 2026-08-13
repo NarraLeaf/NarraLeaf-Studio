@@ -28,7 +28,7 @@ import type { PrivilegedActor } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
 import type { AssetExportEntry } from "@shared/types/assetExport";
 import type { UpdateState } from "@shared/constants/update";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -506,6 +506,14 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Goes to the network; ~2s when nothing answers. On demand only, never on a timer. */
         getSyncState: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetSyncState, { projectPath }) as Promise<RequestStatus<VcsSyncState>>,
+        /** Local read - no socket. Null means nobody has signed in to this project's server. */
+        getServerSession: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetServerSession, { projectPath }) as Promise<RequestStatus<{ session: VcsServerSession | null }>>,
+        /** Goes to the network. The token is not stored here and does not come back. */
+        signIn: (projectPath: string, authUrl: string, token: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignIn, { projectPath, authUrl, token }) as Promise<RequestStatus<VcsSignInOutcome>>,
+        signOut: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignOut, { projectPath }) as Promise<RequestStatus<{ session: null }>>,
         push: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsPush, { projectPath }) as Promise<RequestStatus<VcsPushResult>>,
         /** Writes the working tree: re-read every document once this resolves. */
