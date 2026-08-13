@@ -984,6 +984,8 @@ export class GameBuildManager {
                 locale: getMainLocale(this.app),
                 encryptionKey,
                 appId: identity.appId,
+                productName: identity.productName,
+                ...(identity.identifier ? { identifier: identity.identifier } : {}),
                 ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
                 // The compile runs in a utility process, so the build dependency
                 // cache root travels with the input rather than being read from
@@ -2031,7 +2033,14 @@ export class GameBuildManager {
         projectConfig: ProjectConfigData | null,
         projectPath: string,
         variant: ProjectAppTag,
-    ): { appId: string; productName: string; artifactBaseName: string; version: string; copyright?: string } {
+    ): {
+        appId: string;
+        productName: string;
+        identifier?: string;
+        artifactBaseName: string;
+        version: string;
+        copyright?: string;
+    } {
         const overrides = variant.overrides;
         // What the project itself is called. Kept apart from the product name below, because the
         // artifacts are named from this and the edition, never from a variant's renamed application.
@@ -2072,6 +2081,7 @@ export class GameBuildManager {
         return {
             appId,
             productName,
+            ...(identifier ? { identifier } : {}),
             artifactBaseName: gameBuildArtifactBaseName(
                 projectName,
                 isBuiltinAppTagId(variant.id) ? null : variant.name,
