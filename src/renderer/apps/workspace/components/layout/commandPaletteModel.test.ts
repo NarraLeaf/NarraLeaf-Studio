@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { Keyboard, Undo2, type LucideIcon } from "lucide-react";
 import { collectPaletteCommands, type PaletteCommandSources } from "./commandPaletteModel";
 import type { ActionDefinition, ActionGroup, PanelDefinition } from "../../registry/types";
 import { PanelPosition } from "../../registry/types";
@@ -20,6 +22,11 @@ function keybinding(overrides: Partial<Keybinding> & { id: string; key: string }
 }
 
 const NoopPanel = () => null;
+
+/** Whether a rendered palette icon is the given lucide glyph (icons arrive as elements, not names). */
+function isElementOf(icon: ReactNode, expected: LucideIcon): boolean {
+    return isValidElement(icon) && icon.type === expected;
+}
 
 function panel(overrides: Partial<PanelDefinition> & { id: string }): PanelDefinition {
     return { title: overrides.id, icon: null, position: PanelPosition.Left, component: NoopPanel, ...overrides };
@@ -370,5 +377,33 @@ describe("collectPaletteCommands - keybinding catalog resolution", () => {
             build({ keybindings: [keybinding({ id: "uncatalogued", key: "f9", description: "Do a thing" })] }),
         );
         expect(commands[0]).toMatchObject({ title: "Do a thing", category: undefined });
+    });
+
+    /*
+     * The icon column is the one part of a row nothing else would catch going missing: a command
+     * with no glyph still lists, still runs, and still reads correctly - it just leaves a hole
+     * where every neighbouring row has a mark, which is only visible by looking at the list.
+     *
+     * Keybindings are the source that had no icon at all, because they are the only one that does
+     * not carry its own: the glyph comes from the catalog entry, and a binding that has no entry
+     * gets the generic one rather than nothing.
+     */
+    it("gives a catalogued binding the catalog's icon", () => {
+        const commands = collectPaletteCommands(build({ keybindings: [storyUndo("t1")] }));
+        expect(commands[0]?.icon).toBeTruthy();
+        expect(isElementOf(commands[0]?.icon, Undo2)).toBe(true);
+    });
+
+    it("gives an uncatalogued binding the generic shortcut icon rather than a blank column", () => {
+        const commands = collectPaletteCommands(
+            build({ keybindings: [keybinding({ id: "uncatalogued", key: "f9", description: "Do a thing" })] }),
+        );
+        expect(isElementOf(commands[0]?.icon, Keyboard)).toBe(true);
+    });
+
+    it("sizes catalog icons like the action and panel registries do, since they share a column", () => {
+        const commands = collectPaletteCommands(build({ keybindings: [storyUndo("t1")] }));
+        expect(isValidElement(commands[0]?.icon)).toBe(true);
+        expect((commands[0]?.icon as ReactElement<{ className?: string }>).props.className).toBe("w-4 h-4");
     });
 });

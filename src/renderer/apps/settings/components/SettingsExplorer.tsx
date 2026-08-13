@@ -203,6 +203,12 @@ export function SettingsExplorer<T>({
 
     const handleBooleanToggle = useCallback(
         (entry: SettingEntry<T>) => {
+            // A disabled switch is still a switch: it keeps its keyboard focus and, on some
+            // platforms, still reports a click. Refusing the write here rather than only in the
+            // control is what makes the row's reason ("not available on this system") true.
+            if (entry.descriptor.disabled) {
+                return;
+            }
             const current = Boolean(getValue(entry.source, entry.descriptor));
             const nextValue = !current;
             setPendingBooleans(prev => ({ ...prev, [entry.descriptor.id]: nextValue }));
@@ -340,7 +346,7 @@ export function SettingsExplorer<T>({
                         <Switch
                             checked={booleanValue}
                             onCheckedChange={() => handleBooleanToggle(entry)}
-                            disabled={isSaving}
+                            disabled={isSaving || descriptor.disabled}
                             loading={isSaving}
                             size="md"
                         />

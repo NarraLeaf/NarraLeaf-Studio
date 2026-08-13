@@ -69,13 +69,17 @@ function change(path: string, partial: Partial<VcsFileChange> = {}): VcsFileChan
     };
 }
 
-function section(files: readonly VcsFileChange[]) {
+function section(files: readonly VcsFileChange[], state: VersionSurface["state"] = HEAD_36) {
     const surface = {
+        state,
         status: { files },
         refreshChanges: () => undefined,
     } as unknown as VersionSurface;
     return render(<ChangesSection surface={surface} />);
 }
+
+/** The ordinary state: a working tree sitting on a numbered head. */
+const HEAD_36: VersionSurface["state"] = { kind: "current", head: "a91f3c8d2e4b6", number: 36 };
 
 const rows = (container: HTMLElement) => container.querySelectorAll("[data-vcs-change-row]");
 
@@ -114,7 +118,27 @@ describe("the rail's change section", () => {
         )!;
         expect(entry).not.toBeNull();
         fireEvent.click(entry);
-        expect(openTab).toHaveBeenCalledWith(workspace.context, { mode: "working-tree" });
+        // The label travels with it: the tab's heading has to name the head the same way this panel
+        // does, and left to itself it named it by hash.
+        expect(openTab).toHaveBeenCalledWith(workspace.context, { mode: "working-tree", headLabel: "#36" });
+    });
+
+    it("passes no label when the head has no number yet, rather than inventing one", () => {
+        // `getInfo` has not answered. The tab then names the version by its hash, which is honest -
+        // a number made up here would be a version that does not exist.
+        const { container } = section([change("editor/brand.json")], {
+            kind: "current",
+            head: "a91f3c8d2e4b6",
+            number: null,
+        });
+
+        fireEvent.click(container.querySelector<HTMLButtonElement>(
+            "[aria-label='documentDiff.rail.compareWithPrevious']",
+        )!);
+        expect(openTab).toHaveBeenCalledWith(workspace.context, {
+            mode: "working-tree",
+            headLabel: undefined,
+        });
     });
 
     /** Directories are changes in their own right and name nothing the author wrote. */

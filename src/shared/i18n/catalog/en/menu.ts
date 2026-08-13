@@ -13,6 +13,12 @@ export const menu = {
         hideOthers: "Hide Others",
         unhide: "Show All",
         quit: "Quit {name}",
+        /**
+         * The overlay shown after the first of the two ⌘Q presses, when `app.confirmQuit` is on
+         * (macOS only, see {@link confirmQuit.ts}). Not a menu item, but the same gesture as the one
+         * above and the only other text the quit produces, so it is kept beside it.
+         */
+        pressAgainToQuit: "Press ⌘Q again to quit",
     },
     /**
      * The status-bar item's context menu (Windows and Linux; macOS has none - see

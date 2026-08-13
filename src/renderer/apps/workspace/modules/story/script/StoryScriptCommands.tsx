@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { FileDown, FileUp } from "lucide-react";
 import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -41,6 +42,8 @@ export function StoryScriptCommands() {
                 id: "story:export-script",
                 titleKey: "story.script.exportStory",
                 categoryKey: "workspace.shell.commandPalette.categoryStory",
+                // Out of the project and into it - the arrow points the way the script travels.
+                icon: <FileUp className="w-4 h-4" />,
                 when: () => targetStoryId() !== null,
                 run: () => {
                     const storyId = targetStoryId();
@@ -53,6 +56,7 @@ export function StoryScriptCommands() {
                 id: "story:import-script",
                 titleKey: "story.script.import",
                 categoryKey: "workspace.shell.commandPalette.categoryStory",
+                icon: <FileDown className="w-4 h-4" />,
                 // Registered commands are exempt from the palette's own freeze filter by design, so
                 // the gate has to be here - see `WorkspaceCommands`.
                 when: () => getProjectWriteFreeze() === null && targetStoryId() !== null,
