@@ -795,6 +795,12 @@ function SignInSection({ surface }: { surface: VersionSurface }) {
     const untrusted = signIn !== null && !signIn.ok && signIn.problem.kind === "certificate"
         ? signIn.problem.authority
         : null;
+    // A token that named a DIFFERENT authority than the one answering gets no button at
+    // all - not a quieter one. The sentence above says something is standing in the way,
+    // and a control underneath offering to trust it anyway argues with that sentence.
+    const offer = untrusted && (vcsAuthorityIsVouchedFor(untrusted) || untrusted.expected === "")
+        ? untrusted
+        : null;
 
     if (serverSession) {
         return (
@@ -899,9 +905,9 @@ function SignInSection({ surface }: { surface: VersionSurface }) {
                     {describeSignInProblem(signIn.problem, t)}
                 </p>
             )}
-            {untrusted && (
+            {offer && (
                 <AuthorityOffer
-                    authority={untrusted}
+                    authority={offer}
                     surface={surface}
                     onTrusted={() => { void surface.signInToServer(address.trim(), token.trim()); }}
                 />
