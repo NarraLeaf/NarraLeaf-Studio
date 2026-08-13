@@ -51,6 +51,7 @@ import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/p
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
     createDevModeBlueprintHostApi,
+    type BlueprintLayerShowRequest,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
@@ -135,6 +136,10 @@ import {
 import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
+import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from "./layers/LayerStackController";
+import { useLayerStack } from "./layers/useLayerStack";
+import { resolveCompositeInput } from "./layers/compositeInput";
+import { buildCompositeView } from "./layers/compositeView";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -156,6 +161,18 @@ const NLR_BOOT_PRELOAD_TIMEOUT_MS = 45_000;
 // alternative is the player paying for it on a button they just pressed. Bounded only so a broken
 // asset degrades to "start pays for it" instead of never starting.
 const STAGE_WARMUP_TIMEOUT_MS = 30_000;
+
+/**
+ * Where the layer stack starts counting, in the surface layer's own index space.
+ *
+ * Not simply one past however many page entries happen to be mounted. A page entry on its way out is
+ * drawn at `30 + layerIndex` so it can pass over the page arriving underneath it, and a layer sitting
+ * immediately above the page lane would be crossed by that exit - a modal would disappear behind the
+ * screen it was covering, for the length of one transition. Starting the layers clear of the page
+ * lane's exit band keeps a layer above the pages whatever the pages are doing, and keeps each layer's
+ * own z fixed instead of shifting as a transition opens and closes.
+ */
+const LAYER_STACK_INDEX_BASE = 32;
 
 /**
  * A pending mount or game entry that was abandoned because something took over: a newer bundle
@@ -223,6 +240,12 @@ export type GameAppProps = {
      * workspace story preview).
      */
     pluginHost?: RuntimePluginHostController;
+    /**
+     * The layer stack composited over the page lane. Supplied by a caller that needs to reach it -
+     * `mountSurfaceLayer` takes the controller - and otherwise created here and left empty, which is
+     * every host today.
+     */
+    layerStack?: LayerStackController;
 };
 
 /**
@@ -233,7 +256,16 @@ export type GameAppProps = {
  * differ only in the injected GameAppHost.
  */
 export function GameApp(props: GameAppProps): ReactNode {
-    const { host, rendererRegistry, getScale, renderFrame, renderPlaceholder, renderOverlays, pluginHost } = props;
+    const {
+        host,
+        rendererRegistry,
+        getScale,
+        renderFrame,
+        renderPlaceholder,
+        renderOverlays,
+        pluginHost,
+        layerStack: providedLayerStack,
+    } = props;
     const bundle = host.bundle;
     const core = useBlueprintRuntimeCore(bundle, {
         persistenceAdapter: host.persistenceAdapter,
@@ -361,6 +393,12 @@ export function GameApp(props: GameAppProps): ReactNode {
     const navigation = useMemo(() => new NavigationController(), []);
     const navState = useSurfaceNavigation(navigation);
     const { navStack, visibleEntries, presenceMode: surfacePresenceMode } = navState;
+    // Beside the page lane, never inside it: the navigation machine's rules are about replacing one
+    // screen with another, and a layer replaces nothing. An empty stack is what makes paging behave
+    // exactly as it did before layers existed.
+    const layerStack = useMemo(() => providedLayerStack ?? new LayerStackController(), [providedLayerStack]);
+    const layerState = useLayerStack(layerStack);
+    const layers = layerState.layers;
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
     const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSessionState] = useState<NlrStageSession | null>(null);
@@ -538,6 +576,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         setPrepaintReadyKeys(new Set());
         setInteractionReadyKeys(new Set());
         navigation.reset(surface ? createNavEntry(surface.id, "forward", false) : null);
+        layerStack.clear();
         widgetPatchesByScopeRef.current = {};
         setWidgetPatchesByScope({});
         gameHiddenNavKeysRef.current = new Set();
@@ -619,6 +658,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         navigation.markAllExited();
     }, [navigation]);
 
+    /**
+     * Every layer that was leaving has left.
+     *
+     * This is what releases a queued layer of a mutually exclusive group, and what settles a
+     * `Hide Layer`. Taken from the presence group rather than from a duration because the exit is
+     * authored per page: a timer here would be wrong for every page whose animation someone retimes,
+     * and wrong in the direction that shows two layers of one group at once. The layer itself is
+     * what makes that safe to depend on - it bounds how long it waits for its own contents, so this
+     * arrives whatever the page turns out to be holding (see `SurfaceAnimationLayer`).
+     */
+    const handleLayerExitComplete = useCallback(() => {
+        layerStack.notifyExitComplete();
+    }, [layerStack]);
+
     const handleSurfaceInteractionReadyChange = useCallback((entryKey: string, ready: boolean) => {
         setInteractionReadyKeys(prev => {
             const alreadyReady = prev.has(entryKey);
@@ -651,7 +704,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         setStudioPageHiddenForGame(true);
         resetSurfaceInteractionReadiness();
         navigation.hideAllForGame();
-    }, [navigation, resetSurfaceInteractionReadiness]);
+        // Layers are not serialised, so nothing about them survives a load, and the two callers of
+        // this are exactly the moments the game takes the screen: starting a story and applying a
+        // save. A layer left standing across either would belong to a run that no longer exists.
+        layerStack.clear();
+    }, [layerStack, navigation, resetSurfaceInteractionReadiness]);
 
     const clearGameHiddenStudioPages = useCallback(() => {
         const emptyKeys = new Set<string>();
@@ -694,7 +751,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     ]);
 
     /**
-     * Close down to `targetIndex` in one transition. `closeLayer` is this with the default index;
+     * Close down to `targetIndex` in one transition. `goBack` is this with the default index;
      * `clearPages` and `clearGameOverlay` name a lower one.
      */
     const closeToIndex = useCallback((targetIndex: number): Promise<void> => {
@@ -754,7 +811,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return closeToIndex(lastHidden);
     }, [closeToIndex, navigation]);
 
-    const closeLayer = useCallback((): Promise<void> => {
+    const goBackPage = useCallback((): Promise<void> => {
         const currentStack = navigation.getState().navStack;
         if (currentStack.length <= 1) {
             return Promise.resolve();
@@ -779,6 +836,77 @@ export function GameApp(props: GameAppProps): ReactNode {
         prefersReducedMotion,
         resetSurfaceInteractionReadiness,
     ]);
+
+    /**
+     * Back, over the whole composite: close the top layer when that layer allows it, and otherwise do
+     * exactly what Back has always done to the page stack.
+     *
+     * Only the top layer is consulted. One that refuses dismissal reports so and Back falls through
+     * to the page lane, which is the behaviour with no layers at all.
+     */
+    const goBack = useCallback((): Promise<void> => {
+        if (layerStack.dismissTop()) {
+            return Promise.resolve();
+        }
+        return goBackPage();
+    }, [goBackPage, layerStack]);
+
+    /**
+     * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
+     */
+    const showLayer = useCallback((request: BlueprintLayerShowRequest): string => {
+        return mountSurfaceLayer(layerStack, {
+            surfaceId: request.surfaceId,
+            props: request.props,
+            modal: request.modal,
+            dismissible: request.dismissible,
+            group: request.group,
+            ownerScopeId: request.ownerScopeId,
+        });
+    }, [layerStack]);
+
+    const hideLayer = useCallback(async (handle: string): Promise<void> => {
+        await layerStack.hideAndWaitForExit(handle);
+    }, [layerStack]);
+
+    const hideLayerGroup = useCallback(async (group: string): Promise<void> => {
+        await layerStack.hideGroupAndWaitForExit(group);
+    }, [layerStack]);
+
+    const waitLayer = useCallback((handle: string): Promise<unknown> => {
+        return layerStack.waitForClose(handle);
+    }, [layerStack]);
+
+    /**
+     * `Close This Layer`. A layer's key IS its runtime scope id, so the graph's own scope is the
+     * handle - which is why the page inside a layer never has to be told one.
+     */
+    const closeOwnLayer = useCallback((runtimeScopeId: string, result: unknown): boolean => {
+        return layerStack.closeWithResult(runtimeScopeId, result);
+    }, [layerStack]);
+
+    const isLayerMounted = useCallback((handle: string): boolean => {
+        return layerStack.isPresent(handle);
+    }, [layerStack]);
+
+    /**
+     * A closing scope takes its layers with it.
+     *
+     * Subscribed to the execution manager rather than to a React unmount, because that one call is
+     * where every surface's scope ends - a page navigated away from, a layer closed, a nested surface
+     * inside a frame - and a layer left standing after the screen that showed it is exactly the
+     * orphan this system is not allowed to produce. Cascades by itself: the layers dropped here
+     * unmount, closing their own scopes, which brings this listener round again for anything they
+     * showed in turn.
+     */
+    useEffect(() => {
+        if (!core) {
+            return;
+        }
+        return core.executionManager.subscribeScopeClosed(scopeId => {
+            layerStack.hideOwnedBy(scopeId);
+        });
+    }, [core, layerStack]);
 
     const makeStateAccessors = useCallback(
         (runtimeScopeId: string): SurfaceStateAccessors | null => {
@@ -1651,7 +1779,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             lifecycleRef,
             makeStateAccessors,
             openSurfaceWithTransition: openSurface,
-            closeLayerWithTransition: closeLayer,
+            goBackWithTransition: goBack,
             quitApplication: host.quitApplication,
             getFullscreen: host.getFullscreen,
             setFullscreen: host.setFullscreen,
@@ -1810,7 +1938,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         activeSurface,
         bundle,
         clearGameHiddenStudioPages,
-        closeLayer,
+        goBack,
         core,
         deleteSave,
         getChoiceCountInGame,
@@ -1944,12 +2072,18 @@ export function GameApp(props: GameAppProps): ReactNode {
             pageProps: entry.props,
             emit: event => core.debug.emit(event),
             onOpenSurface: openSurface,
-            onCloseLayer: closeLayer,
+            onPageBack: goBack,
             onClearPages: clearPages,
             onClearGameOverlay: clearGameOverlay,
             onQuitApplication: host.quitApplication,
             onGetFullscreen: host.getFullscreen,
             onSetFullscreen: host.setFullscreen,
+            onShowLayer: showLayer,
+            onHideLayer: hideLayer,
+            onHideLayerGroup: hideLayerGroup,
+            onWaitLayer: waitLayer,
+            onCloseOwnLayer: closeOwnLayer,
+            onIsLayerMounted: isLayerMounted,
             onStartStory: startStoryInGame,
             onIsInGame: isInGame,
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
@@ -2036,6 +2170,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 get: key => core.scopeBridge.globalGet(key),
                 subscribe: listener => core.scopeBridge.subscribeGlobals(listener),
             },
+            pageProps: entry.props,
         };
         return {
             hostAdapter,
@@ -2044,7 +2179,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         } satisfies HostAdapterBundle;
     }, [
         bundle,
-        closeLayer,
+        goBack,
         core,
         deleteSave,
         getChoiceCountInGame,
@@ -2060,6 +2195,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
+        showLayer,
+        hideLayer,
+        hideLayerGroup,
+        waitLayer,
+        closeOwnLayer,
+        isLayerMounted,
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isInGame,
@@ -2178,10 +2319,64 @@ export function GameApp(props: GameAppProps): ReactNode {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bootReady, bundle.bundleId]);
 
+    const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
+        ? visibleEntries
+            .filter(entry => entry.sessionKey === host.sessionKey)
+            .filter(entry => !studioPageHiddenForGame || !gameHiddenNavKeys.has(entry.key))
+            .map(entry => {
+                const visibleSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === entry.surfaceId);
+                return visibleSurface ? { entry, surface: visibleSurface } : null;
+            })
+            .filter((item): item is { entry: GameAppNavEntry; surface: UISurface } => Boolean(item))
+        : [];
+
+    const visibleLayers = layers
+        .map(layer => {
+            const layerSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === layer.surfaceId);
+            return layerSurface ? { layer, surface: layerSurface } : null;
+        })
+        .filter((item): item is { layer: SurfaceLayerEntry; surface: UISurface } => Boolean(item));
+
+    /**
+     * Who takes pointer input and who takes the keys, across the page lane and the layers at once.
+     *
+     * The single place either question is answered. With an empty layer stack it reduces to the
+     * comparison the surface layers used to make for themselves - the entry the page stack is
+     * settling on, and nothing else.
+     */
+    const compositeInput = resolveCompositeInput({
+        pageEntries: visibleSurfaceEntries.map(item => item.entry),
+        activePageKey: activeEntry?.key ?? null,
+        layers: visibleLayers.map(item => item.layer),
+    });
+
+    /**
+     * Which layers this render left off the screen, told to the stack that holds them.
+     *
+     * A layer naming a surface the running bundle does not have is filtered out above, so the stack
+     * says it is present while nothing of it is drawn. Removing one starts no exit animation, and
+     * the presence group therefore never reports one finished: `Hide Layer` waited for a frame that
+     * was never coming, and a mutually exclusive group stayed occupied by something invisible. The
+     * stack settles those waits itself once it knows which of its layers have no frame to lose.
+     */
+    const renderedLayerKeys = new Set(nlrPreloadDone ? visibleLayers.map(item => item.layer.key) : []);
+    const unrenderedLayerKeys = layers
+        .filter(layer => !renderedLayerKeys.has(layer.key))
+        .map(layer => layer.key);
+    const unrenderedLayerKeysRef = useRef<readonly string[]>(unrenderedLayerKeys);
+    unrenderedLayerKeysRef.current = unrenderedLayerKeys;
+    const unrenderedLayerKeysToken = unrenderedLayerKeys.join(" ");
+    useEffect(() => {
+        layerStack.setUnrenderedLayers(unrenderedLayerKeysRef.current);
+    }, [layerStack, unrenderedLayerKeysToken]);
+
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
         prepaintReadyKeys.has(activeEntry.key) &&
-        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)),
+        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)) &&
+        // The app-level keyDown/keyUp dispatch belongs to the page lane, so it stops the moment a
+        // layer takes the keyboard - otherwise Escape would reach the page under an open modal.
+        compositeInput.keyboardOwnerKey === activeEntry.key,
     );
 
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
@@ -2212,12 +2407,18 @@ export function GameApp(props: GameAppProps): ReactNode {
                     },
                     emit: event => core.debug.emit(event),
                     onOpenSurface: openSurface,
-                    onCloseLayer: closeLayer,
+                    onPageBack: goBack,
                     onClearPages: clearPages,
                     onClearGameOverlay: clearGameOverlay,
                     onQuitApplication: host.quitApplication,
                     onGetFullscreen: host.getFullscreen,
                     onSetFullscreen: host.setFullscreen,
+                    onShowLayer: showLayer,
+                    onHideLayer: hideLayer,
+                    onHideLayerGroup: hideLayerGroup,
+                    onWaitLayer: waitLayer,
+                    onCloseOwnLayer: closeOwnLayer,
+                    onIsLayerMounted: isLayerMounted,
                     onStartStory: startStoryInGame,
                     onIsInGame: isInGame,
                     onIsGameOverlay: () =>
@@ -2304,6 +2505,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 debug: core.debug,
                 coalescer: core.bindingDebugCoalescer,
                 globalState,
+                pageProps: input.params,
             }),
             mountSurface: input => {
                 const surfaceStore = core.scopeBridge.getSurfaceStore(input.runtimeScopeId);
@@ -2344,7 +2546,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, [
         bundle,
-        closeLayer,
+        goBack,
         core,
         deleteSave,
         getChoiceCountInGame,
@@ -2360,6 +2562,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
+        showLayer,
+        hideLayer,
+        hideLayerGroup,
+        waitLayer,
+        closeOwnLayer,
+        isLayerMounted,
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isInGame,
@@ -2775,6 +2983,31 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const gameViewport = nlrSession ? { width: nlrSession.width, height: nlrSession.height } : null;
 
+    /**
+     * What a host overlay is handed, built only if there is one asking.
+     *
+     * A function rather than a value so the composite is described for a reader that exists: a
+     * packaged game renders no overlays at all, and it should not pay a walk of the stack per frame
+     * to tell nobody what is on it.
+     */
+    const overlayContext = (): GameAppOverlayContext => ({
+        core,
+        activeSurface,
+        widgetRuntimeStore,
+        fastForwardToNextChoice: fastForwardToNextChoiceInGame,
+        storyRuntime,
+        saves: savesBridge,
+        composite: buildCompositeView({
+            activePageEntry: activeEntry,
+            layers,
+            queued: layerState.queued,
+            renderedLayerKeys,
+            resolution: compositeInput,
+            exitPending: layerState.exitPending,
+            surfaceName: surfaceId => findSurface(bundle, surfaceId)?.name ?? null,
+        }),
+    });
+
     if (!host.ready || !core || !hostAdapterBundle) {
         // Keep the same root element shape as the ready branch below: switching the root type
         // (Fragment → Provider) when the host becomes ready would make React unmount and
@@ -2782,7 +3015,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return (
             <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
                 {renderFrame({ activeSurface, gameViewport, children: null })}
-                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime, saves: savesBridge })}
+                {renderOverlays?.(overlayContext())}
             </GameLocalizationContext.Provider>
         );
     }
@@ -2929,17 +3162,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         />
     );
 
-    const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
-        ? visibleEntries
-            .filter(entry => entry.sessionKey === host.sessionKey)
-            .filter(entry => !studioPageHiddenForGame || !gameHiddenNavKeys.has(entry.key))
-            .map(entry => {
-                const visibleSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === entry.surfaceId);
-                return visibleSurface ? { entry, surface: visibleSurface } : null;
-            })
-            .filter((item): item is { entry: GameAppNavEntry; surface: UISurface } => Boolean(item))
-        : [];
-
     // `nl-motion-keep` + `reducedMotion="never"` hold the game's own motion outside the Studio
     // reduced-motion preference (styles.css and the MotionConfig in lib/renderApp): what plays
     // in here is the author's work, and it has to move the way it will move for a player. The
@@ -2988,7 +3210,55 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     nestedSurfaceRuntime={nestedSurfaceRuntime}
                                     blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
                                     reducedMotion={prefersReducedMotion === true}
-                                    active={entry.key === activeEntry.key}
+                                    active={compositeInput.interactiveKeys.has(entry.key)}
+                                    keyboardOwner={compositeInput.keyboardOwnerKey === entry.key}
+                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
+                                    onPrepaintReady={handleSurfaceLayerPrepaintReady}
+                                    onEnterComplete={markActiveEnterComplete}
+                                />
+                            ))
+                            : null}
+                    </AnimatePresence>
+                    {/* The layers get their own presence group. Both groups are children of the box
+                        above, so they share its stacking context and z order runs straight through
+                        both - and, equally, every z below is measured inside that box rather than
+                        against the page. Two reasons it is not one group:
+                        the page lane switches to `mode="wait"` for transitions that have to empty the
+                        screen first, which is a rule about replacing a screen and not about a layer
+                        that is merely present through it; and `onExitComplete` fires for the whole
+                        group, so a layer closing would settle a page transition that is still
+                        running. Both would only misfire once a layer exists — which is exactly the
+                        kind of thing that has to be impossible rather than untested. */}
+                    <AnimatePresence
+                        custom="forward"
+                        initial={false}
+                        mode="sync"
+                        onExitComplete={handleLayerExitComplete}
+                    >
+                        {nlrPreloadDone
+                            ? visibleLayers.map(({ layer, surface }, index) => (
+                                <AppSurfaceLayerWithAdapter
+                                    key={layer.key}
+                                    uidoc={bundle.ui.uidoc}
+                                    blueprintDocument={bundle.ui.localBlueprints}
+                                    persistentVariables={bundle.ui.persistentVariables}
+                                    core={core}
+                                    entry={layer}
+                                    layerIndex={LAYER_STACK_INDEX_BASE + index}
+                                    surface={surface}
+                                    rendererRegistry={rendererRegistry}
+                                    scale={scale}
+                                    createHostAdapterBundle={createHostAdapterBundle}
+                                    widgetPatchesByScope={widgetPatchesByScope}
+                                    widgetPatchesByScopeRef={widgetPatchesByScopeRef}
+                                    widgetRuntimeStore={widgetRuntimeStore}
+                                    lifecycleRef={lifecycleRef}
+                                    nestedSurfaceRuntime={nestedSurfaceRuntime}
+                                    blueprintLifecycleReady={prepaintReadyKeys.has(layer.key)}
+                                    reducedMotion={prefersReducedMotion === true}
+                                    active={compositeInput.interactiveKeys.has(layer.key)}
+                                    keyboardOwner={compositeInput.keyboardOwnerKey === layer.key}
+                                    scrim={layer.scrim}
                                     onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                     onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                     onEnterComplete={markActiveEnterComplete}
@@ -3004,7 +3274,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
             {renderFrame({ activeSurface, gameViewport, children: content })}
-            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime, saves: savesBridge })}
+            {renderOverlays?.(overlayContext())}
         </GameLocalizationContext.Provider>
     );
 }

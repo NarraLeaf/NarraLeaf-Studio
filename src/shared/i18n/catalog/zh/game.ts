@@ -27,5 +27,6 @@ export const game = {
         copyDetails: "复制详情",
         copied: "已复制到剪贴板",
         copyFailed: "复制失败：{error}",
+        logAt: "报告位于 {path}",
     },
 } satisfies LocaleNamespace<"game">;

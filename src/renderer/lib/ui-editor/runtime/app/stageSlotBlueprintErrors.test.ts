@@ -143,7 +143,7 @@ async function clickAutoButtonOnSlotSurface(): Promise<BlueprintDebugEvent[]> {
         pageProps: {},
         emit: event => debug.emit(event),
         onOpenSurface: () => undefined,
-        onCloseLayer: () => undefined,
+        onPageBack: () => undefined,
         onWidgetPatch: () => undefined,
         widgetRuntimeStore: new WidgetRuntimeStateStore(),
         onSetGamePreference: () => {

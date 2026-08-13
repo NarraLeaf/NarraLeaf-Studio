@@ -121,7 +121,7 @@ export function createSurfaceNavigationCloseUpdate<Entry extends SurfaceNavigati
     elements?: SurfaceNavigationElements;
     /**
      * Index in `navStack` to land on. Defaults to the entry below the top - an ordinary Back. Naming
-     * a lower one drops every layer above it in a single transition, which is what clearing the page
+     * a lower one drops every page above it in a single transition, which is what clearing the page
      * stack has to be: popping N times would animate N times and settle on N intermediate screens the
      * player never asked to see.
      */

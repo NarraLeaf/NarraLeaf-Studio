@@ -50,6 +50,7 @@ export const project = {
         security: "セキュリティ",
         signing: "署名",
         optimization: "最適化",
+        crash: "クラッシュ",
         mobile: "モバイル",
     },
     home: {
@@ -298,6 +299,13 @@ export const project = {
         },
     },
     settings: {
+        crashPolicyTitle: "ゲームが停止したとき",
+        crashPolicyDescription: "いずれの場合もエラーはゲームのログに記録される",
+        crashPolicy: {
+            details: "エラーを表示する",
+            log: "停止したことだけを伝える",
+            restart: "ゲームを再起動する",
+        },
         allowHttpTitle: "HTTP を許可",
         allowHttpDescription: "オフにすると、ゲームはアプリのプロトコルの中に閉じ、HTTP と HTTPS の要求はすべて遮断される",
         allowHttpWebHint: "Web 書き出しには効かない。書き出したもの自体が HTTP で配信される。ネットワークノードはそこでも動く",

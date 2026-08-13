@@ -212,6 +212,16 @@ export type GameRuntimePackV1 = {
      */
     network?: GameRuntimeNetworkConfig;
     /**
+     * What this build does when it stops working. Absent on packs produced before this field
+     * existed, which the runtime reads as {@link DEFAULT_GAME_CRASH_POLICY} - the behaviour those
+     * packs shipped with.
+     *
+     * Carried on every pack, web included, unlike {@link network}: a crash is not a shell
+     * mechanism, and a policy that applied to the desktop build but not the web one would be a
+     * setting that means different things depending on where the author looks.
+     */
+    crash?: GameRuntimeCrashConfig;
+    /**
      * Web addresses this build may hand to the player's browser, resolved for the variant it was
      * compiled as. Absent on packs produced before this field existed and on projects that declare
      * none; both mean the same thing, and every shell reads it as "this build opens nothing".
@@ -304,6 +314,47 @@ export function normalizeGameRuntimeViewportConfig(value: unknown): GameRuntimeV
         cropAnchorY: pick(record.cropAnchorY, GAME_RUNTIME_CROP_ANCHORS_Y, DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG.cropAnchorY),
     };
 }
+
+/**
+ * What a shipped game does when it stops working, chosen per project.
+ *
+ * The three answers are not about how much the player is told, they are about who the build is
+ * for. A build the author is testing wants the failure on screen. A build in a player's hands
+ * usually wants the message without the stack, since a stack trace is not something they can act
+ * on and the log keeps it for whoever they report it to. A build running unattended - a demo on a
+ * stand, a kiosk - wants to be playable again without anybody pressing anything.
+ *
+ * The failure reaches the log under all three. That is not a policy, it is the floor.
+ */
+/**
+ * How the main process tells a freshly loaded page that it is replacing one that died.
+ *
+ * A query parameter because nothing else survives: there is no renderer left to send a message to,
+ * and the window is about to be thrown away and rebuilt. The value is the description to show; the
+ * page decides whether to show it, having learned the policy from its own process argument.
+ */
+export const GAME_RUNTIME_CRASH_QUERY_PARAM = "nlcrash";
+
+export const GAME_CRASH_POLICIES = ["details", "log", "restart"] as const;
+
+export type GameCrashPolicy = typeof GAME_CRASH_POLICIES[number];
+
+/**
+ * What a project that has never chosen gets, and what every build made before this field existed
+ * behaved as: the failure on screen, behind a disclosure.
+ */
+export const DEFAULT_GAME_CRASH_POLICY: GameCrashPolicy = "details";
+
+/** Coerce an unknown (persisted, or from an older pack) value into a policy. */
+export function normalizeGameCrashPolicy(value: unknown): GameCrashPolicy {
+    return GAME_CRASH_POLICIES.includes(value as GameCrashPolicy)
+        ? value as GameCrashPolicy
+        : DEFAULT_GAME_CRASH_POLICY;
+}
+
+export type GameRuntimeCrashConfig = {
+    policy: GameCrashPolicy;
+};
 
 export type GameRuntimeNetworkConfig = {
     /**
@@ -451,6 +502,24 @@ export type GameRuntimePreloadBridge = {
         /** Whether {@link onCloseRequested} can ever fire. False on the web export. */
         closeRequested: boolean;
     };
+    /**
+     * What this build does when it stops working, if the shell knows before the pack is read.
+     *
+     * The desktop shell does: main reads the pack and passes the policy as a process argument, so
+     * the crash screen is correct from the first frame - which matters, because the crash it is
+     * most likely to draw is one that happened while the pack was still being read. The web export
+     * has no such channel and answers `null` until {@link readPack} lands, which the renderer
+     * treats as "not known yet" rather than as a policy.
+     */
+    crashPolicy: GameCrashPolicy | null;
+    /**
+     * Where this shell writes its log, so the crash screen can say where the report is.
+     *
+     * The one thing a player can do about a crash is hand the file to whoever can read it, and
+     * they cannot do that without being told where it is. `null` on the web export, which has no
+     * log file at all - its shell prints to the browser console, and there is no path to name.
+     */
+    logPath: string | null;
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
     /**

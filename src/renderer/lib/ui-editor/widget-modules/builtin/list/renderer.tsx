@@ -15,7 +15,7 @@ import {
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeListHostEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
-import { getListProps, resolveListItemContentAlignmentStyle } from "./helpers";
+import { getListProps, resolveListItemContentAlignmentStyle, resolveListItemsBindingArray } from "./helpers";
 
 type ScrollMetrics = {
     viewport: number;
@@ -186,15 +186,11 @@ function styleToRectangleLike(style: UIListScrollbarPartStyle): RectangleLikePro
 }
 
 function resolveBoundItems(props: ReturnType<typeof getListProps>, runtimeData: WidgetRendererProps["runtimeData"]): unknown[] | null {
-    const binding = props.itemsBinding;
-    if (!binding) {
-        return null;
-    }
-    const source =
-        binding.kind === "globalState"
-            ? runtimeData?.globalState?.get(binding.key)
-            : runtimeData?.surfaceState?.get(binding.key);
-    return Array.isArray(source) ? source : null;
+    return resolveListItemsBindingArray(props.itemsBinding, {
+        surfaceState: runtimeData?.surfaceState,
+        globalState: runtimeData?.globalState,
+        pageProps: runtimeData?.pageProps,
+    });
 }
 
 function collectElementDescendants(document: WidgetRendererProps["document"], rootIds: readonly string[]): string[] {

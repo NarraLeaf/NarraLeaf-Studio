@@ -50,6 +50,7 @@ export const project = {
         security: "Security",
         signing: "Signing",
         optimization: "Optimization",
+        crash: "Crashes",
         mobile: "Mobile",
     },
     home: {
@@ -313,6 +314,15 @@ export const project = {
         },
     },
     settings: {
+        // What the shipped game does when it stops working. The choice is who the build is for:
+        // the author testing it, a player holding it, or a machine running it unattended.
+        crashPolicyTitle: "When the game stops working",
+        crashPolicyDescription: "The failure is written to the game's log under all three.",
+        crashPolicy: {
+            details: "Show the error",
+            log: "Say only that it stopped",
+            restart: "Restart the game",
+        },
         allowHttpTitle: "Allow HTTP",
         allowHttpDescription: "When off, the game is confined to the app protocol and all HTTP/HTTPS requests are blocked.",
         allowHttpWebHint: "Not enforced in the Web export, which is itself served over HTTP. Network nodes still run there.",
