@@ -63782,10 +63782,10 @@
         "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74"
       ],
       "layout": {
-        "x": 540,
-        "y": 370,
-        "width": 840,
-        "height": 340,
+        "x": 580,
+        "y": 400,
+        "width": 760,
+        "height": 280,
         "visible": true,
         "opacity": 1
       },
@@ -63800,12 +63800,12 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.overlay",
-        "borderRadius": 16,
-        "borderRadiusTL": 16,
-        "borderRadiusTR": 16,
-        "borderRadiusBL": 16,
-        "borderRadiusBR": 16,
+        "backgroundColor": "nlbrand:surface.raised",
+        "borderRadius": 4,
+        "borderRadiusTL": 4,
+        "borderRadiusTR": 4,
+        "borderRadiusBL": 4,
+        "borderRadiusBR": 4,
         "borderRadiusLinked": true,
         "borderColor": "nlbrand:container.border",
         "borderWidth": 1,
@@ -63839,7 +63839,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:surface.overlay"
+                      "value": "nlbrand:surface.raised"
                     }
                   ]
                 },
@@ -63848,7 +63848,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 16
+                      "value": 4
                     }
                   ]
                 },
@@ -63857,7 +63857,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 16
+                      "value": 4
                     }
                   ]
                 },
@@ -63866,7 +63866,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 16
+                      "value": 4
                     }
                   ]
                 },
@@ -63875,7 +63875,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 16
+                      "value": 4
                     }
                   ]
                 },
@@ -63884,7 +63884,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 16
+                      "value": 4
                     }
                   ]
                 },
@@ -64153,16 +64153,16 @@
       "parentId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72",
       "childrenIds": [],
       "layout": {
-        "x": 60,
-        "y": 56,
-        "width": 720,
-        "height": 96,
+        "x": 48,
+        "y": 48,
+        "width": 664,
+        "height": 88,
         "visible": true,
         "opacity": 1
       },
       "props": {
         "text": "",
-        "fontSize": 32,
+        "fontSize": 28,
         "color": "nlbrand:text.primary",
         "fontWeight": "normal",
         "fontStyle": "normal",
@@ -64207,7 +64207,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 32
+                      "value": 28
                     }
                   ]
                 },
@@ -64350,10 +64350,10 @@
         "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e75"
       ],
       "layout": {
-        "x": 60,
-        "y": 196,
-        "width": 720,
-        "height": 88,
+        "x": 150,
+        "y": 180,
+        "width": 460,
+        "height": 52,
         "visible": true,
         "opacity": 1
       },
@@ -64364,7 +64364,7 @@
         },
         "previewItems": [
           {
-            "text": "Delete",
+            "text": "Return to title",
             "index": 0,
             "disabled": false
           },
@@ -64377,7 +64377,7 @@
         "itemKeyPath": "index",
         "previewCount": 2,
         "selectedIndex": -1,
-        "itemGap": 16,
+        "itemGap": 20,
         "repeatDirection": "horizontal",
         "contentPaddingTop": 0,
         "contentPaddingRight": 0,
@@ -64433,8 +64433,8 @@
       "layout": {
         "x": 0,
         "y": 0,
-        "width": 240,
-        "height": 72,
+        "width": 220,
+        "height": 52,
         "visible": true,
         "opacity": 1
       },
@@ -64449,14 +64449,14 @@
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "scrollAxis": "y",
-        "backgroundColor": "nlbrand:button.secondary",
-        "borderRadius": 8,
-        "borderRadiusTL": 8,
-        "borderRadiusTR": 8,
-        "borderRadiusBL": 8,
-        "borderRadiusBR": 8,
+        "backgroundColor": "nlbrand:surface.overlay",
+        "borderRadius": 4,
+        "borderRadiusTL": 4,
+        "borderRadiusTR": 4,
+        "borderRadiusBL": 4,
+        "borderRadiusBR": 4,
         "borderRadiusLinked": true,
-        "borderColor": "nlbrand:button.border",
+        "borderColor": "nlbrand:container.border",
         "borderWidth": 1,
         "borderStyle": "solid",
         "backgroundImage": "",
@@ -64488,7 +64488,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:button.secondary"
+                      "value": "nlbrand:surface.overlay"
                     }
                   ]
                 },
@@ -64497,7 +64497,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 8
+                      "value": 4
                     }
                   ]
                 },
@@ -64506,7 +64506,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 8
+                      "value": 4
                     }
                   ]
                 },
@@ -64515,7 +64515,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 8
+                      "value": 4
                     }
                   ]
                 },
@@ -64524,7 +64524,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 8
+                      "value": 4
                     }
                   ]
                 },
@@ -64533,7 +64533,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 8
+                      "value": 4
                     }
                   ]
                 },
@@ -64551,7 +64551,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:button.border"
+                      "value": "nlbrand:container.border"
                     }
                   ]
                 },
@@ -64807,20 +64807,20 @@
       "layout": {
         "x": 0,
         "y": 0,
-        "width": 240,
-        "height": 72,
+        "width": 220,
+        "height": 52,
         "visible": true,
         "opacity": 1
       },
       "props": {
         "text": "",
-        "fontSize": 26,
-        "color": "nlbrand:button.text",
+        "fontSize": 23,
+        "color": "nlbrand:text.primary",
         "fontWeight": "normal",
         "fontStyle": "normal",
         "textAlign": "center",
         "textVerticalAlign": "center",
-        "lineHeight": 1.4,
+        "lineHeight": 1.2,
         "fontAssetId": null,
         "textWrapMode": "nowrap",
         "transformOffsetX": 0,
@@ -64859,7 +64859,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 26
+                      "value": 23
                     }
                   ]
                 },
@@ -64886,7 +64886,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": "nlbrand:button.text"
+                      "value": "nlbrand:text.primary"
                     }
                   ]
                 },
@@ -64895,7 +64895,7 @@
                   "rows": [
                     {
                       "conditions": null,
-                      "value": 1.4
+                      "value": 1.2
                     }
                   ]
                 },
