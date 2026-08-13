@@ -70,8 +70,23 @@ type AppTagReferenceCount = { total: number; story: number };
 /** One scene a declaration can name. Flat, because a declaration crosses stories. */
 type DeclarableScene = { storyId: string; sceneId: string; label: string };
 
-/** One page a variant can end on. Read once per open, like the mechanisms below. */
+/** One page a variant can end on. */
 type EndingPage = { id: string; name: string };
+
+/** Whether two page lists would render the same picker. */
+function sameSurfaces(a: readonly EndingPage[], b: readonly EndingPage[]): boolean {
+    return a.length === b.length && a.every((page, index) => page.id === b[index].id && page.name === b[index].name);
+}
+
+/** The pages a variant can name as its ending, as the picker lists them. */
+function readSurfaces(context: WorkspaceContext): EndingPage[] {
+    try {
+        return (context.services.get<UIDocumentService>(Services.UIDocument).getDocument().surfaces ?? [])
+            .map(surface => ({ id: surface.id, name: surface.name }));
+    } catch {
+        return [];
+    }
+}
 
 /**
  * What the project holds that a build cannot read, and the scenes a declaration may name.
@@ -86,15 +101,8 @@ async function loadMechanisms(context: WorkspaceContext): Promise<{
     surfaces: EndingPage[];
 }> {
     const services = context.services;
-    // Read here rather than watched, for the reason stated above: the ending page picker offers the
-    // project's pages, and a page being renamed while this panel is open is not a flow anyone has.
-    let surfaces: EndingPage[] = [];
-    try {
-        surfaces = (services.get<UIDocumentService>(Services.UIDocument).getDocument().surfaces ?? [])
-            .map(surface => ({ id: surface.id, name: surface.name }));
-    } catch {
-        surfaces = [];
-    }
+    // The page list is watched separately, so the picker sees a page made while this panel is open.
+    const surfaces = readSurfaces(context);
     let blueprints: Blueprint[] = [];
     try {
         const document = services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
@@ -180,6 +188,27 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
             }
         });
         return () => { active = false; };
+    }, [context, isInitialized]);
+
+    /**
+     * The page list, kept current while this panel is open.
+     *
+     * Watched where the mechanisms above are not, because making the page and naming it here is one
+     * flow: an author draws the demo's ending page, comes back, and the picker has to offer it. Only
+     * the id and name are read, and an unchanged list is dropped before it can re-render, so this
+     * costs a walk of the surface array per edit rather than a re-read of the project.
+     */
+    useEffect(() => {
+        if (!context || !isInitialized) {
+            return;
+        }
+        const uiDocument = context.services.get<UIDocumentService>(Services.UIDocument);
+        return uiDocument.onDocumentChanged(() => {
+            const surfaces = readSurfaces(context);
+            setUnreadable(current => (sameSurfaces(current.surfaces, surfaces)
+                ? current
+                : { ...current, surfaces }));
+        });
     }, [context, isInitialized]);
 
     /**
