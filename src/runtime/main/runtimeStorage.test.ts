@@ -1,8 +1,8 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { RuntimePersistenceStore, RuntimeSaveStore, normalizeRuntimeSaveId } from "./runtimeStorage";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RuntimePersistenceStore, RuntimeSaveStore, atomicWriteJson, normalizeRuntimeSaveId } from "./runtimeStorage";
 
 let tempDir = "";
 
@@ -13,6 +13,30 @@ describe("runtime save and persistence storage", () => {
 
     afterEach(async () => {
         await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    // A machine that refuses the rename is not hypothetical: a sync client or a scanner holding the
+    // destination answers EPERM, and a redirected profile answers EXDEV between two siblings. Before
+    // the fallback, every save and every persistent variable after the first refusal was lost, and
+    // the only sign was an unhandled rejection in a log the player never opens.
+    it("still writes the file when the filesystem refuses the atomic rename", async () => {
+        const target = path.join(tempDir, "persistence.json");
+        const refusal = Object.assign(new Error("EXDEV: cross-device link not permitted"), { code: "EXDEV" });
+        const refuse = vi.fn(async () => { throw refusal; });
+
+        await atomicWriteJson(target, { chapter: 3 }, refuse);
+
+        expect(refuse).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(await fs.readFile(target, "utf-8"))).toEqual({ chapter: 3 });
+        expect((await fs.readdir(tempDir)).filter(name => name.endsWith(".tmp"))).toEqual([]);
+    });
+
+    it("reports a refusal the fallback is not for", async () => {
+        const target = path.join(tempDir, "persistence.json");
+        const refusal = Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+
+        await expect(atomicWriteJson(target, { chapter: 3 }, async () => { throw refusal; }))
+            .rejects.toThrow(/ENOSPC/);
     });
 
     it("normalizes save ids without allowing path segments", () => {
