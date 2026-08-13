@@ -26,7 +26,7 @@ import {
     X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { VcsChangeKind, VcsFileChange, VcsServerAuthority, VcsServerReach, VcsSignInProblem, VcsSyncState } from "@shared/types/vcs";
+import type { VcsChangeKind, VcsFileChange, VcsServerAuthority, VcsServerReach, VcsServerSession, VcsSignInProblem, VcsSyncState } from "@shared/types/vcs";
 import { vcsAuthorityIsVouchedFor } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
@@ -36,14 +36,18 @@ import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { IconButton } from "@/lib/components/elements/Button";
+import { getInterface } from "@/lib/app/bridge";
+import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { useWorkspace } from "../../context";
 import { openVcsChangesTab } from "../../modules/vcs-changes/openVcsChangesTab";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import {
     VERSION_RAIL_COLLAPSED_WIDTH,
     VERSION_RAIL_EXPANDED_WIDTH,
+    MANUAL_SERVER,
     buildChangeList,
     canCommit,
+    initialServerChoice,
     historyRowHeadline,
     isCommitFormPresent,
     isVersionSurfaceVisible,
@@ -1094,6 +1098,11 @@ function describeSignInProblem(
                 });
             }
             return t(`${key}.certificate`, { fingerprint: problem.authority.fingerprint || "-" });
+        case "server":
+            // Only answered where a server is added on its own, which happens in Settings.
+            // Handled rather than defaulted so that adding a refusal kind keeps failing
+            // here loudly instead of reading `detail` off a shape that has none.
+            return t("settings.servers.problems.server");
         case "unreachable":
             return t(`${key}.unreachable`, { detail: problem.detail });
         case "refused":
@@ -1108,113 +1117,195 @@ function describeReach(reach: VcsServerReach): TranslationKey {
     return `workspace.shell.versionControl.server.signIn.reach.${reach}` as TranslationKey;
 }
 
-function ServerSection({ surface }: { surface: VersionSurface }) {
+
+
+/**
+ * Choosing which server this project synchronises with.
+ *
+ * **A project chooses a server; it does not describe one.** The servers this installation
+ * is signed in to are managed in Settings, once, and every project since then picks from
+ * that list - which is why this is a dialog with names in it rather than a text field. A
+ * project pointed at a server nobody has signed in to would be pointed at a refusal.
+ *
+ * The address field stays for the case the list cannot cover: a `loreserver` with nothing
+ * in front of it asks nobody who they are, so there is no account to add and nothing to
+ * put in that list. It is one option among the others rather than the way in.
+ */
+function ServerPickerDialog({ surface, isOpen, onClose }: {
+    surface: VersionSurface;
+    isOpen: boolean;
+    onClose: () => void;
+}) {
     const { t } = useTranslation();
-    const { remote, syncState, busy } = surface;
-    const [editing, setEditing] = useState(false);
-    const [draft, setDraft] = useState("");
-    const running = busy !== null;
+    const key = "workspace.shell.versionControl.server.picker";
+    const [servers, setServers] = useState<VcsServerSession[]>([]);
+    const [choice, setChoice] = useState<string>(MANUAL_SERVER);
+    const [address, setAddress] = useState("");
+    const running = surface.busy !== null;
 
-    const open = () => {
-        // Seeded with the current address so that CHANGING a server is an edit rather than a
-        // retype - the two differ by a port far more often than by the whole string.
-        setDraft(remote ?? "");
-        setEditing(true);
-    };
+    useEffect(() => {
+        if (!isOpen) return;
+        let cancelled = false;
+        void getInterface().vcs.listServers().then(result => {
+            if (cancelled) return;
+            const list = result.success ? result.data.servers : [];
+            setServers(list);
+            // Seeded with the server this project already uses, so changing one is a choice
+            // between named things rather than a retype. Falling back to the address field
+            // rather than to the first server: connecting somewhere nobody asked for is the
+            // one outcome a dialog about where work is sent must not make easy.
+            setChoice(initialServerChoice(list, surface.remote));
+            setAddress(surface.remote ?? "");
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, surface.remote]);
 
-    const submit = () => {
-        const url = draft.trim();
-        if (!url) {
-            return;
-        }
-        void surface.setRemote(url).then(saved => {
-            if (saved) setEditing(false);
+    const chosen = choice === MANUAL_SERVER ? address.trim() : choice;
+
+    const connect = () => {
+        if (!chosen) return;
+        void surface.setRemote(chosen).then(saved => {
+            if (saved) onClose();
         });
     };
 
-    if (editing) {
-        return (
-            <div data-vcs-seam="server-form" className="border-b border-edge px-3 py-2">
-                <label className="block text-2xs tracking-wide text-fg-subtle">
-                    {t("workspace.shell.versionControl.server.addressLabel")}
-                </label>
-                <Input
-                    size="sm"
-                    autoFocus
-                    value={draft}
-                    onChange={event => setDraft(event.target.value)}
-                    onKeyDown={event => {
-                        if (event.key === "Enter") {
-                            event.preventDefault();
-                            submit();
-                        }
-                        if (event.key === "Escape") {
-                            event.preventDefault();
-                            setEditing(false);
-                        }
-                    }}
-                    disabled={busy === "remote"}
-                    placeholder={t("workspace.shell.versionControl.server.addressPlaceholder")}
-                    className="mt-1 text-2xs"
-                />
-                <div className="mt-2 flex items-center gap-1.5">
+    return (
+        <Modal
+            isOpen={isOpen}
+            onClose={onClose}
+            title={t(`${key}.title`)}
+            size="md"
+            footer={(
+                <div className="flex items-center justify-between gap-2">
                     <button
                         type="button"
-                        onClick={submit}
-                        disabled={running || draft.trim() === ""}
-                        className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-2xs text-on-primary transition-opacity cursor-default hover:opacity-90 disabled:opacity-50"
+                        onClick={() => void getInterface().app.launchSettings({ highlight: SERVERS_PANEL_SETTING_KEY })}
+                        className={dialogFooterButtonClass({ variant: "secondary" })}
                     >
-                        {busy === "remote"
-                            ? <Loader2 className="h-3 w-3 animate-spin" />
-                            : <Cloud className="h-3 w-3" />}
-                        {t("workspace.shell.versionControl.server.save")}
+                        {t(`${key}.manage`)}
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => setEditing(false)}
-                        disabled={busy === "remote"}
-                        className="flex h-7 items-center justify-center rounded-md border border-edge px-2 text-2xs text-fg-muted transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
-                    >
-                        {t("workspace.shell.versionControl.server.cancel")}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className={dialogFooterButtonClass({ variant: "secondary" })}
+                        >
+                            {t("workspace.shell.versionControl.server.cancel")}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={connect}
+                            disabled={running || chosen === ""}
+                            className={dialogFooterButtonClass({
+                                variant: "primary",
+                                disabled: running || chosen === "",
+                            })}
+                        >
+                            {t("workspace.shell.versionControl.server.save")}
+                        </button>
+                    </div>
                 </div>
-                {/* A refusal leaves this form open, so this is where somebody is standing
-                    when a server turns them away for having no token. Until they have one
-                    the address is never written, and the sign-in drawn beside a configured
-                    server is therefore never drawn at all — on exactly the servers signing
-                    in exists for. */}
-                {surface.remoteNeedsSignIn && (
-                    <>
-                        <p className="mt-2 text-2xs text-danger">
-                            {t("workspace.shell.versionControl.server.signIn.required")}
-                        </p>
-                        <SignInSection surface={surface} />
-                    </>
-                )}
-                {/* Only while a server is already configured: this is the way to undo the
-                    connection, and offering it during first setup would be a control for
-                    leaving a state the author has not entered. */}
-                {remote !== null && (
+            )}
+        >
+            <div data-vcs-seam="server-picker" className="space-y-3 text-sm text-fg-muted">
+                {servers.length === 0
+                    ? <p>{t(`${key}.empty`)}</p>
+                    : (
+                        <div className="flex flex-col gap-1">
+                            {servers.map(server => (
+                                <button
+                                    key={server.remoteOrigin}
+                                    type="button"
+                                    aria-pressed={choice === server.remoteOrigin}
+                                    onClick={() => setChoice(server.remoteOrigin)}
+                                    data-server-choice={server.remoteOrigin}
+                                    className={cn(
+                                        "flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-left transition-colors cursor-default",
+                                        choice === server.remoteOrigin
+                                            ? "border-primary bg-fill-subtle text-fg"
+                                            : "border-edge hover:bg-fill",
+                                    )}
+                                >
+                                    <span className="min-w-0 flex-1 truncate text-sm">
+                                        {serverHost(server.remoteOrigin)}
+                                    </span>
+                                    <span className="shrink-0 text-xs text-fg-subtle">
+                                        {server.account.displayName}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                <div>
+                    <button
+                        type="button"
+                        aria-pressed={choice === MANUAL_SERVER}
+                        onClick={() => setChoice(MANUAL_SERVER)}
+                        className={cn(
+                            "flex min-h-9 w-full items-center rounded-md border px-3 text-left text-sm transition-colors cursor-default",
+                            choice === MANUAL_SERVER
+                                ? "border-primary bg-fill-subtle text-fg"
+                                : "border-edge hover:bg-fill",
+                        )}
+                    >
+                        {t(`${key}.manual`)}
+                    </button>
+                    {choice === MANUAL_SERVER && (
+                        <Input
+                            size="sm"
+                            autoFocus
+                            value={address}
+                            onChange={event => setAddress(event.target.value)}
+                            onKeyDown={event => {
+                                if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    connect();
+                                }
+                            }}
+                            disabled={running}
+                            placeholder={t("workspace.shell.versionControl.server.addressPlaceholder")}
+                            className="mt-2"
+                        />
+                    )}
+                </div>
+
+                {/* Only while a server is already configured: this undoes the connection, and
+                    offering it during first setup would be a control for leaving a state the
+                    author has not entered. */}
+                {surface.remote !== null && (
                     <button
                         type="button"
                         onClick={() => {
                             void surface.setRemote(null).then(saved => {
-                                if (saved) setEditing(false);
+                                if (saved) onClose();
                             });
                         }}
                         disabled={running}
-                        className="mt-1.5 text-2xs text-fg-subtle transition-colors cursor-default hover:text-danger disabled:opacity-50"
+                        className="text-xs text-fg-subtle transition-colors cursor-default hover:text-danger disabled:opacity-50"
                     >
                         {t("workspace.shell.versionControl.server.disconnect")}
                     </button>
                 )}
             </div>
-        );
-    }
+        </Modal>
+    );
+}
+
+function ServerSection({ surface }: { surface: VersionSurface }) {
+    const { t } = useTranslation();
+    const { remote, syncState, busy } = surface;
+    const [picking, setPicking] = useState(false);
+    const running = busy !== null;
+
+    const open = () => setPicking(true);
 
     if (remote === null) {
         return (
             <div data-vcs-seam="server" className="border-b border-edge px-3 py-2">
+                <ServerPickerDialog surface={surface} isOpen={picking} onClose={() => setPicking(false)} />
                 <p className="text-2xs text-fg-subtle">
                     {t("workspace.shell.versionControl.server.none")}
                 </p>
@@ -1248,6 +1339,7 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
 
     return (
         <div data-vcs-seam="server" data-help-topic="versionServer" className="border-b border-edge px-3 py-2">
+            <ServerPickerDialog surface={surface} isOpen={picking} onClose={() => setPicking(false)} />
             <div className="group/help flex items-center justify-between gap-2">
                 <div className="flex shrink-0 items-center gap-0.5">
                     <span className="text-2xs tracking-wide text-fg-subtle">

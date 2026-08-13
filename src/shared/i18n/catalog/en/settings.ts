@@ -51,6 +51,10 @@ export const settings = {
             label: "Version control",
             description: "Checkpoints and the identity recorded on them.",
         },
+        servers: {
+            label: "Servers",
+            description: "Servers this installation is signed in to, and the accounts it uses.",
+        },
         network: {
             label: "Network",
             description: "Where Studio downloads plugins, templates and build tooling from.",
@@ -261,6 +265,9 @@ export const settings = {
         cacheInventory: {
             label: "Cached files",
         },
+        servers: {
+            label: "Servers",
+        },
         settingsTransfer: {
             label: "Move settings between machines",
         },
@@ -280,6 +287,43 @@ export const settings = {
         },
     },
     // The Data panel's own chrome.
+    /**
+     * Servers this installation is signed in to.
+     *
+     * A server is added here and nowhere else. The words avoid "log in" and "account
+     * details": what is pasted is a token somebody issued, and the panel says so once
+     * rather than explaining it beside every field.
+     */
+    servers: {
+        empty: "No servers have been added.",
+        openAdd: "Add a server",
+        add: "Add",
+        adding: "Adding…",
+        cancel: "Cancel",
+        signOut: "Sign out",
+        // "Access token" rather than "password": it is not one, and it cannot be chosen,
+        // remembered or reset by the person pasting it.
+        tokenLabel: "Access token",
+        tokenPlaceholder: "Paste the token you were given",
+        // Both addresses are corrections, shown only after a token turns out to name
+        // neither. Deliberately not "auth endpoint": the word for the machinery behind it
+        // is not the reader's to learn.
+        authUrlLabel: "Sign-in address",
+        authUrlPlaceholder: "https://studio.example.lan:41402",
+        remoteUrlLabel: "Server address",
+        remoteUrlPlaceholder: "lore://studio.example.lan:41337",
+        hint: "Whoever runs the server issues the token and hands it over.",
+        problems: {
+            scheme: "A sign-in address has to start with https:// or ucs-auth://.",
+            token: "That is not a token this server would have issued.",
+            address: "This token does not say where to sign in. Enter the address.",
+            server: "This token does not say which server it is for. Enter the address.",
+            certificate: "This machine does not trust the certificate that address presented. Connect a project to this server to compare its authority.",
+            unreachable: "Nothing answered at that address.",
+            refused: "The server refused this token. It may have expired or been revoked.",
+            unknown: "The server could not be added.",
+        },
+    },
     data: {
         cache: {
             measuring: "Measuring…",

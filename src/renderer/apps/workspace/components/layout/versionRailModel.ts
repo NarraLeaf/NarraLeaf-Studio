@@ -772,3 +772,24 @@ function versionIdentity(inputs: VersionFaceInputs, t: Translator["t"]): string 
 function unnumbered(revision: RevisionId, inputs: VersionFaceInputs): string {
     return inputs.unnumbered === "omit" ? "" : shortRevision(revision);
 }
+
+/** The choice in the server dialog that is not one of the servers on this machine. */
+export const MANUAL_SERVER = "manual";
+
+/**
+ * Which row the server dialog opens on.
+ *
+ * The server this project already uses, so that changing one is a choice between named
+ * things rather than a retype. Where the project uses none - or one nobody has signed in
+ * to - it opens on the address field rather than on the first server in the list:
+ * connecting somewhere nobody asked for is the one outcome a dialog about where work is
+ * sent must not make easy.
+ */
+export function initialServerChoice(
+    servers: ReadonlyArray<{ remoteOrigin: string }>,
+    remote: string | null,
+): string {
+    return servers.some((server) => server.remoteOrigin === remote) && remote !== null
+        ? remote
+        : MANUAL_SERVER;
+}

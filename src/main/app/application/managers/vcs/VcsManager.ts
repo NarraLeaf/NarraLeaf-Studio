@@ -1613,6 +1613,105 @@ export class VcsManager extends Manager {
         });
     }
 
+    /**
+     * Every server this installation is signed in to.
+     *
+     * A read of Studio's own record, with no project and no socket: a session belongs to
+     * the machine, and Settings lists them with nothing open. Confirming each one against
+     * the backend's store is deliberately not done here - that is a call per server, and
+     * this answers a panel that opens.
+     */
+    public listServers(): VcsServerSession[] {
+        return this.storedServerSessions();
+    }
+
+    /**
+     * Sign in to the server a token names, rather than to a project's server.
+     *
+     * **This is what makes a server a thing of its own rather than a property of a
+     * project.** `signIn` above is told where to present the token, because a project
+     * knows its own address; here nothing does, so the token is read first and its own
+     * audience says both where to sign in and which server the session is for. Pasting a
+     * token is then the whole of adding a server.
+     *
+     * The two addresses are corrections rather than fields: a plain `loreserver` mints
+     * tokens that name neither, and for those the panel asks once, after this has answered
+     * that the token says nothing.
+     */
+    public async addServer(
+        options: { authUrl: string; remoteUrl: string; token: string },
+    ): Promise<{ session: VcsServerSession; servers: VcsServerSession[] }> {
+        const backend = await requireVcsBackend();
+        // Reading the token is also how a paste that is not a token is refused before
+        // anything is opened: it throws the same coded refusal the panel already draws.
+        const read = backend.readSignInToken(options.token);
+        const remoteUrl = options.remoteUrl.trim() || read.remotes[0] || "";
+        if (!remoteUrl) {
+            throw new backend.VcsSignInError(
+                { kind: "server" },
+                "This token does not say which server it is for, so the address has to be typed.",
+            );
+        }
+
+        // No repository: the store this writes is per-user and outside any of them. The
+        // backend wants the field, and an empty one is what the calls that have no project
+        // pass - the same shape `clone` signs in under.
+        const signedIn = await backend.signInToServer(
+            { repositoryPath: "", offline: false, cache: false },
+            {
+                remoteUrl,
+                authUrl: options.authUrl,
+                token: options.token,
+                userDataDir: this.app.getUserDataDir(),
+            },
+        );
+
+        const servers = [
+            ...this.storedServerSessions().filter((stored) => stored.remoteOrigin !== signedIn.remoteOrigin),
+            signedIn,
+        ];
+        this.writeStoredServerSessions(servers);
+        this.app.logger.info(
+            "[Vcs] Added server", signedIn.remoteOrigin, "at", signedIn.authUrl,
+            "as", signedIn.account.username || signedIn.account.displayName,
+        );
+        return { session: signedIn, servers };
+    }
+
+    /**
+     * Take a server off this machine, the stored token with it.
+     *
+     * The record goes even where the backend could not be asked to drop its token. An
+     * entry that cannot be removed because the machine is offline is a worse answer than
+     * a token left behind: the second is written to the log and can be cleared by signing
+     * in again, the first is a list nobody can correct.
+     */
+    public async forgetServer(remoteOrigin: string): Promise<VcsServerSession[]> {
+        const stored = this.storedServerSession(remoteOrigin);
+        if (!stored) return this.storedServerSessions();
+
+        const backend = await requireVcsBackend().catch(() => null);
+        if (backend) {
+            await backend
+                .signOutOfServer(
+                    { repositoryPath: "", offline: false, cache: false },
+                    { authUrl: stored.authUrl, userId: stored.account.userId },
+                )
+                .catch((error: unknown) => {
+                    this.app.logger.warn(
+                        "[Vcs] Removed", stored.remoteOrigin,
+                        "without clearing its token:", error instanceof Error ? error.message : String(error),
+                    );
+                });
+        }
+
+        const servers = this.storedServerSessions()
+            .filter((other) => other.remoteOrigin !== stored.remoteOrigin);
+        this.writeStoredServerSessions(servers);
+        this.app.logger.info("[Vcs] Removed server", stored.remoteOrigin);
+        return servers;
+    }
+
     /** Every session this installation has recorded, in the order they were written. */
     private storedServerSessions(): VcsServerSession[] {
         const stored = this.app.getGlobalState().get("versionControl.serverSessions");

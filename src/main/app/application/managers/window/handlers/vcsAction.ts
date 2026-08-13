@@ -13,6 +13,7 @@ import type {
     VcsRepositoryInfo,
     VcsRestoreResult,
     VcsRevisionDiffResult,
+    VcsAddServerOutcome,
     VcsServerSession,
     VcsSignInOutcome,
     VcsSignInProblem,
@@ -514,6 +515,60 @@ export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
             await window.app.getVcsManager().signOut(projectPath);
             return { session: null };
         });
+    }
+}
+
+/**
+ * Every server this installation is signed in to.
+ *
+ * Takes no project, which is the point: Settings manages servers with nothing open, and
+ * a session was never a property of a repository in the first place.
+ */
+export class VcsListServersHandler extends IPCHandler<IPCEventType.vcsListServers> {
+    readonly name = IPCEventType.vcsListServers;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
+        return this.tryUse(async () => ({ servers: window.app.getVcsManager().listServers() }));
+    }
+}
+
+/** Sign in to the server a token names. */
+export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
+    readonly name = IPCEventType.vcsAddServer;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { authUrl, remoteUrl, token }: IPCEvents[IPCEventType.vcsAddServer]["data"],
+    ): Promise<RequestStatus<VcsAddServerOutcome>> {
+        return this.tryUse(async () => {
+            try {
+                const result = await window.app.getVcsManager().addServer({ authUrl, remoteUrl, token });
+                return { ok: true as const, ...result };
+            } catch (error) {
+                // Same bargain as signing in from a project: a refusal is an answer the
+                // panel puts a sentence to, and only the code survives the trip.
+                const problem = (error as { problem?: unknown }).problem;
+                if (!problem) throw error;
+                return { ok: false as const, problem: problem as VcsSignInProblem };
+            }
+        });
+    }
+}
+
+/** Take a server off this machine. */
+export class VcsForgetServerHandler extends IPCHandler<IPCEventType.vcsForgetServer> {
+    readonly name = IPCEventType.vcsForgetServer;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin }: IPCEvents[IPCEventType.vcsForgetServer]["data"],
+    ): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
+        return this.tryUse(async () => ({
+            servers: await window.app.getVcsManager().forgetServer(remoteOrigin),
+        }));
     }
 }
 

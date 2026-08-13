@@ -5,6 +5,7 @@ import { DownloadSourcesPanel } from "./DownloadSourcesPanel";
 import { CacheInventoryPanel } from "./CacheInventoryPanel";
 import { SettingsTransferPanel } from "./SettingsTransferPanel";
 import { SoftwareUpdatePanel } from "./SoftwareUpdatePanel";
+import { ServersPanel } from "./ServersPanel";
 
 /**
  * Resolves the `panel` id on a `SettingValueType.Custom` entry to the component that renders it.
@@ -16,6 +17,7 @@ export const SETTING_PANELS: Record<SettingPanelId, ComponentType> = {
     cacheInventory: CacheInventoryPanel,
     settingsTransfer: SettingsTransferPanel,
     softwareUpdate: SoftwareUpdatePanel,
+    servers: ServersPanel,
 };
 
 export { KeybindingsPanel } from "./KeybindingsPanel";
@@ -23,3 +25,4 @@ export { DownloadSourcesPanel } from "./DownloadSourcesPanel";
 export { CacheInventoryPanel } from "./CacheInventoryPanel";
 export { SettingsTransferPanel } from "./SettingsTransferPanel";
 export { SoftwareUpdatePanel } from "./SoftwareUpdatePanel";
+export { ServersPanel } from "./ServersPanel";
