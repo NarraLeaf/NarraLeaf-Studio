@@ -7,7 +7,7 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { Sound, type LiveGame } from "narraleaf-react";
+import { Sound, type LiveGame, type Scene } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
@@ -80,17 +80,30 @@ import {
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import {
     isStoryVisited,
+    readStoryVisitedIds,
     STORY_VISITED_OPTIONS_KEY,
     STORY_VISITED_SCENES_KEY,
     type StoryVisitedKey,
 } from "@/lib/ui-editor/runtime/game/storyVisited";
+import {
+    applyGameProgressVariables,
+    collectGameProgressVariables,
+    mergeVisitedSceneIds,
+    toImportOutcome,
+    type GameProgressVariableDef,
+} from "@/lib/ui-editor/runtime/app/gameProgress";
+import type {
+    GameProgressAnchor,
+    GameProgressDocumentV1,
+    GameProgressImportOutcome,
+} from "@shared/types/gameProgress";
 import {
     collectSavedVariableView,
     computeStoryStageSnapshot,
     savedVariableDefsFromView,
 } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
-import { sceneVariableDefs } from "@shared/types/story";
+import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
@@ -481,6 +494,37 @@ export function GameApp(props: GameAppProps): ReactNode {
     const currentActionListenersRef = useRef<Set<(actionId: string | null) => void>>(new Set());
     const nlrCompiledRef = useRef<CompiledNlrStory | null>(null);
     /**
+     * The Studio scene the player is in right now, as opposed to the one the story was launched at.
+     *
+     * `activeStoryRequestRef` holds the launch request and never moves, so a player three scenes
+     * into a demo would be handed back to scene one. The engine's own mount/unmount events are the
+     * only live source (the same pair the runtime plugin host listens to), and the Scene->id map is
+     * the inverse of the compile's own table. Re-bound per session in `onLiveGameReady`.
+     */
+    const currentSceneIdRef = useRef<string | null>(null);
+    const nlrSceneTokensRef = useRef<Array<{ cancel(): void }>>([]);
+    /** Drop the scene subscriptions of a session that is going away, and forget where it was. */
+    const cancelSceneTracking = useCallback((): void => {
+        for (const token of nlrSceneTokensRef.current.splice(0)) {
+            try {
+                token.cancel();
+            } catch {
+                // A session the engine already tore down; nothing to undo.
+            }
+        }
+        currentSceneIdRef.current = null;
+    }, []);
+    /**
+     * A progress document that arrived before the story it belongs to was started.
+     *
+     * `Import Progress` is wired ahead of `Start Game` - that is the whole shape of the feature, the
+     * scene id comes out of one and goes into the other - and `Start Game` calls `liveGame.newGame()`,
+     * which clears every namespace and rebuilds it from its defaults. Saved values written before
+     * that would be wiped by it, so they wait here and are applied in `enterMountedGame` the moment
+     * after `newGame()`. Persistent values do not wait: they live outside the engine and survive.
+     */
+    const pendingImportedProgressRef = useRef<GameProgressDocumentV1 | null>(null);
+    /**
      * The story row the engine was last executing, or undefined when nothing was.
      *
      * Reads the same action↔block table the Dev Mode timeline reads, so a failure lands on exactly
@@ -620,6 +664,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
+        cancelSceneTracking();
         nlrCompiledRef.current = null;
         gameEnteredRef.current = false;
         setNlrPreloadDone(false);
@@ -1035,6 +1080,182 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, []);
 
     /**
+     * Carrying a playthrough between two editions of one title - the Export/Import Progress nodes.
+     *
+     * A demo and the full game are separate packages with separate app ids, so they keep separate
+     * save directories and cannot read each other's files. What crosses is one plain JSON document,
+     * written and read by whichever shell is running (see `@shared/types/gameProgress`); this side
+     * only decides WHAT the playthrough holds and what an arriving document does to it.
+     */
+
+    /** Which story document is running, resolved the way `compileStoryRequest` resolves it. */
+    const resolveRunningStoryDocument = useCallback(() => {
+        const storyId = activeStoryRequestRef.current?.storyId;
+        if (!storyId) {
+            return undefined;
+        }
+        return bundle.storyLibrary?.documents[storyId]
+            ?? Object.values(bundle.storyLibrary?.documents ?? {}).find(document => document.id === storyId);
+    }, [bundle]);
+
+    /**
+     * Every project-level variable this build declares, merged exactly as the editors merge them:
+     * the registry baked into the bundle plus the running story's own `/save` and `/persis` rows.
+     * Reading either surface alone would silently drop half an author's variables.
+     */
+    const progressVariableDefs = useCallback((): {
+        saved: GameProgressVariableDef[];
+        persistent: GameProgressVariableDef[];
+    } => {
+        const storyDocument = resolveRunningStoryDocument();
+        return {
+            saved: Object.values({
+                ...(storyDocument ? savedVariableDefs(storyDocument) : {}),
+                ...bundle.ui.savedVariables,
+            }),
+            persistent: Object.values({
+                ...(storyDocument ? storyPersistentDefs(storyDocument) : {}),
+                ...bundle.ui.persistentVariables,
+            }),
+        };
+    }, [bundle, resolveRunningStoryDocument]);
+
+    /** One saved value off the live store, or `undefined` when the playthrough never wrote it. */
+    const readSavedProgressValue = useCallback((storageKey: string): unknown => {
+        const liveGame = nlrLiveGameRef.current;
+        const namespaceName = nlrCompiledRef.current?.savedNamespaceName;
+        if (!liveGame || !namespaceName) {
+            return undefined;
+        }
+        const storable = liveGame.getStorable();
+        if (!storable.hasNamespace(namespaceName)) {
+            return undefined;
+        }
+        const namespace = storable.getNamespace(namespaceName);
+        return namespace.has(storageKey) ? namespace.get(storageKey) : undefined;
+    }, []);
+
+    /**
+     * The saved half of an arriving document, written into the live store.
+     *
+     * Separate from the import call because of when it has to run: an import made before `Start
+     * Game` has to wait for the `newGame()` that would otherwise wipe it. Same code, two moments.
+     */
+    const applyImportedSavedProgress = useCallback((document: GameProgressDocumentV1): void => {
+        const liveGame = nlrLiveGameRef.current;
+        const compiled = nlrCompiledRef.current;
+        if (!liveGame || !compiled) {
+            return;
+        }
+        const storable = liveGame.getStorable();
+        const savedNamespaceName = compiled.savedNamespaceName;
+        if (savedNamespaceName && storable.hasNamespace(savedNamespaceName)) {
+            const namespace = storable.getNamespace(savedNamespaceName);
+            applyGameProgressVariables(
+                progressVariableDefs().saved,
+                document.savedVariables,
+                (storageKey, value) => namespace.set(storageKey, value as never),
+            );
+        }
+        const visitedNamespaceName = compiled.visitedNamespaceName;
+        if (visitedNamespaceName && document.visitedSceneIds.length > 0 && storable.hasNamespace(visitedNamespaceName)) {
+            const merged = mergeVisitedSceneIds(
+                readStoryVisitedIds(storable, visitedNamespaceName, STORY_VISITED_SCENES_KEY),
+                document.visitedSceneIds,
+            );
+            // A new array, never a push: `Namespace.set` compares what it is handed against what it
+            // holds, and mutating the stored array in place would make both sides the same object.
+            storable.getNamespace(visitedNamespaceName).set(STORY_VISITED_SCENES_KEY, merged);
+        }
+    }, [progressVariableDefs]);
+
+    const exportProgressInGame = useCallback(async (): Promise<{ outcome: "written" | "failed"; error: string }> => {
+        if (!host.exportProgress) {
+            return {
+                outcome: "failed",
+                error: "Progress cannot be written here. Run the project in Dev Mode to carry it.",
+            };
+        }
+        const defs = progressVariableDefs();
+        const storyDocument = resolveRunningStoryDocument();
+        const liveGame = nlrLiveGameRef.current;
+        const compiled = nlrCompiledRef.current;
+        // No running story is a legitimate export rather than an error: a player may have
+        // persistent variables worth carrying and no playthrough in progress. That exports the
+        // persistent half and anchors nowhere.
+        const savedVariables = liveGame && compiled?.savedNamespaceName
+            ? await collectGameProgressVariables(defs.saved, readSavedProgressValue)
+            : {};
+        const persistentVariables = core
+            ? await collectGameProgressVariables(defs.persistent, key => core.scopeBridge.persistenceGetAsync(key))
+            : {};
+        const anchorSceneId = currentSceneIdRef.current
+            ?? (gameEnteredRef.current ? activeStoryRequestRef.current?.sceneId ?? null : null);
+        const anchor: GameProgressAnchor | null = anchorSceneId
+            ? {
+                sceneId: anchorSceneId,
+                // The same expression the compiler names the engine scene with, read off the story
+                // document rather than off the `Scene`: the engine exposes no name accessor, and
+                // nothing resolves a scene by this - it is here so the file reads.
+                sceneRuntimeName: storyDocument?.scenes[anchorSceneId]?.runtimeName
+                    || storyDocument?.scenes[anchorSceneId]?.name
+                    || anchorSceneId,
+            }
+            : null;
+        const visitedSceneIds = liveGame && compiled?.visitedNamespaceName
+            ? readStoryVisitedIds(liveGame.getStorable(), compiled.visitedNamespaceName, STORY_VISITED_SCENES_KEY)
+            : [];
+        const result = await host.exportProgress({
+            storyId: activeStoryRequestRef.current?.storyId ?? "",
+            savedVariables,
+            persistentVariables,
+            anchor,
+            visitedSceneIds,
+        });
+        return result.outcome === "written"
+            ? { outcome: "written", error: "" }
+            : { outcome: "failed", error: result.error };
+    }, [core, host, progressVariableDefs, readSavedProgressValue, resolveRunningStoryDocument]);
+
+    const importProgressInGame = useCallback(async (): Promise<GameProgressImportOutcome> => {
+        if (!host.importProgress) {
+            return {
+                outcome: "failed",
+                sceneId: "",
+                error: "Progress cannot be read here. Run the project in Dev Mode to carry it.",
+            };
+        }
+        const result = await host.importProgress();
+        if (result.outcome !== "found") {
+            return { outcome: result.outcome, sceneId: "", error: result.error ?? "" };
+        }
+        const imported = result.document;
+        // Persistent first and unconditionally: those values live outside the engine, so they are
+        // already correct whether or not a story ever starts, and `newGame()` does not touch them.
+        if (core) {
+            applyGameProgressVariables(
+                progressVariableDefs().persistent,
+                imported.persistentVariables,
+                (storageKey, value) => {
+                    // Both halves of the write, as the story compiler's own persistence bridge does
+                    // it: the in-memory map so the very next read sees it, and the host store so it
+                    // survives the session.
+                    core.scopeBridge.persistenceSet(storageKey, value);
+                    void core.scopeBridge.persistenceSetAsync(storageKey, value);
+                },
+            );
+        }
+        if (gameEnteredRef.current && nlrLiveGameRef.current) {
+            applyImportedSavedProgress(imported);
+        } else {
+            // See `pendingImportedProgressRef`: the `Start Game` this node's scene id feeds calls
+            // `newGame()`, which would clear anything written now.
+            pendingImportedProgressRef.current = imported;
+        }
+        return toImportOutcome(imported);
+    }, [applyImportedSavedProgress, core, host, progressVariableDefs]);
+
+    /**
      * Surface a failed save screenshot to the Blueprint console. Capture is best-effort — the save
      * still succeeds without a preview — but staying silent made a requested capture look like the
      * Save Game node was ignoring its Capture pin.
@@ -1336,6 +1557,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
+        cancelSceneTracking();
         nlrCompiledRef.current = null;
         clearCharacterAvatarAssets();
         detachTextReadTracker();
@@ -1917,6 +2139,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
+        cancelSceneTracking();
         nlrCompiledRef.current = compiled;
         registerCharacterAvatarAssets(compiled.avatarAssetIdByUrl);
         choiceRuntimeRef.current = null;
@@ -2002,12 +2225,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
         liveGame.newGame();
         gameEnteredRef.current = true;
+        // A document imported before this point has been waiting for exactly this moment:
+        // `newGame()` clears every namespace and rebuilds it from its defaults, so anything written
+        // earlier is gone and anything written now stands. See `pendingImportedProgressRef`.
+        const importedProgress = pendingImportedProgressRef.current;
+        if (importedProgress) {
+            pendingImportedProgressRef.current = null;
+            applyImportedSavedProgress(importedProgress);
+        }
         // `onFirstSceneReady` already ends on a painted frame (see waitForStageVisualReadyWithTimeout),
         // so there is nothing left to wait for here: an extra frame only delays the UI's exit.
         await sceneReady;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
-    }, [hideCurrentStudioPagesForGame]);
+    }, [applyImportedSavedProgress, hideCurrentStudioPagesForGame]);
 
     const startStoryInGame = useCallback(async (
         request: DevModeStartStoryRequest,
@@ -2128,6 +2359,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onSetTrackVolume: soundTransport.setTrackVolume,
             onNetworkFetch: host.networkFetch,
             onOpenExternal: host.openExternal,
+            onExportProgress: exportProgressInGame,
+            onImportProgress: importProgressInGame,
             audioTracks: bundle.audio?.tracks,
             onSubscribeGamePreferences: subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {
@@ -2221,6 +2454,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         toggleDialogDisplayInGame,
         widgetPatchesByScopeRef,
         widgetRuntimeStore,
+        exportProgressInGame,
+        importProgressInGame,
         writeSave,
     ]);
 
@@ -2464,6 +2699,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onSetTrackVolume: soundTransport.setTrackVolume,
                     onNetworkFetch: host.networkFetch,
                     onOpenExternal: host.openExternal,
+                    onExportProgress: exportProgressInGame,
+                    onImportProgress: importProgressInGame,
                     audioTracks: bundle.audio?.tracks,
                     onSubscribeGamePreferences: subscribeGamePreferences,
                     onWidgetPatch: (elementId, patch) => {
@@ -2586,6 +2823,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         startStoryInGame,
         toggleDialogDisplayInGame,
         widgetRuntimeStore,
+        exportProgressInGame,
+        importProgressInGame,
         writeSave,
     ]);
 
@@ -2651,6 +2890,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
+        cancelSceneTracking();
         nlrCompiledRef.current = null;
         clearCharacterAvatarAssets();
         detachTextReadTracker();
@@ -2685,6 +2925,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
+        cancelSceneTracking();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
@@ -3105,6 +3346,28 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // events under the plugins' existing listeners.
                 if (nlrSession?.compiled) {
                     pluginHost?.attachSession({ liveGame, compiled: nlrSession.compiled });
+                }
+                // Which scene the player is in, for the Export Progress anchor. The engine's own
+                // mount/unmount pair is the only live source - the launch request never moves - and
+                // the Scene->Studio id map is the inverse of this compile's own table, so a story
+                // compiled with two copies of one scene still resolves by identity. Re-bound per
+                // session, exactly like the play-head stream below.
+                cancelSceneTracking();
+                const sceneGameState = liveGame.getGameState();
+                if (sceneGameState && nlrSession?.compiled) {
+                    const sceneIdByScene = new Map(
+                        Object.entries(nlrSession.compiled.scenes).map(([id, scene]) => [scene, id] as const),
+                    );
+                    nlrSceneTokensRef.current.push(
+                        sceneGameState.events.on("event:state.scene.mount", (scene: Scene) => {
+                            currentSceneIdRef.current = sceneIdByScene.get(scene) ?? null;
+                        }),
+                        sceneGameState.events.on("event:state.scene.unmount", (scene: Scene) => {
+                            if (currentSceneIdRef.current === (sceneIdByScene.get(scene) ?? null)) {
+                                currentSceneIdRef.current = null;
+                            }
+                        }),
+                    );
                 }
                 // Play-head stream for the Dev Mode story-runtime panel: mirror the current action id
                 // and fan it out to panel subscribers. Re-bound per session; the fan-out set is stable.

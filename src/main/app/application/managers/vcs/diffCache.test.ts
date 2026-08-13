@@ -28,6 +28,9 @@ const lore = vi.hoisted(() => {
         flushRepository: async () => undefined,
         releaseRepository: async () => undefined,
         readRepositoryIdentity: async () => ({ repository: "repo0", branch: "main" }),
+        // Read once when a session opens: it is what decides whose name goes on a
+        // revision and which account id the online calls carry. Null is "no server".
+        readRemote: async () => null,
         changedPaths: async (_globals: unknown, from: string, to: string) => {
             calls.push(`changedPaths:${from}..${to}`);
             return ["editor/audio-tracks.json"];

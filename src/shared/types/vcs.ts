@@ -461,6 +461,135 @@ export interface VcsSyncState {
 }
 
 /**
+ * The two URL schemes a sign-in address may use.
+ *
+ * Measured, not read off a document: the client answers anything else with
+ * `no authentication implementation registered for scheme 'http' (available:
+ * ["ucs-auth", "https"])`. `http` is the one people will actually type, and it is
+ * refused - so the address field validates before a socket is opened rather than
+ * passing that sentence on.
+ */
+export const VCS_SIGN_IN_SCHEMES: readonly string[] = ["https", "ucs-auth"];
+
+/** Whether this address is one the sign-in call would even attempt. */
+export function isVcsSignInAddress(url: string): boolean {
+    const match = /^([a-z][a-z0-9+.-]*):\/\/[^/?#\s]+\/*$/i.exec(url.trim());
+    return match !== null && VCS_SIGN_IN_SCHEMES.includes(match[1].toLowerCase());
+}
+
+/**
+ * Who a server says this installation is.
+ *
+ * Everything here is read out of the token the author pasted. The token is issued by
+ * the server's operator and carries the account it belongs to, so this is the server's
+ * answer rather than something typed into a preference - which is the whole point of
+ * signing in at all.
+ */
+export interface VcsServerAccount {
+    /**
+     * The account id the server keys its stored session by.
+     *
+     * **Never shown and never asked for.** It is a random identifier, an author has no
+     * way to know theirs, and it is only here because the backend's session lookup uses
+     * it - see `serverSession.ts`.
+     */
+    userId: string;
+    /** The account's display name, e.g. `Ada Blackwood`. */
+    displayName: string;
+    /** The account's name on the server, e.g. `ada`. */
+    username: string;
+    /** The address recorded on revisions, or "" when the token carries none. */
+    email: string;
+    /**
+     * What is recorded as the author of a revision while this session is in force -
+     * `composeVcsIdentity` applied to the two fields above.
+     */
+    identity: string;
+    /** When the pasted token stops being accepted. Epoch ms; 0 when it did not say. */
+    expiresAt: number;
+}
+
+/**
+ * A signed-in session, as Studio holds it.
+ *
+ * One per server, not one per project: the backend keeps the session in a per-user
+ * store outside any repository, so signing in once serves every project pointed at
+ * that server.
+ */
+export interface VcsServerSession {
+    /** Where the sign-in happened, e.g. `https://studio.example.lan:41402`. */
+    authUrl: string;
+    /** The server this session is good for, as an origin: `lore://host:41337`. */
+    remoteOrigin: string;
+    account: VcsServerAccount;
+    /** When this installation signed in. Epoch ms. */
+    signedInAt: number;
+}
+
+/**
+ * Why a sign-in did not happen, in a form the interface can put words to.
+ *
+ * Coded rather than passed through as a sentence because **the backend collapses every
+ * transport failure into one string**: an untrusted certificate, a port nothing listens
+ * on, a name that does not resolve and an endpoint speaking plain HTTP all come back as
+ * `failed to connect to auth endpoint: transport error` (measured, all four). Handing
+ * that to an author would tell them nothing about which of four different things to do
+ * next, so the transport is diagnosed separately and reported as one of these.
+ */
+export type VcsSignInProblem =
+    /** The address is not `https` or `ucs-auth`. Refused before any socket is opened. */
+    | { kind: "scheme" }
+    /** The pasted text is not a token this server would have issued. */
+    | { kind: "token" }
+    /**
+     * The endpoint answered, but its certificate is signed by an authority this machine
+     * does not trust. The one failure with a manual remedy, and the operator of the
+     * server has a command that prints it.
+     */
+    | { kind: "certificate"; fingerprint: string }
+    /** Nothing answered at that address. */
+    | { kind: "unreachable"; detail: string }
+    /** The endpoint answered and refused the token: expired, revoked, or another Hub's. */
+    | { kind: "refused"; detail: string }
+    /** Anything else, with whatever the backend said. */
+    | { kind: "unknown"; detail: string };
+
+/**
+ * What a completed sign-in came to, including whether the two ends can work together.
+ *
+ * The compatibility verdict is deliberately a word rather than a version string. Studio
+ * pins a client library and a server runs whatever its operator installed; a pair of
+ * numbers on screen asks the author to know which pairs are good, which is not knowledge
+ * they have. So the sign-in ends by actually reaching the server's data port and reports
+ * what happened.
+ */
+export type VcsServerReach =
+    /** Signed in, and the server answered a repository read. */
+    | "ready"
+    /** Signed in, but the server will not give this account this project. */
+    | "notPermitted"
+    /** Signed in, and the data port did not answer. */
+    | "dataPortSilent";
+
+export interface VcsSignInResult {
+    session: VcsServerSession;
+    reach: VcsServerReach;
+}
+
+/**
+ * What a sign-in attempt came to, success or refusal alike.
+ *
+ * A refusal is DATA rather than a thrown error, and that is the whole reason this shape
+ * exists: an untrusted certificate and a token that has expired are ordinary answers a
+ * person acts on, not faults, and each of them needs a different sentence. Carrying the
+ * reason as a code lets the interface say that sentence in the reader's own language
+ * instead of relaying an English one from the backend.
+ */
+export type VcsSignInOutcome =
+    | ({ ok: true } & VcsSignInResult)
+    | { ok: false; problem: VcsSignInProblem };
+
+/**
  * The server a project synchronises with, as the author configured it.
  *
  * **A server address, not a per-project URL.** Measured: the backend records only the
@@ -848,4 +977,25 @@ export interface VcsWorkingTreeDiffResult {
     pathCount: number;
     complete: boolean;
     readFailure: string | null;
+}
+
+/**
+ * Whether a refusal from a server is one that signing in would settle.
+ *
+ * Matched on the message because that is all there is: the strings come from the client
+ * library and carry no code of their own. Both ends of this read the same list — the main
+ * process decides from it whether a failed connection leaves the address in place, and the
+ * renderer decides from it whether to offer a way in — and two lists would drift.
+ *
+ * Wrong in either direction it costs a sentence, never an act: an unrecognised refusal
+ * behaves as every refusal used to, and a recognised one only keeps an address and offers
+ * a form.
+ */
+export function vcsSignInRequired(message: string): boolean {
+    const said = message.toLowerCase();
+    return (
+        said.includes("no token stored")
+        || said.includes("not authorized to access repository")
+        || said.includes("authorization header required")
+    );
 }

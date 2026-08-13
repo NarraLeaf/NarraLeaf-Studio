@@ -81,6 +81,7 @@ import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/ty
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { AutoSaveEntry } from "@shared/types/saves";
+import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import {
     isButtonCursorValue,
     type AppearanceFieldTransition,
@@ -504,6 +505,22 @@ export type BlueprintHostApiRuntime = {
     network: {
         fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
     };
+    /**
+     * Carrying a playthrough between two editions of one title, for the Export/Import Progress
+     * nodes.
+     *
+     * The host does not decide where the document is: it hands the act to whatever the shell
+     * supplied, and the shell's own process resolves the file from the build's progress key. What
+     * this side states is what the playthrough holds, never where it goes.
+     *
+     * `import` answers with a scene id rather than going anywhere with it. The node deliberately
+     * does not jump - `Start Game` is what starts a story, and an author's graph usually has
+     * something to do first.
+     */
+    progress: {
+        export: () => Promise<{ outcome: "written" | "failed"; error: string }>;
+        import: () => Promise<GameProgressImportOutcome>;
+    };
     devtools: {
         log: (level: string, message: string) => void;
     };
@@ -734,6 +751,15 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * degradation the Fetch node takes: a Page previewed in Studio should still lay out.
      */
     onOpenExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+    /**
+     * Writes this playthrough into the title's progress document, in a process that owns a
+     * filesystem. Absent in every environment with nowhere to send it - the editor preview and the
+     * story preview - where the node reports a failure saying so rather than throwing, the same
+     * degradation the Fetch and Open Link nodes take.
+     */
+    onExportProgress?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
+    /** Reads it back, and applies what it holds to the running game. Absent for the same reasons. */
+    onImportProgress?: () => Promise<GameProgressImportOutcome>;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -1851,6 +1877,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onSetTrackVolume,
         onNetworkFetch,
         onOpenExternal,
+        onExportProgress,
+        onImportProgress,
         audioTracks,
         onSubscribeGamePreferences,
         emit,
@@ -3666,6 +3694,45 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                     }
                     return await onNetworkFetch(request);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        progress: {
+            export: async () => {
+                const cap = "progress.export";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onExportProgress) {
+                        // No backend = nowhere to write it (editor preview, story preview). Reported
+                        // as a result rather than thrown, for the reason Open Link does the same.
+                        return {
+                            outcome: "failed" as const,
+                            error: "Progress cannot be written here. Run the project in Dev Mode to carry it.",
+                        };
+                    }
+                    return await onExportProgress();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            import: async () => {
+                const cap = "progress.import";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onImportProgress) {
+                        // `failed`, deliberately not `missing`: missing is a fact about the player
+                        // (nobody has exported), this is a fact about where the graph is running,
+                        // and an author who wired `missing` to "start a new game" must not be sent
+                        // down it by an environment that simply cannot look.
+                        return {
+                            outcome: "failed" as const,
+                            sceneId: "",
+                            error: "Progress cannot be read here. Run the project in Dev Mode to carry it.",
+                        };
+                    }
+                    return await onImportProgress();
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

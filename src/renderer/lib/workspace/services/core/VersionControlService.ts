@@ -17,6 +17,8 @@ import type {
     VcsPushResult,
     VcsRepositoryInfo,
     VcsRevisionDiffResult,
+    VcsServerSession,
+    VcsSignInOutcome,
     VcsWorkingTreeDiffResult,
     VcsSyncResult,
     VcsSyncState,
@@ -636,6 +638,51 @@ export class VersionControlService extends Service<VersionControlService> implem
         if (!(await this.isAvailable())) return null;
         const result = await getInterface().vcs.getSyncState(this.projectPath());
         return result.success ? result.data : null;
+    }
+
+    // -- signing in -----------------------------------------------------------
+
+    /**
+     * Who this installation is signed in to this project's server as, or null.
+     *
+     * A LOCAL read, like {@link getRemote}: nothing is contacted, so the panel may ask it
+     * on open. Null on a bare server, which asks nobody who they are and needs no
+     * sign-in at all.
+     */
+    public async getServerSession(): Promise<VcsServerSession | null> {
+        if (!(await this.isAvailable())) return null;
+        const result = await getInterface().vcs.getServerSession(this.projectPath());
+        return result.success ? result.data.session : null;
+    }
+
+    /**
+     * Sign in with a token the server's operator issued.
+     *
+     * **A refusal comes back as a value, not as a thrown error.** A token that has
+     * expired and a certificate this machine has not been told to trust are things a
+     * person does something about, not faults - and each needs its own sentence, which
+     * the coded reason is what makes possible. Only a call that could not be made at all
+     * throws.
+     *
+     * Goes to the network twice: the sign-in endpoint, then the server itself, so the
+     * answer can say whether the two ends can actually work together rather than only
+     * that the token was accepted.
+     */
+    public async signIn(authUrl: string, token: string): Promise<VcsSignInOutcome> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const result = await getInterface().vcs.signIn(this.projectPath(), authUrl, token);
+        if (!result.success) throw new Error(result.error);
+        return result.data;
+    }
+
+    /** Take this account back off the machine: the stored token goes with it. */
+    public async signOut(): Promise<void> {
+        if (!(await this.isAvailable())) return;
+        const result = await getInterface().vcs.signOut(this.projectPath());
+        if (!result.success) throw new Error(result.error);
     }
 
     /**

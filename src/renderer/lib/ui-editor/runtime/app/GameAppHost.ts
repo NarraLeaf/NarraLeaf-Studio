@@ -3,6 +3,11 @@ import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "@shared/types/gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
@@ -193,6 +198,21 @@ export type GameAppHost = {
      * a failure saying so, the same degradation {@link networkFetch} takes.
      */
     openExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+    /**
+     * Write this playthrough into the title's progress document, for the Export Progress node.
+     *
+     * Where the file is, and whether there is one at all, is the host's business - and every shell
+     * decides it in the process that performs the act: the packaged desktop game and Dev Mode hand
+     * it to their main process, the web export refuses because a page has no shared file to write.
+     * What none of them take from this side is the path: the renderer states what the playthrough
+     * holds, and the shell resolves which title's document that is.
+     *
+     * Omitted by hosts with nowhere to write (the workspace story preview). The node then reports a
+     * failure saying so, the same degradation {@link openExternal} takes.
+     */
+    exportProgress?: (request: GameProgressExportRequest) => Promise<GameProgressExportResult>;
+    /** Read it back, for the Import Progress node. Omitted for the reason above. */
+    importProgress?: () => Promise<GameProgressImportResult>;
 };
 
 /** A read-only view of the current execution stacks (root + in-flight async branches). */
