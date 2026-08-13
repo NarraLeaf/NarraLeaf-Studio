@@ -75,6 +75,7 @@ export const HELP_TOPIC_IDS = [
     "build",
     "buildVariant",
     "appTags",
+    "variantContent",
     "icons",
     "signing",
     "assetProtection",
@@ -347,12 +348,19 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "buildVariant",
         section: "ship",
-        related: ["appTags", "build"],
+        related: ["appTags", "variantContent", "build"],
     },
     {
         id: "appTags",
         section: "ship",
-        related: ["build", "buildVariant", "lint"],
+        related: ["build", "buildVariant", "variantContent", "lint"],
+    },
+    // The content half of a variant: which rows and scenes a build of it carries. Separate from
+    // `appTags`, which answers what a variant states about the application itself.
+    {
+        id: "variantContent",
+        section: "ship",
+        related: ["appTags", "buildVariant", "storyExpressions", "lint"],
     },
     {
         id: "icons",

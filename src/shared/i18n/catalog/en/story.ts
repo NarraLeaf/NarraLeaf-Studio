@@ -666,7 +666,7 @@ export const story = {
         // the row shows; the title is the whole sentence.
         cutPoint: "not in other builds",
         cutPointTitle: "The {name} build ends at this line. No other build contains this line.",
-        cutPointInactive: "no variant",
+        cutPointInactive: "variant deleted",
         cutPointInactiveTitle: "The variant this line ended has been deleted, so it ends nothing.",
         tempSpeaker: "name only",
         createCharacter: "Create character “{name}”",

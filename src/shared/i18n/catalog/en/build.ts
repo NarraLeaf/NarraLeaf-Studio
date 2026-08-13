@@ -63,7 +63,7 @@ export const build = {
         inherited: "From the project",
         // Where this variant's story stops. Counted from the cut points naming it, so the release
         // variant - which no cut point can name - always reads as the whole story.
-        boundary: "Content",
+        boundary: "Story end",
         endsNever: "Plays to the end of the story.",
         endsAt: {
             one: "Ends at {count} cut point. Nothing after it is in this build.",
@@ -237,7 +237,7 @@ export const build = {
         // or every platform of the build where one value covers them all. Never empty, so the
         // sentence reads the same either way.
         "plugin-config-missing": "{plugin} needs a value for {field} to build {platforms}.",
-        "plugin-secret-unavailable": "{plugin}'s {field} is set, but its value is not on this machine; secrets never travel with a project. Enter it again here to build {platforms}.",
+        "plugin-secret-unavailable": "{plugin}'s {field} was set on another machine and its value is not here. Enter it again to build {platforms}.",
         // Carries the cache path so an author on an offline machine still has a
         // way through: download the file elsewhere and save it there.
         "build-dependency-unavailable":
@@ -339,8 +339,8 @@ export const build = {
     contentBlockedScript: "The blueprint {location} is written in TypeScript and can start any scene. List the scenes it can start in the {variant} variant.",
     contentBlockedPlugin: "The {location} plugin can start any scene. List the scenes it can start in the {variant} variant.",
     contentBlockedSummary: {
-        one: "Build stopped: {count} thing can start a scene the {variant} build cannot read. See the console.",
-        other: "Build stopped: {count} things can start a scene the {variant} build cannot read. See the console.",
+        one: "Build stopped: {count} place can start a scene the {variant} build cannot read. See the console.",
+        other: "Build stopped: {count} places can start a scene the {variant} build cannot read. See the console.",
     },
     /** A listed scene that has since been deleted. A warning, not a stop: the answer still stands. */
     contentStaleDeclaration: "A scene listed for {location} in the {variant} variant is no longer in the project.",
