@@ -215,6 +215,7 @@ export const settings = {
         versionControlAuthor: {
             label: "作者名",
             description: "コミットとチェックポイントに記録される。空のままなら NarraLeaf Studio と記録する",
+            fromServer: "このインストールがサインインしているサーバーから取得されます。自分の名前を記録するにはサインアウトしてください。",
         },
         versionControlAuthorEmail: {
             label: "作者のメールアドレス",

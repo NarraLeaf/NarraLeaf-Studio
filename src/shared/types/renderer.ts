@@ -4,6 +4,11 @@ import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "./gameProgress";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
@@ -54,7 +59,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -671,6 +676,28 @@ export interface RendererPreloadedInterface {
          */
         getSyncState(projectPath: string): Promise<RequestStatus<VcsSyncState>>;
         /**
+         * Who this installation is signed in to this project's server as, or null.
+         *
+         * A LOCAL read - no socket - so a panel may ask it on open. Null on a project
+         * whose server does not ask who is calling, which is every bare `loreserver`.
+         */
+        getServerSession(projectPath: string): Promise<RequestStatus<{ session: VcsServerSession | null }>>;
+        /**
+         * Sign this installation in to this project's server with a token its operator
+         * issued.
+         *
+         * **Goes to the network**, and to two different places: the sign-in endpoint,
+         * then the server itself so the answer can say whether the two ends can work
+         * together. Failures carry a coded reason rather than a sentence, because the
+         * backend reports four unrelated transport problems with one string.
+         *
+         * The token is handed on and forgotten. It is not stored by Studio and does not
+         * come back in the response.
+         */
+        signIn(projectPath: string, authUrl: string, token: string): Promise<RequestStatus<VcsSignInOutcome>>;
+        /** Clear the stored token and Studio's record of whose it was. Local. */
+        signOut(projectPath: string): Promise<RequestStatus<{ session: null }>>;
+        /**
          * Send this branch's revisions to the server. Writes nothing locally, so a
          * failure leaves the project exactly as it was.
          *
@@ -807,6 +834,22 @@ export interface RendererPreloadedInterface {
             pluginId: string,
             request: BlueprintOpenExternalRequest,
         ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>>;
+    };
+
+    blueprintProgress: {
+        /**
+         * One Export Progress node request, performed by the main process for a Dev Mode preview.
+         *
+         * `projectPath` decides which title's document is written; the handler derives the key from
+         * the project's identity rather than taking one from the renderer, so a preview writes the
+         * same file the shipped build would and can reach no other.
+         */
+        write(
+            projectPath: string,
+            request: GameProgressExportRequest,
+        ): Promise<RequestStatus<{ result: GameProgressExportResult }>>;
+        /** One Import Progress node request, read from the same file and keyed the same way. */
+        read(projectPath: string): Promise<RequestStatus<{ result: GameProgressImportResult }>>;
     };
 
     pluginPermissions: {

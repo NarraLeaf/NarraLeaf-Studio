@@ -911,6 +911,27 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
         descriptionKey: "settings.items.versionControlAuthor.description",
         defaultValue: "",
+        /**
+         * Read-only while this installation is signed in to a server.
+         *
+         * The point of signing in is that a team's history says who actually made each
+         * revision rather than what each person typed here, so while a session is in force
+         * the name on a revision comes from the token and this field is not what is
+         * recorded. Left editable it would be a box that accepts a name and changes
+         * nothing - which is worse than one that says why it is closed.
+         *
+         * The setting itself stays, and so does everything that reads it: a project with no
+         * server has no token to take a name from, and that is the case this exists for.
+         */
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const result = await getInterface().app.state.getGlobalState("versionControl.serverSessions");
+            const sessions = result.success && Array.isArray(result.data.value) ? result.data.value : [];
+            return sessions.length === 0
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.versionControlAuthor.fromServer" as const };
+        },
+
     },
     {
         // Folded into the name by `composeVcsIdentity` before it reaches Lore, which stores ONE
@@ -927,5 +948,26 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Recorded next to the author name, as \"Name <email>\". Leave empty to record no address.",
         descriptionKey: "settings.items.versionControlAuthorEmail.description",
         defaultValue: "",
+        /**
+         * Read-only while this installation is signed in to a server.
+         *
+         * The point of signing in is that a team's history says who actually made each
+         * revision rather than what each person typed here, so while a session is in force
+         * the name on a revision comes from the token and this field is not what is
+         * recorded. Left editable it would be a box that accepts a name and changes
+         * nothing - which is worse than one that says why it is closed.
+         *
+         * The setting itself stays, and so does everything that reads it: a project with no
+         * server has no token to take a name from, and that is the case this exists for.
+         */
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const result = await getInterface().app.state.getGlobalState("versionControl.serverSessions");
+            const sessions = result.success && Array.isArray(result.data.value) ? result.data.value : [];
+            return sessions.length === 0
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.versionControlAuthor.fromServer" as const };
+        },
+
     },
 ];

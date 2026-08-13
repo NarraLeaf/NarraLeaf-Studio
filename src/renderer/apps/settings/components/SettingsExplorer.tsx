@@ -489,7 +489,11 @@ export function SettingsExplorer<T>({
                                 handleInputCommit(entry);
                             }
                         }}
-                        disabled={isSaving}
+                        // A row whose value is decided elsewhere is closed rather than merely
+                        // ignored: the descriptor's own description has already been replaced
+                        // with the reason, and a field that takes typing it will not keep is
+                        // the one thing worse than a field that cannot be typed in.
+                        disabled={isSaving || descriptor.disabled}
                     />
                 );
                 if (!descriptor.unit) {

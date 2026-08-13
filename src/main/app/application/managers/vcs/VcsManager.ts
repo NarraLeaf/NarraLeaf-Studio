@@ -21,6 +21,9 @@ import type {
     VcsRestoreResult,
     VcsRevisionDiffResult,
     VcsRevisionKind,
+    VcsServerReach,
+    VcsServerSession,
+    VcsSignInResult,
     VcsStatus,
     VcsSyncResult,
     VcsSyncState,
@@ -28,7 +31,7 @@ import type {
     VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
-import { composeVcsIdentity } from "@shared/types/vcs";
+import { composeVcsIdentity, parseVcsRemoteUrl, vcsSignInRequired } from "@shared/types/vcs";
 import { BaseApp } from "../../baseApp";
 import { Manager } from "../manager";
 import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backend";
@@ -82,6 +85,16 @@ interface VcsSession {
     /** Repository (partition) id, hex. Learned on first use. */
     repositoryId: LoreHex;
     globals: LoreGlobals;
+    /**
+     * The origin of this project's server, or null when it has none.
+     *
+     * Read once, on opening the session, because it decides two things every write in this
+     * class needs: which signed-in account (if any) authors a revision, and which account id
+     * the calls that reach the network carry. A pure local read of the repository's own config,
+     * and it cannot go stale under us - {@link VcsManager.setRemote} closes the session around
+     * every change to it, for a different reason that happens to guarantee this one too.
+     */
+    remoteOrigin: string | null;
     /**
      * What each revision already said about itself, remembered for the life of the session.
      *
@@ -531,8 +544,19 @@ export class VcsManager extends Manager {
                 throw error;
             }
 
+            // Local read of the repository's own config; no socket. Failure is not fatal to
+            // opening: a project whose server cannot be read is one that authors revisions from
+            // the settings, which is exactly what an offline project does anyway.
+            const remote = await backend.readRemote(globals).catch(() => null);
+
             const session: VcsSession = {
-                root, store, repositoryId, globals, details: new Map(), diffs: new Map(),
+                root,
+                store,
+                repositoryId,
+                globals,
+                remoteOrigin: remote ? parseVcsRemoteUrl(remote)?.origin ?? remote : null,
+                details: new Map(),
+                diffs: new Map(),
             };
             this.sessions.set(key, session);
             this.app.logger.info("[Vcs] Opened session", root, repositoryId);
@@ -647,16 +671,47 @@ export class VcsManager extends Manager {
      * The two settings are composed by {@link composeVcsIdentity}, which owns the
      * `Name <email>` shape and the four ways those two fields can be empty.
      */
-    private resolveIdentity(explicit?: string): string {
+    private resolveIdentity(explicit?: string, remoteOrigin?: string | null): string {
+        const signedIn = this.storedServerSession(remoteOrigin);
         const state = this.app.getGlobalState();
         const configuredName = state.get("versionControl.authorName");
         const configuredEmail = state.get("versionControl.authorEmail");
         return explicit?.trim()
+            || signedIn?.account.identity
             || composeVcsIdentity(
                 typeof configuredName === "string" ? configuredName : "",
                 typeof configuredEmail === "string" ? configuredEmail : "",
             )
             || UNCONFIGURED_IDENTITY;
+    }
+
+    /**
+     * The identity a call that reaches the network has to carry.
+     *
+     * **Not the author's name, and the difference is the whole of it.** The backend keeps a
+     * signed-in session in a per-user store and looks it up by the account id the server issued,
+     * so an online call carrying `Ada Blackwood <ada@example.com>` where the store holds a
+     * session under a random identifier fails with `No token stored` - which reads as a token
+     * nobody ever presented, and is one presented under a different key.
+     *
+     * A project with no signed-in server falls back to the author's identity, because a bare
+     * server has no session to look up and records whatever it is told. That fallback is what
+     * keeps Studio working against a `loreserver` with nothing in front of it.
+     */
+    private resolveOnlineIdentity(remoteOrigin: string | null): string {
+        return this.storedServerSession(remoteOrigin)?.account.userId ?? this.resolveIdentity();
+    }
+
+    /** The session recorded for this server, if this installation has signed in to it. */
+    private storedServerSession(remoteOrigin: string | null | undefined): VcsServerSession | null {
+        if (!remoteOrigin) return null;
+        const stored = this.app.getGlobalState().get("versionControl.serverSessions");
+        const sessions = Array.isArray(stored) ? (stored as VcsServerSession[]) : [];
+        return sessions.find((session) => session.remoteOrigin === remoteOrigin) ?? null;
+    }
+
+    private writeStoredServerSessions(sessions: VcsServerSession[]): void {
+        this.app.getGlobalState().set("versionControl.serverSessions", sessions);
     }
 
     /**
@@ -740,7 +795,7 @@ export class VcsManager extends Manager {
 
             const { session, backend } = await this.sessionFor(projectPath);
             return backend.commitWorkingTree(
-                { ...session.globals, identity: this.resolveIdentity(options.identity) },
+                { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) },
                 { message, kind },
             );
         });
@@ -800,7 +855,7 @@ export class VcsManager extends Manager {
             }
 
             const { session, backend } = await this.sessionFor(projectPath);
-            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity) };
+            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) };
 
             const entries = await backend.listFilesAt(
                 globals,
@@ -1393,19 +1448,188 @@ export class VcsManager extends Manager {
                 return;
             }
             try {
-                await backend.publishToRemote(this.globalsFor(root, { online: true }), {
-                    url,
-                    repositoryId,
-                });
+                await backend.publishToRemote(
+                    {
+                        ...this.globalsFor(root, { online: true }),
+                        // Registering the repository is an online call like any other, so it
+                        // needs the account id when the server it is being registered on is one
+                        // this installation has signed in to.
+                        identity: this.resolveOnlineIdentity(parseVcsRemoteUrl(url)?.origin ?? null),
+                    },
+                    { url, repositoryId },
+                );
             } catch (error) {
-                // Put the address back to what it was, so a failed connection leaves the
-                // project in the state the author can retry from rather than in the
-                // pushes-but-cannot-be-cloned state described above.
-                await backend.writeRemote(root, previous).catch(() => undefined);
+                // A server that refused because this installation has not signed in never
+                // got as far as registering anything, so there is no half-made state to
+                // undo - and the address is the one thing worth keeping, because signing
+                // in is only reachable from a project that has a server. Putting it back
+                // is what made the two steps circular: no address, no sign-in; no sign-in,
+                // no address, on exactly the servers that ask who is calling.
+                //
+                // Every other failure still rolls back, for the reason it always did: a
+                // half-registered address leaves the project able to push and unable to be
+                // cloned.
+                if (!vcsSignInRequired(error instanceof Error ? error.message : String(error))) {
+                    await backend.writeRemote(root, previous).catch(() => undefined);
+                }
                 throw error;
             }
             this.app.logger.info("[Vcs] Connected to server", root, url);
         });
+    }
+
+    /**
+     * Who this installation is signed in to this project's server as, or null.
+     *
+     * **Two stores have to agree**, and asking only one of them is how this goes wrong. Studio
+     * records the account a token named; the backend records the token itself, in a per-user
+     * store outside any repository that the author's own `lore` CLI can also clear. A record
+     * here with nothing behind it there is an interface saying "signed in as Ada" over a
+     * connection that will be refused - so the backend is asked, and a record it does not
+     * recognise is dropped rather than shown.
+     *
+     * A purely local read: no socket, so a panel may ask on opening.
+     */
+    public async getServerSession(projectPath: string): Promise<VcsServerSession | null> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return this.confirmStoredSession(backend, session);
+        });
+    }
+
+    /**
+     * Present a token to this project's server and keep the session.
+     *
+     * There is no password exchange and deliberately none: whoever runs the server mints a
+     * token for a collaborator and hands it over, and the collaborator pastes it here. A token
+     * lasts weeks, so this is not something anybody does daily.
+     *
+     * Signing in is a machine-level act rather than a project-level one - the backend stores
+     * the session per user, not per repository - so one sign-in serves every project pointed
+     * at the same server. The project is still where it happens, because the server address is
+     * the project's and there is nowhere else to learn it.
+     *
+     * **The token never comes back out of this method.** It goes to the backend's store and is
+     * not written to the global state, not logged and not returned.
+     *
+     * Ends by actually reaching the server, and the verdict is part of the answer. A sign-in
+     * that succeeds against an endpoint whose data port then refuses this account is the
+     * failure that otherwise turns up hours later as a push nobody can explain.
+     */
+    public async signIn(
+        projectPath: string,
+        options: { authUrl: string; token: string },
+    ): Promise<VcsSignInResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            if (!session.remoteOrigin) {
+                throw new Error(
+                    "This project has no server yet. Connect it to one first, so there is somewhere"
+                    + " to sign in to.",
+                );
+            }
+
+            const signedIn = await backend.signInToServer(
+                { ...session.globals, offline: false },
+                { remoteUrl: session.remoteOrigin, authUrl: options.authUrl, token: options.token },
+            );
+
+            const others = this.storedServerSessions()
+                .filter((stored) => stored.remoteOrigin !== signedIn.remoteOrigin);
+            this.writeStoredServerSessions([...others, signedIn]);
+            this.app.logger.info(
+                "[Vcs] Signed in", signedIn.remoteOrigin, "at", signedIn.authUrl,
+                "as", signedIn.account.username || signedIn.account.displayName,
+            );
+
+            return { session: signedIn, reach: await this.reachServer(backend, session, signedIn) };
+        });
+    }
+
+    /**
+     * Take this account back off the machine.
+     *
+     * Clears the backend's stored token as well as Studio's record of who it belonged to.
+     * Doing only the second would leave a token on the machine that nothing in the interface
+     * mentions, which is the opposite of what somebody signing out is asking for.
+     */
+    public async signOut(projectPath: string): Promise<void> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            const stored = this.storedServerSession(session.remoteOrigin);
+            if (!stored) return;
+
+            await backend.signOutOfServer(session.globals, {
+                authUrl: stored.authUrl,
+                userId: stored.account.userId,
+            });
+            this.writeStoredServerSessions(
+                this.storedServerSessions().filter((other) => other.remoteOrigin !== stored.remoteOrigin),
+            );
+            this.app.logger.info("[Vcs] Signed out of", stored.remoteOrigin);
+        });
+    }
+
+    /** Every session this installation has recorded, in the order they were written. */
+    private storedServerSessions(): VcsServerSession[] {
+        const stored = this.app.getGlobalState().get("versionControl.serverSessions");
+        return Array.isArray(stored) ? (stored as VcsServerSession[]) : [];
+    }
+
+    /** The stored record for this project's server, once the backend has confirmed it exists. */
+    private async confirmStoredSession(
+        backend: VcsBackend,
+        session: VcsSession,
+    ): Promise<VcsServerSession | null> {
+        const stored = this.storedServerSession(session.remoteOrigin);
+        if (!stored) return null;
+
+        const live = await backend.readServerSessions(session.globals).catch(() => null);
+        // A read that failed says nothing about whether the session exists, so the record
+        // stands. Only an answer that came back and did not contain it is evidence.
+        if (!live) return stored;
+        const present = live.some(
+            (entry) => entry.userId === stored.account.userId && entry.authUrl === stored.authUrl,
+        );
+        if (present) return stored;
+
+        this.writeStoredServerSessions(
+            this.storedServerSessions().filter((other) => other.remoteOrigin !== stored.remoteOrigin),
+        );
+        this.app.logger.info("[Vcs] The stored sign-in for", stored.remoteOrigin, "is no longer held by the backend");
+        return null;
+    }
+
+    /**
+     * Whether this Studio and that server can actually work together, said as a word.
+     *
+     * Signing in proves only that the sign-in endpoint accepted the token. The work happens on
+     * a different port, over a different protocol, against a server running whatever version
+     * its operator installed - so the question is settled by reaching it, once, at the moment
+     * somebody connects.
+     *
+     * Deliberately not a pair of version numbers on screen. Studio pins a client library and a
+     * server runs a build nobody here chose; asking an author to compare two numbers asks them
+     * to know which pairs work, which is not knowledge they have and not knowledge this
+     * interface should require.
+     */
+    private async reachServer(
+        backend: VcsBackend,
+        session: VcsSession,
+        signedIn: VcsServerSession,
+    ): Promise<VcsServerReach> {
+        try {
+            const state = await backend.readSyncState({
+                ...session.globals,
+                offline: false,
+                identity: signedIn.account.userId,
+            });
+            if (!state.remoteAvailable) return "dataPortSilent";
+            return state.remoteAuthorized ? "ready" : "notPermitted";
+        } catch (error) {
+            this.app.logger.warn("[Vcs] Could not reach the server after signing in", error);
+            return "dataPortSilent";
+        }
     }
 
     /**
@@ -1422,7 +1646,11 @@ export class VcsManager extends Manager {
     public async getSyncState(projectPath: string): Promise<VcsSyncState> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            return backend.readSyncState({ ...session.globals, offline: false });
+            return backend.readSyncState({
+                ...session.globals,
+                offline: false,
+                identity: this.resolveOnlineIdentity(session.remoteOrigin),
+            });
         });
     }
 
@@ -1441,7 +1669,8 @@ export class VcsManager extends Manager {
             const result = await backend.pushToRemote({
                 ...session.globals,
                 offline: false,
-                identity: this.resolveIdentity(),
+                // The account id, not the author's name - see `resolveOnlineIdentity`.
+                identity: this.resolveOnlineIdentity(session.remoteOrigin),
             });
             this.app.logger.info(
                 "[Vcs] Pushed", session.root, result.branch,
@@ -1477,7 +1706,11 @@ export class VcsManager extends Manager {
             }
 
             const { session, backend } = await this.sessionFor(projectPath);
-            const globals = { ...session.globals, identity: this.resolveIdentity() };
+            // The account id rather than the author's name, because the fetch below is what the
+            // backend looks a signed-in session up for. The revision an automatic merge records
+            // therefore carries the account id while a session is in force; the author's own
+            // commits do not, because those are offline and go through `resolveIdentity`.
+            const globals = { ...session.globals, identity: this.resolveOnlineIdentity(session.remoteOrigin) };
 
             // Offline and non-scanning, so establishing the precondition costs neither a
             // socket nor the staged-state side effect a scan would have (§4.17). This
@@ -1641,7 +1874,7 @@ export class VcsManager extends Manager {
             }
 
             const { session, backend } = await this.sessionFor(projectPath);
-            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity) };
+            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) };
 
             // **Tier two, and it is written BEFORE anything is settled and after the flush above.**
             // The composed bytes are an answer neither side wrote, so they go into the working tree
@@ -1762,7 +1995,12 @@ export class VcsManager extends Manager {
             const globals = this.globalsFor(root, { online: true });
             try {
                 const cloned = await backend.cloneInto(
-                    { ...globals, identity: this.resolveIdentity() },
+                    {
+                        ...globals,
+                        // Online, so the account id if this installation has signed in to the
+                        // server the copy is coming from.
+                        identity: this.resolveOnlineIdentity(parseVcsRemoteUrl(repositoryUrl)?.origin ?? null),
+                    },
                     { repositoryUrl, onProgress: options.onProgress },
                 );
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);

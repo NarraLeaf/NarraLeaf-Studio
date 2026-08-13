@@ -49,6 +49,9 @@ const lore = vi.hoisted(() => {
             trace.push("releaseRepository");
         },
         readRepositoryIdentity: async () => ({ repository: "repo0", branch: "main" }),
+        // Read once when a session opens: it is what decides whose name goes on a
+        // revision and which account id the online calls carry. Null is "no server".
+        readRemote: async () => null,
         /**
          * Newest first, cut to `limit` - and the cut is at the NEWEST end, which is what makes a
          * larger limit reach further back rather than sideways. That is the behaviour the cache is

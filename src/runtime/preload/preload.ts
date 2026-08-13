@@ -226,6 +226,12 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
         openForPlugin: (pluginId, request) =>
             ipcRenderer.invoke("runtime:external:openForPlugin", pluginId, request),
     },
+    // Forwarded for the reason the addresses above are: the process that owns the filesystem is the
+    // one that decides which file this is, from the pack's own key. Nothing on this side names it.
+    progress: {
+        write: request => ipcRenderer.invoke("runtime:progress:write", request),
+        read: () => ipcRenderer.invoke("runtime:progress:read"),
+    },
     sidecar,
 };
 

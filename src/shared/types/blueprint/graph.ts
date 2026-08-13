@@ -928,6 +928,21 @@ export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisit
  * or the preview is executing, and both of those are always the release edition.
  */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG = "blueprint.game.getAppTag" as const;
+/**
+ * Hand this playthrough to another edition of the same title, and take one back.
+ *
+ * A demo and the full game are separate packages with separate app ids, so they keep separate
+ * user-data directories and their asset protection keys differ on purpose - the release build
+ * cannot read the demo's save files and must not try. These two nodes are the channel that does
+ * cross: one plain JSON document per title, holding the project-level variables, where the player
+ * had got to, and which scenes they had seen. See `@shared/types/gameProgress`.
+ *
+ * `Import Progress` deliberately does NOT jump anywhere. It hands the scene id out as data, and the
+ * author wires it into `Start Game` - which is the node that already knows how to start a story, in
+ * the graph that already knows what else should happen first.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS = "blueprint.game.progress.export" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS = "blueprint.game.progress.import" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
