@@ -510,6 +510,63 @@ export interface VcsServerAccount {
 }
 
 /**
+ * Everything a pasted token answers about itself.
+ *
+ * **The point of this type is the two addresses.** A token names, in `aud`, every remote
+ * it may be presented to - the https origin of the endpoint that issued it and the
+ * `lore://` origin of the server it is good for. Both were things an author was
+ * previously asked to type, having been told them by somebody else, and neither is
+ * knowledge they have any way to check. A token that carries them is a token that can be
+ * pasted on its own.
+ *
+ * The fields are empty rather than absent when a token says nothing, because a plain
+ * loreserver's token says nothing and that has to stay a working case: then the address
+ * field appears and the author types what they were told, as before.
+ */
+export interface VcsSignInToken {
+    account: VcsServerAccount;
+    /** Where to present it, from `aud`: `https://hub.example.lan:41402`. */
+    authUrl: string;
+    /** The servers it is good for, from `aud`: `lore://hub.example.lan:41337`. */
+    remotes: readonly string[];
+    /** SHA-256 of the authority signing that endpoint, from `authority_sha256`. */
+    authorityFingerprint: string;
+}
+
+/**
+ * Pull the addresses out of a token's audience.
+ *
+ * The audience is a flat list holding every spelling of every host this token may be
+ * sent to - measured against a real Hub, seven entries for one host, because the client
+ * compares the audience against the address it is dialling and the two are not written
+ * the same way. Studio wants two of them and recognises them by scheme.
+ *
+ * Order is kept: the first sign-in address is the one a token names first, and a Hub
+ * writes its own endpoint before any data remote.
+ */
+export function vcsAddressesInAudience(audience: readonly unknown[]): {
+    authUrls: string[];
+    remotes: string[];
+} {
+    const authUrls: string[] = [];
+    const remotes: string[] = [];
+    for (const entry of audience) {
+        if (typeof entry !== "string") continue;
+        // A trailing slash is one of the spellings the audience carries on purpose, and
+        // it is not one of the two things being read out here.
+        const address = entry.trim().replace(/\/+$/, "");
+        if (isVcsSignInAddress(address)) {
+            if (!authUrls.includes(address)) authUrls.push(address);
+            continue;
+        }
+        if (/^lore:\/\/[^/?#\s]+$/i.test(address) && !remotes.includes(address)) {
+            remotes.push(address);
+        }
+    }
+    return { authUrls, remotes };
+}
+
+/**
  * A signed-in session, as Studio holds it.
  *
  * One per server, not one per project: the backend keeps the session in a per-user
@@ -524,6 +581,71 @@ export interface VcsServerSession {
     account: VcsServerAccount;
     /** When this installation signed in. Epoch ms. */
     signedInAt: number;
+}
+
+/**
+ * The authority a sign-in endpoint's certificate chains up to, and what can be done
+ * about it on this machine.
+ *
+ * Read off the connection itself: a certificate is public, and the endpoint hands its
+ * whole chain over before anything is trusted. What is NOT public is which authority is
+ * the right one, and that is the entire question - the certificate in front of Studio
+ * looks the same whether it belongs to the server the author means or to something
+ * standing in its place.
+ *
+ * {@link expected} is the answer, when a token supplies one. See
+ * {@link vcsAuthorityIsVouchedFor}.
+ */
+export interface VcsServerAuthority {
+    /** SHA-256 of the authority, colon-separated upper-case hex. */
+    fingerprint: string;
+    /**
+     * The fingerprint the pasted token named, empty when it named none.
+     *
+     * A plain loreserver, or a Hub older than this claim, mints tokens that say nothing
+     * about certificates; then this is empty and the author is back to comparing by eye,
+     * which is what they did before and still works.
+     */
+    expected: string;
+    /** The authority's subject, e.g. `CN=NarraLeaf Hub`. Shown, never compared. */
+    subject: string;
+    /** When it stops being valid, as an ISO date. Shown so a decade-long one reads as one. */
+    expiresAt: string;
+    /** Where Studio wrote the certificate on this machine, for the command below. */
+    path: string;
+    /**
+     * Whether Studio can put this into the trust store itself.
+     *
+     * False on Linux and anything else: the only store other programs read there is
+     * machine-wide and needs root, and a per-user NSS database would be believed by
+     * browsers and by nothing else. So the command is printed for a person to run.
+     */
+    canInstall: boolean;
+    /** The command that installs it here, as a person would type it. */
+    command: string;
+}
+
+/**
+ * Whether the token vouches for the authority the endpoint actually presented.
+ *
+ * True is the case worth having: the author pasted a token their server's operator gave
+ * them, that token names an authority, and the machine on the other end of the wire is
+ * signed by exactly that authority. Nobody has to read 95 characters aloud.
+ *
+ * **What this is worth.** The claim's own signature is not checked and cannot be - the
+ * key that would check it is published behind the certificate under discussion. What
+ * carries the weight is the channel: the token reached the author from the operator, out
+ * of band, which is the same channel a spoken fingerprint would have travelled. So this
+ * is worth what the spoken comparison was worth, and no less; anything able to rewrite a
+ * token in flight could equally have dictated a fingerprint of its own.
+ *
+ * False with a non-empty {@link VcsServerAuthority.expected} is a different thing
+ * entirely, and the interface must not treat it as merely "not vouched for": the token
+ * named an authority and something else answered. That is the shape an interception has.
+ */
+export function vcsAuthorityIsVouchedFor(authority: VcsServerAuthority): boolean {
+    const expected = authority.expected.trim().toUpperCase();
+    return expected.length > 0 && expected === authority.fingerprint.trim().toUpperCase();
 }
 
 /**
@@ -542,11 +664,24 @@ export type VcsSignInProblem =
     /** The pasted text is not a token this server would have issued. */
     | { kind: "token" }
     /**
-     * The endpoint answered, but its certificate is signed by an authority this machine
-     * does not trust. The one failure with a manual remedy, and the operator of the
-     * server has a command that prints it.
+     * The token is a token, and it does not say where to sign in.
+     *
+     * Answered when nothing was typed into the address field and the token's audience
+     * named no https endpoint - a plain loreserver's does not. It is what makes the
+     * address field appear at all: the author is asked for it once it is established
+     * that nothing else can supply it, rather than in front of every sign-in.
      */
-    | { kind: "certificate"; fingerprint: string }
+    | { kind: "address" }
+    /**
+     * The endpoint answered, but its certificate is signed by an authority this machine
+     * does not trust.
+     *
+     * The only refusal here whose remedy changes the machine rather than the project,
+     * which is why it carries a whole {@link VcsServerAuthority} instead of a string:
+     * what to do about it depends on whether the token vouched for this authority, and
+     * on whether this platform lets Studio act on the answer.
+     */
+    | { kind: "certificate"; authority: VcsServerAuthority }
     /** Nothing answered at that address. */
     | { kind: "unreachable"; detail: string }
     /** The endpoint answered and refused the token: expired, revoked, or another Hub's. */

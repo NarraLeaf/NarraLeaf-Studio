@@ -480,6 +480,27 @@ export class VcsSignInHandler extends IPCHandler<IPCEventType.vcsSignIn> {
     }
 }
 
+/**
+ * Put a server's certificate authority into this account's trust store.
+ *
+ * The only handler here that changes anything outside a project, and the manager checks
+ * the path against Studio's own directory before running anything - see
+ * `VcsManager.trustAuthority`. A refusal by the operating system comes back as
+ * `installed: false` with whatever it printed, because those refusals say something
+ * specific and a bare failure would leave the author with "it did not work".
+ */
+export class VcsTrustAuthorityHandler extends IPCHandler<IPCEventType.vcsTrustAuthority> {
+    readonly name = IPCEventType.vcsTrustAuthority;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { certificatePath }: IPCEvents[IPCEventType.vcsTrustAuthority]["data"],
+    ): Promise<RequestStatus<{ installed: boolean; output: string }>> {
+        return this.tryUse(() => window.app.getVcsManager().trustAuthority(certificatePath));
+    }
+}
+
 /** Clear the stored token and Studio's record of whose it was. Local; contacts nothing. */
 export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
     readonly name = IPCEventType.vcsSignOut;

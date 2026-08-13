@@ -695,6 +695,13 @@ export interface RendererPreloadedInterface {
          * come back in the response.
          */
         signIn(projectPath: string, authUrl: string, token: string): Promise<RequestStatus<VcsSignInOutcome>>;
+        /**
+         * Put a server's certificate authority into this account's trust store.
+         *
+         * **Changes a setting of the operating system**, which nothing else on this
+         * interface does. Only a certificate Studio itself wrote is eligible.
+         */
+        trustAuthority(projectPath: string, certificatePath: string): Promise<RequestStatus<{ installed: boolean; output: string }>>;
         /** Clear the stored token and Studio's record of whose it was. Local. */
         signOut(projectPath: string): Promise<RequestStatus<{ session: null }>>;
         /**

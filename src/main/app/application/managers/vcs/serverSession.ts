@@ -1,13 +1,17 @@
 import tls from "tls";
+import { X509Certificate } from "crypto";
 import {
     VCS_SIGN_IN_SCHEMES,
     composeVcsIdentity,
     isVcsSignInAddress,
     parseVcsRemoteUrl,
+    vcsAddressesInAudience,
     type VcsServerAccount,
     type VcsServerSession,
     type VcsSignInProblem,
+    type VcsSignInToken,
 } from "@shared/types/vcs";
+import { describeAuthority, writeAuthorityCertificate } from "./authorityTrust";
 import {
     listAuthSessions,
     loginWithToken,
@@ -28,12 +32,14 @@ import {
  * were measured against a running server rather than read off a protocol document:
  *
  *  - **The sign-in address must be `https` or `ucs-auth`.** The client refuses every
- *    other scheme by name, `http` included, and `http` is what a person types.
+ *    other scheme by name, `http` included, and `http` is what a person types. It is
+ *    also, now, not a thing an author types at all: a token names its own endpoint in
+ *    `aud`, and {@link readSignInToken} reads it out.
  *  - **The certificate must chain to this machine's own trust store.** There is no
  *    pinning hook to pass an authority through and `SSL_CERT_FILE` does nothing on
- *    Windows, so nothing inside the connection can establish trust the first time - a
- *    person does it once, by hand, with a command the server's operator prints. Studio
- *    cannot do it for them: it is a change to the machine's security settings.
+ *    Windows, so nothing inside the connection can establish trust the first time. The
+ *    decision is a person's and stays one, but it is made here, against a fingerprint
+ *    the token carries - see `authorityTrust.ts` for what installing it means.
  *  - **Every transport failure comes back as the same sentence.** An untrusted
  *    authority, a port nothing listens on, an unresolvable name and an endpoint
  *    speaking plain HTTP all produce `exchanging external token: failed to connect to
@@ -66,7 +72,7 @@ export class VcsSignInError extends Error {
  * name; an address is optional, and a server that records none simply produces an
  * identity with no angle brackets - the same shape as an author who set no email.
  */
-export function decodeServerAccount(token: string): VcsServerAccount {
+function tokenClaims(token: string): Record<string, unknown> {
     const parts = token.trim().split(".");
     if (parts.length !== 3 || !parts[1]) {
         throw new VcsSignInError(
@@ -75,15 +81,18 @@ export function decodeServerAccount(token: string): VcsServerAccount {
         );
     }
 
-    let claims: Record<string, unknown>;
     try {
-        claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8")) as Record<string, unknown>;
+        return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8")) as Record<string, unknown>;
     } catch {
         throw new VcsSignInError(
             { kind: "token" },
             "That token could not be read. Paste the whole token the server's operator gave you.",
         );
     }
+}
+
+export function decodeServerAccount(token: string): VcsServerAccount {
+    const claims = tokenClaims(token);
 
     const text = (key: string): string => (typeof claims[key] === "string" ? (claims[key] as string).trim() : "");
     // `sub` is where the account id belongs in a JWT and is what this server writes.
@@ -117,6 +126,42 @@ export function decodeServerAccount(token: string): VcsServerAccount {
 }
 
 /**
+ * Read everything a token answers about itself: who, where, and which authority.
+ *
+ * The two addresses come out of `aud`, which a token carries because the client
+ * compares it against whatever it is dialling. That makes them the server's own
+ * statement about itself rather than something an author was told over chat and asked to
+ * retype - and retyping was where this went wrong for people who do not run the server.
+ *
+ * The fingerprint is Hub's `authority_sha256`. Nothing verifies the signature over it,
+ * and `vcsAuthorityIsVouchedFor` in shared types is where that is accounted for.
+ */
+export function readSignInToken(token: string): VcsSignInToken {
+    const account = decodeServerAccount(token);
+    const claims = tokenClaims(token);
+    const audience = Array.isArray(claims.aud)
+        ? (claims.aud as unknown[])
+        // A single-valued audience is legal JWT and a Hub does not write one, but a
+        // server that does would otherwise have its one address ignored.
+        : typeof claims.aud === "string" ? [claims.aud] : [];
+    const { authUrls, remotes } = vcsAddressesInAudience(audience);
+    const fingerprint = typeof claims.authority_sha256 === "string" ? claims.authority_sha256.trim() : "";
+
+    return {
+        account,
+        authUrl: authUrls[0] ?? "",
+        remotes,
+        authorityFingerprint: fingerprint,
+    };
+}
+
+/** What the endpoint's certificate chain came to, or why there was no chain to look at. */
+type EndpointVerdict =
+    | { kind: "authority"; fingerprint: string; pem: string; subject: string; expiresAt: string }
+    | { kind: "unreachable"; detail: string }
+    | { kind: "unknown"; detail: string };
+
+/**
  * What is actually wrong with a sign-in address, after the backend has said only
  * "transport error".
  *
@@ -129,7 +174,7 @@ export function decodeServerAccount(token: string): VcsServerAccount {
  * compares against the one their server printed. Naming it is the difference between
  * "trust something" and "trust this".
  */
-export async function diagnoseEndpoint(authUrl: string, timeoutMs = 5_000): Promise<VcsSignInProblem> {
+export async function diagnoseEndpoint(authUrl: string, timeoutMs = 5_000): Promise<EndpointVerdict> {
     let parsed: URL;
     try {
         parsed = new URL(authUrl);
@@ -139,13 +184,13 @@ export async function diagnoseEndpoint(authUrl: string, timeoutMs = 5_000): Prom
     const port = parsed.port ? Number(parsed.port) : 443;
     const host = parsed.hostname;
 
-    return new Promise<VcsSignInProblem>((resolve) => {
+    return new Promise<EndpointVerdict>((resolve) => {
         let settled = false;
-        const done = (problem: VcsSignInProblem) => {
+        const done = (verdict: EndpointVerdict) => {
             if (settled) return;
             settled = true;
             socket.destroy();
-            resolve(problem);
+            resolve(verdict);
         };
 
         const socket = tls.connect({
@@ -165,7 +210,9 @@ export async function diagnoseEndpoint(authUrl: string, timeoutMs = 5_000): Prom
             }
             // Walk to the top of the chain: what a person trusts is the authority, not
             // the endpoint's own certificate, and the authority is what their server's
-            // trust command prints a fingerprint for.
+            // trust command prints a fingerprint for. Trusting the leaf instead would
+            // also have to be redone every time the endpoint's certificate is replaced,
+            // which a Hub does yearly on its own.
             let root = certificate;
             const seen = new Set<string>();
             while (root.issuerCertificate && !seen.has(root.fingerprint256)) {
@@ -173,7 +220,21 @@ export async function diagnoseEndpoint(authUrl: string, timeoutMs = 5_000): Prom
                 if (root.issuerCertificate === root) break;
                 root = root.issuerCertificate;
             }
-            done({ kind: "certificate", fingerprint: root.fingerprint256 ?? "" });
+            if (!root.raw) {
+                done({ kind: "unknown", detail: "the endpoint's certificate could not be read" });
+                return;
+            }
+            // Re-read from the DER rather than trusting the fields beside it: `raw` is
+            // what would be written to disk and installed, so the fingerprint shown must
+            // be that file's, not one reported alongside it.
+            const parsedRoot = new X509Certificate(root.raw);
+            done({
+                kind: "authority",
+                fingerprint: parsedRoot.fingerprint256,
+                pem: parsedRoot.toString(),
+                subject: parsedRoot.subject.split("\n").join(", "),
+                expiresAt: parsedRoot.validTo,
+            });
         });
 
         socket.setTimeout(timeoutMs, () => done({ kind: "unreachable", detail: `${host}:${port} did not answer` }));
@@ -202,9 +263,20 @@ export async function diagnoseEndpoint(authUrl: string, timeoutMs = 5_000): Prom
  */
 export async function signInToServer(
     globals: LoreGlobals,
-    options: { remoteUrl: string; authUrl: string; token: string },
+    options: { remoteUrl: string; authUrl: string; token: string; userDataDir: string },
 ): Promise<VcsServerSession> {
-    const authUrl = options.authUrl.trim();
+    // The token is read first now, because it is what says where to go. A typed address
+    // still wins - it is the way to reach a server whose tokens name no endpoint, and a
+    // way to correct one that names the wrong one.
+    const read = readSignInToken(options.token);
+    const typed = options.authUrl.trim();
+    const authUrl = typed || read.authUrl;
+    if (!authUrl) {
+        throw new VcsSignInError(
+            { kind: "address" },
+            "This token does not say where to sign in, so the address has to be typed.",
+        );
+    }
     if (!isVcsSignInAddress(authUrl)) {
         throw new VcsSignInError(
             { kind: "scheme" },
@@ -212,7 +284,7 @@ export async function signInToServer(
         );
     }
 
-    const account = decodeServerAccount(options.token);
+    const account = read.account;
     // The origin alone: the backend records only that much of a repository URL, and a
     // session written against the full address would not be found by a project whose
     // name on the server differs.
@@ -224,7 +296,10 @@ export async function signInToServer(
             { remoteUrl: remoteOrigin, token: options.token.trim(), authUrl },
         );
     } catch (error) {
-        throw await describeSignInFailure(error, authUrl);
+        throw await describeSignInFailure(error, authUrl, {
+            userDataDir: options.userDataDir,
+            expected: read.authorityFingerprint,
+        });
     }
 
     return { authUrl, remoteOrigin, account, signedInAt: Date.now() };
@@ -238,7 +313,11 @@ export async function signInToServer(
  * directly. Everything else the backend says about a token it has actually delivered is
  * specific enough to pass on.
  */
-async function describeSignInFailure(error: unknown, authUrl: string): Promise<VcsSignInError> {
+async function describeSignInFailure(
+    error: unknown,
+    authUrl: string,
+    context: { userDataDir: string; expected: string },
+): Promise<VcsSignInError> {
     if (error instanceof VcsSignInError) return error;
     const message = error instanceof Error ? error.message : String(error);
 
@@ -249,7 +328,31 @@ async function describeSignInFailure(error: unknown, authUrl: string): Promise<V
         );
     }
     if (/transport error|failed to connect to auth endpoint/i.test(message)) {
-        return new VcsSignInError(await diagnoseEndpoint(authUrl), message);
+        const verdict = await diagnoseEndpoint(authUrl);
+        if (verdict.kind !== "authority") {
+            return new VcsSignInError(verdict, message);
+        }
+        // Written before the author is asked anything, because the file is half of
+        // what makes the answer actionable: on Linux the command names it, and on
+        // every platform the fingerprint on screen is this file's.
+        const certificatePath = await writeAuthorityCertificate(
+            context.userDataDir,
+            verdict.fingerprint,
+            verdict.pem,
+        ).catch(() => "");
+        return new VcsSignInError(
+            {
+                kind: "certificate",
+                authority: describeAuthority({
+                    fingerprint: verdict.fingerprint,
+                    expected: context.expected,
+                    subject: verdict.subject,
+                    expiresAt: verdict.expiresAt,
+                    certificatePath,
+                }),
+            },
+            message,
+        );
     }
     // The endpoint answered and said no. Its own words name which no it was - expired,
     // revoked, meant for another server - and none of those is something this layer
