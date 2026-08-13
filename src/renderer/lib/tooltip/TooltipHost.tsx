@@ -1,12 +1,57 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useHostDocument } from "@/lib/components/layout/hostWindow";
-import { startTooltipTracking, type TooltipTarget } from "./tooltipController";
+import { startTooltipTracking, type TooltipSide, type TooltipTarget } from "./tooltipController";
 
 /** Distance from the anchor's edge. */
 const TOOLTIP_GAP_PX = 6;
 /** Keep the bubble this far from the window edges. */
 const TOOLTIP_MARGIN_PX = 8;
+
+/** Keep a coordinate on screen along the axis the tooltip is centred on. */
+function clamp(value: number, extent: number, available: number): number {
+    return Math.max(TOOLTIP_MARGIN_PX, Math.min(value, available - TOOLTIP_MARGIN_PX - extent));
+}
+
+/**
+ * Where the bubble goes for a declared side, flipping to the opposite one when that side has no
+ * room.
+ *
+ * The default is above, because that is the half of a control the pointer is least likely to be
+ * resting on; it flips below for the top toolbar and the title bar. A rail declares `left`/`right`
+ * instead, so its tooltips open into the app rather than onto the icon above.
+ */
+function place(
+    side: TooltipSide,
+    anchor: DOMRect,
+    size: DOMRect,
+    viewWidth: number,
+    viewHeight: number,
+): { top: number; left: number } {
+    if (side === "left" || side === "right") {
+        const before = anchor.left - TOOLTIP_GAP_PX - size.width;
+        const after = anchor.right + TOOLTIP_GAP_PX;
+        const wanted = side === "left" ? before : after;
+        const fits = side === "left"
+            ? wanted >= TOOLTIP_MARGIN_PX
+            : wanted + size.width <= viewWidth - TOOLTIP_MARGIN_PX;
+        return {
+            left: fits ? wanted : side === "left" ? after : before,
+            top: clamp(anchor.top + anchor.height / 2 - size.height / 2, size.height, viewHeight),
+        };
+    }
+
+    const above = anchor.top - TOOLTIP_GAP_PX - size.height;
+    const below = anchor.bottom + TOOLTIP_GAP_PX;
+    const wanted = side === "bottom" ? below : above;
+    const fits = side === "bottom"
+        ? wanted + size.height <= viewHeight - TOOLTIP_MARGIN_PX
+        : wanted >= TOOLTIP_MARGIN_PX;
+    return {
+        top: fits ? wanted : side === "bottom" ? above : below,
+        left: clamp(anchor.left + anchor.width / 2 - size.width / 2, size.width, viewWidth),
+    };
+}
 
 /**
  * The one tooltip surface a window draws.
@@ -43,19 +88,8 @@ export function TooltipHost() {
         }
         const anchor = target.anchor.getBoundingClientRect();
         const size = bubble.getBoundingClientRect();
-
-        // Above by default, because that is the half of a control the pointer is least likely to be
-        // resting on. Below only when there is no room, which is the top toolbar and the title bar.
-        const above = anchor.top - TOOLTIP_GAP_PX - size.height;
-        const top = above < TOOLTIP_MARGIN_PX ? anchor.bottom + TOOLTIP_GAP_PX : above;
-        const left = Math.max(
-            TOOLTIP_MARGIN_PX,
-            Math.min(
-                anchor.left + anchor.width / 2 - size.width / 2,
-                view.innerWidth - TOOLTIP_MARGIN_PX - size.width,
-            ),
-        );
-        setStyle({ position: "fixed", top: Math.round(top), left: Math.round(left) });
+        const placed = place(target.side, anchor, size, view.innerWidth, view.innerHeight);
+        setStyle({ position: "fixed", top: Math.round(placed.top), left: Math.round(placed.left) });
     }, [doc, target]);
 
     if (!target) {

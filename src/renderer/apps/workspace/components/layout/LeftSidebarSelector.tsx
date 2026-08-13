@@ -4,6 +4,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { SidebarPanelRail } from "./SidebarPanelRail";
+import { TooltipGroup } from "@/lib/tooltip";
 import { SIDEBAR_GROUP_ID } from "./sidebarPanelGroup";
 import { useSidebarPanelContextMenu } from "./useSidebarPanelContextMenu";
 
@@ -101,7 +102,8 @@ export function LeftSidebarSelector({
         : activeId;
 
     return (
-        <div
+        <TooltipGroup
+            side="right"
             data-workspace-sidebar-rail=""
             className="bg-surface-sunken border-r border-edge flex flex-col items-center py-2 px-1 gap-1"
             onContextMenu={(event) => openMenu(event)}
@@ -128,6 +130,6 @@ export function LeftSidebarSelector({
                     iconsEnabled
                 />
             )}
-        </div>
+        </TooltipGroup>
     );
 }

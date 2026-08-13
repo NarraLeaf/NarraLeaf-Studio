@@ -15,7 +15,7 @@ import { VcsSignInError, diagnoseEndpoint, readServerSessions, signInToServer } 
  * Studio's idea of both. This file exists because that idea was wrong twice.
  *
  * ```bash
- * # A server that issues tokens, e.g. one supervised by NarraLeaf Hub:
+ * # A server that issues tokens, e.g. one supervised by NarraLeaf Team:
  * LORE_TEST_AUTH_URL="https://127.0.0.1:41402" \
  * LORE_TEST_REMOTE="lore://127.0.0.1:41337" \
  *   yarn vitest run src/main/app/application/managers/vcs/serverSession.integration.test.ts
@@ -75,6 +75,7 @@ describe.skipIf(!enabled)("signing in to a real server", () => {
                 remoteUrl: REMOTE,
                 authUrl: AUTH_URL.replace(/^https/, scheme),
                 token: fakeToken(),
+                userDataDir: tmp(),
             });
             await expect(attempt).rejects.toBeInstanceOf(VcsSignInError);
             await attempt.catch((error: VcsSignInError) => {
@@ -94,13 +95,18 @@ describe.skipIf(!enabled)("signing in to a real server", () => {
         const listening = await diagnoseEndpoint(AUTH_URL);
         expect(
             listening.kind,
-            "the endpoint answered but its authority is trusted here, so this machine cannot"
-            + " exercise the untrusted path - see this file's header",
-        ).toBe("certificate");
-        if (listening.kind === "certificate") {
-            // Named so a person can compare it with what their server printed. An
-            // unnamed "trust something" is not a step anybody can take safely.
+            "nothing answered at the sign-in address, so this machine cannot exercise the"
+            + " certificate path - see this file's header",
+        ).toBe("authority");
+        if (listening.kind === "authority") {
+            // Named so it can be compared - by Studio against the token's claim, or by a
+            // person against what their server printed. An unnamed "trust something" is
+            // not a step anybody can take safely.
             expect(listening.fingerprint).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+            // The certificate itself, which is what gets written and installed. The
+            // fingerprint above is computed from these bytes rather than reported
+            // alongside them.
+            expect(listening.pem).toContain("BEGIN CERTIFICATE");
         }
 
         const absent = await diagnoseEndpoint(DEAD_ENDPOINT);
@@ -109,12 +115,29 @@ describe.skipIf(!enabled)("signing in to a real server", () => {
 
     it("says the certificate is the problem when the sign-in fails on the transport", async () => {
         const globals = globalsIn(tmp());
-        const attempt = signInToServer(globals, { remoteUrl: REMOTE, authUrl: AUTH_URL, token: fakeToken() });
+        const userDataDir = tmp();
+        const attempt = signInToServer(globals, {
+            remoteUrl: REMOTE,
+            authUrl: AUTH_URL,
+            token: fakeToken(),
+            userDataDir,
+        });
         await expect(attempt).rejects.toBeInstanceOf(VcsSignInError);
         await attempt.catch((error: VcsSignInError) => {
             // Not "unknown", and not the backend's sentence passed through: this is the
-            // one failure in the whole flow whose remedy is a command run outside Studio.
+            // one failure in the whole flow whose remedy changes the machine.
             expect(error.problem.kind).toBe("certificate");
+            if (error.problem.kind !== "certificate") return;
+            const { authority } = error.problem;
+            // The certificate is on this machine by the time the author is asked about
+            // it. That is the half that used to be impossible: the command they were
+            // given named a file that only existed on the server.
+            expect(fs.existsSync(authority.path)).toBe(true);
+            expect(fs.readFileSync(authority.path, "utf-8")).toContain("BEGIN CERTIFICATE");
+            expect(authority.command).toContain(authority.path);
+            // This token vouches for nothing, so there is nothing to compare against and
+            // the interface must fall back to asking a person.
+            expect(authority.expected).toBe("");
         });
     });
 
@@ -134,7 +157,12 @@ describe.skipIf(!enabled)("signing in to a real server", () => {
         // Needs `LORE_TEST_TOKEN` AND an authority this machine has been told to trust.
         // Both are deliberate manual steps; see the header.
         const globals = globalsIn(tmp());
-        const session = await signInToServer(globals, { remoteUrl: REMOTE, authUrl: AUTH_URL, token: TOKEN });
+        const session = await signInToServer(globals, {
+            remoteUrl: REMOTE,
+            authUrl: AUTH_URL,
+            token: TOKEN,
+            userDataDir: tmp(),
+        });
         expect(session.account.userId).not.toBe("");
         expect(session.remoteOrigin).toBe(REMOTE);
 

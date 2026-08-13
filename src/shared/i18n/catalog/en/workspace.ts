@@ -776,6 +776,34 @@ export const workspace = {
                     // Where a token comes from, in one line, because there is nowhere else to
                     // learn it: nothing in Studio can issue one.
                     hint: "Whoever runs this server issues the token and hands it to you.",
+                    /**
+                     * Trusting the authority a server's certificate is issued from.
+                     *
+                     * Two readers, and the words have to work for both. Where the token names
+                     * this authority, the comparison is already made and this is a decision.
+                     * Where it names none, the fingerprint is here to be checked against what
+                     * somebody was told - which is what everybody did before, and still works.
+                     *
+                     * Nothing here calls it a "root CA" or a "trust store": what the author is
+                     * agreeing to is said in the sentence, and the name for the machinery is
+                     * not theirs to learn.
+                     */
+                    trust: {
+                        open: "Trust this server on this computer",
+                        title: "Trust this server?",
+                        vouched: "The token you pasted names this authority, and this is the authority answering at that address.",
+                        compare: "Check this fingerprint against the one whoever runs the server gives you, over something other than this connection.",
+                        authorityLabel: "Issued by",
+                        fingerprintLabel: "Fingerprint",
+                        // The cost of being wrong, in one sentence, without softening it. The
+                        // account rather than the computer is not a detail: it is what bounds
+                        // the damage, and it is the reason the per-user store is used.
+                        meaning: "Anything holding this authority's key can then issue a certificate for any address, and this account will believe it. Only this account on this computer is affected.",
+                        manual: "This system has no per-account trust store, so Studio cannot do it. Run this, then sign in again:",
+                        copy: "Copy the command",
+                        confirm: "Trust it",
+                        cancel: "Cancel",
+                    },
                     submit: "Sign in",
                     cancel: "Cancel",
                     /**
@@ -806,10 +834,22 @@ export const workspace = {
                     problem: {
                         scheme: "A sign-in address has to start with https:// or ucs-auth://.",
                         token: "That is not a token this server issued. Paste the whole token you were given.",
+                        // Answered only after a token has been read and found to name no
+                        // endpoint, which is what reveals the address field. Most tokens name
+                        // one and nobody sees this.
+                        address: "This token does not say where to sign in, so the address is needed too.",
+                        // The token named no authority, so there is a comparison left to make
+                        // and it is a person's. Shown above the offer, not instead of it.
                         certificate:
-                            "This machine has not been told to trust the authority this server signs with, "
-                            + "and only a person can tell it. Ask whoever runs the server for the command, "
-                            + "and check that the fingerprint they give you is {fingerprint}.",
+                            "This computer has not been told to trust the authority this server signs with. "
+                            + "Its fingerprint is {fingerprint}.",
+                        // The token named one authority and a different one answered. Not a
+                        // step that was missed: this is what standing in the way looks like,
+                        // and nothing here offers to trust it.
+                        mismatch:
+                            "The server at that address is not the one this token is for. The token names "
+                            + "{expected}, and {found} answered. Do not trust it; ask whoever runs the "
+                            + "server what happened.",
                         unreachable: "Nothing answered at that address ({detail}).",
                         refused: "The server would not accept that token ({detail}).",
                         unknown: "The sign-in did not finish ({detail}).",
