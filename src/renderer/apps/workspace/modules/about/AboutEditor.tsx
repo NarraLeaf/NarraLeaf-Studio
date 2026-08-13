@@ -54,7 +54,7 @@ export function AboutEditor(_: EditorComponentProps) {
                             type="button"
                             onClick={handleOpenWebsite}
                             className="flex items-center gap-1.5 h-8 px-3 rounded-md text-sm text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default shrink-0"
-                            title={t("about.visitWebsite")}
+                            data-tip={t("about.visitWebsite")}
                         >
                             <Globe className="w-4 h-4" />
                             <span>{t("about.visitWebsite")}</span>

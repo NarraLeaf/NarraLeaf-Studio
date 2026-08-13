@@ -104,7 +104,7 @@ function SourceRow({ label, value, mono }: { label: string; value: string; mono?
     return (
         <div className="flex items-baseline justify-between gap-2">
             <dt className="shrink-0 text-2xs text-fg-subtle">{label}</dt>
-            <dd className={`min-w-0 truncate text-2xs text-fg-muted ${mono ? "font-mono" : ""}`} title={value}>
+            <dd className={`min-w-0 truncate text-2xs text-fg-muted ${mono ? "font-mono" : ""}`} data-tip={value}>
                 {value}
             </dd>
         </div>

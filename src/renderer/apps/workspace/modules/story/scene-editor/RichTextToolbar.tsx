@@ -10,6 +10,7 @@ import { useRichToolbarExpanded } from "./storyEditorSessionStore";
 import { defaultInterpolationForKind, getLastInterpolationKind } from "./storyInterpolation";
 import { RubyPopover } from "./RubyPopover";
 import type { ActiveMarks, RichTextInputHandle, RubyTarget } from "./RichTextInput";
+import { TooltipGroup } from "@/lib/tooltip";
 
 /** Fallback quick colors shown until the author has built up a recent-colors history. */
 const DEFAULT_SWATCHES = ["#ffffff", "#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
@@ -398,7 +399,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
     }
 
     const strip = expanded ? (
-        <div
+        <TooltipGroup
             ref={stripRef}
             data-rt-toolbar
             role="toolbar"
@@ -407,14 +408,14 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             onMouseDown={keepFocus}
             onKeyDown={onStripKeyDown}
         >
-            <button type="button" className={BTN} onClick={collapse} title={t("story.richText.collapse")}>
+            <button type="button" className={BTN} onClick={collapse} data-tip={t("story.richText.collapse")} aria-label={t("story.richText.collapse")}>
                 <ChevronDown className="h-3.5 w-3.5" />
             </button>
             <div className="mx-0.5 h-4 w-px bg-fill" />
-            <button type="button" className={active.bold ? BTN_ACTIVE : BTN} aria-pressed={active.bold} onClick={() => keepKeyboard(() => props.editor.current?.toggleMark("bold"))} title={t("story.richText.bold")}>
+            <button type="button" className={active.bold ? BTN_ACTIVE : BTN} aria-pressed={active.bold} onClick={() => keepKeyboard(() => props.editor.current?.toggleMark("bold"))} data-tip={t("story.richText.bold")} aria-label={t("story.richText.bold")}>
                 <Bold className="h-3.5 w-3.5" />
             </button>
-            <button type="button" className={active.italic ? BTN_ACTIVE : BTN} aria-pressed={active.italic} onClick={() => keepKeyboard(() => props.editor.current?.toggleMark("italic"))} title={t("story.richText.italic")}>
+            <button type="button" className={active.italic ? BTN_ACTIVE : BTN} aria-pressed={active.italic} onClick={() => keepKeyboard(() => props.editor.current?.toggleMark("italic"))} data-tip={t("story.richText.italic")} aria-label={t("story.richText.italic")}>
                 <Italic className="h-3.5 w-3.5" />
             </button>
             {/*
@@ -439,7 +440,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                     }
                     openRuby();
                 }}
-                title={active.canRuby ? t("story.richText.ruby") : t("story.richText.rubyHint")}
+                data-tip={active.canRuby ? t("story.richText.ruby") : t("story.richText.rubyHint")} aria-label={active.canRuby ? t("story.richText.ruby") : t("story.richText.rubyHint")}
             >
                 <Superscript className="h-3.5 w-3.5" />
             </button>
@@ -459,7 +460,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                         style={{ backgroundColor: color }}
                         aria-pressed={isActive}
                         onClick={() => keepKeyboard(() => applyColor(color))}
-                        title={t("story.richText.textColor", { color })}
+                        data-tip={t("story.richText.textColor", { color })} aria-label={t("story.richText.textColor", { color })}
                     />
                 );
             })}
@@ -473,7 +474,8 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                     // in the strip. Closing it with the pointer hands the line back, as before.
                     ? closePalette(stripRef.current?.contains(globalThis.document.activeElement) ? "trigger" : "editor")
                     : openPalette())}
-                title={t("story.richText.moreColors")}
+                data-tip={t("story.richText.moreColors")}
+                aria-label={t("story.richText.moreColors")}
             >
                 <Palette className="h-3.5 w-3.5" />
                 {active.color ? (
@@ -484,14 +486,14 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                 ) : null}
             </button>
             <div className="mx-0.5 h-4 w-px bg-fill" />
-            <button type="button" className={BTN} onClick={() => keepKeyboard(() => props.editor.current?.insertPause(true))} title={t("story.richText.insertPause")}>
+            <button type="button" className={BTN} onClick={() => keepKeyboard(() => props.editor.current?.insertPause(true))} data-tip={t("story.richText.insertPause")} aria-label={t("story.richText.insertPause")}>
                 <PauseIcon className="h-3.5 w-3.5" />
             </button>
             <button
                 type="button"
                 className={BTN}
                 onClick={() => keepKeyboard(() => props.editor.current?.insertInterpolation(defaultInterpolationForKind(getLastInterpolationKind())))}
-                title={props.hasVariables ? t("story.richText.insertValue") : t("story.richText.insertValueHint")}
+                data-tip={props.hasVariables ? t("story.richText.insertValue") : t("story.richText.insertValueHint")} aria-label={props.hasVariables ? t("story.richText.insertValue") : t("story.richText.insertValueHint")}
             >
                 <Braces className="h-3.5 w-3.5" />
             </button>
@@ -499,11 +501,11 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                 // NOT wrapped in `keepKeyboard`: this one opens the expression popover on the chip it
                 // just inserted, and that popover wants the focus. Dragging it back to the strip a
                 // frame later would take the author out of the editor they were just handed.
-                <button type="button" className={BTN} onClick={() => props.onInsertEvent?.()} title={t("story.richText.insertExpression")}>
+                <button type="button" className={BTN} onClick={() => props.onInsertEvent?.()} data-tip={t("story.richText.insertExpression")} aria-label={t("story.richText.insertExpression")}>
                     <Smile className="h-3.5 w-3.5" />
                 </button>
             ) : null}
-        </div>
+        </TooltipGroup>
     ) : (
         <button
             type="button"
@@ -511,7 +513,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             className="inline-flex h-6 items-center gap-1 rounded-md border border-edge bg-surface-raised px-1.5 text-2xs text-fg-muted shadow transition-colors hover:text-fg"
             onMouseDown={keepFocus}
             onClick={() => setExpanded(true)}
-            title={t("story.richText.tools")}
+            data-tip={t("story.richText.tools")} aria-label={t("story.richText.tools")}
         >
             <Type className="h-3 w-3" />
             <ChevronRight className="h-3 w-3" />

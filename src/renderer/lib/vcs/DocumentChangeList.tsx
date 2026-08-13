@@ -86,7 +86,7 @@ export function DocumentChangeList({ diff, limit, dense = false, footer, wholeDo
                 // Quiet by design: one dimmed line, no badge and no colour. It is a caveat about how
                 // the rows below were produced, not a status of the document - and a 320px rail has
                 // no room for something that looks like a warning next to fifty file rows.
-                <p className={cn("truncate text-2xs text-fg-subtle", dense ? "" : "mb-0.5")} title={t(caption.hintKey)}>
+                <p className={cn("truncate text-2xs text-fg-subtle", dense ? "" : "mb-0.5")} data-tip={t(caption.hintKey)}>
                     {t(caption.key)}
                 </p>
             )}
@@ -137,7 +137,7 @@ function ChangeLine({ row, dense }: { row: DocumentChangeRow; dense: boolean }) 
             )}
             // The full path, because a row shows the change and not where in the document it sits.
             // Absent for a change at the document root, where there is no path to give.
-            title={path || undefined}
+            data-tip={path || undefined}
         >
             <span
                 aria-hidden
@@ -157,7 +157,7 @@ function ChangeLine({ row, dense }: { row: DocumentChangeRow; dense: boolean }) 
             {row.truncated > 0 && (
                 <span
                     className="ml-auto shrink-0 text-2xs text-fg-subtle"
-                    title={t("documentDiff.rows.moreInGroup", { count: String(row.truncated) })}
+                    data-tip={t("documentDiff.rows.moreInGroup", { count: String(row.truncated) })}
                 >
                     +{row.truncated}
                 </span>
@@ -182,13 +182,13 @@ function ValuePair({ from, to }: { from?: string; to?: string }) {
     return (
         <span className="flex min-w-0 shrink items-baseline gap-1 text-2xs text-fg-subtle">
             {from !== undefined && (
-                <span className="min-w-0 max-w-[12rem] truncate font-mono" title={from || undefined}>
+                <span className="min-w-0 max-w-[12rem] truncate font-mono" data-tip={from || undefined}>
                     {from}
                 </span>
             )}
             {from !== undefined && to !== undefined && <span aria-hidden>→</span>}
             {to !== undefined && (
-                <span className="min-w-0 max-w-[12rem] truncate font-mono text-fg-muted" title={to || undefined}>
+                <span className="min-w-0 max-w-[12rem] truncate font-mono text-fg-muted" data-tip={to || undefined}>
                     {to}
                 </span>
             )}

@@ -115,7 +115,7 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
                 type="button"
                 className={cn("shrink-0 rounded-md p-0.5", tone.ghost, inlineFailure && "mt-0.5")}
                 onClick={onDismiss}
-                title={t("devMode.dismiss")}
+                data-tip={t("devMode.dismiss")}
                 aria-label={t("devMode.dismiss")}
             >
                 <X className="h-3 w-3" aria-hidden />

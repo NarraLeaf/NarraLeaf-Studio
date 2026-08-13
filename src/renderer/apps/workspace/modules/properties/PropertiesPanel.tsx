@@ -215,7 +215,7 @@ function createLayoutInspectorSchema(
                             onClick={toggle}
                             aria-pressed={pressed}
                             aria-label={pressed ? t("properties.layout.unlockAspect") : t("properties.layout.lockAspect")}
-                            title={pressed ? t("properties.layout.unlockAspect") : t("properties.layout.lockAspect")}
+                            data-tip={pressed ? t("properties.layout.unlockAspect") : t("properties.layout.lockAspect")}
                             className={controlButtonClass(pressed)}
                         >
                             <Link className="w-4 h-4" />

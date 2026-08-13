@@ -135,7 +135,7 @@ export function SurfaceAlignTrigger({ surfaceId, documentService, stateService, 
                     type="button"
                     active={popover.open}
                     onClick={popover.toggle}
-                    title={readOnly && readOnlyReason ? readOnlyReason : t("uiEditor.align.label")}
+                    data-tip={readOnly && readOnlyReason ? readOnlyReason : t("uiEditor.align.label")}
                     aria-expanded={popover.open}
                     aria-haspopup="dialog"
                 >

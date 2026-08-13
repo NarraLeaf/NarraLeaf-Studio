@@ -106,7 +106,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                                     onClick={() => handleRemoveTag(tag)}
                                     disabled={isDisabled}
                                     className="hover:text-primary cursor-default disabled:opacity-50"
-                                    title={t("properties.tags.remove")}
+                                    data-tip={t("properties.tags.remove")}
                                     aria-label={t("properties.tags.removeAria", { tag })}
                                 >
                                     <X className="w-3 h-3" />
@@ -136,7 +136,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                         disabled={!newTag.trim() || isDisabled}
                         className="grid h-9 w-9 place-items-center bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors
                             disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
-                        title={t("properties.tags.add")}
+                        data-tip={t("properties.tags.add")}
                         aria-label={t("properties.tags.add")}
                     >
                         <Plus className="w-4 h-4" />

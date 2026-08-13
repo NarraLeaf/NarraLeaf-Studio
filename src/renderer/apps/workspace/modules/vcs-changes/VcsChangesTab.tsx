@@ -148,7 +148,7 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
                         size="xs"
                         onClick={diff.reload}
                         disabled={diff.loading}
-                        title={t("documentDiff.tab.refresh")}
+                        data-tip={t("documentDiff.tab.refresh")}
                         aria-label={t("documentDiff.tab.refresh")}
                     >
                         {diff.loading

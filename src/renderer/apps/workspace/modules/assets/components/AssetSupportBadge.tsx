@@ -47,7 +47,7 @@ export function AssetSupportBadge({
 
     if (record.state === "unplayable") {
         return (
-            <Badge tone="danger" className={className} title={t("assets.support.notPlayableHint")}>
+            <Badge tone="danger" className={className} data-tip={t("assets.support.notPlayableHint")}>
                 {t("assets.support.notPlayable")}
             </Badge>
         );
@@ -63,7 +63,7 @@ export function AssetSupportBadge({
             <Badge
                 tone="warning"
                 className={className}
-                title={t("assets.support.needsConvertingRemoteHint")}
+                data-tip={t("assets.support.needsConvertingRemoteHint")}
             >
                 {label}
             </Badge>

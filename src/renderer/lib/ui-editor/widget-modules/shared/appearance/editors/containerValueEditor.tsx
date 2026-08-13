@@ -99,7 +99,7 @@ export function ContainerAppearanceValueEditor({
                     onClick={() => onChange(!b)}
                     aria-pressed={b}
                     className={controlButtonClass(b)}
-                    title={t("widgetAppearance.corners.linkTitle")}
+                    data-tip={t("widgetAppearance.corners.linkTitle")}
                 >
                     <span className="text-2xs font-medium px-1">{t("widgetAppearance.corners.link")}</span>
                 </button>

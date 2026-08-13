@@ -193,7 +193,7 @@ function ConfigSlot({
                             size="sm"
                             variant="ghost"
                             disabled={frozen.disabled}
-                            title={frozen.title}
+                            data-tip={frozen["data-tip"]}
                             onClick={restore.onClick}
                             className="px-1.5"
                             data-build-plugin-restore={handle}
@@ -215,7 +215,7 @@ function ConfigSlot({
                        this control is editing may be filled in under the handle it already names. */
                     fillsHandle={!inheritable || resolved.overridden}
                     disabled={frozen.disabled}
-                    title={frozen.title}
+                    title={frozen["data-tip"]}
                     handle={handle}
                 />
             ) : (
@@ -223,7 +223,7 @@ function ConfigSlot({
                     value={stated}
                     placeholder={inheritable ? inherited : undefined}
                     disabled={frozen.disabled}
-                    title={frozen.title}
+                    title={frozen["data-tip"]}
                     label={label ? `${field.label} - ${label}` : field.label}
                     handle={handle}
                     onCommit={next => service?.setPluginConfigValue(appTagId, field, next, platform)}
@@ -319,7 +319,7 @@ function SecretValue({
                         size="sm"
                         variant="ghost"
                         disabled={disabled}
-                        title={title}
+                        data-tip={title}
                         className="shrink-0 px-1.5"
                         onClick={() => service?.clearPluginConfigValue(appTagId, field, platform)}
                         data-build-plugin-clear={handle}
@@ -400,7 +400,7 @@ function CommittedInput({
             value={draft}
             placeholder={placeholder}
             disabled={disabled}
-            title={title}
+            data-tip={title}
             aria-label={label}
             className="w-full min-w-0"
             data-build-plugin-field={handle}

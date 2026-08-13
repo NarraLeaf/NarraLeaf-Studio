@@ -32,7 +32,7 @@ export const StatusBarEntryIdContext = createContext<string | undefined>(undefin
  */
 export function StatusEntry({
     onClick,
-    title,
+    tooltip,
     children,
     emphasis = false,
     tone: toneOverride,
@@ -40,7 +40,7 @@ export function StatusEntry({
     dataAttributes,
 }: {
     onClick?: (event: React.MouseEvent) => void;
-    title?: string;
+    tooltip?: string;
     children: React.ReactNode;
     emphasis?: boolean;
     /**
@@ -70,7 +70,7 @@ export function StatusEntry({
     const className = `flex h-full items-center gap-1.5 px-2 text-2xs transition-colors duration-300 ${tone}`;
     if (!onClick) {
         return (
-            <span className={className} title={title} aria-label={ariaLabel} {...attributes}>
+            <span className={className} data-tip={tooltip} aria-label={ariaLabel} {...attributes}>
                 {children}
             </span>
         );
@@ -79,7 +79,7 @@ export function StatusEntry({
         <button
             type="button"
             onClick={onClick}
-            title={title}
+            data-tip={tooltip}
             aria-label={ariaLabel}
             className={className}
             {...attributes}

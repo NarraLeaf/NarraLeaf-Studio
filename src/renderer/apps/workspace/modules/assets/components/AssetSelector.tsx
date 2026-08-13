@@ -702,7 +702,7 @@ export function AssetSelector({
                         <button
                             onClick={onClose}
                             className="p-1 rounded-md hover:bg-fill"
-                            title={t("common.close")}
+                            data-tip={t("common.close")} aria-label={t("common.close")}
                         >
                             <X className="w-4 h-4" />
                         </button>

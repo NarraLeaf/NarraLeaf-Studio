@@ -219,7 +219,7 @@ export function AvatarSection(props: {
                         onCheckedChange={props.onToggleScope}
                         disabled={props.frozen}
                         aria-label={t("characters.preview.portraitScoped")}
-                        title={props.frozen ? props.freezeReason : undefined}
+                        data-tip={props.frozen ? props.freezeReason : undefined}
                     />
                     <FieldLabel as="span" className="mb-0">{t("characters.preview.portraitScoped")}</FieldLabel>
                 </div>

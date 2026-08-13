@@ -88,11 +88,11 @@ export function CacheInventoryPanel() {
                     return (
                         <div key={id} className="group flex h-9 items-center gap-3 rounded-md px-2 hover:bg-fill-subtle">
                             <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm text-fg-muted" title={bucket?.path ?? undefined}>
+                                <p className="truncate text-sm text-fg-muted" data-tip={bucket?.path ?? undefined}>
                                     {t(labelKey)}
                                 </p>
                             </div>
-                            <span className="shrink-0 text-xs text-fg-subtle" title={t(descriptionKey)}>
+                            <span className="shrink-0 text-xs text-fg-subtle" data-tip={t(descriptionKey)}>
                                 {measuring
                                     ? t("settings.data.cache.measuring")
                                     : bucket?.error

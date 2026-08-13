@@ -226,7 +226,7 @@ function AudioAssetPickerRow({
                 ref={anchorRef}
                 type="button"
                 disabled={disabled}
-                title={assetName ?? undefined}
+                data-tip={assetName ?? undefined}
                 className={`flex w-full min-w-0 items-center gap-1.5 rounded-md border border-edge bg-surface px-2 py-1 text-left text-2xs ${
                     disabled ? "cursor-default opacity-80" : "hover:border-primary/35 hover:bg-fill-subtle"
                 }`}
@@ -317,7 +317,7 @@ function ImageAssetPickerCard({
                     className={`group relative flex w-full min-w-0 overflow-hidden rounded-md border border-edge bg-surface text-left transition-colors ${
                         disabled ? "cursor-default opacity-80" : "hover:border-primary/35 hover:bg-fill-subtle"
                     } ${heightClass}`}
-                    title={assetId ? `${label} (${assetId})` : t("blueprint.image.selectAsset")}
+                    data-tip={assetId ? `${label} (${assetId})` : t("blueprint.image.selectAsset")}
                     onClick={e => {
                         e.stopPropagation();
                         if (!disabled) {
@@ -358,7 +358,7 @@ function ImageAssetPickerCard({
                     <button
                         type="button"
                         className="absolute right-1 top-1 rounded-md bg-black/55 p-0.5 text-white/80 hover:bg-black/80 hover:text-white"
-                        title={t("blueprint.image.clear")}
+                        data-tip={t("blueprint.image.clear")}
                         aria-label={t("blueprint.image.clear")}
                         onMouseDown={stopFlowNodePointerBubble}
                         onPointerDown={stopFlowNodePointerBubble}
@@ -527,7 +527,7 @@ function DynamicPinLabelInput({
             type="text"
             value={draft}
             size="sm"
-            title={isInvalid ? t("blueprint.json.fieldNameInvalid") : t("blueprint.pin.jsonFieldName")}
+            data-tip={isInvalid ? t("blueprint.json.fieldNameInvalid") : t("blueprint.pin.jsonFieldName")}
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
             onChange={e => {
@@ -819,7 +819,7 @@ function InputPinRow({
             ) : (
                 <span
                     className={`shrink-0 text-2xs leading-tight ${labelClass}`}
-                    title={pinLabelOnly(pin, t)}
+                    data-tip={pinLabelOnly(pin, t)}
                 >
                     {pinLabelOnly(pin, t)}
                 </span>
@@ -830,7 +830,7 @@ function InputPinRow({
                     {removable && onRemovePin ? (
                         <Button
                             type="button"
-                            title={t("blueprint.pin.removeInput")}
+                            data-tip={t("blueprint.pin.removeInput")}
                             aria-label={t("blueprint.pin.removeInput")}
                             variant="ghost"
                             size="sm"
@@ -856,7 +856,7 @@ function InputPinRow({
                     />
                     <Button
                         type="button"
-                        title={t("blueprint.pin.showInput")}
+                        data-tip={t("blueprint.pin.showInput")}
                         aria-label={t("blueprint.pin.showInput")}
                         variant="ghost"
                         size="sm"
@@ -889,7 +889,7 @@ function InputPinRow({
         ) : (
             <span
                 className={`min-w-0 shrink truncate text-2xs leading-tight ${labelClass}`}
-                title={pinCaption(pin, semantic, t)}
+                data-tip={pinCaption(pin, semantic, t)}
             >
                 {pinCaption(pin, semantic, t)}
             </span>
@@ -901,14 +901,14 @@ function InputPinRow({
                 position={Position.Left}
                 id={pin.id}
                 className={`${handleClass} !left-0 !top-1/2 !-translate-y-1/2`}
-                title={pinCaption(pin, semantic, t)}
+                data-tip={pinCaption(pin, semantic, t)}
             />
             <div className="flex min-w-0 flex-1 items-center pl-3.5">
                 <div className="flex min-w-0 max-w-full items-center gap-0.5">
                     {removable && onRemovePin ? (
                         <Button
                             type="button"
-                            title={t("blueprint.pin.removeInput")}
+                            data-tip={t("blueprint.pin.removeInput")}
                             aria-label={t("blueprint.pin.removeInput")}
                             variant="ghost"
                             size="sm"
@@ -928,7 +928,7 @@ function InputPinRow({
                     {canInlineLiteral && selected ? (
                         <Button
                             type="button"
-                            title={t("blueprint.pin.editValue")}
+                            data-tip={t("blueprint.pin.editValue")}
                             aria-label={t("blueprint.pin.editValue")}
                             variant="ghost"
                             size="sm"
@@ -984,7 +984,7 @@ function OutputPinRow({
                 {onRemovePin ? (
                     <Button
                         type="button"
-                        title={t("blueprint.pin.removeOutput")}
+                        data-tip={t("blueprint.pin.removeOutput")}
                         aria-label={t("blueprint.pin.removeOutput")}
                         variant="ghost"
                         size="sm"
@@ -1028,7 +1028,7 @@ function OutputPinRow({
                     position={Position.Right}
                     id={pin.id}
                     className={`${handleClass} !right-0 !top-1/2 !-translate-y-1/2`}
-                    title={pinCaption(pin, semantic, t)}
+                    data-tip={pinCaption(pin, semantic, t)}
                 />
             </div>
         );
@@ -1037,7 +1037,7 @@ function OutputPinRow({
         <div className="relative flex min-h-[20px] w-full min-w-0 items-center justify-end pl-0.5 pr-1">
             <span
                 className="min-w-0 flex-1 truncate pr-3.5 text-right text-2xs leading-tight text-fg-muted"
-                title={pinCaption(pin, semantic, t)}
+                data-tip={pinCaption(pin, semantic, t)}
             >
                 {pinCaption(pin, semantic, t)}
             </span>
@@ -1046,7 +1046,7 @@ function OutputPinRow({
                 position={Position.Right}
                 id={pin.id}
                 className={`${handleClass} !right-0 !top-1/2 !-translate-y-1/2`}
-                title={pinCaption(pin, semantic, t)}
+                data-tip={pinCaption(pin, semantic, t)}
             />
         </div>
     );
@@ -1177,8 +1177,8 @@ function KeyboardBindingCardControl({
                         ? "border-primary/45 bg-primary/10 text-primary"
                         : "border-edge bg-surface text-fg hover:border-primary/35 hover:bg-fill-subtle"
                 } ${displayValue ? "pr-7" : ""}`}
-                title={displayValue ? t("blueprint.keyboard.boundTo", { key: displayValue }) : t("blueprint.keyboard.bind")}
-                aria-label={displayValue ? t("blueprint.keyboard.boundTo", { key: displayValue }) : t("blueprint.keyboard.bind")}
+                data-tip={displayValue ? t("blueprint.keyboard.boundTo", { key: displayValue }) : t("blueprint.keyboard.bind")}
+
                 aria-pressed={listening}
                 onMouseDown={stopFlowNodePointerBubble}
                 onPointerDown={stopFlowNodePointerBubble}
@@ -1198,7 +1198,7 @@ function KeyboardBindingCardControl({
                 <button
                     type="button"
                     className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-fg-subtle hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
-                    title={t("blueprint.keyboard.clear")}
+                    data-tip={t("blueprint.keyboard.clear")}
                     aria-label={t("blueprint.keyboard.clear")}
                     onMouseDown={event => {
                         event.stopPropagation();
@@ -1915,7 +1915,7 @@ function DisplayableSetVariantCard({
                     className={`mt-1 truncate text-2xs ${
                         targetVariants?.supported === false ? "text-warning" : "text-fg-subtle"
                     }`}
-                    title={message}
+                    data-tip={message}
                 >
                     {message}
                 </div>
@@ -2176,7 +2176,7 @@ function BlueprintCommentNodeCard({
                                 key === colorKey ? "border-white/85" : "border-edge-strong"
                             }`}
                             style={{ background: item.swatch }}
-                            title={commentColorLabel(key, t)}
+                            data-tip={commentColorLabel(key, t)}
                             aria-label={commentColorLabel(key, t)}
                             onClick={e => {
                                 e.stopPropagation();
@@ -2191,7 +2191,7 @@ function BlueprintCommentNodeCard({
                                 ? "border-edge-strong bg-fill-strong"
                                 : "border-edge bg-transparent"
                         }`}
-                        title={backgroundEnabled ? t("blueprint.comment.backgroundOn") : t("blueprint.comment.backgroundOff")}
+                        data-tip={backgroundEnabled ? t("blueprint.comment.backgroundOn") : t("blueprint.comment.backgroundOff")}
                         aria-label={backgroundEnabled ? t("blueprint.comment.sendBehind") : t("blueprint.comment.restoreLayer")}
                         aria-pressed={backgroundEnabled}
                         onClick={e => {
@@ -2217,7 +2217,7 @@ function BlueprintCommentNodeCard({
             {freeze.frozen ? null : (
                 <div
                     className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-fill-subtle"
-                    title={t("blueprint.comment.resize")}
+                    data-tip={t("blueprint.comment.resize")}
                     onPointerDown={startResize}
                 >
                     <div className="absolute bottom-1 right-1 h-2 w-2 border-b border-r border-edge-strong" />
@@ -2259,7 +2259,7 @@ function BlueprintElementLiteralNodeCard({
                       ? "border-yellow-300/90 ring-1 ring-yellow-500/45 shadow-[0_0_20px_rgba(234,179,8,0.18)]"
                       : "border-edge"
             }`}
-            title={firstNodeError?.message}
+            data-tip={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}
         >
             <div className="border-b border-edge px-2 py-1.5">
@@ -2328,7 +2328,7 @@ function BlueprintImageAssetLiteralNodeCard({
                       ? "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
             }`}
-            title={firstNodeError?.message}
+            data-tip={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}
         >
             <div className="border-b border-edge px-2 py-1.5">
@@ -2547,7 +2547,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
     const addPinButton = (
         <Button
             type="button"
-            title={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
+            data-tip={catalog.dynamicInputPinAddLabel ?? t("blueprint.pin.addInput")}
             className="nodrag mt-0.5 flex w-full items-center justify-center rounded-md border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
             variant="ghost"
             size="sm"
@@ -2631,7 +2631,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
             } ${!firstNodeError && isMemo ? "border-l-2 border-l-binding/70" : ""} ${
                 !firstNodeError && isTerminalNode ? "border-r-primary/70" : ""
             }`}
-            title={firstNodeError?.message}
+            data-tip={firstNodeError?.message}
             aria-invalid={Boolean(firstNodeError)}
         >
             <div className="border-b border-edge-subtle px-2 py-1.5">

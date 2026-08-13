@@ -108,7 +108,7 @@ export function DetachedTitleBarControls() {
                 onClick={() => void send("minimize")}
                 className="grid h-8 w-9 cursor-default place-items-center rounded-sm text-fg-muted transition-colors hover:bg-fill"
                 aria-label={t("dialogs.window.minimize")}
-                title={t("dialogs.window.minimize")}
+                data-tip={t("dialogs.window.minimize")}
             >
                 <Minus className="h-4 w-4" />
             </button>
@@ -117,7 +117,7 @@ export function DetachedTitleBarControls() {
                 onClick={() => void send("toggleMaximize")}
                 className="grid h-8 w-9 cursor-default place-items-center rounded-sm text-fg-muted transition-colors hover:bg-fill"
                 aria-label={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
-                title={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
+                data-tip={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
             >
                 <Square className="h-3 w-3" />
             </button>
@@ -126,7 +126,7 @@ export function DetachedTitleBarControls() {
                 onClick={() => void send("close")}
                 className="grid h-8 w-9 cursor-default place-items-center rounded-sm text-fg-muted transition-colors hover:bg-danger/80 hover:text-white"
                 aria-label={t("common.close")}
-                title={t("common.close")}
+                data-tip={t("common.close")}
             >
                 <X className="h-4 w-4" />
             </button>

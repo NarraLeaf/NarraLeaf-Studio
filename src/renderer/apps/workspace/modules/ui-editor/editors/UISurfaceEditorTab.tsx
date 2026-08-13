@@ -713,7 +713,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             type="button"
                             className={toolButtonClass(tool.kind === "select")}
                             onClick={handleSelectTool}
-                            title={t("uiEditor.editor.selectTool")}
+                            data-tip={t("uiEditor.editor.selectTool")} aria-label={t("uiEditor.editor.selectTool")}
                         >
                             <MousePointer2 className="w-4 h-4" />
                         </button>
@@ -721,7 +721,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             type="button"
                             className={toolButtonClass(tool.kind === "pan")}
                             onClick={handlePanTool}
-                            title={t("uiEditor.editor.panTool")}
+                            data-tip={t("uiEditor.editor.panTool")} aria-label={t("uiEditor.editor.panTool")}
                         >
                             <Move className="w-4 h-4" />
                         </button>
@@ -730,7 +730,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 type="button"
                                 active={smartSnapEnabled}
                                 onClick={handleToggleSmartSnap}
-                                title={t("uiEditor.snap.tip")}
+                                data-tip={t("uiEditor.snap.tip")}
                                 aria-pressed={smartSnapEnabled}
                             >
                                 <Magnet className="h-4 w-4" />
@@ -755,7 +755,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             type="button"
                             className={toolButtonClass(false)}
                             onClick={handleStartCurrentSurface}
-                            title={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
+                            data-tip={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")} aria-label={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
                             disabled={!surfaceId || isComponentEdit}
                         >
                             <Play className="w-4 h-4" />

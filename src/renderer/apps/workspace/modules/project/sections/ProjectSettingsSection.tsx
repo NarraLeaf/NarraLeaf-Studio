@@ -267,7 +267,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 <SettingShell
                     title={t("project.settings.webLossyQualityTitle")}
                     description={t("project.settings.webLossyQualityDescription")}
-                    titleAttr={freeze.writes().title}
+                    tooltip={freeze.writes()["data-tip"]}
                 >
                     <NumberField
                         value={webOptimization.lossyQuality}
@@ -287,7 +287,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 <SettingShell
                     title={t("project.settings.crashPolicyTitle")}
                     description={t("project.settings.crashPolicyDescription")}
-                    titleAttr={freeze.writes(savingCrash).title}
+                    tooltip={freeze.writes(savingCrash)["data-tip"]}
                 >
                     <Select
                         options={crashPolicyOptions}
@@ -305,7 +305,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 <SettingShell
                     title={t("project.settings.orientationTitle")}
                     description={t("project.settings.orientationDescription")}
-                    titleAttr={freeze.writes(savingMobile).title}
+                    tooltip={freeze.writes(savingMobile)["data-tip"]}
                 >
                     <Select
                         options={orientationOptions}
@@ -321,7 +321,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 <SettingShell
                     title={t("project.settings.stageFitTitle")}
                     description={t("project.settings.stageFitDescription")}
-                    titleAttr={freeze.writes(savingMobile).title}
+                    tooltip={freeze.writes(savingMobile)["data-tip"]}
                 >
                     <Select
                         options={fitOptions}
@@ -343,7 +343,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         <SettingShell
                             title={t("project.settings.cropAnchorYTitle")}
                             description={t("project.settings.cropAnchorYDescription")}
-                            titleAttr={freeze.writes(savingMobile).title}
+                            tooltip={freeze.writes(savingMobile)["data-tip"]}
                         >
                             <Select
                                 options={cropAnchorYOptions}
@@ -359,7 +359,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         <SettingShell
                             title={t("project.settings.cropAnchorXTitle")}
                             description={t("project.settings.cropAnchorXDescription")}
-                            titleAttr={freeze.writes(savingMobile).title}
+                            tooltip={freeze.writes(savingMobile)["data-tip"]}
                         >
                             <Select
                                 options={cropAnchorXOptions}

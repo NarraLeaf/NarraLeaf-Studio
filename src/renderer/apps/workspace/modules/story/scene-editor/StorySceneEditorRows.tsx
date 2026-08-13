@@ -389,7 +389,7 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                     role="button"
                     tabIndex={0}
                     aria-label={dragLabel}
-                    title={freeze.frozen ? freeze.reason : dragLabel}
+                    data-tip={freeze.frozen ? freeze.reason : dragLabel}
                     className={`absolute right-2 top-1 flex h-[var(--nl-story-row-box)] w-[18px] touch-none select-none items-center justify-center rounded-md text-fg-subtle transition-opacity hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${showGrip ? "opacity-100" : "opacity-0"} ${freeze.frozen ? "cursor-not-allowed" : "hover:cursor-grab"}`}
                     onFocus={() => setGripFocused(true)}
                     onBlur={() => setGripFocused(false)}
@@ -620,7 +620,7 @@ function RowCutPointMark({ appTagId, commandContext }: { appTagId: string; comma
         <span
             className="shrink-0 truncate text-2xs text-fg-subtle"
             // The whole sentence on hover, naming the variant; the row shows the short half of it.
-            title={named
+            data-tip={named
                 ? t("story.rows.cutPointTitle", { name: named.name })
                 : t("story.rows.cutPointInactiveTitle")}
         >
@@ -641,7 +641,7 @@ function RowDiagnosticMark({ code }: { code: StoryRowDiagnosticCode }) {
     return (
         <span
             className="grid h-5 w-5 shrink-0 place-items-center text-warning"
-            title={label}
+            data-tip={label}
             aria-label={label}
             role="img"
         >
@@ -1093,7 +1093,7 @@ function GroupHeadPositionControl(props: { position: StoryStagePlacement | undef
                 ref={buttonRef}
                 type="button"
                 tabIndex={-1}
-                title={t("story.position.label")}
+                data-tip={t("story.position.label")}
                 aria-label={t("story.position.label")}
                 aria-expanded={open}
                 className={[
@@ -1130,7 +1130,7 @@ function GroupHeadPositionControl(props: { position: StoryStagePlacement | undef
                                 key={placement.value}
                                 type="button"
                                 tabIndex={-1}
-                                title={t(`story.position.${placement.value}` as TranslationKey)}
+                                data-tip={t(`story.position.${placement.value}` as TranslationKey)}
                                 aria-label={t(`story.position.${placement.value}` as TranslationKey)}
                                 aria-pressed={selected}
                                 className={[
@@ -1176,7 +1176,7 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
         <button
             type="button"
             tabIndex={-1}
-            title={label}
+            data-tip={label}
             aria-label={label}
             className={[
                 "flex h-6 shrink-0 cursor-default items-center gap-1 rounded-md px-1.5 text-2xs text-fg-muted transition-opacity hover:bg-fill hover:text-primary group-hover:pointer-events-auto group-hover:opacity-100",
@@ -1568,7 +1568,7 @@ function ContainerHeaderAdd(props: { info: StoryContainerHeaderInfo; onAdd: () =
             <button
                 type="button"
                 tabIndex={-1}
-                title={label}
+                data-tip={label}
                 className="rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill hover:text-primary"
                 onClick={event => {
                     event.stopPropagation();
@@ -2626,7 +2626,7 @@ function ActionCommandCategoryRow(props: {
     return (
         <button
             type="button"
-            title={props.label}
+            data-tip={props.label}
             aria-current={props.active ? "true" : undefined}
             className={[
                 "flex h-7 w-full shrink-0 items-center gap-1.5 rounded-md px-1.5 text-xs transition-colors",

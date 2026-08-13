@@ -187,7 +187,7 @@ export function StorySpeakerPortraitMark(props: { identity: StorySpeakerIdentity
                 borderStyle: "solid",
                 borderColor: "var(--nl-speaker-disc)",
             }}
-            title={props.identity.name}
+            data-tip={props.identity.name}
         >
             {props.showingSprite ? (
                 <HeadThumbnail url={props.url} alt="" frame={props.frame} className="h-full w-full" iconClassName="h-3 w-3" />
@@ -225,7 +225,7 @@ export function StorySpeakerDiscMark(props: { identity: StorySpeakerIdentity }) 
                 backgroundColor: "var(--nl-speaker-disc)",
                 color: "var(--nl-speaker-ink)",
             }}
-            title={identity.name}
+            data-tip={identity.name}
         >
             {storySpeakerInitial(identity.name)}
         </span>
@@ -275,7 +275,7 @@ export function StoryNarratorRingMark(props: { glyph?: string; label: string }) 
         <span
             className="flex shrink-0 select-none items-center justify-center rounded-full border border-edge-strong text-fg-muted"
             style={{ width: STORY_MARK_PX, height: STORY_MARK_PX }}
-            title={props.label}
+            data-tip={props.label}
         >
             {props.glyph ? (
                 <span className="text-[12.5px] leading-none">{props.glyph}</span>

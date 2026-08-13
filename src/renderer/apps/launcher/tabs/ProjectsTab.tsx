@@ -247,7 +247,7 @@ export function ProjectsTab() {
                     size="sm"
                     onClick={handleOpenFolder}
                     disabled={isBusy}
-                    title={t("launcher.projects.openFolder")}
+                    data-tip={t("launcher.projects.openFolder")}
                     aria-label={t("launcher.projects.openFolder")}
                 >
                     <FolderOpen className="h-4 w-4" />
@@ -257,7 +257,7 @@ export function ProjectsTab() {
                     size="sm"
                     onClick={handleAddProject}
                     disabled={isBusy}
-                    title={t("launcher.projects.addProject")}
+                    data-tip={t("launcher.projects.addProject")}
                     aria-label={t("launcher.projects.addProject")}
                 >
                     <Plus className="h-4 w-4" />
@@ -282,7 +282,7 @@ export function ProjectsTab() {
                                 onClick={() => handleOpenRecentProject(project)}
                                 disabled={isOpening}
                                 className="w-full flex items-center gap-3 rounded-md px-3 py-2.5 pr-11 text-left hover:bg-fill transition-colors cursor-default disabled:opacity-50 disabled:cursor-not-allowed"
-                                title={t("launcher.projects.openNamed", { name: project.name })}
+                                data-tip={t("launcher.projects.openNamed", { name: project.name })}
                             >
                                 {project.icon && !missingEntry ? (
                                     <img src={project.icon} alt="" className="flex-shrink-0 w-10 h-10 rounded-lg object-contain" />
@@ -335,7 +335,7 @@ export function ProjectsTab() {
                                     setRowMenu({ project, x: rect.right, y: rect.bottom + 4 });
                                 }}
                                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-fg-muted opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong transition-opacity cursor-default"
-                                title={t("launcher.projects.moreActions")}
+                                data-tip={t("launcher.projects.moreActions")}
                                 aria-label={t("launcher.projects.moreActionsNamed", { name: project.name })}
                             >
                                 <MoreVertical className="w-4 h-4" />

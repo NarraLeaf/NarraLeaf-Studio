@@ -461,7 +461,7 @@ function BlueprintAddNodeRow(props: {
                 aria-setsize={props.itemCount}
                 data-bp-add-node-idx={props.flatIndex}
                 className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
-                title={title}
+                data-tip={title}
                 onClick={() => props.onPick(props.entry)}
                 onMouseEnter={() => props.onHover(props.flatIndex)}
             >
