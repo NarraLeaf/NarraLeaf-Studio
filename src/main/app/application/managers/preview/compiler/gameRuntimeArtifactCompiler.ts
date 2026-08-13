@@ -209,6 +209,16 @@ export type GameRuntimeArtifactCompileInput = {
      * packager's identity from being derived twice and disagreeing.
      */
     appId?: string;
+    /**
+     * The application name and identifier this build ships under, as the build
+     * resolved them - a variant's overrides folded in. They name the installed
+     * folder, the window and the web storage, so a demo installed beside the
+     * release is a second application and not a second executable dropped into
+     * the first one's folder. Absent for preview and Dev Mode, which have no
+     * variant to fold and keep the project's own values.
+     */
+    productName?: string;
+    identifier?: string;
 };
 
 export type GameRuntimeArtifactCompileResult = {
@@ -401,8 +411,11 @@ export async function compileGameRuntimeArtifact(
             mode,
             runtimeVersion: input.runtimeVersion,
             project: {
-                name: projectConfig?.name?.trim() || path.basename(input.projectPath) || "NarraLeaf Game",
-                identifier: projectConfig?.identifier?.trim() || undefined,
+                name: input.productName?.trim()
+                    || projectConfig?.name?.trim()
+                    || path.basename(input.projectPath)
+                    || "NarraLeaf Game",
+                identifier: input.identifier?.trim() || projectConfig?.identifier?.trim() || undefined,
                 version: readString(projectConfig?.metadata?.version),
                 metadata: normalizeRecord(projectConfig?.metadata),
                 icon: projectIcon,
@@ -530,7 +543,7 @@ function buildAppManifest(
             ...base,
         };
     }
-    const identifier = readString(projectConfig?.identifier);
+    const identifier = pack.project.identifier ?? readString(projectConfig?.identifier);
     return {
         name: sanitizeProjectFileName(identifier ?? pack.project.name),
         productName: pack.project.name,
