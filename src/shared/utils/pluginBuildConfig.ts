@@ -1,9 +1,12 @@
+import { resolveAppTagPluginConfigValue, type AppTagPluginConfig, type ProjectAppTag } from "../types/appTag";
 import type { GameBuildPlatform } from "../types/gameBuild";
 import {
+    holdsPluginBuildConfigValue,
     isPlatformScopedBuildConfig,
     pluginBuildConfigStorageKey,
     type PluginBuildConfigField,
     type PluginBuildConfigFieldContribution,
+    type PluginBuildConfigValueField,
 } from "../types/plugins";
 
 /**
@@ -104,6 +107,65 @@ export function pluginBuildConfigSlots(
         }
     }
     return slots;
+}
+
+/**
+ * What one plugin's declarations come out to for the variant being built, keyed by field key.
+ *
+ * This is the only route a build config value takes out of the project and into an artifact, so
+ * everything that must not travel is decided here once rather than at each place a value is
+ * handled. Two things do not travel:
+ *
+ *  - A `secret` field, structurally: {@link holdsPluginBuildConfigValue} narrows the field, and
+ *    {@link shippedValue} takes only the narrowed type, so dropping the narrowing does not compile.
+ *  - A platform-scoped field, for now. Its value is keyed by the platform it is for, and one
+ *    compiled artifact is not one platform: the desktop compile serves every desktop target in the
+ *    request, and the web compile serves the browser export and both mobile repacks. There is no
+ *    platform here to resolve against, and answering with another platform's value would be worse
+ *    than answering with nothing. A build that compiles per platform can pass one and lift this.
+ *
+ * A blank value is left out rather than carried as an empty string: never filled in and filled in
+ * with nothing are the same fact to a reader, and one absent key says it without the reader having
+ * to test for two.
+ *
+ * Everything that survives is readable by anyone who opens the package - it sits in the pack beside
+ * the manifest. That is what `secret` is for.
+ */
+export function resolveShippedPluginBuildConfig(
+    plugin: Omit<PluginBuildConfigDeclaringPlugin, "enabled">,
+    tag: ProjectAppTag,
+    base: AppTagPluginConfig,
+): Record<string, string> {
+    const shipped: Record<string, string> = {};
+    for (const contribution of plugin.manifest.contributes?.buildConfig ?? []) {
+        const field: PluginBuildConfigField = {
+            ...contribution,
+            pluginId: plugin.pluginId,
+            pluginName: plugin.manifest.name?.trim() || plugin.pluginId,
+        };
+        if (!holdsPluginBuildConfigValue(field) || isPlatformScopedBuildConfig(field.scope)) {
+            continue;
+        }
+        const value = shippedValue(field, tag, base);
+        if (value) {
+            shipped[field.key] = value;
+        }
+    }
+    return shipped;
+}
+
+/**
+ * The one read that produces a value an artifact will carry, typed on the field that has one.
+ *
+ * A wrapper around a resolver that would take any field, and that is the point: a `secret` handle
+ * cannot reach this line, because the type it takes says so.
+ */
+function shippedValue(
+    field: PluginBuildConfigValueField,
+    tag: ProjectAppTag,
+    base: AppTagPluginConfig,
+): string {
+    return resolveAppTagPluginConfigValue(tag, base, field).value;
 }
 
 /** Whether the field is declared for this platform. A field with no `platforms` applies to all. */

@@ -819,6 +819,16 @@ export interface RendererPreloadedInterface {
             projectPath: string,
             request: BlueprintOpenExternalRequest,
         ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>>;
+        /**
+         * One runtime plugin's request, decided against that plugin's declared patterns.
+         *
+         * No project path: a plugin's declaration is the plugin's, identical in every project it is
+         * installed into, so the project is not what decides this one.
+         */
+        openForPlugin(
+            pluginId: string,
+            request: BlueprintOpenExternalRequest,
+        ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>>;
     };
 
     pluginPermissions: {

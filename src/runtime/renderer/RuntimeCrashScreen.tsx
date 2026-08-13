@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { useTranslation } from "@/lib/i18n";
+import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 import { getRuntimeCrashPolicy } from "./crashPolicy";
 
 interface RuntimeCrashScreenProps {
@@ -33,10 +34,19 @@ export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenPro
      * given up on, and what is wanted then is the message without the stack.
      */
     const showDetails = getRuntimeCrashPolicy() === "details";
+    /**
+     * Shown under every policy, including the one that keeps the error off the screen - especially
+     * that one. A player who is not being shown what went wrong is exactly the player who needs to
+     * be able to hand the file to somebody who can read it. Absent on the web export, which has no
+     * log file to name.
+     */
+    const logPath = getGameRuntimeBridge()?.logPath ?? null;
 
     const handleCopy = async () => {
         try {
-            await copyTextToClipboard(details);
+            await copyTextToClipboard(logPath ? `${details}
+
+${t("game.crash.logAt", { path: logPath })}` : details);
             setCopyState({ ok: true, text: t("game.crash.copied") });
         } catch (error) {
             setCopyState({
@@ -99,6 +109,12 @@ export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenPro
                                 </p>
                             )}
                         </details>
+                    )}
+
+                    {logPath && (
+                        <p className="nl-selectable-text mt-6 select-text break-all font-mono text-xs text-white/40">
+                            {t("game.crash.logAt", { path: logPath })}
+                        </p>
                     )}
                 </div>
             </div>

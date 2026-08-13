@@ -243,6 +243,7 @@ export enum IPCEventType {
     blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
     blueprintNetworkFetch = "blueprintNetwork.fetch",
     blueprintExternalLinkOpen = "blueprintExternalLink.open",
+    blueprintExternalLinkOpenForPlugin = "blueprintExternalLink.openForPlugin",
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -2270,6 +2271,29 @@ export type IPCBlueprintPersistenceEvents = {
         consumer: IPCType.Host,
         data: {
             projectPath: string;
+            request: BlueprintOpenExternalRequest;
+        },
+        response: {
+            result: BlueprintOpenExternalResult;
+        };
+    };
+    /**
+     * One runtime plugin's request to open an address, decided by the main process against that
+     * plugin's own declared patterns.
+     *
+     * A channel of its own rather than a flag on the one above, because the two consult different
+     * declarations and neither must be able to reach the other's. This one never looks at the
+     * project's variant list, and the Open Link node never looks at a plugin's manifest.
+     *
+     * `pluginId` selects whose declaration applies; the handler reads it from the installed
+     * plugin's manifest rather than taking any patterns from the renderer, which is what keeps this
+     * a way to honour the declaration instead of a way around it.
+     */
+    [IPCEventType.blueprintExternalLinkOpenForPlugin]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
             request: BlueprintOpenExternalRequest;
         },
         response: {
