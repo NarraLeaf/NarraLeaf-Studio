@@ -1,10 +1,12 @@
 import React from "react";
 import { cn } from "../../utils/cn";
-import { TOOLTIP_ATTRIBUTE } from "@/lib/tooltip";
+import { TOOLTIP_ATTRIBUTE, TOOLTIP_SIDE_ATTRIBUTE, type TooltipSide } from "@/lib/tooltip";
 
 export interface TooltipProps {
     /** The words on hover. Newlines break lines; an empty string means no tooltip. */
     content: string;
+    /** Which way it opens. Omitted, it opens above and flips below when there is no room. */
+    side?: TooltipSide;
     children: React.ReactNode;
     className?: string;
 }
@@ -18,10 +20,14 @@ export interface TooltipProps {
  * It draws an inline-flex span, which is a layout change, so prefer the attribute wherever the
  * target will take it.
  *
- * There is no `side`: placement is decided against the window edges when the tooltip is drawn.
+ * `side` is a preference, not a guarantee: a tooltip with no room on the side it asked for opens on
+ * the opposite one rather than off the edge of the window.
  */
-export function Tooltip({ content, children, className }: TooltipProps) {
-    const attributes = { [TOOLTIP_ATTRIBUTE]: content || undefined };
+export function Tooltip({ content, side, children, className }: TooltipProps) {
+    const attributes: Record<string, string | undefined> = { [TOOLTIP_ATTRIBUTE]: content || undefined };
+    if (side) {
+        attributes[TOOLTIP_SIDE_ATTRIBUTE] = side;
+    }
     return (
         <span {...attributes} className={cn("inline-flex", className)}>
             {children}

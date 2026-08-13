@@ -322,6 +322,7 @@ export enum IPCEventType {
     vcsGetServerSession = "vcs.getServerSession",
     vcsSignIn = "vcs.signIn",
     vcsSignOut = "vcs.signOut",
+    vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
     vcsClone = "vcs.clone",
@@ -1090,6 +1091,20 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string; authUrl: string; token: string },
         response: VcsSignInOutcome;
+    };
+    /**
+     * **Changes a setting of the operating system**, and is the only event here that does.
+     *
+     * Puts a server's certificate authority into this account's trust store, having been
+     * asked to by somebody who was shown its fingerprint. Only a certificate this process
+     * wrote is eligible - the path is checked against Studio's own directory, because a
+     * renderer names it and a renderer is where untrusted content ends up.
+     */
+    [IPCEventType.vcsTrustAuthority]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; certificatePath: string },
+        response: { installed: boolean; output: string };
     };
     /** Local: clears the stored token as well as Studio's record of whose it was. */
     [IPCEventType.vcsSignOut]: {

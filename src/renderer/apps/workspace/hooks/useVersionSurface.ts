@@ -240,8 +240,22 @@ export interface VersionSurface {
      * cannot tell four identical-looking transport failures apart.
      */
     signIn: VcsSignInOutcome | null;
-    /** Present a token to the server. Answers whether it ended signed in. */
+    /**
+     * Present a token to the server. Answers whether it ended signed in.
+     *
+     * `authUrl` is empty for the ordinary case: a token names its own endpoint, and a
+     * sign-in that answers `address` is the one that asks for it.
+     */
     signInToServer: (authUrl: string, token: string) => Promise<boolean>;
+    /**
+     * Tell this machine to trust a server's certificate authority. Answers whether it
+     * took.
+     *
+     * **The only thing on this surface that changes a setting of the operating system.**
+     * The rail offers it where the pasted token vouches for the authority that answered,
+     * and behind a dialog naming what is being trusted.
+     */
+    trustAuthority: (certificatePath: string) => Promise<boolean>;
     /** Take the account back off this machine, stored token and all. */
     signOutOfServer: () => Promise<void>;
     /** Send local revisions up. Answers whether it happened. */
@@ -781,6 +795,35 @@ export function useVersionSurface(): VersionSurface {
         }
     }, [services, busy]);
 
+    /**
+     * Put a server's authority into this account's trust store.
+     *
+     * Nothing is retried and the sign-in is not re-attempted here: the rail does that,
+     * because whether to try again is a question about the form's contents - the token
+     * is still in a box up there - rather than about the trust store.
+     */
+    const trustAuthority = useCallback(async (certificatePath: string): Promise<boolean> => {
+        if (!services || busy !== null) {
+            return false;
+        }
+        setBusy("remote");
+        setError(null);
+        try {
+            const outcome = await services.versionControl.trustAuthority(certificatePath);
+            if (!alive.current) return outcome.installed;
+            // What the operating system printed when it refused. It says something
+            // specific - a policy that forbids adding roots, a keychain left locked -
+            // and the author has nowhere else to learn which of those it was.
+            if (!outcome.installed) setError(outcome.output || null);
+            return outcome.installed;
+        } catch (thrown) {
+            if (alive.current) setError(messageOf(thrown));
+            return false;
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services, busy]);
+
     const signOutOfServer = useCallback(async (): Promise<void> => {
         if (!services) {
             return;
@@ -939,6 +982,7 @@ export function useVersionSurface(): VersionSurface {
         serverSession,
         signIn,
         signInToServer,
+        trustAuthority,
         signOutOfServer,
         pushToRemote,
         syncFromRemote,
