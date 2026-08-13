@@ -74,7 +74,7 @@ export function SettingsNavTree({
                                             key={descriptor.id}
                                             type="button"
                                             onClick={() => onSelectSetting(category.key, descriptor.id)}
-                                            title={descriptor.label}
+                                            data-tip={descriptor.label}
                                             className={`flex h-7 w-full items-center rounded-md pl-7 pr-3 text-left transition-colors ${isSelected ? "bg-fill text-fg" : "text-fg-subtle hover:bg-fill-subtle hover:text-fg"}`}
                                         >
                                             <span className="truncate text-xs">{descriptor.label}</span>

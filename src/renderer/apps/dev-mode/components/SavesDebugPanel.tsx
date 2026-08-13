@@ -320,7 +320,7 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
                     <ToolbarButton
                         size="xs"
                         aria-label={t("devMode.saves.refresh")}
-                        title={t("devMode.saves.refresh")}
+                        data-tip={t("devMode.saves.refresh")}
                         disabled={busy}
                         onClick={() => { void refresh(); }}
                     >
@@ -358,7 +358,7 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
                                         onClick={() => setSelectedId(active ? null : id)}
                                     >
                                         <div className="flex items-center gap-2">
-                                            <span className="min-w-0 flex-1 truncate" title={id}>
+                                            <span className="min-w-0 flex-1 truncate" data-tip={id}>
                                                 {entry.summary.label}
                                             </span>
                                             {time ? (
@@ -367,7 +367,7 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
                                             <ToolbarButton
                                                 size="xs"
                                                 aria-label={t("devMode.saves.load")}
-                                                title={t("devMode.saves.load")}
+                                                data-tip={t("devMode.saves.load")}
                                                 disabled={busy || !context || !entry.record}
                                                 onClick={event => {
                                                     event.stopPropagation();
@@ -379,7 +379,7 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
                                             <ToolbarButton
                                                 size="xs"
                                                 aria-label={t("devMode.saves.delete")}
-                                                title={t("devMode.saves.delete")}
+                                                data-tip={t("devMode.saves.delete")}
                                                 disabled={busy}
                                                 onClick={event => {
                                                     event.stopPropagation();
@@ -390,7 +390,7 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
                                             </ToolbarButton>
                                         </div>
                                         {entry.summary.lastSentence ? (
-                                            <p className="truncate text-fg-subtle" title={entry.summary.lastSentence}>
+                                            <p className="truncate text-fg-subtle" data-tip={entry.summary.lastSentence}>
                                                 {entry.summary.lastSentence}
                                             </p>
                                         ) : null}
@@ -552,7 +552,7 @@ function ValueRows(props: { title: string; rows: readonly SaveValueRow[] }): Rea
                 <ul className="space-y-0.5">
                     {rows.map(row => (
                         <li key={row.storageKey} className="flex gap-2">
-                            <span className="w-[42%] shrink-0 truncate text-fg-subtle" title={row.storageKey}>
+                            <span className="w-[42%] shrink-0 truncate text-fg-subtle" data-tip={row.storageKey}>
                                 {row.name ?? shortId(row.storageKey)}
                             </span>
                             <span className="min-w-0 flex-1 break-all text-fg-muted">
@@ -610,7 +610,7 @@ function PersistentStoreSection(props: {
                 <ul className="space-y-0.5">
                     {view.declared.map(row => (
                         <li key={row.storageKey} className="flex gap-2">
-                            <span className="w-[42%] shrink-0 truncate text-fg-subtle" title={row.storageKey}>
+                            <span className="w-[42%] shrink-0 truncate text-fg-subtle" data-tip={row.storageKey}>
                                 {row.name}
                             </span>
                             {/* Dimmed when the store holds nothing for it: what is shown then is the

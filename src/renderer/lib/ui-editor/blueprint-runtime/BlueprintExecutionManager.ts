@@ -26,6 +26,7 @@ export class BlueprintExecutionManager {
     private readonly executions = new Map<string, StoredExecution>();
     private readonly executionsByScope = new Map<string, Set<string>>();
     private readonly closedScopes = new Set<string>();
+    private readonly scopeCloseListeners = new Set<(runtimeScopeId: string) => void>();
 
     public openScope(runtimeScopeId: string): void {
         this.closedScopes.delete(runtimeScopeId);
@@ -34,6 +35,22 @@ export class BlueprintExecutionManager {
     public closeScope(runtimeScopeId: string, reason = "Surface unmounted"): void {
         this.closedScopes.add(runtimeScopeId);
         this.cancelScope(runtimeScopeId, reason);
+        this.scopeCloseListeners.forEach(listener => listener(runtimeScopeId));
+    }
+
+    /**
+     * Be told when a runtime scope closes.
+     *
+     * Here rather than on the React boundary that closes it because every kind of surface routes its
+     * unmount through this one call - a page, a layer, a nested surface inside a frame - so a listener
+     * placed here cannot be reached by a surface that forgot to report in. What that buys today is the
+     * rule that a layer dies with whatever showed it.
+     */
+    public subscribeScopeClosed(listener: (runtimeScopeId: string) => void): () => void {
+        this.scopeCloseListeners.add(listener);
+        return () => {
+            this.scopeCloseListeners.delete(listener);
+        };
     }
 
     public isScopeClosed(runtimeScopeId: string): boolean {

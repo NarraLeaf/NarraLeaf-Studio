@@ -347,7 +347,7 @@ function ColorRow({
             <span
                 className={SWATCH_BOX_CLASS}
                 style={{ backgroundColor: colorValueToCss(shown) }}
-                title={edit.title}
+                data-tip={edit["data-tip"]}
             >
                 {/* Frozen maps to `readOnly`, not to `writes().disabled`. A disabled trigger cannot
                     be opened, and the panel is the only place a colour is legible - a swatch shows
@@ -362,7 +362,7 @@ function ColorRow({
                     brandExclude={exclusions}
                     disabled={!service}
                     readOnly={freeze.frozen}
-                    ariaLabel={edit.title}
+                    ariaLabel={edit["data-tip"]}
                     onChange={setDraft}
                     onCommit={commit}
                 />
@@ -372,7 +372,7 @@ function ColorRow({
                 name={color.name ?? ""}
                 placeholder={label}
                 disabled={edit.disabled}
-                title={edit.title}
+                title={edit["data-tip"]}
                 onCommit={next => service?.renameColor(color.id, next)}
             />
 
@@ -434,7 +434,7 @@ function NameField({
             value={draft}
             placeholder={placeholder}
             disabled={disabled}
-            title={title}
+            data-tip={title}
             aria-label={placeholder}
             className="min-w-0 flex-1"
             onChange={event => setDraft(event.target.value)}

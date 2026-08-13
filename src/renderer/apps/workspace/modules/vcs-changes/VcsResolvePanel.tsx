@@ -86,12 +86,14 @@ const RESOLVE_ROW_LIMIT = 200;
 /**
  * A guard that switches nothing off, for the one freeze this panel is the exit from.
  *
- * It still honours a control's OWN disabled state and title, which is the whole contract: "the
+ * It still honours a control's OWN disabled state and tooltip, which is the whole contract: "the
  * freeze is not why this is greyed out" must not become "nothing is ever greyed out", or Finish
  * would be pressable with files still undecided.
  */
 const PERMISSIVE_GUARD: WriteGuard = {
-    writes: (ownDisabled, ownTitle) => ({ disabled: Boolean(ownDisabled), title: ownTitle }),
+    // `data-tip`, the shape `FrozenControlProps` asks for: a disabled control gets no pointer
+    // events, so its reason is drawn by Studio's own tooltip rather than the browser's.
+    writes: (ownDisabled, ownTooltip) => ({ disabled: Boolean(ownDisabled), "data-tip": ownTooltip }),
 };
 
 export function VcsResolvePanel() {
@@ -467,7 +469,7 @@ export function VcsResolvePanel() {
                     type="button"
                     onClick={() => void read()}
                     disabled={loading || running !== null}
-                    title={t("documentDiff.tab.refresh")}
+                    data-tip={t("documentDiff.tab.refresh")}
                     aria-label={t("documentDiff.tab.refresh")}
                     className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
                 >

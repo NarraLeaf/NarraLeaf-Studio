@@ -338,7 +338,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                 type="button"
                                 role="tab"
                                 aria-selected={active}
-                                title={channelDescription(t, channel)}
+                                data-tip={channelDescription(t, channel)} aria-label={channelDescription(t, channel)}
                                 className={`relative flex min-w-28 cursor-default items-center justify-center gap-2 px-4 text-xs transition-colors ${
                                     active
                                         ? "bg-surface text-fg"
@@ -373,7 +373,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                     <button
                         type="button"
                         className="flex h-7 w-7 cursor-default items-center justify-center rounded-md border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
-                        title={t("console.export")}
+                        data-tip={t("console.export")}
                         aria-label={t("console.export")}
                         onClick={handleExport}
                     >
@@ -383,7 +383,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         <button
                             type="button"
                             className="flex h-7 w-7 cursor-default items-center justify-center rounded-md border border-edge text-fg-muted transition-colors hover:bg-fill hover:text-fg"
-                            title={t("console.filterLevels")}
+                            data-tip={t("console.filterLevels")}
                             aria-label={t("console.filterLevels")}
                             aria-haspopup="menu"
                             aria-expanded={filterMenuOpen}
@@ -462,7 +462,7 @@ function ConsoleProgressBar({ progress }: { progress: ConsoleProgress | null }) 
             aria-valuemin={progress.indeterminate ? undefined : 0}
             aria-valuemax={progress.indeterminate ? undefined : 100}
             aria-valuenow={progress.indeterminate ? undefined : pct}
-            title={progress.label}
+            data-tip={progress.label}
         >
             {progress.indeterminate ? (
                 // `nl-motion-keep`: the sweep is the only thing saying the build is alive — the

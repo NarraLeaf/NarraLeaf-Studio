@@ -233,7 +233,7 @@ describe("createPluginApp disposal", () => {
         // Nothing reachable from the context leads back to the host adapter.
         // The always-present members and nothing else: every capability-gated
         // domain is absent because Studio backs none of them.
-        expect(Object.keys(pluginCtx.game).sort()).toEqual(["blueprintNodes", "data", "log", "widgets"]);
+        expect(Object.keys(pluginCtx.game).sort()).toEqual(["blueprintNodes", "config", "data", "log", "widgets"]);
         // The editor backs no capability, so every gated domain is absent -
         // not a stub that would quietly reach a host it has no right to.
         expect(pluginCtx.game.saves).toBeUndefined();

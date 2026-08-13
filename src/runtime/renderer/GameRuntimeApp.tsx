@@ -15,6 +15,7 @@ import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFra
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
+import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
 import { readRuntimeTestSignalReporter } from "../gameTestSignal";
@@ -75,6 +76,11 @@ function useRuntimePack(): {
                  * live in an effect; the difference is that nothing it does is visible in that first
                  * frame, so a commit's delay costs nothing there.
                  */
+                // Before `setPack`, with the palette and for a related reason: anything that
+                // throws while this pack is being applied has to find the policy already in place.
+                // On the desktop shell this only confirms what the process argument said; on the
+                // web export, which has no such channel, it is the first answer there is.
+                setRuntimeCrashPolicy(nextPack.crash?.policy);
                 setActiveBrandPalette(nextPack.bundle.brand ?? BUILTIN_BRAND_COLORS);
                 setPack(nextPack);
                 setError(null);
@@ -226,6 +232,9 @@ function useRuntimePlugins(
             entryUrl: bridge?.pluginEntryUrl(entry.entryRelativePath)
                 ?? `nlgame://runtime/${entry.entryRelativePath}`,
             ...(entry.data ? { data: entry.data } : {}),
+            // One entry per plugin, so a descriptor carries the values of the plugin it is for and
+            // no other's.
+            ...(entry.buildConfig ? { buildConfig: entry.buildConfig } : {}),
         }));
         void loadRuntimePlugins(descriptors, {
             log,
@@ -303,6 +312,13 @@ function createRuntimePluginHost(
         // Present on desktop, absent on the web export - see web.ts. The loader
         // turns that absence into "no app.game.sidecar here".
         ...(sidecar ? { sidecar } : {}),
+        // Forwarded, never decided: the shell behind this bridge re-reads the pack and checks the
+        // named plugin's own declared patterns. Present on both shells, because both can open an
+        // address - the desktop one through the platform opener, the web one through the browser.
+        navigation: {
+            openExternal: (ownerPluginId, request) =>
+                bridge.externalLink.openForPlugin(ownerPluginId, request),
+        },
         log: (level, message) => bridge.log(level, message),
     });
 }
@@ -409,6 +425,25 @@ export function GameRuntimeApp() {
             return { outcome: "failed", error: "Runtime bridge unavailable" };
         }
         return bridge.externalLink.open(request);
+    }, [bridge]);
+
+    /**
+     * The two Progress nodes' requests. Handed to the shell for the reason Open Link is: the
+     * process that performs the act is the one that decides which file it is, from the pack's own
+     * progress key. Nothing this side supplies names a path.
+     */
+    const exportProgress = useCallback<NonNullable<GameAppHost["exportProgress"]>>(async request => {
+        if (!bridge) {
+            return { outcome: "failed", error: "Runtime bridge unavailable" };
+        }
+        return bridge.progress.write(request);
+    }, [bridge]);
+
+    const importProgress = useCallback<NonNullable<GameAppHost["importProgress"]>>(async () => {
+        if (!bridge) {
+            return { outcome: "failed", document: null, error: "Runtime bridge unavailable" };
+        }
+        return bridge.progress.read();
     }, [bridge]);
 
     /**
@@ -532,11 +567,15 @@ export function GameRuntimeApp() {
             listPuppetBackendModules,
             networkFetch,
             openExternal,
+            exportProgress,
+            importProgress,
         };
     }, [
         entrySurfaceId,
         networkFetch,
         openExternal,
+        exportProgress,
+        importProgress,
         getFullscreen,
         listPuppetBackendModules,
         log,
@@ -551,6 +590,15 @@ export function GameRuntimeApp() {
         subscribeCloseRequested,
         saveStore,
     ]);
+
+    // The game is up: whatever automatic restarts it took to get here are spent, and the next
+    // failure is a new incident rather than the same one continuing. Without this, a game that
+    // crashed on Monday would refuse to restart itself on Tuesday.
+    useEffect(() => {
+        if (runtimeReady && host) {
+            clearAutomaticRestarts();
+        }
+    }, [runtimeReady, host]);
 
     const getScale = useCallback(() => renderScale, [renderScale]);
 

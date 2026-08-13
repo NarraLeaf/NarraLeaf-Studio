@@ -6,8 +6,8 @@ import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceF
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
-import type { RevisionId, VcsAvailability, VcsMergeState, VcsStatus, VcsSyncState } from "@shared/types/vcs";
-import { VcsErrorCode } from "@shared/types/vcs";
+import { VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsMergeState, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncState } from "@shared/types/vcs";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import {
     collapseCheckpoints,
@@ -320,11 +320,56 @@ export interface VersionSurface {
      * knows whether to close.
      */
     setRemote: (url: string | null) => Promise<boolean>;
+    /**
+     * Who this installation is signed in to that server as, or null for nobody.
+     *
+     * Read on open beside {@link remote}, and for the same reason: it is local. Null on
+     * every project pointed at a server that does not ask who is calling, which is what
+     * a bare one does - so an empty value here is the ordinary case, not a missing step.
+     */
+    serverSession: VcsServerSession | null;
+    /**
+     * How the last sign-in ended, or null when this window has not attempted one.
+     *
+     * Kept apart from {@link error} because a refusal is not a fault: each reason has a
+     * different sentence and a different next act, and the string an error would carry
+     * cannot tell four identical-looking transport failures apart.
+     */
+    signIn: VcsSignInOutcome | null;
+    /**
+     * Present a token to the server. Answers whether it ended signed in.
+     *
+     * `authUrl` is empty for the ordinary case: a token names its own endpoint, and a
+     * sign-in that answers `address` is the one that asks for it.
+     */
+    signInToServer: (authUrl: string, token: string) => Promise<boolean>;
+    /**
+     * Tell this machine to trust a server's certificate authority. Answers whether it
+     * took.
+     *
+     * **The only thing on this surface that changes a setting of the operating system.**
+     * The rail offers it where the pasted token vouches for the authority that answered,
+     * and behind a dialog naming what is being trusted.
+     */
+    trustAuthority: (certificatePath: string) => Promise<boolean>;
+    /** Take the account back off this machine, stored token and all. */
+    signOutOfServer: () => Promise<void>;
     /** Send local revisions up. Answers whether it happened. */
     pushToRemote: () => Promise<boolean>;
     /** Bring the server's revisions down; re-reads every document. Answers whether it happened. */
     syncFromRemote: () => Promise<boolean>;
+    /**
+     * Whether the last attempt to point this project at a server was refused for want
+     * of a token.
+     *
+     * The rail offers a way to sign in when it is true. Without it there is none: the
+     * row that offers one is drawn beside a configured server, and on a server that
+     * demands a token there is no way to configure one until after signing in.
+     */
+    remoteNeedsSignIn: boolean;
 }
+
+
 
 export function useVersionSurface(): VersionSurface {
     const { context } = useWorkspace();
@@ -345,7 +390,10 @@ export function useVersionSurface(): VersionSurface {
     const [busy, setBusy] = useState<VersionBusyKind | null>(null);
     const [failure, setFailure] = useState<VersionFailure | null>(null);
     const [remote, setRemoteUrl] = useState<string | null>(null);
+    const [remoteNeedsSignIn, setRemoteNeedsSignIn] = useState(false);
     const [syncState, setSyncState] = useState<VcsSyncState | null>(null);
+    const [serverSession, setServerSession] = useState<VcsServerSession | null>(null);
+    const [signIn, setSignIn] = useState<VcsSignInOutcome | null>(null);
     const [merge, setMerge] = useState<VcsMergeState | null>(null);
     const [authorName, setAuthorNameState] = useState<string | null>(null);
     const [compareBase, setCompareBase] = useState<VersionCompareBase | null>(null);
@@ -431,6 +479,7 @@ export function useVersionSurface(): VersionSurface {
             setHeadNumber(null);
             setBranch(null);
             setRemoteUrl(null);
+            setServerSession(null);
             setMerge(null);
             return;
         }
@@ -447,6 +496,11 @@ export function useVersionSurface(): VersionSurface {
         const configured = await services.versionControl.getRemote();
         if (!alive.current) return;
         setRemoteUrl(configured);
+        // Local for the same reason and asked in the same breath: it is what decides whose
+        // name goes on the next revision, and the settings panel says so.
+        const signedIn = await services.versionControl.getServerSession();
+        if (!alive.current) return;
+        setServerSession(signedIn);
         // The whole identity in one pure read: the revision, the number `#4` is made of, and the
         // branch. A one-entry history read answered the first two just as cheaply and cannot answer
         // the third at all - the revision graph does not carry a branch name.
@@ -865,8 +919,113 @@ export function useVersionSurface(): VersionSurface {
             setSyncState(null);
             return true;
         } catch (thrown) {
+            if (alive.current) {
+                // Two readings of the same refusal, and they must not be the same string.
+                // `vcsSignInRequired` matches what the SERVER said, in English, so it is fed
+                // the raw message; what the author reads goes through `describeFailure`,
+                // which turns a recognised code into a translated sentence. Handing the
+                // translated one to the matcher would make the way in disappear in every
+                // locale but English.
+                const needsSignIn = vcsSignInRequired(rawMessage(thrown));
+                setRemoteNeedsSignIn(needsSignIn);
+                setFailure(describeFailure(thrown));
+                // The address survives this one refusal - see the manager - and the row
+                // that offers a sign-in is the one drawn beside a configured server, so
+                // the surface has to know it was kept or the way in is still not there.
+                if (needsSignIn && url !== null) {
+                    setRemoteUrl(url);
+                }
+            }
+            return false;
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services]);
+
+    /**
+     * Present a token to the server.
+     *
+     * The outcome is kept whichever way it went. A refusal is the more useful of the two
+     * to keep: it is what the form draws its sentence from, and clearing it on the next
+     * keystroke would take the explanation away while the author is still reading it.
+     */
+    const signInToServer = useCallback(async (authUrl: string, token: string): Promise<boolean> => {
+        if (!services || busy !== null) {
+            return false;
+        }
+        setBusy("remote");
+        setFailure(null);
+        try {
+            const outcome = await services.versionControl.signIn(authUrl, token);
+            if (!alive.current) return outcome.ok;
+            setSignIn(outcome);
+            if (!outcome.ok) return false;
+            // Only now. The section that reports how a sign-in went is the one this
+            // marker draws, so clearing it on the way in would take the answer off the
+            // screen at the moment there was one to read.
+            setRemoteNeedsSignIn(false);
+            setServerSession(outcome.session);
+            // The sign-in already reached the server to decide whether the two ends can
+            // work together, so the row can be right without a second two-second wait.
+            setSyncState(await services.versionControl.getSyncState());
+            return true;
+        } catch (thrown) {
             if (alive.current) setFailure(describeFailure(thrown));
             return false;
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services, busy]);
+
+    /**
+     * Put a server's authority into this account's trust store.
+     *
+     * Nothing is retried and the sign-in is not re-attempted here: the rail does that,
+     * because whether to try again is a question about the form's contents - the token
+     * is still in a box up there - rather than about the trust store.
+     */
+    const trustAuthority = useCallback(async (certificatePath: string): Promise<boolean> => {
+        if (!services || busy !== null) {
+            return false;
+        }
+        setBusy("remote");
+        setFailure(null);
+        try {
+            const outcome = await services.versionControl.trustAuthority(certificatePath);
+            if (!alive.current) return outcome.installed;
+            // What the operating system printed when it refused. It says something
+            // specific - a policy that forbids adding roots, a keychain left locked -
+            // and the author has nowhere else to learn which of those it was.
+            // Already a sentence rather than a thrown error, so it goes in as one: there is
+            // no code to recognise, and `describeFailure` only takes what was thrown.
+            if (!outcome.installed) {
+                setFailure(outcome.output ? { text: outcome.output, tone: "failure" } : null);
+            }
+            return outcome.installed;
+        } catch (thrown) {
+            if (alive.current) setFailure(describeFailure(thrown));
+            return false;
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services, busy]);
+
+    const signOutOfServer = useCallback(async (): Promise<void> => {
+        if (!services) {
+            return;
+        }
+        setBusy("remote");
+        setFailure(null);
+        try {
+            await services.versionControl.signOut();
+            if (!alive.current) return;
+            setServerSession(null);
+            setSignIn(null);
+            // Everything known about the server was learned as somebody who is no longer
+            // signed in, so it describes a connection that no longer exists.
+            setSyncState(null);
+        } catch (thrown) {
+            if (alive.current) setFailure(describeFailure(thrown));
         } finally {
             if (alive.current) setBusy(null);
         }
@@ -1009,6 +1168,12 @@ export function useVersionSurface(): VersionSurface {
         merge,
         checkRemote,
         setRemote,
+        remoteNeedsSignIn,
+        serverSession,
+        signIn,
+        signInToServer,
+        trustAuthority,
+        signOutOfServer,
         pushToRemote,
         syncFromRemote,
     };
@@ -1023,6 +1188,18 @@ export function describeShownVersion(state: VersionSurfaceState): string | null 
         return revisionLabel(state.number);
     }
     return null;
+}
+
+/**
+ * What was thrown, as the thrower worded it.
+ *
+ * Deliberately NOT what the author reads - {@link describeFailure} is that, and it translates the
+ * situations this interface has words for. This one exists for the checks that match on the
+ * server's own English (`vcsSignInRequired`), which would stop recognising anything the moment it
+ * was handed a translated sentence.
+ */
+function rawMessage(thrown: unknown): string {
+    return thrown instanceof Error ? thrown.message : String(thrown);
 }
 
 /**

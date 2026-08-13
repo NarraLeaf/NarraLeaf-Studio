@@ -80,7 +80,7 @@ function Row({ row }: { row: SwatchRow }) {
     const { t } = useTranslation();
     return (
         <>
-            <span className="truncate font-mono text-2xs text-fg-muted" title={row.id}>{row.id}</span>
+            <span className="truncate font-mono text-2xs text-fg-muted" data-tip={row.id}>{row.id}</span>
             <Cell side={row.before} absent="documentDiff.presenter.brand.added" />
             <Cell
                 side={row.after}

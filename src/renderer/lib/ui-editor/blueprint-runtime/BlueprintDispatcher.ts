@@ -206,9 +206,9 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.return", functionId: "navigation.getPageProps" });
                     return {};
                 },
-                closeLayer: async () => {
-                    input.debug.emit({ type: "function.call", functionId: "navigation.closeLayer" });
-                    input.debug.emit({ type: "function.return", functionId: "navigation.closeLayer" });
+                pageBack: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.pageBack" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.pageBack" });
                 },
                 clearPages: async () => {
                     input.debug.emit({ type: "function.call", functionId: "navigation.clearPages" });

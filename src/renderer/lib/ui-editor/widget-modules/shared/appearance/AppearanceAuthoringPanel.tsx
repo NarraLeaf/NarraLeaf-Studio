@@ -373,7 +373,7 @@ export function AppearanceAuthoringPanel({
                 </div>
                 <button
                     type="button"
-                    title={t("widgetAppearance.variant.addTitle")}
+                    data-tip={t("widgetAppearance.variant.addTitle")} aria-label={t("widgetAppearance.variant.addTitle")}
                     onClick={handleAddVariant}
                     className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:bg-fill"
                 >
@@ -381,7 +381,7 @@ export function AppearanceAuthoringPanel({
                 </button>
                 <button
                     type="button"
-                    title={t("widgetAppearance.variant.setDefaultTitle")}
+                    data-tip={t("widgetAppearance.variant.setDefaultTitle")} aria-label={t("widgetAppearance.variant.setDefaultTitle")}
                     onClick={handleSetDefault}
                     disabled={!selectedVariant || model.defaultVariantId === selectedVariant.id}
                     className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:bg-fill disabled:opacity-40"
@@ -390,7 +390,7 @@ export function AppearanceAuthoringPanel({
                 </button>
                 <button
                     type="button"
-                    title={t("widgetAppearance.variant.deleteTitle")}
+                    data-tip={t("widgetAppearance.variant.deleteTitle")} aria-label={t("widgetAppearance.variant.deleteTitle")}
                     onClick={handleRemoveVariant}
                     disabled={model.variants.length <= 1}
                     className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-danger hover:bg-danger/10 disabled:opacity-40"

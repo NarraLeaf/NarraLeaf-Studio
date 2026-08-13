@@ -80,7 +80,7 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
                     onClick={onClose}
                     className="w-6 h-6 rounded-md flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
                     aria-label={t("workspace.shell.closePanel")}
-                    title={t("workspace.shell.closePanel")}
+                    data-tip={t("workspace.shell.closePanel")}
                 >
                     <X className="w-4 h-4" />
                 </button>

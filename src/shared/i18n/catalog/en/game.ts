@@ -40,5 +40,8 @@ export const game = {
         copyDetails: "Copy details",
         copied: "Copied to the clipboard.",
         copyFailed: "Could not copy: {error}",
+        // Shown under every policy: a player who is not being told what went wrong is the one
+        // who most needs to be able to hand the file to somebody who can read it.
+        logAt: "The report is in {path}",
     },
 } as const;

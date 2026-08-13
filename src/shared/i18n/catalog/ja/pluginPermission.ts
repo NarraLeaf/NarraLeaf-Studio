@@ -65,6 +65,8 @@ export const pluginPermission = {
             sidecarNote: "このプラグインは、ビルドしたゲームの中で動くネイティブプログラムを同梱している",
             buildDependency: "ビルド時のダウンロード",
             runtime: "ゲームの中で",
+            externalLink: "ゲームの外へのリンク",
+            externalLinkNote: "このプラグインはプレイヤーを次のアドレスへ送り出せる。いずれもゲームの外で開く",
             studio: "Studio の権限",
         },
         sidecarPlatforms: "{platforms} で動く",

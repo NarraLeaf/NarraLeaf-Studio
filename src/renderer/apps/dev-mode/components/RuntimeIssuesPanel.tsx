@@ -88,7 +88,7 @@ export function RuntimeIssuesPanel(props: RuntimeIssuesPanelProps): ReactNode {
                         <ToolbarButton
                             size="xs"
                             aria-label={t("devMode.issues.dismissAll", { count: issues.length })}
-                            title={t("devMode.issues.dismissAll", { count: issues.length })}
+                            data-tip={t("devMode.issues.dismissAll", { count: issues.length })}
                             onClick={dismissEverything}
                         >
                             <X className="h-3.5 w-3.5" aria-hidden />
@@ -144,7 +144,7 @@ function SessionFailureEntry(props: { message: string; onDismiss: () => void }):
                     type="button"
                     className={cn("shrink-0 rounded-md p-0.5", tone.ghost)}
                     onClick={props.onDismiss}
-                    title={t("devMode.dismiss")}
+                    data-tip={t("devMode.dismiss")}
                     aria-label={t("devMode.dismiss")}
                 >
                     <X className="h-3 w-3" aria-hidden />
@@ -224,7 +224,7 @@ function RuntimeIssueEntry(props: {
                                 tone.button,
                             )}
                             onClick={openInStudio}
-                            title={t("devMode.issues.openInStudio")}
+                            data-tip={t("devMode.issues.openInStudio")}
                         >
                             <ExternalLink className="h-3 w-3" aria-hidden />
                             {t("devMode.issues.openInStudio")}
@@ -234,7 +234,7 @@ function RuntimeIssueEntry(props: {
                         type="button"
                         className={cn("rounded-md p-0.5", tone.ghost)}
                         onClick={onDismiss}
-                        title={t("devMode.dismiss")}
+                        data-tip={t("devMode.dismiss")}
                         aria-label={t("devMode.dismiss")}
                     >
                         <X className="h-3 w-3" aria-hidden />
@@ -244,7 +244,7 @@ function RuntimeIssueEntry(props: {
             {/* The row itself, quoted the way the editor writes it — so an author recognises the line
                 before reading a word of the message. */}
             {location?.sentence ? (
-                <div className="truncate font-mono text-2xs opacity-80" title={location.sentence}>
+                <div className="truncate font-mono text-2xs opacity-80" data-tip={location.sentence}>
                     {location.speaker ? `${location.speaker}: ` : ""}
                     {location.sentence}
                 </div>

@@ -3,6 +3,10 @@ import {
     type PluginInstallPermission,
     type PluginRuntimeCapability,
 } from "../types/pluginPermissions";
+import {
+    EXTERNAL_LINK_PATTERN_DENIED_SCHEMES,
+    externalLinkPatternKey,
+} from "../types/externalLinkPattern";
 import { pluginIconExtension, pluginIconExtensionList } from "./pluginIcon";
 import { GAME_BUILD_FORMATS_BY_PLATFORM, type GameBuildPlatform } from "../types/gameBuild";
 import {
@@ -76,6 +80,9 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
         }
         if (contributes.sidecars.length > 0) {
             return invalid("Plugin contributes.sidecars requires a runtime entry");
+        }
+        if (contributes.externalLinks.length > 0) {
+            return invalid("Plugin contributes.externalLinks requires a runtime entry");
         }
     }
 
@@ -182,6 +189,12 @@ function derivePermissionsFromContributes(
         }
         derived.push({ kind: "buildDependency", id: dependency.id, hosts: hosts.sort() });
     }
+    // One permission carrying every pattern - the author is answering one question about where this
+    // plugin may send the player. Absent entirely when nothing was declared, which is what keeps a
+    // plugin that opens nothing byte-identical to one written before this existed.
+    if (contributes.externalLinks.length > 0) {
+        derived.push({ kind: "externalLink", patterns: [...contributes.externalLinks] });
+    }
     return derived;
 }
 
@@ -204,6 +217,7 @@ const CONTRIBUTES_KEYS = [
     "sidecars",
     "buildDependencies",
     "buildConfig",
+    "externalLinks",
 ] as const;
 
 /**
@@ -274,6 +288,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         sidecars: [],
         buildDependencies: [],
         buildConfig: [],
+        externalLinks: [],
     };
     if (value === undefined) {
         return empty;
@@ -357,7 +372,68 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         result.buildConfig = fields;
     }
 
+    if (value.externalLinks !== undefined) {
+        const patterns = validateExternalLinks(value.externalLinks, pluginId);
+        if (typeof patterns === "string") {
+            return patterns;
+        }
+        result.externalLinks = patterns;
+    }
+
     return result;
+}
+
+/**
+ * Address patterns the plugin may open.
+ *
+ * Refused here rather than at the point of use, because this is the only moment before the author
+ * is asked to approve them - a pattern that cannot match anything would appear in the prompt as a
+ * permission being granted and then never grant it, and a pattern naming a script scheme would
+ * appear as an address and not be one.
+ *
+ * Four things are rejected, and the fourth is the security-bearing one:
+ *
+ *  - a blank entry, which declares nothing while looking like it declares something;
+ *  - anything that does not parse into a scheme, which is every relative or bare-host string
+ *    somebody hoped would work (`store.example.com/*`);
+ *  - a duplicate, compared on the canonical form so `HTTPS://X.com/` and `https://x.com/` count as
+ *    the one declaration they are;
+ *  - a denied scheme. `javascript:`, `data:` and `vbscript:` are not addresses at all - handing one
+ *    to the platform opener is how "open a link" becomes "run this" - and `file:` is an address
+ *    whose opener runs the file's registered handler, which for an executable is the same thing.
+ *    Refused whatever the manifest says and whatever the author would have approved, because the
+ *    prompt cannot phrase those honestly as "open a page".
+ *
+ * Unlike the contributed identifier lists, patterns carry no plugin-id prefix: they name places in
+ * the world rather than things the plugin owns.
+ */
+function validateExternalLinks(value: unknown, pluginId: string): string[] | string {
+    if (!Array.isArray(value)) {
+        return "Plugin contributes.externalLinks must be an array of address patterns";
+    }
+    const seen = new Set<string>();
+    const patterns: string[] = [];
+    for (const item of value) {
+        const pattern = typeof item === "string" ? item.trim() : "";
+        if (!pattern) {
+            return `Plugin contributes.externalLinks entries must be non-empty strings (plugin "${pluginId}")`;
+        }
+        const key = externalLinkPatternKey(pattern);
+        if (!key) {
+            return `Plugin contributes.externalLinks entry is not an address pattern: ${pattern}. `
+                + "It must be absolute and name a scheme, must not carry credentials, may use `*` "
+                + "only as a whole leading host label or as the entire host, and must not name "
+                + `any of: ${EXTERNAL_LINK_PATTERN_DENIED_SCHEMES.join(", ")}`;
+        }
+        if (seen.has(key)) {
+            return `Plugin contributes.externalLinks declares "${pattern}" more than once`;
+        }
+        seen.add(key);
+        // The author's own spelling is kept: it is what the install prompt shows, and the person
+        // approving it should read the string the manifest holds rather than a rewrite of it.
+        patterns.push(pattern);
+    }
+    return patterns;
 }
 
 /**
@@ -908,7 +984,7 @@ function validatePermissions(value: unknown): PluginInstallPermission[] | string
 }
 
 /** Permission kinds produced by {@link derivePermissionsFromContributes}, never authored. */
-const DERIVED_PERMISSION_KINDS = ["runtime", "sidecar", "buildDependency"];
+const DERIVED_PERMISSION_KINDS = ["runtime", "sidecar", "buildDependency", "externalLink"];
 
 function readString(record: Record<string, unknown>, key: string): string | null {
     const value = record[key as string];

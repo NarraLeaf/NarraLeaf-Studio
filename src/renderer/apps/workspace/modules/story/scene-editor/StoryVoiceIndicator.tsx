@@ -41,7 +41,7 @@ export function StoryVoiceIndicator({ block }: { block: StoryBlock }) {
         <button
             type="button"
             tabIndex={-1}
-            title={auditionLabel}
+            data-tip={auditionLabel}
             aria-label={auditionLabel}
             className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md opacity-0 transition hover:bg-fill hover:text-fg group-hover:opacity-100 ${
                 voice.isPlaying ? "text-primary" : "text-fg-subtle"

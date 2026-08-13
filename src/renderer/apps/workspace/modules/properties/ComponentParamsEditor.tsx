@@ -70,7 +70,7 @@ function DraftInput({
             value={draft}
             placeholder={placeholder}
             disabled={disabled}
-            title={title}
+            data-tip={title}
             onFocus={() => setEditing(true)}
             onChange={event => setDraft(event.target.value)}
             onBlur={() => {

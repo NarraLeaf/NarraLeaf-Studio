@@ -48,6 +48,7 @@ export const project = {
         security: "安全",
         signing: "签名",
         optimization: "优化",
+        crash: "崩溃",
         mobile: "移动端",
     },
     home: {
@@ -287,6 +288,13 @@ export const project = {
         },
     },
     settings: {
+        crashPolicyTitle: "游戏停止工作时",
+        crashPolicyDescription: "三种方式都会把错误写入游戏日志",
+        crashPolicy: {
+            details: "显示错误内容",
+            log: "只说明已停止",
+            restart: "重新启动游戏",
+        },
         allowHttpTitle: "允许 HTTP",
         allowHttpDescription: "关闭时，游戏将被限制在应用协议内，所有 HTTP/HTTPS 请求均会被阻止",
         allowHttpWebHint: "Web 导出不受此项限制，该构建本身通过 HTTP 提供；网络节点在 Web 导出中仍会运行",

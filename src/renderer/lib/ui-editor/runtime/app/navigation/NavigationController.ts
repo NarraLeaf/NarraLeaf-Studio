@@ -116,7 +116,7 @@ export class NavigationController {
         return reduction.transition ? this.beginTransitionWait(reduction.transition) : Promise.resolve();
     }
 
-    /** Pop to `targetIndex` (default: one layer); resolves immediately when there is nothing to close. */
+    /** Pop to `targetIndex` (default: one page); resolves immediately when there is nothing to close. */
     public close(input: NavigationCloseInput): Promise<void> {
         const reduction = this.dispatch({ type: "CLOSE", ...input });
         return reduction.transition ? this.beginTransitionWait(reduction.transition) : Promise.resolve();
@@ -133,7 +133,7 @@ export class NavigationController {
         this.tryCompleteTransitionWait();
     }
 
-    /** AnimatePresence finished exiting all layers (wait mode). */
+    /** The page lane's AnimatePresence finished exiting every outgoing page (wait mode). */
     public markAllExited(): void {
         this.wait.exitDone = true;
         this.tryCompleteTransitionWait();

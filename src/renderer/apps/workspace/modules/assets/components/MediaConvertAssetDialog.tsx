@@ -202,7 +202,7 @@ export function MediaConvertAssetDialog({
             <div className="space-y-3 py-1">
                 <p className="text-xs text-fg-muted">{t("assets.support.convertIntro")}</p>
                 <div className="rounded-md border border-edge bg-fill-subtle px-2.5 py-1.5">
-                    <span className="block truncate text-xs text-fg" title={asset.name}>{asset.name}</span>
+                    <span className="block truncate text-xs text-fg" data-tip={asset.name}>{asset.name}</span>
                     <span className="block truncate text-2xs text-fg-subtle">
                         {t("assets.mediaConvert.becomes", { ext: extension })}
                     </span>

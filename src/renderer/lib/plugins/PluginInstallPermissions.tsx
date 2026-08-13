@@ -18,6 +18,12 @@ export interface GroupedInstallPermissions {
     sidecars: PermissionOf<"sidecar">[];
     buildDependencies: PermissionOf<"buildDependency">[];
     runtime: PermissionOf<"runtime">[];
+    /**
+     * Addresses outside the game the plugin may send the player to. Its own group rather than a row
+     * under `runtime`, because every other in-game capability acts on things the game already owns
+     * - its saves, its variables, its own screen - and this one leaves.
+     */
+    externalLinks: PermissionOf<"externalLink">[];
     /** Author-declared Studio controls (`filesystem` / `api`), kept in declaration order. */
     studio: (PermissionOf<"filesystem"> | PermissionOf<"api">)[];
 }
@@ -29,6 +35,7 @@ export function groupInstallPermissions(
         sidecars: [],
         buildDependencies: [],
         runtime: [],
+        externalLinks: [],
         studio: [],
     };
     for (const permission of permissions ?? []) {
@@ -41,6 +48,9 @@ export function groupInstallPermissions(
                 break;
             case "runtime":
                 grouped.runtime.push(permission);
+                break;
+            case "externalLink":
+                grouped.externalLinks.push(permission);
                 break;
             default:
                 grouped.studio.push(permission);
@@ -96,6 +106,7 @@ export function PluginInstallPermissionSections({
         !groups.sidecars.length
         && !groups.buildDependencies.length
         && !groups.runtime.length
+        && !groups.externalLinks.length
         && !groups.studio.length
     ) {
         return null;
@@ -153,6 +164,27 @@ export function PluginInstallPermissionSections({
                         <PermissionRow key={`${permission.capability}-${index}`}>
                             {runtimeCapabilityLabel(permission.capability, t)}
                         </PermissionRow>
+                    ))}
+                </PermissionGroup>
+            ) : null}
+
+            {groups.externalLinks.length > 0 ? (
+                <PermissionGroup
+                    label={t("pluginPermission.permissions.section.externalLink")}
+                    rounded={rounded}
+                >
+                    <PermissionRow>
+                        {t("pluginPermission.permissions.section.externalLinkNote")}
+                    </PermissionRow>
+                    {groups.externalLinks.flatMap((permission, groupIndex) => (
+                        // One row per pattern, not one row per permission: the patterns are what
+                        // the author is agreeing to, and a comma-joined line is a line nobody reads
+                        // to the end.
+                        permission.patterns.map((pattern, index) => (
+                            <PermissionRow key={`${groupIndex}-${index}-${pattern}`}>
+                                <span className="font-mono text-xs break-all">{pattern}</span>
+                            </PermissionRow>
+                        ))
                     ))}
                 </PermissionGroup>
             ) : null}

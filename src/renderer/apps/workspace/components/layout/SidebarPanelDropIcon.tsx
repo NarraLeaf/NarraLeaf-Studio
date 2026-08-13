@@ -81,7 +81,7 @@ export function SidebarPanelDropIcon({
             `}
             onClick={onPanelClick}
             onContextMenu={onContextMenu}
-            title={panel.title}
+            data-tip={panel.title}
             aria-label={panel.title}
         >
             {panel.icon}

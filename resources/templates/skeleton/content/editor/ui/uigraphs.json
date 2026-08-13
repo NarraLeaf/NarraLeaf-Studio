@@ -667,7 +667,56 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 900,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nConfirmInGame": {
+                      "id": "nConfirmInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "nConfirmIf": {
+                      "id": "nConfirmIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nConfirm": {
+                      "id": "nConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "Return to the title screen? Unsaved progress is lost.",
+                        "button_1_label": "Return to title",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -678,6 +727,46 @@
                       "from": {
                         "nodeId": "n1",
                         "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirm",
+                        "port": "button_1_pressed"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -2319,7 +2408,56 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 900,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nConfirmInGame": {
+                      "id": "nConfirmInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "nConfirmIf": {
+                      "id": "nConfirmIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nConfirm": {
+                      "id": "nConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "Return to the title screen? Unsaved progress is lost.",
+                        "button_1_label": "Return to title",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -2330,6 +2468,46 @@
                       "from": {
                         "nodeId": "n1",
                         "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirm",
+                        "port": "button_1_pressed"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -9611,7 +9789,56 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 900,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nConfirmInGame": {
+                      "id": "nConfirmInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "nConfirmIf": {
+                      "id": "nConfirmIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nConfirm": {
+                      "id": "nConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "Return to the title screen? Unsaved progress is lost.",
+                        "button_1_label": "Return to title",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -9622,6 +9849,46 @@
                       "from": {
                         "nodeId": "n1",
                         "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirm",
+                        "port": "button_1_pressed"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -12622,7 +12889,56 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 900,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nConfirmInGame": {
+                      "id": "nConfirmInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "nConfirmIf": {
+                      "id": "nConfirmIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nConfirm": {
+                      "id": "nConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "Return to the title screen? Unsaved progress is lost.",
+                        "button_1_label": "Return to title",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -12633,6 +12949,46 @@
                       "from": {
                         "nodeId": "n1",
                         "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirm",
+                        "port": "button_1_pressed"
                       },
                       "to": {
                         "nodeId": "n2",
@@ -15207,7 +15563,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 1120,
                           "y": 1200
                         }
                       }
@@ -15220,7 +15576,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 1400,
                           "y": 1200
                         }
                       }
@@ -15231,7 +15587,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -15242,7 +15598,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 1960,
                           "y": 1350
                         }
                       }
@@ -15255,7 +15611,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1500
                         }
                       }
@@ -15266,7 +15622,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 2240,
                           "y": 1350
                         }
                       }
@@ -15282,7 +15638,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1350
                         }
                       }
@@ -15298,7 +15654,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1500
                         }
                       }
@@ -15326,7 +15682,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1350
                         }
                       }
@@ -15342,7 +15698,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1960,
+                          "x": 3080,
                           "y": 1200
                         }
                       }
@@ -15355,7 +15711,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1200
                         }
                       }
@@ -15371,7 +15727,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 2240,
+                          "x": 3360,
                           "y": 1200
                         }
                       }
@@ -15433,7 +15789,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 980,
+                          "x": 2100,
                           "y": 1470
                         }
                       }
@@ -15446,6 +15802,79 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nOverwriteList": {
+                      "id": "nOverwriteList",
+                      "type": "blueprint.game.save.listIds",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteId": {
+                      "id": "nOverwriteId",
+                      "type": "blueprint.data.stringLiteral",
+                      "params": {
+                        "value": "1"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "nOverwriteContains": {
+                      "id": "nOverwriteContains",
+                      "type": "blueprint.collection.arrayContains",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nOverwriteIf": {
+                      "id": "nOverwriteIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteConfirm": {
+                      "id": "nOverwriteConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "This slot already holds a save. Overwrite it?",
+                        "button_1_label": "Overwrite",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
                         }
                       }
                     }
@@ -15943,16 +16372,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n37",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n38",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n38",
                         "port": "next"
                       },
@@ -16149,6 +16568,86 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n37",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "ids"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "array"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteId",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "item"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
                       }
                     }
                   ],
@@ -16693,7 +17192,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 1120,
                           "y": 1200
                         }
                       }
@@ -16706,7 +17205,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 1400,
                           "y": 1200
                         }
                       }
@@ -16717,7 +17216,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -16728,7 +17227,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 1960,
                           "y": 1350
                         }
                       }
@@ -16741,7 +17240,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1500
                         }
                       }
@@ -16752,7 +17251,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 2240,
                           "y": 1350
                         }
                       }
@@ -16768,7 +17267,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1350
                         }
                       }
@@ -16784,7 +17283,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1500
                         }
                       }
@@ -16812,7 +17311,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1350
                         }
                       }
@@ -16828,7 +17327,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1960,
+                          "x": 3080,
                           "y": 1200
                         }
                       }
@@ -16841,7 +17340,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1200
                         }
                       }
@@ -16857,7 +17356,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 2240,
+                          "x": 3360,
                           "y": 1200
                         }
                       }
@@ -16919,7 +17418,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 980,
+                          "x": 2100,
                           "y": 1470
                         }
                       }
@@ -16932,6 +17431,79 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nOverwriteList": {
+                      "id": "nOverwriteList",
+                      "type": "blueprint.game.save.listIds",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteId": {
+                      "id": "nOverwriteId",
+                      "type": "blueprint.data.stringLiteral",
+                      "params": {
+                        "value": "2"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "nOverwriteContains": {
+                      "id": "nOverwriteContains",
+                      "type": "blueprint.collection.arrayContains",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nOverwriteIf": {
+                      "id": "nOverwriteIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteConfirm": {
+                      "id": "nOverwriteConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "This slot already holds a save. Overwrite it?",
+                        "button_1_label": "Overwrite",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
                         }
                       }
                     }
@@ -17429,16 +18001,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n37",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n38",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n38",
                         "port": "next"
                       },
@@ -17635,6 +18197,86 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n37",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "ids"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "array"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteId",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "item"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
                       }
                     }
                   ],
@@ -18179,7 +18821,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 1120,
                           "y": 1200
                         }
                       }
@@ -18192,7 +18834,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 1400,
                           "y": 1200
                         }
                       }
@@ -18203,7 +18845,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -18214,7 +18856,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 1960,
                           "y": 1350
                         }
                       }
@@ -18227,7 +18869,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1500
                         }
                       }
@@ -18238,7 +18880,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 2240,
                           "y": 1350
                         }
                       }
@@ -18254,7 +18896,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1350
                         }
                       }
@@ -18270,7 +18912,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1500
                         }
                       }
@@ -18298,7 +18940,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1350
                         }
                       }
@@ -18314,7 +18956,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1960,
+                          "x": 3080,
                           "y": 1200
                         }
                       }
@@ -18327,7 +18969,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1200
                         }
                       }
@@ -18343,7 +18985,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 2240,
+                          "x": 3360,
                           "y": 1200
                         }
                       }
@@ -18405,7 +19047,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 980,
+                          "x": 2100,
                           "y": 1470
                         }
                       }
@@ -18418,6 +19060,79 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nOverwriteList": {
+                      "id": "nOverwriteList",
+                      "type": "blueprint.game.save.listIds",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteId": {
+                      "id": "nOverwriteId",
+                      "type": "blueprint.data.stringLiteral",
+                      "params": {
+                        "value": "3"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "nOverwriteContains": {
+                      "id": "nOverwriteContains",
+                      "type": "blueprint.collection.arrayContains",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nOverwriteIf": {
+                      "id": "nOverwriteIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteConfirm": {
+                      "id": "nOverwriteConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "This slot already holds a save. Overwrite it?",
+                        "button_1_label": "Overwrite",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
                         }
                       }
                     }
@@ -18915,16 +19630,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n37",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n38",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n38",
                         "port": "next"
                       },
@@ -19121,6 +19826,86 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n37",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "ids"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "array"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteId",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "item"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
                       }
                     }
                   ],
@@ -19665,7 +20450,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 1120,
                           "y": 1200
                         }
                       }
@@ -19678,7 +20463,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 1400,
                           "y": 1200
                         }
                       }
@@ -19689,7 +20474,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -19700,7 +20485,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 1960,
                           "y": 1350
                         }
                       }
@@ -19713,7 +20498,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1500
                         }
                       }
@@ -19724,7 +20509,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 2240,
                           "y": 1350
                         }
                       }
@@ -19740,7 +20525,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1350
                         }
                       }
@@ -19756,7 +20541,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1500
                         }
                       }
@@ -19784,7 +20569,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1350
                         }
                       }
@@ -19800,7 +20585,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1960,
+                          "x": 3080,
                           "y": 1200
                         }
                       }
@@ -19813,7 +20598,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1200
                         }
                       }
@@ -19829,7 +20614,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 2240,
+                          "x": 3360,
                           "y": 1200
                         }
                       }
@@ -19891,7 +20676,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 980,
+                          "x": 2100,
                           "y": 1470
                         }
                       }
@@ -19904,6 +20689,79 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nOverwriteList": {
+                      "id": "nOverwriteList",
+                      "type": "blueprint.game.save.listIds",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteId": {
+                      "id": "nOverwriteId",
+                      "type": "blueprint.data.stringLiteral",
+                      "params": {
+                        "value": "4"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "nOverwriteContains": {
+                      "id": "nOverwriteContains",
+                      "type": "blueprint.collection.arrayContains",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nOverwriteIf": {
+                      "id": "nOverwriteIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteConfirm": {
+                      "id": "nOverwriteConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "This slot already holds a save. Overwrite it?",
+                        "button_1_label": "Overwrite",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
                         }
                       }
                     }
@@ -20401,16 +21259,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n37",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n38",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n38",
                         "port": "next"
                       },
@@ -20607,6 +21455,86 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n37",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "ids"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "array"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteId",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "item"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
                       }
                     }
                   ],
@@ -21151,7 +22079,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 1120,
                           "y": 1200
                         }
                       }
@@ -21164,7 +22092,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 1400,
                           "y": 1200
                         }
                       }
@@ -21175,7 +22103,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -21186,7 +22114,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 1960,
                           "y": 1350
                         }
                       }
@@ -21199,7 +22127,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1500
                         }
                       }
@@ -21210,7 +22138,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 2240,
                           "y": 1350
                         }
                       }
@@ -21226,7 +22154,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1350
                         }
                       }
@@ -21242,7 +22170,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1500
                         }
                       }
@@ -21270,7 +22198,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1350
                         }
                       }
@@ -21286,7 +22214,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1960,
+                          "x": 3080,
                           "y": 1200
                         }
                       }
@@ -21299,7 +22227,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1200
                         }
                       }
@@ -21315,7 +22243,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 2240,
+                          "x": 3360,
                           "y": 1200
                         }
                       }
@@ -21377,7 +22305,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 980,
+                          "x": 2100,
                           "y": 1470
                         }
                       }
@@ -21390,6 +22318,79 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nOverwriteList": {
+                      "id": "nOverwriteList",
+                      "type": "blueprint.game.save.listIds",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteId": {
+                      "id": "nOverwriteId",
+                      "type": "blueprint.data.stringLiteral",
+                      "params": {
+                        "value": "5"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "nOverwriteContains": {
+                      "id": "nOverwriteContains",
+                      "type": "blueprint.collection.arrayContains",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nOverwriteIf": {
+                      "id": "nOverwriteIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteConfirm": {
+                      "id": "nOverwriteConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "This slot already holds a save. Overwrite it?",
+                        "button_1_label": "Overwrite",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
                         }
                       }
                     }
@@ -21887,16 +22888,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n37",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n38",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n38",
                         "port": "next"
                       },
@@ -22093,6 +23084,86 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n37",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "ids"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "array"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteId",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "item"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
                       }
                     }
                   ],
@@ -22637,7 +23708,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 1120,
                           "y": 1200
                         }
                       }
@@ -22650,7 +23721,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 1400,
                           "y": 1200
                         }
                       }
@@ -22661,7 +23732,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -22672,7 +23743,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 1960,
                           "y": 1350
                         }
                       }
@@ -22685,7 +23756,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1680,
                           "y": 1500
                         }
                       }
@@ -22696,7 +23767,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 2240,
                           "y": 1350
                         }
                       }
@@ -22712,7 +23783,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1350
                         }
                       }
@@ -22728,7 +23799,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 2520,
                           "y": 1500
                         }
                       }
@@ -22756,7 +23827,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1350
                         }
                       }
@@ -22772,7 +23843,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1960,
+                          "x": 3080,
                           "y": 1200
                         }
                       }
@@ -22785,7 +23856,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 2800,
                           "y": 1200
                         }
                       }
@@ -22801,7 +23872,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 2240,
+                          "x": 3360,
                           "y": 1200
                         }
                       }
@@ -22863,7 +23934,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 980,
+                          "x": 2100,
                           "y": 1470
                         }
                       }
@@ -22876,6 +23947,79 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nOverwriteList": {
+                      "id": "nOverwriteList",
+                      "type": "blueprint.game.save.listIds",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteId": {
+                      "id": "nOverwriteId",
+                      "type": "blueprint.data.stringLiteral",
+                      "params": {
+                        "value": "6"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "nOverwriteContains": {
+                      "id": "nOverwriteContains",
+                      "type": "blueprint.collection.arrayContains",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nOverwriteIf": {
+                      "id": "nOverwriteIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nOverwriteConfirm": {
+                      "id": "nOverwriteConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "This slot already holds a save. Overwrite it?",
+                        "button_1_label": "Overwrite",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
                         }
                       }
                     }
@@ -23373,16 +24517,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n37",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n38",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n38",
                         "port": "next"
                       },
@@ -23579,6 +24713,86 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n37",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "ids"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "array"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteId",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "item"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteContains",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteList",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nOverwriteIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n38",
+                        "port": "in"
                       }
                     }
                   ],
@@ -24180,7 +25394,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -24244,6 +25458,55 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nLoadInGame": {
+                      "id": "nLoadInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nLoadIf": {
+                      "id": "nLoadIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nLoadConfirm": {
+                      "id": "nLoadConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "Load this save? Unsaved progress is lost.",
+                        "button_1_label": "Load",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1400,
+                          "y": 1200
                         }
                       }
                     }
@@ -24791,16 +26054,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n41",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "n42",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n40",
                         "port": "value"
                       },
@@ -24857,6 +26110,56 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n41",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
                       }
                     }
                   ],
@@ -25458,7 +26761,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -25522,6 +26825,55 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nLoadInGame": {
+                      "id": "nLoadInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nLoadIf": {
+                      "id": "nLoadIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nLoadConfirm": {
+                      "id": "nLoadConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "Load this save? Unsaved progress is lost.",
+                        "button_1_label": "Load",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1400,
+                          "y": 1200
                         }
                       }
                     }
@@ -26069,16 +27421,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n41",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "n42",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n40",
                         "port": "value"
                       },
@@ -26135,6 +27477,56 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n41",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
                       }
                     }
                   ],
@@ -26736,7 +28128,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -26800,6 +28192,55 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nLoadInGame": {
+                      "id": "nLoadInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nLoadIf": {
+                      "id": "nLoadIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nLoadConfirm": {
+                      "id": "nLoadConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "Load this save? Unsaved progress is lost.",
+                        "button_1_label": "Load",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1400,
+                          "y": 1200
                         }
                       }
                     }
@@ -27347,16 +28788,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n41",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "n42",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n40",
                         "port": "value"
                       },
@@ -27413,6 +28844,56 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n41",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
                       }
                     }
                   ],
@@ -28014,7 +29495,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -28078,6 +29559,55 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nLoadInGame": {
+                      "id": "nLoadInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nLoadIf": {
+                      "id": "nLoadIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nLoadConfirm": {
+                      "id": "nLoadConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "Load this save? Unsaved progress is lost.",
+                        "button_1_label": "Load",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1400,
+                          "y": 1200
                         }
                       }
                     }
@@ -28625,16 +30155,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n41",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "n42",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n40",
                         "port": "value"
                       },
@@ -28691,6 +30211,56 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n41",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
                       }
                     }
                   ],
@@ -29292,7 +30862,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -29356,6 +30926,55 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nLoadInGame": {
+                      "id": "nLoadInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nLoadIf": {
+                      "id": "nLoadIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nLoadConfirm": {
+                      "id": "nLoadConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "Load this save? Unsaved progress is lost.",
+                        "button_1_label": "Load",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1400,
+                          "y": 1200
                         }
                       }
                     }
@@ -29903,16 +31522,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n41",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "n42",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n40",
                         "port": "value"
                       },
@@ -29969,6 +31578,56 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n41",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
                       }
                     }
                   ],
@@ -30570,7 +32229,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 1680,
                           "y": 1200
                         }
                       }
@@ -30634,6 +32293,55 @@
                         "editorLayout": {
                           "x": 1900,
                           "y": 210
+                        }
+                      }
+                    },
+                    "nLoadInGame": {
+                      "id": "nLoadInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1350
+                        }
+                      }
+                    },
+                    "nLoadIf": {
+                      "id": "nLoadIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1200
+                        }
+                      }
+                    },
+                    "nLoadConfirm": {
+                      "id": "nLoadConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": [
+                          "message",
+                          "button_1_label",
+                          "button_2_label"
+                        ],
+                        "message": "Load this save? Unsaved progress is lost.",
+                        "button_1_label": "Load",
+                        "button_2_label": "Cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1400,
+                          "y": 1200
                         }
                       }
                     }
@@ -31181,16 +32889,6 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n41",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "n42",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
                         "nodeId": "n40",
                         "port": "value"
                       },
@@ -31247,6 +32945,56 @@
                       "to": {
                         "nodeId": "nMemo",
                         "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n41",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nLoadIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "n42",
+                        "port": "in"
                       }
                     }
                   ],
@@ -32192,6 +33940,365 @@
           "kind": "widgetMain",
           "surfaceId": "f772ffc3-f108-40b9-a217-4fc652fb68d2",
           "elementId": "30fbfd8c-116a-4d5a-aa0f-410c1730b5f2"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78": {
+        "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78",
+        "name": "Message",
+        "owner": {
+          "kind": "widgetValue",
+          "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+          "elementId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e73",
+          "propPath": "text"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [
+              "init"
+            ],
+            "events": {
+              "init": {
+                "id": "init",
+                "name": "Layer 1",
+                "graph": {
+                  "nodes": {
+                    "n1": {
+                      "id": "n1",
+                      "type": "blueprint.event.head.init",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n2": {
+                      "id": "n2",
+                      "type": "blueprint.page.getProps",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 300,
+                          "y": 140
+                        }
+                      }
+                    },
+                    "n3": {
+                      "id": "n3",
+                      "type": "blueprint.data.jsonGet",
+                      "params": {
+                        "__inlineLiteralPins": [
+                          "path"
+                        ],
+                        "path": "message"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 600,
+                          "y": 140
+                        }
+                      }
+                    },
+                    "n4": {
+                      "id": "n4",
+                      "type": "blueprint.data.returnValue",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 900,
+                          "y": 0
+                        }
+                      }
+                    }
+                  },
+                  "edges": [
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n2",
+                        "port": "props"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "json"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n3",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "value"
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "graphKind": "event"
+                  }
+                }
+              }
+            },
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {},
+        "meta": {
+          "valueType": "string"
+        }
+      },
+      "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79": {
+        "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79",
+        "name": "Button text",
+        "owner": {
+          "kind": "widgetValue",
+          "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+          "elementId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e76",
+          "propPath": "text"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [
+              "init"
+            ],
+            "events": {
+              "init": {
+                "id": "init",
+                "name": "Layer 1",
+                "graph": {
+                  "nodes": {
+                    "n1": {
+                      "id": "n1",
+                      "type": "blueprint.event.head.init",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n2": {
+                      "id": "n2",
+                      "type": "blueprint.list.getItemProps",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 300,
+                          "y": 140
+                        }
+                      }
+                    },
+                    "n3": {
+                      "id": "n3",
+                      "type": "blueprint.data.jsonGet",
+                      "params": {
+                        "__inlineLiteralPins": [
+                          "path"
+                        ],
+                        "path": "text"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 600,
+                          "y": 140
+                        }
+                      }
+                    },
+                    "n4": {
+                      "id": "n4",
+                      "type": "blueprint.data.returnValue",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 900,
+                          "y": 0
+                        }
+                      }
+                    }
+                  },
+                  "edges": [
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n2",
+                        "port": "props"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "json"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n3",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "value"
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "graphKind": "event"
+                  }
+                }
+              }
+            },
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {},
+        "meta": {
+          "valueType": "string"
+        }
+      },
+      "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e77": {
+        "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e77",
+        "name": "Buttons",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+          "elementId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [
+              "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a"
+            ],
+            "events": {
+              "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a": {
+                "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a",
+                "name": "Layer 1",
+                "graph": {
+                  "nodes": {
+                    "n1": {
+                      "id": "n1",
+                      "type": "blueprint.event.head.itemClick",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n2": {
+                      "id": "n2",
+                      "type": "blueprint.layer.closeSelf",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 420,
+                          "y": 0
+                        }
+                      }
+                    }
+                  },
+                  "edges": [
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "index"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "result"
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "graphKind": "event"
+                  }
+                }
+              }
+            },
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7b": {
+        "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7b",
+        "name": "Confirm",
+        "owner": {
+          "kind": "surfaceMain",
+          "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70"
         },
         "frontend": "visual",
         "programKind": "graph",
@@ -34401,6 +36508,34 @@
         "activeBlueprintId": "ea1e5660-2c2b-497c-8690-ad4fe29ba2b1",
         "privateBlueprintIds": [
           "ea1e5660-2c2b-497c-8690-ad4fe29ba2b1"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "surfaceMain:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70": {
+        "activeBlueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7b",
+        "privateBlueprintIds": [
+          "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7b"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74": {
+        "activeBlueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e77",
+        "privateBlueprintIds": [
+          "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e77"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetValue:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e73:text": {
+        "activeBlueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78",
+        "privateBlueprintIds": [
+          "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetValue:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e76:text": {
+        "activeBlueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79",
+        "privateBlueprintIds": [
+          "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79"
         ],
         "initializedFrontend": "visual"
       }

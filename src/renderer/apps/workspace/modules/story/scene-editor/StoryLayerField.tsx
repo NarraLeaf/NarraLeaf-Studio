@@ -97,7 +97,7 @@ export function StoryLayerField(props: {
                 {unresolved ? (
                     <span
                         className="shrink-0 rounded-md bg-warning/10 px-1 text-2xs text-warning"
-                        title={t("story.layerField.notOnStageTitle")}
+                        data-tip={t("story.layerField.notOnStageTitle")}
                     >
                         {t("story.stage.notOnStage")}
                     </span>

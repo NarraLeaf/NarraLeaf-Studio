@@ -81,7 +81,7 @@ export function PluginDetailsPage({
                     onClick={onBack}
                     className="grid h-7 w-7 shrink-0 cursor-default place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                     aria-label={t("common.back")}
-                    title={t("common.back")}
+                    data-tip={t("common.back")}
                 >
                     <ArrowLeft className="h-4 w-4" />
                 </button>

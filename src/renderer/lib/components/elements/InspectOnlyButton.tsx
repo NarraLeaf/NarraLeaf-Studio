@@ -9,7 +9,6 @@ export interface InspectOnlyButtonProps {
     disabled?: boolean;
     className?: string;
     style?: CSSProperties;
-    title?: string;
     "aria-label"?: string;
     "aria-expanded"?: boolean;
     ref?: Ref<HTMLSpanElement>;
@@ -44,7 +43,6 @@ export function InspectOnlyButton({
     disabled = false,
     className,
     style,
-    title,
     onContextMenu,
     ref,
     ...aria
@@ -73,7 +71,6 @@ export function InspectOnlyButton({
             role="button"
             tabIndex={disabled ? -1 : 0}
             aria-disabled={disabled || undefined}
-            title={title}
             className={className}
             style={style}
             onClick={activate}

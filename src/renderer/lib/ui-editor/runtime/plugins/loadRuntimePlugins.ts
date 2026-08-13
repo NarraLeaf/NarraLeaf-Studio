@@ -249,6 +249,38 @@ function createRuntimePluginApp(
         return value === undefined ? null : (value as T);
     };
 
+    const readConfig = (key: string): string | null => {
+        const name = typeof key === "string" ? key.trim() : "";
+        if (!name) {
+            return null;
+        }
+        const declared = descriptor.manifest.contributes.buildConfig.find(field => field.key === name);
+        if (!declared) {
+            // Same treatment as an undeclared storage namespace: an authoring mistake worth saying
+            // out loud, but a game must not die because a plugin asked for the wrong key.
+            options.log(
+                "warning",
+                `[plugin:${pluginId}] build config field is not declared in manifest contributes.buildConfig: ${name}. `
+                + "Declare it so the build can ask the author for a value.",
+            );
+            return null;
+        }
+        if (declared.type === "secret") {
+            // The record below cannot hold one - the build never puts a secret in it - so this only
+            // explains the null. What the project stores for a secret is a handle, and the value it
+            // names never leaves the machine that typed it.
+            options.log(
+                "warning",
+                `[plugin:${pluginId}] build config field "${name}" is a secret; its value stays on the `
+                + "machine that entered it and is not in this build.",
+            );
+            return null;
+        }
+        // The plugin's own entry, and only ever that: `buildConfig` is per pack entry, so there is
+        // no key here that could name another plugin's value.
+        return descriptor.buildConfig?.[name] ?? null;
+    };
+
     const log = (level: RuntimePluginLogLevel, message: string): void =>
         options.log(level, `[plugin:${pluginId}] ${message}`);
 
@@ -270,6 +302,7 @@ function createRuntimePluginApp(
             },
         },
         data: { readJson: readData },
+        config: { get: readConfig },
         log,
         ...buildCapabilityDomains(descriptor, options.host ?? {}, pluginId, log),
     };
@@ -453,6 +486,30 @@ function buildCapabilityDomains(
                     return backend.current();
                 },
                 onChange: listener => backend.onChange(listener),
+            };
+        }
+    }
+
+    // No capability string for external links either, and for the same reason as sidecars:
+    // declaring the patterns in `contributes.externalLinks` is the request, and the install prompt
+    // names them one by one.
+    //
+    // Nothing is decided here. The patterns are not even read: the process that opens the address
+    // reads them out of the pack the player installed, because a check the renderer made would be a
+    // check an author's own plugin code sits next to. What this does is hand over the plugin's id,
+    // which is what lets the far side ask about the right plugin's declaration.
+    //
+    // `?? []` because a descriptor built from a pack is parsed JSON, and a pack produced before
+    // this field existed simply has no key there. A missing declaration is "declares nothing",
+    // which is the same answer as an empty one - and a throw here would take the whole plugin down
+    // with it, on every game shipped before this feature.
+    if ((descriptor.manifest.contributes.externalLinks ?? []).length > 0) {
+        const backend = host.navigation;
+        if (!backend) {
+            unavailable("externalLinks");
+        } else {
+            domains.navigation = {
+                openExternal: request => backend.openExternal(pluginId, request),
             };
         }
     }

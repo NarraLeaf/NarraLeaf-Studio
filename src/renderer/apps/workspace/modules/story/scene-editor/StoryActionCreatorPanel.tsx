@@ -236,7 +236,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                             "ml-auto grid h-7 w-7 place-items-center rounded-md transition-colors",
                             starredIds.has(openCommandId) ? "text-warning" : "text-fg-subtle hover:text-warning",
                         ].join(" ")}
-                        title={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
+                        data-tip={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")} aria-label={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
                         onClick={() => toggleStarred(openCommandId)}
                     >
                         <Star className="h-3.5 w-3.5" fill={starredIds.has(openCommandId) ? "currentColor" : "none"} />
@@ -414,7 +414,7 @@ function ActionCreatorRow(props: {
             <button
                 type="button"
                 className="mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-subtle opacity-0 transition hover:bg-fill-strong hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 group-hover:opacity-100"
-                title={t("story.manual.insert")}
+                data-tip={t("story.manual.insert")}
                 aria-label={t("story.manual.insert")}
                 onClick={() => props.onCreate(props.command.id)}
             >

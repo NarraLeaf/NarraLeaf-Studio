@@ -62,6 +62,13 @@ import {
     RECENT_PROJECTS_LIMIT_MIN,
 } from "@shared/constants/recentProjects";
 import { DEVELOPER_MODE_DEFAULT, DEVELOPER_MODE_KEY } from "@/lib/developer";
+import {
+    TOOLTIP_DELAY_DEFAULT_MS,
+    TOOLTIP_DELAY_KEY,
+    TOOLTIP_DELAY_MAX_MS,
+    TOOLTIP_DELAY_MIN_MS,
+    TOOLTIP_DELAY_STEP_MS,
+} from "@/lib/settings/tooltipOptions";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -298,6 +305,24 @@ export const AppSettings: AppSettingDefinition[] = [
         onPreview: (value) => {
             void import("@/lib/appearance").then(({ previewAccentColor }) => previewAccentColor(value));
         },
+    },
+    {
+        // Handed to the tooltip controller by `lib/appearance`, which is also where the accent and
+        // the motion preference are applied: a value JS has to read, with no media query or CSS
+        // custom property that could carry it instead.
+        key: TOOLTIP_DELAY_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Tooltip delay",
+        labelKey: "settings.items.tooltipDelay.label",
+        description: "How long the pointer rests on a control before its tooltip appears. Within a toolbar the wait applies to the first tooltip only.",
+        descriptionKey: "settings.items.tooltipDelay.description",
+        defaultValue: TOOLTIP_DELAY_DEFAULT_MS,
+        min: TOOLTIP_DELAY_MIN_MS,
+        max: TOOLTIP_DELAY_MAX_MS,
+        step: TOOLTIP_DELAY_STEP_MS,
+        unit: "ms",
     },
     {
         // Applied by the renderer in two halves, because one cannot reach the other: the
@@ -914,6 +939,27 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
         descriptionKey: "settings.items.versionControlAuthor.description",
         defaultValue: "",
+        /**
+         * Read-only while this installation is signed in to a server.
+         *
+         * The point of signing in is that a team's history says who actually made each
+         * revision rather than what each person typed here, so while a session is in force
+         * the name on a revision comes from the token and this field is not what is
+         * recorded. Left editable it would be a box that accepts a name and changes
+         * nothing - which is worse than one that says why it is closed.
+         *
+         * The setting itself stays, and so does everything that reads it: a project with no
+         * server has no token to take a name from, and that is the case this exists for.
+         */
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const result = await getInterface().app.state.getGlobalState("versionControl.serverSessions");
+            const sessions = result.success && Array.isArray(result.data.value) ? result.data.value : [];
+            return sessions.length === 0
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.versionControlAuthor.fromServer" as const };
+        },
+
     },
     {
         // Folded into the name by `composeVcsIdentity` before it reaches Lore, which stores ONE
@@ -930,5 +976,26 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Recorded next to the author name, as \"Name <email>\". Leave empty to record no address.",
         descriptionKey: "settings.items.versionControlAuthorEmail.description",
         defaultValue: "",
+        /**
+         * Read-only while this installation is signed in to a server.
+         *
+         * The point of signing in is that a team's history says who actually made each
+         * revision rather than what each person typed here, so while a session is in force
+         * the name on a revision comes from the token and this field is not what is
+         * recorded. Left editable it would be a box that accepts a name and changes
+         * nothing - which is worse than one that says why it is closed.
+         *
+         * The setting itself stays, and so does everything that reads it: a project with no
+         * server has no token to take a name from, and that is the case this exists for.
+         */
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const result = await getInterface().app.state.getGlobalState("versionControl.serverSessions");
+            const sessions = result.success && Array.isArray(result.data.value) ? result.data.value : [];
+            return sessions.length === 0
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.versionControlAuthor.fromServer" as const };
+        },
+
     },
 ];

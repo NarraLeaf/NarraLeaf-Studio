@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { HostWindowProvider } from "./hostWindow";
+import { TooltipHost } from "@/lib/tooltip";
 
 /**
  * A second OS window showing part of THIS window's React tree.
@@ -162,7 +163,7 @@ export function DetachedWindow({
     }
 
     return createPortal(
-        <HostWindowProvider window={opened.win} windowKey={windowKey}>{children}</HostWindowProvider>,
+        <HostWindowProvider window={opened.win} windowKey={windowKey}><TooltipHost />{children}</HostWindowProvider>,
         opened.container,
     );
 }

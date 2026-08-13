@@ -164,6 +164,8 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Element Click": "blueprint.node.elementClick",
     "Element Flush": "blueprint.node.elementFlush",
     "Emit Page Event": "blueprint.node.emitPageEvent",
+    "Export Progress": "blueprint.node.exportProgress",
+    "Import Progress": "blueprint.node.importProgress",
     "Ends With": "blueprint.node.endsWith",
     "Equal": "blueprint.node.equal",
     "Equals": "blueprint.node.equals",
@@ -250,6 +252,12 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get Wrap Mode": "blueprint.node.getWrapMode",
     "Go Page": "blueprint.node.goPage",
     "Go back": "blueprint.node.goBack",
+    "Show Layer": "blueprint.node.showLayer",
+    "Hide Layer": "blueprint.node.hideLayer",
+    "Wait For Layer": "blueprint.node.waitForLayer",
+    "Close This Layer": "blueprint.node.closeThisLayer",
+    "Is Layer Mounted": "blueprint.node.isLayerMounted",
+    "Show Confirm": "blueprint.node.showConfirm",
     "Memo": "blueprint.node.memo",
     "Clear Page": "blueprint.node.clearPage",
     "Greater Than": "blueprint.node.greaterThan",
@@ -496,6 +504,7 @@ const CATEGORY_KEYS: Record<string, TranslationKey> = {
 
 /** Port / inspector / option label -> translation key, keyed by the original English label. */
 const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
+    "Add Button": "blueprint.port.addButton",
     "Add Case": "blueprint.port.addCase",
     "Add If condition": "blueprint.port.addIfCondition",
     "Add parameter": "blueprint.port.addParameter",
@@ -615,6 +624,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Float": "blueprint.port.float",
     "Fn Name": "blueprint.port.fnName",
     "Found": "blueprint.port.found",
+    "Missing": "blueprint.port.missing",
     "Frame": "blueprint.port.frame",
     "From": "blueprint.port.from",
     "Function": "blueprint.port.function",
@@ -636,6 +646,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Is Entering": "blueprint.port.isEntering",
     "Is Exiting": "blueprint.port.isExiting",
     "Is Fullscreen": "blueprint.port.isFullscreen",
+    "Is Mounted": "blueprint.port.isMounted",
     "Is Picked": "blueprint.port.isPicked",
     "Is Read": "blueprint.port.isRead",
     "Is Visited": "blueprint.port.isVisited",
@@ -646,6 +657,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Key": "blueprint.port.key",
     "Language": "blueprint.port.language",
     "Languages": "blueprint.port.languages",
+    "Layer": "blueprint.port.layer",
     "Linear": "blueprint.port.linear",
     "List": "blueprint.port.list",
     "Loop": "blueprint.port.loop",
@@ -662,6 +674,13 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Metadata": "blueprint.port.metadata",
     "Min": "blueprint.port.min",
     "Mode": "blueprint.port.mode",
+    "Modal": "blueprint.port.modal",
+    "Dismissible": "blueprint.port.dismissible",
+    "Dismissed": "blueprint.port.dismissed",
+    "Message": "blueprint.port.message",
+    "Pressed": "blueprint.port.pressed",
+    "Tag": "blueprint.port.tag",
+    "Group": "blueprint.port.group",
     "NVL Mode": "blueprint.port.nvlMode",
     "Name": "blueprint.port.name",
     "Nametag": "blueprint.port.nametag",
@@ -755,8 +774,21 @@ export function resolveBlueprintCategoryLabel(category: string, t: Translate): s
     return key ? t(key) : category;
 }
 
-/** Localize a port / inspector / option label, falling back to the original English text when unmapped. */
+/**
+ * Localize a port / inspector / option label, falling back to the original English text when
+ * unmapped.
+ *
+ * A trailing ordinal is translated by its stem and put back: pins generated in groups are labelled
+ * `Button 1`, `Button 2` and so on to tell them apart, and mapping each of those separately would
+ * mean a catalogue entry per button an author might ever add. The exact text is tried first, so a
+ * label that genuinely reads as one phrase - `Case 0`, `Then 1` - keeps its own translation.
+ */
 export function resolveBlueprintLabel(text: string, t: Translate): string {
     const key = PORT_LABEL_KEYS[text];
-    return key ? t(key) : text;
+    if (key) {
+        return t(key);
+    }
+    const ordinal = /^(.*\S)\s+(\d+)$/.exec(text);
+    const stemKey = ordinal ? PORT_LABEL_KEYS[ordinal[1]] : undefined;
+    return stemKey ? `${t(stemKey)} ${ordinal![2]}` : text;
 }

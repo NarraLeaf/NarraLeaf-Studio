@@ -718,6 +718,50 @@ export const workspace = {
                 sync: "从服务器获取",
                 syncing: "正在从服务器获取版本…",
                 syncedNothing: "已是最新",
+                signIn: {
+                    required: "这台服务器要求先登录，然后才能把项目指向它。",
+                    open: "登录此服务器",
+                    signedInAs: "已登录为 {name}",
+                    signOut: "退出登录",
+                    addressLabel: "登录地址",
+                    addressPlaceholder: "https://studio.example.lan:41402",
+                    tokenLabel: "访问令牌",
+                    tokenPlaceholder: "粘贴你拿到的令牌",
+                    hint: "令牌由服务器的管理者签发并交给你。",
+                    trust: {
+                        open: "在这台电脑上信任该服务器",
+                        title: "信任该服务器？",
+                        vouched: "你粘贴的令牌点名了这个证书发放机构，在那个地址上应答的也正是它。",
+                        compare: "请通过这条连接以外的途径，与服务器管理者给你的指纹核对。",
+                        authorityLabel: "颁发者",
+                        fingerprintLabel: "指纹",
+                        meaning: "持有该机构密钥的任何一方，都能为任意地址签发证书，而这个账户都会相信。受影响的只有这台电脑上的这个账户。",
+                        manual: "这个系统没有按账户的信任库，Studio 无法代劳。请运行下面这条命令，然后重新登录：",
+                        copy: "复制命令",
+                        confirm: "信任",
+                        cancel: "取消",
+                    },
+                    submit: "登录",
+                    cancel: "取消",
+                    reach: {
+                        ready: "此服务器与这份 Studio 可以协同工作。",
+                        notPermitted: "已登录，但该账号尚未获得此项目的访问权。请向服务器的管理者申请。",
+                        dataPortSilent: "已登录，但服务器本身没有响应。",
+                    },
+                    problem: {
+                        scheme: "登录地址必须以 https:// 或 ucs-auth:// 开头。",
+                        token: "这不是此服务器签发的令牌。请粘贴你拿到的完整令牌。",
+                        address: "这个令牌没有写明去哪里登录，所以还需要地址。",
+                        certificate:
+                            "这台电脑尚未被告知信任此服务器所用的证书颁发机构。它的指纹是 {fingerprint}。",
+                        mismatch:
+                            "那个地址上的服务器不是这个令牌对应的那一台。令牌点名的是 {expected}，"
+                            + "应答的却是 {found}。不要信任它，请向服务器的管理者核实。",
+                        unreachable: "该地址没有任何响应（{detail}）。",
+                        refused: "服务器不接受该令牌（{detail}）。",
+                        unknown: "登录未能完成（{detail}）。",
+                    },
+                },
             },
             // 同步时合不拢的文件。用常驻通知而不是行内错误：同步在收尾时会离开版本视图，
             // 而轨道会因为这个状态变化重新读一遍，行内错误在有人看见之前就被清掉了。

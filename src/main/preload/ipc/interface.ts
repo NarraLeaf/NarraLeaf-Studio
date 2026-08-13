@@ -6,6 +6,11 @@ import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "@shared/types/gameProgress";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
@@ -28,7 +33,7 @@ import type { PrivilegedActor } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
 import type { AssetExportEntry } from "@shared/types/assetExport";
 import type { UpdateState } from "@shared/constants/update";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -506,6 +511,17 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Goes to the network; ~2s when nothing answers. On demand only, never on a timer. */
         getSyncState: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetSyncState, { projectPath }) as Promise<RequestStatus<VcsSyncState>>,
+        /** Local read - no socket. Null means nobody has signed in to this project's server. */
+        getServerSession: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetServerSession, { projectPath }) as Promise<RequestStatus<{ session: VcsServerSession | null }>>,
+        /** Goes to the network. The token is not stored here and does not come back. */
+        signIn: (projectPath: string, authUrl: string, token: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignIn, { projectPath, authUrl, token }) as Promise<RequestStatus<VcsSignInOutcome>>,
+        /** Changes the machine's trust store. Only a certificate Studio wrote is eligible. */
+        trustAuthority: (projectPath: string, certificatePath: string) =>
+            ipcClient.invoke(IPCEventType.vcsTrustAuthority, { projectPath, certificatePath }) as Promise<RequestStatus<{ installed: boolean; output: string }>>,
+        signOut: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignOut, { projectPath }) as Promise<RequestStatus<{ session: null }>>,
         push: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsPush, { projectPath }) as Promise<RequestStatus<VcsPushResult>>,
         /** Writes the working tree: re-read every document once this resolves. */
@@ -591,6 +607,21 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         open: (projectPath: string, request: BlueprintOpenExternalRequest) =>
             ipcClient.invoke(IPCEventType.blueprintExternalLinkOpen, { projectPath, request }) as Promise<
                 RequestStatus<{ result: BlueprintOpenExternalResult }>
+            >,
+        openForPlugin: (pluginId: string, request: BlueprintOpenExternalRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintExternalLinkOpenForPlugin, { pluginId, request }) as Promise<
+                RequestStatus<{ result: BlueprintOpenExternalResult }>
+            >,
+    },
+
+    blueprintProgress: {
+        write: (projectPath: string, request: GameProgressExportRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintProgressWrite, { projectPath, request }) as Promise<
+                RequestStatus<{ result: GameProgressExportResult }>
+            >,
+        read: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.blueprintProgressRead, { projectPath }) as Promise<
+                RequestStatus<{ result: GameProgressImportResult }>
             >,
     },
 

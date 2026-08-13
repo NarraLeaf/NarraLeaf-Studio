@@ -18,6 +18,7 @@ import {
     VcsInitRepositoryHandler,
     VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
+    VcsGetServerSessionHandler, VcsSignInHandler, VcsSignOutHandler, VcsTrustAuthorityHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
@@ -118,7 +119,14 @@ import {
     BlueprintPersistenceSetValueHandler,
 } from "./handlers/blueprintPersistenceAction";
 import { BlueprintNetworkFetchHandler } from "./handlers/blueprintNetworkAction";
-import { BlueprintExternalLinkOpenHandler } from "./handlers/blueprintExternalLinkAction";
+import {
+    BlueprintExternalLinkOpenForPluginHandler,
+    BlueprintExternalLinkOpenHandler,
+} from "./handlers/blueprintExternalLinkAction";
+import {
+    BlueprintProgressReadHandler,
+    BlueprintProgressWriteHandler,
+} from "./handlers/blueprintProgressAction";
 import {
     PrivilegedBashExecuteHandler,
     PrivilegedFsCallHandler,
@@ -259,6 +267,11 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // Blueprint external link handler (the Open Link node)
         new BlueprintExternalLinkOpenHandler(),
+        new BlueprintExternalLinkOpenForPluginHandler(),
+
+        // Blueprint progress handlers (the Export/Import Progress nodes)
+        new BlueprintProgressWriteHandler(),
+        new BlueprintProgressReadHandler(),
 
         // Plugin permission handlers
         new PluginPermissionPromptLaunchHandler(),
@@ -348,6 +361,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsAbortMergeHandler(),
         new VcsGetRemoteHandler(),
         new VcsSetRemoteHandler(),
+        new VcsGetServerSessionHandler(),
+        new VcsSignInHandler(),
+        new VcsSignOutHandler(),
+        new VcsTrustAuthorityHandler(),
         new VcsGetSyncStateHandler(),
         new VcsPushHandler(),
         new VcsSyncHandler(),

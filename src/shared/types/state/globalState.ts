@@ -3,6 +3,7 @@ import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { PersistentState } from "@shared/utils/persistentState";
+import type { VcsServerSession } from "@shared/types/vcs";
 import { RecentlyOpenedProject } from "./appStateTypes";
 
 export interface GlobalStateType extends Record<string, any> {
@@ -283,6 +284,21 @@ export interface GlobalStateType extends Record<string, any> {
      * of thing that ends up in every revision of a repository.
      */
     "versionControl.authorEmail": string;
+    /**
+     * The servers this installation has signed in to, one entry per server origin.
+     *
+     * **Not a preference and not a credential.** No preference, because nobody chose it by
+     * typing into a field and it means nothing on another machine - which is why it has no
+     * settings row, is absent from the reset and export scopes, and stays out of an exported
+     * settings file for free. No credential, because the token is not here: it went into the
+     * backend's own per-user store, and all that is kept here is who the server said that
+     * token belongs to.
+     *
+     * The backend's store is still the authority on whether a session exists at all - the
+     * `lore` CLI writes and clears the same store - so this is read together with it rather
+     * than trusted on its own. See `VcsManager.getServerSession`.
+     */
+    "versionControl.serverSessions": VcsServerSession[];
 }
 
 export type GlobalStateKeys = string;
@@ -337,6 +353,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "versionControl.checkpointOnClose": true,
     "versionControl.authorName": "",
     "versionControl.authorEmail": "",
+    "versionControl.serverSessions": [],
 };
 
 /**

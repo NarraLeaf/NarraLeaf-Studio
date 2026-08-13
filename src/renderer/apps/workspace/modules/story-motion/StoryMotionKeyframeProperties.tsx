@@ -298,7 +298,7 @@ function createStoryMotionKeyframeSchema(
                             type="button"
                             className="!w-auto flex-1 gap-2 px-3 !text-fg-muted hover:!bg-danger/10 hover:!text-danger focus-visible:!ring-danger/40"
                             onClick={() => deleteKeyframe(data)}
-                            title={t("motion.keyframe.deleteKeyframe")}
+                            data-tip={t("motion.keyframe.deleteKeyframe")}
                         >
                             <Trash2 className="h-4 w-4" />
                             <span>{t("motion.keyframe.deleteKeyframe")}</span>

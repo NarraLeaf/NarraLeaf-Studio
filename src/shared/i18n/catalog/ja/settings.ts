@@ -97,6 +97,10 @@ export const settings = {
                 slate: "スレート",
             },
         },
+        tooltipDelay: {
+            label: "ヒントの遅延",
+            description: "ポインターがコントロールに止まってからヒントが出るまでの時間。同じツールバー内では最初の一つだけが待つ",
+        },
         reduceMotion: {
             label: "動きを減らす",
             description: "Studio の画面のアニメーションを止める。ゲーム側のアニメーションには影響しない",
@@ -216,6 +220,7 @@ export const settings = {
         versionControlAuthor: {
             label: "作者名",
             description: "コミットとチェックポイントに記録される。空のままなら NarraLeaf Studio と記録する",
+            fromServer: "このインストールがサインインしているサーバーから取得されます。自分の名前を記録するにはサインアウトしてください。",
         },
         versionControlAuthorEmail: {
             label: "作者のメールアドレス",

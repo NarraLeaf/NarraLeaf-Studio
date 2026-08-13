@@ -4,6 +4,7 @@ import {
     useMemo,
     useRef,
     useState,
+    type CSSProperties,
     type MutableRefObject,
     type ReactNode,
 } from "react";
@@ -22,6 +23,7 @@ import { getSurfaceAnimationTimings } from "@/lib/ui-editor/runtime/surfaceAnima
 import {
     getSurfaceLayerBackgroundColor,
     getSurfaceLayerBackgroundImageOpacity,
+    SURFACE_LAYER_SCRIM_COLOR,
 } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -68,7 +70,20 @@ type AppSurfaceLayerCommonProps = {
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     blueprintLifecycleReady: boolean;
     reducedMotion: boolean;
+    /**
+     * Whether this entry takes pointer input, as resolved across the whole composite stack (see
+     * `layers/compositeInput`). Not "is this the top of the page stack" any more: a layer above it may
+     * have taken input away from it, and more than one entry can be live at once.
+     */
     active: boolean;
+    /**
+     * Whether keyboard events belong to this entry. Exactly one entry in the composite has it, which
+     * is why it is a separate answer from `active` rather than the same flag read twice: with a modal
+     * layer over a non-modal one, both are clickable and only the modal has the keys.
+     */
+    keyboardOwner: boolean;
+    /** Paint a dimming sheet behind this entry's own background. */
+    scrim?: boolean;
     onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
     onPrepaintReady: (entryKey: string) => void;
     onEnterComplete: (entryKey: string) => void;
@@ -97,19 +112,33 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         blueprintLifecycleReady,
         reducedMotion,
         active,
+        keyboardOwner,
+        scrim = false,
         onInteractionReadyChange,
         onPrepaintReady,
         onEnterComplete,
     } = props;
-    const [surfaceInteractive, setSurfaceInteractive] = useState(false);
+    /**
+     * The entry whose arrival has finished, if it is this one.
+     *
+     * Deliberately not "is this entry interactive": arriving happens once per entry, while `active`
+     * goes both ways for as long as the entry lives - a modal layer opening over it takes input
+     * away, and that layer closing hands it back. Folding the two together left the second half
+     * unreachable, because the only thing that could set it was a callback that had already fired.
+     *
+     * Stored as the key it was observed for, in the same shape as the subscription flag below, so a
+     * new entry in this slot starts over without a reset step to forget.
+     */
+    const [enteredEntryKey, setEnteredEntryKey] = useState<string | null>(null);
     const [surfaceRuntimeSubscriptionsReadyKey, setSurfaceRuntimeSubscriptionsReadyKey] = useState<string | null>(null);
     const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState({
         beforeSurfaceExit: 0,
         afterSurfaceEnter: 0,
     });
     const transitionStateRef = useRef({ isEntering: true, isExiting: false });
-    const effectiveInteractive = active && surfaceInteractive;
-    const effectiveKeyboardInteractive = active && blueprintLifecycleReady;
+    const enteredThisEntry = enteredEntryKey === entry.key;
+    const effectiveInteractive = active && enteredThisEntry;
+    const effectiveKeyboardInteractive = keyboardOwner && blueprintLifecycleReady;
     const surfaceRuntimeSubscriptionsReady = surfaceRuntimeSubscriptionsReadyKey === entry.key;
     const surfaceBlueprintLifecycleReady = blueprintLifecycleReady && surfaceRuntimeSubscriptionsReady;
     // SurfaceAnimationLayer keeps new layers hidden until prepaint is ready. Widget init must run during that
@@ -176,19 +205,33 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
     );
 
     const layerBackgroundColor = getSurfaceLayerBackgroundColor(surface, entry.presentation);
+    // The animation layer already covers the whole viewport, so the scrim goes on it rather than on
+    // an extra element. As a gradient over the scrim colour, not instead of it: an entry may carry a
+    // background of its own, and that one has to stay on top of the sheet it is being lifted off.
+    const layerBackgroundStyle: CSSProperties = scrim
+        ? {
+            backgroundColor: SURFACE_LAYER_SCRIM_COLOR,
+            backgroundImage: `linear-gradient(${layerBackgroundColor}, ${layerBackgroundColor})`,
+        }
+        : { backgroundColor: layerBackgroundColor };
 
     // The Page's own animation may have to wait for its contents to leave first, so the delays come
     // from the timing plan rather than straight off the settings. Cached on the bundle's element
     // table, so this is the same object the element tree below resolves.
-    const animationDelays = useMemo(() => {
+    const animationTiming = useMemo(() => {
         const timings = getSurfaceAnimationTimings({
             elements: uidoc.elements,
             surface,
             reducedMotion,
             cache: true,
         });
-        return { enterMs: timings.ownEnterDelayMs, exitMs: timings.ownExitDelayMs };
+        return {
+            delays: { enterMs: timings.ownEnterDelayMs, exitMs: timings.ownExitDelayMs },
+            // Everything the departure takes, this Surface's elements included.
+            exitHoldMs: timings.exitMs,
+        };
     }, [reducedMotion, surface, uidoc.elements]);
+    const animationDelays = animationTiming.delays;
     const pageMotion = useMemo(
         () => resolvePageAnimationMotion({
             settings: surface.settings?.pageAnimation,
@@ -214,15 +257,16 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             if (entryKey !== entry.key) {
                 return;
             }
-            setSurfaceInteractive(false);
-            onInteractionReadyChange(entry.key, false);
+            // Leaving un-arrives the entry, which drops it out of the readiness report below. An
+            // entry that never finished arriving is already out of it, and React skips the
+            // re-render, so there is nothing to report either way.
+            setEnteredEntryKey(null);
             runTransitionCommands(lifecycleRef.current.beforeExit(hostAdapterBundle.runtimeScopeId, surface.id));
         },
         [
             entry.key,
             hostAdapterBundle.runtimeScopeId,
             lifecycleRef,
-            onInteractionReadyChange,
             runTransitionCommands,
             surface.id,
         ],
@@ -232,32 +276,38 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         (entryKey: string) => {
             if (entryKey === entry.key) {
                 runTransitionCommands(lifecycleRef.current.enterComplete(hostAdapterBundle.runtimeScopeId, surface.id));
-                setSurfaceInteractive(active);
-                onInteractionReadyChange(entry.key, active);
+                setEnteredEntryKey(entry.key);
             }
             onEnterComplete(entryKey);
         },
         [
-            active,
             entry.key,
             hostAdapterBundle.runtimeScopeId,
             lifecycleRef,
             onEnterComplete,
-            onInteractionReadyChange,
             runTransitionCommands,
             surface.id,
         ],
     );
 
+    /**
+     * Tell the host whether this entry takes input, in both directions, from the same expression the
+     * layer is rendered with - so what the host believes cannot drift from what is on screen. Split
+     * across the transition callbacks it used to be, only the losing direction had anywhere to fire
+     * from: going inert had an owner, coming back did not. (Unmount is the exception, below: there
+     * is no render left to derive it from.)
+     *
+     * Pointer state is dropped on the way out only. An entry that is arriving has none to drop, and
+     * one being handed input back has none left from when it lost it.
+     */
     useEffect(() => {
-        if (active) {
-            return;
+        if (!active) {
+            widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
         }
-        setSurfaceInteractive(false);
-        widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
-        onInteractionReadyChange(entry.key, false);
+        onInteractionReadyChange(entry.key, active && enteredThisEntry);
     }, [
         active,
+        enteredThisEntry,
         entry.key,
         hostAdapterBundle.runtimeScopeId,
         onInteractionReadyChange,
@@ -279,9 +329,10 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             // Nested in-tree layers (SurfaceElementTree) keep the default scale of 1.
             scale={scale}
             className="absolute inset-0 flex items-center justify-center"
-            style={{ backgroundColor: layerBackgroundColor }}
+            style={layerBackgroundStyle}
             presentZIndex={10 + layerIndex}
             exitZIndex={entry.exitBehind ? 0 : 30 + layerIndex}
+            exitHoldMs={animationTiming.exitHoldMs}
             surfaceId={surface.id}
             surfaceKind={surface.kind}
             resolveExit={resolveExit}

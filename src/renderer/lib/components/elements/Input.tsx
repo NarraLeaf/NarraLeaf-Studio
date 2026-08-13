@@ -118,7 +118,7 @@ export function Input({
                     <button
                         type="button"
                         onClick={onRightIconClick}
-                        title={rightIconLabel}
+                        data-tip={rightIconLabel}
                         aria-label={rightIconLabel}
                         className="text-fg-muted hover:text-fg transition-colors cursor-default"
                     >

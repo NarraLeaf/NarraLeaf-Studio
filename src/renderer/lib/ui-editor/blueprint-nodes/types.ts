@@ -87,6 +87,18 @@ export type BlueprintNodeDynamicInputPinsConfig = {
         optional?: boolean;
         allowInlineLiteral?: boolean;
     }[];
+    /**
+     * Number the labels of generated pins by the add that produced them: the first add reads
+     * `Button 1` / `Pressed 1`, the second `Button 2` / `Pressed 2`.
+     *
+     * Off by default, and deliberately so. A template label is otherwise rendered verbatim, which
+     * is right where the pin already carries its own meaning - `Switch String` puts the value it
+     * compares on the pin, so every generated `Case` is told apart by what is written in it. It is
+     * wrong where the pins are interchangeable and their ORDER is the meaning, which is the case
+     * for a row of buttons: unnumbered, the third button and its exec output are indistinguishable
+     * from the first, and an author cannot tell which branch they are wiring.
+     */
+    numberGeneratedPinLabels?: boolean;
     /** When dynamic output pins exist, insert them before this static output pin id. */
     outputInsertBeforePinId?: string;
     /** Optional display label prefix for generated pins. Defaults to "Input". */

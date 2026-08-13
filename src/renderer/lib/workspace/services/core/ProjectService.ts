@@ -7,6 +7,7 @@ import { normalizeProjectIconSet, type ProjectIconSet, type ProjectIconSource } 
 import {
     AutoSaveConfiguration,
     BuildConfiguration,
+    CrashConfiguration,
     LintingConfiguration,
     LocalizationConfiguration,
     MobileConfiguration,
@@ -19,6 +20,7 @@ import {
     WebOptimizationConfiguration,
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
+    normalizeCrashConfiguration,
     normalizeLintingConfiguration,
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
@@ -196,6 +198,32 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * Read the effective asset-protection policy, falling back to the secure
      * default (off) for projects that predate the `app.security` config.
      */
+    public getCrashConfiguration(): CrashConfiguration {
+        return normalizeCrashConfiguration(this.getProjectConfig().app?.crash);
+    }
+
+    /**
+     * Merge a partial patch into what the shipped game does when it stops working. Written by the
+     * project settings UI and read by the packaging pipeline, which puts it on the pack.
+     */
+    public async updateCrashConfiguration(patch: Partial<CrashConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const crash: CrashConfiguration = {
+                ...normalizeCrashConfiguration(config.app?.crash),
+                ...patch,
+            };
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                crash,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
     public getSecurityConfiguration(): SecurityConfiguration {
         return normalizeSecurityConfiguration(this.getProjectConfig().app?.security);
     }

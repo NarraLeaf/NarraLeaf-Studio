@@ -133,7 +133,7 @@ describe("surface navigation controller", () => {
 
     // Clearing the stack is one transition from the top page to where the player lands, not N pops:
     // popping repeatedly would animate through - and briefly settle on - every page in between.
-    it("drops every layer above the named index in one transition", () => {
+    it("drops every page above the named index in one transition", () => {
         const root = entry("a:1", "a");
         const update = createSurfaceNavigationCloseUpdate({
             navStack: [root, entry("b:2", "b"), entry("c:3", "c"), entry("d:4", "d")],

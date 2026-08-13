@@ -116,7 +116,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                                     options => openValueBlueprint(binding.blueprintId, options),
                                 )}
                                 aria-label={t("widgetChrome.blueprint.openBlueprintValue")}
-                                title={t("blueprint.entry.openInWindow")}
+                                data-tip={t("blueprint.entry.openInWindow")}
                             >
                                 <ExternalLink className="h-3.5 w-3.5" />
                             </InspectOnlyButton>
@@ -156,7 +156,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                     className="inline-flex items-center gap-1.5 rounded-md border border-binding/30 bg-binding/10 px-2 py-1 text-xs text-binding hover:bg-binding/20 disabled:cursor-default disabled:opacity-40"
                     disabled={!surfaceId || isComponentEditorSurface}
                     onClick={createBinding}
-                    title={isComponentEditorSurface ? t("widgetChrome.blueprint.componentsUnavailable") : undefined}
+                    data-tip={isComponentEditorSurface ? t("widgetChrome.blueprint.componentsUnavailable") : undefined}
                 >
                     <GitBranch className="h-3.5 w-3.5" />
                     {config.createLabel ? t(config.createLabel) : t("widgetChrome.blueprint.blueprintValue")}

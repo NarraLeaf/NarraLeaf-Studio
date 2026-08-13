@@ -40,6 +40,7 @@ import type { DevModePanelChrome } from "./DevModePanelChrome";
 import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
 import type {
     GameAppBootAction,
+    GameAppCompositeView,
     GameAppFrameContext,
     GameAppHost,
     GameAppOverlayContext,
@@ -49,6 +50,7 @@ import type {
 } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { blockIdForActionId, resolveSceneIdForBlock } from "./storyRuntimeDebugModel";
+import { LayerStackPanel } from "./LayerStackPanel";
 import { RuntimeIssueStrip } from "./RuntimeIssueStrip";
 import { RuntimeIssuesPanel } from "./RuntimeIssuesPanel";
 import {
@@ -80,11 +82,11 @@ type DevModeContentProps = {
 
 /**
  * One panel per SUBJECT. `issues` is what has gone wrong, `story` the running story, `interface` the
- * running UI, `saves` what is on disk and the project-wide persistent store, `debugger` stopped
- * execution — the last one is separate because a thing that halts the game and decides what gets
- * recorded is an instrument, not a subject.
+ * running UI, `layers` everything on screen at once and who owns input, `saves` what is on disk and
+ * the project-wide persistent store, `debugger` stopped execution — the last one is separate because
+ * a thing that halts the game and decides what gets recorded is an instrument, not a subject.
  */
-type DevModeDebugPanelId = "none" | "issues" | "interface" | "story" | "saves" | "debugger";
+type DevModeDebugPanelId = "none" | "issues" | "interface" | "layers" | "story" | "saves" | "debugger";
 
 /**
  * Toggles the debug FAB back after it has been hidden.
@@ -164,6 +166,8 @@ function DevModeDebugOverlay(props: {
     storyRuntime: GameAppStoryRuntimeBridge;
     /** Save slots for the Saves panel, on the game's own Save/Load paths. */
     saves: GameAppSaveBridge;
+    /** The composite stack for the Layers panel, with input ownership already resolved. */
+    composite: GameAppCompositeView;
     /** Owned by DevModeContent so the drawer survives a game-session remount (every timeline jump). */
     activePanel: DevModeDebugPanelId;
     setActivePanel: (update: (previous: DevModeDebugPanelId) => DevModeDebugPanelId) => void;
@@ -190,7 +194,7 @@ function DevModeDebugOverlay(props: {
 }) {
     const {
         core, bundle, uidoc, activeSurfaceId, widgetRuntimeStore, projectPath, fastForwardToNextChoice, storyRuntime,
-        saves,
+        saves, composite,
         activePanel, setActivePanel,
         panelFloating, setPanelFloating, floatPosition, setFloatPosition,
         outputLogLevels, setOutputLogLevels,
@@ -472,6 +476,8 @@ function DevModeDebugOverlay(props: {
             ["issues", t("devMode.issues.title")],
             ["story", t("devMode.runtime.title")],
             ["interface", t("devMode.devtools.title")],
+            // Beside Interface: the same running UI, read as a stack rather than as a tree.
+            ["layers", t("devMode.layers.title")],
             ["saves", t("devMode.saves.title")],
             ["debugger", t("devMode.debugger.title")],
         ] as [Exclude<DevModeDebugPanelId, "none">, string][]),
@@ -555,6 +561,12 @@ function DevModeDebugOverlay(props: {
                                 />
                             ) : activePanel === "debugger" ? (
                                 <BlueprintDebuggerPanel className="h-full min-h-0 w-full" chrome={panelChrome} />
+                            ) : activePanel === "layers" ? (
+                                <LayerStackPanel
+                                    composite={composite}
+                                    className="h-full min-h-0 w-full"
+                                    chrome={panelChrome}
+                                />
                             ) : activePanel === "story" ? (
                                 <StoryRuntimeDebugPanel
                                     storyRuntime={storyRuntime}
@@ -986,6 +998,37 @@ export function DevModeContent(props: DevModeContentProps) {
         return result.data.result;
     }, [projectPath]);
 
+    /**
+     * The two Progress nodes' requests, handed to the main process.
+     *
+     * The project path travels with them because the handler derives the title's progress key from
+     * the project's own identity - the same key the pack compiler would put in a build - so a
+     * preview reads and writes the file the shipped game will. Nothing here names a path.
+     */
+    const exportProgress = useCallback<NonNullable<GameAppHost["exportProgress"]>>(async request => {
+        if (!projectPath) {
+            return { outcome: "failed", error: "Export Progress: no project is open" };
+        }
+        const result = await getInterface().blueprintProgress.write(projectPath, request);
+        if (!result.success) {
+            // The channel itself failed, which is Studio malfunctioning rather than the write being
+            // refused. Reported on the node's failure branch anyway: the graph has to go somewhere.
+            return { outcome: "failed", error: result.error ?? "Export Progress failed" };
+        }
+        return result.data.result;
+    }, [projectPath]);
+
+    const importProgress = useCallback<NonNullable<GameAppHost["importProgress"]>>(async () => {
+        if (!projectPath) {
+            return { outcome: "failed", document: null, error: "Import Progress: no project is open" };
+        }
+        const result = await getInterface().blueprintProgress.read(projectPath);
+        if (!result.success) {
+            return { outcome: "failed", document: null, error: result.error ?? "Import Progress failed" };
+        }
+        return result.data.result;
+    }, [projectPath]);
+
     const saveStore = useMemo<GameAppSaveStore>(() => ({
         write: async (id, savedGame, capture, metadata) => {
             const ref = requireProjectRef("Save Game");
@@ -1191,6 +1234,21 @@ export function DevModeContent(props: DevModeContentProps) {
             listener();
             return true;
         }),
+        // Forwarded, never decided here. The main process looks the plugin up in the install
+        // registry and checks that plugin's own declared patterns - the same manifest the packaged
+        // game reads out of its pack - so a preview opens exactly what the shipped game opens.
+        navigation: {
+            openExternal: async (ownerPluginId, request) => {
+                const result = await getInterface().blueprintExternalLink
+                    .openForPlugin(ownerPluginId, request);
+                if (!result.success) {
+                    // The channel failed, which is Studio malfunctioning rather than the address
+                    // being refused. Reported as a failure so a plugin tells the two apart.
+                    return { outcome: "failed", error: result.error ?? "Open Link failed" };
+                }
+                return result.data.result;
+            },
+        },
         log: (level, message) => {
             if (level === "error") {
                 console.error(`[DevMode] ${message}`);
@@ -1235,6 +1293,8 @@ export function DevModeContent(props: DevModeContentProps) {
             subscribeCloseRequested,
             networkFetch,
             openExternal,
+            exportProgress,
+            importProgress,
         };
     }, [
         bootAction,
@@ -1243,6 +1303,8 @@ export function DevModeContent(props: DevModeContentProps) {
         log,
         networkFetch,
         openExternal,
+        exportProgress,
+        importProgress,
         onDebugEvent,
         persistenceAdapter,
         quitApplication,
@@ -1392,6 +1454,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 fastForwardToNextChoice={ctx.fastForwardToNextChoice}
                 storyRuntime={ctx.storyRuntime}
                 saves={ctx.saves}
+                composite={ctx.composite}
                 activePanel={activePanel}
                 setActivePanel={setActivePanel}
                 panelFloating={panelFloating}
