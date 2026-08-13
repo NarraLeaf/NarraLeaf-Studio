@@ -54,6 +54,9 @@ import { materializeRevisionSnapshot, type RevisionSnapshotResult } from "./revi
 import { applyRevisionRestore, planRevisionRestore, readWorkingSetPaths } from "./revisionRestore";
 // Same argument again: `fs` and the working-set predicate, and no backend anywhere in it.
 import { readWorkingSetFile } from "./workingFile";
+// Same again: a child process and `fs`, with no backend in it. It is a value import
+// because trusting an authority happens on a failed sign-in, which is not a cold path.
+import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from "./authorityTrust";
 
 /**
  * Owns Lore state for open projects.
@@ -1531,7 +1534,12 @@ export class VcsManager extends Manager {
 
             const signedIn = await backend.signInToServer(
                 { ...session.globals, offline: false },
-                { remoteUrl: session.remoteOrigin, authUrl: options.authUrl, token: options.token },
+                {
+                    remoteUrl: session.remoteOrigin,
+                    authUrl: options.authUrl,
+                    token: options.token,
+                    userDataDir: this.app.getUserDataDir(),
+                },
             );
 
             const others = this.storedServerSessions()
@@ -1544,6 +1552,41 @@ export class VcsManager extends Manager {
 
             return { session: signedIn, reach: await this.reachServer(backend, session, signedIn) };
         });
+    }
+
+    /**
+     * Tell this account's trust store to believe a server's certificate authority.
+     *
+     * **This is the only method in Studio that changes a setting belonging to the
+     * operating system**, and it exists because the alternative was not a worse
+     * experience but an impossible one: the command an author was told to ask for names a
+     * certificate file that lives on the server, so it could not be run on their machine.
+     *
+     * What the author decided is settled before this is called. The interface has already
+     * shown them the authority, its fingerprint and the server it answers for, and has
+     * only offered the button where the token they pasted vouches for that fingerprint.
+     * See `authorityTrust.ts` for what trusting an authority costs if that decision is
+     * wrong.
+     *
+     * **The path is checked against Studio's own directory rather than taken as given.**
+     * A renderer names a file here, and a renderer is where untrusted content ends up; a
+     * path passed straight to `certutil` would let a document decide which certificate
+     * this machine installs. Only files this process wrote are eligible, and it wrote
+     * them from a certificate an endpoint had just presented.
+     */
+    public async trustAuthority(certificatePath: string): Promise<{ installed: boolean; output: string }> {
+        const directory = authorityDirectory(this.app.getUserDataDir());
+        const target = path.resolve(certificatePath);
+        if (path.dirname(target) !== path.resolve(directory) || !target.endsWith(".crt")) {
+            throw new Error("That certificate is not one this installation wrote.");
+        }
+        await fs.access(target);
+
+        const outcome = await runAuthorityInstall(authorityInstallPlan(target));
+        this.app.logger.info(
+            "[Vcs]", outcome.installed ? "Trusted" : "Failed to trust", "a server authority from", target,
+        );
+        return outcome;
     }
 
     /**

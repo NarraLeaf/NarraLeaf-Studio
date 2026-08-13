@@ -18,7 +18,7 @@ import {
     VcsInitRepositoryHandler,
     VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
-    VcsGetServerSessionHandler, VcsSignInHandler, VcsSignOutHandler,
+    VcsGetServerSessionHandler, VcsSignInHandler, VcsSignOutHandler, VcsTrustAuthorityHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
@@ -364,6 +364,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsGetServerSessionHandler(),
         new VcsSignInHandler(),
         new VcsSignOutHandler(),
+        new VcsTrustAuthorityHandler(),
         new VcsGetSyncStateHandler(),
         new VcsPushHandler(),
         new VcsSyncHandler(),

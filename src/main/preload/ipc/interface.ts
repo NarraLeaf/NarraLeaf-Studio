@@ -517,6 +517,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Goes to the network. The token is not stored here and does not come back. */
         signIn: (projectPath: string, authUrl: string, token: string) =>
             ipcClient.invoke(IPCEventType.vcsSignIn, { projectPath, authUrl, token }) as Promise<RequestStatus<VcsSignInOutcome>>,
+        /** Changes the machine's trust store. Only a certificate Studio wrote is eligible. */
+        trustAuthority: (projectPath: string, certificatePath: string) =>
+            ipcClient.invoke(IPCEventType.vcsTrustAuthority, { projectPath, certificatePath }) as Promise<RequestStatus<{ installed: boolean; output: string }>>,
         signOut: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsSignOut, { projectPath }) as Promise<RequestStatus<{ session: null }>>,
         push: (projectPath: string) =>

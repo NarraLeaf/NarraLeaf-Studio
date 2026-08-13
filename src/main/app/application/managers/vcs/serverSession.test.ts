@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isVcsSignInAddress } from "@shared/types/vcs";
-import { VcsSignInError, decodeServerAccount } from "./serverSession";
+import { isVcsSignInAddress, vcsAuthorityIsVouchedFor } from "@shared/types/vcs";
+import type { VcsServerAuthority } from "@shared/types/vcs";
+import { authorityInstallPlan } from "./authorityTrust";
+import { VcsSignInError, decodeServerAccount, readSignInToken, signInToServer } from "./serverSession";
 
 /**
  * Reading a token, and refusing the things that are not one.
@@ -100,5 +102,143 @@ describe("a sign-in address", () => {
         expect(isVcsSignInAddress("https://studio.example.lan:41402/auth")).toBe(false);
         expect(isVcsSignInAddress("studio.example.lan:41402")).toBe(false);
         expect(isVcsSignInAddress("")).toBe(false);
+    });
+});
+
+/**
+ * What a token answers about itself.
+ *
+ * This is the difference between a form with two boxes an author was told to fill in by
+ * somebody else, and a form with one box holding the thing they were actually given. A
+ * real Hub writes seven audience entries for one host - every spelling the client
+ * compares against - and two of them are the addresses Studio needs.
+ */
+describe("reading the addresses out of a token", () => {
+    const AUDIENCE = [
+        "loreserver",
+        "https://hub.example.lan:41402",
+        "https://hub.example.lan:41402/",
+        "hub.example.lan",
+        "hub.example.lan:41337",
+        "lore://hub.example.lan:41337",
+        "lore://hub.example.lan:41337/",
+    ];
+
+    it("takes the sign-in address from the audience, so nobody has to be told it", () => {
+        const read = readSignInToken(tokenWith({ ...ACCOUNT, aud: AUDIENCE }));
+        expect(read.authUrl).toBe("https://hub.example.lan:41402");
+        // Once, though the audience names it twice. The trailing slash is one of the
+        // spellings the audience carries on purpose and is not a second address.
+        expect(read.remotes).toEqual(["lore://hub.example.lan:41337"]);
+    });
+
+    it("carries the fingerprint the server signs with, when the token names one", () => {
+        const fingerprint = "3D:38:9F:E6:12:C3:14:F0:C5:28:53:41:39:06:DC:E9:B6:0A:7A:EA:F1:FF:D0:3C:B2:4C:F8:71:01:46:DC:48";
+        const read = readSignInToken(tokenWith({ ...ACCOUNT, aud: AUDIENCE, authority_sha256: fingerprint }));
+        expect(read.authorityFingerprint).toBe(fingerprint);
+    });
+
+    it("answers empty for a token that says none of it, rather than inventing one", () => {
+        // A plain loreserver's token, and a Hub older than the claim. Both stay working:
+        // empty is what makes the address field appear and the fingerprint be compared
+        // by a person, which is what everybody did before this.
+        const read = readSignInToken(tokenWith(ACCOUNT));
+        expect(read.authUrl).toBe("");
+        expect(read.remotes).toEqual([]);
+        expect(read.authorityFingerprint).toBe("");
+        // The account is still read, because that half never depended on the audience.
+        expect(read.account.userId).toBe(ACCOUNT.sub);
+    });
+
+    it("reads a single-valued audience, which is legal even though a Hub writes an array", () => {
+        expect(readSignInToken(tokenWith({ ...ACCOUNT, aud: "https://one.example.lan" })).authUrl)
+            .toBe("https://one.example.lan");
+    });
+
+    it("asks for an address only once it is established that nothing can supply one", async () => {
+        // Refused before anything is dialled, which is what lets the rail keep the
+        // address field hidden until this answer comes back.
+        const attempt = signInToServer({ repositoryPath: "", offline: false, cache: false }, {
+            remoteUrl: "lore://hub.example.lan:41337",
+            authUrl: "",
+            token: tokenWith(ACCOUNT),
+            userDataDir: "",
+        });
+        await expect(attempt).rejects.toBeInstanceOf(VcsSignInError);
+        await attempt.catch((error: VcsSignInError) => {
+            expect(error.problem).toEqual({ kind: "address" });
+        });
+    });
+});
+
+/**
+ * Whether the token vouches for the authority that actually answered.
+ *
+ * Three states, and the interface does something different in each: offer to install,
+ * warn that something else is answering, or fall back to asking a person. The middle one
+ * is why this is not simply "do we have a fingerprint".
+ */
+describe("comparing an authority against what a token vouched for", () => {
+    const authority = (fields: Partial<VcsServerAuthority>): VcsServerAuthority => ({
+        fingerprint: "AA:BB",
+        expected: "",
+        subject: "CN=NarraLeaf Hub",
+        expiresAt: "Aug 12 00:00:00 2036 GMT",
+        path: "",
+        canInstall: true,
+        command: "",
+        ...fields,
+    });
+
+    it("is vouched for when the token names the authority that answered", () => {
+        expect(vcsAuthorityIsVouchedFor(authority({ expected: "AA:BB" }))).toBe(true);
+        // Case is not the difference between two certificates.
+        expect(vcsAuthorityIsVouchedFor(authority({ expected: "aa:bb" }))).toBe(true);
+    });
+
+    it("is not vouched for when the token named something else", () => {
+        // The shape an interception has, and the interface must not read it as merely
+        // "no claim": the token named an authority and a different one answered.
+        expect(vcsAuthorityIsVouchedFor(authority({ expected: "CC:DD" }))).toBe(false);
+    });
+
+    it("is not vouched for by a token that named nothing", () => {
+        expect(vcsAuthorityIsVouchedFor(authority({}))).toBe(false);
+        expect(vcsAuthorityIsVouchedFor(authority({ expected: "   " }))).toBe(false);
+    });
+});
+
+/** What this platform does about a certificate, and what it admits it cannot do. */
+describe("the install plan", () => {
+    const certificate = process.platform === "win32" ? "C:\Users\a b\hub.crt" : "/home/a b/hub.crt";
+
+    it("names the certificate this machine holds, quoted for the shell it is pasted into", () => {
+        const plan = authorityInstallPlan(certificate);
+        expect(plan.command).toContain("hub.crt");
+        // A path with a space in it is ordinary on both platforms that have a per-user
+        // store, and an unquoted one produces a command that fails on the second word.
+        expect(plan.command).toMatch(/["']/);
+    });
+
+    it("passes the path as one argument rather than through a shell", () => {
+        const plan = authorityInstallPlan(certificate);
+        if (!plan.canInstall) {
+            // Linux: nothing is run, so there is nothing to pass. The command is still
+            // printed, and the certificate is still on this machine for it to name.
+            expect(plan.argv).toEqual([]);
+            expect(plan.command).toContain("sudo");
+            return;
+        }
+        // Unquoted here, because nothing takes this apart on spaces.
+        expect(plan.argv).toContain(certificate);
+        expect(plan.argv[0]).toBe(process.platform === "win32" ? "certutil" : "security");
+    });
+
+    it("installs for this account, never for the machine", () => {
+        // The whole of the blast radius argument. On Windows that is `-user`; on macOS it
+        // is the absence of `-d`, which would make it the system keychain.
+        const plan = authorityInstallPlan(certificate);
+        if (process.platform === "win32") expect(plan.argv).toContain("-user");
+        if (process.platform === "darwin") expect(plan.argv).not.toContain("-d");
     });
 });
