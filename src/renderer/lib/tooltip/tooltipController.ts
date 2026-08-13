@@ -99,6 +99,8 @@ export function startTooltipTracking(doc: Document, publish: Publish): () => voi
     let shownText: string | null = null;
     let hotGroup: HTMLElement | null = null;
     let lastProbe: Element | null = null;
+    /** The control the running timer belongs to, so movement over it does not restart the wait. */
+    let waitingOn: HTMLElement | null = null;
 
     const groupOf = (element: HTMLElement | null): HTMLElement | null =>
         element ? element.closest<HTMLElement>("[" + TOOLTIP_GROUP_ATTRIBUTE + "]") : null;
@@ -108,6 +110,7 @@ export function startTooltipTracking(doc: Document, publish: Publish): () => voi
             clearTimeout(timer);
             timer = null;
         }
+        waitingOn = null;
     };
 
     const clearShown = (): void => {
@@ -161,16 +164,28 @@ export function startTooltipTracking(doc: Document, publish: Publish): () => voi
             return;
         }
 
+        // A pointer resting on a control still emits moves - a hand on a mouse is never quite still,
+        // and a repainting row under the cursor produces them on its own. Restarting the wait on each
+        // one is a tooltip that never arrives, so the wait belongs to the control, not to the event.
+        if (element === waitingOn) {
+            return;
+        }
+
         cancelTimer();
         if (hotGroup && hotGroup.contains(element)) {
             show(element, text);
             return;
         }
         clearShown();
+        waitingOn = element;
         timer = setTimeout(() => {
             timer = null;
-            if (element.isConnected) {
-                show(element, text);
+            waitingOn = null;
+            // Read the words again rather than close over them: a control can relabel itself while
+            // the pointer waits on it.
+            const current = tooltipTextOf(element);
+            if (element.isConnected && current) {
+                show(element, current);
             }
         }, delayMs);
     };

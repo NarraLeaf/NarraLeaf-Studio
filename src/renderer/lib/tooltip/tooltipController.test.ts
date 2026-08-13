@@ -99,6 +99,24 @@ describe("tooltip delay", () => {
         expect(shown).toBeNull();
     });
 
+    it("does not restart the wait while the pointer rests on the same control", () => {
+        // A hand on a mouse is never quite still. Every one of these moves used to push the tooltip
+        // another full delay into the future, so it never arrived.
+        for (let i = 0; i < 10; i += 1) {
+            move(el("lonely"));
+            vi.advanceTimersByTime(60);
+        }
+        expect(shown).toEqual({ anchor: el("lonely"), text: "Run" });
+    });
+
+    it("shows the words the control has when the wait is up, not the ones it had", () => {
+        move(el("lonely"));
+        vi.advanceTimersByTime(DELAY - 100);
+        el("lonely").setAttribute("data-tip", "Stop");
+        vi.advanceTimersByTime(100);
+        expect(shown).toEqual({ anchor: el("lonely"), text: "Stop" });
+    });
+
     it("shows nothing while a button is held, because that pointer is drawing", () => {
         move(el("lonely"), 1);
         vi.advanceTimersByTime(DELAY);
