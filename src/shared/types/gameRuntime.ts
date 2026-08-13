@@ -481,6 +481,14 @@ export type GameRuntimePreloadBridge = {
      * treats as "not known yet" rather than as a policy.
      */
     crashPolicy: GameCrashPolicy | null;
+    /**
+     * Where this shell writes its log, so the crash screen can say where the report is.
+     *
+     * The one thing a player can do about a crash is hand the file to whoever can read it, and
+     * they cannot do that without being told where it is. `null` on the web export, which has no
+     * log file at all - its shell prints to the browser console, and there is no path to name.
+     */
+    logPath: string | null;
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
     /**

@@ -132,6 +132,9 @@ const bridge: GameRuntimePreloadBridge = {
     // the pack has been fetched. `null` says exactly that, and the renderer keeps its default
     // until `readPack` resolves rather than treating unknown as an answer.
     crashPolicy: null,
+    // No log file at all here: this shell prints to the browser console, so there is no path a
+    // crash screen could send anyone to.
+    logPath: null,
     save: {
         write: async (id, savedGame, capture, metadata) =>
             (await getStorage()).writeSave(id, savedGame, capture, metadata),
