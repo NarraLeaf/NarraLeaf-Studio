@@ -57,6 +57,12 @@ export type SurfaceBlueprintBindingContext = {
     debug: DebugBridge;
     coalescer: BindingDebugCoalescer;
     globalState?: BlueprintStateReader & { subscribe?: (listener: () => void) => () => void };
+    /**
+     * Props this page instance was opened with. Widgets that resolve their own data source read
+     * them here; unlike the two state stores they never change while the page is mounted, so there
+     * is nothing to subscribe to.
+     */
+    pageProps?: Readonly<Record<string, unknown>>;
 };
 
 export type NestedSurfaceRuntimeInput = {
@@ -724,6 +730,7 @@ function NestedSurfaceInstance(props: {
             contentStyle={{ width: "100%", height: "100%" }}
             presentZIndex={10 + layerIndex}
             exitZIndex={runtimeInput.exitBehind ? 0 : 30 + layerIndex}
+            exitHoldMs={timings.exitMs}
             interactive={effectiveInteractive}
             resolveExit={resolveExit}
             onPrepaintReady={handlePrepaintReady}
@@ -1092,6 +1099,7 @@ function renderElementTree(
                   ? {
                         surfaceState: blueprintBindingContext.surfaceState,
                         globalState: blueprintBindingContext.globalState,
+                        pageProps: blueprintBindingContext.pageProps,
                     }
                   : undefined,
               useAppearanceInspectorPreview,

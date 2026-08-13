@@ -14,6 +14,7 @@ import {
     type GameRuntimePackV1,
     type GameRuntimeProjectIcon,
     type GameRuntimeProjectIconPlatform,
+    normalizeGameCrashPolicy,
     normalizeGameRuntimeViewportConfig,
 } from "@shared/types/gameRuntime";
 import type { AppTagPluginConfig, AppTagReachableScenes, ProjectAppTag } from "@shared/types/appTag";
@@ -421,6 +422,14 @@ export async function compileGameRuntimeArtifact(
                     allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
                 },
             }),
+            // Unconditional, unlike `network` above: a crash is not a shell mechanism, and a
+            // policy that applied to the desktop build but not the web one would be a setting that
+            // means something different depending on where the author looks.
+            crash: {
+                policy: normalizeGameCrashPolicy(
+                    (projectConfig?.app as { crash?: { policy?: unknown } } | undefined)?.crash?.policy,
+                ),
+            },
             // Unconditional, unlike `network` above, and deliberately not inside it: a web export
             // carries no network block, and a declaration that disappeared on one shell would be a
             // hole in the boundary this list IS. Opening a page is also not a network permission -

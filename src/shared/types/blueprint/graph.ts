@@ -796,8 +796,8 @@ export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
  * Pop the page opened last and reveal whatever it covered - the other half of Go Page.
  *
  * Every page a game opens over a running story (save, load, config, backlog) needs a way out, and
- * Go Page is not it: navigation is a stack, so "go to the page I came from" pushes a third layer
- * over the two already there and the game is still buried. The host has had `navigation.closeLayer`
+ * Go Page is not it: navigation is a stack, so "go to the page I came from" pushes a third page
+ * over the two already there and the game is still buried. The host has had `navigation.pageBack`
  * since the stack existed; until this node there was no way for an author to reach it.
  */
 export const BLUEPRINT_NODE_TYPE_PAGE_BACK = "blueprint.page.back" as const;
@@ -812,6 +812,38 @@ export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSur
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING = "blueprint.page.isSurfaceEntering" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING = "blueprint.page.isSurfaceTransitioning" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_QUIT = "blueprint.page.quit" as const;
+/**
+ * Put a page on screen over whatever is already there, and hand back the handle that names it.
+ *
+ * The other half of `Go Page`, for the case that is not navigation at all: a confirm, a tooltip, a
+ * pause sheet. Go Page replaces the screen and Go back reveals what it covered, which is the wrong
+ * shape for something that has to appear *over* a page and give it back untouched - an author who
+ * built one out of the page stack had to remember to pop exactly as many pages as they pushed, and
+ * the story underneath was hidden the whole time.
+ */
+export const BLUEPRINT_NODE_TYPE_LAYER_SHOW = "blueprint.layer.show" as const;
+export const BLUEPRINT_NODE_TYPE_LAYER_HIDE = "blueprint.layer.hide" as const;
+/** Wait here until that layer closes, and read whatever it closed with. */
+export const BLUEPRINT_NODE_TYPE_LAYER_WAIT = "blueprint.layer.wait" as const;
+/**
+ * Close the layer this graph is running in, with a value for whoever is waiting on it.
+ *
+ * The page a layer shows never learns its own handle - it is a page like any other, and could be
+ * opened as one - so this is how the inside of a layer closes itself. On a page that is not a
+ * layer it does nothing.
+ */
+export const BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF = "blueprint.layer.closeSelf" as const;
+export const BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED = "blueprint.layer.isMounted" as const;
+/**
+ * Ask a question over the page that is already on screen, and continue on the answer.
+ *
+ * `Show Layer` and `Wait For Layer` fused, with one exec output per button, because that is the
+ * shape a question has: every answer leads somewhere different. Assembled out of the two nodes it
+ * stands for, the same graph is a handle, a wait, and a switch over an index whose meaning lives
+ * nowhere on the canvas - three rows of bookkeeping between the question and the branches that
+ * answer it.
+ */
+export const BLUEPRINT_NODE_TYPE_LAYER_CONFIRM = "blueprint.layer.confirm" as const;
 // App window nodes. The older node types in this group keep their `blueprint.page.*`
 // ids from when the category was named "Page"; only the palette label changed.
 export const BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN = "blueprint.app.getFullscreen" as const;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeBuildConfiguration } from "./configuration";
+import { normalizeBuildConfiguration, normalizeCrashConfiguration } from "./configuration";
 
 describe("normalizeBuildConfiguration", () => {
     it("returns null for empty / malformed input", () => {
@@ -130,5 +130,23 @@ describe("normalizeBuildConfiguration", () => {
         });
         expect(result?.compression).toBe("store");
         expect(result?.openWhenDone).toBe(false);
+    });
+});
+
+describe("normalizeCrashConfiguration", () => {
+    it("shows the error for a project that never chose", () => {
+        // Every build made before this setting existed behaved this way, and changing the default
+        // would quietly change what those projects ship.
+        expect(normalizeCrashConfiguration(undefined).policy).toBe("details");
+        expect(normalizeCrashConfiguration({}).policy).toBe("details");
+    });
+
+    it("keeps a policy the author picked", () => {
+        expect(normalizeCrashConfiguration({ policy: "log" }).policy).toBe("log");
+        expect(normalizeCrashConfiguration({ policy: "restart" }).policy).toBe("restart");
+    });
+
+    it("falls back rather than carrying a value it does not recognize", () => {
+        expect(normalizeCrashConfiguration({ policy: "email-me" }).policy).toBe("details");
     });
 });

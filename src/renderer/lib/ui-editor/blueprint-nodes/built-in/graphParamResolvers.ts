@@ -103,6 +103,10 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
+    BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
+    BLUEPRINT_NODE_TYPE_LAYER_SHOW,
+    BLUEPRINT_NODE_TYPE_LAYER_WAIT,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
@@ -1574,6 +1578,40 @@ function resolveVisitedNodeOutput(
 }
 
 /**
+ * `Is Layer Mounted` - the layer family's one pure reader.
+ *
+ * Its own resolver because a pure node's `execute()` is never run: the executor only walks exec flow,
+ * so the value exists here or nowhere, and a pure node nobody registered resolves to `undefined`
+ * downstream with no error and no diagnostic. The handle arrives on a data pin rather than in
+ * `params`, so this recurses through {@link resolveDataPinValue} to read whatever `Show Layer` put
+ * there.
+ *
+ * No handle, or no host, reads as false rather than `undefined`: the pin is a non-nullable boolean,
+ * and "no such layer" is the honest answer for one that was never shown.
+ */
+function resolveLayerMountedNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    nodeType: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (nodeType !== BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED || portId !== "mounted") {
+        return undefined;
+    }
+    const handle = String(
+        resolveDataPinValue(graph, nodeId, "layer", params, blueprintLocals, depth + 1, runtime) ?? "",
+    ).trim();
+    if (!handle) {
+        return false;
+    }
+    return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.layers?.isMounted(handle) === true;
+}
+
+/**
  * `Get App Tag` - the build variant's name.
  *
  * Constant by construction, and the constant is the release name. The fold
@@ -2699,6 +2737,19 @@ function resolveSelfOutput(
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
+    // The layer family, kept out of the cross-product list above for the same reason the network one
+    // is: `layer` is an INPUT pin name on three of these nodes and an output on exactly one, and
+    // joining that list would hand the name to every node type in it. `Show Layer` publishes the
+    // handle every other layer node takes, `Wait For Layer` publishes what the layer closed with, and
+    // `Show Confirm` publishes which button was pressed and what it read; unregistered, all of them
+    // would read as `undefined` downstream with nothing said about it.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_SHOW && portId === "layer") ||
+        (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_WAIT && portId === "result") ||
+        (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_CONFIRM && (portId === "index" || portId === "label"))
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
     // Animate Property hands the token it minted to a later Stop Animation, so the
     // token has to survive the hop through the node output store.
     if (
@@ -2780,6 +2831,19 @@ function resolveSelfOutput(
     );
     if (visitedOutput !== undefined) {
         return visitedOutput;
+    }
+    const layerMountedOutput = resolveLayerMountedNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    if (layerMountedOutput !== undefined) {
+        return layerMountedOutput;
     }
     const appTagOutput = resolveAppTagNodeOutput(selfNode.type, portId);
     if (appTagOutput !== undefined) {

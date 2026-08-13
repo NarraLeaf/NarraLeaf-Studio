@@ -6,6 +6,11 @@ import {
     type GameRuntimeCropAnchorY,
     type GameRuntimeViewportFit,
 } from "@shared/types/gameRuntime";
+import {
+    DEFAULT_GAME_CRASH_POLICY,
+    normalizeGameCrashPolicy,
+    type GameCrashPolicy,
+} from "@shared/types/gameRuntime";
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
@@ -73,6 +78,17 @@ export type NetworkConfiguration = {
     allowHttp: boolean;
     allowRemoteResource: boolean;
     allowRemoteScript: boolean;
+};
+
+/**
+ * What the shipped game does when it stops working (see {@link GameCrashPolicy}).
+ *
+ * A project setting rather than a build-dialog one: it is a decision about the game, not about one
+ * build of it, and an author who wanted the stack on screen while testing would otherwise have to
+ * remember to change it back before shipping.
+ */
+export type CrashConfiguration = {
+    policy: GameCrashPolicy;
 };
 
 export type SecurityConfiguration = {
@@ -271,6 +287,8 @@ export type ProjectAppConfiguration = {
     voice?: VoiceConfiguration;
     /** Asset-protection policy applied at pack time; absent until configured. */
     security?: SecurityConfiguration;
+    /** What the shipped game does when it stops working; absent until configured. */
+    crash?: CrashConfiguration;
     /** What the exported static site may do to the author's bytes; absent until configured. */
     webOptimization?: WebOptimizationConfiguration;
     /** Mobile shell behaviour; absent until configured (see the defaults). */
@@ -322,6 +340,21 @@ export function normalizeNetworkConfiguration(value: unknown): NetworkConfigurat
             ? record.allowRemoteScript
             : DEFAULT_NETWORK_CONFIGURATION.allowRemoteScript,
     };
+}
+
+/**
+ * A project that never chose shows the failure on screen, which is what every build did before
+ * this setting existed. Changing this default would quietly change what an existing project ships.
+ */
+export const DEFAULT_CRASH_CONFIGURATION: CrashConfiguration = {
+    policy: DEFAULT_GAME_CRASH_POLICY,
+};
+
+export function normalizeCrashConfiguration(value: unknown): CrashConfiguration {
+    if (!value || typeof value !== "object") {
+        return { ...DEFAULT_CRASH_CONFIGURATION };
+    }
+    return { policy: normalizeGameCrashPolicy((value as Record<string, unknown>).policy) };
 }
 
 /**

@@ -185,7 +185,7 @@ describe("createDevModeBlueprintHostAdapter", () => {
             activeSurfaceId: "surface",
             emit: event => debug.emit(event),
             onOpenSurface: () => undefined,
-            onCloseLayer: () => undefined,
+            onPageBack: () => undefined,
             onWidgetPatch: () => undefined,
             widgetRuntimeStore: new WidgetRuntimeStateStore(),
         });
@@ -340,7 +340,7 @@ describe("createDevModeBlueprintHostAdapter", () => {
             activeSurfaceId: "surface",
             emit: event => debug.emit(event),
             onOpenSurface: () => undefined,
-            onCloseLayer: () => undefined,
+            onPageBack: () => undefined,
             onWidgetPatch: () => undefined,
             widgetRuntimeStore: new WidgetRuntimeStateStore(),
         });

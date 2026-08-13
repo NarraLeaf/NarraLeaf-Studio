@@ -68,6 +68,19 @@ export function getSurfaceLayerBackgroundColor(
 }
 
 /**
+ * The sheet a layer lays over everything beneath it.
+ *
+ * Painted behind the layer's own background rather than instead of it, so a layer that carries a
+ * colour of its own keeps it and one authored transparent - the usual shape for something that floats
+ * in the middle of the screen - shows the scrim alone.
+ *
+ * Deliberately theme-invariant, in the same class as the other dimming overlays: what it dims is the
+ * author's own screen as a player will see it, and half black is dark enough that the page above it
+ * separates from whatever it covers without hiding that something is still there.
+ */
+export const SURFACE_LAYER_SCRIM_COLOR = "color-mix(in srgb, #000000 50%, transparent)";
+
+/**
  * How much of a page's background picture survives when the page is opened over a running game.
  *
  * The same reasoning as {@link GAME_OVERLAY_BACKGROUND_ALPHA}, and deliberately the same number: a

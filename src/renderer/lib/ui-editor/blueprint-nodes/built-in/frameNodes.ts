@@ -89,12 +89,12 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         // The way back out of a page. Pages are a stack, so the alternative an author reaches for -
-        // Go Page, back to where they came from - pushes another layer instead of removing one: the
+        // Go Page, back to where they came from - pushes another page instead of removing one: the
         // config screen opened over a running story stays over it forever, and a second Go Page
-        // leaves three layers deep. `navigation.closeLayer` has always existed on the host; this is
+        // leaves three pages deep. `navigation.pageBack` has always existed on the host; this is
         // the node that lets a blueprint call it.
         //
-        // Closing the last remaining layer is a no-op rather than an error: a page reached from the
+        // Closing the last remaining page is a no-op rather than an error: a page reached from the
         // title screen is the bottom of the stack, and a Back button that throws there would make
         // the same button unusable on the same screen depending on how the player got to it.
         type: BLUEPRINT_NODE_TYPE_PAGE_BACK,
@@ -106,7 +106,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, execNext],
         async execute(ctx) {
-            await requireHostApi(ctx).navigation.closeLayer();
+            await requireHostApi(ctx).navigation.pageBack();
             return { nextPort: "next" };
         },
     },

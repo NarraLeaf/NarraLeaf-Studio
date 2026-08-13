@@ -313,6 +313,16 @@ const SILENT_SOUND_HOST: BlueprintHostApiRuntime["sound"] = {
     setTrackVolume: async () => undefined,
 };
 
+/** No host in these tests composites layers; a show reports a handle nothing else knows. */
+const SILENT_LAYER_HOST: BlueprintHostApiRuntime["layers"] = {
+    show: async () => "layer:test:1",
+    hide: async () => undefined,
+    hideGroup: async () => undefined,
+    wait: async () => null,
+    closeSelf: async () => undefined,
+    isMounted: () => false,
+};
+
 /** No host in these tests reaches a network; every request reports the same refusal. */
 const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
     fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
@@ -335,7 +345,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 navigation: {
                     openSurface: async () => undefined,
                     getPageProps: () => ({}),
-                    closeLayer: async () => undefined,
+                    pageBack: async () => undefined,
                     clearPages: async () => undefined,
                     clearGameOverlay: async () => undefined,
                     quitApplication: async () => undefined,
@@ -343,6 +353,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     setFullscreen: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
                 },
+                layers: SILENT_LAYER_HOST,
                 widget: {} as any,
                 state: {
                     get: () => undefined,
@@ -453,7 +464,7 @@ function createPageNavigationHostAdapter(
                         openedPageProps.push(props);
                     },
                     getPageProps: () => pageProps,
-                    closeLayer: async () => undefined,
+                    pageBack: async () => undefined,
                     clearPages: async () => undefined,
                     clearGameOverlay: async () => undefined,
                     quitApplication: async () => {
@@ -471,6 +482,7 @@ function createPageNavigationHostAdapter(
                         return { outcome: "opened", error: null };
                     },
                 },
+                layers: SILENT_LAYER_HOST,
                 widget: {
                     getFrameProperties: (elementId: string) => ({
                         targetSurfaceId: frameTargets[elementId] ?? null,
@@ -614,7 +626,7 @@ function createGameSaveHostAdapter(options: {
                 navigation: {
                     openSurface: async () => undefined,
                     getPageProps: () => ({}),
-                    closeLayer: async () => undefined,
+                    pageBack: async () => undefined,
                     clearPages: async () => undefined,
                     clearGameOverlay: async () => undefined,
                     quitApplication: async () => undefined,
@@ -622,6 +634,7 @@ function createGameSaveHostAdapter(options: {
                     setFullscreen: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
                 },
+                layers: SILENT_LAYER_HOST,
                 widget: {} as any,
                 state: {
                     get: () => undefined,

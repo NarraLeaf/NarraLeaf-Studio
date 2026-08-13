@@ -247,7 +247,7 @@ export function useStoryPreviewGameUi(input: {
             // Navigation, application, and save APIs do not exist inside the editor preview;
             // blueprint calls reach these stubs and surface as execution.error debug events.
             openSurfaceWithTransition: async () => undefined,
-            closeLayerWithTransition: async () => undefined,
+            goBackWithTransition: async () => undefined,
             quitApplication: async () => undefined,
             // The preview renders into a Studio panel, not an application window.
             resolveAvatarAssetId: gameInput.resolveAvatarAssetId,
