@@ -199,6 +199,7 @@ export const settings = {
         versionControlAuthor: {
             label: "作者名",
             description: "记录为提交与检查点的作者，留空则记为 NarraLeaf Studio",
+            fromServer: "来自本安装已登录的服务器。退出登录后可重新记录你自己的名字。",
         },
         versionControlAuthorEmail: {
             label: "作者邮箱",

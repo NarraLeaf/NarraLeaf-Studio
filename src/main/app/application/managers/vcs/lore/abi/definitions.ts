@@ -205,6 +205,15 @@ export const LORE_STRUCTS = {
         tokenType: "LoreString",
         authUrl: "LoreString",
     },
+    // Reading and clearing the sessions the login above wrote. They live in Lore's own
+    // per-user store rather than in the repository, so nothing Studio holds can answer
+    // "am I still signed in" - only these can.
+    LoreAuthListArgs: { withToken: "uint8_t" },
+    LoreAuthLogoutArgs: {
+        authUrl: "LoreString",
+        resource: "LoreString",
+        userId: "LoreString",
+    },
     LoreRepositoryStatusArgs: {
         staged: "uint8_t",
         scan: "uint8_t",
@@ -733,6 +742,11 @@ export const LORE_VERBS = {
     revisionSync: { symbol: "lore_revision_sync", args: "LoreRevisionSyncArgs" },
     branchPush: { symbol: "lore_branch_push", args: "LoreBranchPushArgs" },
     authLoginWithToken: { symbol: "lore_auth_login_with_token", args: "LoreAuthLoginWithTokenArgs" },
+    // Both read and write the same per-user store `authLoginWithToken` fills, and neither
+    // opens a socket - they are the only way to see what that login left behind, and the
+    // only way to take it back off the machine.
+    authList: { symbol: "lore_auth_list", args: "LoreAuthListArgs" },
+    authLogout: { symbol: "lore_auth_logout", args: "LoreAuthLogoutArgs" },
 } as const satisfies Readonly<Record<string, { symbol: string; args: LoreStructName }>>;
 
 export type LoreVerbName = keyof typeof LORE_VERBS;
