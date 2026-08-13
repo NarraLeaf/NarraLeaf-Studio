@@ -872,7 +872,7 @@ function SignInSection({ surface }: { surface: VersionSurface }) {
                 placeholder={t("workspace.shell.versionControl.server.signIn.tokenPlaceholder")}
                 className="mt-1 text-2xs"
             />
-            {/* Only once a sign-in has come back saying the token names nowhere. A Hub's
+            {/* Only once a sign-in has come back saying the token names nowhere. A Team server's
                 token carries its own endpoint, so for most people this box never appears;
                 putting it above the token box, as this form used to, asked everybody for
                 an address most of them had no way to know. */}
@@ -948,7 +948,7 @@ function SignInSection({ surface }: { surface: VersionSurface }) {
  *
  * **Two ways in, and they are not the same question.** Where the pasted token names this
  * authority, the comparison has already been made and what is left is a decision. Where
- * it names none - a plain loreserver, an older Hub - the fingerprint is shown and the
+ * it names none - a plain loreserver, an older Team server - the fingerprint is shown and the
  * author is asked to check it against what they were told, exactly as before. A token
  * that names a DIFFERENT authority never reaches here: that is the shape an interception
  * has, and the rail says so instead of offering a button.

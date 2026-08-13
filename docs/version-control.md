@@ -785,7 +785,7 @@ clone**，但**连接是两件事，只做第一件会静默地半成功**。
 |---|---|
 | Studio 内部模块 | `src/main/app/application/managers/vcs/`，`VcsManager` |
 | 抽象层若抽成包 | `@narraleaf/vcs` |
-| 服务端（若真的要做） | 产品名 **NarraLeaf Hub**，仓库 `NarraLeaf-Hub`，包 `@narraleaf/hub` |
+| 服务端 | 产品名 **NarraLeaf Team**，仓库 `NarraLeaf-Team`，包 `@narraleaf/team`，命令 `nlteam` |
 
 ## 6. 离线 diff 策略
 

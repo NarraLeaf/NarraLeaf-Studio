@@ -15,7 +15,7 @@ import { VcsSignInError, diagnoseEndpoint, readServerSessions, signInToServer } 
  * Studio's idea of both. This file exists because that idea was wrong twice.
  *
  * ```bash
- * # A server that issues tokens, e.g. one supervised by NarraLeaf Hub:
+ * # A server that issues tokens, e.g. one supervised by NarraLeaf Team:
  * LORE_TEST_AUTH_URL="https://127.0.0.1:41402" \
  * LORE_TEST_REMOTE="lore://127.0.0.1:41337" \
  *   yarn vitest run src/main/app/application/managers/vcs/serverSession.integration.test.ts

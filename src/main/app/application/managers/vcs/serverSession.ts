@@ -133,7 +133,7 @@ export function decodeServerAccount(token: string): VcsServerAccount {
  * statement about itself rather than something an author was told over chat and asked to
  * retype - and retyping was where this went wrong for people who do not run the server.
  *
- * The fingerprint is Hub's `authority_sha256`. Nothing verifies the signature over it,
+ * The fingerprint is the Team server's `authority_sha256`. Nothing verifies the signature over it,
  * and `vcsAuthorityIsVouchedFor` in shared types is where that is accounted for.
  */
 export function readSignInToken(token: string): VcsSignInToken {
@@ -141,7 +141,7 @@ export function readSignInToken(token: string): VcsSignInToken {
     const claims = tokenClaims(token);
     const audience = Array.isArray(claims.aud)
         ? (claims.aud as unknown[])
-        // A single-valued audience is legal JWT and a Hub does not write one, but a
+        // A single-valued audience is legal JWT and a Team server does not write one, but a
         // server that does would otherwise have its one address ignored.
         : typeof claims.aud === "string" ? [claims.aud] : [];
     const { authUrls, remotes } = vcsAddressesInAudience(audience);
@@ -212,7 +212,7 @@ export async function diagnoseEndpoint(authUrl: string, timeoutMs = 5_000): Prom
             // the endpoint's own certificate, and the authority is what their server's
             // trust command prints a fingerprint for. Trusting the leaf instead would
             // also have to be redone every time the endpoint's certificate is replaced,
-            // which a Hub does yearly on its own.
+            // which a Team server does yearly on its own.
             let root = certificate;
             const seen = new Set<string>();
             while (root.issuerCertificate && !seen.has(root.fingerprint256)) {

@@ -525,9 +525,9 @@ export interface VcsServerAccount {
  */
 export interface VcsSignInToken {
     account: VcsServerAccount;
-    /** Where to present it, from `aud`: `https://hub.example.lan:41402`. */
+    /** Where to present it, from `aud`: `https://team.example.lan:41402`. */
     authUrl: string;
-    /** The servers it is good for, from `aud`: `lore://hub.example.lan:41337`. */
+    /** The servers it is good for, from `aud`: `lore://team.example.lan:41337`. */
     remotes: readonly string[];
     /** SHA-256 of the authority signing that endpoint, from `authority_sha256`. */
     authorityFingerprint: string;
@@ -537,12 +537,12 @@ export interface VcsSignInToken {
  * Pull the addresses out of a token's audience.
  *
  * The audience is a flat list holding every spelling of every host this token may be
- * sent to - measured against a real Hub, seven entries for one host, because the client
+ * sent to - measured against a real Team server, seven entries for one host, because the client
  * compares the audience against the address it is dialling and the two are not written
  * the same way. Studio wants two of them and recognises them by scheme.
  *
- * Order is kept: the first sign-in address is the one a token names first, and a Hub
- * writes its own endpoint before any data remote.
+ * Order is kept: the first sign-in address is the one a token names first, and a Team
+ * server writes its own endpoint before any data remote.
  */
 export function vcsAddressesInAudience(audience: readonly unknown[]): {
     authUrls: string[];
@@ -602,12 +602,12 @@ export interface VcsServerAuthority {
     /**
      * The fingerprint the pasted token named, empty when it named none.
      *
-     * A plain loreserver, or a Hub older than this claim, mints tokens that say nothing
+     * A plain loreserver, or a Team server older than this claim, mints tokens that say nothing
      * about certificates; then this is empty and the author is back to comparing by eye,
      * which is what they did before and still works.
      */
     expected: string;
-    /** The authority's subject, e.g. `CN=NarraLeaf Hub`. Shown, never compared. */
+    /** The authority's subject, e.g. `CN=NarraLeaf Team`. Shown, never compared. */
     subject: string;
     /** When it stops being valid, as an ISO date. Shown so a decade-long one reads as one. */
     expiresAt: string;
@@ -684,7 +684,7 @@ export type VcsSignInProblem =
     | { kind: "certificate"; authority: VcsServerAuthority }
     /** Nothing answered at that address. */
     | { kind: "unreachable"; detail: string }
-    /** The endpoint answered and refused the token: expired, revoked, or another Hub's. */
+    /** The endpoint answered and refused the token: expired, revoked, or another server's. */
     | { kind: "refused"; detail: string }
     /** Anything else, with whatever the backend said. */
     | { kind: "unknown"; detail: string };
