@@ -28,6 +28,14 @@ export function describePluginInstallPermission(permission: PluginInstallPermiss
         case "buildDependency":
             return `Download binaries while building your game (${singleLine(permission.id, "dependency")}`
                 + `${permission.hosts.length > 0 ? `, from ${permission.hosts.join(", ")}` : ""})`;
+        case "externalLink":
+            // The patterns are listed rather than counted: "open 3 addresses" is not something a
+            // person can decide about, and the whole value of a declared pattern is that it is
+            // readable.
+            return "In your game: send the player to "
+                + (permission.patterns.length > 0
+                    ? permission.patterns.map(pattern => singleLine(pattern, "declared address")).join(", ")
+                    : "declared addresses");
         default:
             return exhaustive(permission);
     }
@@ -105,6 +113,15 @@ function covers(granted: PluginInstallPermission, requested: PluginInstallPermis
     if (granted.kind === "buildDependency" && requested.kind === "buildDependency") {
         return granted.id === requested.id
             && requested.hosts.every(host => granted.hosts.includes(host));
+    }
+    // Every pattern the new version wants must be one the author already approved, compared as the
+    // exact declared string. Deliberately NOT "is the new pattern covered by an approved one": that
+    // would need this to reason about wildcards, and a subset test that has to decide whether
+    // `https://*.example.com/*` swallows `https://a.example.com/x` is a second matcher living next
+    // to the real one. String equality here can only ever be conservative - the worst it does is
+    // ask the author again about a pattern they would have approved.
+    if (granted.kind === "externalLink" && requested.kind === "externalLink") {
+        return requested.patterns.every(pattern => granted.patterns.includes(pattern));
     }
     return false;
 }

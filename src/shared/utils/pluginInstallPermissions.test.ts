@@ -92,3 +92,66 @@ describe("isPermissionSubset", () => {
         expect(isPermissionSubset([fs("/p", "read")], [api("/p")])).toBe(false);
     });
 });
+
+/**
+ * External-link patterns and the update prompt.
+ *
+ * The rule the whole derived-permission design rests on: an update that can reach somewhere new is
+ * an update the author is asked about again. Anything this cannot prove is covered counts as new.
+ */
+describe("isPermissionSubset — externalLink", () => {
+    const links = (...patterns: string[]) => ({ kind: "externalLink", patterns }) as const;
+
+    it("inherits the grant when the patterns did not change", () => {
+        expect(isPermissionSubset([links("steam://*")], [links("steam://*")])).toBe(true);
+        expect(isPermissionSubset(
+            [links("steam://*", "https://store.example.com/app/*")],
+            [links("https://store.example.com/app/*", "steam://*")],
+        )).toBe(true);
+    });
+
+    it("re-prompts when a pattern is added", () => {
+        expect(isPermissionSubset(
+            [links("steam://*", "https://evil.test/*")],
+            [links("steam://*")],
+        )).toBe(false);
+        expect(isPermissionSubset([links("steam://*")], [])).toBe(false);
+    });
+
+    it("lets a narrowed pattern list inherit, because dropping one reaches nowhere new", () => {
+        expect(isPermissionSubset(
+            [links("steam://*")],
+            [links("steam://*", "https://x.example.com/")],
+        )).toBe(true);
+    });
+
+    it("re-prompts when a pattern is widened rather than added", () => {
+        // Deliberately conservative: this compares the declared strings, not what they cover. A
+        // pattern that now reaches further is a different string, so it asks again.
+        expect(isPermissionSubset(
+            [links("https://*.example.com/*")],
+            [links("https://store.example.com/*")],
+        )).toBe(false);
+        expect(isPermissionSubset(
+            [links("https://store.example.com/*")],
+            [links("https://store.example.com/app/*")],
+        )).toBe(false);
+    });
+
+    it("never lets another kind cover it", () => {
+        expect(isPermissionSubset(
+            [links("steam://*")],
+            [{ kind: "runtime", capability: "store" }],
+        )).toBe(false);
+    });
+});
+
+describe("plugin install permission copy — externalLink", () => {
+    it("names every pattern rather than counting them", () => {
+        expect(describePluginInstallPermissions([
+            { kind: "externalLink", patterns: ["steam://*", "https://store.example.com/app/*"] },
+        ])).toEqual([
+            "In your game: send the player to steam://*, https://store.example.com/app/*",
+        ]);
+    });
+});

@@ -361,7 +361,7 @@ function assertDeclaredTest(descriptor: WorkspacePluginDescriptor, id: string): 
  * the preview shell, the web export all differ — and the editor's subset is empty:
  * there is no playthrough to read state from, no save file, no game to draw an
  * overlay over. So every capability-gated domain is *absent from this object*,
- * indistinguishable from one the manifest never declared, and only the four
+ * indistinguishable from one the manifest never declared, and only the five
  * always-present members remain. Plugin nodes already have to survive that (the
  * web export has no sidecar either); running in the editor is the same situation.
  *
@@ -410,6 +410,20 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
                     "warning",
                     "app.game.data is not readable in the editor; read the authored copy through "
                     + "app.services.storage in the studio entry and pass it into the node.",
+                );
+                return null;
+            },
+        },
+        config: {
+            // A build config value is resolved by a build, for the variant it is building. The
+            // editor is not building anything, so there is no variant here whose value this could
+            // be - and answering with the project's own would be the demo's answer in the release
+            // build as often as not.
+            get: () => {
+                log(
+                    "warning",
+                    "app.game.config is only readable in a build; in the editor there is no variant "
+                    + "for a value to belong to.",
                 );
                 return null;
             },

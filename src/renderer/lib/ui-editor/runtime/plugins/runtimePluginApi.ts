@@ -11,6 +11,10 @@
 import type { ReactElement } from "react";
 import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
+import type {
+    BlueprintOpenExternalRequest,
+    BlueprintOpenExternalResult,
+} from "@shared/types/blueprint/externalLink";
 import type { BehaviorNodeExecuteResult } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { ElementRendererProps } from "../ElementRendererRegistry";
 
@@ -207,6 +211,27 @@ export type RuntimePluginAssets = {
     url(assetId: string): string;
 };
 
+/**
+ * `navigation` — send the player out of the game, to an address this plugin declared.
+ *
+ * Present exactly when `contributes.externalLinks` is non-empty: declaring the patterns *is* the
+ * request, the same shape `sidecar` uses, so there is no separate capability string to forget. A
+ * plugin that declared nothing has no `app.game.navigation` at all rather than a method that
+ * refuses, which keeps `if (app.game.navigation)` the honest test.
+ *
+ * **Declaring is not deciding.** The address still has to match one of this plugin's own patterns,
+ * and that check happens in whichever process performs the act - the packaged game's main process,
+ * Studio's main process in Dev Mode, the page itself on the web export - never here. This method is
+ * a request, and `outcome: "refused"` is the ordinary answer to one that names an address the
+ * manifest never covered.
+ *
+ * Rejects nothing and throws nothing: like the Open Link node it reports through the result, so a
+ * plugin branches on the outcome instead of wrapping the call.
+ */
+export type RuntimePluginNavigation = {
+    openExternal(request: BlueprintOpenExternalRequest): Promise<BlueprintOpenExternalResult>;
+};
+
 /** A live connection to one declared sidecar process. */
 export type RuntimePluginSidecarHandle = {
     /** Send a method call and await its reply. Rejects if the sidecar dies mid-flight. */
@@ -233,7 +258,7 @@ export type RuntimePluginSidecars = {
 /**
  * The game-side plugin surface.
  *
- * Everything below the always-present four is **capability-gated**: a domain the
+ * Everything below the always-present five is **capability-gated**: a domain the
  * manifest did not declare is *absent from this object*, not a method that
  * throws. That is the whole contract — the install prompt lists exactly the
  * domains present here, so what the user approved and what the plugin can do are
@@ -260,6 +285,23 @@ export type RuntimePluginGame = {
     data: {
         readJson<T = unknown>(namespace: string): T | null;
     };
+    /**
+     * What the author filled in for this plugin's `contributes.buildConfig` fields, for the
+     * variant this build was compiled as. Synchronous for the reason `data` is: the values
+     * travel with the pack.
+     *
+     * Always present, like `data`, and for the same reason - declaring a field grants the plugin
+     * nothing, so there is no capability here to gate on. Only this plugin's own fields are
+     * readable; another plugin's values are not in the entry this reads.
+     *
+     * Returns null for a key the manifest never declared, for a `secret` field (the value stays
+     * on the machine that typed it and is not in any build), for one the author left blank, and
+     * outside a compiled build. A plugin must treat every one of those as "not configured" rather
+     * than assume a value exists.
+     */
+    config: {
+        get(key: string): string | null;
+    };
     log(level: RuntimePluginLogLevel, message: string): void;
 
     /** Present with `contributes.runtimeCapabilities: ["store"]`. */
@@ -278,6 +320,8 @@ export type RuntimePluginGame = {
     locale?: RuntimePluginLocale;
     /** Present when `contributes.sidecars` is non-empty. */
     sidecar?: RuntimePluginSidecars;
+    /** Present when `contributes.externalLinks` is non-empty. */
+    navigation?: RuntimePluginNavigation;
 };
 
 export type RuntimePluginApp = {
