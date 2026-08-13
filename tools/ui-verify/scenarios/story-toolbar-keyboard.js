@@ -44,7 +44,7 @@ const FOCUS = function () {
         const items = Array.from(strip.querySelectorAll('button'));
         return {
             where: 'toolbar',
-            title: el.getAttribute('title') || '',
+            title: el.getAttribute('data-tip') || el.getAttribute('title') || '',
             index: items.indexOf(el),
             count: items.length,
         };
@@ -63,7 +63,7 @@ const STRIP = function () {
         // The collapsed form IS a single button with no children of its own; the expanded form is a
         // container with a row of them. `role=toolbar` is the honest discriminator.
         expanded: strip.getAttribute('role') === 'toolbar',
-        titles: items.map(b => b.getAttribute('title') || ''),
+        titles: items.map(b => b.getAttribute('data-tip') || b.getAttribute('title') || ''),
         pressed: items.map(b => b.getAttribute('aria-pressed')),
     };
 };
