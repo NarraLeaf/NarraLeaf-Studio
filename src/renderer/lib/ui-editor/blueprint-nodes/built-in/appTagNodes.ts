@@ -25,7 +25,7 @@ export const BLUEPRINT_APP_TAG_OUTPUT_PIN_ID = "appTag";
 export const appTagBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
-        displayName: "Get App Tag",
+        displayName: "Get Build Variant",
         category: "Game",
         keywords: ["app", "tag", "variant", "edition", "build", "demo", "release", "main"],
         graphKinds: ["event", "function", "macro"],
@@ -39,7 +39,7 @@ export const appTagBlueprintNodes: BlueprintNodeDef[] = [
                 kind: "output",
                 semantic: "data",
                 valueType: "string",
-                label: "App Tag",
+                label: "Build Variant",
             },
         ],
         // Never reached on the data path - a pure node's output is pulled through

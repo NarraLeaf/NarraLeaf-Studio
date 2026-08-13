@@ -61,11 +61,11 @@ export const build = {
         // 标在「该版本自己未填写」的读数旁边，使继承来的值与被覆盖的值在同一行都给出出处
         inherited: "来自工程",
         // 该版本的剧情止于何处。数的是指向它的截断行，因此发布版本恒为完整剧情
-        boundary: "内容",
+        boundary: "剧情结束处",
         endsNever: "剧情播放至结尾",
         endsAt: {
-            one: "在 {count} 个截断行处结束，其后的内容不在这份构建里",
-            other: "在 {count} 个截断行处结束，其后的内容不在这份构建里",
+            one: "在 {count} 个截断点处结束，其后的内容不在这份构建里",
+            other: "在 {count} 个截断点处结束，其后的内容不在这份构建里",
         },
         variantRows: {
             one: "有 {count} 行读取了构建版本，在不同版本里可能不同",
@@ -224,7 +224,7 @@ export const build = {
         // {platforms} 是这一个取值需要覆盖的平台：按平台存放时是它所属的那一个，否则是本次
         // 构建的全部平台。它永远不为空，两种情形下句子读起来一样。
         "plugin-config-missing": "构建 {platforms} 需要 {plugin} 的「{field}」，该值尚未填写",
-        "plugin-secret-unavailable": "{plugin} 的「{field}」已设置，但值不在本机；密文不会随工程流转；在此重新输入即可构建 {platforms}",
+        "plugin-secret-unavailable": "{plugin} 的「{field}」在其他设备上设置，本机没有它的值。在此重新输入即可构建 {platforms}",
         "build-dependency-unavailable":
             "{plugin} 在 {platform} 上需要构建依赖 {dependency}，本机没有缓存，也无法从 {url} 获取（{reason}）；"
             + "自行下载并另存为 {path} 即可离线构建",
@@ -277,12 +277,12 @@ export const build = {
         one: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
         other: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
     },
-    appTagGraphUnresolved: "{blueprint} / {graph} 中的应用标签没有得出固定值，请把它与变体名比较，或直接使用它的值",
-    appTagGraphUnknownNode: "{blueprint} / {graph} 既判断了变体，又使用了本次构建无法读取的节点，请把变体判断移到不含该节点的图中",
-    appTagGraphFnHead: "{blueprint} / {graph} 中的变体判断决定了一个 Fn 是否存在，请把该 Fn 移出它决定的分支",
+    appTagGraphUnresolved: "{blueprint} / {graph} 中的构建版本没有得出固定值，请把它与构建版本名比较，或直接使用它的值",
+    appTagGraphUnknownNode: "{blueprint} / {graph} 既判断了构建版本，又使用了本次构建无法读取的节点，请把构建版本判断移到不含该节点的图中",
+    appTagGraphFnHead: "{blueprint} / {graph} 中的构建版本判断决定了一个 Fn 是否存在，请把该 Fn 移出它决定的分支",
     appTagGraphSummary: {
-        one: "构建已中止：有 {count} 个蓝图图层的变体判断没有得出固定值，详见控制台",
-        other: "构建已中止：有 {count} 个蓝图图层的变体判断没有得出固定值，详见控制台",
+        one: "构建已中止：有 {count} 处蓝图的构建版本判断没有得出固定值，详见控制台",
+        other: "构建已中止：有 {count} 处蓝图的构建版本判断没有得出固定值，详见控制台",
     },
     cutPointNested: "{story} / {scene} 中 {variant} 的截断点位于条件或分组内部，请把它移到场景顶层",
     cutPointNestedSummary: {
@@ -308,8 +308,8 @@ export const build = {
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
     contentCoverageWholeProject: "本工程",
     contentCoverageSummary: {
-        one: "构建已停止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
-        other: "构建已停止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
+        one: "构建已中止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
+        other: "构建已中止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
     },
     mediaNeedsConverting: "{asset} 无法播放，请在素材面板中转换",
     mediaNotPlayable: "{asset} 不含音频也不含视频，请替换或删除该文件",

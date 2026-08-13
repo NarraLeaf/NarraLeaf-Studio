@@ -104,16 +104,16 @@ export const lint = {
             message: "这个场景里没有任何行",
         },
         storyAppTagUnknown: {
-            title: "未知的构建变体",
-            description: "行里比较的变体在工程中不存在",
-            message: "没有名为「{name}」的构建变体，这一行不会出现在任何构建里",
+            title: "未知的构建版本",
+            description: "行里比较的构建版本在工程中不存在",
+            message: "没有名为「{name}」的构建版本，这一行不会出现在任何构建里",
         },
         storyCutPointOrphan: {
-            title: "截断点没有对应的变体",
-            description: "工程里已经没有构建变体，但剧本里还留着截断点",
+            title: "截断点没有对应的构建版本",
+            description: "工程里已经没有构建版本，但剧本里还留着截断点",
             // 这一行是失效而不是写错，所以句子说的是它现在的状态，而不是作者做了什么。两种处理都写进去，
             // 因为任何一种都是完整的答案。
-            message: "本工程没有构建变体，这个截断点不会截断任何内容。可以新增一个变体，或者删掉这一行",
+            message: "本工程没有构建版本，这个截断点不会截断任何内容。可以新增一个构建版本，或者删掉这一行",
         },
         storyCutPointUnreachable: {
             title: "截断点无法到达",
@@ -144,8 +144,8 @@ export const lint = {
         },
         blueprintExternalLinkUndeclared: {
             title: "未声明的链接",
-            description: "打开链接节点上的地址没有任何构建变体声明过",
-            message: "没有任何构建变体声明 {url}，因此任何构建都不会打开它",
+            description: "打开链接节点上的地址没有任何构建版本声明过",
+            message: "没有任何构建版本声明 {url}，因此任何构建都不会打开它",
         },
         variablesUndeclared: {
             title: "未声明的变量",

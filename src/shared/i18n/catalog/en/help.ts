@@ -559,6 +559,21 @@ export const help = {
                 + "- Deleting a variant does not rewrite what pointed at it. Those places read main "
                 + "from then on, and the count beside Delete says how many there are.",
         },
+        variantContent: {
+            title: "What a variant build contains",
+            body:
+                "A cut point row ends one variant's story at that row. A build of that variant carries "
+                + "nothing written after it, and a scene left unreachable is dropped from the package. "
+                + "Builds of every other variant carry the row as written.\n"
+                + "\n"
+                + "- A cut point sits at the top level of a scene. One inside a condition or a group "
+                + "stops the build.\n"
+                + "- A comparison against AppTag is settled before the build, so only the branch that "
+                + "runs is packaged. A comparison that cannot be settled stops the build and names the row.\n"
+                + "- Text, voice and images used only by the removed rows are left out with them.\n"
+                + "- A variant can name the page shown after its story ends. With no page named, the "
+                + "last frame stays on screen.",
+        },
         icons: {
             title: "Icons",
             body:
