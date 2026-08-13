@@ -788,7 +788,7 @@ function SignInSection({ surface }: { surface: VersionSurface }) {
     if (serverSession) {
         return (
             <div data-vcs-seam="server-identity" className="mt-1 flex items-baseline gap-1.5">
-                <span className="min-w-0 flex-1 truncate text-2xs text-fg-muted" title={serverSession.account.identity}>
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-muted" data-tip={serverSession.account.identity}>
                     {t("workspace.shell.versionControl.server.signIn.signedInAs", {
                         name: serverSession.account.displayName,
                     })}
