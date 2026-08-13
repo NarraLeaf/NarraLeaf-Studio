@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { VcsFileChange, VcsHistoryEntry } from "@shared/types/vcs";
 import { VCS_DEFAULT_BRANCH } from "@shared/types/vcs";
+import {
+    composeRestoreMessage,
+    VCS_CHECKPOINT_MESSAGES,
+    VCS_SYSTEM_MESSAGES,
+} from "@shared/vcs/systemRevisionMessage";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
 import {
     MANUAL_SERVER,
@@ -11,7 +16,10 @@ import {
     buildChangeList,
     canCommit,
     collapseCheckpoints,
+    filterHistoryRows,
     findRevisionRow,
+    historyDayKey,
+    historyDayLabel,
     flattenFirstParent,
     focusedRevision,
     hasMoreHistory,
@@ -30,6 +38,7 @@ import {
     unavailableReasonKey,
     versionFace,
     versionRailWidth,
+    type FlatHistoryEntry,
     type VersionRailPresence,
     type VersionSurfaceInputs,
     type VersionSurfaceState,
@@ -200,6 +209,25 @@ describe("commit availability", () => {
             expect(canCommit({ state, frozen, busy })).toBe(pressable);
         },
     );
+
+    /**
+     * The difference between "we have not looked" and "we looked and there was nothing".
+     *
+     * Both used to leave the button live, and on a clean tree that meant the one button this panel
+     * exists for answered with a refusal. The asymmetry is deliberate rather than tidy: looking is a
+     * scan, a scan writes staged state (docs §4.17), and a button that scanned to decide whether to
+     * be enabled is the thing that rule forbids.
+     */
+    it.each([
+        [undefined, true],
+        [null, true],
+        [0, false],
+        [1, true],
+        [40, true],
+    ] as const)("changedFiles %s -> pressable %s", (changedFiles, pressable) => {
+        expect(canCommit({ state: states.current, frozen: false, busy: false, changedFiles }))
+            .toBe(pressable);
+    });
 
     it("never offers a commit while project data is frozen, whatever the state says", () => {
         // The `freezeGuard` rule, asserted separately from the table because it is the reason this
@@ -735,26 +763,166 @@ describe("labels", () => {
  * and the decision about what to say when there is none.
  */
 describe("historyRowHeadline", () => {
+    /**
+     * A translator that answers with the key, so an assertion names the string it expects rather
+     * than a sentence that would have to be updated whenever the English is reworded.
+     */
+    const t = ((key: string, params?: Record<string, string>) => (
+        params ? `${key}(${Object.values(params).join(",")})` : key
+    )) as unknown as Parameters<typeof historyRowHeadline>[1];
+
     it("leads with the version's message", () => {
-        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6", message: "Chapter 2 opening" }))
-            .toEqual({ text: "Chapter 2 opening", isMessage: true });
+        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6", message: "Chapter 2 opening" }, t))
+            .toEqual({ text: "Chapter 2 opening", isIdentity: false, original: null });
     });
 
     it("names itself with its hash when the revision carries no message", () => {
         // The repository's own first commit, written by `initRepository`, carries none of the three
         // metadata fields - so this is the ordinary case rather than a defensive branch.
-        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6" }))
-            .toEqual({ text: "a91f3c8", isMessage: false });
+        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6" }, t))
+            .toEqual({ text: "a91f3c8", isIdentity: true, original: null });
     });
 
     it("treats a whitespace-only message as none, rather than drawing a blank row", () => {
-        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6", message: "   \n " }))
-            .toEqual({ text: "a91f3c8", isMessage: false });
+        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6", message: "   \n " }, t))
+            .toEqual({ text: "a91f3c8", isIdentity: true, original: null });
     });
 
     it("keeps the whole message: the row truncates in CSS, and the title attribute needs all of it", () => {
         const long = "Rewrote the confession scene so it lands before the train leaves";
-        expect(historyRowHeadline({ revision: "abc1234567", message: long }).text).toBe(long);
+        expect(historyRowHeadline({ revision: "abc1234567", message: long }, t).text).toBe(long);
+    });
+
+    /**
+     * The half of the history an author did not write.
+     *
+     * Every sentence Studio records itself has to come back through a key, or a reader whose Studio
+     * is in Chinese sees an English line in a Chinese list - which is what shipped. The whole table
+     * is walked rather than sampled: one unrecognised constant is one row that silently reverts, and
+     * nothing else in the app would notice. `Create project` is in the table precisely because it
+     * was missed the first time round, and only turned up in a real project's history.
+     */
+    it.each(VCS_SYSTEM_MESSAGES)("reads %s back through %s", (message, key) => {
+        const headline = historyRowHeadline({ revision: "a91f3c8d2e4b6", message }, t);
+        expect(headline.isIdentity).toBe(false);
+        expect(headline.text).toBe(key);
+        // The stored bytes stay reachable: they are what a collaborator's client shows.
+        expect(headline.original).toBe(message);
+    });
+
+    it("has a distinct key for every sentence, so two of them cannot render alike", () => {
+        const keys = VCS_SYSTEM_MESSAGES.map(([, key]) => key);
+        expect(new Set(keys).size).toBe(keys.length);
+        const messages = VCS_SYSTEM_MESSAGES.map(([message]) => message);
+        expect(new Set(messages).size).toBe(messages.length);
+    });
+
+    it("keeps the version a restore went back to, which is a number rather than language", () => {
+        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6", message: composeRestoreMessage("#19") }, t))
+            .toEqual({
+                text: "workspace.shell.versionControl.systemMessage.restored(#19)",
+                isIdentity: false,
+                original: "Restore version #19",
+            });
+    });
+
+    it("leaves an author's own words alone, even when they start like one of ours", () => {
+        // Matched exactly rather than by prefix, so someone who names a version after the demo they
+        // were about to record keeps the sentence they typed.
+        const own = "Checkpoint before the demo";
+        expect(historyRowHeadline({ revision: "a91f3c8d2e4b6", message: own }, t))
+            .toEqual({ text: own, isIdentity: false, original: null });
+    });
+});
+
+/**
+ * Narrowing a list an author cannot otherwise search.
+ *
+ * The history is paged and the backend has no cursor verb, so this only ever narrows what has been
+ * read - which is why the surface says so and why "Show older versions" stays. What is asserted here
+ * is the matching itself, and in particular that it matches what a reader SEES: with the rail in
+ * Chinese a checkpoint reads 「检查点」 while its bytes say `Checkpoint`, and a filter that only knew
+ * the bytes would find nothing for the word on screen.
+ */
+describe("filterHistoryRows", () => {
+    const t = ((key: string, params?: Record<string, string>) => {
+        if (key === "workspace.shell.versionControl.systemMessage.checkpoint") return "检查点";
+        return params ? `${key}(${Object.values(params).join(",")})` : key;
+    }) as unknown as Parameters<typeof filterHistoryRows>[2];
+
+    const rows: FlatHistoryEntry[] = [
+        { revision: "aaa1111", number: 25, message: "Chapter 2 opening", author: "Aria", merge: false },
+        { revision: "bbb2222", number: 24, message: VCS_CHECKPOINT_MESSAGES.interval, author: "Aria", merge: false },
+        { revision: "ccc3333", number: 3, message: "Rewrote the confession", author: "Kai", merge: false },
+    ];
+
+    it("returns everything for an empty query, including one that is only spaces", () => {
+        expect(filterHistoryRows(rows, "", t)).toHaveLength(3);
+        expect(filterHistoryRows(rows, "   ", t)).toHaveLength(3);
+    });
+
+    it("matches the message, case-insensitively", () => {
+        expect(filterHistoryRows(rows, "chapter", t).map(row => row.revision)).toEqual(["aaa1111"]);
+    });
+
+    it("matches the author", () => {
+        expect(filterHistoryRows(rows, "kai", t).map(row => row.revision)).toEqual(["ccc3333"]);
+    });
+
+    it("matches the number, with or without the hash the row prints", () => {
+        expect(filterHistoryRows(rows, "#25", t).map(row => row.revision)).toEqual(["aaa1111"]);
+        expect(filterHistoryRows(rows, "3", t).map(row => row.revision)).toEqual(["ccc3333"]);
+    });
+
+    it("matches what the row SHOWS, not only what it stores", () => {
+        // The reader is looking at 「检查点」. Typing it has to find the row whose stored message is
+        // the English sentence Studio wrote.
+        expect(filterHistoryRows(rows, "检查点", t).map(row => row.revision)).toEqual(["bbb2222"]);
+        // And the stored bytes still match, because that is what a collaborator's client shows and
+        // what the author's `lore` CLI prints.
+        expect(filterHistoryRows(rows, "checkpoint", t).map(row => row.revision)).toEqual(["bbb2222"]);
+    });
+
+    it("answers with an empty list rather than everything when nothing matches", () => {
+        expect(filterHistoryRows(rows, "zzzz", t)).toEqual([]);
+    });
+});
+
+/**
+ * The day a version belongs to.
+ *
+ * `now` is injected precisely so this is assertable: "today" is the only interesting thing the
+ * function does, and it is also the thing that only misbehaves for the few minutes either side of
+ * midnight - which nobody is awake to notice and no screenshot records.
+ */
+describe("history day separators", () => {
+    const t = ((key: string) => key) as unknown as Parameters<typeof historyDayLabel>[2];
+    const at = (year: number, month: number, day: number, hour = 12) =>
+        new Date(year, month, day, hour).getTime();
+
+    it("groups by LOCAL day, so an evening's work does not file itself under tomorrow", () => {
+        expect(historyDayKey(at(2026, 7, 11, 23))).toBe(historyDayKey(at(2026, 7, 11, 1)));
+        expect(historyDayKey(at(2026, 7, 12, 0))).not.toBe(historyDayKey(at(2026, 7, 11, 23)));
+    });
+
+    it("names the two nearest days and dates the rest", () => {
+        const now = at(2026, 7, 12);
+        expect(historyDayLabel(at(2026, 7, 12, 9), "en", t, now))
+            .toBe("workspace.shell.versionControl.today");
+        expect(historyDayLabel(at(2026, 7, 11, 9), "en", t, now))
+            .toBe("workspace.shell.versionControl.yesterday");
+        expect(historyDayLabel(at(2026, 7, 4), "en", t, now)).toBe("August 4");
+    });
+
+    it("adds the year only once it stops being this one", () => {
+        const now = at(2026, 7, 12);
+        expect(historyDayLabel(at(2025, 10, 2), "en", t, now)).toBe("November 2, 2025");
+    });
+
+    it("is right across a month boundary, where subtracting a day is the easy thing to get wrong", () => {
+        const now = at(2026, 8, 1);
+        expect(historyDayLabel(at(2026, 7, 31, 20), "en", t, now))
+            .toBe("workspace.shell.versionControl.yesterday");
     });
 });
 

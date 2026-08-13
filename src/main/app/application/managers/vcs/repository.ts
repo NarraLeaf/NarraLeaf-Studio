@@ -3,6 +3,7 @@ import path from "path";
 import {
     VCS_REVISION_KIND_KEY,
     VCS_UNCONFIGURED_REMOTE_URL,
+    VcsErrorCode,
     type VcsChangeKind,
     type VcsCommitResult,
     type VcsFileChange,
@@ -10,6 +11,7 @@ import {
     type VcsRevisionKind,
     type VcsStatus,
 } from "@shared/types/vcs";
+import { VCS_INITIAL_MESSAGE } from "@shared/vcs/systemRevisionMessage";
 import { renderWorkingSetIgnoreFile } from "./workingSet";
 import {
     commit,
@@ -66,7 +68,12 @@ const REPOSITORY_DIRECTORY = ".lore";
  */
 const PLACEHOLDER_REPOSITORY_URL = VCS_UNCONFIGURED_REMOTE_URL;
 
-const DEFAULT_INITIAL_MESSAGE = "Enable version control";
+/**
+ * Studio's own wording, imported rather than restated: the rail recognises this exact sentence to
+ * read it back in the author's language, and a second copy here is how that translation would
+ * quietly disappear (`@shared/vcs/systemRevisionMessage`).
+ */
+const DEFAULT_INITIAL_MESSAGE = VCS_INITIAL_MESSAGE;
 
 /**
  * The same shape the renderer sends over IPC, aliased rather than restated: two
@@ -258,6 +265,13 @@ export async function initRepository(
  * stops being answerable.
  */
 export class NothingToCommitError extends Error {
+    /**
+     * Carried across IPC by `ipcHost.failed`. The sentence below still travels with it and still
+     * reads correctly in English - but the rail draws this situation as an ordinary note rather
+     * than as a red failure line, and it can only tell which is which from the code.
+     */
+    readonly code = VcsErrorCode.NothingToCommit;
+
     constructor(readonly root: string) {
         // The message reaches an AUTHOR - it is rendered verbatim in the version rail, 320px wide -
         // so it does not name the repository. They know which project they are in; the path only

@@ -1,4 +1,5 @@
 import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
+import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { PersistentState } from "@shared/utils/persistentState";
@@ -43,6 +44,15 @@ export interface GlobalStateType extends Record<string, any> {
      * the author's answer on the next launch. See `@shared/constants/update`.
      */
     "app.updateCheckOnLaunch": boolean;
+    /**
+     * Whether ⌘Q has to be pressed twice before it quits, instead of quitting on the first press.
+     *
+     * macOS only, and not because the key combination is: Windows and Linux quit with Alt+F4 or the
+     * window close box, neither of which is a key away from anything an author presses on purpose.
+     * The row is still shown on those platforms, disabled, rather than hidden - a preference that
+     * appears and disappears with the machine is one that gets reported as missing.
+     */
+    "app.confirmQuit": boolean;
     /**
      * Whether this profile has been told that Studio keeps running after its last window closes.
      *
@@ -306,6 +316,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // languages to decide its own default.
     "app.developerMode": false,
     "app.updateCheckOnLaunch": true,
+    "app.confirmQuit": CONFIRM_QUIT_DEFAULT,
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,

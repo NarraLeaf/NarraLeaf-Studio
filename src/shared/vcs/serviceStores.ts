@@ -56,6 +56,16 @@ export const SERVICE_STORE_LOCATIONS = {
     /** The colour picker's recently-used list: a tool remembering the last few clicks. */
     recent_colors: "studio",
     /**
+     * Which side the author has picked for each conflicted file, while a merge is open.
+     *
+     * Studio state rather than project content, and the distinction is exact: not one byte of the
+     * merge is applied until Finish is pressed, so this is a form half filled in, not a decision the
+     * project has taken. Losing it costs the author the choosing again - time, never work - which is
+     * the same test `docs/caches.md` applies. It also has to be writable while the workspace is
+     * frozen by that very merge, which `.nlstudio/` is and `editor/` is not.
+     */
+    merge_decisions: "studio",
+    /**
      * The project's characters - profiles, appearances, groups. Content the author
      * wrote, and the single largest thing in `editor/services/`. Moving it would take
      * the cast out of version control, which is the exact failure the default above is

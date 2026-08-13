@@ -10,6 +10,7 @@ import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { BaseFileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { BaseProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { join } from "@shared/utils/path";
+import { VCS_PROJECT_CREATED_MESSAGE } from "@shared/vcs/systemRevisionMessage";
 import { WindowAppType } from "@shared/types/window";
 import { throwException } from "@shared/utils/error";
 import { EMPTY_ASSET_ORDER_TEXT } from "@/lib/workspace/services/assets/assetOrder";
@@ -183,7 +184,12 @@ export class ProjectService {
             // the start. This is the last row of the history forever, so it should say what
             // happened. Not localized: a revision message is repository DATA, read by other
             // clients and by this project's collaborators, not this window's chrome.
-            const result = await getInterface().vcs.initRepository(projectPath, { message: "Create project" });
+            // Imported rather than written here: the rail recognises Studio's own sentences to read
+            // them back in the author's language, and this one being a literal in the wizard is how
+            // every project created through it got an English line at the bottom of its history.
+            const result = await getInterface().vcs.initRepository(projectPath, {
+                message: VCS_PROJECT_CREATED_MESSAGE,
+            });
             if (!result.success) {
                 console.warn("[Wizard] Project created, but version control could not be enabled:", result.error);
             }

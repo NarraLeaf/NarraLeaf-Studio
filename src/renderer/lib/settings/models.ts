@@ -56,7 +56,7 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     danger?: boolean;
     /** Action only: invoke on the first click - for navigation-style actions with no consequence. */
     skipConfirm?: boolean;
-    /** Action only: renders the button disabled (the row description carries the reason). */
+    /** Renders the control disabled; the row description carries the reason. See `availability`. */
     disabled?: boolean;
     /** Custom only: which panel to render in place of a control. */
     panel?: SettingPanelId;
@@ -125,9 +125,10 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     /** Action only: invoke on the first click - for navigation-style actions with no consequence. */
     skipConfirm?: boolean;
     /**
-     * Action only: dynamic availability, re-evaluated on mount and whenever the Settings window
-     * regains focus (the condition usually depends on other windows, e.g. "a workspace is open").
-     * When unavailable, the button renders disabled and `reasonKey` replaces the description.
+     * Dynamic availability, re-evaluated on mount and whenever the Settings window regains focus
+     * (the condition usually depends on other windows, e.g. "a workspace is open"; it may also be
+     * fixed for the session, as the platform check on `app.confirmQuit` is).
+     * When unavailable, the control renders disabled and `reasonKey` replaces the description.
      */
     availability?: () => Promise<{ enabled: boolean; reasonKey?: TranslationKey }>;
 }

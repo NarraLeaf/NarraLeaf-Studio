@@ -181,6 +181,32 @@ export type VcsRevisionKind = "commit" | "checkpoint";
 export const VCS_REVISION_KIND_KEY = "narraleaf.kind";
 
 /**
+ * The refusals the interface has its own words for.
+ *
+ * A failed call crosses IPC as a sentence, and rendering that sentence is right for anything the
+ * backend refuses with a remedy in it ("Branch has diverged, sync to merge remote changes") -
+ * translating those would put Studio's guess in front of the server's own answer. It is wrong for
+ * these four: three are facts about this installation, and the first is not a failure at all - it
+ * is what an author is told when they submit a version having changed nothing, which is an ordinary
+ * Tuesday and was arriving as red English text in a Chinese panel.
+ *
+ * Set as `code` on the error and carried by `ipcHost.failed`. Namespaced because `RequestStatus.code`
+ * is shared with everything else that throws, including Node's own `ENOENT`.
+ */
+export const VcsErrorCode = {
+    /** The working tree matches the last version, so there was nothing to record. */
+    NothingToCommit: "vcs/nothing-to-commit",
+    /** No usable backend on this host: a platform Epic ships no library for, or a broken install. */
+    Unavailable: "vcs/unavailable",
+    /** A project path this layer will not work in. Reaches an author only through a defect. */
+    ProjectPath: "vcs/project-path",
+    /** The app is closing and refused to start another call rather than abandoning it. */
+    ShuttingDown: "vcs/shutting-down",
+} as const;
+
+export type VcsErrorCode = (typeof VcsErrorCode)[keyof typeof VcsErrorCode];
+
+/**
  * When Studio takes a checkpoint on its own initiative.
  *
  * `interval` is the timer; the other three are the unconditional ones, taken at the

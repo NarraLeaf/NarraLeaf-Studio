@@ -41,6 +41,7 @@ import {
     ZOOM_PERCENT_MAX,
     ZOOM_PERCENT_MIN,
 } from "@shared/constants/zoom";
+import { CONFIRM_QUIT_DEFAULT, CONFIRM_QUIT_KEY } from "@shared/constants/quit";
 import { LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
@@ -203,6 +204,33 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Right-click menus gain a section for copying the ID of what you clicked.",
         descriptionKey: "settings.items.developerMode.description",
         defaultValue: DEVELOPER_MODE_DEFAULT,
+    },
+    {
+        // Applied by the main process (`ConfirmQuitManager`), which is the only place the keystroke
+        // can be seen at all: ⌘Q reaches Studio as the App menu's key equivalent, and swallowing it
+        // has to happen before the menu acts on it.
+        //
+        // macOS only, and the platform check is the whole of the availability rule - there is no
+        // state anywhere else that could make it true, so unlike the background-image row this one
+        // never changes answer for the lifetime of the window.
+        key: CONFIRM_QUIT_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Confirm before quitting with ⌘Q",
+        labelKey: "settings.items.confirmQuit.label",
+        description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
+        descriptionKey: "settings.items.confirmQuit.description",
+        defaultValue: CONFIRM_QUIT_DEFAULT,
+        availability: async () => {
+            // Dynamic, like the background-image row below: `platform` reaches the window bootstrap
+            // for its cached answer, and this module is also loaded by the settings export/import
+            // scope walker, which runs where no window has booted.
+            const { isMacPlatform } = await import("@/lib/app/platform");
+            return isMacPlatform()
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.confirmQuit.unsupportedPlatform" };
+        },
     },
     {
         // Read by the main process's UpdateManager when it decides whether to schedule the launch
