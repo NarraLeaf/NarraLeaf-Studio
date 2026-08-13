@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    resolveTooltipSide,
     setTooltipDelay,
     startTooltipTracking,
     type TooltipTarget,
@@ -51,11 +52,12 @@ beforeEach(() => {
     document.body.innerHTML = `
         <div id="page">
             <button id="lonely" data-tip="Run"></button>
-            <div id="strip" data-tip-group>
+            <div id="strip" data-tip-group data-tip-side="right">
                 <button id="undo" data-tip="Undo"></button>
                 <button id="redo" data-tip="Redo"></button>
                 <button id="stopped" data-tip="Frozen" disabled></button>
             </div>
+            <button id="own-side" data-tip="Below" data-tip-side="bottom"></button>
         </div>
     `;
     stop = startTooltipTracking(document, next => {
@@ -80,7 +82,7 @@ describe("tooltip delay", () => {
         vi.advanceTimersByTime(DELAY - 1);
         expect(shown).toBeNull();
         vi.advanceTimersByTime(1);
-        expect(shown).toEqual({ anchor: el("lonely"), text: "Run" });
+        expect(shown).toEqual({ anchor: el("lonely"), text: "Run", side: "top" });
     });
 
     it("defaults to the shipped delay", () => {
@@ -106,7 +108,7 @@ describe("tooltip delay", () => {
             move(el("lonely"));
             vi.advanceTimersByTime(60);
         }
-        expect(shown).toEqual({ anchor: el("lonely"), text: "Run" });
+        expect(shown).toEqual({ anchor: el("lonely"), text: "Run", side: "top" });
     });
 
     it("shows the words the control has when the wait is up, not the ones it had", () => {
@@ -114,7 +116,7 @@ describe("tooltip delay", () => {
         vi.advanceTimersByTime(DELAY - 100);
         el("lonely").setAttribute("data-tip", "Stop");
         vi.advanceTimersByTime(100);
-        expect(shown).toEqual({ anchor: el("lonely"), text: "Stop" });
+        expect(shown).toEqual({ anchor: el("lonely"), text: "Stop", side: "top" });
     });
 
     it("shows nothing while a button is held, because that pointer is drawing", () => {
@@ -128,10 +130,10 @@ describe("hot chain", () => {
     it("charges the delay once for the strip, then answers immediately inside it", () => {
         move(el("undo"));
         vi.advanceTimersByTime(DELAY);
-        expect(shown).toEqual({ anchor: el("undo"), text: "Undo" });
+        expect(shown).toEqual({ anchor: el("undo"), text: "Undo", side: "right" });
 
         move(el("redo"));
-        expect(shown).toEqual({ anchor: el("redo"), text: "Redo" });
+        expect(shown).toEqual({ anchor: el("redo"), text: "Redo", side: "right" });
     });
 
     it("cools the moment the pointer is outside the strip", () => {
@@ -143,7 +145,7 @@ describe("hot chain", () => {
         move(el("redo"));
         expect(shown).toBeNull();
         vi.advanceTimersByTime(DELAY);
-        expect(shown).toEqual({ anchor: el("redo"), text: "Redo" });
+        expect(shown).toEqual({ anchor: el("redo"), text: "Redo", side: "right" });
     });
 
     it("does not warm a lone control's neighbours", () => {
@@ -159,7 +161,25 @@ describe("controls that receive no pointer events", () => {
         // What the browser does: the event lands on the container, never on the disabled button.
         pointerOver(el("stopped"));
         vi.advanceTimersByTime(DELAY);
-        expect(shown).toEqual({ anchor: el("stopped"), text: "Frozen" });
+        expect(shown).toEqual({ anchor: el("stopped"), text: "Frozen", side: "right" });
+    });
+});
+
+describe("which way it opens", () => {
+    it("takes the side its strip declares", () => {
+        move(el("undo"));
+        vi.advanceTimersByTime(DELAY);
+        expect(shown?.side).toBe("right");
+    });
+
+    it("lets a lone control state its own", () => {
+        move(el("own-side"));
+        vi.advanceTimersByTime(DELAY);
+        expect(shown?.side).toBe("bottom");
+    });
+
+    it("opens above when nothing says otherwise", () => {
+        expect(resolveTooltipSide(el("lonely"))).toBe("top");
     });
 });
 
@@ -183,6 +203,6 @@ describe("dismissal", () => {
         vi.advanceTimersByTime(DELAY);
         el("lonely").setAttribute("data-tip", "Stop");
         move(el("lonely"));
-        expect(shown).toEqual({ anchor: el("lonely"), text: "Stop" });
+        expect(shown).toEqual({ anchor: el("lonely"), text: "Stop", side: "top" });
     });
 });
