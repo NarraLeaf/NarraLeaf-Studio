@@ -428,6 +428,25 @@ export function GameRuntimeApp() {
     }, [bridge]);
 
     /**
+     * The two Progress nodes' requests. Handed to the shell for the reason Open Link is: the
+     * process that performs the act is the one that decides which file it is, from the pack's own
+     * progress key. Nothing this side supplies names a path.
+     */
+    const exportProgress = useCallback<NonNullable<GameAppHost["exportProgress"]>>(async request => {
+        if (!bridge) {
+            return { outcome: "failed", error: "Runtime bridge unavailable" };
+        }
+        return bridge.progress.write(request);
+    }, [bridge]);
+
+    const importProgress = useCallback<NonNullable<GameAppHost["importProgress"]>>(async () => {
+        if (!bridge) {
+            return { outcome: "failed", document: null, error: "Runtime bridge unavailable" };
+        }
+        return bridge.progress.read();
+    }, [bridge]);
+
+    /**
      * A model bundle resolves to the URL of its *entry file*, not of the asset id.
      *
      * The engine's `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against whatever
@@ -548,11 +567,15 @@ export function GameRuntimeApp() {
             listPuppetBackendModules,
             networkFetch,
             openExternal,
+            exportProgress,
+            importProgress,
         };
     }, [
         entrySurfaceId,
         networkFetch,
         openExternal,
+        exportProgress,
+        importProgress,
         getFullscreen,
         listPuppetBackendModules,
         log,

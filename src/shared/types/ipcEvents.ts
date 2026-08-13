@@ -12,6 +12,11 @@ import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult 
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "./gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -242,6 +247,8 @@ export enum IPCEventType {
     blueprintNetworkFetch = "blueprintNetwork.fetch",
     blueprintExternalLinkOpen = "blueprintExternalLink.open",
     blueprintExternalLinkOpenForPlugin = "blueprintExternalLink.openForPlugin",
+    blueprintProgressWrite = "blueprintProgress.write",
+    blueprintProgressRead = "blueprintProgress.read",
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -2267,6 +2274,40 @@ export type IPCBlueprintPersistenceEvents = {
         },
         response: {
             result: BlueprintOpenExternalResult;
+        };
+    };
+    /**
+     * The Export Progress node's request, in a Dev Mode preview.
+     *
+     * Dev Mode has to behave like the packaged game, so the write is made where the packaged game
+     * makes it - in the process that owns the filesystem - and the file it writes is the very same
+     * one, named by the key the build would carry. The renderer sends what the playthrough holds
+     * and never which file: the handler derives the key from the project's own identity, exactly as
+     * the pack compiler does, so a preview cannot be talked into writing another title's document.
+     *
+     * The project path, not a window handle, identifies whose progress this is - the same shape the
+     * external-link channels above use.
+     */
+    [IPCEventType.blueprintProgressWrite]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            request: GameProgressExportRequest;
+        },
+        response: {
+            result: GameProgressExportResult;
+        };
+    };
+    /** The Import Progress node's request, read by the same process and keyed the same way. */
+    [IPCEventType.blueprintProgressRead]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            result: GameProgressImportResult;
         };
     };
 };

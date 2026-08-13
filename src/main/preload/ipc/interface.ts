@@ -6,6 +6,11 @@ import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "@shared/types/gameProgress";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
@@ -595,6 +600,17 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         openForPlugin: (pluginId: string, request: BlueprintOpenExternalRequest) =>
             ipcClient.invoke(IPCEventType.blueprintExternalLinkOpenForPlugin, { pluginId, request }) as Promise<
                 RequestStatus<{ result: BlueprintOpenExternalResult }>
+            >,
+    },
+
+    blueprintProgress: {
+        write: (projectPath: string, request: GameProgressExportRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintProgressWrite, { projectPath, request }) as Promise<
+                RequestStatus<{ result: GameProgressExportResult }>
+            >,
+        read: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.blueprintProgressRead, { projectPath }) as Promise<
+                RequestStatus<{ result: GameProgressImportResult }>
             >,
     },
 

@@ -53,6 +53,12 @@ import {
 } from "./runtimeStorage";
 import { collectPackSidecars, SidecarHost } from "./sidecarHost";
 import { resolveRuntimeUserDataDir } from "./userDataDir";
+import {
+    readGameProgressFile,
+    writeGameProgressFile,
+    type GameProgressEnvironment,
+} from "@shared/utils/gameProgressFile";
+import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
 import { installWindowCrashHandling } from "./windowCrashHandling";
 
@@ -109,6 +115,23 @@ const userDataDir = useSiblingUserData
         move: (from, to) => { fsSync.renameSync(from, to); },
         warn: message => { console.warn(`[GameRuntime] ${message}`); },
     });
+
+/**
+ * Where the progress document lives, which is deliberately not under {@link userDataDir}.
+ *
+ * That directory is named after this build's app id, and two editions of one title have different
+ * app ids on purpose - that is precisely why they cannot read each other's saves. The progress
+ * document sits beside both, in the per-user root the platform names. Resolved fresh per request
+ * because `XDG_DATA_HOME` is environmental and nothing here caches environmental facts.
+ */
+function progressEnvironment(): GameProgressEnvironment {
+    return {
+        platform: process.platform,
+        appDataDir: app.getPath("appData"),
+        homeDir: os.homedir(),
+        ...(process.env.XDG_DATA_HOME ? { xdgDataHome: process.env.XDG_DATA_HOME } : {}),
+    };
+}
 
 /**
  * Everything this process and the game have to say, on disk.
@@ -1036,6 +1059,41 @@ function registerRuntimeIpc(): void {
             }
         },
     );
+
+    // The Export/Import Progress nodes, performed here because here is the process with a
+    // filesystem.
+    //
+    // The renderer says what the playthrough holds and never which file. `pack.progressKey` is
+    // re-read per request, exactly as the declared addresses above are, and it is the only thing
+    // that decides where the bytes land - a key taken from the caller would make these channels a
+    // way to write into another title's document.
+    //
+    // The directory is deliberately NOT `userDataDir`. That one is named after this build's app id,
+    // and the whole point of this feature is that a demo and a full game have different app ids and
+    // therefore cannot read each other's saves. The progress document sits beside both of them.
+    //
+    // A pack with no key (one built before the field existed) fails with a reason rather than
+    // guessing one: a guessed key names a file the real build would never look at.
+    ipcMain.handle("runtime:progress:write", async (_event, request: GameProgressExportRequest) => {
+        const pack = await readPack();
+        const result = await writeGameProgressFile(
+            progressEnvironment(),
+            String(pack.progressKey ?? ""),
+            request,
+        );
+        if (result.outcome === "failed") {
+            logRuntime("warning", `Export Progress failed: ${result.error}`);
+        }
+        return result;
+    });
+    ipcMain.handle("runtime:progress:read", async () => {
+        const pack = await readPack();
+        const result = await readGameProgressFile(progressEnvironment(), String(pack.progressKey ?? ""));
+        if (result.outcome === "failed") {
+            logRuntime("warning", `Import Progress failed: ${result.error}`);
+        }
+        return result;
+    });
 
     // Sidecar control.
     //

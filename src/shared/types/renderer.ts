@@ -4,6 +4,11 @@ import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "./gameProgress";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
@@ -807,6 +812,22 @@ export interface RendererPreloadedInterface {
             pluginId: string,
             request: BlueprintOpenExternalRequest,
         ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>>;
+    };
+
+    blueprintProgress: {
+        /**
+         * One Export Progress node request, performed by the main process for a Dev Mode preview.
+         *
+         * `projectPath` decides which title's document is written; the handler derives the key from
+         * the project's identity rather than taking one from the renderer, so a preview writes the
+         * same file the shipped build would and can reach no other.
+         */
+        write(
+            projectPath: string,
+            request: GameProgressExportRequest,
+        ): Promise<RequestStatus<{ result: GameProgressExportResult }>>;
+        /** One Import Progress node request, read from the same file and keyed the same way. */
+        read(projectPath: string): Promise<RequestStatus<{ result: GameProgressImportResult }>>;
     };
 
     pluginPermissions: {
