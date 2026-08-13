@@ -852,7 +852,7 @@ export function UIEditorInteractionLayer({
                                         } ${
                                             index < effectiveFloatingToolbarItems.length - 1 ? "border-r border-edge" : ""
                                         }`}
-                                        title={item.tooltip ?? label}
+                                        data-tip={item.tooltip ?? label}
                                         aria-label={item.tooltip ?? label}
                                         disabled={item.disabled}
                                         onClick={event => {

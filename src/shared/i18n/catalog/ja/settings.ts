@@ -92,6 +92,10 @@ export const settings = {
                 slate: "スレート",
             },
         },
+        tooltipDelay: {
+            label: "ヒントの遅延",
+            description: "ポインターがコントロールに止まってからヒントが出るまでの時間。同じツールバー内では最初の一つだけが待つ",
+        },
         reduceMotion: {
             label: "動きを減らす",
             description: "Studio の画面のアニメーションを止める。ゲーム側のアニメーションには影響しない",

@@ -184,7 +184,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                     }
                 }}
                 className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-fg"
-                title={String(groupLabel)}
+                data-tip={String(groupLabel)}
                 aria-label={String(groupLabel)}
                 aria-expanded={isOpen}
                 aria-haspopup="true"
@@ -366,7 +366,7 @@ function MenuLevel(props: MenuLevelProps) {
                                 isDisabled ? "text-fg-subtle cursor-not-allowed" : isFocused ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"
                             }`}
                             role="menuitem"
-                            title={isDisabled ? disabledTitle : undefined}
+                            data-tip={isDisabled ? disabledTitle : undefined}
                             aria-disabled={isDisabled || undefined}
                             aria-haspopup={isSubmenu || undefined}
                             aria-expanded={isSubmenu ? isOpened : undefined}

@@ -297,7 +297,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                             size="sm"
                             variant="ghost"
                             aria-label="Locked look"
-                            title="How locked entries look in game"
+                            data-tip="How locked entries look in game"
                             onClick={() => setSettingsOpen(true)}
                         >
                             <SlidersHorizontal size={13} />
@@ -606,7 +606,7 @@ function GroupChips({
                         tabIndex={-1}
                         aria-label={`Delete group ${label}`}
                         aria-disabled={freeze.frozen || undefined}
-                        title={freeze.frozen ? freeze.reason : undefined}
+                        data-tip={freeze.frozen ? freeze.reason : undefined}
                         className={`hidden text-fg-subtle group-hover/chip:inline ${
                             freeze.frozen ? "opacity-40" : "hover:text-danger"
                         }`}
@@ -726,19 +726,19 @@ function EntryCard({
         >
             <GalleryThumb app={app} assetId={cover?.imageAssetId} className="aspect-video w-full" />
             <div className="flex items-center gap-1 px-1.5 py-1">
-                <span className="min-w-0 flex-1 truncate text-2xs" title={entry.name}>{entry.name}</span>
+                <span className="min-w-0 flex-1 truncate text-2xs" data-tip={entry.name}>{entry.name}</span>
                 {/* The second level of the model stays hidden until it exists. */}
                 {entry.variants.length > 1 && (
                     <span
                         className="flex shrink-0 items-center gap-0.5 text-2xs text-fg-subtle"
-                        title={`${entry.variants.length} items`}
+                        data-tip={`${entry.variants.length} items`}
                     >
                         <Layers size={10} />
                         {entry.variants.length}
                     </span>
                 )}
                 {entry.hidden && (
-                    <span className="shrink-0 text-fg-subtle" title="Hidden until unlocked">
+                    <span className="shrink-0 text-fg-subtle" data-tip="Hidden until unlocked">
                         <EyeOff size={11} />
                     </span>
                 )}
@@ -796,7 +796,7 @@ function EntryRow({
                 <button
                     type="button"
                     aria-label={playing ? "Stop" : "Play"}
-                    title={playing ? "Stop" : "Play"}
+                    data-tip={playing ? "Stop" : "Play"}
                     disabled={!single.audioAssetId}
                     className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-edge text-fg-muted hover:border-primary hover:text-fg disabled:opacity-40"
                     onClick={event => {
@@ -809,7 +809,7 @@ function EntryRow({
             ) : (
                 <span
                     className="grid h-6 w-6 shrink-0 place-items-center text-fg-subtle"
-                    title={`${entry.variants.length} items`}
+                    data-tip={`${entry.variants.length} items`}
                 >
                     <Layers size={12} />
                 </span>
@@ -820,9 +820,9 @@ function EntryRow({
             )}
 
             <div className="min-w-0 flex-1">
-                <div className="truncate text-2xs" title={entry.name}>{entry.name}</div>
+                <div className="truncate text-2xs" data-tip={entry.name}>{entry.name}</div>
                 {entry.kind === "voice" && single?.lineText && (
-                    <div className="truncate text-2xs text-fg-subtle" title={single.lineText}>
+                    <div className="truncate text-2xs text-fg-subtle" data-tip={single.lineText}>
                         {single.lineText}
                     </div>
                 )}
@@ -832,7 +832,7 @@ function EntryRow({
             </div>
 
             {entry.hidden && (
-                <span className="shrink-0 text-fg-subtle" title="Hidden until unlocked">
+                <span className="shrink-0 text-fg-subtle" data-tip="Hidden until unlocked">
                     <EyeOff size={11} />
                 </span>
             )}
@@ -1310,7 +1310,7 @@ function MemberRow({
                 <button
                     type="button"
                     aria-label={playing ? "Stop" : "Play"}
-                    title={variant.audioAssetName ?? (playing ? "Stop" : "Play")}
+                    data-tip={variant.audioAssetName ?? (playing ? "Stop" : "Play")}
                     disabled={!variant.audioAssetId}
                     className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border border-edge text-fg-muted hover:border-primary hover:text-fg disabled:opacity-40"
                     onClick={() => void audition.toggle(key, variant.audioAssetId)}
@@ -1334,7 +1334,7 @@ function MemberRow({
                     would just print it twice; show it only once the author has
                     renamed the row to something else. */}
                 {entry.kind === "voice" && variant.lineText && variant.lineText !== variant.name && (
-                    <div className="px-1 text-2xs text-fg-subtle" title={variant.lineText}>
+                    <div className="px-1 text-2xs text-fg-subtle" data-tip={variant.lineText}>
                         {variant.lineText}
                     </div>
                 )}

@@ -86,6 +86,10 @@ export const settings = {
                 slate: "石板",
             },
         },
+        tooltipDelay: {
+            label: "提示延迟",
+            description: "指针停在控件上多久后出现提示。在同一个工具栏内，只有第一条提示需要等待",
+        },
         reduceMotion: {
             label: "减少动效",
             description: "关闭 Studio 界面中的动画过渡，不影响游戏本身的动画",

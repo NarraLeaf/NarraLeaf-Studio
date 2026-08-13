@@ -297,7 +297,7 @@ export function SearchPanel() {
                     <ToolbarButton
                         size="md"
                         onClick={() => setCaseSensitive(value => !value)}
-                        title={t("workspace.shell.search.caseSensitive")}
+                        data-tip={t("workspace.shell.search.caseSensitive")}
                         aria-label={t("workspace.shell.search.caseSensitive")}
                         aria-pressed={caseSensitive}
                         active={caseSensitive}
@@ -308,7 +308,7 @@ export function SearchPanel() {
                     <ToolbarButton
                         size="md"
                         onClick={() => setWholeWord(value => !value)}
-                        title={t("workspace.shell.search.wholeWord")}
+                        data-tip={t("workspace.shell.search.wholeWord")}
                         aria-label={t("workspace.shell.search.wholeWord")}
                         aria-pressed={wholeWord}
                         active={wholeWord}
@@ -319,7 +319,7 @@ export function SearchPanel() {
                     <ToolbarButton
                         size="md"
                         onClick={() => setUseRegex(value => !value)}
-                        title={t("workspace.shell.search.regex")}
+                        data-tip={t("workspace.shell.search.regex")}
                         aria-label={t("workspace.shell.search.regex")}
                         aria-pressed={useRegex}
                         active={useRegex}
@@ -335,7 +335,7 @@ export function SearchPanel() {
                     <ToolbarButton
                         size="md"
                         onClick={() => setShowReplace(value => !value)}
-                        title={t("workspace.shell.search.toggleReplace")}
+                        data-tip={t("workspace.shell.search.toggleReplace")}
                         aria-label={t("workspace.shell.search.toggleReplace")}
                         aria-pressed={showReplace}
                         aria-expanded={showReplace}

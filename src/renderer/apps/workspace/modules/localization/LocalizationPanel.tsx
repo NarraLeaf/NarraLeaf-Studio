@@ -585,7 +585,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                         key={locale.code}
                                         role="button"
                                         tabIndex={0}
-                                        title={t("workspace.localization.panel.openTable")}
+                                        data-tip={t("workspace.localization.panel.openTable")}
                                         className="group flex cursor-pointer flex-col gap-1.5 rounded-md border border-edge-subtle px-2.5 py-2 text-left hover:border-edge focus-visible:border-primary/50 focus-visible:outline-none"
                                         onClick={() => handleOpenTable(locale.code, locale.displayName)}
                                         onKeyDown={event => {
@@ -609,7 +609,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                                 type="button"
                                                 aria-haspopup="menu"
                                                 aria-expanded={menuOpen}
-                                                title={t("workspace.localization.panel.more")}
+                                                data-tip={t("workspace.localization.panel.more")} aria-label={t("workspace.localization.panel.more")}
                                                 className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 ${
                                                     menuOpen ? "opacity-100" : "opacity-0"
                                                 }`}
@@ -708,7 +708,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                 type="button"
                                 className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
                                 onClick={() => void handleAddLocale()}
-                                title={t("workspace.localization.panel.confirm")}
+                                data-tip={t("workspace.localization.panel.confirm")} aria-label={t("workspace.localization.panel.confirm")}
                             >
                                 <Check className="h-3.5 w-3.5" />
                             </button>

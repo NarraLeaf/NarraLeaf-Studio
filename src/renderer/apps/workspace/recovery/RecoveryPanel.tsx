@@ -224,7 +224,7 @@ function AnomalyRow({ anomaly }: { anomaly: WorkspaceAnomaly }) {
                 onClick={() => void copy()}
                 className="absolute right-1 top-1 rounded-md p-1 text-fg-subtle opacity-0 transition-colors duration-150 hover:bg-fill hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 group-hover:opacity-100"
                 aria-label={t("workspace.recovery.problems.copy")}
-                title={copied ? t("workspace.recovery.problems.copied") : t("workspace.recovery.problems.copy")}
+                data-tip={copied ? t("workspace.recovery.problems.copied") : t("workspace.recovery.problems.copy")}
             >
                 {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
             </button>

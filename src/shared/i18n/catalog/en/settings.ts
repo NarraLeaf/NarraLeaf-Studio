@@ -90,6 +90,10 @@ export const settings = {
                 slate: "Slate",
             },
         },
+        tooltipDelay: {
+            label: "Tooltip delay",
+            description: "How long the pointer rests on a control before its tooltip appears. Within a toolbar the wait applies to the first tooltip only.",
+        },
         reduceMotion: {
             label: "Reduce motion",
             description: "Turn off animated transitions in the Studio interface. The game's own animations are unaffected.",

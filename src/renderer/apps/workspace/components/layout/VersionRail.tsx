@@ -149,7 +149,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                 <button
                     type="button"
                     onClick={() => onExpandedChange(true)}
-                    title={onRevision
+                    data-tip={onRevision
                         ? t("workspace.shell.versionControl.viewingVersion", { version: shownName(state) })
                         : t("workspace.shell.freeze.enteredTitle")}
                     aria-label={t("workspace.shell.versionControl.open")}
@@ -172,7 +172,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                     <button
                         type="button"
                         onClick={() => openVcsChangesTab(context, { mode: "resolve" })}
-                        title={t("workspace.shell.versionControl.mergeResolve")}
+                        data-tip={t("workspace.shell.versionControl.mergeResolve")}
                         aria-label={t("workspace.shell.versionControl.mergeResolve")}
                         className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
                     >
@@ -183,7 +183,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                         type="button"
                         onClick={surface.returnToCurrent}
                         disabled={busy === "restore"}
-                        title={escapeLabel}
+                        data-tip={escapeLabel}
                         aria-label={escapeLabel}
                         className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                     >
@@ -250,7 +250,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                 <button
                     type="button"
                     onClick={() => onExpandedChange(false)}
-                    title={dismissLabel}
+                    data-tip={dismissLabel}
                     aria-label={dismissLabel}
                     className="flex h-6 w-6 items-center justify-center rounded-md text-fg-muted transition-colors cursor-default hover:bg-fill hover:text-fg"
                 >
@@ -357,7 +357,7 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
                 // One truncated line, so the whole of it has to be reachable somehow; a version
                 // message is often a sentence and this is the surface that names the version the
                 // author is looking at.
-                title={focused?.message?.trim() || undefined}
+                data-tip={focused?.message?.trim() || undefined}
                 className={cn("truncate text-sm font-medium", onRevision ? "text-primary" : "text-fg")}
             >
                 {focused?.message?.trim()
@@ -389,7 +389,7 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
                     {face.text && (
                         <span
                             className="truncate tabular-nums"
-                            title={face.full !== face.text ? face.full : undefined}
+                            data-tip={face.full !== face.text ? face.full : undefined}
                         >
                             {face.text}
                         </span>
@@ -427,7 +427,7 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
                         type="button"
                         onClick={() => void surface.restoreRevision(state.revision, state.label)}
                         disabled={surface.busy !== null}
-                        title={t("workspace.shell.versionControl.restore")}
+                        data-tip={t("workspace.shell.versionControl.restore")}
                         aria-label={t("workspace.shell.versionControl.restore")}
                         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-primary/40 text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                     >
@@ -514,7 +514,7 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
                         <button
                             type="button"
                             onClick={() => openVcsChangesTab(context, { mode: "working-tree" })}
-                            title={t("documentDiff.rail.compareWithPrevious")}
+                            data-tip={t("documentDiff.rail.compareWithPrevious")}
                             aria-label={t("documentDiff.rail.compareWithPrevious")}
                             className="flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
                         >
@@ -524,7 +524,7 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
                     <button
                         type="button"
                         onClick={surface.refreshChanges}
-                        title={t("workspace.shell.versionControl.refreshChanges")}
+                        data-tip={t("workspace.shell.versionControl.refreshChanges")}
                         aria-label={t("workspace.shell.versionControl.refreshChanges")}
                         className="flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
                     >
@@ -594,7 +594,7 @@ function ChangeRow({ file }: { file: VcsFileChange }) {
 
     return (
         <div
-            title={title}
+            data-tip={title}
             data-vcs-change-row={file.path}
             className="flex w-full items-center gap-1.5 overflow-hidden rounded-md px-1 py-0.5 text-left"
         >
@@ -883,7 +883,7 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                     type="button"
                     onClick={open}
                     disabled={running}
-                    title={remote}
+                    data-tip={remote} aria-label={remote}
                     className="min-w-0 truncate text-2xs text-fg-muted transition-colors cursor-default hover:text-fg disabled:opacity-50"
                 >
                     {serverHost(remote)}
@@ -896,7 +896,7 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                     type="button"
                     onClick={surface.checkRemote}
                     disabled={running}
-                    title={t("workspace.shell.versionControl.server.check")}
+                    data-tip={t("workspace.shell.versionControl.server.check")}
                     aria-label={t("workspace.shell.versionControl.server.check")}
                     className="ml-auto flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
                 >
@@ -1138,7 +1138,7 @@ function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHis
                             // The whole message plus the hash, because the row shows one truncated line of
                             // the first and none of the second. Without it a version whose message is
                             // longer than the column is a version the author cannot read at all.
-                            title={[
+                            data-tip={[
                                 headline.isMessage ? headline.text : null,
                                 shortRevision(row.revision),
                                 isFocused ? null : t("workspace.shell.versionControl.showVersion"),
@@ -1200,7 +1200,7 @@ function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHis
                                     fromLabel: revisionLabel(previous.number),
                                     toLabel: revisionLabel(row.number),
                                 })}
-                                title={t("documentDiff.rail.compareWithPrevious")}
+                                data-tip={t("documentDiff.rail.compareWithPrevious")}
                                 aria-label={t("documentDiff.rail.compareWithPrevious")}
                                 className={cn(
                                     "nl-focus-ring absolute right-2 top-1.5 z-10 flex h-5 w-5 items-center justify-center",

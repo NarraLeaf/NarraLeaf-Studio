@@ -121,7 +121,7 @@ function OrientationButton({
                     ? "border-primary/50 bg-primary/15 text-fg"
                     : "border-edge bg-fill-subtle hover:bg-fill"
             }`}
-            title={label}
+            data-tip={label}
             aria-label={label}
             aria-pressed={active}
             onClick={onClick}

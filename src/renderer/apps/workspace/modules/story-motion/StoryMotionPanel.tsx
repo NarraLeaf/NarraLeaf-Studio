@@ -433,7 +433,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                 selectedId === asset.id ? "border-primary bg-primary/20" : "",
                             ].join(" ")}
                             onClick={() => setSelectedId(asset.id)}
-                            title={asset.name}
+                            data-tip={asset.name}
                         >
                             <Spline className="h-4 w-4 shrink-0 text-fg-muted" />
                             <span className="min-w-0 flex-1 truncate text-sm text-fg">{asset.name}</span>
@@ -472,7 +472,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             }}
                                             inputClassName="font-medium"
                                             readOnly={freeze.frozen}
-                                            title={freeze.frozen ? freeze.reason : undefined}
+                                            data-tip={freeze.frozen ? freeze.reason : undefined}
                                         />
                                     </label>
                                     <SurfaceEditorToolbarButtonGroup aria-label={t("motion.panel.motionActions")} className="w-full">
@@ -480,7 +480,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                             className="!w-auto flex-1 gap-1.5 px-3"
                                             type="button"
                                             onClick={openFullEditor}
-                                            title={t("motion.editMotion")}
+                                            data-tip={t("motion.editMotion")}
                                         >
                                             <Edit3 className="h-3.5 w-3.5" />
                                             <span>{t("common.edit")}</span>
@@ -511,7 +511,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                                     setConfig(repeat > 0 ? { repeat } : {}, repeat > 0 ? [] : ["repeat"]);
                                                 }}
                                                 readOnly={freeze.frozen}
-                                                title={freeze.frozen ? freeze.reason : undefined}
+                                                data-tip={freeze.frozen ? freeze.reason : undefined}
                                             />
                                         </label>
                                         <label className="grid min-w-0 gap-1.5">
@@ -527,7 +527,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                                     setConfig(repeatDelayMs > 0 ? { repeatDelayMs } : {}, repeatDelayMs > 0 ? [] : ["repeatDelayMs"]);
                                                 }}
                                                 readOnly={freeze.frozen}
-                                                title={freeze.frozen ? freeze.reason : undefined}
+                                                data-tip={freeze.frozen ? freeze.reason : undefined}
                                             />
                                         </label>
                                     </div>

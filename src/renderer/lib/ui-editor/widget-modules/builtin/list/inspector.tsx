@@ -355,7 +355,7 @@ function ListContentPaddingEditor({
                                           max={LIST_SPACING_MAX_PX}
                                           unit="px"
                                           aria-label={t("widgets.list.contentPaddingSide", { side: label })}
-                                          title={t("widgets.list.contentPaddingSide", { side: label })}
+                                          data-tip={t("widgets.list.contentPaddingSide", { side: label })}
                                           className="w-full min-w-0"
                                           selectAllOnFocus
                                       />
@@ -385,7 +385,7 @@ function ListContentPaddingEditor({
                             unit="px"
                             placeholder={uniformPlaceholder}
                             aria-label={t("widgets.list.contentPaddingAll")}
-                            title={t("widgets.list.contentPaddingAll")}
+                            data-tip={t("widgets.list.contentPaddingAll")}
                             className="w-full min-w-0"
                             selectAllOnFocus
                         />
@@ -400,7 +400,7 @@ function ListContentPaddingEditor({
                         aria-expanded={sidesOpen}
                         aria-label={sidesOpen ? t("widgets.list.contentPaddingPerSideClose") : t("widgets.list.contentPaddingPerSideEdit")}
                         className={`${controlButtonClass(sidesOpen)} cursor-default`}
-                        title={t("widgets.list.contentPaddingPerSide")}
+                        data-tip={t("widgets.list.contentPaddingPerSide")}
                     >
                         {sidesOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </InspectOnlyButton>

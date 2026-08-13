@@ -112,7 +112,7 @@ export function CameraActionEditor(props: {
                             <button
                                 key={option}
                                 type="button"
-                                title={t(`storyInspector.cameraOperation.${option}`)}
+                                data-tip={t(`storyInspector.cameraOperation.${option}`)}
                                 className={[
                                     "flex h-8 min-w-0 items-center justify-center gap-1 rounded-md border px-1 text-2xs transition-colors",
                                     selected

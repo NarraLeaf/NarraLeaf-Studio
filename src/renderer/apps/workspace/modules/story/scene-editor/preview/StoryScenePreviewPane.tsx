@@ -50,7 +50,7 @@ export function StoryScenePreviewPane(props: {
                         // Keep header clicks on controls from starting a window drag.
                         onPointerDown={event => event.stopPropagation()}
                         onClick={onToggleFloat}
-                        title={mode === "float" ? t("story.preview.dock") : t("story.preview.pip")}
+                        data-tip={mode === "float" ? t("story.preview.dock") : t("story.preview.pip")} aria-label={mode === "float" ? t("story.preview.dock") : t("story.preview.pip")}
                     >
                         {mode === "float"
                             ? <PanelRight className="h-3.5 w-3.5" />
@@ -62,7 +62,7 @@ export function StoryScenePreviewPane(props: {
                     className="rounded-md p-1 text-fg-muted hover:bg-fill hover:text-fg"
                     onPointerDown={event => event.stopPropagation()}
                     onClick={onClose}
-                    title={t("story.preview.closePreview")}
+                    data-tip={t("story.preview.closePreview")} aria-label={t("story.preview.closePreview")}
                 >
                     <X className="h-3.5 w-3.5" />
                 </button>
@@ -111,7 +111,7 @@ export function StoryScenePreviewPane(props: {
                         <div
                             key={index}
                             className={`truncate text-2xs leading-5 ${note.level === "error" ? "text-danger" : "text-warning"}`}
-                            title={note.message}
+                            data-tip={note.message}
                         >
                             {note.message}
                         </div>

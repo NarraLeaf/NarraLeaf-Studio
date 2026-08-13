@@ -85,7 +85,7 @@ export function PluginsTab() {
                     size="sm"
                     onClick={catalog.installLocal}
                     disabled={busy}
-                    title={t("plugins.installLocal")}
+                    data-tip={t("plugins.installLocal")}
                     aria-label={t("plugins.installLocal")}
                 >
                     <FolderPlus className="h-4 w-4" />
@@ -95,7 +95,7 @@ export function PluginsTab() {
                     size="sm"
                     onClick={catalog.refreshAll}
                     disabled={busy}
-                    title={t("common.refresh")}
+                    data-tip={t("common.refresh")}
                     aria-label={t("common.refresh")}
                 >
                     <RefreshCw className={cn("h-4 w-4", registryLoading && "animate-spin")} />
@@ -346,8 +346,8 @@ function RowIconButton({
     return (
         <button
             type="button"
-            title={title}
-            aria-label={title}
+            data-tip={title}
+
             disabled={disabled}
             onClick={onClick}
             className="no-drag grid h-8 w-8 cursor-default place-items-center rounded-md text-fg-muted opacity-0 transition hover:bg-fill-strong hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-50"

@@ -55,7 +55,7 @@ export function ChangeDetailHost({ entry, change, sides, className }: ChangeDeta
                 </span>
                 <span className="min-w-0 truncate text-xs font-medium text-fg">{name}</span>
                 {directory !== null && (
-                    <span className="min-w-0 shrink truncate text-2xs text-fg-subtle" title={directory}>
+                    <span className="min-w-0 shrink truncate text-2xs text-fg-subtle" data-tip={directory}>
                         {directory}
                     </span>
                 )}

@@ -252,7 +252,7 @@ export function PsdImportWizard(props: {
                                         <button
                                             type="button"
                                             aria-label={t("characters.editor.psd.merge")}
-                                            title={mergeable ? undefined : t("characters.editor.psd.mergeUnavailable", { mode: leaf.blendMode })}
+                                            data-tip={mergeable ? undefined : t("characters.editor.psd.mergeUnavailable", { mode: leaf.blendMode })}
                                             disabled={!mergeable}
                                             className={[
                                                 "rounded-md border px-2 py-0.5 text-2xs transition-colors",

@@ -85,7 +85,7 @@ function ChoiceField(props: {
                     placeholder={props.placeholder}
                     onChange={event => props.onChange(event.target.value)}
                     readOnly={freeze.frozen}
-                    title={freeze.frozen ? freeze.reason : undefined}
+                    data-tip={freeze.frozen ? freeze.reason : undefined}
                 />
             </Field>
         );
@@ -321,7 +321,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                 // in the dropdown. Only the empty list says "installed", and it says where to put one.
                 <span
                     className="min-w-0 flex-1 truncate text-fg-subtle"
-                    title={t("characters.editor.puppet.noBackendInstalledHint")}
+                    data-tip={t("characters.editor.puppet.noBackendInstalledHint")}
                 >
                     {t("characters.editor.puppet.noBackendInstalled")}
                 </span>
@@ -454,7 +454,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     placeholder={t("characters.editor.puppet.entryDefault")}
                     onChange={event => appearance.setPuppetEntry(event.target.value)}
                     readOnly={freeze.frozen}
-                    title={freeze.frozen ? freeze.reason : undefined}
+                    data-tip={freeze.frozen ? freeze.reason : undefined}
                 />
             </Field>
 
@@ -472,7 +472,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     placeholder={t("characters.editor.puppet.sizeStage")}
                     onChange={event => setDimension("width", event.target.value)}
                     readOnly={freeze.frozen}
-                    title={freeze.frozen ? freeze.reason : undefined}
+                    data-tip={freeze.frozen ? freeze.reason : undefined}
                 />
                 <Box className="w-3 h-3 shrink-0 text-fg-subtle" />
                 <Input
@@ -484,7 +484,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     placeholder={t("characters.editor.puppet.sizeStage")}
                     onChange={event => setDimension("height", event.target.value)}
                     readOnly={freeze.frozen}
-                    title={freeze.frozen ? freeze.reason : undefined}
+                    data-tip={freeze.frozen ? freeze.reason : undefined}
                 />
             </Field>
 
@@ -525,7 +525,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
                     <button
                         className={ICON_BTN}
                         aria-label={t("characters.editor.puppet.redescribe")}
-                        title={t("characters.editor.puppet.redescribe")}
+                        data-tip={t("characters.editor.puppet.redescribe")}
                         onClick={refresh}
                     >
                         <RefreshCw className={`w-3 h-3${loading ? " animate-spin" : ""}`} />

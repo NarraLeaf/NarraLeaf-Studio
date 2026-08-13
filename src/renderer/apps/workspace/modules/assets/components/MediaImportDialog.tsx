@@ -363,7 +363,7 @@ export function MediaImportDialog({
                                         <li
                                             key={problem.path}
                                             className="rounded-md border border-edge bg-fill-subtle px-2.5 py-1.5"
-                                            title={problem.path}
+                                            data-tip={problem.path}
                                         >
                                             <span className="block truncate text-xs text-fg">
                                                 {basename(problem.path)}
@@ -399,7 +399,7 @@ function ConvertingRow({ problem, state }: { problem: MediaImportProblem; state:
     const { t } = useTranslation();
 
     return (
-        <div className="rounded-md border border-edge bg-fill-subtle px-2.5 py-1.5" title={problem.path}>
+        <div className="rounded-md border border-edge bg-fill-subtle px-2.5 py-1.5" data-tip={problem.path}>
             <div className="flex items-baseline justify-between gap-2">
                 <span className="min-w-0 truncate text-xs text-fg">{basename(problem.path)}</span>
                 <span className="shrink-0 text-2xs text-fg-subtle">

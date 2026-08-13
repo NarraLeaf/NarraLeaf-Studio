@@ -55,7 +55,7 @@ export function WritingActivityChart({ points, peak }: { points: readonly Activi
                     <div
                         key={point.key}
                         className="group flex h-full min-w-0 flex-1 items-end justify-center"
-                        title={formatActivityTooltip(translator, point)}
+                        data-tip={formatActivityTooltip(translator, point)}
                     >
                         <ColumnMark point={point} peak={peak} />
                     </div>

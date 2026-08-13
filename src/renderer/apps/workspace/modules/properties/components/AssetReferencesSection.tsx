@@ -147,7 +147,7 @@ export function AssetReferencesSection({ assetId, assetType }: { assetId: string
                                                 <InspectOnlyButton
                                                     onClick={() => handleJump(reference)}
                                                     disabled={!clickable}
-                                                    title={reference.field}
+                                                    data-tip={reference.field}
                                                     className={`block w-full text-left px-2 py-1 rounded-md text-xs transition-colors cursor-default ${
                                                         clickable
                                                             ? "hover:bg-surface-raised text-fg-muted"
@@ -159,7 +159,7 @@ export function AssetReferencesSection({ assetId, assetType }: { assetId: string
                                                         {reference.dormant && (
                                                             <span
                                                                 className="shrink-0 px-1 rounded-md bg-surface-raised text-fg-subtle"
-                                                                title={t("properties.references.dormantHint")}
+                                                                data-tip={t("properties.references.dormantHint")}
                                                             >
                                                                 {t("properties.references.dormant")}
                                                             </span>

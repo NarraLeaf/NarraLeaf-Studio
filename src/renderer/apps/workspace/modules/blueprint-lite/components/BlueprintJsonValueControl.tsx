@@ -177,7 +177,7 @@ function JsonObjectKeyInput({
             }`}
             type="text"
             value={draft}
-            title={invalid ? t("blueprint.json.fieldNameInvalid") : t("blueprint.json.fieldName")}
+            data-tip={invalid ? t("blueprint.json.fieldNameInvalid") : t("blueprint.json.fieldName")}
             size="sm"
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
@@ -355,7 +355,7 @@ function JsonTreeRow({
                 {expandable ? (
                     <Button
                         type="button"
-                        title={isExpanded ? t("common.collapse") : t("common.expand")}
+                        data-tip={isExpanded ? t("common.collapse") : t("common.expand")}
                         aria-label={isExpanded ? t("common.collapse") : t("common.expand")}
                         variant="ghost"
                         size="sm"
@@ -374,14 +374,14 @@ function JsonTreeRow({
                 )}
                 <div className="flex min-w-0 flex-1 items-center gap-1">
                     {objectKeyEditor ?? (
-                        <span className="min-w-[4.5rem] truncate text-2xs text-fg-muted" title={String(label)}>
+                        <span className="min-w-[4.5rem] truncate text-2xs text-fg-muted" data-tip={String(label)}>
                             {label}
                         </span>
                     )}
                     {lockedKind ? (
                         <span
                             className="w-[6.25rem] shrink-0 rounded-md border border-edge bg-surface-sunken px-1.5 py-1 text-2xs capitalize tracking-wide text-fg-subtle"
-                            title={t("blueprint.json.schemaFieldType")}
+                            data-tip={t("blueprint.json.schemaFieldType")}
                         >
                             {lockedKind}
                         </span>
@@ -408,7 +408,7 @@ function JsonTreeRow({
                 {canAddChild ? (
                     <Button
                         type="button"
-                        title={t("blueprint.json.addItem")}
+                        data-tip={t("blueprint.json.addItem")}
                         aria-label={t("blueprint.json.addItem")}
                         variant="ghost"
                         size="sm"
@@ -426,7 +426,7 @@ function JsonTreeRow({
                 {onRemove ? (
                     <Button
                         type="button"
-                        title={t("common.remove")}
+                        data-tip={t("common.remove")}
                         aria-label={t("common.remove")}
                         variant="ghost"
                         size="sm"
@@ -711,7 +711,7 @@ function JsonEditorPortal({
                     </div>
                     <Button
                         type="button"
-                        title={mode === "raw" ? t("blueprint.json.treeEditor") : t("blueprint.json.rawJson")}
+                        data-tip={mode === "raw" ? t("blueprint.json.treeEditor") : t("blueprint.json.rawJson")}
                         aria-label={mode === "raw" ? t("blueprint.json.treeEditor") : t("blueprint.json.rawJson")}
                         variant="ghost"
                         size="sm"
@@ -784,13 +784,13 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
         >
             <div className="min-w-0 flex-1 rounded-md border border-edge bg-surface px-1.5 py-1">
                 <div className="text-2xs capitalize tracking-wide text-fg-subtle">{kind}</div>
-                <div className="truncate font-mono text-2xs text-fg-muted" title={summarizeJsonValue(root)}>
+                <div className="truncate font-mono text-2xs text-fg-muted" data-tip={summarizeJsonValue(root)}>
                     {summarizeJsonValue(root)}
                 </div>
             </div>
             <Button
                 type="button"
-                title={t("blueprint.json.edit")}
+                data-tip={t("blueprint.json.edit")}
                 aria-label={t("blueprint.json.edit")}
                 variant="ghost"
                 size="sm"

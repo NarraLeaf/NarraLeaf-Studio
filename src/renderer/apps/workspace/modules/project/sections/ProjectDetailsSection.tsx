@@ -172,7 +172,7 @@ function DetailField({
     }, [draft, initialValue, multiline, onCommit, onError, saving]);
 
     return (
-        <label className="grid gap-1.5" title={frozen.title}>
+        <label className="grid gap-1.5" data-tip={frozen["data-tip"]}>
             <div className="flex items-center gap-1.5">
                 <span className="text-xs font-medium text-fg-subtle">{label}</span>
                 {required ? <span className="text-2xs text-fg-subtle">{t("project.details.required")}</span> : null}
