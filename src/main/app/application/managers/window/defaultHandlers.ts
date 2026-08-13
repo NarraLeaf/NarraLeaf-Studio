@@ -124,6 +124,10 @@ import {
     BlueprintExternalLinkOpenHandler,
 } from "./handlers/blueprintExternalLinkAction";
 import {
+    BlueprintProgressReadHandler,
+    BlueprintProgressWriteHandler,
+} from "./handlers/blueprintProgressAction";
+import {
     PrivilegedBashExecuteHandler,
     PrivilegedFsCallHandler,
     PrivilegedPermissionRevokePluginHandler,
@@ -264,6 +268,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         // Blueprint external link handler (the Open Link node)
         new BlueprintExternalLinkOpenHandler(),
         new BlueprintExternalLinkOpenForPluginHandler(),
+
+        // Blueprint progress handlers (the Export/Import Progress nodes)
+        new BlueprintProgressWriteHandler(),
+        new BlueprintProgressReadHandler(),
 
         // Plugin permission handlers
         new PluginPermissionPromptLaunchHandler(),

@@ -2,6 +2,11 @@ import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
 import type { DevModeSaveRecord } from "./devModeSave";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "./gameProgress";
 import type { NormalizedPluginManifestV2 } from "./plugins";
 import type { StoryId } from "./story";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -244,6 +249,19 @@ export type GameRuntimePackV1 = {
      */
     endingSurfaceId?: string;
     /**
+     * The one string every edition of this title shares, naming the file progress is carried in.
+     *
+     * Resolved from the identity the RELEASE tag carries whatever variant this pack is - see
+     * `@shared/types/gameProgress`. That is the whole point: a demo overrides `identifier` and
+     * therefore writes its saves somewhere the full game cannot read, and this key is what the two
+     * agree on regardless.
+     *
+     * Absent on packs produced before this field existed. The shells read that as "this build
+     * cannot carry progress" and both nodes fail with a reason, rather than inventing a key - a
+     * guessed one would be a second answer to a question whose only value is that there is one.
+     */
+    progressKey?: string;
+    /**
      * Stage fit + crop anchor. Absent on packs produced before this field existed, which the runtime
      * reads as `contain` — the behaviour every one of those packs shipped with.
      */
@@ -468,6 +486,22 @@ export type GameRuntimeExternalLinkBridge = {
     ): Promise<BlueprintOpenExternalResult>;
 };
 
+/**
+ * Carrying a playthrough between two editions of one title, for the Export/Import Progress nodes.
+ *
+ * Present on every shell, and satisfied differently by each: the desktop shells hand the act to
+ * their main process, which owns the filesystem; the web export refuses, because a page has none
+ * and pretending to have written would be the one answer worse than saying no.
+ *
+ * The renderer states what the playthrough holds and never where it goes. Which file is written is
+ * decided by the process that writes it, from `pack.progressKey` - a caller that could name the
+ * file could name another title's.
+ */
+export type GameRuntimeProgressBridge = {
+    write(request: GameProgressExportRequest): Promise<GameProgressExportResult>;
+    read(): Promise<GameProgressImportResult>;
+};
+
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
@@ -541,6 +575,14 @@ export type GameRuntimePreloadBridge = {
      * only an address the pack declares is opened, and the check is made where the act happens.
      */
     externalLink: GameRuntimeExternalLinkBridge;
+    /**
+     * One Export/Import Progress node request.
+     *
+     * Present on every shell, unlike {@link sidecar}: a web export genuinely cannot do this, but it
+     * has to SAY so on the node's failure branch rather than have the field disappear - an author
+     * whose page silently lost the node would ship a button that does nothing.
+     */
+    progress: GameRuntimeProgressBridge;
     /**
      * Absent on shells with no child processes (the web export). Absence is the
      * whole signal - the runtime plugin host passes no sidecar backend when this

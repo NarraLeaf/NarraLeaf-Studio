@@ -26,7 +26,7 @@
  *
  * Entries are grouped by shape rather than listed one per line, because the shapes are what carry
  * the meaning: 270 nodes have no execution pins at all, 209 are one step of flow, 50 start one. Only
- * ten nodes are irregular, and every one of them is irregular for a reason worth reading.
+ * a dozen are irregular, and every one of them is irregular for a reason worth reading.
  */
 
 import {
@@ -37,6 +37,8 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_SEQUENCE,
     BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
+    BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
+    BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
     BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
@@ -358,6 +360,14 @@ const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // `Open Link` leaves by `failed` when the address is not one this build declared, or when the
     // player's machine has nothing to open it with - the two the node lets an author branch on.
     [BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL]: { in: ["in"], out: ["next", "failed"] },
+    // `Export Progress` is `Open Link`'s shape for the same reason: the write happened or it did
+    // not, and the reason is on a data pin rather than in a third branch.
+    [BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS]: { in: ["in"], out: ["next", "failed"] },
+    // `Import Progress` has three because the author answers each of them differently. `missing` is
+    // the ordinary state of a player who never exported - a demo they never finished, a fresh
+    // machine - and it leads to "start a new game", not to an apology. Folding it into `failed`
+    // would put an error message in front of every first-time player.
+    [BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS]: { in: ["in"], out: ["found", "missing", "failed"] },
     // `Show Confirm` has no `next` at all: every way out of the question is a branch. `dismissed`
     // is the static one - the player closed it without answering - and each button an author added
     // publishes its own `button_N_pressed` beside it.
