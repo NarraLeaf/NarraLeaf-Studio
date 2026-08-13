@@ -584,7 +584,7 @@ export class BuildService extends Service<BuildService> {
         }
 
         if (answer.removedScenes.length > 0) {
-            const coverageRefusal = this.refuseOnTrimCoverageGaps(startedAt, platforms, answer.appTagName);
+            const coverageRefusal = await this.refuseOnTrimCoverageGaps(startedAt, platforms, answer.appTagName);
             if (coverageRefusal) {
                 return coverageRefusal;
             }
@@ -638,14 +638,20 @@ export class BuildService extends Service<BuildService> {
      * could only rebuild a second index that would answer a different question about a different
      * copy of the project.
      */
-    private refuseOnTrimCoverageGaps(
+    private async refuseOnTrimCoverageGaps(
         startedAt: number,
         platforms: GameBuildPlatform[],
         variant: string,
-    ): GameBuildStateSnapshot | null {
+    ): Promise<GameBuildStateSnapshot | null> {
         let gaps: readonly ReferenceIndexGap[];
         try {
-            gaps = this.getContext().services.get<ReferenceService>(Services.Reference).getIndexResult().gaps;
+            const references = this.getContext().services.get<ReferenceService>(Services.Reference);
+            // The index builds itself when something asks it to, and a build started from a project
+            // that has just opened is the one caller that arrives first. Reading it unbuilt reports
+            // one gap covering everything, which reads as "the project cannot be read" and refuses a
+            // build that has nothing wrong with it.
+            await references.ensureReady();
+            gaps = references.getIndexResult().gaps;
         } catch (error) {
             // A service this build cannot reach is Studio malfunctioning rather than the project
             // being wrong, and the same bargain the media gate makes applies: a gate with no way
