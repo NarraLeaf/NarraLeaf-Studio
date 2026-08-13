@@ -525,6 +525,14 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         },
     });
     win.setTitle(pack.project.name);
+    // Chromium raises the loaded document's <title> to the window, and the shell's index.html
+    // carries a generic one, so the name set above lasted until the first paint and every game
+    // was called NarraLeaf Game in the taskbar. The window is the project's, and a variant's is
+    // the variant's, so the document's answer is refused rather than followed. The web shell
+    // interpolates the same name into its document and needs nothing here.
+    win.on("page-title-updated", (event) => {
+        event.preventDefault();
+    });
     if (process.platform !== "darwin") {
         // The window carries a menu of its own, and `autoHideMenuBar` only hides
         // it - Alt would still pull it back down over the game. Removing it is
