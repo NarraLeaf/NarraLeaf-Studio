@@ -1,6 +1,7 @@
 import React from "react";
 import { PanelPosition } from "../../registry/types";
 import { SidebarPanelRail } from "./SidebarPanelRail";
+import { TooltipGroup } from "@/lib/tooltip";
 import { useSidebarPanelContextMenu } from "./useSidebarPanelContextMenu";
 
 interface BottomPanelSelectorProps {
@@ -40,7 +41,8 @@ export function BottomPanelSelector({
     }
 
     return (
-        <div
+        <TooltipGroup
+            side="top"
             data-workspace-sidebar-rail=""
             className="bg-surface-sunken border-t border-edge flex flex-col items-center py-2 px-1 gap-1"
             onContextMenu={(event) => openMenu(event)}
@@ -55,7 +57,7 @@ export function BottomPanelSelector({
                 onPanelContextMenu={openMenu}
             />
             {menu}
-        </div>
+        </TooltipGroup>
     );
 }
 

@@ -1,9 +1,16 @@
 import React from "react";
-import { TOOLTIP_GROUP_ATTRIBUTE } from "./tooltipController";
+import { TOOLTIP_GROUP_ATTRIBUTE, TOOLTIP_SIDE_ATTRIBUTE, type TooltipSide } from "./tooltipController";
 
 export interface TooltipGroupProps extends React.HTMLAttributes<HTMLElement> {
     /** The tag to draw, for a strip whose wrapper was not a `div`. */
     as?: "div" | "span" | "section" | "nav" | "ul";
+    /**
+     * Which way this strip's tooltips open. Omitted, they open above like everywhere else.
+     *
+     * A rail against an edge states the inward direction once here - `right` on the left rail,
+     * `left` on the right rail - instead of every icon in it repeating the same thing.
+     */
+    side?: TooltipSide;
     children?: React.ReactNode;
 }
 
@@ -21,10 +28,13 @@ export interface TooltipGroupProps extends React.HTMLAttributes<HTMLElement> {
  * makes the panel's every tooltip instant after the first, which is not the same interface.
  */
 export const TooltipGroup = React.forwardRef<HTMLElement, TooltipGroupProps>(function TooltipGroup(
-    { as: Tag = "div", children, ...props },
+    { as: Tag = "div", side, children, ...props },
     ref,
 ) {
-    const attributes = { [TOOLTIP_GROUP_ATTRIBUTE]: "" };
+    const attributes: Record<string, string> = { [TOOLTIP_GROUP_ATTRIBUTE]: "" };
+    if (side) {
+        attributes[TOOLTIP_SIDE_ATTRIBUTE] = side;
+    }
     return (
         <Tag {...props} {...attributes} ref={ref as React.Ref<never>}>
             {children}

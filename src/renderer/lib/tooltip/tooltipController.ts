@@ -31,10 +31,34 @@ export const TOOLTIP_ATTRIBUTE = "data-tip";
  */
 export const TOOLTIP_GROUP_ATTRIBUTE = "data-tip-group";
 
+/**
+ * Which way a tooltip opens, read from the element or from the nearest ancestor that declares one -
+ * so a strip states it once for everything in it.
+ *
+ * A rail of icons wants its tooltips pointing inward, into the room the app has, rather than above
+ * each icon where they would sit on the icon above. Without it the default is above and the rail
+ * reads as a stack of labels over its own buttons.
+ */
+export const TOOLTIP_SIDE_ATTRIBUTE = "data-tip-side";
+
+export type TooltipSide = "top" | "bottom" | "left" | "right";
+
+const SIDES: readonly TooltipSide[] = ["top", "bottom", "left", "right"];
+
+export const TOOLTIP_SIDE_DEFAULT: TooltipSide = "top";
+
+/** The side an element asks for, inherited from its nearest declaring ancestor. */
+export function resolveTooltipSide(from: Element | null): TooltipSide {
+    const declaring = from?.closest("[" + TOOLTIP_SIDE_ATTRIBUTE + "]") ?? null;
+    const value = declaring?.getAttribute(TOOLTIP_SIDE_ATTRIBUTE);
+    return SIDES.includes(value as TooltipSide) ? (value as TooltipSide) : TOOLTIP_SIDE_DEFAULT;
+}
+
 /** What the host draws, or null for nothing. */
 export interface TooltipTarget {
     anchor: HTMLElement;
     text: string;
+    side: TooltipSide;
 }
 
 type Publish = (target: TooltipTarget | null) => void;
@@ -128,7 +152,7 @@ export function startTooltipTracking(doc: Document, publish: Publish): () => voi
         if (group) {
             hotGroup = group;
         }
-        publish({ anchor: element, text });
+        publish({ anchor: element, text, side: resolveTooltipSide(element) });
     };
 
     /** Hide, and forget where the pointer was, so re-entering the same element shows again. */
