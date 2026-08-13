@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { ImagePlus } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { getInterface } from "@/lib/app/bridge";
 import { Services } from "@/lib/workspace/services/services";
@@ -67,6 +68,7 @@ export function BackgroundImageDialog() {
             id: "workspace:background-image",
             titleKey: "workspace.shell.background.command",
             categoryKey: "workspace.shell.commandPalette.categoryView",
+            icon: <ImagePlus className="w-4 h-4" />,
             run: () => openDialog(),
         });
     }, [context, openDialog]);

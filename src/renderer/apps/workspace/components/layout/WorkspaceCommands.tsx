@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { BookPlus, FilePlus, Settings, UserPlus, Waypoints } from "lucide-react";
 import { Services } from "@/lib/workspace/services/services";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -59,6 +60,8 @@ export function WorkspaceCommands() {
                 // The tab's own name — the palette should call a view what its tab calls it.
                 titleKey: "story.flow.tabTitle",
                 categoryKey: "workspace.shell.commandPalette.categoryGo",
+                // The tab's own glyph too, for the same reason as its name (`openSceneFlowTab`).
+                icon: <Waypoints className="w-4 h-4" />,
                 when: () => targetStoryId() !== null,
                 run: () => openDefaultSceneFlowTab(context),
             },
@@ -66,6 +69,7 @@ export function WorkspaceCommands() {
                 id: "story:new-story",
                 titleKey: "story.panel.newStory",
                 categoryKey: "workspace.shell.commandPalette.categoryStory",
+                icon: <BookPlus className="w-4 h-4" />,
                 when: writable,
                 run: async () => {
                     const name = await inputDialog.show({
@@ -87,6 +91,7 @@ export function WorkspaceCommands() {
                 id: "story:new-scene",
                 titleKey: "story.panel.newSceneTitle",
                 categoryKey: "workspace.shell.commandPalette.categoryStory",
+                icon: <FilePlus className="w-4 h-4" />,
                 when: () => writable() && targetStoryId() !== null,
                 run: async () => {
                     const storyId = targetStoryId();
@@ -112,6 +117,7 @@ export function WorkspaceCommands() {
                 id: "characters:new-character",
                 titleKey: "characters.panel.newCharacter",
                 categoryKey: "workspace.shell.commandPalette.categoryStory",
+                icon: <UserPlus className="w-4 h-4" />,
                 when: writable,
                 run: async () => {
                     const name = await inputDialog.show({
@@ -132,6 +138,7 @@ export function WorkspaceCommands() {
                 id: "workspace:open-settings",
                 titleKey: "workspace.shell.openSettings",
                 categoryKey: "workspace.shell.commandPalette.categoryPreferences",
+                icon: <Settings className="w-4 h-4" />,
                 run: async () => {
                     await getInterface().app.launchSettings({});
                 },

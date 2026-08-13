@@ -4,6 +4,8 @@ import {
     FolderOpen,
     X,
     Archive,
+    Home,
+    Info,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
 import { Workspace } from "@/lib/workspace/workspace";
@@ -187,6 +189,10 @@ export const helpActionGroup: ModuleActionGroup = {
             id: "narraleaf-studio:open-welcome",
             label: "Open Welcome",
             labelKey: "actions.help.welcome.label",
+            // The Help menu draws no icons, but the palette lists these two by name and does - and
+            // each opens a tab that already has a glyph, so they wear their destination's
+            // (`welcome` and `about` module definitions).
+            icon: <Home className="w-4 h-4" />,
             tooltip: "Open welcome screen",
             tooltipKey: "actions.help.welcome.tooltip",
             onClick: (workspace: Workspace) => {
@@ -198,6 +204,7 @@ export const helpActionGroup: ModuleActionGroup = {
             id: "narraleaf-studio:about",
             label: "About",
             labelKey: "actions.help.about.label",
+            icon: <Info className="w-4 h-4" />,
             tooltip: "About NarraLeaf Studio",
             tooltipKey: "actions.help.about.tooltip",
             onClick: (workspace: Workspace) => {

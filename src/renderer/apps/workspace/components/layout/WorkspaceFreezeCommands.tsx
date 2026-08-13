@@ -1,4 +1,14 @@
 import { useEffect } from "react";
+import {
+    GitBranch,
+    GitCommitHorizontal,
+    GitCompare,
+    History,
+    Lock,
+    PanelRight,
+    RefreshCw,
+    Unlock,
+} from "lucide-react";
 import { Services } from "@/lib/workspace/services/services";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -55,6 +65,13 @@ export function WorkspaceFreezeCommands() {
                 id: "vcs:freeze-workspace",
                 titleKey: "workspace.shell.freeze.command",
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                // Borrowed rather than invented: the lock is already what this product draws on the
+                // things an author cannot edit (the project details field, a pinned sprite layer),
+                // and a frozen workspace is that same fact applied to everything at once. The rest
+                // of this list borrows from the version rail and the status bar for the same reason
+                // - History means "looking at a past revision" and GitBranch means "back on the
+                // working tree" up there, so they mean it here too.
+                icon: <Lock className="w-4 h-4" />,
                 when: () => !freezeService.isFrozen(),
                 run: async () => {
                     await freezeService.freeze({ kind: "manual" });
@@ -68,6 +85,7 @@ export function WorkspaceFreezeCommands() {
                 id: "vcs:unfreeze-workspace",
                 titleKey: "workspace.shell.freeze.release",
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                icon: <Unlock className="w-4 h-4" />,
                 // Manual freezes only. A revision view is left by the entry below, which also has to
                 // put the source away - and an author who unfroze a historical view with this one
                 // would be looking at a past revision in a writable workspace.
@@ -84,6 +102,7 @@ export function WorkspaceFreezeCommands() {
                 id: "vcs:show-previous-revision",
                 titleKey: "workspace.shell.revisionView.showPrevious",
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                icon: <History className="w-4 h-4" />,
                 when: () => !freezeService.isFrozen(),
                 run: async () => {
                     // Availability first, and answered in the author's own words. Every surface that
@@ -152,6 +171,7 @@ export function WorkspaceFreezeCommands() {
                 id: "vcs:open-rail",
                 titleKey: "workspace.shell.versionControl.command.openRail",
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                icon: <PanelRight className="w-4 h-4" />,
                 // The rail registers its bridge exactly when version control exists for this
                 // project, so this is the synchronous form of the availability question a `when`
                 // cannot ask any other way.
@@ -162,6 +182,7 @@ export function WorkspaceFreezeCommands() {
                 id: "vcs:commit",
                 titleKey: "workspace.shell.versionControl.command.commit",
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                icon: <GitCommitHorizontal className="w-4 h-4" />,
                 // The form is absent while project data is frozen (`isCommitFormPresent`), so
                 // offering this then would land the author on a panel with no box in it.
                 when: () => isVersionRailReachable() && !freezeService.isFrozen(),
@@ -171,6 +192,7 @@ export function WorkspaceFreezeCommands() {
                 id: "vcs:refresh-changes",
                 titleKey: "workspace.shell.versionControl.command.refreshChanges",
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                icon: <RefreshCw className="w-4 h-4" />,
                 // Not while a past revision is on screen. A scan is not a pure read - it records
                 // newly discovered directories into staged state (docs §4.17) - and "browsing
                 // history has zero side effects" is the decision this feature is shaped around. The
@@ -185,6 +207,8 @@ export function WorkspaceFreezeCommands() {
                 id: "vcs:compare-working-tree",
                 titleKey: "workspace.shell.versionControl.command.compareChanges",
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                // The same glyph the tab this opens wears (`openVcsChangesTab`).
+                icon: <GitCompare className="w-4 h-4" />,
                 when: () => isVersionRailReachable(),
                 run: async () => {
                     // `getInfo` is a pure read (`repositoryStatus(scan:false, revisionOnly:true)`),
@@ -201,6 +225,7 @@ export function WorkspaceFreezeCommands() {
                 id: "vcs:show-working-tree",
                 titleKey: "workspace.shell.revisionView.leave",
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                icon: <GitBranch className="w-4 h-4" />,
                 // Absent, not disabled, while something is rewriting the project files: a restore
                 // leaves the view itself when it finishes, so during one this entry is REDUNDANT
                 // rather than refused, and an entry that offers to do what is about to happen anyway
