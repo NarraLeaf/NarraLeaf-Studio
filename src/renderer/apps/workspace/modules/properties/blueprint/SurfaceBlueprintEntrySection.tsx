@@ -71,7 +71,7 @@ export const SurfaceBlueprintEntrySection = selfReadOnly(function SurfaceBluepri
                 disabled={!canOpenEntry}
                 onClick={() => openEntry()}
                 onContextMenu={blueprintEntryContextMenu(openEntry)}
-                title={canOpenEntry ? t("blueprint.entry.openInWindow") : undefined}
+                data-tip={canOpenEntry ? t("blueprint.entry.openInWindow") : undefined}
                 aria-label={canOpenEntry ? t("properties.blueprintEntry.open") : t("properties.blueprintEntry.noBlueprint")}
             >
                 <BlueprintLayerPreview model={previewModel} />

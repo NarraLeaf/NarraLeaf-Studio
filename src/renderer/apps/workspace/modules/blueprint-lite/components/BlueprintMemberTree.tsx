@@ -203,7 +203,7 @@ function BlueprintVariableRow({
                 className={`${FIELD_INPUT} font-mono`}
                 value={draftName}
                 readOnly={freeze.frozen}
-                title={freeze.frozen ? freeze.reason : undefined}
+                data-tip={freeze.frozen ? freeze.reason : undefined} aria-label={freeze.frozen ? freeze.reason : undefined}
                 onChange={e => setDraftName(e.target.value)}
                 onBlur={commitName}
                 onKeyDown={e => {
@@ -332,7 +332,7 @@ function BlueprintPersistentVariableRow({
                 className={`${FIELD_INPUT} font-mono`}
                 value={draftName}
                 readOnly={freeze.frozen}
-                title={freeze.frozen ? freeze.reason : undefined}
+                data-tip={freeze.frozen ? freeze.reason : undefined} aria-label={freeze.frozen ? freeze.reason : undefined}
                 onChange={e => setDraftName(e.target.value)}
                 onBlur={commitName}
                 onKeyDown={e => {

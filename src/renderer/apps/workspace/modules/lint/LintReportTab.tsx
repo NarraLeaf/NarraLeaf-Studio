@@ -227,7 +227,7 @@ export function LintReportTab() {
                     type="button"
                     className={ICON_BUTTON_CLASS}
                     aria-label={t(allCollapsed ? "lint.report.expandAll" : "lint.report.collapseAll")}
-                    title={t(allCollapsed ? "lint.report.expandAll" : "lint.report.collapseAll")}
+                    data-tip={t(allCollapsed ? "lint.report.expandAll" : "lint.report.collapseAll")}
                     disabled={groups.length === 0}
                     onClick={toggleAll}
                 >
@@ -237,7 +237,7 @@ export function LintReportTab() {
                     type="button"
                     className={ICON_BUTTON_CLASS}
                     aria-label={t("lint.report.rerun")}
-                    title={t("lint.report.rerun")}
+                    data-tip={t("lint.report.rerun")}
                     disabled={running || rerunFrozenOut || !context}
                     onClick={handleRerun}
                 >
@@ -324,7 +324,7 @@ function LintGroupRow({
             type="button"
             className="flex w-full cursor-default items-center gap-1 rounded-md px-1 pt-1 text-left hover:bg-fill-subtle"
             aria-expanded={!collapsed}
-            title={hint || undefined}
+            data-tip={hint || undefined}
             onClick={onToggle}
         >
             <Chevron className="h-3 w-3 shrink-0 text-fg-subtle" />
@@ -398,7 +398,7 @@ function LintEntryRow({
 
     if (!entry.target) {
         return (
-            <div className="flex w-full items-baseline gap-2 rounded-md px-2 py-0.5 text-left" title={hint}>
+            <div className="flex w-full items-baseline gap-2 rounded-md px-2 py-0.5 text-left" data-tip={hint}>
                 {body}
             </div>
         );
@@ -407,7 +407,7 @@ function LintEntryRow({
         <button
             type="button"
             className="flex w-full cursor-default items-baseline gap-2 rounded-md px-2 py-0.5 text-left hover:bg-fill-subtle"
-            title={hint}
+            data-tip={hint}
             onClick={() => onJump(entry)}
         >
             {body}

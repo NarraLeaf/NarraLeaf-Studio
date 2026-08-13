@@ -95,6 +95,10 @@ export const settings = {
                 slate: "Slate",
             },
         },
+        tooltipDelay: {
+            label: "Tooltip delay",
+            description: "How long the pointer rests on a control before its tooltip appears. Within a toolbar the wait applies to the first tooltip only.",
+        },
         reduceMotion: {
             label: "Reduce motion",
             description: "Turn off animated transitions in the Studio interface. The game's own animations are unaffected.",
@@ -214,6 +218,10 @@ export const settings = {
         versionControlAuthor: {
             label: "Author name",
             description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
+            // Replaces the description above while the field is closed, so the row says why
+            // rather than merely refusing to be typed in. Shown on both author fields.
+            fromServer:
+                "Comes from the server this installation is signed in to. Sign out to record a name of your own again.",
         },
         versionControlAuthorEmail: {
             label: "Author email",

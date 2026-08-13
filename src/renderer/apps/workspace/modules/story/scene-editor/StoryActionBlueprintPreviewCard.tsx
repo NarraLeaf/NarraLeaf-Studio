@@ -68,7 +68,7 @@ export function StoryActionBlueprintPreviewCard(props: {
                 disabled={frozen && !props.blueprintId}
                 // The freeze reason wins the tooltip while there is one: it says why the card
                 // cannot be used at all, which outranks telling the author about a gesture.
-                title={frozen && !props.blueprintId ? reason : t("blueprint.entry.openInWindow")}
+                data-tip={frozen && !props.blueprintId ? reason : t("blueprint.entry.openInWindow")}
                 className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 cursor-default"
                 onClick={() => props.onOpen()}
                 onContextMenu={blueprintEntryContextMenu(props.onOpen)}

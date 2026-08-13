@@ -1,15 +1,18 @@
 import {
     useCallback,
+    useContext,
     useEffect,
+    useId,
     useLayoutEffect,
     useMemo,
     useRef,
     useState,
+    type ContextType,
     type CSSProperties,
     type ReactNode,
     type RefObject,
 } from "react";
-import { motion, useIsPresent } from "motion/react";
+import { motion, PresenceContext, usePresence } from "motion/react";
 import {
     scalePageMotionDistances,
     type PageAnimationMotion,
@@ -34,6 +37,14 @@ export const SURFACE_PREPAINT_TIMEOUT_MS = 900;
 const SURFACE_PREPAINT_IMAGE_TIMEOUT_MS = 120;
 const SURFACE_PREPAINT_FRAME_TIMEOUT_MS = 50;
 const SURFACE_ENTER_COMPLETE_FALLBACK_MS = 80;
+/**
+ * How long past the planned end of a departure the layer keeps waiting for the animations under it.
+ *
+ * The same slack the arrival above allows, and for the same reason: an animation is allowed to
+ * overrun its plan by a frame or two, and a layer that stopped waiting on the exact millisecond
+ * would cut the last one short.
+ */
+const SURFACE_EXIT_COMPLETE_FALLBACK_MS = 80;
 
 type SurfaceAnimationLayerProps = {
     prepaintKey: string;
@@ -55,6 +66,12 @@ type SurfaceAnimationLayerProps = {
     interactive?: boolean;
     presentZIndex?: number;
     exitZIndex?: number;
+    /**
+     * How long this layer's whole departure takes, its elements included - `exitMs` off the
+     * animation plan. Defaults to the layer's own exit duration, which is the right answer for a
+     * host whose elements do not animate.
+     */
+    exitHoldMs?: number;
     resolveExit?: (direction: PageAnimationNavigationDirection) => Record<string, unknown>;
     onPrepaintReady?: (key: string) => void;
     onBeforeExit?: (key: string) => void;
@@ -176,6 +193,117 @@ function useSurfacePrepaint(prepaintKey: string, rootRef: RefObject<HTMLDivEleme
     return ready;
 }
 
+type PresenceValue = NonNullable<ContextType<typeof PresenceContext>>;
+
+/**
+ * The layer's own answer to "have my contents finished leaving", and the presence they report it to.
+ *
+ * The presence group above a layer settles only once every motion component under it has reported,
+ * and one that never reports holds the group open for good. Under a Surface that is not a corner
+ * case: an animated element that is hidden when the layer leaves has nothing to animate out and so
+ * reports nothing, and one that is unmounted mid-exit never withdraws what it registered. A
+ * blueprint hiding a container does both. What that costs is not cosmetic - the layer group's
+ * settlement is the layer stack's only dequeue signal, so a layer stuck leaving strands `Hide Layer`
+ * and holds its mutual-exclusion group shut, on top of leaving the layer's node on screen.
+ *
+ * So the layer answers for its contents rather than letting them answer for it. They get a presence
+ * of their own, which reports upwards as soon as they have all settled - and, failing that, at the
+ * planned end of the departure. The plan is the same number navigation settles page transitions on;
+ * nothing here invents a duration.
+ */
+function useContentPresence(input: {
+    isPresent: boolean;
+    safeToRemove: (() => void) | null | undefined;
+    exitHoldMs: number;
+}): PresenceValue {
+    const { isPresent, safeToRemove, exitHoldMs } = input;
+    const parentPresence = useContext(PresenceContext);
+    const fallbackId = useId();
+    const registeredRef = useRef<Map<string | number, boolean> | null>(null);
+    if (registeredRef.current === null) {
+        registeredRef.current = new Map();
+    }
+    const registered = registeredRef.current;
+    const reportedRef = useRef(false);
+    const isPresentRef = useRef(isPresent);
+    const safeToRemoveRef = useRef(safeToRemove);
+    useEffect(() => {
+        safeToRemoveRef.current = safeToRemove;
+    });
+
+    const report = useCallback(() => {
+        if (reportedRef.current) {
+            return;
+        }
+        reportedRef.current = true;
+        safeToRemoveRef.current?.();
+    }, []);
+
+    const reportWhenSettled = useCallback(() => {
+        if (isPresentRef.current) {
+            return;
+        }
+        for (const settled of registered.values()) {
+            if (!settled) {
+                return;
+            }
+        }
+        report();
+    }, [registered, report]);
+
+    useLayoutEffect(() => {
+        isPresentRef.current = isPresent;
+        if (isPresent) {
+            reportedRef.current = false;
+        }
+        // Everything under the layer leaves again on the leaving pass, so what settled during its
+        // stay says nothing about this departure.
+        registered.forEach((_, key) => registered.set(key, false));
+    }, [isPresent, registered]);
+
+    useEffect(() => {
+        if (isPresent) {
+            return undefined;
+        }
+        // A layer with nothing animated under it is already done, and must not sit out the slack.
+        reportWhenSettled();
+        const timeoutId = setTimeout(report, exitHoldMs > 0 ? exitHoldMs + SURFACE_EXIT_COMPLETE_FALLBACK_MS : 0);
+        return () => clearTimeout(timeoutId);
+    }, [exitHoldMs, isPresent, report, reportWhenSettled]);
+
+    /**
+     * Everything but the bookkeeping is the presence above, verbatim: the contents still leave when
+     * the layer does, and still skip the animations an arriving group skips. Read field by field so
+     * this value survives a render of the group above - that one is rebuilt every time by design,
+     * to drive layout animations no Surface has.
+     */
+    const parentId = parentPresence?.id;
+    const parentInitial = parentPresence?.initial;
+    const parentCustom = parentPresence?.custom;
+    return useMemo<PresenceValue>(
+        () => ({
+            id: parentId ?? fallbackId,
+            initial: parentInitial,
+            custom: parentCustom,
+            isPresent,
+            onExitComplete: childId => {
+                if (registered.has(childId)) {
+                    registered.set(childId, true);
+                }
+                reportWhenSettled();
+            },
+            register: childId => {
+                registered.set(childId, false);
+                return () => {
+                    registered.delete(childId);
+                    reportWhenSettled();
+                };
+            },
+        }),
+        [fallbackId, isPresent, parentCustom, parentId, parentInitial, registered, reportWhenSettled],
+    );
+}
+
 export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
     const {
         prepaintKey,
@@ -191,6 +319,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         interactive = true,
         presentZIndex = 10,
         exitZIndex = 20,
+        exitHoldMs,
         resolveExit,
         onPrepaintReady,
         onBeforeExit,
@@ -200,7 +329,12 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
     const contentRef = useRef<HTMLDivElement | null>(null);
     const beforeExitReportedRef = useRef<string | null>(null);
     const enterCompleteReportedRef = useRef<string | null>(null);
-    const isPresent = useIsPresent();
+    const [isPresent, safeToRemove] = usePresence();
+    const contentPresence = useContentPresence({
+        isPresent,
+        safeToRemove,
+        exitHoldMs: Math.max(0, exitHoldMs ?? pageMotion.exitDurationMs),
+    });
     const prepaintReady = useSurfacePrepaint(prepaintKey, contentRef);
     // Snapshot of `prepaintReady` taken while the layer was still present. Exit visibility uses
     // this instead of live state: a layer removed before its prepaint ever completed has never
@@ -306,7 +440,9 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
                 {/* Elements on this Surface start their own enter animations from the same instant
                     this layer becomes visible, not from when they mounted behind the curtain. */}
                 <SurfaceEnterReadyContext.Provider value={prepaintReady}>
-                    {children}
+                    <PresenceContext.Provider value={contentPresence}>
+                        {children}
+                    </PresenceContext.Provider>
                 </SurfaceEnterReadyContext.Provider>
             </div>
         </motion.div>

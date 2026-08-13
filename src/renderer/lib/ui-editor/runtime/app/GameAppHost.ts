@@ -3,6 +3,11 @@ import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "@shared/types/gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
@@ -193,6 +198,21 @@ export type GameAppHost = {
      * a failure saying so, the same degradation {@link networkFetch} takes.
      */
     openExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+    /**
+     * Write this playthrough into the title's progress document, for the Export Progress node.
+     *
+     * Where the file is, and whether there is one at all, is the host's business - and every shell
+     * decides it in the process that performs the act: the packaged desktop game and Dev Mode hand
+     * it to their main process, the web export refuses because a page has no shared file to write.
+     * What none of them take from this side is the path: the renderer states what the playthrough
+     * holds, and the shell resolves which title's document that is.
+     *
+     * Omitted by hosts with nowhere to write (the workspace story preview). The node then reports a
+     * failure saying so, the same degradation {@link openExternal} takes.
+     */
+    exportProgress?: (request: GameProgressExportRequest) => Promise<GameProgressExportResult>;
+    /** Read it back, for the Import Progress node. Omitted for the reason above. */
+    importProgress?: () => Promise<GameProgressImportResult>;
 };
 
 /** A read-only view of the current execution stacks (root + in-flight async branches). */
@@ -288,6 +308,66 @@ export type GameAppSaveBridge = {
     remove: (id: string) => Promise<void>;
 };
 
+/** What every row of the composite stack answers, page lane and layers alike. */
+export type GameAppCompositeSlot = {
+    /** The navigation key - a page entry's, or the layer's, which is also its runtime scope. */
+    key: string;
+    surfaceId: string;
+    /** The surface's authored name. Null when the running bundle has no surface with that id. */
+    surfaceName: string | null;
+    /** Whether this slot takes pointer input this frame. */
+    interactive: boolean;
+    /** True for the one slot the keys belong to, and for no other. */
+    keyboardOwner: boolean;
+};
+
+/** A layer of the composite stack, with the facts only a layer has. */
+export type GameAppCompositeLayer = GameAppCompositeSlot & {
+    modal: boolean;
+    dismissible: boolean;
+    /** Mutual-exclusion group, or null when the layer is in none. */
+    group: string | null;
+    /** The runtime scope that showed it; the layer closes when that scope does. */
+    ownerScopeId: string;
+    /**
+     * Whether it is actually on screen.
+     *
+     * False for a layer the render dropped, which happens when the running bundle has no surface
+     * with its id. The stack still holds it, so it still occupies its group and still answers
+     * `isPresent`, while nothing about it is visible or clickable.
+     */
+    onScreen: boolean;
+};
+
+/** A layer waiting for its group to be given back. */
+export type GameAppCompositeQueuedLayer = {
+    key: string;
+    surfaceId: string;
+    surfaceName: string | null;
+    modal: boolean;
+    group: string | null;
+    ownerScopeId: string;
+};
+
+/**
+ * The whole composite, as the debug panel reads it.
+ *
+ * Assembled where the composite is assembled, and never recomputed by a reader: input ownership has
+ * exactly one arbiter (`resolveCompositeInput`), and a panel that worked out for itself who holds
+ * the keyboard would be reporting its own second opinion at precisely the moment the author is
+ * trying to find out why the first one is not what they expected.
+ */
+export type GameAppCompositeView = {
+    /** The entry the page lane is settling on, or null while it has none. */
+    page: GameAppCompositeSlot | null;
+    /** Layers bottom to top. */
+    layers: readonly GameAppCompositeLayer[];
+    /** Queued layers in arrival order. */
+    queued: readonly GameAppCompositeQueuedLayer[];
+    /** True while a removed layer is still animating out. */
+    exitPending: boolean;
+};
+
 /** Context handed to host-rendered overlays (e.g. the Dev Mode debug panel). */
 export type GameAppOverlayContext = {
     core: BlueprintRuntimeCore | null;
@@ -302,6 +382,8 @@ export type GameAppOverlayContext = {
     storyRuntime: GameAppStoryRuntimeBridge;
     /** Save-slot access for the Saves panel, on the game's own paths. */
     saves: GameAppSaveBridge;
+    /** Everything on screen at once and who owns input, for the Layers panel. */
+    composite: GameAppCompositeView;
 };
 
 /** Context handed to the host frame around the game content. */

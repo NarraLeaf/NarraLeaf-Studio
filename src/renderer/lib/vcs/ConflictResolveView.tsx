@@ -7,6 +7,7 @@ import { EmptyState } from "@/lib/components/elements";
 import { ConflictDetail } from "./ConflictDetail";
 import { ConflictIndexPane } from "./ConflictIndexPane";
 import { IndexDivider } from "./IndexDivider";
+import type { FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
 import {
     countUndecidedFiles,
     type ConflictRowView,
@@ -34,7 +35,7 @@ import {
  * whole surface renderable without a workspace behind it.
  */
 export interface WriteGuard {
-    writes(ownDisabled?: boolean, ownTitle?: string): { disabled: boolean; title: string | undefined };
+    writes(ownDisabled?: boolean, ownTooltip?: string): FrozenControlProps;
 }
 
 export interface ConflictResolveViewProps {

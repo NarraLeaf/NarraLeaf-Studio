@@ -519,7 +519,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                                 type="button"
                                 aria-pressed={mode === option.key}
                                 onClick={() => setMode(option.key)}
-                                title={option.key === "review" && counts.pending > 0
+                                data-tip={option.key === "review" && counts.pending > 0
                                     ? t("workspace.localization.table.reviewPendingCount", { count: counts.pending })
                                     : undefined}
                                 className={`flex h-6 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors ${

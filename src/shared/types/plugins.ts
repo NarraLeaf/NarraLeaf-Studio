@@ -170,6 +170,12 @@ export type PluginBuildConfigScope = (typeof PLUGIN_BUILD_CONFIG_SCOPES)[number]
  * stores a handle, and the value itself is sealed on the machine that entered it. A handle whose
  * secret is not on this machine reads as set-but-unavailable, which is the normal state for a
  * project someone else configured.
+ *
+ * A build then carries the `text` values of the plugins it ships into the pack, where the plugin's
+ * own runtime reads them back as `app.game.config`. That route is declarative end to end - the
+ * build folds declarations into values and writes them down, and nothing on it runs plugin code -
+ * so it is the same channel as above and not a way around it. Its consequence is that a `text`
+ * value reaches every player: `secret` is what a field takes when the value must not.
  */
 export type PluginBuildConfigFieldContribution = {
     /** Unique within the plugin. Keys the stored value; never displayed. */
@@ -200,6 +206,35 @@ export type PluginBuildConfigField = PluginBuildConfigFieldContribution & {
     /** The declaring plugin's name, for surfaces that group fields by plugin. */
     pluginName: string;
 };
+
+/**
+ * A field whose value the project actually holds.
+ *
+ * A `secret` field is outside this type rather than filtered out by whoever moves values around.
+ * What the project stores for one is a handle, and the secret it names is sealed on the machine
+ * that typed it - so there is no value here to move, and moving the handle instead would put a
+ * credential's name in front of everyone the artifact reaches. Anything that carries a value out of
+ * the project takes this type, which turns a missing check into a compile error instead of a leak.
+ */
+export type PluginBuildConfigValueField = PluginBuildConfigField & { type: "text" };
+
+/**
+ * Whether the project holds the field's value itself.
+ *
+ * A total map over {@link PLUGIN_BUILD_CONFIG_TYPES} rather than a comparison: a third type added
+ * later does not compile until someone has said which side of this line it falls on, whereas an
+ * `if (type !== "secret")` would quietly answer yes for it - and yes is the answer that leaks.
+ */
+const PLUGIN_BUILD_CONFIG_VALUE_IS_STORED: Record<PluginBuildConfigType, boolean> = {
+    text: true,
+    secret: false,
+};
+
+export function holdsPluginBuildConfigValue(
+    field: PluginBuildConfigField,
+): field is PluginBuildConfigValueField {
+    return PLUGIN_BUILD_CONFIG_VALUE_IS_STORED[field.type];
+}
 
 /** Whether a variant may state its own value, or the project holds the only one. */
 export function isVariantScopedBuildConfig(scope: PluginBuildConfigScope): boolean {
@@ -269,6 +304,26 @@ export type PluginContributes = {
      * grants the plugin nothing.
      */
     buildConfig?: PluginBuildConfigFieldContribution[];
+    /**
+     * Address patterns this plugin may hand to the player's browser or platform handler, through
+     * `app.game.navigation.openExternal`.
+     *
+     * Unlike everything else here, this one is *not* a list of identifiers the plugin owns - it is a
+     * list of places outside the game it may reach, so it derives an install permission the author
+     * approves by name (see `PluginInstallPermission` `kind: "externalLink"`) and adding one to a
+     * later version re-prompts.
+     *
+     * Patterns are matched structurally, never as strings: see `isExternalLinkPatternDeclared` in
+     * `@shared/types/externalLinkPattern` for the exact semantics. Wildcards are allowed
+     * (`https://*.example.com/app/*`) and the scheme is not restricted to `http(s)`, because the
+     * storefronts a plugin integrates with speak their own (`steam://run/480`). A handful of schemes
+     * are refused at validation whatever a manifest says; that list and its reasoning live in the
+     * same module.
+     *
+     * This is separate from, and grants nothing towards, the project's own `externalLinks` - the
+     * Open Link node still opens only what the build's variant declared.
+     */
+    externalLinks?: string[];
 };
 
 export type PluginManifestV2 = Omit<PluginIdentity, "id" | "name" | "version"> & Required<Pick<PluginIdentity, "id" | "name" | "version">> & {
@@ -359,6 +414,15 @@ export type RuntimePluginDescriptor = {
      * plugin must tolerate missing data (the project may never have written it).
      */
     data?: Record<string, unknown>;
+    /**
+     * This plugin's own `contributes.buildConfig` values, as the build that produced the pack
+     * resolved them, keyed by field key. Only ever the declaring plugin's own values: the pack
+     * holds one record per plugin and a descriptor is built from one entry.
+     *
+     * Absent outside a compiled pack - the editor and Dev Mode hand out descriptors that were never
+     * built for a variant, so there is nothing resolved to carry.
+     */
+    buildConfig?: Record<string, string>;
 };
 
 export type PluginInstallResult =

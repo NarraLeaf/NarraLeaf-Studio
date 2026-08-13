@@ -12,6 +12,11 @@ import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult 
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "./gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -73,9 +78,11 @@ import type {
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
+    VcsSignInOutcome,
     VcsSyncState,
     VcsThreeWayResult,
     VcsWorkingFileRead,
@@ -241,6 +248,9 @@ export enum IPCEventType {
     blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
     blueprintNetworkFetch = "blueprintNetwork.fetch",
     blueprintExternalLinkOpen = "blueprintExternalLink.open",
+    blueprintExternalLinkOpenForPlugin = "blueprintExternalLink.openForPlugin",
+    blueprintProgressWrite = "blueprintProgress.write",
+    blueprintProgressRead = "blueprintProgress.read",
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -309,6 +319,10 @@ export enum IPCEventType {
     vcsGetRemote = "vcs.getRemote",
     vcsSetRemote = "vcs.setRemote",
     vcsGetSyncState = "vcs.getSyncState",
+    vcsGetServerSession = "vcs.getServerSession",
+    vcsSignIn = "vcs.signIn",
+    vcsSignOut = "vcs.signOut",
+    vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
     vcsClone = "vcs.clone",
@@ -1074,6 +1088,46 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string },
         response: VcsSyncState;
+    };
+    /** Local read: who this installation is signed in to this project's server as. */
+    [IPCEventType.vcsGetServerSession]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: { session: VcsServerSession | null };
+    };
+    /**
+     * **Goes to the network**, twice: the sign-in endpoint and then the server itself.
+     *
+     * The token travels one way only. It is handed to the backend's own store and is never
+     * written to Studio's state, logged, or returned in the response.
+     */
+    [IPCEventType.vcsSignIn]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; authUrl: string; token: string },
+        response: VcsSignInOutcome;
+    };
+    /**
+     * **Changes a setting of the operating system**, and is the only event here that does.
+     *
+     * Puts a server's certificate authority into this account's trust store, having been
+     * asked to by somebody who was shown its fingerprint. Only a certificate this process
+     * wrote is eligible - the path is checked against Studio's own directory, because a
+     * renderer names it and a renderer is where untrusted content ends up.
+     */
+    [IPCEventType.vcsTrustAuthority]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; certificatePath: string },
+        response: { installed: boolean; output: string };
+    };
+    /** Local: clears the stored token as well as Studio's record of whose it was. */
+    [IPCEventType.vcsSignOut]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: { session: null };
     };
     [IPCEventType.vcsPush]: {
         type: IPCMessageType.request,
@@ -2259,6 +2313,63 @@ export type IPCBlueprintPersistenceEvents = {
         },
         response: {
             result: BlueprintOpenExternalResult;
+        };
+    };
+    /**
+     * One runtime plugin's request to open an address, decided by the main process against that
+     * plugin's own declared patterns.
+     *
+     * A channel of its own rather than a flag on the one above, because the two consult different
+     * declarations and neither must be able to reach the other's. This one never looks at the
+     * project's variant list, and the Open Link node never looks at a plugin's manifest.
+     *
+     * `pluginId` selects whose declaration applies; the handler reads it from the installed
+     * plugin's manifest rather than taking any patterns from the renderer, which is what keeps this
+     * a way to honour the declaration instead of a way around it.
+     */
+    [IPCEventType.blueprintExternalLinkOpenForPlugin]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+            request: BlueprintOpenExternalRequest;
+        },
+        response: {
+            result: BlueprintOpenExternalResult;
+        };
+    };
+    /**
+     * The Export Progress node's request, in a Dev Mode preview.
+     *
+     * Dev Mode has to behave like the packaged game, so the write is made where the packaged game
+     * makes it - in the process that owns the filesystem - and the file it writes is the very same
+     * one, named by the key the build would carry. The renderer sends what the playthrough holds
+     * and never which file: the handler derives the key from the project's own identity, exactly as
+     * the pack compiler does, so a preview cannot be talked into writing another title's document.
+     *
+     * The project path, not a window handle, identifies whose progress this is - the same shape the
+     * external-link channels above use.
+     */
+    [IPCEventType.blueprintProgressWrite]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            request: GameProgressExportRequest;
+        },
+        response: {
+            result: GameProgressExportResult;
+        };
+    };
+    /** The Import Progress node's request, read by the same process and keyed the same way. */
+    [IPCEventType.blueprintProgressRead]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            result: GameProgressImportResult;
         };
     };
 };

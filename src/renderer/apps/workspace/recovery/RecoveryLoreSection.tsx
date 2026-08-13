@@ -254,7 +254,7 @@ export function RecoveryLoreSection({ context }: { context: WorkspaceContext | n
                     size="sm"
                     onClick={() => void handleCheckpoint()}
                     disabled={disabled}
-                    title={ready ? undefined : t("workspace.recovery.lore.disabledHint")}
+                    data-tip={ready ? undefined : t("workspace.recovery.lore.disabledHint")}
                 >
                     <Save className="h-3.5 w-3.5" aria-hidden />
                     <span>{t("workspace.recovery.lore.checkpoint")}</span>
@@ -279,7 +279,7 @@ export function RecoveryLoreSection({ context }: { context: WorkspaceContext | n
                         size="sm"
                         onClick={() => setConfirming(true)}
                         disabled={disabled || !selected}
-                        title={ready ? undefined : t("workspace.recovery.lore.disabledHint")}
+                        data-tip={ready ? undefined : t("workspace.recovery.lore.disabledHint")}
                     >
                         <RotateCcw className="h-3.5 w-3.5" aria-hidden />
                         <span>{t("workspace.recovery.lore.restore")}</span>

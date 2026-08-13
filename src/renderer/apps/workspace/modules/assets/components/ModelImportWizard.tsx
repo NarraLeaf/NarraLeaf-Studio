@@ -228,7 +228,7 @@ export function ModelImportWizard(props: {
                         {t(FAMILY_LABEL[phase.family])}
                     </span>
                     {"root" in phase && phase.root ? (
-                        <span className="truncate text-2xs text-fg-subtle" title={phase.root}>{phase.root}</span>
+                        <span className="truncate text-2xs text-fg-subtle" data-tip={phase.root}>{phase.root}</span>
                     ) : (
                         <span className="text-2xs text-fg-subtle">{t("assets.modelImport.folderHint")}</span>
                     )}
@@ -312,7 +312,7 @@ export function ModelImportWizard(props: {
                                                         <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
                                                     )}
                                                 </span>
-                                                <span className="block truncate text-2xs text-fg-subtle" title={model.relativePath}>
+                                                <span className="block truncate text-2xs text-fg-subtle" data-tip={model.relativePath}>
                                                     {model.relativePath || "."}
                                                     {" · "}
                                                     {t("assets.modelImport.fileSummary", {

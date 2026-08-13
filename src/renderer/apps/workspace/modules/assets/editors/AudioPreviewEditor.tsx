@@ -42,6 +42,7 @@ import {
     toAssetLoop,
     type LoopPoints,
 } from "./audio/loopHistory";
+import { TooltipGroup } from "@/lib/tooltip";
 
 interface AudioPreviewPayload {
     asset: Asset<AssetType.Audio>;
@@ -562,12 +563,12 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     return (
         <div className="flex h-full flex-col bg-surface" data-help-topic="audioClips">
             {/* Transport, view and marker controls. Everything else is a gesture or a shortcut. */}
-            <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-edge bg-surface-raised px-2 py-1.5">
+            <TooltipGroup className="flex shrink-0 flex-wrap items-center gap-1 border-b border-edge bg-surface-raised px-2 py-1.5">
                 <button
                     type="button"
                     onClick={togglePlay}
                     className={ICON_BUTTON_CLASS}
-                    title={playing ? t("assets.audio.pause") : t("assets.audio.play")}
+                    data-tip={playing ? t("assets.audio.pause") : t("assets.audio.play")} aria-label={playing ? t("assets.audio.pause") : t("assets.audio.play")}
                 >
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                 </button>
@@ -575,7 +576,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     type="button"
                     onClick={() => seekTo(hasSelection && selection ? selection.start : 0)}
                     className={ICON_BUTTON_CLASS}
-                    title={t("assets.audio.editor.toStart")}
+                    data-tip={t("assets.audio.editor.toStart")} aria-label={t("assets.audio.editor.toStart")}
                 >
                     <SkipBack className="h-4 w-4" />
                 </button>
@@ -583,7 +584,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     type="button"
                     onClick={() => setLoop(value => !value)}
                     className={controlButtonClass(loop)}
-                    title={t("assets.audio.editor.loop")}
+                    data-tip={t("assets.audio.editor.loop")} aria-label={t("assets.audio.editor.loop")}
                 >
                     <Repeat className="h-4 w-4" />
                 </button>
@@ -596,17 +597,17 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
                 {separator}
 
-                <button type="button" onClick={() => zoomBy(1 / 1.4)} className={ICON_BUTTON_CLASS} title={t("assets.audio.editor.zoomOut")}>
+                <button type="button" onClick={() => zoomBy(1 / 1.4)} className={ICON_BUTTON_CLASS} data-tip={t("assets.audio.editor.zoomOut")} aria-label={t("assets.audio.editor.zoomOut")}>
                     <ZoomOut className="h-4 w-4" />
                 </button>
-                <button type="button" onClick={() => zoomBy(1.4)} className={ICON_BUTTON_CLASS} title={t("assets.audio.editor.zoomIn")}>
+                <button type="button" onClick={() => zoomBy(1.4)} className={ICON_BUTTON_CLASS} data-tip={t("assets.audio.editor.zoomIn")} aria-label={t("assets.audio.editor.zoomIn")}>
                     <ZoomIn className="h-4 w-4" />
                 </button>
                 <button
                     type="button"
                     onClick={() => setView(fitAll(totalSamples))}
                     className={ICON_BUTTON_CLASS}
-                    title={t("assets.audio.editor.zoomFit")}
+                    data-tip={t("assets.audio.editor.zoomFit")} aria-label={t("assets.audio.editor.zoomFit")}
                 >
                     <Maximize className="h-4 w-4" />
                 </button>
@@ -615,7 +616,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     disabled={!hasSelection}
                     onClick={() => selection && setView(zoomToRange(selection, totalSamples))}
                     className={ICON_BUTTON_CLASS}
-                    title={t("assets.audio.editor.zoomSelection")}
+                    data-tip={t("assets.audio.editor.zoomSelection")} aria-label={t("assets.audio.editor.zoomSelection")}
                 >
                     <Crop className="h-4 w-4" />
                 </button>
@@ -637,7 +638,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     type="button"
                     onClick={() => markLoopPoint("loop")}
                     className={controlButtonClass(loopPoints.loopStartMs !== null)}
-                    title={t("assets.audio.editor.markLoop")}
+                    data-tip={t("assets.audio.editor.markLoop")} aria-label={t("assets.audio.editor.markLoop")}
                 >
                     <IterationCw className="h-4 w-4" />
                 </button>
@@ -656,7 +657,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     type="button"
                     onClick={() => setMuted(value => !value)}
                     className={ICON_BUTTON_CLASS}
-                    title={muted ? t("assets.audio.unmute") : t("assets.audio.mute")}
+                    data-tip={muted ? t("assets.audio.unmute") : t("assets.audio.mute")} aria-label={muted ? t("assets.audio.unmute") : t("assets.audio.mute")}
                 >
                     {muted || volume === 0 ? (
                         <VolumeX className="h-4 w-4" />
@@ -679,7 +680,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     className="h-1 w-20 shrink-0 rounded-md bg-fill accent-fg/70"
                     aria-label={t("assets.audio.volume")}
                 />
-            </div>
+            </TooltipGroup>
 
             {/* Waveform: bounded, and anchored under the toolbar rather than centred - centring it
                 leaves the clip floating in the middle of a tall tab with dead space above and

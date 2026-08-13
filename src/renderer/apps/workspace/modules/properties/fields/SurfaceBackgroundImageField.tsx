@@ -92,7 +92,7 @@ export function SurfaceBackgroundImageField({ data }: CustomFieldProps<SceneEdit
                     <IconButton
                         size="md"
                         aria-label={t("common.clear")}
-                        title={t("common.clear")}
+                        data-tip={t("common.clear")}
                         onClick={() => commit(null)}
                     >
                         <X className="h-4 w-4" />

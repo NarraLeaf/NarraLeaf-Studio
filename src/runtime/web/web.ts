@@ -3,9 +3,13 @@ import {
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
 } from "@shared/types/gameRuntime";
-import { resolveDeclaredExternalLink } from "@shared/types/blueprint/externalLink";
+import {
+    resolveDeclaredExternalLink,
+    resolvePluginExternalLinkAmong,
+} from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { WebGameStorage } from "./webStorage";
+import { webProgressBridge } from "./webProgress";
 
 /**
  * Web runtime shell. Loaded by the exported index.html BEFORE renderer.js, it
@@ -128,6 +132,13 @@ const bridge: GameRuntimePreloadBridge = {
     // Says out loud what the no-op above implies, so callers gate on it instead of registering a
     // handler that can never run (runtime plugins surface it as events.available("closeRequested")).
     capabilities: { closeRequested: false },
+    // A page has no channel that arrives before its own scripts, so this build cannot answer until
+    // the pack has been fetched. `null` says exactly that, and the renderer keeps its default
+    // until `readPack` resolves rather than treating unknown as an answer.
+    crashPolicy: null,
+    // No log file at all here: this shell prints to the browser console, so there is no path a
+    // crash screen could send anyone to.
+    logPath: null,
     save: {
         write: async (id, savedGame, capture, metadata) =>
             (await getStorage()).writeSave(id, savedGame, capture, metadata),
@@ -189,7 +200,40 @@ const bridge: GameRuntimePreloadBridge = {
                 ? { outcome: "opened", error: null }
                 : { outcome: "failed", error: "The browser did not open the link." };
         },
+        /**
+         * A plugin's request, decided against that plugin's own declared patterns.
+         *
+         * Read out of the same pack, from the manifest that shipped inside it, and checked here for
+         * the reason above: a static site has no process behind it, so the page is the process that
+         * performs the act. A plugin id naming nothing in the pack declares nothing, which is what
+         * an unknown id resolves to.
+         *
+         * `window.open` on the web only ever hands the address to the browser, so a scheme the
+         * browser has no handler for simply does nothing visible - the same outcome a desktop
+         * player gets from a `steam:` link with Steam uninstalled, reported the same way.
+         */
+        openForPlugin: async (pluginId, request) => {
+            const pack = await readPack();
+            const decision = resolvePluginExternalLinkAmong(pack.plugins, pluginId, request);
+            if (!decision.allowed) {
+                console.warn(`[GameRuntime] Plugin Open Link refused: ${decision.result.error}`);
+                return decision.result;
+            }
+            const opened = window.open(decision.url, "_blank", "noopener,noreferrer");
+            return opened
+                ? { outcome: "opened", error: null }
+                : { outcome: "failed", error: "The browser did not open the link." };
+        },
     },
+    /**
+     * The Export/Import Progress nodes, on a page.
+     *
+     * Present and refusing, unlike `sidecar` below, which is absent. The difference is what an
+     * author can do about it: a plugin that finds no sidecar degrades on its own, whereas a graph
+     * that lost this node would ship a button doing nothing at all. Here the node still runs and
+     * still leaves by `Failed` with a reason. See `webProgress.ts`.
+     */
+    progress: webProgressBridge,
     // `sidecar` is deliberately absent, not stubbed. A browser has no child
     // processes and never will, so there is no honest no-op: a stub would let a
     // plugin call start() and wait forever for a handshake nothing can answer.

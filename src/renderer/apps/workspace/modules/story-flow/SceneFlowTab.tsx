@@ -619,7 +619,7 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
                             size="sm"
                             variant="ghost"
                             className="!min-h-0 !px-2 !py-1"
-                            title={t(allExpanded ? "story.flow.branch.collapse" : "story.flow.branch.expand")}
+                            data-tip={t(allExpanded ? "story.flow.branch.collapse" : "story.flow.branch.expand")}
                             onClick={handleToggleAllExpanded}
                         >
                             {allExpanded
@@ -635,7 +635,7 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
                         size="sm"
                         variant="ghost"
                         className="!min-h-0 !px-2 !py-1"
-                        title={t("story.flow.action.resetLayout")}
+                        data-tip={t("story.flow.action.resetLayout")}
                         onClick={handleResetLayout}
                     >
                         <LayoutGrid className="mr-1 h-3.5 w-3.5 text-fg-muted" />
@@ -647,7 +647,7 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
                         variant="ghost"
                         className="!min-h-0 !px-2 !py-1"
                         aria-pressed={railOpen}
-                        title={t(railOpen ? "story.flow.route.hide" : "story.flow.route.show")}
+                        data-tip={t(railOpen ? "story.flow.route.hide" : "story.flow.route.show")}
                         onClick={() => setRailOpen(open => !open)}
                     >
                         <Route className={railOpen ? "mr-1 h-3.5 w-3.5 text-fg" : "mr-1 h-3.5 w-3.5 text-fg-muted"} />

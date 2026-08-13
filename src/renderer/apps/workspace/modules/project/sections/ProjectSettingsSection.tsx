@@ -23,6 +23,7 @@ import {
     MOBILE_CROP_ANCHORS_Y,
     MOBILE_ORIENTATIONS,
     MOBILE_VIEWPORT_FITS,
+    normalizeCrashConfiguration,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
@@ -34,10 +35,12 @@ import {
     type MobileCropAnchorY,
     type MobileOrientation,
     type MobileViewportFit,
+    type CrashConfiguration,
     type NetworkConfiguration,
     type SecurityConfiguration,
     type WebOptimizationConfiguration,
 } from "@/lib/workspace/project/configuration";
+import { GAME_CRASH_POLICIES } from "@shared/types/gameRuntime";
 import type { ProjectSectionProps } from "./types";
 
 export function ProjectSettingsSection(props: ProjectSectionProps) {
@@ -52,6 +55,8 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
     const [webOptimization, setWebOptimization] = useState<WebOptimizationConfiguration>(
         () => normalizeWebOptimizationConfiguration(config.app?.webOptimization),
     );
+    const [crash, setCrash] = useState<CrashConfiguration>(() => normalizeCrashConfiguration(config.app?.crash));
+    const [savingCrash, setSavingCrash] = useState(false);
     const [savingHttp, setSavingHttp] = useState(false);
     const [savingEncrypt, setSavingEncrypt] = useState(false);
     const [savingMobile, setSavingMobile] = useState(false);
@@ -75,6 +80,27 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
             setSavingHttp(false);
         }
     }, [network, onConfigChange, projectService, savingHttp, uiService]);
+
+    const setCrashPolicy = useCallback(async (next: string | number) => {
+        if (savingCrash) {
+            return;
+        }
+        const previous = crash;
+        setSavingCrash(true);
+        setCrash(normalizeCrashConfiguration({ policy: next }));
+        try {
+            const updated = await projectService.updateCrashConfiguration(
+                normalizeCrashConfiguration({ policy: next }),
+            );
+            setCrash(normalizeCrashConfiguration(updated.app?.crash));
+            onConfigChange(updated);
+        } catch (error) {
+            setCrash(previous);
+            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
+        } finally {
+            setSavingCrash(false);
+        }
+    }, [crash, onConfigChange, projectService, savingCrash, uiService]);
 
     const setEncryptAssets = useCallback(async (next: boolean) => {
         if (savingEncrypt) {
@@ -162,6 +188,14 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         [t],
     );
 
+    const crashPolicyOptions: SelectOption[] = useMemo(
+        () => GAME_CRASH_POLICIES.map(value => ({
+            value,
+            label: t(`project.settings.crashPolicy.${value}`),
+        })),
+        [t],
+    );
+
     const cropAnchorYOptions: SelectOption[] = useMemo(
         () => MOBILE_CROP_ANCHORS_Y.map(value => ({
             value,
@@ -233,7 +267,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 <SettingShell
                     title={t("project.settings.webLossyQualityTitle")}
                     description={t("project.settings.webLossyQualityDescription")}
-                    titleAttr={freeze.writes().title}
+                    tooltip={freeze.writes()["data-tip"]}
                 >
                     <NumberField
                         value={webOptimization.lossyQuality}
@@ -246,13 +280,32 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 </SettingShell>
             </SettingsGroup>
 
+            {/* The one part of this page a player can end up looking at, so it gets a heading of
+                its own rather than being filed under Security because a stack trace is sensitive.
+                What is being chosen is who the build is for, not how much to hide. */}
+            <SettingsGroup title={t("project.group.crash")}>
+                <SettingShell
+                    title={t("project.settings.crashPolicyTitle")}
+                    description={t("project.settings.crashPolicyDescription")}
+                    tooltip={freeze.writes(savingCrash)["data-tip"]}
+                >
+                    <Select
+                        options={crashPolicyOptions}
+                        value={crash.policy}
+                        disabled={freeze.writes(savingCrash).disabled}
+                        onChange={value => void setCrashPolicy(value)}
+                        ariaLabel={t("project.settings.crashPolicyTitle")}
+                    />
+                </SettingShell>
+            </SettingsGroup>
+
             {/* Neither security nor size, and a heading of its own rather than filed under whichever
                 of the two it is closer to. The phone-only questions land here. */}
             <SettingsGroup title={t("project.group.mobile")}>
                 <SettingShell
                     title={t("project.settings.orientationTitle")}
                     description={t("project.settings.orientationDescription")}
-                    titleAttr={freeze.writes(savingMobile).title}
+                    tooltip={freeze.writes(savingMobile)["data-tip"]}
                 >
                     <Select
                         options={orientationOptions}
@@ -268,7 +321,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 <SettingShell
                     title={t("project.settings.stageFitTitle")}
                     description={t("project.settings.stageFitDescription")}
-                    titleAttr={freeze.writes(savingMobile).title}
+                    tooltip={freeze.writes(savingMobile)["data-tip"]}
                 >
                     <Select
                         options={fitOptions}
@@ -290,7 +343,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         <SettingShell
                             title={t("project.settings.cropAnchorYTitle")}
                             description={t("project.settings.cropAnchorYDescription")}
-                            titleAttr={freeze.writes(savingMobile).title}
+                            tooltip={freeze.writes(savingMobile)["data-tip"]}
                         >
                             <Select
                                 options={cropAnchorYOptions}
@@ -306,7 +359,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         <SettingShell
                             title={t("project.settings.cropAnchorXTitle")}
                             description={t("project.settings.cropAnchorXDescription")}
-                            titleAttr={freeze.writes(savingMobile).title}
+                            tooltip={freeze.writes(savingMobile)["data-tip"]}
                         >
                             <Select
                                 options={cropAnchorXOptions}

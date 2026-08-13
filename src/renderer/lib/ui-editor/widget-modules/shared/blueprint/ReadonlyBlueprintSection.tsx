@@ -70,7 +70,7 @@ export const ReadonlyBlueprintSection = selfReadOnly(function ReadonlyBlueprintS
                 disabled={!canOpenEntry}
                 onClick={() => openEntry()}
                 onContextMenu={blueprintEntryContextMenu(openEntry)}
-                title={canOpenEntry ? t("blueprint.entry.openInWindow") : undefined}
+                data-tip={canOpenEntry ? t("blueprint.entry.openInWindow") : undefined}
                 aria-label={canOpenEntry ? t("widgetChrome.blueprint.openControlBlueprint") : t("widgetChrome.blueprint.noBlueprintForControl")}
             >
                 <BlueprintLayerPreview model={previewModel} />

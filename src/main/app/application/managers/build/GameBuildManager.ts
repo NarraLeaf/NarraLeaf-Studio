@@ -88,6 +88,7 @@ import {
     type ProvisioningProfile,
 } from "../../../../buildWorker/mobile/provisioningProfile";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
+import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProtocol";
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
@@ -961,6 +962,7 @@ export class GameBuildManager {
                     + "Build one desktop target at a time to include them.",
             });
         }
+        let contentAudit: ShippedContentAuditReport | null = null;
         if (desktopTargets.length > 0) {
             // Off the main thread: sealing a protected pack is many seconds of
             // synchronous native-codec CPU. session.worker tracks the compile so
@@ -991,6 +993,7 @@ export class GameBuildManager {
             }, {
                 onStart: worker => { session.worker = worker; },
                 cancelled: () => session.cancelled,
+                onAudit: report => { contentAudit = report; },
             });
             session.worker = null;
             this.emit(session, {
@@ -998,6 +1001,7 @@ export class GameBuildManager {
                 source: "Build",
                 message: `game compiled (${desktopArtifact.copiedAssetCount} asset(s))`,
             });
+            this.reportShippedContentAudit(session, contentAudit);
             this.ensureNotCancelled(session);
         }
         // The mobile shells serve the very same static site the web target
@@ -2197,6 +2201,52 @@ export class GameBuildManager {
             return undefined;
         }
         return resolvePackEncryptionKey(this.app.getUserDataDir(), projectPath);
+    }
+
+    /**
+     * Report the shipped-content audit, and stop the build if the package cannot answer for itself.
+     *
+     * This is the only check in the build that reads what was *produced* rather than what was
+     * authored. An edition that removes content decides what to keep by reading the ids written in
+     * the bytes it ships; the audit then runs the story compiler over those same bytes and asks the
+     * package for every asset that compiler wants. The two are deliberately different methods of
+     * arriving at the same set, because a check that repeated the packer's own reasoning would agree
+     * with it whatever it did.
+     *
+     * A failure here is never the author's mistake to fix in the story - it is a package that would
+     * play until the moment the missing thing was needed - so it stops the build rather than warning.
+     */
+    private reportShippedContentAudit(session: BuildSession, report: ShippedContentAuditReport | null): void {
+        if (!report) {
+            return;
+        }
+        for (const failure of report.failures) {
+            this.emit(session, {
+                level: "error",
+                source: "Build",
+                message: failure.reason === "missing"
+                    ? `${failure.origin} needs an asset this build did not package (${failure.assetId})`
+                    : `${failure.origin} needs an asset whose bytes are not in the package (${failure.assetId})`,
+            });
+        }
+        for (const storyError of report.storyErrors) {
+            this.emit(session, {
+                level: "error",
+                source: "Build",
+                message: `the packaged story ${storyError.story} could not be read back: ${storyError.message}`,
+            });
+        }
+        const problems = report.failures.length + report.storyErrors.length;
+        if (problems > 0) {
+            throw new Error(
+                `Build stopped: the packaged game is missing ${problems} thing(s) it asks for. See the console.`,
+            );
+        }
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: `content check passed (${report.checkedAssetCount} asset(s) resolved in the package)`,
+        });
     }
 
     private ensureNotCancelled(session: BuildSession): void {

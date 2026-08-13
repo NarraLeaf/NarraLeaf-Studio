@@ -39,6 +39,9 @@ const lore = vi.hoisted(() => {
             calls.push("releaseRepository");
         },
         readRepositoryIdentity: async () => ({ repository: "repo0", branch: "main" }),
+        // Read once when a session opens: it is what decides whose name goes on a
+        // revision and which account id the online calls carry. Null is "no server".
+        readRemote: async () => null,
         readBranchIdentity: async () => {
             calls.push("readBranchIdentity");
             if (gate) await gate;

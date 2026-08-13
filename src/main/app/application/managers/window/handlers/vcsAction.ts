@@ -13,6 +13,9 @@ import type {
     VcsRepositoryInfo,
     VcsRestoreResult,
     VcsRevisionDiffResult,
+    VcsServerSession,
+    VcsSignInOutcome,
+    VcsSignInProblem,
     VcsStatus,
     VcsSyncResult,
     VcsSyncState,
@@ -415,6 +418,102 @@ export class VcsGetSyncStateHandler extends IPCHandler<IPCEventType.vcsGetSyncSt
         { projectPath }: IPCEvents[IPCEventType.vcsGetSyncState]["data"],
     ): Promise<RequestStatus<VcsSyncState>> {
         return this.tryUse(() => window.app.getVcsManager().getSyncState(projectPath));
+    }
+}
+
+/**
+ * Who this installation is signed in to this project's server as.
+ *
+ * A LOCAL read, and one that asks two stores rather than one: Studio's record of the
+ * account, and the backend's own store of the token behind it. A record with nothing
+ * behind it answers null, because "signed in as Ada" over a connection that will be
+ * refused is worse than saying nobody is.
+ */
+export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetServerSession> {
+    readonly name = IPCEventType.vcsGetServerSession;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsGetServerSession]["data"],
+    ): Promise<RequestStatus<{ session: VcsServerSession | null }>> {
+        return this.tryUse(async () => ({
+            session: await window.app.getVcsManager().getServerSession(projectPath),
+        }));
+    }
+}
+
+/**
+ * Present a token to this project's server.
+ *
+ * **The token crosses this boundary once, inbound.** It is handed to the backend's own
+ * per-user store and is not written to Studio's state, not logged and not returned - so
+ * nothing that reads a log or an exported profile later has it.
+ *
+ * Failures carry a coded problem alongside the message: the backend answers an untrusted
+ * certificate, a silent port, an unresolvable name and an endpoint speaking plain HTTP
+ * with one identical sentence, and the interface has to tell an author which of those
+ * four they are looking at.
+ */
+export class VcsSignInHandler extends IPCHandler<IPCEventType.vcsSignIn> {
+    readonly name = IPCEventType.vcsSignIn;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, authUrl, token }: IPCEvents[IPCEventType.vcsSignIn]["data"],
+    ): Promise<RequestStatus<VcsSignInOutcome>> {
+        return this.tryUse(async () => {
+            try {
+                const result = await window.app.getVcsManager().signIn(projectPath, { authUrl, token });
+                return { ok: true as const, ...result };
+            } catch (error) {
+                // A refused sign-in travels as a successful call carrying a refusal, not as a
+                // failed one: the message is thrown away by the layers between here and the
+                // panel, and the CODE is the only thing that lets the panel say which of four
+                // identical-looking transport failures this was.
+                const problem = (error as { problem?: unknown }).problem;
+                if (!problem) throw error;
+                return { ok: false as const, problem: problem as VcsSignInProblem };
+            }
+        });
+    }
+}
+
+/**
+ * Put a server's certificate authority into this account's trust store.
+ *
+ * The only handler here that changes anything outside a project, and the manager checks
+ * the path against Studio's own directory before running anything - see
+ * `VcsManager.trustAuthority`. A refusal by the operating system comes back as
+ * `installed: false` with whatever it printed, because those refusals say something
+ * specific and a bare failure would leave the author with "it did not work".
+ */
+export class VcsTrustAuthorityHandler extends IPCHandler<IPCEventType.vcsTrustAuthority> {
+    readonly name = IPCEventType.vcsTrustAuthority;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { certificatePath }: IPCEvents[IPCEventType.vcsTrustAuthority]["data"],
+    ): Promise<RequestStatus<{ installed: boolean; output: string }>> {
+        return this.tryUse(() => window.app.getVcsManager().trustAuthority(certificatePath));
+    }
+}
+
+/** Clear the stored token and Studio's record of whose it was. Local; contacts nothing. */
+export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
+    readonly name = IPCEventType.vcsSignOut;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsSignOut]["data"],
+    ): Promise<RequestStatus<{ session: null }>> {
+        return this.tryUse(async () => {
+            await window.app.getVcsManager().signOut(projectPath);
+            return { session: null };
+        });
     }
 }
 

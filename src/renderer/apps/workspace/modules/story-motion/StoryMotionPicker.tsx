@@ -155,14 +155,14 @@ export function StoryMotionPicker(props: {
                             {selectedAsset ? motionSummary(selectedAsset, t) : t("motion.picker.assetFallback", { id: animationId ?? "" })}
                         </div>
                     </div>
-                    <button className={ICON_BUTTON_CLASS} type="button" onClick={() => openEditor(animationId)} title={t("motion.editMotion")}>
+                    <button className={ICON_BUTTON_CLASS} type="button" onClick={() => openEditor(animationId)} data-tip={t("motion.editMotion")} aria-label={t("motion.editMotion")}>
                         <Edit3 className="h-4 w-4" />
                     </button>
                     <button
                         className={ICON_BUTTON_CLASS}
                         type="button"
                         onClick={() => props.onChange({ mode: "preset", preset: "none" })}
-                        title={t("motion.clearMotion")}
+                        data-tip={t("motion.clearMotion")} aria-label={t("motion.clearMotion")}
                     >
                         <X className="h-4 w-4" />
                     </button>

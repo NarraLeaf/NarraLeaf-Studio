@@ -117,12 +117,12 @@ export function VoiceRow(props: VoiceRowProps) {
             onDragLeave={() => setDragOver(false)}
             onDrop={freeze.gesture(handleDrop)}
         >
-            <span className="w-24 shrink-0 truncate text-2xs text-fg-subtle" title={speaker}>
+            <span className="w-24 shrink-0 truncate text-2xs text-fg-subtle" data-tip={speaker}>
                 {speaker}
             </span>
             <span
                 className="min-w-0 flex-1 truncate text-fg"
-                title={row.authoredText && row.authoredText !== row.sourceText
+                data-tip={row.authoredText && row.authoredText !== row.sourceText
                     ? `${row.sourceText}\n${row.authoredText}`
                     : row.sourceText}
             >
@@ -134,7 +134,7 @@ export function VoiceRow(props: VoiceRowProps) {
                     <button
                         type="button"
                         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
-                        title={isPlaying ? strings.stop : strings.play}
+                        data-tip={isPlaying ? strings.stop : strings.play} aria-label={isPlaying ? strings.stop : strings.play}
                         onClick={props.onTogglePlay}
                         disabled={!asset}
                     >
@@ -142,7 +142,7 @@ export function VoiceRow(props: VoiceRowProps) {
                     </button>
                     <span
                         className={`w-32 shrink-0 truncate text-2xs ${asset ? "text-fg-subtle" : "text-warning"}`}
-                        title={state === "stale" ? strings.outdatedHint : (asset?.name ?? strings.clipMissing)}
+                        data-tip={state === "stale" ? strings.outdatedHint : (asset?.name ?? strings.clipMissing)}
                     >
                         {asset?.name ?? strings.clipMissing}
                     </span>
@@ -155,7 +155,7 @@ export function VoiceRow(props: VoiceRowProps) {
                         <input
                             className="h-6 w-40 shrink-0 rounded-md border border-transparent bg-transparent px-1 text-2xs text-fg-subtle outline-none hover:border-edge focus:border-primary/50 focus:text-fg"
                             readOnly={freeze.frozen}
-                            title={freeze.frozen ? freeze.reason : undefined}
+                            data-tip={freeze.frozen ? freeze.reason : undefined}
                             placeholder={strings.notePlaceholder}
                             defaultValue={props.note}
                             key={props.note}

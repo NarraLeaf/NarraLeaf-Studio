@@ -377,7 +377,7 @@ export function UITemplateStoreModal({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => { setOpenThemeId(null); setDetailId(null); }}
-                                title={t("uiEditor.templateStore.themesBack")}
+                                data-tip={t("uiEditor.templateStore.themesBack")}
                                 aria-label={t("uiEditor.templateStore.themesBack")}
                             >
                                 <ChevronLeft className="h-4 w-4" />
@@ -397,7 +397,7 @@ export function UITemplateStoreModal({
                         size="sm"
                         onClick={() => void refresh()}
                         disabled={loading}
-                        title={t("uiEditor.templateStore.retry")}
+                        data-tip={t("uiEditor.templateStore.retry")}
                         aria-label={t("uiEditor.templateStore.retry")}
                     >
                         <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />

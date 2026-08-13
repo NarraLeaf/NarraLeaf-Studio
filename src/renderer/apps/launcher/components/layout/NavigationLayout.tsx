@@ -1,6 +1,7 @@
 import React from "react";
 import { isMacPlatform } from "@/lib/app/platform";
 import { TitleBar, windowRootProps } from "@/lib/components/layout";
+import { TooltipHost } from "@/lib/tooltip";
 import { WindowControlPolicy } from "@shared/types/window";
 
 export interface NavigationLayoutProps {
@@ -29,6 +30,7 @@ export function NavigationLayout({
 
     return (
         <div {...windowRootProps} className={`fixed inset-0 h-[100vh] w-[100vw] overflow-hidden text-fg bg-surface ${className}`}>
+            <TooltipHost />
             <div
                 className="grid h-full min-h-0 min-w-0 overflow-hidden"
                 style={{

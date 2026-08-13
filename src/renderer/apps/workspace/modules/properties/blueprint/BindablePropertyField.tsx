@@ -156,7 +156,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                             disabled={!bp.canBind}
                             className="rounded-md border border-binding/40 bg-binding/10 px-2 py-1 text-2xs text-binding hover:bg-binding/20 disabled:cursor-not-allowed disabled:opacity-40"
                             onClick={() => openPicker()}
-                            title={
+                            data-tip={
                                 !bp.canBind
                                     ? t("properties.binding.notReady")
                                     : undefined

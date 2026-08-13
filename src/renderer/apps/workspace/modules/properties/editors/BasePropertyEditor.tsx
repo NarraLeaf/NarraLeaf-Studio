@@ -135,7 +135,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                                 onClick={() => handleRemoveTag(tag)}
                                 className="hover:text-primary cursor-default"
                                 disabled={saving}
-                                title={t("properties.tags.remove")}
+                                data-tip={t("properties.tags.remove")}
                                 aria-label={t("properties.tags.removeAria", { tag })}
                             >
                                 <X className="w-3 h-3" />
@@ -162,7 +162,7 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                     <button
                         onClick={handleAddTag}
                         disabled={!newTag.trim() || saving}
-                        title={t("properties.tags.add")}
+                        data-tip={t("properties.tags.add")}
                         aria-label={t("properties.tags.add")}
                         className="grid h-9 w-9 place-items-center bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
                     >

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, RefreshCw } from "lucide-react";
 import { Button, Select, Switch } from "@/lib/components/elements";
 import { HelpTrigger, type HelpTopicId } from "@/lib/help";
-import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useFreezeGuard, type FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
 import { cn } from "@/lib/utils/cn";
 import { basename, join } from "@shared/utils/path";
 import { translate, useTranslation } from "@/lib/i18n";
@@ -875,7 +875,7 @@ function TargetsSection({
                                     // The reason lives in a tooltip: it matters only
                                     // for the row you cannot use, and a permanent
                                     // line of it is noise on every other open.
-                                    title={canBuild ? undefined : t(`build.unavailable.${platform}`)}
+                                    data-tip={canBuild ? undefined : t(`build.unavailable.${platform}`)}
                                 >
                                     {t(`build.platform.${platform}`)}
                                 </span>
@@ -1214,11 +1214,11 @@ function Toggled({
     checked: boolean;
     loading: boolean;
     /** From `FreezeGuard.writes` - the reason goes on the row, because a disabled switch has no hover. */
-    frozen: { disabled: boolean; title: string | undefined };
+    frozen: FrozenControlProps;
     onChange: (value: boolean) => void;
 }) {
     return (
-        <div className="flex items-start justify-between gap-3" title={frozen.title}>
+        <div className="flex items-start justify-between gap-3" data-tip={frozen["data-tip"]}>
             <div className="grid min-w-0 gap-0.5">
                 <span className="text-xs text-fg">{label}</span>
                 <span className="whitespace-pre-wrap text-2xs leading-relaxed text-fg-muted">{value}</span>
@@ -1256,7 +1256,7 @@ function PluginList({
 }: {
     plugins: BuildPluginEntry[];
     rescanning: boolean;
-    frozen: { disabled: boolean; title: string | undefined };
+    frozen: FrozenControlProps;
     onRescan: () => void;
 }) {
     const { t } = useTranslation();
@@ -1269,7 +1269,7 @@ function PluginList({
                     size="sm"
                     className="gap-1.5 px-1.5"
                     disabled={frozen.disabled}
-                    title={frozen.title}
+                    data-tip={frozen["data-tip"]}
                     onClick={onRescan}
                 >
                     <RefreshCw className={cn("h-3.5 w-3.5", rescanning && "animate-spin")} />
@@ -1357,7 +1357,7 @@ export function OutputSection({
                 <div className="flex items-center gap-2">
                     <span
                         className="flex-1 truncate rounded-md bg-fill-subtle px-2 py-1.5 text-2xs text-fg"
-                        title={state.outputDir || info.defaultOutputDir}
+                        data-tip={state.outputDir || info.defaultOutputDir}
                     >
                         {state.outputDir || info.defaultOutputDir}
                     </span>

@@ -25,8 +25,8 @@
  * same discipline the lint rule registry and the blueprint node i18n map are held to.
  *
  * Entries are grouped by shape rather than listed one per line, because the shapes are what carry
- * the meaning: 269 nodes have no execution pins at all, 205 are one step of flow, 50 start one. Only
- * eight nodes are irregular, and every one of them is irregular for a reason worth reading.
+ * the meaning: 270 nodes have no execution pins at all, 209 are one step of flow, 50 start one. Only
+ * a dozen are irregular, and every one of them is irregular for a reason worth reading.
  */
 
 import {
@@ -37,6 +37,9 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_SEQUENCE,
     BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
+    BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
+    BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS,
+    BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
     BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
 } from "@shared/types/blueprint/graph";
@@ -74,6 +77,12 @@ export const BLUEPRINT_IF_ELSE_BRANCH_PINS: BlueprintVariadicExecOutputs = {
 export const BLUEPRINT_SWITCH_STRING_CASE_PINS: BlueprintVariadicExecOutputs = {
     storageKey: "__switchStringCasePins",
     idSuffix: "output",
+};
+
+/** `Show Confirm`: one `button_N_label` data input per added button, paired with a `button_N_pressed`. */
+export const BLUEPRINT_LAYER_CONFIRM_BUTTON_PINS: BlueprintVariadicExecOutputs = {
+    storageKey: "__confirmButtonPins",
+    idSuffix: "pressed",
 };
 
 /**
@@ -153,11 +162,12 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.game.isSceneVisited", "blueprint.game.isTextRead", "blueprint.game.isTextReadById",
     "blueprint.image.assetLiteral", "blueprint.image.getCropRect", "blueprint.image.getEnabled",
     "blueprint.image.getFitMode", "blueprint.image.getFlipX", "blueprint.image.getFlipY",
-    "blueprint.image.getImageAsset", "blueprint.image.getVisible", "blueprint.list.getEnabled",
-    "blueprint.list.getItemCount", "blueprint.list.getItemIndex", "blueprint.list.getItemKey",
-    "blueprint.list.getItemProps", "blueprint.list.getItems", "blueprint.list.getSelectedIndex",
-    "blueprint.list.getSelectedItem", "blueprint.list.getVisible", "blueprint.local.declareVar",
-    "blueprint.local.get", "blueprint.math.abs", "blueprint.math.add", "blueprint.math.ceil",
+    "blueprint.image.getImageAsset", "blueprint.image.getVisible", "blueprint.layer.isMounted",
+    "blueprint.list.getEnabled", "blueprint.list.getItemCount", "blueprint.list.getItemIndex",
+    "blueprint.list.getItemKey", "blueprint.list.getItemProps", "blueprint.list.getItems",
+    "blueprint.list.getSelectedIndex", "blueprint.list.getSelectedItem", "blueprint.list.getVisible",
+    "blueprint.local.declareVar", "blueprint.local.get",
+    "blueprint.math.abs", "blueprint.math.add", "blueprint.math.ceil",
     "blueprint.math.decrement", "blueprint.math.divide", "blueprint.math.equal", "blueprint.math.floor",
     "blueprint.math.greater", "blueprint.math.greaterOrEqual", "blueprint.math.increment",
     "blueprint.math.less", "blueprint.math.lessOrEqual", "blueprint.math.max", "blueprint.math.min",
@@ -248,6 +258,7 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.game.toggleDialogDisplay", "blueprint.image.clearImageAsset", "blueprint.image.setCropRect",
     "blueprint.image.setEnabled", "blueprint.image.setFitMode", "blueprint.image.setFlipX",
     "blueprint.image.setFlipY", "blueprint.image.setImageAsset", "blueprint.image.setVisible",
+    "blueprint.layer.closeSelf", "blueprint.layer.hide", "blueprint.layer.show", "blueprint.layer.wait",
     "blueprint.list.appendItem", "blueprint.list.clear", "blueprint.list.insertItem",
     "blueprint.list.refreshItems", "blueprint.list.removeItem", "blueprint.list.removeItemAt",
     "blueprint.list.scrollToBottom", "blueprint.list.scrollToIndex", "blueprint.list.scrollToTop",
@@ -315,13 +326,14 @@ const LOOP_NODE_TYPES: readonly string[] = [
 
 
 /**
- * The eight nodes whose flow shape is their own.
+ * The ten nodes whose flow shape is their own.
  *
- * Six of them branch - the two `If` spellings, the string switch, the parallel `Sequence`, and the
- * two network nodes, which route by outcome rather than by a condition. `Function entry` has an
- * execution input nothing can wire, a leftover from before function graphs had a head of their own.
- * `Delay` names its single output `completed` rather than `next`, which is the difference between
- * "carry on" and "the wait is over".
+ * Eight of them branch - the two `If` spellings, the string switch, the parallel `Sequence`, the two
+ * network nodes and `Open Link`, which route by outcome rather than by a condition, and `Show
+ * Confirm`, which routes by the answer a player gave. `Function entry` has an execution input nothing
+ * can wire, a leftover from before function graphs had a head of their own. `Delay` names its single
+ * output `completed` rather than `next`, which is the difference between "carry on" and "the wait is
+ * over".
  */
 const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // The bare `"if"`, not a namespaced id: the oldest node in the catalogue, and renaming it would
@@ -348,6 +360,22 @@ const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // `Open Link` leaves by `failed` when the address is not one this build declared, or when the
     // player's machine has nothing to open it with - the two the node lets an author branch on.
     [BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL]: { in: ["in"], out: ["next", "failed"] },
+    // `Export Progress` is `Open Link`'s shape for the same reason: the write happened or it did
+    // not, and the reason is on a data pin rather than in a third branch.
+    [BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS]: { in: ["in"], out: ["next", "failed"] },
+    // `Import Progress` has three because the author answers each of them differently. `missing` is
+    // the ordinary state of a player who never exported - a demo they never finished, a fresh
+    // machine - and it leads to "start a new game", not to an apology. Folding it into `failed`
+    // would put an error message in front of every first-time player.
+    [BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS]: { in: ["in"], out: ["found", "missing", "failed"] },
+    // `Show Confirm` has no `next` at all: every way out of the question is a branch. `dismissed`
+    // is the static one - the player closed it without answering - and each button an author added
+    // publishes its own `button_N_pressed` beside it.
+    [BLUEPRINT_NODE_TYPE_LAYER_CONFIRM]: {
+        in: ["in"],
+        out: ["dismissed"],
+        variadicOut: BLUEPRINT_LAYER_CONFIRM_BUTTON_PINS,
+    },
 };
 
 const NO_EXEC_PINS: BlueprintNodeExecPins = { in: [], out: [] };

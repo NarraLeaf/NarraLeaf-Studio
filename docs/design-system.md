@@ -141,7 +141,21 @@ Phase 2 新增(用来替换各处手写模式):
 | `FieldLabel` | eyebrow 小标签(原 `FIELD_LABEL_CLASS` 复制) |
 | `SectionCard` | 带边框的区块卡片 |
 | `PanelHeader` | 面板 / 编辑器头部行(size sm/md/lg) |
-| `Tooltip` | 替换原生 `title=`(轻量 CSS 版,overflow-hidden 容器内慎用) |
+| `Tooltip` | 给取不到属性的目标用的包裹式提示（首选属性写法,见 §7.1） |
+
+## 7.1 提示（tooltip）
+
+**原生 `title=` 已经全仓下线,新写的一律用 `data-tip`。** Chromium 画的那个气泡不跟主题、要等约一秒、还盖住正在瞄准的像素；
+`noNativeTooltips.test.ts` 会拦下任何写回 DOM 元素上的 `title`。
+
+- **一个控件**：`data-tip="重新加载"`。共享组件（`Button` / `ToolbarButton` / `Input` …）把 rest props 铺到 DOM,所以属性直接穿过去,不用改组件签名。
+- **一排控件**：把这排原有的 wrapper 换成 `<TooltipGroup className="…">`（[lib/tooltip](../src/renderer/lib/tooltip)）。组内**延迟只付一次**——第一条等满延迟,之后指针移到组内任何一个都立即出,离开这排就冷却。**不要在既有 wrapper 外面再套一层**,那正是属性写法要避免的多余盒子。
+- **纯图标控件**：`data-tip` 不再是可访问名的兜底,自己写 `aria-label`。已有可见文字的控件**不要**再补 `aria-label`（会盖掉可见名）。
+- **禁用控件**：照写 `data-tip`。指针事件根本到不了禁用控件,提示是靠命中测试解析出来的。
+- 延迟是**一个全局值**（设置 → 外观 → 提示延迟,默认 500ms）。「立即」只由 `TooltipGroup` 的热链给出,没有逐处的 instant 开关。
+- **方向**：默认向上、没地方就翻下面。贴边的一条轨（侧栏图标列）要**朝里开**——左轨 `side="right"`、右轨 `side="left"`、底轨 `side="top"`,在 `TooltipGroup` 上写一次,组内所有控件继承；单个控件可写 `data-tip-side`。方向是意向不是保证,那一侧放不下就翻到对面。
+
+浮层样式：`bg-surface-overlay` + `border-edge` + `rounded-md` + `text-2xs`,`max-w-[240px]` 折行,提示文本里的换行符照排,不吃指针事件。
 
 ## 8. 防回归
 

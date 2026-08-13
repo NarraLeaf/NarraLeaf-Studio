@@ -303,7 +303,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             size="xs"
                             active={safeAreaId != null || safeAreaMenuOpen}
                             aria-label={t("uiEditor.preview.safeArea")}
-                            title={t("uiEditor.preview.safeArea")}
+                            data-tip={t("uiEditor.preview.safeArea")}
                             aria-haspopup="menu"
                             aria-expanded={safeAreaMenuOpen}
                             onClick={() => setSafeAreaMenuOpen(prev => !prev)}

@@ -256,7 +256,7 @@ export function AppearanceFieldMotionButton({
                               type="button"
                               onClick={() => commitTransition(null)}
                               className="grid h-7 w-7 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted transition hover:bg-danger/10 hover:text-danger"
-                              title={t("widgetAppearance.motion.clearFieldTitle")}
+                              data-tip={t("widgetAppearance.motion.clearFieldTitle")} aria-label={t("widgetAppearance.motion.clearFieldTitle")}
                           >
                               <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -483,7 +483,7 @@ export function AppearanceFieldMotionButton({
                 onClick={() => setOpen(prev => !prev)}
                 aria-label={t("widgetAppearance.motion.configureFieldAria", { field: label })}
                 aria-expanded={open}
-                title={t("widgetAppearance.motion.fieldMotionTitle", { field: label })}
+                data-tip={t("widgetAppearance.motion.fieldMotionTitle", { field: label })}
                 className={motionIconTriggerClass(Boolean(transition))}
             >
                 <Settings2 className="w-4 h-4" strokeWidth={1.75} />

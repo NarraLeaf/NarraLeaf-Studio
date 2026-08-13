@@ -201,7 +201,7 @@ function QuickParamToken(props: {
                 className={`${TOKEN_CLASS} ${isOff ? "text-fg-subtle line-through decoration-solid" : ""}`}
                 onMouseDown={event => event.stopPropagation()}
                 onClick={open}
-                title={param.label || undefined}
+                data-tip={param.label || undefined} aria-label={param.label || undefined}
             >
                 {param.label ? `${param.label} ` : ""}{displayValue(param.value, sceneName)}
             </button>

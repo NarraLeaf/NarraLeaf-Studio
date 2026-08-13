@@ -55,17 +55,17 @@ import type { ProjectSectionProps } from "./types";
 function LintRow({
     title,
     hint,
-    titleAttr,
+    tooltip,
     children,
 }: {
     title: string;
     hint?: string;
     /** Hover text for the row - the freeze reason, which a disabled control never reports itself. */
-    titleAttr?: string;
+    tooltip?: string;
     children: React.ReactNode;
 }) {
     return (
-        <div className="flex min-w-0 items-center justify-between gap-3 py-0.5" title={titleAttr}>
+        <div className="flex min-w-0 items-center justify-between gap-3 py-0.5" data-tip={tooltip}>
             <div className="flex min-w-0 items-center gap-1.5 text-sm text-fg">
                 <span className="truncate">{title}</span>
                 {hint && <HintPopover text={hint} />}
@@ -212,7 +212,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
         const label = text(`lint.settings.option${capitalize(key)}`, key);
         const frozen = freeze.writes(saving === `${rule.id}:${key}`);
         return (
-            <LintRow key={key} title={label} titleAttr={frozen.title}>
+            <LintRow key={key} title={label} tooltip={frozen["data-tip"]}>
                 {spec.kind === "number" ? (
                     <NumberField
                         value={Number(value)}
@@ -257,7 +257,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
                 <LintRow
                     title={title}
                     hint={text(`lint.rule.${rule.slug}.description`, rule.id)}
-                    titleAttr={frozen.title}
+                    tooltip={frozen["data-tip"]}
                 >
                     <Select
                         options={severityOptions}
@@ -290,7 +290,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
             <LintRow
                 title={t("lint.settings.runOnBuild")}
                 hint={t("lint.settings.runOnBuildHint")}
-                titleAttr={runOnBuildFrozen.title}
+                tooltip={runOnBuildFrozen["data-tip"]}
             >
                 <Switch
                     size="sm"
@@ -306,7 +306,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
                 // Disabled rather than hidden while the check is off, the same bargain the auto-save
                 // interval makes with its own switch: the threshold is still what this project would
                 // fail on, and a row that vanishes reads as a missing setting.
-                titleAttr={failBuildOnFrozen.title}
+                tooltip={failBuildOnFrozen["data-tip"]}
             >
                 <Select
                     options={failBuildOnOptions}

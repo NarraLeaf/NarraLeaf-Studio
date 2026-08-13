@@ -618,8 +618,17 @@ export class BuildService extends Service<BuildService> {
      *
      * So the gaps this reads are the ones in a **story** document, plus the ones that describe no
      * document at all (an index that never built, a slice that threw before it could say where). A
-     * gap in a widget, a blueprint, a voice table or a character says nothing about which scenes a
-     * story can reach, and this build removes nothing else.
+     * gap in a widget, a voice table or a character says nothing about which scenes a story can
+     * reach.
+     *
+     * ## The one gap that matters wherever it is
+     *
+     * A trimming build also leaves out assets, and it decides which by reading the ids written in the
+     * bytes it ships. An asset the running game *computes* the id of is invisible to that reading -
+     * and `computedAssetPin` is the index reporting exactly that shape, in any document. It is
+     * refused rather than worked around, because the alternative is a shipped game whose art is
+     * missing with nothing anywhere having said so. The remedy is to name the asset in the pin
+     * instead of wiring a value into it.
      *
      * ## Why it is a gate and not a preflight finding
      *
@@ -644,7 +653,10 @@ export class BuildService extends Service<BuildService> {
             console.error("[Build] the reference index could not be consulted for the content check", error);
             return null;
         }
-        const touching = gaps.filter(gap => !gap.slice || gap.slice === "story" || gap.slice === "storyAnimation");
+        const touching = gaps.filter(gap => !gap.slice
+            || gap.slice === "story"
+            || gap.slice === "storyAnimation"
+            || gap.reason === "computedAssetPin");
         if (touching.length === 0) {
             return null;
         }

@@ -50,7 +50,7 @@ export function ConflictDetail({ path, entry, choices, disabled, onChooseChange,
             <div className="flex shrink-0 items-baseline gap-1.5 overflow-hidden px-3 py-2">
                 <span className="min-w-0 truncate text-xs font-medium text-fg">{name}</span>
                 {directory !== null && (
-                    <span className="min-w-0 shrink truncate text-2xs text-fg-subtle" title={directory}>
+                    <span className="min-w-0 shrink truncate text-2xs text-fg-subtle" data-tip={directory}>
                         {directory}
                     </span>
                 )}
@@ -136,7 +136,7 @@ function MergeChangeRow({
                         "min-w-0 truncate text-2xs",
                         label.untranslated ? "font-mono text-fg-muted" : "text-fg",
                     )}
-                    title={decision.path.join(" / ")}
+                    data-tip={decision.path.join(" / ")}
                 >
                     {label.primary}
                 </span>

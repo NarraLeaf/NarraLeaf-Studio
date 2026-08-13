@@ -821,6 +821,110 @@ export const workspace = {
                 sync: "Get from server",
                 syncing: "Getting versions from the server…",
                 syncedNothing: "Already up to date",
+                /**
+                 * Signing this installation in to the server, and saying who is signed in.
+                 *
+                 * The `signedInAs` line is the point of the whole thing: while a session is in
+                 * force, the name on a version is the one the server knows this account by,
+                 * rather than whatever was typed into a preference on this machine.
+                 */
+                signIn: {
+                    required: "This server requires you to sign in before a project can be pointed at it.",
+                    // A quiet line, not a button: most servers ask nobody who they are, and
+                    // this is a control they can ignore rather than one they must answer.
+                    open: "Sign in to this server",
+                    signedInAs: "Signed in as {name}",
+                    signOut: "Sign out",
+                    // Deliberately not "auth endpoint": the author is being asked where to sign
+                    // in, and the word for the machinery behind it is not theirs to learn.
+                    addressLabel: "Sign-in address",
+                    addressPlaceholder: "https://studio.example.lan:41402",
+                    // "Access token" rather than "password", because it is not one and cannot
+                    // be chosen, remembered or reset by the person pasting it.
+                    tokenLabel: "Access token",
+                    tokenPlaceholder: "Paste the token you were given",
+                    // Where a token comes from, in one line, because there is nowhere else to
+                    // learn it: nothing in Studio can issue one.
+                    hint: "Whoever runs this server issues the token and hands it to you.",
+                    /**
+                     * Trusting the authority a server's certificate is issued from.
+                     *
+                     * Two readers, and the words have to work for both. Where the token names
+                     * this authority, the comparison is already made and this is a decision.
+                     * Where it names none, the fingerprint is here to be checked against what
+                     * somebody was told - which is what everybody did before, and still works.
+                     *
+                     * Nothing here calls it a "root CA" or a "trust store": what the author is
+                     * agreeing to is said in the sentence, and the name for the machinery is
+                     * not theirs to learn.
+                     */
+                    trust: {
+                        open: "Trust this server on this computer",
+                        title: "Trust this server?",
+                        vouched: "The token you pasted names this authority, and this is the authority answering at that address.",
+                        compare: "Check this fingerprint against the one whoever runs the server gives you, over something other than this connection.",
+                        authorityLabel: "Issued by",
+                        fingerprintLabel: "Fingerprint",
+                        // The cost of being wrong, in one sentence, without softening it. The
+                        // account rather than the computer is not a detail: it is what bounds
+                        // the damage, and it is the reason the per-user store is used.
+                        meaning: "Anything holding this authority's key can then issue a certificate for any address, and this account will believe it. Only this account on this computer is affected.",
+                        manual: "This system has no per-account trust store, so Studio cannot do it. Run this, then sign in again:",
+                        copy: "Copy the command",
+                        confirm: "Trust it",
+                        cancel: "Cancel",
+                    },
+                    submit: "Sign in",
+                    cancel: "Cancel",
+                    /**
+                     * How signing in ended, said once and in words.
+                     *
+                     * Not a pair of version numbers: Studio pins its half and the server runs
+                     * whatever its operator installed, and asking an author which pairs work
+                     * asks them for knowledge they have no way to have.
+                     */
+                    reach: {
+                        ready: "This server and this copy of Studio can work together.",
+                        // Signed in, and the server will not hand over this project. A different
+                        // failure from a refused token, and the remedy is a different person's.
+                        notPermitted: "Signed in, but this account has not been given this project. Ask whoever runs the server for access.",
+                        // The sign-in address answered and the server itself did not, which is
+                        // two ports and usually two firewall rules.
+                        dataPortSilent: "Signed in, but the server itself did not answer.",
+                    },
+                    /**
+                     * Why a sign-in did not happen.
+                     *
+                     * Four of these arrive from the backend as one identical sentence, so each
+                     * is written here from the reason Studio worked out for itself. The
+                     * certificate one is the only failure in this product whose remedy is a
+                     * command a person runs outside Studio, and it says so plainly rather than
+                     * offering a button that cannot exist.
+                     */
+                    problem: {
+                        scheme: "A sign-in address has to start with https:// or ucs-auth://.",
+                        token: "That is not a token this server issued. Paste the whole token you were given.",
+                        // Answered only after a token has been read and found to name no
+                        // endpoint, which is what reveals the address field. Most tokens name
+                        // one and nobody sees this.
+                        address: "This token does not say where to sign in, so the address is needed too.",
+                        // The token named no authority, so there is a comparison left to make
+                        // and it is a person's. Shown above the offer, not instead of it.
+                        certificate:
+                            "This computer has not been told to trust the authority this server signs with. "
+                            + "Its fingerprint is {fingerprint}.",
+                        // The token named one authority and a different one answered. Not a
+                        // step that was missed: this is what standing in the way looks like,
+                        // and nothing here offers to trust it.
+                        mismatch:
+                            "The server at that address is not the one this token is for. The token names "
+                            + "{expected}, and {found} answered. Do not trust it; ask whoever runs the "
+                            + "server what happened.",
+                        unreachable: "Nothing answered at that address ({detail}).",
+                        refused: "The server would not accept that token ({detail}).",
+                        unknown: "The sign-in did not finish ({detail}).",
+                    },
+                },
             },
             // A sync whose merge could not settle. Sticky rather than inline, because the sync
             // leaves the version view on its way out and the rail re-reads on that change, which

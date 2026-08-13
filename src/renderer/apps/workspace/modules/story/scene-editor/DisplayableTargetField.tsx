@@ -147,7 +147,7 @@ export function DisplayableTargetField(props: {
                         {unresolved ? (
                             <span
                                 className="shrink-0 rounded-md bg-warning/10 px-1 text-2xs text-warning"
-                                title={t("story.targetField.notOnStageTitle")}
+                                data-tip={t("story.targetField.notOnStageTitle")}
                             >
                                 {t("story.stage.notOnStage")}
                             </span>

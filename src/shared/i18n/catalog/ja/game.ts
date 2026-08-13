@@ -40,5 +40,6 @@ export const game = {
         copyDetails: "詳細をコピー",
         copied: "クリップボードにコピーした",
         copyFailed: "コピーできなかった：{error}",
+        logAt: "レポートは {path} にある",
     },
 } satisfies LocaleNamespace<"game">;

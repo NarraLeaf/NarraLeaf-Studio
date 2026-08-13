@@ -3,7 +3,7 @@ import { Trash2 } from "lucide-react";
 import { Button, IconButton, Input, Select } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
-import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useFreezeGuard, type FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
 import { getInterface } from "@/lib/app/bridge";
 import { basename } from "@shared/utils/path";
 import {
@@ -168,7 +168,7 @@ function SigningRow({
     /** Whether the vault has answered yet; until it has, nothing is missing, it is merely unread. */
     loaded: boolean;
     /** From `FreezeGuard.writes` - the reason goes on the row, because a disabled select has no hover. */
-    frozen: { disabled: boolean; title: string | undefined };
+    frozen: FrozenControlProps;
     onSelect: (credentialId: string | undefined) => void;
     onImport: () => void;
     onRemove: () => void;
@@ -202,7 +202,7 @@ function SigningRow({
         // min-content floor well above that width, and `min-width: auto` on a grid item refuses to
         // shrink below it - which showed up once as a horizontal scrollbar across the whole section
         // and a preflight message clipped mid-word. On its own line the picker flexes instead.
-        <div className="group min-w-0 rounded-md border border-edge bg-fill-subtle p-3" title={frozen.title}>
+        <div className="group min-w-0 rounded-md border border-edge bg-fill-subtle p-3" data-tip={frozen["data-tip"]}>
             <div className="flex min-w-0 items-center justify-between gap-2">
                 <span className="min-w-0 truncate text-sm font-medium text-fg">{signingRowLabel(platform, t)}</span>
                 {credential && (
@@ -211,7 +211,7 @@ function SigningRow({
                         variant="ghost"
                         className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                         aria-label={t("build.signing.remove")}
-                        title={t("build.signing.remove")}
+                        data-tip={t("build.signing.remove")}
                         disabled={frozen.disabled}
                         onClick={onRemove}
                     >
@@ -323,7 +323,7 @@ function SelectedCredential({
     }
     if (credential) {
         return (
-            <span className="min-w-0 truncate text-2xs text-fg-muted" title={credential.label}>
+            <span className="min-w-0 truncate text-2xs text-fg-muted" data-tip={credential.label}>
                 {credential.label}
             </span>
         );
@@ -397,7 +397,7 @@ function CredentialSummary({
     return (
         <>
             <div className="mt-1.5 flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-2xs text-fg-muted" title={subject}>
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-muted" data-tip={subject}>
                     {credential.kind === "android-keystore"
                         ? `${t("build.signing.alias", { alias: credential.alias })} · ${subject}`
                         : subject}
@@ -442,7 +442,7 @@ function SummaryLine({ text, tone }: { text: string; tone?: "warning" }) {
         return null;
     }
     return (
-        <p className={cn("mt-1.5 truncate text-2xs", tone === "warning" ? "text-warning" : "text-fg-muted")} title={text}>
+        <p className={cn("mt-1.5 truncate text-2xs", tone === "warning" ? "text-warning" : "text-fg-muted")} data-tip={text}>
             {text}
         </p>
     );
@@ -569,7 +569,7 @@ function ImportField({
             <div className="flex items-center gap-2">
                 <span
                     className="min-w-0 flex-1 truncate rounded-md bg-fill-subtle px-2 py-1 text-2xs text-fg"
-                    title={value || undefined}
+                    data-tip={value || undefined}
                 >
                     {value ? basename(value) : t("build.signing.noFile")}
                 </span>

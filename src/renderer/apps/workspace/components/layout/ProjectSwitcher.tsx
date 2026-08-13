@@ -147,8 +147,8 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                     "h-8 max-w-56 px-2 rounded-md flex items-center gap-1.5 text-sm cursor-default transition-colors",
                     open ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
                 )}
-                title={t("workspace.shell.projectSwitcher.openAnother")}
-                aria-label={t("workspace.shell.projectSwitcher.openAnother")}
+                data-tip={t("workspace.shell.projectSwitcher.openAnother")}
+
                 aria-haspopup="menu"
                 aria-expanded={open}
             >
@@ -278,7 +278,7 @@ function OpenTargetDialog({ target, currentName, onCancel, onChoose }: {
             <div className="flex flex-col gap-3">
                 <div className="min-w-0">
                     <p className="text-sm text-fg truncate">{target?.name}</p>
-                    <p className="text-2xs text-fg-subtle truncate" title={target?.projectPath}>
+                    <p className="text-2xs text-fg-subtle truncate" data-tip={target?.projectPath}>
                         {target?.projectPath}
                     </p>
                 </div>
@@ -340,7 +340,7 @@ function VersionSection({ surface, onAct }: { surface: VersionSurface; onAct: ()
             <div
                 className="flex items-baseline gap-2 px-3 pb-1.5"
                 // The UNCUT line: a branch name too long for the face still belongs somewhere.
-                title={onRevision
+                data-tip={onRevision
                     ? t("workspace.shell.versionControl.viewingVersion", { version: face.full })
                     : face.full !== face.text ? face.full : undefined}
             >
@@ -399,7 +399,7 @@ function RecentProjectRow({ project, onSelect }: { project: RecentlyOpenedProjec
             onClick={onSelect}
             className="w-full px-3 py-2 flex items-center gap-3 text-left cursor-default text-fg-muted hover:bg-fill hover:text-fg transition-colors"
             role="menuitem"
-            title={`${project.name}\n${project.path}`}
+            data-tip={`${project.name}\n${project.path}`}
         >
             <span className="shrink-0 w-7 h-7 rounded-md bg-fill grid place-items-center overflow-hidden">
                 {project.icon ? (
