@@ -54,7 +54,7 @@ export function TypeScriptBlueprintEditorPane({ code, onChange, debounceMs = 400
                 value={draft}
                 onChange={onInput}
                 readOnly={freeze.frozen}
-                title={freeze.frozen ? freeze.reason : t("blueprint.tsPane.importHint")}
+                data-tip={freeze.frozen ? freeze.reason : t("blueprint.tsPane.importHint")}
                 aria-label={t("blueprint.tsPane.sourceLabel")}
             />
         </div>

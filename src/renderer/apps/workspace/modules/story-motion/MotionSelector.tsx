@@ -331,7 +331,7 @@ export function MotionSelector(props: {
                                     type="button"
                                     className={`${ICON_BUTTON_CLASS} opacity-0 group-hover:opacity-100`}
                                     onClick={() => openEditor(asset.id)}
-                                    title={t("motion.editMotion")}
+                                    data-tip={t("motion.editMotion")} aria-label={t("motion.editMotion")}
                                 >
                                     <Edit3 className="h-3.5 w-3.5" />
                                 </button>
@@ -501,12 +501,12 @@ export function MotionField(props: {
                     <InspectOnlyButton
                         className={`${ICON_BUTTON_CLASS} cursor-default`}
                         onClick={openEditor}
-                        title={t("motion.editMotion")}
+                        data-tip={t("motion.editMotion")}
                         aria-label={t("motion.editMotion")}
                     >
                         <Edit3 className="h-4 w-4" />
                     </InspectOnlyButton>
-                    <button type="button" className={ICON_BUTTON_CLASS} onClick={clear} title={t("motion.clearMotion")}>
+                    <button type="button" className={ICON_BUTTON_CLASS} onClick={clear} data-tip={t("motion.clearMotion")} aria-label={t("motion.clearMotion")}>
                         <X className="h-4 w-4" />
                     </button>
                 </>

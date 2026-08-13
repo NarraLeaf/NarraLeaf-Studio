@@ -1573,7 +1573,7 @@ function PuppetChannelControl(props: {
                         type="button"
                         className="rounded-md p-1 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                         aria-label={t("characters.editor.puppet.redescribe")}
-                        title={t("characters.editor.puppet.redescribe")}
+                        data-tip={t("characters.editor.puppet.redescribe")}
                         onClick={refresh}
                     >
                         <RefreshCw className={`h-3 w-3${loading ? " animate-spin" : ""}`} />
@@ -1660,7 +1660,7 @@ function PuppetParamRows(props: {
                                 type="button"
                                 className="mb-1 shrink-0 rounded-md p-1 text-fg-subtle transition-colors hover:bg-fill hover:text-fg"
                                 aria-label={t("storyInspector.character.puppetParamRemove")}
-                                title={t("storyInspector.character.puppetParamRemove")}
+                                data-tip={t("storyInspector.character.puppetParamRemove")}
                                 onClick={() => {
                                     const next = { ...props.params };
                                     delete next[id];
@@ -1732,7 +1732,7 @@ function PuppetParamRows(props: {
                     type="button"
                     className="rounded-md p-1 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                     aria-label={t("characters.editor.puppet.redescribe")}
-                    title={t("characters.editor.puppet.redescribe")}
+                    data-tip={t("characters.editor.puppet.redescribe")}
                     onClick={refresh}
                 >
                     <RefreshCw className={`h-3 w-3${loading ? " animate-spin" : ""}`} />
@@ -2038,7 +2038,7 @@ export function AssetField(props: {
                     type="button"
                     className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={!props.assetId}
-                    title={t("storyInspector.asset.clear")}
+                    data-tip={t("storyInspector.asset.clear")} aria-label={t("storyInspector.asset.clear")}
                     onClick={() => props.onChange(undefined)}
                 >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -2646,7 +2646,7 @@ function BackgroundActionEditor(props: {
                                 className="grid h-8 w-8 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={clearImage}
                                 disabled={!props.payload.assetId}
-                                title={t("storyInspector.background.clearImage")}
+                                data-tip={t("storyInspector.background.clearImage")} aria-label={t("storyInspector.background.clearImage")}
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -2926,12 +2926,12 @@ function TextIdReadout(props: { text: StoryTextSegment }) {
             </button>
             {open && (
                 <div className="mt-1 flex items-center gap-2 rounded-md border border-edge bg-surface-raised px-2.5 py-1.5">
-                    <span className="min-w-0 flex-1 truncate font-mono text-2xs text-fg-muted" title={props.text.textId}>
+                    <span className="min-w-0 flex-1 truncate font-mono text-2xs text-fg-muted" data-tip={props.text.textId}>
                         {props.text.textId}
                     </span>
                     <button
                         type="button"
-                        title={t("common.copy")}
+                        data-tip={t("common.copy")}
                         aria-label={t("common.copy")}
                         onClick={() => void navigator.clipboard?.writeText(props.text.textId)}
                         className="shrink-0 rounded-md p-0.5 text-fg-subtle transition-colors hover:bg-fill hover:text-fg-muted"
@@ -3030,7 +3030,7 @@ function VoiceInspectorSection({ block }: { block: StoryBlock }) {
                     <button
                         type="button"
                         className={`grid h-7 w-7 shrink-0 place-items-center rounded-md border border-edge bg-surface-raised transition-colors hover:text-fg ${voice.isPlaying ? "text-primary" : "text-fg-muted"}`}
-                        title={voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay")}
+                        data-tip={voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay")}
                         aria-label={voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay")}
                         onClick={voice.toggleAudition}
                     >

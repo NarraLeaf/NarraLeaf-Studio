@@ -316,7 +316,7 @@ export function CompactContainerAppearance({
                                 onClick={() => patchCorners("borderRadiusLinked", !borderRadiusLinked)}
                                 aria-pressed={borderRadiusLinked}
                                 className={controlButtonClass(borderRadiusLinked)}
-                                title={t("widgetAppearance.corners.linkTitle")}
+                                data-tip={t("widgetAppearance.corners.linkTitle")}
                             >
                                 <span className="text-2xs font-medium px-1">{t("widgetAppearance.corners.link")}</span>
                             </button>

@@ -412,7 +412,7 @@ export function SettingFontPicker({
                             inputRef.current?.focus();
                         }}
                         className="rounded-md p-0.5 text-fg-subtle transition-colors hover:bg-fill hover:text-fg"
-                        title={t("common.clear")}
+                        data-tip={t("common.clear")}
                         aria-label={t("common.clear")}
                     >
                         <X className="h-3 w-3" />

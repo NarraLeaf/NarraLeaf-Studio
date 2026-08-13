@@ -121,7 +121,7 @@ function ConflictIndexRow({
             <button
                 type="button"
                 onClick={onSelect}
-                title={row.path}
+                data-tip={row.path}
                 // `.nl-focus-ring` rather than a Tailwind ring: `styles.css` drops `box-shadow` on
                 // every native control, so a ring on a `<button>` is dead code (design-system §5).
                 className="nl-focus-ring flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden py-1 pl-2 text-left cursor-default"
@@ -172,7 +172,9 @@ function ConflictIndexRow({
                         type="button"
                         disabled={disabled}
                         aria-pressed={merging}
-                        title={merging && row.undecidedChanges > 0
+                        data-tip={merging && row.undecidedChanges > 0
+                            ? tn("documentDiff.resolve.change.undecided", row.undecidedChanges)
+                            : undefined} aria-label={merging && row.undecidedChanges > 0
                             ? tn("documentDiff.resolve.change.undecided", row.undecidedChanges)
                             : undefined}
                         onClick={onChooseMerged}

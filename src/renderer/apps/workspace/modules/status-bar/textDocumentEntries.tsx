@@ -90,7 +90,7 @@ export function TextFileNameEntry() {
         return null;
     }
     return (
-        <StatusEntry title={doc.status.fileName}>
+        <StatusEntry tooltip={doc.status.fileName}>
             <span className="max-w-[24ch] truncate">{doc.status.fileName}</span>
         </StatusEntry>
     );
@@ -119,7 +119,7 @@ export function TextSelectionEntry() {
             : ` ${t("assets.textEditor.selected", { count: characters })}`;
 
     return (
-        <StatusEntry title={t("assets.textEditor.selectionLabel")}>
+        <StatusEntry tooltip={t("assets.textEditor.selectionLabel")}>
             <span className="tabular-nums">{`${caret}${selected}`}</span>
         </StatusEntry>
     );
@@ -169,7 +169,7 @@ export function TextLineEndingEntry() {
         <>
             <StatusEntry
                 onClick={showMenu}
-                title={t("assets.textEditor.selectLineEnding")}
+                tooltip={t("assets.textEditor.selectLineEnding")}
                 ariaLabel={t("assets.textEditor.lineEndingLabel", { ending: doc.status.lineEnding })}
                 dataAttributes={{ "data-text-editor-line-ending": doc.status.lineEnding }}
             >
@@ -239,7 +239,7 @@ export function TextEncodingEntry() {
             <StatusEntry
                 onClick={showMenu}
                 tone={lossy ? "text-danger" : undefined}
-                title={t("assets.textEditor.selectEncoding")}
+                tooltip={t("assets.textEditor.selectEncoding")}
                 // The cell's visible text is the value alone, which reads as a bare word to a screen
                 // reader; the label says what the value is of.
                 ariaLabel={t("assets.textEditor.encodingLabel", { encoding: textEncodingLabel(encoding) })}

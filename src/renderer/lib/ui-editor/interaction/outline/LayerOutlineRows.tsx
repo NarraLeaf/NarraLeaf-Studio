@@ -168,7 +168,7 @@ export function OutlineRow({
                     className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-fg-subtle/70"
                     aria-label={t("widgetChrome.outline.dragToReorder")}
                     disabled={!reorderEnabled}
-                    title={reorderEnabled ? undefined : readOnly.reason}
+                    data-tip={reorderEnabled ? undefined : readOnly.reason}
                     {...attributes}
                     {...listeners}
                 >
@@ -208,7 +208,7 @@ export function OutlineRow({
                     }`}
                     aria-label={visible ? t("common.hide") : t("common.show")}
                     disabled={element.type === OUTLINE_ROOT_WIDGET_TYPE || !visibilityEnabled}
-                    title={visibilityEnabled ? undefined : readOnly.reason}
+                    data-tip={visibilityEnabled ? undefined : readOnly.reason}
                     onClick={e => onToggleVisible(element, e)}
                 >
                     {visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}

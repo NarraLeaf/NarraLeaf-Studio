@@ -60,7 +60,7 @@ export function BlueprintDebuggerPanel(props: {
                     <ToolbarButton
                         size="xs"
                         aria-label={t("devMode.debugger.openGraph")}
-                        title={t("devMode.debugger.openGraph")}
+                        data-tip={t("devMode.debugger.openGraph")}
                         onClick={ctx.openGraphBrowser}
                     >
                         <Network className="h-3.5 w-3.5" aria-hidden />
@@ -262,7 +262,7 @@ function BreakpointRow(props: { breakpoint: BlueprintBreakpoint }): ReactNode {
                 type="button"
                 className="shrink-0 cursor-default"
                 aria-label={breakpoint.enabled ? t("blueprint.breakpoint.disable") : t("blueprint.breakpoint.enable")}
-                title={breakpoint.enabled ? t("blueprint.breakpoint.disable") : t("blueprint.breakpoint.enable")}
+                data-tip={breakpoint.enabled ? t("blueprint.breakpoint.disable") : t("blueprint.breakpoint.enable")}
                 onClick={() => ctx.setBreakpointEnabled(breakpoint, !breakpoint.enabled)}
             >
                 <CircleDot
@@ -288,7 +288,7 @@ function BreakpointRow(props: { breakpoint: BlueprintBreakpoint }): ReactNode {
             <ToolbarButton
                 size="xs"
                 aria-label={t("blueprint.breakpoint.edit")}
-                title={t("blueprint.breakpoint.edit")}
+                data-tip={t("blueprint.breakpoint.edit")}
                 onClick={() => ctx.openBreakpointEditor(breakpoint)}
             >
                 <SlidersHorizontal className="h-3 w-3" aria-hidden />
@@ -296,7 +296,7 @@ function BreakpointRow(props: { breakpoint: BlueprintBreakpoint }): ReactNode {
             <ToolbarButton
                 size="xs"
                 aria-label={t("blueprint.breakpoint.remove")}
-                title={t("blueprint.breakpoint.remove")}
+                data-tip={t("blueprint.breakpoint.remove")}
                 onClick={() => ctx.removeBreakpoint(breakpoint)}
             >
                 <Trash2 className="h-3 w-3" aria-hidden />

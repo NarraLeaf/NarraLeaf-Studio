@@ -251,7 +251,7 @@ export function StoryPasteWizardModal(props: {
                                 </button>
                                 <button
                                     type="button"
-                                    title={t("story.paste.forgetPreset")}
+                                    data-tip={t("story.paste.forgetPreset")}
                                     aria-label={t("story.paste.forgetPreset")}
                                     className={[CHIP_BASE, "rounded-l-none border-l-0", CHIP_OFF].join(" ")}
                                     onClick={() => props.onForgetSeparator(preset.name)}
@@ -383,7 +383,7 @@ function PreviewRow(props: { row: PastePlanRow; characterNames: Map<string, stri
                     "w-[104px] shrink-0 truncate text-right font-medium",
                     row.pendingCharacterName ? "text-success" : "text-primary",
                 ].join(" ")}
-                title={row.pendingCharacterName ? t("story.paste.willBeCreated") : undefined}
+                data-tip={row.pendingCharacterName ? t("story.paste.willBeCreated") : undefined}
             >
                 {name}
             </span>

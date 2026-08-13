@@ -184,7 +184,7 @@ function AssetRow({
                     asset={entry.asset}
                     className="h-7 w-7 shrink-0 overflow-hidden rounded-md bg-surface-sunken"
                 />
-                <span className="min-w-0 flex-1 truncate text-xs text-fg-muted" title={entry.asset.name}>
+                <span className="min-w-0 flex-1 truncate text-xs text-fg-muted" data-tip={entry.asset.name}>
                     {entry.asset.name}
                 </span>
                 <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{formatByteSize(entry.bytes)}</span>
@@ -267,7 +267,7 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
     return (
         <div className="flex items-baseline justify-between gap-2">
             <dt className="shrink-0 text-2xs text-fg-subtle">{label}</dt>
-            <dd className={cn("min-w-0 truncate text-2xs text-fg-muted", mono && "font-mono")} title={value}>
+            <dd className={cn("min-w-0 truncate text-2xs text-fg-muted", mono && "font-mono")} data-tip={value}>
                 {value}
             </dd>
         </div>
@@ -280,12 +280,12 @@ function CopyRow({ label, value }: { label: string; value: string }) {
     return (
         <div className="flex items-baseline gap-2">
             <dt className="shrink-0 text-2xs text-fg-subtle">{label}</dt>
-            <dd className="min-w-0 flex-1 truncate font-mono text-2xs text-fg-muted" title={value}>
+            <dd className="min-w-0 flex-1 truncate font-mono text-2xs text-fg-muted" data-tip={value}>
                 {value}
             </dd>
             <button
                 type="button"
-                title={t("common.copy")}
+                data-tip={t("common.copy")} aria-label={t("common.copy")}
                 onClick={() => void navigator.clipboard?.writeText(value)}
                 className="shrink-0 rounded-md p-0.5 text-fg-subtle hover:bg-fill hover:text-fg-muted"
             >

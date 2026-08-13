@@ -1,6 +1,7 @@
 import React from "react";
 import { PanelPosition } from "../../registry/types";
 import { SidebarPanelRail } from "./SidebarPanelRail";
+import { TooltipGroup } from "@/lib/tooltip";
 import { useSidebarPanelContextMenu } from "./useSidebarPanelContextMenu";
 
 interface RightSidebarSelectorProps {
@@ -36,7 +37,8 @@ export function RightSidebarSelector({
     };
 
     return (
-        <div
+        <TooltipGroup
+            side="left"
             data-workspace-sidebar-rail=""
             className="w-12 bg-surface-sunken border-l border-edge flex flex-col items-center py-2 gap-1"
             onContextMenu={(event) => openMenu(event)}
@@ -51,7 +53,7 @@ export function RightSidebarSelector({
                 onPanelContextMenu={openMenu}
             />
             {menu}
-        </div>
+        </TooltipGroup>
     );
 }
 

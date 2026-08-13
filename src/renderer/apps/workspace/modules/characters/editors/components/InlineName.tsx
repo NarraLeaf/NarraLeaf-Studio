@@ -21,7 +21,7 @@ export function InlineName(props: {
     onCommit: (next: string) => void;
     /** Frozen project, or anything else that makes the rename impossible. Selection still works. */
     disabled?: boolean;
-    title?: string;
+    tooltip?: string;
     className?: string;
     /**
      * Whether the name takes the row's spare width. True for a list row; false inside a chip, whose
@@ -102,7 +102,7 @@ export function InlineName(props: {
     return (
         <span
             className={cn(box, "truncate", props.className)}
-            title={props.title}
+            data-tip={props.tooltip}
             tabIndex={props.disabled ? undefined : 0}
             onDoubleClick={begin}
             onKeyDown={event => {

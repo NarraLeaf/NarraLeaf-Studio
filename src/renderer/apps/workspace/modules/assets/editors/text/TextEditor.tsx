@@ -798,7 +798,7 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
                             type="button"
                             onClick={() => togglePreview(preview.id)}
                             aria-pressed={previewId === preview.id}
-                            title={contributionTitle(preview)}
+                            data-tip={contributionTitle(preview)} aria-label={contributionTitle(preview)}
                             data-text-editor-preview-id={preview.id}
                             className={`flex items-center gap-1 rounded-md px-1 -mx-1 transition-colors hover:bg-fill hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50${
                                 previewId === preview.id ? " bg-fill text-fg" : ""

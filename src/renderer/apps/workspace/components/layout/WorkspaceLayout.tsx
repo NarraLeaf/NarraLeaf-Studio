@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { TitleBar, windowRootProps } from "@/lib/components/layout";
+import { TooltipHost } from "@/lib/tooltip";
 import { LeftSidebarSelector } from "./LeftSidebarSelector";
 import { BottomPanelSelector } from "./BottomPanelSelector";
 import { RightSidebarSelector } from "./RightSidebarSelector";
@@ -738,6 +739,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             {...windowRootProps}
             className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
         >
+            <TooltipHost />
             {backgroundUrl && (
                 <div
                     aria-hidden

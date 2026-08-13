@@ -616,7 +616,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 <button
                     className="p-1 rounded-md hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
                     onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "character", character: item.source }); }}
-                    title={t("characters.panel.rowActions")}
+                    data-tip={t("characters.panel.rowActions")} aria-label={t("characters.panel.rowActions")}
                 >
                     <MoreVertical className="w-4 h-4" />
                 </button>
@@ -667,7 +667,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     <button
                         onClick={loadCharacters}
                         className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md hover:bg-fill text-fg-muted"
-                        title={t("common.refresh")}
+                        data-tip={t("common.refresh")} aria-label={t("common.refresh")}
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                     </button>

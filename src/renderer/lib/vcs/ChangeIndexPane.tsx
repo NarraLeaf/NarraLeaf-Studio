@@ -157,7 +157,7 @@ function ChangeIndexRowView({
         <button
             type="button"
             onClick={onSelect}
-            title={row.path}
+            data-tip={row.path}
             data-change-index-row={row.path}
             className={cn(
                 "flex w-full items-baseline gap-1.5 overflow-hidden whitespace-nowrap rounded-md px-2 py-1 pl-6 text-left",

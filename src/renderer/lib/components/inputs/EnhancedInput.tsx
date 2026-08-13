@@ -316,7 +316,7 @@ export function EnhancedInput({
                     onClick={isPopoverOpen ? closePopover : openPopover}
                     disabled={rest.disabled || rest.readOnly}
                     className={rootClassName}
-                    title={hasDisplayText ? displayValue : rest.placeholder}
+                    data-tip={hasDisplayText ? displayValue : rest.placeholder}
                 >
                     {leftIcon && (
                         <span className="absolute left-2 text-fg-muted pointer-events-none flex items-center">

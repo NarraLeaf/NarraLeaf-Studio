@@ -365,14 +365,14 @@ function TrackItem({
                         max={VOLUME_PERCENT_MAX}
                         step={1}
                         disabled={frozen.disabled}
-                        title={frozen.title}
+                        data-tip={frozen["data-tip"]}
                         aria-label={t("project.audio.volumeTitle")}
                         onValueChange={setDraftPercent}
                         onValueCommit={percent => service?.updateTrack(track.id, { volume: percent / 100 })}
                     />
                 </Field>
 
-                <div className="flex min-w-0 items-center justify-between gap-2" title={frozen.title}>
+                <div className="flex min-w-0 items-center justify-between gap-2" data-tip={frozen["data-tip"]}>
                     <span className="flex min-w-0 items-center gap-1 text-2xs font-medium text-fg-muted">
                         <span className="truncate">{t("project.audio.loopTitle")}</span>
                         {/*
@@ -486,7 +486,7 @@ function VolumeReadout({ percent, title }: { percent: number; title: string }) {
     return (
         // `gap-1`, not `gap-1.5`: measured, the wider gap put the readout 1.6px past the section's
         // right edge at a 190px panel with a depth-4 bus open and a scrollbar showing.
-        <span className="flex shrink-0 items-center gap-1" title={title}>
+        <span className="flex shrink-0 items-center gap-1" data-tip={title}>
             <span
                 aria-hidden="true"
                 className="h-1 w-8 shrink-0 overflow-hidden rounded-full bg-fill-strong"

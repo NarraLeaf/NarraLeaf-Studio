@@ -282,7 +282,7 @@ function createPauseChip(pause: number | true, options: RichRenderOptions): HTML
     if (options.interactive) {
         span.setAttribute("role", "button");
     }
-    span.title = pause === true ? options.titles.pauseClick : options.titles.pauseSeconds(storyMsToSeconds(pause));
+    span.dataset.tip = pause === true ? options.titles.pauseClick : options.titles.pauseSeconds(storyMsToSeconds(pause));
     const label = pause === true ? "" : `<span class="ml-0.5">${formatStorySecondsLabel(pause)}</span>`;
     // PAUSE_ICON_SVG is a trusted static string; the label only interpolates a rounded number.
     span.innerHTML = `${PAUSE_ICON_SVG}${label}`;
@@ -301,7 +301,7 @@ function createInterpolationChip(interp: StoryInterpolationRef, label: string, m
     if (options.interactive) {
         span.setAttribute("role", "button");
     }
-    span.title = options.titles.insertedValue(label);
+    span.dataset.tip = options.titles.insertedValue(label);
     // INTERP_ICON_SVG is a trusted static string; the label is set via textContent (no HTML injection).
     span.innerHTML = INTERP_ICON_SVG;
     const labelSpan = globalThis.document.createElement("span");
@@ -331,7 +331,7 @@ function createEventChip(event: StoryInlineEvent, options: RichRenderOptions): H
         // stored `pose` / `tags` are ids, and an id dropped into a paragraph reads as `pro5swd`.
         // With no lookup, or nothing that resolves, the icon alone says the face changes here.
         const form = options.resolveAppearance?.(event.expression) ?? null;
-        span.title = form ? `${options.titles.expressionEvent}: ${form}` : options.titles.expressionEvent;
+        span.dataset.tip = form ? `${options.titles.expressionEvent}: ${form}` : options.titles.expressionEvent;
         span.innerHTML = EVENT_FACE_ICON_SVG;
         if (form) {
             const labelSpan = globalThis.document.createElement("span");
@@ -340,7 +340,7 @@ function createEventChip(event: StoryInlineEvent, options: RichRenderOptions): H
             span.appendChild(labelSpan);
         }
     } else {
-        span.title = options.titles.soundEvent;
+        span.dataset.tip = options.titles.soundEvent;
         span.innerHTML = EVENT_SOUND_ICON_SVG;
     }
     return span;

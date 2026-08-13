@@ -98,7 +98,7 @@ const SurfaceRow = memo(
                         type="button"
                         className="p-1 rounded-md hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
                         onClick={handleMenu}
-                        title={actionsLabel}
+                        data-tip={actionsLabel} aria-label={actionsLabel}
                     >
                         <MoreVertical className="w-4 h-4" />
                     </button>
@@ -155,7 +155,7 @@ export function SurfaceList({
                             globalBlueprintCard.onOpenInWindow();
                         }
                     }}
-                    title={globalBlueprintCard.canOpen ? t("blueprint.entry.openInWindow") : undefined}
+                    data-tip={globalBlueprintCard.canOpen ? t("blueprint.entry.openInWindow") : undefined}
                     aria-label={
                         globalBlueprintCard.canOpen
                             ? t("uiEditor.panel.openGlobalBlueprint")

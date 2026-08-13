@@ -109,7 +109,7 @@ export function StatusBar() {
         return (
             <StatusBarEntryIdContext.Provider key={entry.id} value={entry.id}>
                 <div className="flex min-w-0 items-stretch" onContextMenu={onContextMenu}>
-                    <StatusEntry onClick={item.command} title={item.tooltip}>
+                    <StatusEntry onClick={item.command} tooltip={item.tooltip}>
                         {item.icon}
                         <span className="truncate">{item.text}</span>
                     </StatusEntry>

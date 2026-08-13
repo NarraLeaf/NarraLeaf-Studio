@@ -122,25 +122,25 @@ export function StoryMotionStagePreview(props: {
                             className="absolute -right-2 -bottom-2 h-4 w-4 cursor-nwse-resize rounded-md border border-white/70 bg-primary"
                             style={{ transform: `scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "zoom")}
-                            title={t("motion.preview.dragZoom")}
+                            data-tip={t("motion.preview.dragZoom")}
                         />
                         <div
                             className="absolute -right-2 top-1/2 h-4 w-2.5 cursor-ew-resize rounded-sm border border-white/70 bg-[#1b1d22]"
                             style={{ transform: `translateY(-50%) scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "scaleX")}
-                            title={t("motion.preview.dragScaleX")}
+                            data-tip={t("motion.preview.dragScaleX")}
                         />
                         <div
                             className="absolute -bottom-2 left-1/2 h-2.5 w-4 cursor-ns-resize rounded-sm border border-white/70 bg-[#1b1d22]"
                             style={{ transform: `translateX(-50%) scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "scaleY")}
-                            title={t("motion.preview.dragScaleY")}
+                            data-tip={t("motion.preview.dragScaleY")}
                         />
                         <div
                             className="absolute -top-7 left-1/2 grid h-5 w-5 cursor-ew-resize place-items-center rounded-full border border-white/50 bg-[#1b1d22] text-white"
                             style={{ transform: `translateX(-50%) scale(${handleInvX}, ${handleInvY})`, transformOrigin: "center" }}
                             onPointerDown={event => props.onPointerDrag(event, "rotation")}
-                            title={t("motion.preview.dragRotate")}
+                            data-tip={t("motion.preview.dragRotate")}
                         >
                             <RotateCw className="h-3 w-3" />
                         </div>

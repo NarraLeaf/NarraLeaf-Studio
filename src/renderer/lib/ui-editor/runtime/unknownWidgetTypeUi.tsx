@@ -22,7 +22,7 @@ export function renderUnknownWidgetTypeContent(element: UIElement, children: Rea
         <div className="flex flex-col min-h-[20px] w-full h-full box-border border-2 border-warning/55 bg-warning/10 overflow-hidden">
             <div
                 className="shrink-0 px-1.5 py-0.5 text-2xs leading-tight text-warning bg-warning/20 font-medium truncate"
-                title={element.type}
+                data-tip={element.type}
             >
                 Unsupported type: {element.type}
             </div>

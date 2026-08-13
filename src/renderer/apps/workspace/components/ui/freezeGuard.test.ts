@@ -26,24 +26,24 @@ describe("isDeferredWriteAllowed", () => {
 
 describe("makeFreezeGuard - writes()", () => {
     it("leaves a control alone while the workspace is writable", () => {
-        expect(makeFreezeGuard(false, REASON).writes()).toEqual({ disabled: false, title: undefined });
+        expect(makeFreezeGuard(false, REASON).writes()).toEqual({ disabled: false, "data-tip": undefined });
     });
 
     it("disables and explains while frozen", () => {
-        expect(makeFreezeGuard(true, REASON).writes()).toEqual({ disabled: true, title: REASON });
+        expect(makeFreezeGuard(true, REASON).writes()).toEqual({ disabled: true, "data-tip": REASON });
     });
 
-    it("keeps the caller's own title when the workspace is writable", () => {
+    it("keeps the caller's own tooltip when the workspace is writable", () => {
         expect(makeFreezeGuard(false, REASON).writes(false, "Add row")).toEqual({
             disabled: false,
-            title: "Add row",
+            "data-tip": "Add row",
         });
     });
 
-    it("replaces the caller's title while frozen, so a greyed button is never unexplained", () => {
+    it("replaces the caller's tooltip while frozen, so a greyed button is never unexplained", () => {
         expect(makeFreezeGuard(true, REASON).writes(false, "Add row")).toEqual({
             disabled: true,
-            title: REASON,
+            "data-tip": REASON,
         });
     });
 
@@ -52,11 +52,11 @@ describe("makeFreezeGuard - writes()", () => {
         // the last thing it told them was that freezing was why.
         expect(makeFreezeGuard(true, REASON).writes(true, "Select a scene first")).toEqual({
             disabled: true,
-            title: "Select a scene first",
+            "data-tip": "Select a scene first",
         });
         expect(makeFreezeGuard(false, REASON).writes(true, "Select a scene first")).toEqual({
             disabled: true,
-            title: "Select a scene first",
+            "data-tip": "Select a scene first",
         });
     });
 });

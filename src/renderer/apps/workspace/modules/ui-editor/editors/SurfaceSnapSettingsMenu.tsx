@@ -33,7 +33,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                     type="button"
                     active={popover.open}
                     onClick={popover.toggle}
-                    title={t("uiEditor.snap.settings")}
+                    data-tip={t("uiEditor.snap.settings")}
                     aria-expanded={popover.open}
                     aria-haspopup="dialog"
                 >

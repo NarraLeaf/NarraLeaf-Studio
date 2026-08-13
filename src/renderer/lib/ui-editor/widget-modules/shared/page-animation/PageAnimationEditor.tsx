@@ -75,7 +75,7 @@ function PreviewButton({ label, ariaLabel, onClick }: { label: string; ariaLabel
         <InspectOnlyButton
             className="inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md border border-edge bg-fill-subtle px-2 text-2xs text-fg-muted transition hover:bg-fill hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 cursor-default"
             onClick={onClick}
-            title={ariaLabel}
+            data-tip={ariaLabel}
             aria-label={ariaLabel}
         >
             <Play className="h-3.5 w-3.5" />
