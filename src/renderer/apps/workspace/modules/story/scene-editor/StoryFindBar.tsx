@@ -93,7 +93,7 @@ export function StoryFindBar(props: {
                 onChange={event => props.onQueryChange(event.target.value)}
                 placeholder={t("story.find.placeholder")}
                 aria-label={t("story.find.placeholder")}
-                title={props.invalidPattern ? t("story.find.invalidPattern") : undefined}
+                data-tip={props.invalidPattern ? t("story.find.invalidPattern") : undefined}
                 className={cn(
                     "h-7 w-44 rounded-md border bg-surface-sunken px-2 text-xs text-fg outline-none placeholder:text-fg-subtle",
                     noMatches ? "border-danger/60" : "border-edge focus:border-primary/50",
@@ -102,7 +102,7 @@ export function StoryFindBar(props: {
             <ToolbarButton
                 size="sm"
                 onClick={props.onToggleCaseSensitive}
-                title={t("story.find.caseSensitive")}
+                data-tip={t("story.find.caseSensitive")}
                 aria-label={t("story.find.caseSensitive")}
                 aria-pressed={props.caseSensitive}
                 active={props.caseSensitive}
@@ -113,7 +113,7 @@ export function StoryFindBar(props: {
             <ToolbarButton
                 size="sm"
                 onClick={props.onToggleWholeWord}
-                title={t("story.find.wholeWord")}
+                data-tip={t("story.find.wholeWord")}
                 aria-label={t("story.find.wholeWord")}
                 aria-pressed={props.wholeWord}
                 active={props.wholeWord}
@@ -124,7 +124,7 @@ export function StoryFindBar(props: {
             <ToolbarButton
                 size="sm"
                 onClick={props.onToggleRegex}
-                title={t("story.find.regex")}
+                data-tip={t("story.find.regex")}
                 aria-label={t("story.find.regex")}
                 aria-pressed={props.regex}
                 active={props.regex}
@@ -145,7 +145,7 @@ export function StoryFindBar(props: {
                 size="sm"
                 onClick={props.onPrevious}
                 disabled={props.matchCount === 0}
-                title={t("story.find.previous")}
+                data-tip={t("story.find.previous")}
                 aria-label={t("story.find.previous")}
             >
                 <ChevronUp className="h-3.5 w-3.5" />
@@ -154,7 +154,7 @@ export function StoryFindBar(props: {
                 size="sm"
                 onClick={props.onNext}
                 disabled={props.matchCount === 0}
-                title={t("story.find.next")}
+                data-tip={t("story.find.next")}
                 aria-label={t("story.find.next")}
             >
                 <ChevronDown className="h-3.5 w-3.5" />
@@ -190,7 +190,7 @@ export function StoryFindBar(props: {
             <ToolbarButton
                 size="sm"
                 onClick={props.onClose}
-                title={t("common.close")}
+                data-tip={t("common.close")}
                 aria-label={t("common.close")}
                 className="ml-auto"
             >

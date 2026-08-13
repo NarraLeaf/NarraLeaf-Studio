@@ -66,7 +66,7 @@ export function SurfacePreviewFramesTrigger({ stateService, aspectId, safeAreaId
                     type="button"
                     active={popover.open || anyActive}
                     onClick={popover.toggle}
-                    title={t("uiEditor.preview.label")}
+                    data-tip={t("uiEditor.preview.label")}
                     aria-expanded={popover.open}
                     aria-haspopup="dialog"
                 >

@@ -1069,7 +1069,7 @@ export function ColorPickerTrigger({
                                 }`}
                                 // Author data, not a theme colour - raw values are what this row is for.
                                 style={{ backgroundColor: palette.resolveCss(color.id) ?? "transparent" }}
-                                title={brandColorLabel(color)}
+                                data-tip={brandColorLabel(color)} aria-label={brandColorLabel(color)}
                                 onClick={() => handleBrandPick(color)}
                             />
                         ))}

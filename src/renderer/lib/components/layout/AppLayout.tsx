@@ -2,6 +2,7 @@ import React from "react";
 import { cn } from "../../utils/cn";
 import { TitleBar } from "./TitleBar";
 import { windowRootProps } from "./windowOverlayHost";
+import { TooltipHost } from "@/lib/tooltip";
 import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 
 export interface AppLayoutProps {
@@ -28,6 +29,7 @@ export function AppLayout({
 }: AppLayoutProps) {
     return (
         <div {...windowRootProps} className={cn("h-screen w-screen text-fg bg-surface", className)}>
+            <TooltipHost />
             <div className="grid grid-rows-[40px,1fr] h-full">
                 {/* Title Bar */}
                 <div className="col-span-full">

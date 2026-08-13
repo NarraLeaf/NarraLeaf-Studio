@@ -434,7 +434,7 @@ export function SettingsExplorer<T>({
                                     role="radio"
                                     aria-checked={selected}
                                     aria-label={name}
-                                    title={name}
+                                    data-tip={name}
                                     disabled={isSaving}
                                     onClick={() => handleEnumChange(entry, option)}
                                     // The ring sits outside the swatch so the color the user is
@@ -567,7 +567,7 @@ export function SettingsExplorer<T>({
                             {canReset && (
                                 <button
                                     type="button"
-                                    title={t("settings.resetToDefault")}
+                                    data-tip={t("settings.resetToDefault")}
                                     aria-label={t("settings.resetToDefault")}
                                     onClick={() => void onReset?.(entry.source, descriptor)}
                                     className="rounded-md p-0.5 text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 group-hover/setting:opacity-100"

@@ -59,11 +59,9 @@ export function IconButton({
     size = "md",
     className = "",
     "aria-label": ariaLabel,
-    title,
     ...props
 }: Omit<ButtonProps, "children"> & {
     "aria-label": string;
-    title?: string;
     /**
      * The icon to render. Optional (unlike Button, which requires children),
      * but not omitted: the icon reaches the <button> through the {...props}
@@ -84,7 +82,6 @@ export function IconButton({
                 className,
             )}
             aria-label={ariaLabel}
-            title={title}
             {...props}
         />
     );

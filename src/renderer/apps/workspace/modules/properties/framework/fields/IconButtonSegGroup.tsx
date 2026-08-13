@@ -146,7 +146,7 @@ export function IconButtonSegGroup({
                         onClick={() => void handleOptionClick(option.id, option.disabled)}
                         disabled={disabled || option.disabled}
                         aria-pressed={isActive}
-                        title={option.label}
+                        data-tip={option.label} aria-label={option.label}
                     >
                         <div
                             className={`flex items-center justify-center ${

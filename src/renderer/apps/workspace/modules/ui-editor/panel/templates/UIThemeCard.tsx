@@ -46,7 +46,7 @@ export function UIThemeCard({ theme, posterUrl, count, onOpen }: UIThemeCardProp
                 )}
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
-                <div className="truncate text-sm font-medium text-fg" title={text.name}>
+                <div className="truncate text-sm font-medium text-fg" data-tip={text.name}>
                     {text.name}
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5 text-2xs text-fg-subtle">

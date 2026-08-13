@@ -167,7 +167,7 @@ export function PortraitCropBox(props: {
                    four strips: one element cannot leave seams at the corners, and it costs no layout. */
                 <div
                     className="absolute cursor-move border border-primary"
-                    title={props.title}
+                    data-tip={props.title}
                     style={{
                         left: box.x,
                         top: box.y,

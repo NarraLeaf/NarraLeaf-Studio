@@ -29,6 +29,7 @@ import {
     type UIEditorReadOnly,
 } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 import { subscribeVideoPreviewPlayback } from "@/lib/ui-editor/interaction/videoPreviewPlayback";
+import { TooltipGroup } from "@/lib/tooltip";
 
 // Props
 type UIEditorDockerBarProps = {
@@ -184,7 +185,7 @@ function PaletteDockerBar({
                                 ? "bg-primary/20 text-fg"
                                 : "text-fg-muted hover:bg-fill hover:text-fg"
                         }`}
-                        title={readOnly.active ? readOnly.reason : t("widgetChrome.docker.insert", { name: mod.displayName })}
+                        data-tip={readOnly.active ? readOnly.reason : t("widgetChrome.docker.insert", { name: mod.displayName })}
                         disabled={readOnly.active}
                         onClick={() => selectType(mod.type)}
                         onPointerDown={stopPointerPropagation}
@@ -205,7 +206,7 @@ function PaletteDockerBar({
                                 ? "bg-primary/20 text-fg"
                                 : "text-fg-muted hover:bg-fill hover:text-fg"
                         }`}
-                        title={t("widgetChrome.docker.openComponentLibrary")}
+                        data-tip={t("widgetChrome.docker.openComponentLibrary")}
                         onClick={() => {
                             onOpenComponents?.();
                             closeOverflow();
@@ -222,11 +223,16 @@ function PaletteDockerBar({
     ) : null;
 
     return (
-        <div className="flex items-center gap-1">
+        <TooltipGroup className="flex items-center gap-1">
             {primaryEntries.map((entry) => {
                 const mod = entry.module;
                 const Icon = mod.icon;
                 const isActive = activeInsertType === mod.type;
+                const insertLabel = readOnly.active
+                    ? readOnly.reason
+                    : isActive
+                      ? t("widgetChrome.docker.drawing", { name: mod.displayName })
+                      : t("widgetChrome.docker.insert", { name: mod.displayName });
                 return (
                     <button
                         key={mod.type}
@@ -240,13 +246,8 @@ function PaletteDockerBar({
                         onClick={() => selectType(mod.type)}
                         onPointerDown={stopPointerPropagation}
                         onMouseDown={stopPointerPropagation}
-                        title={
-                            readOnly.active
-                                ? readOnly.reason
-                                : isActive
-                                  ? t("widgetChrome.docker.drawing", { name: mod.displayName })
-                                  : t("widgetChrome.docker.insert", { name: mod.displayName })
-                        }
+                        data-tip={insertLabel}
+                        aria-label={insertLabel}
                     >
                         <Icon className="w-3.5 h-3.5" />
                         {/* <span>{mod.displayName}</span> */}
@@ -266,7 +267,7 @@ function PaletteDockerBar({
                         onClick={() => setOverflowOpen(open => !open)}
                         onPointerDown={stopPointerPropagation}
                         onMouseDown={stopPointerPropagation}
-                        title={t("widgetChrome.docker.moreInsertElements")}
+                        data-tip={t("widgetChrome.docker.moreInsertElements")}
                         aria-label={t("widgetChrome.docker.moreInsertElements")}
                         aria-haspopup="menu"
                         aria-expanded={overflowOpen}
@@ -276,7 +277,7 @@ function PaletteDockerBar({
                     {typeof document === "undefined" ? overflowMenu : createPortal(overflowMenu, document.body)}
                 </>
             ) : null}
-        </div>
+        </TooltipGroup>
     );
 }
 
@@ -303,7 +304,7 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
                     } ${item.disabled ? "opacity-50 cursor-not-allowed" : ""}`}
                     onClick={item.onClick}
                     disabled={item.disabled}
-                    title={item.tooltip}
+                    data-tip={item.tooltip} aria-label={item.tooltip}
                 >
                     {Icon && <Icon className="w-3.5 h-3.5" />}
                     {item.label && <span>{item.label}</span>}
@@ -315,7 +316,7 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
             return (
                 <div
                     className="flex items-center gap-1.5 h-8"
-                    title={item.tooltip}
+                    data-tip={item.tooltip}
                     onPointerDown={stopPointerPropagation}
                     onPointerDownCapture={stopPointerPropagation}
                     onMouseDownCapture={stopPointerPropagation}
@@ -349,7 +350,7 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
             return (
                 <div
                     className="flex items-center gap-1.5 h-8"
-                    title={item.tooltip}
+                    data-tip={item.tooltip}
                     onPointerDown={stopPointerPropagation}
                     onPointerDownCapture={stopPointerPropagation}
                     onMouseDownCapture={stopPointerPropagation}
@@ -737,7 +738,7 @@ function ComponentsLibraryModal({
                                 type="button"
                                 className="grid h-8 w-8 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
                                 onClick={onClose}
-                                title={t("common.close")}
+                                data-tip={t("common.close")}
                                 aria-label={t("common.close")}
                             >
                                 <X className="h-4 w-4" />
@@ -765,7 +766,7 @@ function ComponentsLibraryModal({
                                                 // The library stays browsable while read-only - looking at
                                                 // components is reading - but a tile only arms the insert tool.
                                                 disabled={readOnly.active}
-                                                title={readOnly.active ? readOnly.reason : undefined}
+                                                data-tip={readOnly.active ? readOnly.reason : undefined}
                                                 onClick={() => {
                                                     onSelectComponent(component.id);
                                                     onClose();

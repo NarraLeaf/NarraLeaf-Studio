@@ -42,7 +42,7 @@ export function ConditionRowToggles({ conditions, disabled, onChange }: Props) {
                         key={key}
                         type="button"
                         disabled={disabled}
-                        title={t("widgetAppearance.conditions.toggleTitle", { condition: conditionLabel })}
+                        data-tip={t("widgetAppearance.conditions.toggleTitle", { condition: conditionLabel })}
                         onClick={() => toggle(key)}
                         className={[
                             "rounded-md px-1.5 py-0.5 border transition",

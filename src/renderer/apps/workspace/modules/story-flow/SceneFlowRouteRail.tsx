@@ -246,7 +246,7 @@ export function SceneFlowRouteRail({
                 <button
                     type="button"
                     className="ml-auto shrink-0 cursor-default rounded-sm p-0.5 text-fg-subtle hover:bg-fill hover:text-fg"
-                    title={t("story.flow.route.hide")}
+                    data-tip={t("story.flow.route.hide")}
                     aria-label={t("story.flow.route.hide")}
                     onClick={onClose}
                 >
@@ -287,7 +287,7 @@ export function SceneFlowRouteRail({
                                     : <ChevronRight className="mt-px h-3 w-3 shrink-0" />}
                                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                                     <span className="flex min-w-0 items-center gap-1">
-                                        <span className="min-w-0 truncate" title={group.name}>{group.name}</span>
+                                        <span className="min-w-0 truncate" data-tip={group.name}>{group.name}</span>
                                         {group.isEnding && !group.reachable && (
                                             <AlertTriangle
                                                 className="h-3 w-3 shrink-0 text-warning"
@@ -297,7 +297,7 @@ export function SceneFlowRouteRail({
                                         {!group.isEnding && (
                                             <span
                                                 className="shrink-0 text-fg-subtle"
-                                                title={t("story.flow.route.stopsHereTitle")}
+                                                data-tip={t("story.flow.route.stopsHereTitle")}
                                             >
                                                 {t("story.flow.route.stopsHere")}
                                             </span>
@@ -306,7 +306,7 @@ export function SceneFlowRouteRail({
                                     {focus && range && (
                                         <span
                                             className="truncate text-fg-subtle tabular-nums"
-                                            title={t("story.flow.variable.arrivalTitle")}
+                                            data-tip={t("story.flow.variable.arrivalTitle")}
                                         >
                                             {formatSceneFlowVariableChip(range, focus.variable.name, t)}
                                         </span>
@@ -329,7 +329,7 @@ export function SceneFlowRouteRail({
                                                 ? "bg-fill text-fg"
                                                 : "text-fg-subtle hover:bg-fill-subtle hover:text-fg",
                                         )}
-                                        title={label}
+                                        data-tip={label} aria-label={label}
                                         onClick={() => toggle({ kind: "route", routeId: route.id })}
                                     >
                                         <span className="min-w-0 flex-1 truncate">
@@ -340,7 +340,7 @@ export function SceneFlowRouteRail({
                                         {focus && (
                                             <span
                                                 className="shrink-0 rounded-sm bg-surface-sunken px-1 text-fg tabular-nums"
-                                                title={t("story.flow.variable.finalTitle")}
+                                                data-tip={t("story.flow.variable.finalTitle")}
                                             >
                                                 {routeValueChip(graph, document, route, focus)}
                                             </span>

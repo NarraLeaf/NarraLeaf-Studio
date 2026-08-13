@@ -384,7 +384,7 @@ export function RunControl() {
                     type="button"
                     onClick={runOrStop}
                     disabled={previewBlocked}
-                    title={previewBlocked ? frozenTitle : runTitle}
+                    data-tip={previewBlocked ? frozenTitle : runTitle}
                     aria-label={runTitle}
                     aria-pressed={running || undefined}
                     className={cn(
@@ -407,7 +407,7 @@ export function RunControl() {
                 <button
                     type="button"
                     onClick={() => setMenuOpen(open => !open)}
-                    title={t("actions.run.menu")}
+                    data-tip={t("actions.run.menu")}
                     aria-label={t("actions.run.menu")}
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
@@ -444,7 +444,7 @@ export function RunControl() {
                                     aria-checked={selected}
                                     aria-disabled={optionBlocked || undefined}
                                     disabled={optionBlocked}
-                                    title={frozen && option === "preview" ? frozenTitle : undefined}
+                                    data-tip={frozen && option === "preview" ? frozenTitle : undefined}
                                     onClick={() => selectMode(option)}
                                     className={cn(
                                         "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
@@ -470,7 +470,7 @@ export function RunControl() {
                             role="menuitem"
                             aria-disabled={buildBlocked || undefined}
                             disabled={buildBlocked}
-                            title={buildBlocked ? frozenTitle : undefined}
+                            data-tip={buildBlocked ? frozenTitle : undefined}
                             onClick={() => {
                                 setMenuOpen(false);
                                 if (workspace) {

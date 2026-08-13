@@ -30,7 +30,7 @@ afterEach(cleanup);
 
 /** A guard that switches nothing off, so what is disabled below is disabled for its own reason. */
 const THAWED: WriteGuard = {
-    writes: (ownDisabled = false, ownTitle?: string) => ({ disabled: ownDisabled, title: ownTitle }),
+    writes: (ownDisabled = false, ownTooltip?: string) => ({ disabled: ownDisabled, "data-tip": ownTooltip }),
 };
 
 function decision(outcome: DocumentMergeDecision["outcome"], name: string): DocumentMergeDecision {

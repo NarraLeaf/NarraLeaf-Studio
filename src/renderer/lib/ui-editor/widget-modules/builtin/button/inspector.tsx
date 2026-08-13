@@ -236,7 +236,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                                                             max={4}
                                                             step={0.05}
                                                             leftIcon={<Baseline className="w-4 h-4 text-fg-muted" />}
-                                                            title={t("widgets.typography.lineHeightHint")}
+                                                            data-tip={t("widgets.typography.lineHeightHint")}
                                                         />
                                                     );
                                                 },

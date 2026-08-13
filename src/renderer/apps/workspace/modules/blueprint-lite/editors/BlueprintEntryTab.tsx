@@ -1850,7 +1850,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             type="button"
             className="flex h-6 w-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
             onClick={detachToOwnWindow}
-            title={t("blueprint.header.detach")}
+            data-tip={t("blueprint.header.detach")}
             aria-label={t("blueprint.header.detach")}
         >
             <SquareArrowOutUpRight className="h-4 w-4" />
@@ -1895,7 +1895,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     }
 
     const header = (
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" title={contextTitle}>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" data-tip={contextTitle}>
             <span className="text-sm font-semibold text-fg">{t("blueprint.header.title")}</span>
             <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
         </div>

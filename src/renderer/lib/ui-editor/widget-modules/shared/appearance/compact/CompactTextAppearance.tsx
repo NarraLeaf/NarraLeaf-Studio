@@ -216,7 +216,7 @@ export function CompactTextAppearance({
                                 : t("widgetAppearance.typography.enableItalic")
                         }
                         aria-pressed={fontStyle === "italic"}
-                        title={t("widgetAppearance.typography.italic")}
+                        data-tip={t("widgetAppearance.typography.italic")}
                         onClick={() => patchTypography("fontStyle", fontStyle === "italic" ? "normal" : "italic")}
                     >
                         <Italic className="h-4 w-4" />

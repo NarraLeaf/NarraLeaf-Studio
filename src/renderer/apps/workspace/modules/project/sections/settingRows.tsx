@@ -11,7 +11,7 @@ export function SettingShell({
     title,
     description,
     hint,
-    titleAttr,
+    tooltip,
     children,
 }: {
     title: string;
@@ -22,11 +22,11 @@ export function SettingShell({
      * Hover text for the whole row. The freeze reason goes here rather than on the control, because a
      * `disabled` switch or select never reports a hover of its own on every platform.
      */
-    titleAttr?: string;
+    tooltip?: string;
     children: React.ReactNode;
 }) {
     return (
-        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-fill-subtle p-3" title={titleAttr}>
+        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-fill-subtle p-3" data-tip={tooltip}>
             <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
                     <span>{title}</span>
@@ -57,17 +57,17 @@ export function SettingStack({
     title,
     description,
     hint,
-    titleAttr,
+    tooltip,
     children,
 }: {
     title: string;
     description: string;
     hint?: string;
-    titleAttr?: string;
+    tooltip?: string;
     children: React.ReactNode;
 }) {
     return (
-        <section className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3 [&>*]:min-w-0" title={titleAttr}>
+        <section className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3 [&>*]:min-w-0" data-tip={tooltip}>
             <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
                     <span>{title}</span>
@@ -102,7 +102,7 @@ export function SettingRow({
     const freeze = useFreezeGuard();
     const frozen = freeze.writes(disabled);
     return (
-        <SettingShell title={title} description={description} hint={hint} titleAttr={frozen.title}>
+        <SettingShell title={title} description={description} hint={hint} tooltip={frozen["data-tip"]}>
             <Switch
                 size="sm"
                 checked={checked}

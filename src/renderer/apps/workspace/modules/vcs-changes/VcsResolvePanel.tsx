@@ -361,7 +361,7 @@ export function VcsResolvePanel() {
                     type="button"
                     onClick={() => void read()}
                     disabled={loading || running !== null}
-                    title={t("documentDiff.tab.refresh")}
+                    data-tip={t("documentDiff.tab.refresh")}
                     aria-label={t("documentDiff.tab.refresh")}
                     className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
                 >

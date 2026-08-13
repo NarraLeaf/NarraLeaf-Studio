@@ -34,8 +34,14 @@ import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
  */
 export type FrozenControlProps = {
     disabled: boolean;
-    /** Hover text: the freeze reason when the freeze is why, the caller's own otherwise. */
-    title: string | undefined;
+    /**
+     * Tooltip: the freeze reason when the freeze is why, the caller's own otherwise.
+     *
+     * `data-tip` rather than `title`, so a greyed control's reason is drawn by Studio's own tooltip
+     * (`lib/tooltip`) like every other one. It matters most here: pointer events do not reach a
+     * disabled control at all, so the tooltip is resolved by hit-testing the pointer instead.
+     */
+    "data-tip": string | undefined;
 };
 
 export type FreezeGuard = {
@@ -44,18 +50,18 @@ export type FreezeGuard = {
     /**
      * The single hover string for everything the freeze switches off.
      *
-     * Exposed for the call sites that build their own `title` (a control that already composes one,
-     * a tooltip component); prefer {@link writes}, which picks between this and the caller's own.
+     * Exposed for the call sites that build their own tooltip (a control that already composes one);
+     * prefer {@link writes}, which picks between this and the caller's own.
      */
     readonly reason: string;
     /**
      * Render props for a control whose action writes project data.
      *
-     * `ownDisabled` / `ownTitle` are the control's existing state, kept intact: a button that was
+     * `ownDisabled` / `ownTooltip` are the control's existing state, kept intact: a button that was
      * already disabled for its own reason must not start claiming the freeze is why, because that
      * lie outlives the thaw.
      */
-    writes(ownDisabled?: boolean, ownTitle?: string): FrozenControlProps;
+    writes(ownDisabled?: boolean, ownTooltip?: string): FrozenControlProps;
     /**
      * The render fields for a menu row that writes project data.
      *
@@ -93,12 +99,12 @@ export function makeFreezeGuard(frozen: boolean, reason: string): FreezeGuard {
     return {
         frozen,
         reason,
-        writes(ownDisabled = false, ownTitle) {
+        writes(ownDisabled = false, ownTooltip) {
             return {
                 disabled: ownDisabled || frozen,
                 // The caller's own reason wins when it is the one that applies: an already-disabled
                 // control is disabled for its own cause, freeze or no freeze.
-                title: ownDisabled ? ownTitle : frozen ? reason : ownTitle,
+                "data-tip": ownDisabled ? ownTooltip : frozen ? reason : ownTooltip,
             };
         },
         menuRow(ownDisabled = false) {

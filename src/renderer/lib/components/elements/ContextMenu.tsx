@@ -375,7 +375,7 @@ function ContextMenuItem({
                         ? "bg-fill text-fg"
                         : "text-fg-muted hover:bg-fill hover:text-fg",
                 )}
-                title={item.tooltip}
+                data-tip={item.tooltip}
                 onClick={handleClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseDown={(e) => e.stopPropagation()}

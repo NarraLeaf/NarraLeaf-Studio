@@ -126,7 +126,7 @@ export function UITemplateCard({
                 type="button"
                 onClick={onOpenDetail}
                 className="flex min-w-0 flex-1 flex-col text-left"
-                title={t("uiEditor.templateStore.openDetail")}
+                data-tip={t("uiEditor.templateStore.openDetail")}
             >
             <div className="relative aspect-video w-full shrink-0 bg-surface-canvas">
                 {preview.status === "ready" ? (
@@ -143,7 +143,7 @@ export function UITemplateCard({
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
-                <div className="truncate text-sm font-medium text-fg" title={text.name}>
+                <div className="truncate text-sm font-medium text-fg" data-tip={text.name}>
                     {text.name}
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5 text-2xs text-fg-subtle">
@@ -170,7 +170,7 @@ export function UITemplateCard({
                         // The reason a card refuses lives on the control that refuses,
                         // so it is readable without adding a second line to every card
                         // that is perfectly fine.
-                        title={blockedReason}
+                        data-tip={blockedReason}
                         onClick={onAdd}
                     >
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

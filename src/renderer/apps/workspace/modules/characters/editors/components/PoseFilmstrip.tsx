@@ -33,7 +33,7 @@ function Frame(props: {
                 props.active ? "border-primary/60 bg-primary/10" : "border-edge hover:bg-fill-subtle",
             )}
             onClick={props.onPick}
-            title={props.pose.name}
+            data-tip={props.pose.name}
         >
             <span className="grid h-16 w-full place-items-center overflow-hidden rounded-sm bg-fill">
                 {url

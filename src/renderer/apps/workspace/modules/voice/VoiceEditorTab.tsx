@@ -580,7 +580,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                                 type="button"
                                 aria-pressed={groupAxis === option.key}
                                 onClick={() => setGroupAxis(option.key)}
-                                title={option.label}
+                                data-tip={option.label}
                                 className={`flex h-6 items-center gap-1.5 rounded-md px-2 text-xs transition-colors ${
                                     groupAxis === option.key ? "bg-surface-raised text-fg shadow-sm" : "text-fg-muted hover:text-fg"
                                 }`}
@@ -665,7 +665,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                                     <input
                                         className="ml-auto h-5 w-40 rounded-md border border-transparent bg-transparent px-1 text-2xs text-fg-subtle outline-none hover:border-edge focus:border-primary/50 focus:text-fg"
                                         readOnly={freeze.frozen}
-                                        title={freeze.frozen ? freeze.reason : undefined}
+                                        data-tip={freeze.frozen ? freeze.reason : undefined}
                                         placeholder={t("workspace.voice.table.castPlaceholder")}
                                         defaultValue={config?.cast[group.characterId]?.[locale] ?? ""}
                                         key={`${group.characterId}:${config?.cast[group.characterId]?.[locale] ?? ""}`}

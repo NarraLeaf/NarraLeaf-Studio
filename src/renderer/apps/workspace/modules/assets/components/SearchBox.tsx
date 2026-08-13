@@ -96,7 +96,7 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                             type="button"
                             onClick={handleClear}
                             className="p-0.5 rounded-md hover:bg-fill text-fg-muted hover:text-fg-muted transition-colors"
-                            title={t("assets.clearSearch")}
+                            data-tip={t("assets.clearSearch")}
                             aria-label={t("assets.clearSearch")}
                         >
                             <X className="w-3 h-3" />
