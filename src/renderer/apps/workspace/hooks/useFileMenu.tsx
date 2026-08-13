@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { FolderClock } from "lucide-react";
 import { formatRecentProjectLabel } from "@shared/utils/recentProject";
 import { useRegistry } from "../registry";
 import type { ActionDefinition, ActionMenuItem, ActionSubmenu } from "../registry/types";
@@ -37,6 +38,10 @@ export function useFileMenu(): void {
             : recentProjects.map<ActionDefinition>(project => ({
                 id: `${OPEN_RECENT_SUBMENU_ID}:${project.path}`,
                 label: formatRecentProjectLabel(project),
+                // A folder with a clock rather than the plain folder Open wears. The palette
+                // flattens this submenu into one row per recent project sitting right beside Open,
+                // where the only thing separating them is that these are the remembered ones.
+                icon: <FolderClock className="w-4 h-4" />,
                 // A switch: this window goes once the chosen project is up. Unlike the title-bar
                 // switcher, which opens the project alongside - this is the File menu's "leave for
                 // another project" entry, and it sits beside Close. Picking the project this window

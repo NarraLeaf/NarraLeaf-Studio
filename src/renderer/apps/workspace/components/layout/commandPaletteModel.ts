@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
+import { Keyboard, type LucideIcon } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
 import type { Workspace } from "@/lib/workspace/workspace";
 import type { FocusContext, Keybinding } from "@/lib/workspace/services/ui/types";
@@ -89,6 +90,16 @@ export interface PaletteCommandSources {
 }
 
 const FALLBACK_FOCUS: FocusContext = { area: FocusArea.None };
+
+/**
+ * Every other source hands the palette ready-made JSX, but the keybinding catalog stores the icon
+ * as a component so it stays a plain data table (no JSX in `lib/`, and the settings shortcut table
+ * and cheat sheet can size it their own way). Sized to match the `w-4 h-4` the action and panel
+ * registries use, since they share one icon column.
+ */
+function renderCatalogIcon(icon: LucideIcon): ReactNode {
+    return createElement(icon, { className: "w-4 h-4" });
+}
 
 /**
  * Canonicalize a keybinding so the same chord written two ways ("mod+shift+p" / "shift+mod+p")
@@ -312,6 +323,10 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
             title,
             category: catalogEntry ? translate(catalogEntry.categoryKey) : undefined,
             keybinding: effectiveKey,
+            // A binding with no catalog entry is one nobody has named yet (it is here on its
+            // English `description` alone), so there is no glyph to look up - it gets the generic
+            // "this is a shortcut" one rather than a hole in the column.
+            icon: renderCatalogIcon(catalogEntry?.icon ?? Keyboard),
             source: "keybinding",
             run: () => keybinding.handler(focusContext ?? FALLBACK_FOCUS),
         });
