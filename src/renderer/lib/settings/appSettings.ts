@@ -46,6 +46,7 @@ import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
 import { resetAllPreferences, resetWorkspaceLayout } from "@/lib/settings/resetSettings";
 import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
+import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { UPDATE_AUTO_CHECK_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
@@ -127,6 +128,17 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 5,
     },
     {
+        // Its own category rather than a panel under Version control: a server is signed in to
+        // once and then serves every project pointed at it, so it outlives any of them. Filing
+        // it under version control would say the opposite - that it is a property of a project.
+        key: "servers",
+        label: "Servers",
+        labelKey: "settings.categories.servers.label",
+        description: "Servers this installation is signed in to, and the accounts it uses.",
+        descriptionKey: "settings.categories.servers.description",
+        order: 6,
+    },
+    {
         // Absorbed the former "Plugins" and "Advanced" categories, which between them held four
         // mirror URLs kept apart by which feature happened to need them. Where Studio downloads
         // from is one question, so it is one place.
@@ -135,7 +147,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.network.label",
         description: "Where Studio downloads plugins, templates and build tooling from.",
         descriptionKey: "settings.categories.network.description",
-        order: 6,
+        order: 7,
     },
     {
         key: "data",
@@ -143,7 +155,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.data.label",
         description: "Cached files, resetting preferences, and moving them between machines.",
         descriptionKey: "settings.categories.data.description",
-        order: 7,
+        order: 8,
     },
 ];
 
@@ -624,6 +636,24 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Applies to projects you haven't decided about. Each project can override it.",
         descriptionKey: "settings.items.dashboardOnOpen.description",
         defaultValue: true,
+    },
+    {
+        // Rendered by `SETTING_PANELS.servers`. Nothing is stored under this key: the servers
+        // themselves are in `versionControl.serverSessions`, written by the main process when a
+        // sign-in succeeds, and the panel reads them over IPC rather than out of the store so
+        // that a session the backend has since dropped is not drawn as one that is in force.
+        //
+        // This key is also the `highlight` that opens Settings here, which is what the version
+        // rail's server dialog sends (`SERVERS_PANEL_SETTING_KEY`).
+        key: SERVERS_PANEL_SETTING_KEY,
+        category: "servers",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "servers",
+        label: "Servers",
+        labelKey: "settings.items.servers.label",
+        description: "",
+        defaultValue: null,
     },
     {
         // Rendered by `SETTING_PANELS.cacheInventory`. Nothing is stored under this key; the panel

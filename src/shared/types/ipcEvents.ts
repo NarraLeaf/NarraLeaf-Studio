@@ -82,6 +82,7 @@ import type {
     VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
+    VcsAddServerOutcome,
     VcsSignInOutcome,
     VcsSyncState,
     VcsThreeWayResult,
@@ -322,6 +323,9 @@ export enum IPCEventType {
     vcsGetServerSession = "vcs.getServerSession",
     vcsSignIn = "vcs.signIn",
     vcsSignOut = "vcs.signOut",
+    vcsListServers = "vcs.listServers",
+    vcsAddServer = "vcs.addServer",
+    vcsForgetServer = "vcs.forgetServer",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
@@ -1112,6 +1116,43 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string },
         response: { session: null };
+    };
+    /**
+     * Every server this installation is signed in to.
+     *
+     * Takes no project: a session belongs to the machine rather than to a repository, and
+     * Settings asks this with no project open at all.
+     */
+    [IPCEventType.vcsListServers]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: { servers: VcsServerSession[] };
+    };
+    /**
+     * Sign in to a server named by the token rather than by a project.
+     *
+     * The token carries the address of the endpoint that issued it and of the server it is
+     * good for, so pasting one is the whole of adding a server. `authUrl` and `remoteUrl`
+     * are the corrections for a token that names neither, and are empty otherwise.
+     */
+    [IPCEventType.vcsAddServer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { authUrl: string; remoteUrl: string; token: string },
+        response: VcsAddServerOutcome;
+    };
+    /**
+     * Take a server off this machine: the stored token and Studio's record of it.
+     *
+     * Projects pointed at that server keep their address. What they lose is the account,
+     * which is what signing out means.
+     */
+    [IPCEventType.vcsForgetServer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: { servers: VcsServerSession[] };
     };
     [IPCEventType.vcsPush]: {
         type: IPCMessageType.request,

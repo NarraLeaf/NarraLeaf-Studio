@@ -717,6 +717,19 @@ export const workspace = {
                 // One line and one button, because connecting is a decision rather than a default.
                 none: "Not connected to a server",
                 connect: "Connect to a server",
+                /**
+                 * Choosing which server a project synchronises with.
+                 *
+                 * The list is what this installation is signed in to, which is managed in
+                 * Settings. The address field is for a server that asks nobody who they
+                 * are: there is no account to add for one, so it can be in no list.
+                 */
+                picker: {
+                    title: "Connect to a server",
+                    empty: "No servers have been added. Add one in Settings, or enter an address below.",
+                    manual: "Another address",
+                    manage: "Manage servers",
+                },
                 // The one field. Measured: the backend keeps only the ORIGIN of whatever URL it is
                 // given and identifies the repository by its own id, so there is genuinely nothing
                 // else to type - which is why there is no "repository name" box beside it.

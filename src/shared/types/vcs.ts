@@ -682,6 +682,14 @@ export type VcsSignInProblem =
      * on whether this platform lets Studio act on the answer.
      */
     | { kind: "certificate"; authority: VcsServerAuthority }
+    /**
+     * The token is a token, and it does not say which server it is good for.
+     *
+     * Only reachable where a server is being added on its own rather than from a project,
+     * because a project already knows its own address. A plain loreserver's token names
+     * nothing, so the address is asked for once and then kept.
+     */
+    | { kind: "server" }
     /** Nothing answered at that address. */
     | { kind: "unreachable"; detail: string }
     /** The endpoint answered and refused the token: expired, revoked, or another server's. */
@@ -722,6 +730,18 @@ export interface VcsSignInResult {
  */
 export type VcsSignInOutcome =
     | ({ ok: true } & VcsSignInResult)
+    | { ok: false; problem: VcsSignInProblem };
+
+/**
+ * What adding a server came to.
+ *
+ * The same refusals as a sign-in, because it is one: what differs is where the server
+ * came from. A sign-in from a project is told which server to present the token to; here
+ * the token says, and the whole list is returned so the panel showing it does not have to
+ * ask again.
+ */
+export type VcsAddServerOutcome =
+    | { ok: true; session: VcsServerSession; servers: VcsServerSession[] }
     | { ok: false; problem: VcsSignInProblem };
 
 /**

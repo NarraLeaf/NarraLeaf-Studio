@@ -53,6 +53,10 @@ export const settings = {
             label: "バージョン管理",
             description: "チェックポイントと、そこに記録される作者の情報",
         },
+        servers: {
+            label: "サーバー",
+            description: "このインストールがサインインしているサーバーと、使用しているアカウント",
+        },
         network: {
             label: "ネットワーク",
             description: "プラグイン、テンプレート、ビルド用の道具をどこから取ってくるか",
@@ -260,6 +264,9 @@ export const settings = {
         cacheInventory: {
             label: "キャッシュしたファイル",
         },
+        servers: {
+            label: "サーバー",
+        },
         settingsTransfer: {
             label: "設定を端末間で移す",
         },
@@ -279,6 +286,31 @@ export const settings = {
         },
     },
     // データのパネル自身の文言。
+    servers: {
+        empty: "サーバーはまだ追加されていない",
+        openAdd: "サーバーを追加",
+        add: "追加",
+        adding: "追加しています…",
+        cancel: "キャンセル",
+        signOut: "サインアウト",
+        tokenLabel: "アクセストークン",
+        tokenPlaceholder: "受け取ったトークンを貼り付ける",
+        authUrlLabel: "サインイン先アドレス",
+        authUrlPlaceholder: "https://studio.example.lan:41402",
+        remoteUrlLabel: "サーバーアドレス",
+        remoteUrlPlaceholder: "lore://studio.example.lan:41337",
+        hint: "トークンはサーバーの運用者が発行して渡す",
+        problems: {
+            scheme: "サインイン先アドレスは https:// または ucs-auth:// で始まる必要がある",
+            token: "このサーバーが発行したトークンではない",
+            address: "このトークンにはサインイン先が書かれていない。アドレスを入力する",
+            server: "このトークンには対象のサーバーが書かれていない。アドレスを入力する",
+            certificate: "この端末はそのアドレスが提示した証明書を信頼していない。プロジェクトをこのサーバーに接続すると、証明機関を照合できる",
+            unreachable: "そのアドレスから応答がない",
+            refused: "サーバーがこのトークンを拒否した。期限切れか、失効している可能性がある",
+            unknown: "サーバーを追加できなかった",
+        },
+    },
     data: {
         cache: {
             measuring: "測っている…",

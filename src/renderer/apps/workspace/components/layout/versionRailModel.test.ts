@@ -3,6 +3,7 @@ import type { VcsFileChange, VcsHistoryEntry } from "@shared/types/vcs";
 import { VCS_DEFAULT_BRANCH } from "@shared/types/vcs";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
 import {
+    MANUAL_SERVER,
     VERSION_BRANCH_MAX_CHARS,
     VERSION_CHANGE_LIST_LIMIT,
     VERSION_RAIL_COLLAPSED_WIDTH,
@@ -16,6 +17,7 @@ import {
     hasMoreHistory,
     hiddenCheckpointCount,
     historyRowHeadline,
+    initialServerChoice,
     nextHistoryLimit,
     isCommitFormPresent,
     isVersionSurfaceVisible,
@@ -851,5 +853,28 @@ describe("versionFace", () => {
         expect(versionFace({ state: states.current, branch: " audio " }, t).text).toBe("audio · #12");
         // Including on the default branch, which a backend could report padded.
         expect(versionFace({ state: states.current, branch: ` ${VCS_DEFAULT_BRANCH} ` }, t).text).toBe("#12");
+    });
+});
+
+describe("which server the connect dialog opens on", () => {
+    const servers = [{ remoteOrigin: "lore://one.example.lan:41337" }, { remoteOrigin: "lore://two.example.lan:41337" }];
+
+    it("opens on the server this project already uses", () => {
+        expect(initialServerChoice(servers, "lore://two.example.lan:41337")).toBe("lore://two.example.lan:41337");
+    });
+
+    it("opens on the address field for a project with no server", () => {
+        // Not on the first server in the list: the dialog decides where work is sent, and
+        // a preselected destination nobody named is one press away from being used.
+        expect(initialServerChoice(servers, null)).toBe(MANUAL_SERVER);
+    });
+
+    it("opens on the address field where the project's server is not one of these", () => {
+        // A bare loreserver, which nobody signs in to and which is therefore in no list.
+        expect(initialServerChoice(servers, "lore://plain.example.lan:41337")).toBe(MANUAL_SERVER);
+    });
+
+    it("opens on the address field when nothing has been added", () => {
+        expect(initialServerChoice([], null)).toBe(MANUAL_SERVER);
     });
 });

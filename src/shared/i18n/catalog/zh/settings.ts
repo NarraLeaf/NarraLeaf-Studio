@@ -48,6 +48,10 @@ export const settings = {
             label: "版本控制",
             description: "提交版本的记录频率，以及记在上面的身份",
         },
+        servers: {
+            label: "服务器",
+            description: "本安装已登录的服务器，以及登录所用的账号",
+        },
         network: {
             label: "网络",
             description: "Studio 从哪里下载插件、模板与构建工具",
@@ -244,6 +248,9 @@ export const settings = {
         keybindings: {
             label: "快捷键",
         },
+        servers: {
+            label: "服务器",
+        },
         cacheInventory: {
             label: "缓存文件",
         },
@@ -261,6 +268,31 @@ export const settings = {
             description: "把所有设置恢复为默认值；工程、工程历史和统计数据不受影响",
             action: "还原",
             confirm: "全部还原",
+        },
+    },
+    servers: {
+        empty: "尚未添加服务器",
+        openAdd: "添加服务器",
+        add: "添加",
+        adding: "正在添加…",
+        cancel: "取消",
+        signOut: "退出登录",
+        tokenLabel: "访问令牌",
+        tokenPlaceholder: "粘贴收到的令牌",
+        authUrlLabel: "登录地址",
+        authUrlPlaceholder: "https://studio.example.lan:41402",
+        remoteUrlLabel: "服务器地址",
+        remoteUrlPlaceholder: "lore://studio.example.lan:41337",
+        hint: "令牌由服务器的运行者签发并交给你",
+        problems: {
+            scheme: "登录地址必须以 https:// 或 ucs-auth:// 开头",
+            token: "该文本不是此服务器签发的令牌",
+            address: "该令牌未写明登录地址，请填写",
+            server: "该令牌未写明对应的服务器，请填写地址",
+            certificate: "本机不信任该地址出示的证书。将工程连接到该服务器后可核对其证书颁发机构",
+            unreachable: "该地址没有响应",
+            refused: "服务器拒绝了该令牌，可能已过期或已被作废",
+            unknown: "无法添加该服务器",
         },
     },
     data: {
