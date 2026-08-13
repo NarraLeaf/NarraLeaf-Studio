@@ -15,6 +15,7 @@ import {
 import {
     readGameRuntimeAssetVersionArg,
     readGameRuntimeCrashPolicyArg,
+    readGameRuntimeLogPathArg,
 } from "@shared/utils/gameRuntimeAssetUrl";
 import {
     GAME_RUNTIME_TEST_SIGNAL_CHANNEL,
@@ -200,6 +201,7 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
     },
     capabilities: { closeRequested: true },
     crashPolicy,
+    logPath: readGameRuntimeLogPathArg(process.argv),
     save: {
         write: (id, savedGame, capture, metadata) =>
             ipcRenderer.invoke("runtime:save:write", { id, savedGame, capture, metadata }) as Promise<void>,
