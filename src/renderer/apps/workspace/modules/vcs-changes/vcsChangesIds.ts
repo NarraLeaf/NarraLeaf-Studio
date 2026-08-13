@@ -21,8 +21,16 @@ const VCS_CHANGES_TAB_PREFIX = "narraleaf-studio:vcs-changes";
  * mishandled case - which is how this one was added.
  */
 export type VcsChangesPayload =
-    /** The author's uncommitted work against the last version. Never cached; it scans (docs §4.17). */
-    | { readonly mode: "working-tree" }
+    /**
+     * The author's uncommitted work against the last version. Never cached; it scans (docs §4.17).
+     *
+     * `headLabel` is what the opener was already calling the version being compared against (`#36`),
+     * and it exists because without it this tab was the one surface in the feature that named a
+     * version by its hash - "Changes since 3ddbc20" beside a rail, a status cell and a menu that all
+     * said `#36`. Optional because the tab can be restored from a persisted layout with no opener to
+     * ask, and then the hash is the honest fallback rather than a number invented here.
+     */
+    | { readonly mode: "working-tree"; readonly headLabel?: string }
     /**
      * Two revisions. `fromLabel` / `toLabel` are how the author was already naming them (`#12`);
      * absent falls back to a short hash, because a comparison entered from somewhere that did not

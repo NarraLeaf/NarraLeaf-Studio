@@ -31,7 +31,13 @@ import type {
     VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
-import { composeVcsIdentity, parseVcsRemoteUrl, vcsSignInRequired } from "@shared/types/vcs";
+import { composeVcsIdentity, parseVcsRemoteUrl, VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
+import {
+    composeRestoreMessage,
+    VCS_CHECKPOINT_MESSAGES,
+    VCS_DEFAULT_COMMIT_MESSAGE,
+    VCS_DEFAULT_MERGE_MESSAGE,
+} from "@shared/vcs/systemRevisionMessage";
 import { BaseApp } from "../../baseApp";
 import { Manager } from "../manager";
 import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backend";
@@ -144,33 +150,19 @@ interface VcsSession {
 export type PendingSaveFlush = (projectPath: string) => Promise<void>;
 
 /**
- * What a checkpoint's message says, by why it was taken.
+ * What Studio writes when nobody typed a message.
  *
- * Not translated, deliberately. A commit message is permanent repository content that
- * travels to collaborators and outlives the interface language it was written under; a
- * history where the same automatic checkpoint reads differently depending on who was
- * looking when it happened is worse than one that reads in English throughout.
- *
- * Same argument for the restore message built in {@link VcsManager.restoreRevision}.
+ * The literals live in `@shared/vcs/systemRevisionMessage` rather than here, and the reason is worth
+ * keeping in view: the bytes are STILL English and still permanent repository content - that
+ * decision has not changed - but the rail now recognises these exact sentences and reads them back
+ * in the author's language. Two copies of the wording would mean a checkpoint that quietly reverted
+ * to English the day one of them was reworded, so there is one copy and both processes import it.
  */
-const CHECKPOINT_MESSAGES: Readonly<Record<VcsCheckpointReason, string>> = {
-    interval: "Checkpoint",
-    "project-close": "Checkpoint before closing the project",
-    build: "Checkpoint before build",
-    restore: "Checkpoint before restore",
-};
+const CHECKPOINT_MESSAGES = VCS_CHECKPOINT_MESSAGES;
 
-const DEFAULT_COMMIT_MESSAGE = "Commit";
+const DEFAULT_COMMIT_MESSAGE = VCS_DEFAULT_COMMIT_MESSAGE;
 
-/**
- * What a merge the author did not name records.
- *
- * Not translated, for the reason on {@link CHECKPOINT_MESSAGES}: this sentence is permanent
- * repository content that travels to the collaborator whose work was just merged, and a history
- * that reads in whichever language happened to be selected is worse than one that reads in English
- * throughout.
- */
-const DEFAULT_MERGE_MESSAGE = "Merge";
+const DEFAULT_MERGE_MESSAGE = VCS_DEFAULT_MERGE_MESSAGE;
 
 /**
  * The two sides a path can be taken from, in the order they are applied.
@@ -228,6 +220,8 @@ function isNothingToCommit(error: unknown): boolean {
  * tell errors apart by name across a boundary where `instanceof` is not reliable.
  */
 export class VcsProjectPathError extends Error {
+    readonly code = VcsErrorCode.ProjectPath;
+
     constructor(readonly projectPath: string) {
         super(
             `Version control needs an absolute project path with no control characters, got `
@@ -253,6 +247,8 @@ export class VcsProjectPathError extends Error {
  * Named rather than anonymous for the reason {@link isNothingToCommit} explains.
  */
 export class VcsShuttingDownError extends Error {
+    readonly code = VcsErrorCode.ShuttingDown;
+
     constructor() {
         super("Version control is closing with the app; this call was refused rather than started");
         this.name = "VcsShuttingDownError";
@@ -910,9 +906,9 @@ export class VcsManager extends Manager {
                     // history whose entries read in whichever language happened to be selected that
                     // day is worse than one that reads in English throughout. The label is a
                     // revision number, which is not language.
-                    message: `Restore version ${
-                        options.label?.trim() || revision.slice(0, RESTORE_MESSAGE_HASH_LENGTH)
-                    }`,
+                    message: composeRestoreMessage(
+                        options.label?.trim() || revision.slice(0, RESTORE_MESSAGE_HASH_LENGTH),
+                    ),
                     kind: "commit",
                 })
                 .catch((error) => {

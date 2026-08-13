@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { translate } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
-import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
+import { VcsCallError, VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
-import { vcsSignInRequired } from "@shared/types/vcs";
+import { VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
 import type { RevisionId, VcsAvailability, VcsMergeState, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncState } from "@shared/types/vcs";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import {
@@ -87,6 +88,53 @@ export type VersionBusyKind =
  */
 export const VERSION_HISTORY_PAGE = 50;
 
+/**
+ * The global setting the main process reads for every commit and checkpoint
+ * (`VcsManager.resolveIdentity`), declared in `GlobalStateType` and offered in Settings by
+ * `appSettings.ts`.
+ *
+ * A bare string, and deliberately not dressed up as `keyof GlobalStateType`: that interface extends
+ * `Record<string, any>`, so its `keyof` is `string | number` and a "typed" key here would check
+ * nothing while looking as though it did. Renaming the setting means grepping for this literal, in
+ * all three places.
+ */
+const VCS_AUTHOR_NAME_SETTING = "versionControl.authorName";
+
+export interface VersionFailure {
+    /**
+     * What the panel says.
+     *
+     * Translated when the main process named the situation with a code the interface has words for;
+     * otherwise the sentence the backend threw, verbatim. Verbatim is the right default rather than
+     * a shortcoming: Lore refuses a push with `Branch has diverged, sync to merge remote changes`,
+     * which names its own remedy, and a paraphrase of it would be Studio guessing over the top of
+     * the only component that knows.
+     */
+    text: string;
+    /**
+     * `note` for an answer, `failure` for something that went wrong.
+     *
+     * The whole distinction exists for one case and is worth the field for it: pressing "Submit a
+     * version" on a tree nobody has changed is not an error, and drawing it in red taught authors
+     * that the panel was broken.
+     */
+    tone: "failure" | "note";
+}
+
+export interface VersionCompareBase {
+    revision: RevisionId;
+    /** What the author is calling it, `#25`. Carried so the comparison tab can name it the same way. */
+    label: string;
+    /**
+     * Its revision number, which is what decides which side of a comparison it is.
+     *
+     * Numbers rather than positions in the list: the list is paged and collapsible, so the base can
+     * be a row that is no longer drawn, and "which of these two is older" has to keep answering
+     * anyway. `number` is monotonic per repository, so it answers it without reading anything.
+     */
+    number: number;
+}
+
 export interface VersionSurface {
     /** Which of the six states every surface renders. */
     state: VersionSurfaceState;
@@ -109,8 +157,16 @@ export interface VersionSurface {
     frozen: WorkspaceFreezeReason["kind"] | null;
     /** A long operation is running; show progress rather than pretending it was instant. */
     busy: VersionBusyKind | null;
-    /** The last operation's failure, already stringified for display. Cleared by the next attempt. */
-    error: string | null;
+    /**
+     * How the last operation ended when it did not do what was asked, ready for display. Cleared by
+     * the next attempt.
+     *
+     * Carries a tone because not everything that arrives here is a failure. Submitting a version
+     * having changed nothing comes back as a refusal - the backend will not record an empty revision
+     * - but for the author that IS the answer to what they asked, and it spent this feature's life
+     * on screen as red English text.
+     */
+    failure: VersionFailure | null;
     /**
      * The linear history, checkpoints collapsed - null until {@link loadHistory} has been asked for
      * one. Null and empty are different answers: null is "nobody has read it", `[]` is "there is
@@ -153,12 +209,28 @@ export interface VersionSurface {
     /** The ONLY scan. An explicit act: opening the rail, or a refresh the author asked for. */
     refreshChanges: () => void;
     /**
+     * The version every other row offers to be compared against, or null for the default.
+     *
+     * The default is "the row below this one", which answers the question an author asks about a
+     * version they just recorded and no other: the list is newest-first with checkpoints collapsed,
+     * so the row below is the previous COMMIT. It cannot answer "what have I changed since Friday",
+     * which is the question that comes up when something has gone wrong - and until this existed
+     * there was no way to ask it at all, because the only comparison the rail could open was between
+     * neighbours.
+     *
+     * Held here rather than in the list, because the two controls that read it are in different
+     * components and because it survives the list being re-read (paging, or the checkpoint collapse
+     * being toggled). Not persisted: it is a question in progress, not a property of the project.
+     */
+    compareBase: VersionCompareBase | null;
+    setCompareBase: (base: VersionCompareBase | null) => void;
+    /**
      * Record the working tree as a new revision, then re-read everything the new revision made
      * wrong. Slow; sets `busy`.
      *
      * Answers whether it happened, because the caller owns the message box and a draft may only be
      * discarded once it is recorded somewhere - a failed commit that cleared the author's words
-     * would lose the only copy of them. Failures are reported through {@link error} as well.
+     * would lose the only copy of them. Failures are reported through {@link failure} as well.
      */
     commit: (message: string) => Promise<boolean>;
     /** Show a past revision in the real editors, freezing project data. Slow; sets `busy`. */
@@ -171,7 +243,7 @@ export interface VersionSurface {
      * is recorded first - lives here rather than in whichever button happens to call it.
      *
      * Answers whether it ran, so a caller can tell "they said no" from "it failed"; failures also
-     * arrive through {@link error}. A restore whose files landed but whose new version could not be
+     * arrive through {@link failure}. A restore whose files landed but whose new version could not be
      * recorded answers TRUE and says so in a sticky notice: the files did change, and a caller that
      * read it as a failure would invite the author to do the one thing they must not do twice.
      */
@@ -180,6 +252,30 @@ export interface VersionSurface {
     returnToCurrent: () => void;
     /** Put this project under version control. The author's explicit act, never ours. */
     enableVersionControl: () => void;
+
+    // -- identity -------------------------------------------------------------
+
+    /**
+     * The name every version this window records is signed with, or null when nobody has said.
+     *
+     * Null is what shipped for everyone: the setting exists (`versionControl.authorName`, Settings →
+     * Version control) and nothing in the interface ever asked, so every revision in every project
+     * is signed `NarraLeaf Studio` - which is honest about what is known, and useless the moment a
+     * second person is on the repository.
+     *
+     * Studio deliberately does not fill it in from the OS account: that name is written into
+     * revisions that outlive the machine and travel to collaborators, and publishing it is not a
+     * decision to make on the author's behalf (`UNCONFIGURED_IDENTITY`). Asking is.
+     */
+    authorName: string | null;
+    /**
+     * Record who is writing. Writes the global setting the main process reads on every commit, so it
+     * applies to every project rather than to this one - which is what an author name is.
+     *
+     * Answers whether it was stored. An empty name clears it and goes back to the tool's name, which
+     * is a choice rather than an error.
+     */
+    setAuthorName: (name: string) => Promise<boolean>;
 
     // -- server ---------------------------------------------------------------
 
@@ -292,13 +388,15 @@ export function useVersionSurface(): VersionSurface {
     const [showCheckpoints, setShowCheckpoints] = useState(false);
     const [status, setStatus] = useState<VcsStatus | null>(null);
     const [busy, setBusy] = useState<VersionBusyKind | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [failure, setFailure] = useState<VersionFailure | null>(null);
     const [remote, setRemoteUrl] = useState<string | null>(null);
     const [remoteNeedsSignIn, setRemoteNeedsSignIn] = useState(false);
     const [syncState, setSyncState] = useState<VcsSyncState | null>(null);
     const [serverSession, setServerSession] = useState<VcsServerSession | null>(null);
     const [signIn, setSignIn] = useState<VcsSignInOutcome | null>(null);
     const [merge, setMerge] = useState<VcsMergeState | null>(null);
+    const [authorName, setAuthorNameState] = useState<string | null>(null);
+    const [compareBase, setCompareBase] = useState<VersionCompareBase | null>(null);
     // Guards every setState behind an await: a project switch unmounts this while reads are still in
     // flight, and the slowest of them (a revision load over the network) can land long afterwards.
     const alive = useRef(true);
@@ -317,8 +415,46 @@ export function useVersionSurface(): VersionSurface {
             versionControl: context.services.get<VersionControlService>(Services.VersionControl),
             freeze: context.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze),
             ui: context.services.get<UIService>(Services.UI),
+            // The author name is a Studio-wide setting rather than a project one, and it is read by
+            // the main process on every commit - so this reads the same store the Settings window
+            // writes, not a copy.
+            settings: context.services.get<GlobalSettingsService>(Services.GlobalSettings),
         };
     }, [context]);
+
+    /**
+     * Who versions are signed as, read once.
+     *
+     * `getSync` would be enough today - the service seeds its cache during workspace startup, which
+     * is long before this hook exists - but it is the kind of ordering that holds until someone
+     * moves a service, and being wrong here means silently offering to set a name the author already
+     * set.
+     */
+    useEffect(() => {
+        if (!services) {
+            return;
+        }
+        void services.settings.get<string>(VCS_AUTHOR_NAME_SETTING, "").then(value => {
+            if (alive.current) setAuthorNameState(value?.trim() || null);
+        });
+    }, [services]);
+
+    const setAuthorName = useCallback(async (name: string) => {
+        if (!services) {
+            return false;
+        }
+        const trimmed = name.trim();
+        try {
+            await services.settings.set(VCS_AUTHOR_NAME_SETTING, trimmed);
+        } catch (thrown) {
+            if (alive.current) setFailure(describeFailure(thrown));
+            return false;
+        }
+        // Empty is a decision too: it goes back to recording the tool's name, and the offer to set
+        // one comes back with it rather than the field pretending to hold an empty author.
+        if (alive.current) setAuthorNameState(trimmed || null);
+        return true;
+    }, [services]);
 
     /**
      * The identity reads, in the order the answers gate each other: availability first (it is the
@@ -422,22 +558,20 @@ export function useVersionSurface(): VersionSurface {
         return services.versionControl.onStatusChanged(setStatus);
     }, [services]);
 
-    // A revision recorded ANYWHERE moves the head, and there is more than one of this hook alive:
-    // the rail and the switcher menu share one, the status-bar cell makes its own. Without this,
-    // committing from the rail leaves the cell naming the version before it - measured on a real
-    // app, rail `#3` beside cell `#2` - and an automatic checkpoint leaves every surface stale with
-    // nobody having pressed anything to notice.
-    //
-    // Not a poll: it fires once per revision, which is a discrete act, and the re-read below does
-    // not scan.
+    /**
+     * What the history read has already asked for, as refs.
+     *
+     * Read by {@link refreshHistoryIfRead}, which is subscribed to an event: a callback that closed
+     * over the state instead would have to be re-subscribed on every change to the list it is about
+     * to refresh, and a callback that is re-subscribed mid-flight is how an event ends up delivered
+     * to nobody.
+     */
+    const historyRead = useRef(false);
+    const pageLimit = useRef(VERSION_HISTORY_PAGE);
     useEffect(() => {
-        if (!services) {
-            return;
-        }
-        return services.versionControl.onRevisionRecorded(() => {
-            void readIdentity();
-        });
-    }, [services, readIdentity]);
+        historyRead.current = rawHistory !== null;
+        pageLimit.current = page.limit;
+    }, [rawHistory, page.limit]);
 
     // Abandoning a merge records NO revision, so the event above never fires for it - and the way
     // into resolving would sit in the rail pointing at a merge that is over. Completing one fires
@@ -476,16 +610,59 @@ export function useVersionSurface(): VersionSurface {
             setPage({ limit, received: entries.length });
         } catch (thrown) {
             if (!alive.current) return;
-            setError(messageOf(thrown));
+            setFailure(describeFailure(thrown));
         }
     }, [services]);
+
+    /**
+     * Put a list that is already on screen back in step with a revision recorded elsewhere.
+     *
+     * The identity re-read beside this one is not enough on its own: it moves the head, so the block
+     * at the top of the panel starts naming a version the list below it does not contain. Measured
+     * right after finishing a merge - `#4` above a list whose newest row was `#3`, with the merge
+     * the author had just spent ten minutes on nowhere in it. Every revision recorded outside this
+     * panel arrives here: a checkpoint, a restore, a merge, another window's commit.
+     *
+     * **Only when a list has been read**, which is the same rule as everything else on this surface:
+     * reading history is an act the author performs by opening the panel. Without the guard, every
+     * automatic checkpoint would cost a read on a project whose version panel nobody has opened.
+     *
+     * Silent: no `busy`, because nobody pressed anything, and a spinner appearing on its own in a
+     * panel the author is reading is worse than a list that updates a moment later.
+     */
+    const refreshHistoryIfRead = useCallback(() => {
+        if (!services || !historyRead.current) {
+            return;
+        }
+        // No cache to drop first: `VersionControlService.afterRevision` clears the history cache
+        // before it emits the event this runs on, which is why re-reading here answers with the new
+        // revision rather than the page taken before it existed.
+        void readHistory(pageLimit.current);
+    }, [services, readHistory]);
+
+    // A revision recorded ANYWHERE moves the head, and there is more than one of this hook alive:
+    // the rail and the switcher menu share one, the status-bar cell makes its own. Without this,
+    // committing from the rail leaves the cell naming the version before it - measured on a real
+    // app, rail `#3` beside cell `#2` - and an automatic checkpoint leaves every surface stale with
+    // nobody having pressed anything to notice.
+    //
+    // Not a poll: it fires once per revision, which is a discrete act, and neither re-read scans.
+    useEffect(() => {
+        if (!services) {
+            return;
+        }
+        return services.versionControl.onRevisionRecorded(() => {
+            void readIdentity();
+            refreshHistoryIfRead();
+        });
+    }, [services, readIdentity, refreshHistoryIfRead]);
 
     const loadHistory = useCallback(() => {
         if (!services) {
             return;
         }
         setBusy("history");
-        setError(null);
+        setFailure(null);
         // At whatever depth the author has already paged to, so reopening the panel shows them the
         // history they had rather than snapping back to the first fifty. The service caches by
         // limit, so this second read of the same depth costs nothing.
@@ -502,7 +679,7 @@ export function useVersionSurface(): VersionSurface {
             return;
         }
         setBusy("history");
-        setError(null);
+        setFailure(null);
         void readHistory(nextHistoryLimit(page.limit, VERSION_HISTORY_PAGE)).finally(() => {
             if (alive.current) setBusy(null);
         });
@@ -513,7 +690,7 @@ export function useVersionSurface(): VersionSurface {
             return;
         }
         void services.versionControl.refreshStatus().catch(thrown => {
-            if (alive.current) setError(messageOf(thrown));
+            if (alive.current) setFailure(describeFailure(thrown));
         });
     }, [services]);
 
@@ -522,12 +699,12 @@ export function useVersionSurface(): VersionSurface {
             return false;
         }
         setBusy("commit");
-        setError(null);
+        setFailure(null);
         try {
             try {
                 await services.versionControl.commit({ message });
             } catch (thrown) {
-                if (alive.current) setError(messageOf(thrown));
+                if (alive.current) setFailure(describeFailure(thrown));
                 return false;
             }
             if (!alive.current) return true;
@@ -549,7 +726,7 @@ export function useVersionSurface(): VersionSurface {
                 // confirmation the author is owed - that the commit really did take everything.
                 refreshChanges();
             } catch (thrown) {
-                if (alive.current) setError(messageOf(thrown));
+                if (alive.current) setFailure(describeFailure(thrown));
             }
             return true;
         } finally {
@@ -562,13 +739,13 @@ export function useVersionSurface(): VersionSurface {
             return;
         }
         setBusy("revision");
-        setError(null);
+        setFailure(null);
         void (async () => {
             try {
                 await services.versionControl.showRevision(revision, label);
             } catch (thrown) {
                 if (!alive.current) return;
-                setError(messageOf(thrown));
+                setFailure(describeFailure(thrown));
             } finally {
                 if (alive.current) setBusy(null);
             }
@@ -609,7 +786,7 @@ export function useVersionSurface(): VersionSurface {
         }
 
         setBusy("restore");
-        setError(null);
+        setFailure(null);
         try {
             const restored = await services.versionControl.restoreRevision(revision, { label });
             if (!alive.current) return true;
@@ -619,7 +796,7 @@ export function useVersionSurface(): VersionSurface {
                 // happened" - is the opposite of the truth, and they would go on working on a project
                 // that quietly went back a week.
                 //
-                // A sticky notice rather than {@link error}: the restore leaves the revision view on
+                // A sticky notice rather than {@link failure}: the restore leaves the revision view on
                 // its way out, and the rail's own effect re-reads the history on that state change -
                 // which clears `error` before anyone could read it. This is not a message to lose a
                 // race with.
@@ -643,11 +820,11 @@ export function useVersionSurface(): VersionSurface {
                 if (!alive.current) return true;
                 await readHistory(page.limit);
             } catch (thrown) {
-                if (alive.current) setError(messageOf(thrown));
+                if (alive.current) setFailure(describeFailure(thrown));
             }
             return true;
         } catch (thrown) {
-            if (alive.current) setError(messageOf(thrown));
+            if (alive.current) setFailure(describeFailure(thrown));
             return false;
         } finally {
             if (alive.current) setBusy(null);
@@ -658,7 +835,7 @@ export function useVersionSurface(): VersionSurface {
         if (!services) {
             return;
         }
-        setError(null);
+        setFailure(null);
         // `showWorkingTree` is synchronous by design (it is called straight from click handlers and a
         // click has nothing to await), but the re-read it starts is not - so the spinner is cleared on
         // the freeze change rather than by awaiting anything.
@@ -678,7 +855,7 @@ export function useVersionSurface(): VersionSurface {
             return;
         }
         setBusy("init");
-        setError(null);
+        setFailure(null);
         void (async () => {
             try {
                 await services.versionControl.initRepository();
@@ -689,7 +866,7 @@ export function useVersionSurface(): VersionSurface {
                 await readIdentity();
             } catch (thrown) {
                 if (!alive.current) return;
-                setError(messageOf(thrown));
+                setFailure(describeFailure(thrown));
             } finally {
                 if (alive.current) setBusy(null);
             }
@@ -711,7 +888,7 @@ export function useVersionSurface(): VersionSurface {
             return;
         }
         setBusy("remote");
-        setError(null);
+        setFailure(null);
         void services.versionControl.getSyncState()
             .then(next => {
                 if (alive.current) setSyncState(next);
@@ -719,7 +896,7 @@ export function useVersionSurface(): VersionSurface {
             .catch(thrown => {
                 if (!alive.current) return;
                 setSyncState(null);
-                setError(messageOf(thrown));
+                setFailure(describeFailure(thrown));
             })
             .finally(() => {
                 if (alive.current) setBusy(null);
@@ -731,7 +908,7 @@ export function useVersionSurface(): VersionSurface {
             return false;
         }
         setBusy("remote");
-        setError(null);
+        setFailure(null);
         try {
             const written = await services.versionControl.setRemote(url);
             if (!alive.current) return true;
@@ -743,10 +920,15 @@ export function useVersionSurface(): VersionSurface {
             return true;
         } catch (thrown) {
             if (alive.current) {
-                const message = messageOf(thrown);
-                const needsSignIn = vcsSignInRequired(message);
+                // Two readings of the same refusal, and they must not be the same string.
+                // `vcsSignInRequired` matches what the SERVER said, in English, so it is fed
+                // the raw message; what the author reads goes through `describeFailure`,
+                // which turns a recognised code into a translated sentence. Handing the
+                // translated one to the matcher would make the way in disappear in every
+                // locale but English.
+                const needsSignIn = vcsSignInRequired(rawMessage(thrown));
                 setRemoteNeedsSignIn(needsSignIn);
-                setError(message);
+                setFailure(describeFailure(thrown));
                 // The address survives this one refusal - see the manager - and the row
                 // that offers a sign-in is the one drawn beside a configured server, so
                 // the surface has to know it was kept or the way in is still not there.
@@ -772,7 +954,7 @@ export function useVersionSurface(): VersionSurface {
             return false;
         }
         setBusy("remote");
-        setError(null);
+        setFailure(null);
         try {
             const outcome = await services.versionControl.signIn(authUrl, token);
             if (!alive.current) return outcome.ok;
@@ -788,7 +970,7 @@ export function useVersionSurface(): VersionSurface {
             setSyncState(await services.versionControl.getSyncState());
             return true;
         } catch (thrown) {
-            if (alive.current) setError(messageOf(thrown));
+            if (alive.current) setFailure(describeFailure(thrown));
             return false;
         } finally {
             if (alive.current) setBusy(null);
@@ -807,17 +989,21 @@ export function useVersionSurface(): VersionSurface {
             return false;
         }
         setBusy("remote");
-        setError(null);
+        setFailure(null);
         try {
             const outcome = await services.versionControl.trustAuthority(certificatePath);
             if (!alive.current) return outcome.installed;
             // What the operating system printed when it refused. It says something
             // specific - a policy that forbids adding roots, a keychain left locked -
             // and the author has nowhere else to learn which of those it was.
-            if (!outcome.installed) setError(outcome.output || null);
+            // Already a sentence rather than a thrown error, so it goes in as one: there is
+            // no code to recognise, and `describeFailure` only takes what was thrown.
+            if (!outcome.installed) {
+                setFailure(outcome.output ? { text: outcome.output, tone: "failure" } : null);
+            }
             return outcome.installed;
         } catch (thrown) {
-            if (alive.current) setError(messageOf(thrown));
+            if (alive.current) setFailure(describeFailure(thrown));
             return false;
         } finally {
             if (alive.current) setBusy(null);
@@ -829,7 +1015,7 @@ export function useVersionSurface(): VersionSurface {
             return;
         }
         setBusy("remote");
-        setError(null);
+        setFailure(null);
         try {
             await services.versionControl.signOut();
             if (!alive.current) return;
@@ -839,7 +1025,7 @@ export function useVersionSurface(): VersionSurface {
             // signed in, so it describes a connection that no longer exists.
             setSyncState(null);
         } catch (thrown) {
-            if (alive.current) setError(messageOf(thrown));
+            if (alive.current) setFailure(describeFailure(thrown));
         } finally {
             if (alive.current) setBusy(null);
         }
@@ -850,7 +1036,7 @@ export function useVersionSurface(): VersionSurface {
             return false;
         }
         setBusy("push");
-        setError(null);
+        setFailure(null);
         try {
             await services.versionControl.push();
             if (!alive.current) return true;
@@ -859,7 +1045,7 @@ export function useVersionSurface(): VersionSurface {
             setSyncState(await services.versionControl.getSyncState());
             return true;
         } catch (thrown) {
-            if (alive.current) setError(messageOf(thrown));
+            if (alive.current) setFailure(describeFailure(thrown));
             return false;
         } finally {
             if (alive.current) setBusy(null);
@@ -881,7 +1067,7 @@ export function useVersionSurface(): VersionSurface {
             return false;
         }
         setBusy("sync");
-        setError(null);
+        setFailure(null);
         try {
             const result = await services.versionControl.sync();
             if (!alive.current) return true;
@@ -909,7 +1095,7 @@ export function useVersionSurface(): VersionSurface {
             setSyncState(await services.versionControl.getSyncState());
             return true;
         } catch (thrown) {
-            if (alive.current) setError(messageOf(thrown));
+            if (alive.current) setFailure(describeFailure(thrown));
             return false;
         } finally {
             if (alive.current) setBusy(null);
@@ -957,7 +1143,7 @@ export function useVersionSurface(): VersionSurface {
         branch,
         frozen,
         busy,
-        error,
+        failure,
         history,
         focused,
         hiddenCheckpoints,
@@ -968,11 +1154,15 @@ export function useVersionSurface(): VersionSurface {
         loadHistory,
         loadMoreHistory,
         refreshChanges,
+        compareBase,
+        setCompareBase,
         commit,
         showRevision,
         restoreRevision,
         returnToCurrent,
         enableVersionControl,
+        authorName,
+        setAuthorName,
         remote,
         syncState,
         merge,
@@ -1000,6 +1190,49 @@ export function describeShownVersion(state: VersionSurfaceState): string | null 
     return null;
 }
 
-function messageOf(thrown: unknown): string {
+/**
+ * What was thrown, as the thrower worded it.
+ *
+ * Deliberately NOT what the author reads - {@link describeFailure} is that, and it translates the
+ * situations this interface has words for. This one exists for the checks that match on the
+ * server's own English (`vcsSignInRequired`), which would stop recognising anything the moment it
+ * was handed a translated sentence.
+ */
+function rawMessage(thrown: unknown): string {
     return thrown instanceof Error ? thrown.message : String(thrown);
+}
+
+/**
+ * What the panel says about a call that did not do what was asked.
+ *
+ * **Translated only where the main process named the situation.** `VcsCallError` carries the `code`
+ * the thrower gave itself (`VcsErrorCode`), and those four are the ones this interface has its own
+ * words for. Everything else keeps the sentence it threw: a backend refusal usually names its own
+ * remedy, and replacing that with a generic "version control failed" would take away the only thing
+ * in the message worth reading.
+ *
+ * Recognising a code rather than matching the English is the whole point - the sentences get
+ * reworded, and the one that matters here ("Nothing has changed since the last version") arrives on
+ * a perfectly ordinary press of the Submit button.
+ */
+function describeFailure(thrown: unknown): VersionFailure {
+    const code = thrown instanceof VcsCallError ? thrown.code : undefined;
+    switch (code) {
+        case VcsErrorCode.NothingToCommit:
+            // Not a failure. The author asked for a version of work they have not changed, and this
+            // is the answer to that question.
+            return { text: translate("workspace.shell.versionControl.nothingToCommit"), tone: "note" };
+        case VcsErrorCode.Unavailable:
+            return { text: translate("workspace.shell.versionControl.unavailable.installation"), tone: "failure" };
+        case VcsErrorCode.ShuttingDown:
+            return { text: translate("workspace.shell.versionControl.closingWithApp"), tone: "failure" };
+        // `ProjectPath` deliberately falls through to the raw sentence: it can only be reached
+        // through a defect, and that sentence is three lines of diagnosis aimed at whoever has to
+        // fix it. Paraphrasing it would throw away the only copy.
+        default:
+            return {
+                text: thrown instanceof Error ? thrown.message : String(thrown),
+                tone: "failure",
+            };
+    }
 }

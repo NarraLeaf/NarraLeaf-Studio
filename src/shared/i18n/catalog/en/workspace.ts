@@ -666,17 +666,32 @@ export const workspace = {
             // message is a valid revision, and one with no message names itself in the list above.
             commitPlaceholder: "What changed? (optional)",
             commitMessage: "Version message",
+            // Asked in the panel, once, while the setting is empty. Says what the name is FOR
+            // rather than naming the field: "Author name" is what Settings calls it, and there it
+            // sits under a heading that supplies the context this line has to carry on its own.
+            authorLabel: "Who to record these versions as",
+            authorPlaceholder: "Your name",
+            authorSave: "Save this name",
             // Never instant: the pipeline settles this window's unsaved work, stages the whole
             // project, and waits for the backend to put its stores on disk.
             committing: "Submitting this version…",
+            // What pressing Submit says on a tree nobody has changed. The backend refuses - it will
+            // not record an empty revision - but this is an answer rather than a failure, and the
+            // panel draws it as a note. Its own line rather than reusing "No changes" above: that
+            // one describes the tree, this one answers a press.
+            nothingToCommit: "Nothing has changed since the last version.",
+            // Refused because the app is closing. Rare, and worth its own sentence: the alternative
+            // wording an author would otherwise see names koffi and a worker thread.
+            closingWithApp: "Studio is closing. Try again after it restarts.",
             // "Nobody has looked yet", which is not the same as "clean" - and the difference matters,
             // because looking is a scan and this surface never does it on its own.
             changesUnknown: "Not checked",
             noChanges: "No changes",
             changesCount: "{count} changed",
-            // The per-file list. Every row is display-only: reading what changed INSIDE a file is a
-            // later milestone, and a row that opened onto nothing would be exactly the promise this
-            // panel has been careful not to make.
+            // The per-file list. Every row is display-only, and stays that way now that reading what
+            // changed INSIDE a file has landed: that lives in the comparison tab, which opens on a
+            // comparison rather than on a file, so a row that looked pressable would land the author
+            // on some other file's detail.
             //
             // What the marker on each row means. The backend has no "modified" action of its own -
             // an edited file is reported as KEEP (docs §4.18) and translated on the way out - so
@@ -697,9 +712,64 @@ export const workspace = {
             // be read as "that is everything", and the author would submit a version believing they
             // had seen all of what they were submitting.
             changesMore: "{count} more not shown",
+            // The palette's entries. Title Case like every other command, and named after the act
+            // rather than after the surface: an author searching here knows what they want to do,
+            // not which column of the window it happens in.
+            command: {
+                openRail: "Open Version Control",
+                commit: "Submit a Version",
+                refreshChanges: "Check for Changes",
+                compareChanges: "Compare Changes with the Last Version",
+            },
+            // Narrowing the list. Says what can be typed rather than "Filter", because the useful
+            // thing about it is that a version NUMBER works - that is the one handle an author is
+            // sure of, and the rail prints it on every row.
+            filterPlaceholder: "Find a version by name or number",
+            // Nothing matched. Says how many were searched, because the history is paged and the
+            // answer is only ever about what has been read - "Show older versions" below reaches
+            // further, and this line is what tells the author that is still worth pressing.
+            filterNoMatch: "No match in the {count} versions read so far.",
+            today: "Today",
+            yesterday: "Yesterday",
+            // Comparing against a version the author picked, rather than against the row below.
+            // "Base" rather than "reference" or "anchor": it is the older side of the comparison,
+            // which is the one thing about it worth knowing, and every comparison in the tab is
+            // already drawn as base → later.
+            compareBase: {
+                set: "Compare other versions with this one",
+                clear: "Stop comparing with this version",
+                current: "Comparing with {version}",
+                compare: "Compare with {version}",
+            },
             // Checkpoints are the ones Studio recorded on a timer; there are dozens on a writing day.
             showCheckpoints: "Show {count} checkpoints",
             hideCheckpoints: "Hide checkpoints",
+            // What a version Studio recorded on its own says, when it is read back rather than
+            // written. The bytes in the repository stay English - they travel to collaborators and
+            // outlive whichever language was selected the day they were written - so these are the
+            // READING of a closed set of sentences Studio wrote itself
+            // (`@shared/vcs/systemRevisionMessage`). Anything else in a message is the author's own
+            // words and is drawn verbatim.
+            //
+            // Two of them do not simply echo the stored bytes, and both are deliberate. `Commit` is
+            // a word this interface does not use anywhere else - every other line speaks of
+            // versions - so the row says what actually happened: a version was submitted without a
+            // name. And `Enable version control` is the imperative on the button that caused it,
+            // which reads as an offer in a list of things that already happened.
+            systemMessage: {
+                unnamed: "Unnamed version",
+                enabled: "Version control enabled",
+                // The first version of a project the wizard made, as opposed to one an author
+                // turned version control on for later.
+                created: "Project created",
+                merge: "Merge",
+                checkpoint: "Checkpoint",
+                checkpointClose: "Checkpoint before closing the project",
+                checkpointBuild: "Checkpoint before build",
+                checkpointRestore: "Checkpoint before restore",
+                // `{version}` is a revision number or a hash. Not language, so it is not translated.
+                restored: "Restored version {version}",
+            },
             // Version control is OPTIONAL - Epic ships no native backend for macOS Intel or Windows
             // ARM64 - so these two say different things because the author can only act on one of
             // them. Neither is rendered as a disabled control: on those machines the feature was never
@@ -1008,8 +1078,8 @@ export const workspace = {
             occurrences: "×{count}",
         },
         // The PyCharm-style project switcher in the title bar: current project name plus a
-        // dropdown of recent workspaces. A project picked here opens in a window of its own and
-        // this window stays, which is why the label says "open" rather than "switch".
+        // dropdown of recent workspaces. The label says "open" rather than "switch" because a
+        // project picked here can do either; `openTarget` is where that is decided.
         projectSwitcher: {
             openAnother: "Open another project",
             recentProjects: "Recent Projects",
@@ -1018,6 +1088,15 @@ export const workspace = {
             newProject: "New Project…",
             noRecent: "No recent workspaces",
             untitled: "Untitled Project",
+            // Asked once a project has been picked, before anything opens. The dialog names the
+            // picked project; this line names what happens to the one on screen, which is the
+            // part the buttons cannot say. {current} is the project this window is showing.
+            openTarget: {
+                title: "Open project",
+                detail: "Opening in this window closes {current}. Unsaved changes are saved automatically.",
+                thisWindow: "Open in this window",
+                newWindow: "Open in a new window",
+            },
         },
         // In-app confirmation shown before a workspace closes, when `workspace.confirmBeforeClose`
         // is on. The main process drives it over IPC; the dialog supplies its own title/buttons.

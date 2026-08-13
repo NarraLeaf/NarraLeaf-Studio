@@ -309,6 +309,69 @@ describe("VersionControlService status", () => {
     });
 });
 
+/**
+ * A scan is only true until the next save.
+ *
+ * This is the half that makes disabling the Submit button on a clean tree safe. The panel treats a
+ * null snapshot as "nobody has looked" and a non-null one as an answer, so a snapshot that survived
+ * the author's next edit would leave the change list saying "No changes" over a project that had
+ * been edited since - and, since `canCommit` reads the same snapshot, would leave the one button the
+ * panel exists for inert while they worked. Nearly shipped exactly that.
+ *
+ * Dropping is not scanning: the snapshot goes back to null and stays there until somebody asks.
+ */
+describe("VersionControlService status staleness", () => {
+    it("forgets the last scan when a versioned file is written", async () => {
+        const service = await createService();
+        service.activate(createContext());
+        vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
+        await service.refreshStatus();
+        expect(service.getStatus()).not.toBeNull();
+
+        reportWrite(`${PROJECT}/editor/story/index.json`);
+
+        expect(service.getStatus()).toBeNull();
+        // And it did NOT re-read to find that out - the implicit scan docs section 4.17 forbids.
+        expect(vcs.getStatus).toHaveBeenCalledTimes(1);
+    });
+
+    it("tells subscribers, so a panel holding the snapshot lets go of it too", async () => {
+        const service = await createService();
+        service.activate(createContext());
+        vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
+        await service.refreshStatus();
+
+        const seen: (VcsStatus | null)[] = [];
+        const unsubscribe = service.onStatusChanged((next) => seen.push(next));
+        reportWrite(`${PROJECT}/editor/story/index.json`);
+        expect(seen).toEqual([null]);
+        unsubscribe();
+    });
+
+    it("ignores a write that is not versioned project data", async () => {
+        const service = await createService();
+        service.activate(createContext());
+        vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
+        await service.refreshStatus();
+
+        // The panel layout and the thumbnail cache live inside the project directory and are not in
+        // the repository, so writing them changes nothing a scan would have reported.
+        reportWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
+        reportWrite(`${PROJECT}/editor/cache/thumbnail/ab/cd/asset-1.png`);
+        expect(service.getStatus()).not.toBeNull();
+    });
+
+    it("ignores a write that failed, because nothing reached the disk", async () => {
+        const service = await createService();
+        service.activate(createContext());
+        vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
+        await service.refreshStatus();
+
+        reportWrite(`${PROJECT}/editor/story/index.json`, false);
+        expect(service.getStatus()).not.toBeNull();
+    });
+});
+
 describe("VersionControlService history and blobs", () => {
     it("caches history per limit and drops a failed read", async () => {
         const service = await createService();

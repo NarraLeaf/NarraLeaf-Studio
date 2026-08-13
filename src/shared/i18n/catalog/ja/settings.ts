@@ -72,6 +72,11 @@ export const settings = {
             label: "開発者オプション",
             description: "右クリックのメニューに、クリックした項目の ID をコピーする節が加わる",
         },
+        confirmQuit: {
+            label: "⌘Q で終了するときに確認する",
+            description: "⌘Q を続けて 2 回押すと終了する。1 回だけでは終了しない",
+            unsupportedPlatform: "この項目はこのオペレーティングシステムでは使用できない",
+        },
         themeMode: {
             label: "テーマ",
             description: "Studio の画面の配色",

@@ -322,6 +322,9 @@ export function RunControl() {
                 id: WorkspaceRunCommand.RunDevMode,
                 titleKey: "actions.run.runDevMode",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                // The run modes already own a glyph each (RUN_MODE_META) - reused here rather than
+                // chosen again, so the palette row and the button that does the same thing match.
+                icon: RUN_MODE_META.devMode.icon,
                 when: idle,
                 run: () => launch("devMode"),
             },
@@ -329,6 +332,7 @@ export function RunControl() {
                 id: WorkspaceRunCommand.RunPreview,
                 titleKey: "actions.run.runPreview",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                icon: RUN_MODE_META.preview.icon,
                 // Preview is what a frozen workspace is specifically not claiming to be; see above.
                 when: () => idle() && !runStateRef.current.frozen,
                 run: () => launch("preview"),
@@ -337,6 +341,9 @@ export function RunControl() {
                 id: WorkspaceRunCommand.StopDevMode,
                 titleKey: "workspace.shell.stopDevMode",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                // Stopping is one act with one glyph, whatever is running - the same square the
+                // button turns into.
+                icon: <Square className="w-4 h-4" />,
                 when: () => runStateRef.current.devActive,
                 run: () => runStateRef.current.runOrStop(),
             },
@@ -344,6 +351,7 @@ export function RunControl() {
                 id: WorkspaceRunCommand.StopPreview,
                 titleKey: "workspace.shell.stopPreview",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                icon: <Square className="w-4 h-4" />,
                 when: () => runStateRef.current.previewActive,
                 run: () => runStateRef.current.runOrStop(),
             },
@@ -356,6 +364,7 @@ export function RunControl() {
                 id: TEST_RUN_COMMAND_ID,
                 titleKey: "test.action.run",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                icon: <FlaskConical className="w-4 h-4" />,
                 when: () => !runStateRef.current.testActive,
                 run: () => runStateRef.current.openTest(),
             },
@@ -363,6 +372,7 @@ export function RunControl() {
                 id: WorkspaceRunCommand.StopTest,
                 titleKey: "test.action.stop",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                icon: <Square className="w-4 h-4" />,
                 when: () => runStateRef.current.testActive,
                 run: () => runStateRef.current.runOrStop(),
             },
