@@ -46,7 +46,11 @@ const ROW_CONTROLS = function () {
     return rows.flatMap(row => [...row.querySelectorAll('button, [role="button"]')]
         .map(el => {
             const aria = el.getAttribute('aria-label');
-            const title = el.getAttribute('title');
+            // Studio draws its own tooltips now and native `title` is gone from the product, so a
+            // probe that reads only `title` finds nothing to compare a name against and every
+            // mismatch check below passes vacuously. `title` stays as the fallback for anything
+            // that has not moved.
+            const title = el.getAttribute('data-tip') || el.getAttribute('title');
             const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
             return { aria, title, text, announced: aria || text || title || '' };
         })
