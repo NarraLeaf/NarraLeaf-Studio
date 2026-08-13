@@ -119,7 +119,10 @@ import {
     BlueprintPersistenceSetValueHandler,
 } from "./handlers/blueprintPersistenceAction";
 import { BlueprintNetworkFetchHandler } from "./handlers/blueprintNetworkAction";
-import { BlueprintExternalLinkOpenHandler } from "./handlers/blueprintExternalLinkAction";
+import {
+    BlueprintExternalLinkOpenForPluginHandler,
+    BlueprintExternalLinkOpenHandler,
+} from "./handlers/blueprintExternalLinkAction";
 import {
     PrivilegedBashExecuteHandler,
     PrivilegedFsCallHandler,
@@ -260,6 +263,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // Blueprint external link handler (the Open Link node)
         new BlueprintExternalLinkOpenHandler(),
+        new BlueprintExternalLinkOpenForPluginHandler(),
 
         // Plugin permission handlers
         new PluginPermissionPromptLaunchHandler(),

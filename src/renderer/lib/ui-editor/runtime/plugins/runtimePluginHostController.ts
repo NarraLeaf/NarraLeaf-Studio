@@ -36,6 +36,7 @@ import type {
 import type {
     RuntimePluginHost,
     RuntimePluginHostUnsubscribe,
+    RuntimePluginNavigationBackend,
     RuntimePluginSidecarBackend,
 } from "./runtimePluginHost";
 import {
@@ -100,6 +101,16 @@ export type RuntimePluginShellBackends = {
      * Absent on the web export, which is what removes `app.game.sidecar` there.
      */
     sidecar?: RuntimePluginSidecarBackend;
+    /**
+     * Handing an address to whatever opens addresses on this shell. Passed through unchanged for
+     * the reason `sidecar` is: it needs nothing from the running playthrough, and the decision it
+     * carries out is made at the far end - against the declaration the pack ships, not against
+     * anything assembled here.
+     *
+     * Every shell has one. There is no environment that cannot open a page, so an absence here
+     * would be a shell refusing something it can do rather than a shell that lacks the machinery.
+     */
+    navigation?: RuntimePluginNavigationBackend;
     log?: (level: RuntimePluginLogLevel, message: string) => void;
 };
 
@@ -582,6 +593,9 @@ export class RuntimePluginHostController {
         }
         if (this.shell.sidecar) {
             host.sidecar = this.shell.sidecar;
+        }
+        if (this.shell.navigation) {
+            host.navigation = this.shell.navigation;
         }
         return host;
     }

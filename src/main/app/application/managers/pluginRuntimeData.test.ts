@@ -24,6 +24,7 @@ function manifest(runtimeData: string[]): NormalizedPluginManifestV2 {
             sidecars: [],
             buildDependencies: [],
             buildConfig: [],
+            externalLinks: [],
         },
         permissions: [],
     };

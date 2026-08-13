@@ -15,6 +15,7 @@ import {
 import {
     readGameRuntimeAssetVersionArg,
     readGameRuntimeCrashPolicyArg,
+    readGameRuntimeLogPathArg,
 } from "@shared/utils/gameRuntimeAssetUrl";
 import {
     GAME_RUNTIME_TEST_SIGNAL_CHANNEL,
@@ -200,6 +201,7 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
     },
     capabilities: { closeRequested: true },
     crashPolicy,
+    logPath: readGameRuntimeLogPathArg(process.argv),
     save: {
         write: (id, savedGame, capture, metadata) =>
             ipcRenderer.invoke("runtime:save:write", { id, savedGame, capture, metadata }) as Promise<void>,
@@ -221,6 +223,8 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
     // that opens the page is the one that checks the pack's declared addresses.
     externalLink: {
         open: request => ipcRenderer.invoke("runtime:external:open", request),
+        openForPlugin: (pluginId, request) =>
+            ipcRenderer.invoke("runtime:external:openForPlugin", pluginId, request),
     },
     sidecar,
 };

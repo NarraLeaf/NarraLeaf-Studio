@@ -791,3 +791,110 @@ describe("validatePluginManifest contributes.buildConfig", () => {
         });
     });
 });
+
+/**
+ * `contributes.externalLinks` — the declaration, the permission it derives, and the four things a
+ * manifest cannot say. The matching itself is tested next to the matcher; what is checked here is
+ * that nothing unmatchable, unreadable or unsayable gets as far as the author's install prompt.
+ */
+describe("validatePluginManifest contributes.externalLinks", () => {
+    const linksManifest = (externalLinks: unknown, entries: unknown = { runtime: "runtime.js" }) => ({
+        manifestVersion: 2,
+        id: "acme.steam",
+        name: "Steam",
+        version: "1.0.0",
+        entries,
+        contributes: { externalLinks },
+    });
+
+    it("keeps the author's own spelling, in order, and derives one permission carrying all of it", () => {
+        const result = validatePluginManifest(linksManifest([
+            "steam://*",
+            "https://store.steampowered.com/app/*",
+        ]));
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                contributes: {
+                    externalLinks: ["steam://*", "https://store.steampowered.com/app/*"],
+                },
+                // One permission, every pattern, unrewritten: this list is what the prompt shows.
+                permissions: [{
+                    kind: "externalLink",
+                    patterns: ["steam://*", "https://store.steampowered.com/app/*"],
+                }],
+            },
+        });
+    });
+
+    it("derives nothing when nothing is declared", () => {
+        const result = validatePluginManifest(linksManifest([]));
+        expect(result).toMatchObject({ ok: true, manifest: { permissions: [] } });
+
+        const absent = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.steam",
+            name: "Steam",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+        });
+        expect(absent).toMatchObject({ ok: true, manifest: { contributes: { externalLinks: [] } } });
+    });
+
+    it("rejects a blank entry", () => {
+        expect(validatePluginManifest(linksManifest(["https://x.example.com/", "   "])))
+            .toMatchObject({ ok: false });
+        expect(validatePluginManifest(linksManifest([""]))).toMatchObject({ ok: false });
+        expect(validatePluginManifest(linksManifest([42]))).toMatchObject({ ok: false });
+        expect(validatePluginManifest(linksManifest("https://x.example.com/"))).toMatchObject({ ok: false });
+    });
+
+    it("rejects a pattern that does not parse into a scheme", () => {
+        for (const pattern of ["store.example.com/*", "/app/*", "*", "*://example.com/"]) {
+            expect(validatePluginManifest(linksManifest([pattern]))).toMatchObject({ ok: false });
+        }
+    });
+
+    it("rejects a duplicate, on the canonical form rather than the raw string", () => {
+        expect(validatePluginManifest(linksManifest([
+            "https://x.example.com/a",
+            "https://x.example.com/a",
+        ]))).toMatchObject({ ok: false });
+        expect(validatePluginManifest(linksManifest([
+            "https://x.example.com/a",
+            "HTTPS://X.EXAMPLE.COM/a",
+        ]))).toMatchObject({ ok: false });
+    });
+
+    it("rejects a script or file scheme whatever the manifest says", () => {
+        for (const pattern of [
+            "javascript:alert(1)",
+            "javascript://*",
+            "data:text/html,<script>x</script>",
+            "vbscript:msgbox",
+            "file:///C:/Windows/System32/cmd.exe",
+            "file://*",
+        ]) {
+            expect(validatePluginManifest(linksManifest([pattern]))).toMatchObject({ ok: false });
+        }
+    });
+
+    it("rejects the permission being hand-written, the way every derived kind is", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.steam",
+            name: "Steam",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            permissions: [{ kind: "externalLink", patterns: ["https://anything.example.com/*"] }],
+        });
+        expect(result).toMatchObject({ ok: false });
+        expect((result as { error: string }).error).toContain("derived from contributes");
+    });
+
+    it("rejects a declaration with no runtime entry to use it", () => {
+        expect(validatePluginManifest(linksManifest(["steam://*"], { studio: "main.js" })))
+            .toMatchObject({ ok: false });
+    });
+});

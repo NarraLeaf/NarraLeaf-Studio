@@ -600,6 +600,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.blueprintExternalLinkOpen, { projectPath, request }) as Promise<
                 RequestStatus<{ result: BlueprintOpenExternalResult }>
             >,
+        openForPlugin: (pluginId: string, request: BlueprintOpenExternalRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintExternalLinkOpenForPlugin, { pluginId, request }) as Promise<
+                RequestStatus<{ result: BlueprintOpenExternalResult }>
+            >,
     },
 
     pluginPermissions: {
