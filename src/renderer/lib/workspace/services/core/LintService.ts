@@ -387,7 +387,7 @@ export class LintService extends Service<LintService> implements ILintService {
      * act on, never a request quietly waved through.
      */
     private async readPluginNetworkDeclarations(): Promise<NetworkPluginAllowlistEntry[]> {
-        let result: Awaited<ReturnType<typeof getInterface>["plugins"]["list"]>;
+        let result: Awaited<ReturnType<ReturnType<typeof getInterface>["plugins"]["list"]>>;
         try {
             result = await getInterface().plugins.list();
         } catch {
