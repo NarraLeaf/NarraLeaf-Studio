@@ -80,7 +80,7 @@ import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/u
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
-import type { AutoSaveEntry } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordTimes } from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import {
     isButtonCursorValue,
@@ -391,6 +391,8 @@ export type BlueprintHostApiRuntime = {
         deleteSave: (id: string) => Promise<void>;
         listSaveIds: () => Promise<string[]>;
         getSaveMetadata: (id: string) => Promise<unknown>;
+        /** When a slot was written, or null when there is no such slot. */
+        getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
         /** Write an autosave into the reserved ring now, regardless of the timer. */
         writeAutoSave: () => Promise<void>;
@@ -622,6 +624,7 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onDeleteSave?: (id: string) => Promise<void> | void;
     onListSaveIds?: () => Promise<string[]> | string[];
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
+    onGetSaveTimes?: (id: string) => Promise<SaveRecordTimes | null> | SaveRecordTimes | null;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onWriteAutoSave?: () => Promise<void> | void;
     onListAutoSaves?: () => Promise<AutoSaveEntry[]> | AutoSaveEntry[];
@@ -1540,6 +1543,25 @@ function normalizeAutoSaveEntries(value: unknown): AutoSaveEntry[] {
     return out.sort((a, b) => b.timestamp - a.timestamp);
 }
 
+/**
+ * A host's answer for one slot's stamps, or null when it says there is no such slot.
+ *
+ * Anything that is not an object is `null` - "no slot" - while a present record with unreadable
+ * numbers becomes 0s. That distinction is the node's `Exists` pin, so collapsing the two here would
+ * make a missing slot indistinguishable from one saved at the epoch.
+ */
+function normalizeSaveRecordTimes(value: unknown): SaveRecordTimes | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const toMs = (raw: unknown): number => (Number.isFinite(Number(raw)) ? Math.trunc(Number(raw)) : 0);
+    return {
+        savedAt: toMs(record.savedAt),
+        createdAt: toMs(record.createdAt),
+    };
+}
+
 function normalizeBlueprintChoiceCount(value: unknown): number {
     const count = Number(value);
     return Number.isInteger(count) && count > 0 ? count : 0;
@@ -1839,6 +1861,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onDeleteSave,
         onListSaveIds,
         onGetSaveMetadata,
+        onGetSaveTimes,
         onGetSavePreview,
         onWriteAutoSave,
         onListAutoSaves,
@@ -3226,6 +3249,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("getSaveMetadata: game save runtime is not available");
                     }
                     return normalizeJsonValue(await onGetSaveMetadata(saveId));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSaveTimes: async (id: string) => {
+                const cap = "game.getSaveTimes";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("getSaveTimes", id);
+                    if (!onGetSaveTimes) {
+                        throw new Error("getSaveTimes: game save runtime is not available");
+                    }
+                    return normalizeSaveRecordTimes(await onGetSaveTimes(saveId));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

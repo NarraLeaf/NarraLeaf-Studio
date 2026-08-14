@@ -143,7 +143,11 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
         def.category === "Slider" ||
         def.category === "Displayable" ||
         def.category === "Element" ||
-        def.category === "Game"
+        def.category === "Game" ||
+        // Time nodes compute from their inputs and touch nothing, and a save slot's date is a
+        // label - which is a Blueprint Value. Leaving them out would put the whole family on the
+        // wrong side of the one surface it was built for.
+        def.category === "Time"
     );
 }
 
