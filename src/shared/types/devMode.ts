@@ -5,6 +5,7 @@ import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "
 import type { GameLocalizationBundle } from "./localization";
 import type { PlayerPreferences } from "./preference";
 import type { AutoSaveConfiguration } from "./saves";
+import type { SaveSchemaRuntimeTable } from "./saveSchema";
 import type { GameVoiceBundle } from "./voice";
 import type { GameAudioBundle } from "./audio";
 import type { GameRuntimeViewportConfig } from "./gameRuntime";
@@ -272,6 +273,16 @@ export type DevModeBundle = {
          * the other authoring surface, and the compiler unions the two.
          */
         savedVariables: SavedVariableRuntimeTable;
+        /**
+         * What one save slot carries besides the engine's own record, baked from
+         * `editor/save-schema.json`. In pin order, so the write node and the read node grow the same
+         * pins in the same sequence from one list.
+         *
+         * Empty is the normal state for a project that has declared nothing: the save nodes keep
+         * their raw `metadata` pin and the runtime writes whatever a graph hands it, exactly as
+         * before the schema existed.
+         */
+        saveSchema: SaveSchemaRuntimeTable;
     };
     story?: StoryDocument;
     storyLibrary?: DevModeStoryLibrary;

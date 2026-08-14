@@ -175,6 +175,11 @@ export const lint = {
             description: "A clickable widget nothing listens to",
             message: "Nothing runs when this is clicked",
         },
+        blueprintSaveFieldEmpty: {
+            title: "Empty save field",
+            description: "A Save Game node that will run with a declared save field left empty",
+            message: "{field} is empty, so this save is written with its default instead",
+        },
         variablesUndeclared: {
             title: "Undeclared variable",
             description: "A variable used without a declaration",

@@ -80,6 +80,7 @@ import type {
     BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     Blueprint,
+    LiteralValue,
 } from "@shared/types/blueprint/document";
 import type { VariableRegistry, VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
 import type { AudioTrackChannel, ProjectAudioTrack, ProjectAudioTrackDocument } from "@shared/types/audioTrack";
@@ -96,6 +97,7 @@ import type { PluginBuildConfigField } from "@shared/types/plugins";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
 import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
 import type { SpellcheckStatus } from "@shared/types/spellcheck";
+import type { SaveSchema, SaveSchemaField, SaveSchemaFieldType } from "@shared/types/saveSchema";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
 import type {
     ReadonlyBlueprintSurfaceSummary,
@@ -226,6 +228,8 @@ enum Services {
     Brand = "brand",
     /** The words the project spells on purpose, and the session's spellchecker they are pushed into */
     Dictionary = "dictionary",
+    /** What one save slot carries besides the engine's own record; grows the pins on the save nodes */
+    SaveSchema = "saveSchema",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
     SaveStatus = "saveStatus",
     // Texture = "texture",
@@ -653,6 +657,36 @@ interface IDictionaryService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
+}
+
+/**
+ * What one save slot carries besides the engine's own record. See `@shared/types/saveSchema` for
+ * the model and `@shared/saves/saveSchemaModel` for the operations over it.
+ *
+ * One document per project on purpose: `Save Game` and `Get Save Metadata` are a contract across
+ * time, so a schema stored per node would be as many copies as there are save nodes, drifting by
+ * hand and failing silently.
+ */
+interface ISaveSchemaService extends IService {
+    load(): Promise<SaveSchema>;
+    save(schema: SaveSchema): Promise<void>;
+    getSchema(): SaveSchema;
+    /** Every declared field in pin order. */
+    listFields(): SaveSchemaField[];
+    getField(id: string): SaveSchemaField | undefined;
+    onSchemaChanged(handler: (schema: SaveSchema) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    createField(input?: { name?: string; valueType?: SaveSchemaFieldType }): SaveSchemaField;
+    /** `id` and `storageKey` are not patchable - one names every pin, the other keys every save. */
+    updateField(
+        id: string,
+        patch: { name?: string; valueType?: SaveSchemaFieldType; defaultValue?: LiteralValue; description?: string },
+    ): void;
+    deleteField(id: string): boolean;
+    moveField(id: string, beforeId: string | null): void;
+    replaceSchema(schema: SaveSchema): void;
     flushPendingChanges(): Promise<void>;
 }
 
@@ -1436,6 +1470,7 @@ export {
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IAppTagService,
     IBrandService,
     IDictionaryService,
+    ISaveSchemaService,
     IPuppetDescriptionService,
     IMediaSupportService,
     ITestRunService, IRecoveryService,

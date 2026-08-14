@@ -140,6 +140,18 @@ function createHarness() {
     // In-memory stand-in for VariableRegistryService: persistent-variable CRUD now lives there, and
     // its state is captured into blueprint history so persistent edits undo with the blueprint edit.
     const registry: { schemaVersion: number; entries: Record<string, MockRegistryEntry> } = { schemaVersion: 1, entries: {} };
+    // Same idea for SaveSchemaService: the save-field popover lives on a blueprint node card, so its
+    // document is captured into blueprint history and restored with the same undo.
+    const saveSchema: { schemaVersion: number; fields: Record<string, unknown> } = { schemaVersion: 1, fields: {} };
+    const saveSchemaService = {
+        getSchema() {
+            return saveSchema;
+        },
+        replaceSchema(next: { schemaVersion: number; fields: Record<string, unknown> }) {
+            saveSchema.schemaVersion = next.schemaVersion;
+            saveSchema.fields = next.fields;
+        },
+    };
     const registryService = {
         getRegistry() {
             return registry;
@@ -241,6 +253,9 @@ function createHarness() {
                 }
                 if (serviceId === Services.VariableRegistry) {
                     return registryService;
+                }
+                if (serviceId === Services.SaveSchema) {
+                    return saveSchemaService;
                 }
                 throw new Error(`Unexpected service ${serviceId}`);
             },

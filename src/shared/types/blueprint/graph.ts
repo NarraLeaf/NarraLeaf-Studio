@@ -949,6 +949,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW = "blueprint.game.save.ge
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE = "blueprint.game.save.delete" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.getMetadata" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME = "blueprint.game.save.getTime" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE = "blueprint.game.save.getLine" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE = "blueprint.game.autoSave.write" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST = "blueprint.game.autoSave.list" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST = "blueprint.game.autoSave.latest" as const;

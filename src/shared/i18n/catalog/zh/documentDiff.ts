@@ -58,6 +58,7 @@ export const documentDiff = {
         characters: "角色",
         dictionaryWords: "词典词条",
         localizationKeys: "本地化键",
+        saveFields: "存档字段",
         storyBlocks: "故事行",
         storyChapters: "章节",
         storyScenes: "场景",

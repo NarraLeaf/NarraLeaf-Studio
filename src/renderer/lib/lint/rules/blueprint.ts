@@ -3,6 +3,7 @@ import type { BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/bluepri
 import {
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     isBlueprintEventDispatchHeadType,
     isStoryActionCallHeadType,
 } from "@shared/types/blueprint/graph";
@@ -10,6 +11,8 @@ import type { BlueprintNodeEditorCatalogEntry } from "../../ui-editor/blueprint-
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { collectExecReachableNodeIds } from "../../workspace/services/ui-editor/blueprint/fnCatalog";
+import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+import { saveSchemaPinId } from "../../ui-editor/blueprint-nodes/effectivePins";
 import { blueprintNodeJumpTarget, listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSites";
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
@@ -345,6 +348,77 @@ function runEmptyEvent(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+// ---------------------------------------------------------------------------
+// blueprint/save-field-empty
+// ---------------------------------------------------------------------------
+
+/**
+ * A `Save Game` that will run with a declared save field left empty.
+ *
+ * The read side is what makes this an error rather than a hint. `Get Save Metadata` publishes every
+ * declared field as an output that always has a value, and a save screen is built on that promise.
+ * A write that skipped a pin does not break at the write - it breaks weeks later, on a player's
+ * machine, as a slot whose chapter name is the default instead of the chapter they were in. Nothing
+ * at runtime can tell that apart from a save legitimately written before the field existed.
+ *
+ * A pin counts as filled when an edge feeds it or the card carries a value for it. An empty inline
+ * literal counts: an author who typed nothing into a string field chose the empty string, and a rule
+ * that argued with that would fire on a save slot deliberately left unnamed.
+ *
+ * Only nodes that will actually run are reported. In a graph with entry points that means
+ * exec-reachable; in one without - a macro, whose entry is whoever invokes it - it means something
+ * is wired into its exec input. An abandoned draft with nothing leading to it is already
+ * `blueprint/unreachable-node`, and saying it twice helps nobody.
+ */
+function runSaveFieldEmpty(ctx: LintContext): LintFinding[] {
+    registerCoreBlueprintNodes();
+    const fields = getActiveSaveSchemaFields();
+    if (fields.length === 0) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        const nodes = site.ir.nodes ?? {};
+        const saveNodes = Object.values(nodes).filter(node => node.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE);
+        if (saveNodes.length === 0) {
+            continue;
+        }
+        const entries = Object.values(nodes).filter(isGraphEntryNode);
+        const reachable = new Set<string>();
+        for (const entry of entries) {
+            for (const nodeId of collectExecReachableNodeIds(site.ir, entry.id)) {
+                reachable.add(nodeId);
+            }
+        }
+        for (const node of saveNodes) {
+            const willRun = entries.length > 0
+                ? reachable.has(node.id)
+                : (site.ir.edges ?? []).some(edge => edge.to.nodeId === node.id && edge.to.port === "in");
+            if (!willRun) {
+                continue;
+            }
+            const params = node.params ?? {};
+            for (const field of fields) {
+                const pinId = saveSchemaPinId(field.id);
+                const wired = (site.ir.edges ?? []).some(
+                    edge => edge.to.nodeId === node.id && edge.to.port === pinId,
+                );
+                if (wired || Object.prototype.hasOwnProperty.call(params, pinId)) {
+                    continue;
+                }
+                findings.push({
+                    ruleId: "blueprint/save-field-empty",
+                    messageKey: "lint.rule.blueprintSaveFieldEmpty.message" as TranslationKey,
+                    messageParams: { field: field.name },
+                    location: blueprintLocation(site, node.id),
+                    target: blueprintNodeJumpTarget(site, node.id),
+                });
+            }
+        }
+    }
+    return findings;
+}
+
 export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
     {
         id: "blueprint/reference-missing",
@@ -369,5 +443,15 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "info",
         slug: "blueprintEmptyEvent",
         run: ctx => runEmptyEvent(ctx),
+    },
+    {
+        id: "blueprint/save-field-empty",
+        category: "blueprint",
+        // An error, and the only severity that makes the read side honest: every declared field is
+        // published as an output that always has a value, so a write that skipped one ships a save
+        // nothing can tell from a legitimately older one.
+        defaultSeverity: "error",
+        slug: "blueprintSaveFieldEmpty",
+        run: ctx => runSaveFieldEmpty(ctx),
     },
 ];

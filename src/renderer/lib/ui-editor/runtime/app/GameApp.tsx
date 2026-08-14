@@ -21,6 +21,7 @@ import {
     normalizeAutoSaveConfiguration,
     parseAutoSaveSlotIndex,
     type AutoSaveEntry,
+    type SaveRecordLine,
     type SaveRecordTimes,
 } from "@shared/types/saves";
 import {
@@ -1849,6 +1850,33 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, [host.saveStore]);
 
+    /**
+     * Where one slot stopped, read from the engine metadata inside the record.
+     *
+     * `savedGame` is `unknown` on the record by design - the store keeps whatever the engine
+     * serialized and does not model it - so the two fields are picked out defensively here rather
+     * than cast. A save from an older engine that never wrote them, or a record whose blob is not
+     * an object at all, still answers as a slot that exists with nothing to quote; refusing to
+     * report the slot would take a row off the player's save screen over a missing caption.
+     */
+    const getSaveLine = useCallback(async (id: string): Promise<SaveRecordLine | null> => {
+        const record = await host.saveStore.read(id);
+        if (!record) {
+            return null;
+        }
+        const savedGame = record.savedGame;
+        const meta =
+            savedGame && typeof savedGame === "object"
+                ? (savedGame as { meta?: unknown }).meta
+                : undefined;
+        const fields = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
+        const toText = (raw: unknown): string => (typeof raw === "string" ? raw : "");
+        return {
+            line: toText(fields.lastSentence),
+            speaker: toText(fields.lastSpeaker),
+        };
+    }, [host.saveStore]);
+
     const getSavePreview = useCallback(async (id: string): Promise<BlueprintImageAsset | null> => {
         const capture = await host.saveStore.readPreview(id);
         if (!capture) {
@@ -2038,6 +2066,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             listSaveIds,
             getSaveMetadata,
             getSaveTimes,
+            getSaveLine,
             getSavePreview,
             writeAutoSaveInGame: autoSave.writeNow,
             listAutoSaves,
@@ -2201,6 +2230,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getNotificationsInGame,
         getSaveMetadata,
         getSaveTimes,
+        getSaveLine,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -2355,6 +2385,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onListSaveIds: listSaveIds,
             onGetSaveMetadata: getSaveMetadata,
             onGetSaveTimes: getSaveTimes,
+            onGetSaveLine: getSaveLine,
             onGetSavePreview: getSavePreview,
             onWriteAutoSave: autoSave.writeNow,
             onListAutoSaves: listAutoSaves,
@@ -2453,6 +2484,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getNotificationsInGame,
         getSaveMetadata,
         getSaveTimes,
+        getSaveLine,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -2697,6 +2729,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onListSaveIds: listSaveIds,
                     onGetSaveMetadata: getSaveMetadata,
                     onGetSaveTimes: getSaveTimes,
+                    onGetSaveLine: getSaveLine,
                     onGetSavePreview: getSavePreview,
                     onWriteAutoSave: autoSave.writeNow,
                     onListAutoSaves: listAutoSaves,
@@ -2826,6 +2859,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getNotificationsInGame,
         getSaveMetadata,
         getSaveTimes,
+        getSaveLine,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,

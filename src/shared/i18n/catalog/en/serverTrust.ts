@@ -17,12 +17,12 @@ export const serverTrust = {
     fingerprint: "Fingerprint",
     // The cost of being wrong, in one sentence and without softening it. The account
     // rather than the computer is not a detail: it is what bounds the damage.
-    meaning: "Anything holding this authority's key can then issue a certificate for any address, and this account will believe it.",
+    meaning: "Once trusted, certificates issued by this authority are accepted for this account.",
     confirm: "Trust it",
     cancel: "Cancel",
     working: "Trusting…",
     error: {
-        load: "Could not read which server this is about.",
+        load: "The server details could not be read.",
         // Covers a refusal by the operating system and a system with nothing to install
         // into. Whatever the command printed follows this line where there is any.
         trust: "This authority was not trusted.",

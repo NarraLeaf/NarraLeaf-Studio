@@ -85,6 +85,7 @@ export const documentDiff = {
         characters: "Characters",
         dictionaryWords: "Dictionary words",
         localizationKeys: "Localization keys",
+        saveFields: "Save fields",
         storyBlocks: "Story rows",
         storyChapters: "Chapters",
         storyScenes: "Scenes",

@@ -99,6 +99,7 @@ export type LintRuleId =
     | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"
+    | "blueprint/save-field-empty"
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"

@@ -73,6 +73,7 @@ export const documentDiff = {
         characters: "キャラクター",
         dictionaryWords: "辞書の語",
         localizationKeys: "ローカライズのキー",
+        saveFields: "セーブ項目",
         storyBlocks: "ストーリーの行",
         storyChapters: "チャプター",
         storyScenes: "シーン",
