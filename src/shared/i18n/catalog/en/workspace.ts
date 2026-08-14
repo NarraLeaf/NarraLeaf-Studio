@@ -796,6 +796,11 @@ export const workspace = {
                  */
                 picker: {
                     title: "Connect to a server",
+                    // The path on the end of the address, which is what the repository is
+                    // called on the server and what a collaborator clones by. Filled in from
+                    // the project's folder, because that is the answer nearly every time.
+                    nameLabel: "Name on the server",
+                    namePlaceholder: "my-game",
                     empty: "No servers have been added. Add one in Settings, or enter an address below.",
                     manual: "Another address",
                     manage: "Manage servers",
