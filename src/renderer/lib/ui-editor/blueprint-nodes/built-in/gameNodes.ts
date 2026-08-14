@@ -33,6 +33,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_QUIT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
@@ -1366,6 +1367,67 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             return {
                 nextPort: "next",
                 outputValues: { metadata },
+            };
+        },
+    },
+    {
+        /**
+         * When a slot was written, for the label on it.
+         *
+         * The store has stamped every record all along; nothing in a graph could read it. An author
+         * building a save screen could show a slot's own metadata and its screenshot but not its
+         * date - the one thing every save screen shows - unless they wrote the time into the
+         * metadata themselves at `Save Game`, which is a second, drifting copy of a fact the store
+         * already holds.
+         *
+         * Keyed by id like `Get Save Metadata` and `Get Save Preview`, so it composes with both
+         * `List Saves` and `List Auto Saves` rather than being a second listing node. The pins carry
+         * epoch milliseconds - what `Get Latest Auto Save` publishes and what every Time node takes.
+         */
+        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+        displayName: "Get Save Time",
+        category: "Game",
+        keywords: ["game", "save", "time", "date", "timestamp", "when", "written", "slot", "created"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            saveIdIn,
+            {
+                id: "savedAt",
+                kind: "output",
+                semantic: "data",
+                valueType: "float",
+                label: "Saved At",
+            },
+            {
+                id: "createdAt",
+                kind: "output",
+                semantic: "data",
+                valueType: "float",
+                label: "Created At",
+            },
+            {
+                id: "exists",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Exists",
+            },
+        ],
+        async execute(ctx) {
+            const times = await requireHostApi(ctx).game.getSaveTimes(resolveSaveId(ctx));
+            return {
+                nextPort: "next",
+                outputValues: {
+                    // A slot that is not there reads as the epoch, and `exists` is what tells the
+                    // two apart - the same shape `Get Latest Auto Save` uses for `Has Auto Save`.
+                    savedAt: times?.savedAt ?? 0,
+                    createdAt: times?.createdAt ?? 0,
+                    exists: Boolean(times),
+                },
             };
         },
     },

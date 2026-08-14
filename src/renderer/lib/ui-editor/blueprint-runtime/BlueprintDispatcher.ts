@@ -273,6 +273,11 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.return", functionId: "game.getSaveMetadata" });
                     return null;
                 },
+                getSaveTimes: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getSaveTimes" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getSaveTimes" });
+                    return null;
+                },
                 getSavePreview: async (_id: string) => {
                     input.debug.emit({ type: "function.call", functionId: "game.getSavePreview" });
                     input.debug.emit({ type: "function.return", functionId: "game.getSavePreview" });
