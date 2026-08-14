@@ -379,9 +379,15 @@ export const blueprint = {
         sourceLabel: "TypeScript のブループリントのソース",
     },
     zoom: {
+        label: "拡大縮小",
         in: "拡大",
         out: "縮小",
         fit: "全体を表示",
+        actualSize: "実際のサイズ",
+        fitArea: "編集領域に合わせる",
+        fillArea: "編集領域いっぱいにする",
+        fitWidth: "幅に合わせる",
+        custom: "任意の値",
     },
     category: {
         app: "アプリ",

@@ -4,7 +4,7 @@ import {
     computeFitViewportTransform,
     computeZoomedViewportTransform,
     resolveSurfaceFitInsets,
-    type SurfaceFitMode,
+    type CanvasFitMode,
     type SurfaceViewportFit,
 } from "@/lib/ui-editor/geometry";
 import type { EditorStateService } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
@@ -27,7 +27,7 @@ export type SurfaceViewportZoom = {
     /** The mode in force, or `null` once the author zoomed or panned by hand. */
     fit: SurfaceViewportFit | null;
     /** Applies a mode and keeps it live: it is recomputed whenever the editing area changes size. */
-    applyFitMode: (mode: SurfaceFitMode) => void;
+    applyFitMode: (mode: CanvasFitMode) => void;
     /**
      * Zooms to `scale` about the middle of the editing area. A stated number, so it ends the mode
      * the same way a wheel gesture does.
@@ -136,7 +136,7 @@ export function useSurfaceViewportZoom({
     );
 
     const applyFitMode = useCallback(
-        (mode: SurfaceFitMode) => applyFit({ mode, chosen: true }),
+        (mode: CanvasFitMode) => applyFit({ mode, chosen: true }),
         [applyFit],
     );
 

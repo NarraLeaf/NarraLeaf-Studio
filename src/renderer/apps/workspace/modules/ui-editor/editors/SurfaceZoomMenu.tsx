@@ -4,10 +4,10 @@ import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n/catalog/types";
 import { Input } from "@/lib/components/elements/Input";
 import {
-    SURFACE_FIT_MODES,
-    formatSurfaceZoomPercent,
-    parseSurfaceZoomPercent,
-    type SurfaceFitMode,
+    CANVAS_FIT_MODES,
+    formatZoomPercent,
+    parseZoomPercent,
+    type CanvasFitMode,
     type SurfaceViewportFit,
 } from "@/lib/ui-editor/geometry";
 import {
@@ -28,14 +28,14 @@ const FIT_MODE_LABEL_KEYS = {
     contain: "uiEditor.zoom.fitArea",
     cover: "uiEditor.zoom.fillArea",
     width: "uiEditor.zoom.fitWidth",
-} as const satisfies Record<SurfaceFitMode, TranslationKey>;
+} as const satisfies Record<CanvasFitMode, TranslationKey>;
 
 type Props = {
     /** Current scale, so the trigger reads the same number the canvas is drawn at. */
     scale: number;
     /** The mode in force, or `null` once the author moved the view by hand. */
     fit: SurfaceViewportFit | null;
-    applyFitMode: (mode: SurfaceFitMode) => void;
+    applyFitMode: (mode: CanvasFitMode) => void;
     setZoomScale: (scale: number) => void;
     /** False while the tab has no interface to measure; the whole control is then inert. */
     enabled: boolean;
@@ -54,7 +54,7 @@ type Props = {
  */
 export function SurfaceZoomMenu({ scale, fit, applyFitMode, setZoomScale, enabled }: Props) {
     const { t } = useTranslation();
-    const percent = formatSurfaceZoomPercent(scale);
+    const percent = formatZoomPercent(scale);
     const popover = useSurfaceToolbarPopover(`${fit?.mode ?? ""}|${percent}`);
     const [draft, setDraft] = useState(String(percent));
 
@@ -67,7 +67,7 @@ export function SurfaceZoomMenu({ scale, fit, applyFitMode, setZoomScale, enable
     }, [percent, popover.open]);
 
     const chooseMode = useCallback(
-        (mode: SurfaceFitMode) => {
+        (mode: CanvasFitMode) => {
             applyFitMode(mode);
             popover.close();
         },
@@ -81,8 +81,8 @@ export function SurfaceZoomMenu({ scale, fit, applyFitMode, setZoomScale, enable
      */
     const commitDraft = useCallback(
         (close: boolean) => {
-            const parsed = parseSurfaceZoomPercent(draft);
-            if (parsed === null || formatSurfaceZoomPercent(parsed) === percent) {
+            const parsed = parseZoomPercent(draft);
+            if (parsed === null || formatZoomPercent(parsed) === percent) {
                 // Not a number, or the number it already shows. Putting the current zoom back beats
                 // jumping to a guess at what was meant.
                 setDraft(String(percent));
@@ -131,7 +131,7 @@ export function SurfaceZoomMenu({ scale, fit, applyFitMode, setZoomScale, enable
             <SurfaceToolbarPopoverPanel popover={popover} dataAttribute="zoom">
                 {/* Unheaded: the panel is the zoom control, so a "Zoom" heading above its own
                     options would be the only thing in it saying nothing. */}
-                {SURFACE_FIT_MODES.map(mode => (
+                {CANVAS_FIT_MODES.map(mode => (
                     <SurfaceToolbarPopoverRow
                         key={mode}
                         label={t(FIT_MODE_LABEL_KEYS[mode])}

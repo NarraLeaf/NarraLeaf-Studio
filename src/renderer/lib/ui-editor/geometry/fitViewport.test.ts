@@ -11,8 +11,8 @@ import {
     areViewportTransformsEqual,
     computeFitViewportTransform,
     computeZoomedViewportTransform,
-    formatSurfaceZoomPercent,
-    parseSurfaceZoomPercent,
+    formatZoomPercent,
+    parseZoomPercent,
     resolveSurfaceFitInsets,
 } from "./fitViewport";
 
@@ -257,36 +257,36 @@ describe("computeZoomedViewportTransform", () => {
     });
 });
 
-describe("parseSurfaceZoomPercent", () => {
+describe("parseZoomPercent", () => {
     it("reads what a percentage box realistically receives", () => {
-        expect(parseSurfaceZoomPercent("150")).toBeCloseTo(1.5, 5);
-        expect(parseSurfaceZoomPercent("150%")).toBeCloseTo(1.5, 5);
-        expect(parseSurfaceZoomPercent(" 1 50 ")).toBeCloseTo(1.5, 5);
+        expect(parseZoomPercent("150")).toBeCloseTo(1.5, 5);
+        expect(parseZoomPercent("150%")).toBeCloseTo(1.5, 5);
+        expect(parseZoomPercent(" 1 50 ")).toBeCloseTo(1.5, 5);
         // Full-width percent sign, which is what a Chinese or Japanese IME produces.
-        expect(parseSurfaceZoomPercent("150％")).toBeCloseTo(1.5, 5);
-        expect(parseSurfaceZoomPercent("62.5")).toBeCloseTo(0.625, 5);
+        expect(parseZoomPercent("150％")).toBeCloseTo(1.5, 5);
+        expect(parseZoomPercent("62.5")).toBeCloseTo(0.625, 5);
     });
 
     it("clamps a number out of range rather than refusing it", () => {
-        expect(parseSurfaceZoomPercent("5000")).toBe(SURFACE_ZOOM_MAX_SCALE);
-        expect(parseSurfaceZoomPercent("1")).toBe(SURFACE_ZOOM_MIN_SCALE);
+        expect(parseZoomPercent("5000")).toBe(SURFACE_ZOOM_MAX_SCALE);
+        expect(parseZoomPercent("1")).toBe(SURFACE_ZOOM_MIN_SCALE);
     });
 
     it("returns nothing for what is not a number, so the box can keep the value it had", () => {
-        expect(parseSurfaceZoomPercent("")).toBeNull();
-        expect(parseSurfaceZoomPercent("   ")).toBeNull();
-        expect(parseSurfaceZoomPercent("big")).toBeNull();
-        expect(parseSurfaceZoomPercent("1.2.3")).toBeNull();
-        expect(parseSurfaceZoomPercent("-50")).toBeNull();
-        expect(parseSurfaceZoomPercent("0")).toBeNull();
+        expect(parseZoomPercent("")).toBeNull();
+        expect(parseZoomPercent("   ")).toBeNull();
+        expect(parseZoomPercent("big")).toBeNull();
+        expect(parseZoomPercent("1.2.3")).toBeNull();
+        expect(parseZoomPercent("-50")).toBeNull();
+        expect(parseZoomPercent("0")).toBeNull();
     });
 });
 
-describe("formatSurfaceZoomPercent", () => {
+describe("formatZoomPercent", () => {
     it("is the number the tool bar shows, rounded the way the canvas is drawn", () => {
-        expect(formatSurfaceZoomPercent(0.363542)).toBe(36);
-        expect(formatSurfaceZoomPercent(1)).toBe(100);
-        expect(formatSurfaceZoomPercent(SURFACE_ZOOM_MAX_SCALE)).toBe(1000);
+        expect(formatZoomPercent(0.363542)).toBe(36);
+        expect(formatZoomPercent(1)).toBe(100);
+        expect(formatZoomPercent(SURFACE_ZOOM_MAX_SCALE)).toBe(1000);
     });
 });
 
