@@ -44,6 +44,7 @@ describe("decideDetachedWindowOpen", () => {
             WindowAppType.DevMode,
             WindowAppType.ProjectWizard,
             WindowAppType.PluginPermissionPrompt,
+            WindowAppType.ServerTrustPrompt,
             WindowAppType.Raw,
         ]) {
             expect(decideDetachedWindowOpen(request({ windowType })).allowed).toBe(false);

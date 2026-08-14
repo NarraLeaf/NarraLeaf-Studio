@@ -109,6 +109,10 @@ export const windowPermissionDeclarations: { [T in WindowAppType]: WindowPermiss
     [WindowAppType.Workspace]: { fs: projectFileSystemAccess, api: noElevatedAccess, capabilities: workspaceDefaultCapabilities, runtimeGrants: workspaceImportGrants },
     [WindowAppType.DevMode]: { fs: projectFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
     [WindowAppType.PluginPermissionPrompt]: { fs: noFileSystemAccess, api: pluginPermissionElevatedAccess, capabilities: noDefaultCapabilities },
+    // Nothing elevated: the one thing this window does with a yes is `vcs.trustAuthority`,
+    // which is open to any window and checks the certificate against Studio's own directory
+    // rather than trusting whoever named it.
+    [WindowAppType.ServerTrustPrompt]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
     [WindowAppType.Raw]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
 };
 

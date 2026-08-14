@@ -259,6 +259,25 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 存档不存在或没有用户 metadata 时，`metadata` 输出 `null`。
 
+## Get Save Time
+
+`blueprint.game.save.getTime` - Get Save Time
+
+读取指定本地存档的写入时刻。存档库一直在给每条记录盖时间戳，这个节点是把它取出来给图使用的通路——否则作者要在 `Save Game` 时把时间自己写进 metadata，那是同一个事实的第二份、并且会漂移的副本。
+
+- `in` - 执行入口
+- `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖
+- `savedAt` - 最后写入时间，Unix 毫秒（传出引脚）
+- `createdAt` - 首次写入时间，Unix 毫秒（传出引脚）
+- `exists` - 该存档是否存在（传出引脚）
+- `next` - 读取完成后的执行出口
+
+单位与 `List Auto Saves` / `Get Latest Auto Save` 一致，可以直接接进 [Time 节点](node.time.md) 做格式化。
+
+存档不存在时 `savedAt` 与 `createdAt` 都是 `0`，**要靠 `exists` 而不是时间戳是否为 0 来判断**：后者与真正保存在 1970 年的存档没有区别。存档存在但记录缺少时间戳时，缺的那一项为 `0`，`exists` 仍为 `true`。
+
+与 `Get Save Metadata`、`Get Save Preview` 一样按 id 取值，因此对 `List Saves` 的玩家槽位和 `List Auto Saves` 的自动存档环同样适用。
+
 ## Get Save Preview
 
 `blueprint.game.save.getPreview` - Get Save Preview

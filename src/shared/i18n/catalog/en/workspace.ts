@@ -791,8 +791,9 @@ export const workspace = {
                  * Choosing which server a project synchronises with.
                  *
                  * The list is what this installation is signed in to, which is managed in
-                 * Settings. The address field is for a server that asks nobody who they
-                 * are: there is no account to add for one, so it can be in no list.
+                 * Settings - the last row of the list opens it there. The address field is
+                 * for a server that asks nobody who they are: there is no account to add for
+                 * one, so it can be in no list.
                  */
                 picker: {
                     title: "Connect to a server",
@@ -801,9 +802,11 @@ export const workspace = {
                     // the project's folder, because that is the answer nearly every time.
                     nameLabel: "Name on the server",
                     namePlaceholder: "my-game",
-                    empty: "No servers have been added. Add one in Settings, or enter an address below.",
+                    empty: "No servers have been added.",
+                    // The last row of the list. The ellipsis is the convention for a control
+                    // that opens somewhere else: this one opens Settings and closes the dialog.
+                    add: "Add a server…",
                     manual: "Another address",
-                    manage: "Manage servers",
                 },
                 // The one field. Measured: the backend keeps only the ORIGIN of whatever URL it is
                 // given and identifies the repository by its own id, so there is genuinely nothing

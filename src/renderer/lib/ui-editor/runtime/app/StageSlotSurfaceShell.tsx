@@ -12,7 +12,7 @@ import {
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
-import type { AutoSaveEntry } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordTimes } from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -67,6 +67,7 @@ export type GameUiSlotHostOptions = {
     deleteSaveInGame: (id: string) => Promise<void>;
     listSaveIds: () => Promise<string[]>;
     getSaveMetadata: (id: string) => Promise<unknown>;
+    getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
     writeAutoSaveInGame: () => Promise<void>;
     listAutoSaves: () => Promise<AutoSaveEntry[]>;
@@ -212,6 +213,7 @@ export function useStageSlotSurfaceRuntime(input: {
             onDeleteSave: options.deleteSaveInGame,
             onListSaveIds: options.listSaveIds,
             onGetSaveMetadata: options.getSaveMetadata,
+            onGetSaveTimes: options.getSaveTimes,
             onGetSavePreview: options.getSavePreview,
             onWriteAutoSave: options.writeAutoSaveInGame,
             onListAutoSaves: options.listAutoSaves,

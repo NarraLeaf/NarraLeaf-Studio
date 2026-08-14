@@ -593,6 +593,58 @@ export function vcsAddressesInAudience(audience: readonly unknown[]): {
 }
 
 /**
+ * What a server says about itself at the one address an author is given.
+ *
+ * `nlteam://host:port` names the endpoint that mints and verifies tokens, and asking it
+ * over HTTP/1.1 returns this. It is what somebody would otherwise have written in a chat
+ * message: whether a token is needed at all, where to present one, and which data remote
+ * the repositories live on.
+ *
+ * **The data remote never reaches a person.** It is a fact about the storage this server
+ * happens to run, not something anybody chose, and Studio stores it without showing it.
+ */
+export interface VcsServerDiscovery {
+    /** Bumped only when a field an older Studio relies on changes meaning. */
+    protocol: number;
+    /** What this deployment calls itself, for a list a person reads. */
+    name: string;
+    auth: {
+        /** False for a server that asks nobody who they are; then no token is wanted. */
+        required: boolean;
+        /** Where a token is presented, e.g. `https://team.example.lan:41402`. */
+        url: string;
+    };
+    /** The remote the repositories live on. Stored, never shown. */
+    data: { url: string };
+    /** SHA-256 of the authority answering, as a label rather than as evidence. */
+    authority: { sha256: string };
+    /** The server's own version, for a support conversation. */
+    version: string;
+}
+
+/**
+ * What reaching an address came to, before anything has been added.
+ *
+ * Four answers because four different things happen next: carry on, ask whether to trust
+ * this machine, say nothing answered, or say that something answered and it was not a
+ * server of this kind. Only the second is a question for the author.
+ */
+export type VcsServerProbe =
+    /** It answered and this machine already trusts it. */
+    | { kind: "ready"; address: string; discovery: VcsServerDiscovery }
+    /**
+     * It answered, and its certificate chains to an authority this machine does not
+     * trust. The discovery document is read over that same connection, so it is carried
+     * here too - it is what the trust prompt names, and it is not acted on until the
+     * author says yes.
+     */
+    | { kind: "untrusted"; address: string; authority: VcsServerAuthority; discovery: VcsServerDiscovery | null }
+    /** Nothing answered at that address. */
+    | { kind: "unreachable"; detail: string }
+    /** Something answered and it was not a NarraLeaf Team server. */
+    | { kind: "not-a-server"; detail: string };
+
+/**
  * A signed-in session, as Studio holds it.
  *
  * One per server, not one per project: the backend keeps the session in a per-user
