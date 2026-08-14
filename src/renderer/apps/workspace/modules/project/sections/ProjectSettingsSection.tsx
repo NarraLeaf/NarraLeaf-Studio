@@ -20,7 +20,7 @@ import {
     type NetworkPluginAllowlistEntry,
 } from "@shared/types/networkAllowlist";
 import { getInterface } from "@/lib/app/bridge";
-import { SettingRow, SettingShell } from "./settingRows";
+import { SettingRow, SettingShell, SettingStack } from "./settingRows";
 import { NetworkAllowlistField } from "./NetworkAllowlistField";
 import { NumberField } from "./NumberField";
 import { ProjectSigningSection } from "./ProjectSigningSection";
@@ -298,7 +298,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                     />
                 ) : null}
                 {network.allowHttp && network.policy === NETWORK_POLICY_ALLOWLIST ? (
-                    <SettingShell
+                    <SettingStack
                         title={t("project.settings.networkAllowlist.title")}
                         description={t("project.settings.networkAllowlist.description")}
                     >
@@ -308,7 +308,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                             disabled={false}
                             onCommit={commitAllowlist}
                         />
-                    </SettingShell>
+                    </SettingStack>
                 ) : null}
                 <SettingRow
                     title={t("project.settings.encryptAssetsTitle")}

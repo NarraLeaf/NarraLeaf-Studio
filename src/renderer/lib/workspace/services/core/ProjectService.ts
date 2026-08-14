@@ -179,10 +179,14 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      */
     public async updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig> {
         return this.updateProjectConfig(config => {
-            const network: NetworkConfiguration = {
+            // Normalized *after* the merge, not only before it. The patch is caller-supplied, so
+            // normalizing the stored value and then spreading raw fields over it would write
+            // whatever was typed - which for an allowlist entry means the stored string and the
+            // string the matcher compares stop being the same document.
+            const network: NetworkConfiguration = normalizeNetworkConfiguration({
                 ...normalizeNetworkConfiguration(config.app?.network),
                 ...patch,
-            };
+            });
             const app: ProjectAppConfiguration = {
                 ...config.app,
                 network,
