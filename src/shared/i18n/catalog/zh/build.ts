@@ -2,7 +2,7 @@ import type { LocaleNamespace } from "../types";
 
 export const build = {
     dialog: {
-        title: "构建发行版本",
+        title: "构建发行包",
         start: "开始构建",
         runningTitle: "构建进行中",
         runningBody: "该项目已有构建正在运行，进度显示在控制台",
@@ -18,12 +18,12 @@ export const build = {
         ios: "iOS",
     },
     unavailable: {
-        windows: "当前设备无法构建 Windows 版本",
-        macos: "macOS 版本只能在 Mac 上构建",
-        linux: "当前设备无法构建 Linux 版本",
-        web: "任何设备都可以构建 Web 版本",
-        android: "任何设备都可以构建 Android 版本",
-        ios: "任何设备都可以构建 iOS 版本",
+        windows: "当前设备无法为 Windows 平台构建",
+        macos: "只有 Mac 才能为 macOS 平台构建",
+        linux: "当前设备无法为 Linux 平台构建",
+        web: "任何设备都可以为 Web 平台构建",
+        android: "任何设备都可以为 Android 平台构建",
+        ios: "任何设备都可以为 iOS 平台构建",
     },
     format: {
         zip: "便携 ZIP",
@@ -37,11 +37,11 @@ export const build = {
     },
     outputDir: "输出目录",
     chooseFolder: "选择文件夹…",
-    // 侧边导航。其中六项对应检查结果可以归属的分区；`variant` 是选择构建版本的那一页，
-    // 它决定其余各页描述的是哪一个版本，只在工程存在可选版本时出现；`plugins` 只在有插件
+    // 侧边导航。其中六项对应检查结果可以归属的分区；`variant` 是选择变体的那一页，
+    // 它决定其余各页描述的是哪一个变体，只在工程存在可选变体时出现；`plugins` 只在有插件
     // 索要取值时出现。
     section: {
-        variant: "版本",
+        variant: "变体",
         targets: "目标",
         identity: "标识",
         content: "内容与保护",
@@ -56,11 +56,11 @@ export const build = {
         arm64: "ARM（arm64）",
         universal: "通用",
     },
-    // 第一页：本次构建产出哪一个版本，以及该版本发布的值。
+    // 第一页：本次构建产出哪一个变体，以及该变体发布的值。
     variant: {
-        // 标在「该版本自己未填写」的读数旁边，使继承来的值与被覆盖的值在同一行都给出出处
+        // 标在「该变体自己未填写」的读数旁边，使继承来的值与被覆盖的值在同一行都给出出处
         inherited: "来自工程",
-        // 该版本的剧情止于何处。数的是指向它的截断行，因此发布版本恒为完整剧情
+        // 该变体的剧情止于何处。数的是指向它的截断行，因此正式变体恒为完整剧情
         boundary: "剧情结束处",
         endsNever: "剧情播放至结尾",
         endsAt: {
@@ -68,18 +68,18 @@ export const build = {
             other: "在 {count} 个截断点处结束，其后的内容不在这份构建里",
         },
         variantRows: {
-            one: "有 {count} 行读取了构建版本，在不同版本里可能不同",
-            other: "有 {count} 行读取了构建版本，在不同版本里可能不同",
+            one: "有 {count} 行读取了变体，在不同构建里可能不同",
+            other: "有 {count} 行读取了变体，在不同构建里可能不同",
         },
         blocking: "阻止本次构建",
         blockingNone: "没有阻止本次构建的问题",
     },
     identity: {
         // 第一页所做的选择的名称，同时用作那份列表的标签
-        variant: "构建版本",
-        // 标在「由该版本自己填写、而非继承」的读数旁边，使与「应用」页不一致的值在同一行给出原因
-        fromVariant: "来自该构建版本",
-        version: "版本",
+        variant: "变体",
+        // 标在「由该变体自己填写、而非继承」的读数旁边，使与「应用」页不一致的值在同一行给出原因
+        fromVariant: "来自该变体",
+        version: "项目版本",
         productName: "产品名",
         productNameSource: "源自项目名",
         appId: "应用 ID",
@@ -87,7 +87,7 @@ export const build = {
         icons: "图标",
         iconsHint: "点击图标可在项目设置中修改",
         iconUnset: "未设置",
-        // 版本或版权为空时显示什么。这一段现在只回读，空字段得说明自己是空的，
+        // 项目版本或版权为空时显示什么。这一段现在只回读，空字段得说明自己是空的，
         // 而不是看起来像一个等着输入的控件。
         notSet: "未设置",
         editInProject: "在「项目 ▸ 应用」中编辑",
@@ -202,12 +202,12 @@ export const build = {
     },
     preflight: {
         "no-targets": "请至少选择一个平台和格式",
-        "unbuildable-platform": "当前设备无法构建 {platform} 版本",
-        "version-invalid": "版本号 {version} 不是合法的语义化版本，构建会失败",
-        "version-missing": "未设置版本号，将以 0.0.0 构建",
+        "unbuildable-platform": "当前设备无法为 {platform} 平台构建",
+        "version-invalid": "项目版本 {version} 不是合法的语义化版本号，构建会失败",
+        "version-missing": "未设置项目版本，将以 0.0.0 构建",
         "identifier-missing": "项目没有标识符，将使用应用 ID {appId}",
         // 构建本身同样拒绝这个文件，所以这里说明的是中止的原因，而不是替代的取值
-        "variants-unreadable": "无法读取工程的构建版本：{reason}",
+        "variants-unreadable": "无法读取工程的变体：{reason}",
         "icon-missing": "未设置应用图标，将使用 NarraLeaf 图标",
         "icon-unusable": "{platform} 图标无法读取，将使用 NarraLeaf 图标",
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
@@ -215,9 +215,9 @@ export const build = {
         // 这一行看起来像结局，但产出的包和没有这一行完全一样，整本书都会随包发出去。这里报场景名而
         // 不报行号：构建对话框没有行号栏，作者要打开的也是场景。
         "cut-point-inert": "{scene}（{story}）中的截断点没有从 {variant} 里去掉任何内容，该构建仍会带上整个剧本",
-        // 只针对真的会截短剧本的版本；两种回答都算作答：选一个页面，或者在该版本上选「不显示任何页面」，
+        // 只针对真的会截短剧本的变体；两种回答都算作答：选一个页面，或者在该变体上选「不显示任何页面」，
         // 让画面停在最后一帧。
-        "variant-ending-missing": "{variant} 会提前结束剧本，但没有指定结束后显示的页面。请在 项目 ▸ 应用 ▸ 构建版本 中选择",
+        "variant-ending-missing": "{variant} 会提前结束剧本，但没有指定结束后显示的页面。请在 项目 ▸ 应用 ▸ 变体 中选择",
         // 句子里不带数量：对话框用的是普通翻译函数，选不了复数形式，而且这个数字并不比场景名多说什么。
         "variant-branch-uncut": "从 {scene}（{story}）出发的部分路线上没有截断点，{variant} 会把这些路线整段发出去",
         "plugins-invalid": "插件校验失败：\n{errors}",
@@ -240,7 +240,7 @@ export const build = {
         "web-lossy-images": "有损图像重压缩已开启，导出的图像将以质量 {quality} 重新编码，细节不可恢复",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
         "mobile-payload-too-large": "项目素材体积（{size}）超出移动端安装包能容纳的上限",
-        "version-uncodable": "版本号 {version} 无法编码为 Android 版本号（主版本最大 2099，次版本与修订号最大 999）",
+        "version-uncodable": "项目版本 {version} 无法编码为 Android 版本号（主版本号最大 2099，次版本号与修订号最大 999）",
         "appid-android-adjusted": "应用 ID {appId} 不是合法的 Android 包名，构建将使用 {applicationId}",
         "bundleid-ios-adjusted": "应用 ID {appId} 不是合法的 iOS Bundle ID，构建将使用 {bundleId}",
         // 不再点名 Gatekeeper / SmartScreen：那是厂商的词，不是作者的，而且两边的预期一样。
@@ -280,33 +280,33 @@ export const build = {
         one: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
         other: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
     },
-    appTagGraphUnresolved: "{blueprint} / {graph} 中的构建版本没有得出固定值，请把它与构建版本名比较，或直接使用它的值",
-    appTagGraphUnknownNode: "{blueprint} / {graph} 既判断了构建版本，又使用了本次构建无法读取的节点，请把构建版本判断移到不含该节点的图中",
-    appTagGraphFnHead: "{blueprint} / {graph} 中的构建版本判断决定了一个 Fn 是否存在，请把该 Fn 移出它决定的分支",
+    appTagGraphUnresolved: "{blueprint} / {graph} 中的变体没有得出固定值，请把它与变体名比较，或直接使用它的值",
+    appTagGraphUnknownNode: "{blueprint} / {graph} 既判断了变体，又使用了本次构建无法读取的节点，请把变体判断移到不含该节点的图中",
+    appTagGraphFnHead: "{blueprint} / {graph} 中的变体判断决定了一个 Fn 是否存在，请把该 Fn 移出它决定的分支",
     appTagGraphSummary: {
-        one: "构建已中止：有 {count} 处蓝图的构建版本判断没有得出固定值，详见控制台",
-        other: "构建已中止：有 {count} 处蓝图的构建版本判断没有得出固定值，详见控制台",
+        one: "构建已中止：有 {count} 处蓝图的变体判断没有得出固定值，详见控制台",
+        other: "构建已中止：有 {count} 处蓝图的变体判断没有得出固定值，详见控制台",
     },
     cutPointNested: "{story} / {scene} 中 {variant} 的截断点位于条件或分组内部，请把它移到场景顶层",
     cutPointNestedSummary: {
         one: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
         other: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
     },
-    contentBlockedStartStory: "{location} 中的开始游戏节点在运行时才确定场景。请在检查器中选定场景，或在 {variant} 版本中列出它可以开始的场景",
-    contentBlockedScript: "蓝图 {location} 使用 TypeScript 编写，可以开始任意场景。请在 {variant} 版本中列出它可以开始的场景",
-    contentBlockedPlugin: "{location} 插件可以开始任意场景。请在 {variant} 版本中列出它可以开始的场景",
+    contentBlockedStartStory: "{location} 中的开始游戏节点在运行时才确定场景。请在检查器中选定场景，或在 {variant} 变体中列出它可以开始的场景",
+    contentBlockedScript: "蓝图 {location} 使用 TypeScript 编写，可以开始任意场景。请在 {variant} 变体中列出它可以开始的场景",
+    contentBlockedPlugin: "{location} 插件可以开始任意场景。请在 {variant} 变体中列出它可以开始的场景",
     contentBlockedSummary: {
         one: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
         other: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
     },
-    contentStaleDeclaration: "{variant} 版本中为 {location} 列出的某个场景已不在本工程中",
+    contentStaleDeclaration: "{variant} 变体中为 {location} 列出的某个场景已不在本工程中",
     contentKept: {
         one: "{variant} 构建包含 {count} 个场景",
         other: "{variant} 构建包含 {count} 个场景",
     },
     contentDropped: "{story} 中的 {scene} 不在本次构建里",
     // 只针对会删场景的构建，也只针对剧本文档里的缺口：索引认不出某个控件里的图片，说明不了任何剧本能
-    // 走到哪些场景；为这种缺口拒绝构建，等于让一个谁也解析不了的 URL 永久挡住所有版本构建。
+    // 走到哪些场景；为这种缺口拒绝构建，等于让一个谁也解析不了的 URL 永久挡住所有变体的构建。
     contentCoverageGap: "{location} 无法读取，因此无法判断 {variant} 构建应当去掉什么",
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
     contentCoverageWholeProject: "本工程",
