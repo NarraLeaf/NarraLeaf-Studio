@@ -24,11 +24,26 @@
  */
 
 import { Plus, X } from "lucide-react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeNetworkAllowlistEntry, type NetworkPluginAllowlistEntry } from "@shared/types/networkAllowlist";
 import { Button, IconButton, Input } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n/useTranslation";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+
+/**
+ * A list as the store will hold it, for comparing what came back against what was sent.
+ *
+ * Canonicalized because the store canonicalizes: an author who types `https://api.example.com` gets
+ * `https://api.example.com/*` back, and comparing the two raw strings would read our own write as
+ * somebody else's change - which is the resync this comparison exists to avoid.
+ */
+function normalizedKey(key: string): string {
+    return key
+        .split("\n")
+        .map(entry => normalizeNetworkAllowlistEntry(entry))
+        .filter((entry): entry is string => entry !== null)
+        .join("\n");
+}
 
 export function NetworkAllowlistField({
     entries,
@@ -47,14 +62,37 @@ export function NetworkAllowlistField({
     const storedKey = entries.join("\n");
     const [drafts, setDrafts] = useState<string[]>([...entries]);
     const [invalidIndexes, setInvalidIndexes] = useState<readonly number[]>([]);
+    /**
+     * The stored list as it looked the last time this field was the reason for it.
+     *
+     * A commit here is a round trip: the value goes to the project service, is normalized, and comes
+     * back as a new `entries` some milliseconds later. Without this, that return trip is
+     * indistinguishable from someone else changing the project, so the resync below fires and throws
+     * away every row the author added or typed in the meantime. Starting a second address while the
+     * first one saved was enough to lose it.
+     */
+    const committedKey = useRef<string | null>(null);
 
     useEffect(() => {
+        // Our own write coming back. The drafts already say this, and they may say more.
+        //
+        // Deliberately NOT cleared on a match: one commit produces *two* updates from the parent,
+        // the optimistic one carrying what was typed and the settled one carrying what the store
+        // canonicalized it to. Clearing here would leave the second one looking like somebody else's
+        // change, which is the reset this exists to prevent - and it is the second one that lands
+        // late enough to eat a row the author has already started.
+        if (committedKey.current !== null && normalizedKey(committedKey.current) === normalizedKey(storedKey)) {
+            return;
+        }
+        committedKey.current = null;
         setDrafts(storedKey ? storedKey.split("\n") : []);
         setInvalidIndexes([]);
     }, [storedKey]);
 
     const commit = useCallback((next: readonly string[]) => {
-        onCommit(next.filter(entry => entry.trim()));
+        const kept = next.filter(entry => entry.trim());
+        committedKey.current = kept.join("\n");
+        onCommit(kept);
     }, [onCommit]);
 
     /**
@@ -65,12 +103,20 @@ export function NetworkAllowlistField({
      */
     const commitRow = useCallback((index: number) => {
         const value = drafts[index]?.trim() ?? "";
-        if (value && normalizeNetworkAllowlistEntry(value) === null) {
+        const canonical = value ? normalizeNetworkAllowlistEntry(value) : "";
+        if (canonical === null) {
             setInvalidIndexes(prev => (prev.includes(index) ? prev : [...prev, index]));
             return;
         }
         setInvalidIndexes(prev => prev.filter(entry => entry !== index));
-        commit(drafts);
+        // Rewritten here rather than left to the round trip. The store canonicalizes either way, so
+        // a row that still read `https://api.example.com` after being saved as
+        // `https://api.example.com/*` would be showing the author something the build does not
+        // match - and doing it locally means the settled row and the row being typed in the next
+        // slot do not have to compete over one resync.
+        const next = drafts.map((entry, i) => (i === index ? canonical : entry));
+        setDrafts(next);
+        commit(next);
     }, [commit, drafts]);
 
     return (
