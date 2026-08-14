@@ -31,7 +31,9 @@ import {
  *
  * A disabled subtree is not walked. The compiler drops a disabled row before it emits anything, so
  * such a jump provably cannot run - following it would mark a scene reachable through an edge no
- * player can take.
+ * player can take. One caller wants the other reading and says so: the story flow map draws what the
+ * author wrote, disabled rows included, and `includeDisabled` is how it asks. It is a parameter
+ * rather than a second implementation because these two answers must be able to differ *only* here.
  *
  * A target the document does not have is not followed and never enters the set. Callers use the
  * result to decide what to delete and what to report, and a phantom id in it would mean both.
@@ -215,7 +217,20 @@ export type StorySceneReach =
  */
 export function traceReachableScenes(
     document: StoryDocument,
-    options: { entrySceneIds?: Iterable<StorySceneId>; fallback: StoryEntryFallback },
+    options: {
+        entrySceneIds?: Iterable<StorySceneId>;
+        fallback: StoryEntryFallback;
+        /**
+         * Follow jumps the compiler would drop.
+         *
+         * Off for everything that decides what ships or what to report as orphaned - a disabled row
+         * cannot run, so a scene only it reaches is not reachable. On for the story flow map, which
+         * is a drawing of the document rather than a prediction about the package: an author who
+         * disabled a jump for the afternoon has not deleted the branch, and a map that greyed out
+         * half the story the moment they did would be answering a question nobody asked.
+         */
+        includeDisabled?: boolean;
+    },
 ): Map<StorySceneId, StorySceneReach> {
     const reached = new Map<StorySceneId, StorySceneReach>();
     const queue: StorySceneId[] = [];
@@ -241,7 +256,9 @@ export function traceReachableScenes(
     for (let cursor = 0; cursor < queue.length; cursor += 1) {
         const fromSceneId = queue[cursor];
         const scene = document.scenes[fromSceneId];
-        const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
+        const blocks = options.includeDisabled
+            ? listSceneBlocksInDocumentOrder(scene)
+            : listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
         for (const block of blocks) {
             if (block.kind === "jump") {
                 enter(block.payload.targetSceneId, { kind: "jump", fromSceneId, blockId: block.id });
@@ -254,7 +271,11 @@ export function traceReachableScenes(
 /** {@link traceReachableScenes} without the reasons, for callers that only decide keep or drop. */
 export function reachableSceneIds(
     document: StoryDocument,
-    options: { entrySceneIds?: Iterable<StorySceneId>; fallback: StoryEntryFallback },
+    options: {
+        entrySceneIds?: Iterable<StorySceneId>;
+        fallback: StoryEntryFallback;
+        includeDisabled?: boolean;
+    },
 ): Set<StorySceneId> {
     return new Set(traceReachableScenes(document, options).keys());
 }

@@ -5,6 +5,12 @@ import type { StoryDocument } from "@shared/types/story";
 import type { ReferenceIndexGap } from "../references/referenceModel";
 import type { LintReport, LintReportEntry, LintRuleId, LintSeverity } from "@/lib/lint/types";
 import type { LintingConfiguration } from "../../project/configuration";
+import {
+    BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
+    BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
+} from "@shared/types/blueprint/graph";
 import { Services, type WorkspaceContext } from "../services";
 import {
     BUILD_CONSOLE_CHANNEL,
@@ -125,6 +131,8 @@ function mount(options: {
     storyDocument?: StoryDocument;
     /** What the reference index says it could not read. Empty by default. */
     referenceGaps?: readonly ReferenceIndexGap[];
+    /** The project's shared blueprint assets. None by default. */
+    sharedBlueprints?: unknown[];
 } = {}) {
     const lines: ConsoleLine[] = [];
     const run = vi.fn(options.run ?? (async () => report([])));
@@ -182,6 +190,9 @@ function mount(options: {
                     case Services.Story:
                         return story;
                     // Every project has the release variant, so the AppTag gate always resolves a name.
+                    // The variant gate reads the project's shared blueprint assets too.
+                    case Services.Assets:
+                        return { listSharedBlueprints: async () => options.sharedBlueprints ?? [] };
                     case Services.AppTags:
                         return {
                             resolveTag: () => options.appTag ?? RELEASE_APP_TAG,
@@ -723,6 +734,80 @@ describe("BuildService trim coverage gate", () => {
             storyDocument: STORY_WITH_A_CUT,
             referenceGaps: [{ reason: "indexNotBuilt" }],
         });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).toHaveBeenCalledTimes(1);
+        expect(state.status).toBe("done");
+    });
+});
+
+/**
+ * A graph whose `Get App Tag` reaches a comparison the fold cannot decide, so the edition question
+ * would be answered on the player's machine. Refused under every variant, release included.
+ */
+function unfoldableGraph() {
+    return {
+        nodes: {
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+            tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
+            eq: { id: "eq", type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL },
+            label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
+        },
+        edges: [
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
+            { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "eq", port: "a" } },
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "eq", port: "b" } },
+            { from: { nodeId: "eq", port: "result" }, to: { nodeId: "label", port: "text" } },
+        ],
+    };
+}
+
+function sharedBlueprintAsset(assetName: string) {
+    return {
+        assetId: "asset-1",
+        name: assetName,
+        frontend: "visual",
+        blueprint: {
+            id: "bp-shared",
+            // Deliberately different from the asset's name: the console must show the name the
+            // author sees in the asset browser.
+            name: "inner name nobody sees",
+            owner: { kind: "sharedAsset", assetId: "asset-1" },
+            frontend: "visual",
+            programKind: "graph",
+            program: {
+                kind: "graph",
+                graphs: { events: { onCall: { id: "onCall", name: "On Call", graph: unfoldableGraph() } } },
+            },
+        },
+    };
+}
+
+/**
+ * The shared-asset half of the variant gate.
+ *
+ * These graphs live in `.nlbp` asset files rather than in the blueprint document, so until
+ * `AssetsService.listSharedBlueprints` existed nothing on this side could see them: the build went
+ * to the main process, assembled, and threw there. What is asserted is the same thing every gate in
+ * this file asserts - the refused build never reaches `gameBuild.start`.
+ */
+describe("BuildService variant gate over shared blueprints", () => {
+    it("refuses a shared blueprint that still asks which edition it is", async () => {
+        const { service, lines } = mount({ sharedBlueprints: [sharedBlueprintAsset("Continue")] });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(state.status).toBe("error");
+        expect(state.error).toContain("build.appTagGraphSummary");
+        expect(lines.some(line => line.level === "error"
+            && line.message.includes("build.appTagGraphUnresolved")
+            && line.message.includes("Continue"))).toBe(true);
+    });
+
+    it("builds when the shared blueprints all fold", async () => {
+        const { service } = mount({ sharedBlueprints: [] });
 
         const state = await service.start(REQUEST);
 

@@ -13,6 +13,7 @@ import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devM
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type { AutoSaveEntry } from "@shared/types/saves";
+import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { GameSurfaceRenderer } from "@/lib/ui-editor/runtime/surface/GameSurfaceRenderer";
@@ -71,6 +72,17 @@ export type GameUiSlotHostOptions = {
     listAutoSaves: () => Promise<AutoSaveEntry[]>;
     getHistoryInGame: () => BlueprintGameHistoryEntry[];
     restoreHistoryInGame: (id?: string) => Promise<void>;
+    /**
+     * Carrying a playthrough between two editions of one title, for the Export/Import Progress
+     * nodes. Optional on the same terms as {@link soundTransport}: a host with no shell behind it
+     * (the in-editor story preview) genuinely cannot write the document, and the bridge answers the
+     * node with a refusal the author's graph can hear. It is not optional for a real session - a
+     * title screen is exactly the kind of surface an author builds out of Game UI slots, and
+     * without these both nodes reported "progress cannot be written here" inside a dialogue,
+     * choice or NVL slot while working perfectly one surface above.
+     */
+    exportProgressInGame?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
+    importProgressInGame?: () => Promise<GameProgressImportOutcome>;
     getCurrentNametag: () => string | null;
     /**
      * Invert a dialog-avatar URL back to the asset id it was compiled from. The engine resolves
@@ -205,6 +217,8 @@ export function useStageSlotSurfaceRuntime(input: {
             onListAutoSaves: options.listAutoSaves,
             onGetHistory: options.getHistoryInGame,
             onRestoreHistory: options.restoreHistoryInGame,
+            onExportProgress: options.exportProgressInGame,
+            onImportProgress: options.importProgressInGame,
             onGetNametag: options.getCurrentNametag,
             onGetNotifications: options.getNotificationsInGame,
             onGetChoiceCount: options.getChoiceCountInGame,

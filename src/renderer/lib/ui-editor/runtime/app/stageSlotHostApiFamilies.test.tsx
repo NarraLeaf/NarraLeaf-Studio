@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 /**
  * A Game UI slot surface builds its **own** blueprint host API, separate from the one the top-level
- * surfaces get. It used to build one with none of the sound callbacks, so a button-click sound in a
- * dialogue box, a choice list or an NVL surface did nothing at all - `sound.play` returned null and
- * every transport node after it addressed nothing, with no diagnostic anywhere.
+ * surfaces get, and a whole family of callbacks left off that build is silently dead.
  *
- * The hole was invisible because both halves type-check: every `onPlaySound`-family option is
- * optional by design (the editor preview genuinely has no audio). So the guard has to be that the
- * options object the shell hands to `createDevModeBlueprintHostApi` actually carries them.
+ * It happened twice. Sound first: a button-click sound in a dialogue box, a choice list or an NVL
+ * surface did nothing at all - `sound.play` returned null and every transport node after it
+ * addressed nothing, with no diagnostic anywhere. Then progress: Export/Import Progress answered
+ * "progress cannot be written here" inside those same slots while working one surface above, which
+ * reads like the feature refusing rather than the host missing.
+ *
+ * Both holes were invisible because both halves type-check: every option in these families is
+ * optional by design (the in-editor story preview genuinely has neither audio nor a shell to write
+ * a document). So the guard has to be that the options object the shell hands to
+ * `createDevModeBlueprintHostApi` actually carries them.
  */
 import { renderHook, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -178,5 +183,48 @@ describe("stage slot surface sound transport", () => {
 
         expect(options.onPlaySound).toBeUndefined();
         expect(options.onGetGamePreference).toBeTypeOf("function");
+    });
+});
+
+describe("stage slot surface progress carry", () => {
+    afterEach(cleanup);
+
+    it("passes both progress callbacks through to the slot's host API", () => {
+        const exportProgressInGame = vi.fn(async () => ({ outcome: "written" as const, error: "" }));
+        const importProgressInGame = vi.fn(async () => ({ outcome: "missing" as const, sceneId: "", error: "" }));
+
+        const options = renderShell({ exportProgressInGame, importProgressInGame });
+
+        expect(options.onExportProgress).toBe(exportProgressInGame);
+        expect(options.onImportProgress).toBe(importProgressInGame);
+    });
+
+    it("reaches the shell when a slot's graph carries progress", async () => {
+        // A title screen is exactly the kind of surface an author builds out of Game UI slots, so
+        // this is the path the feature is for - not an edge case.
+        const exportProgressInGame = vi.fn(async () => ({ outcome: "written" as const, error: "" }));
+        const importProgressInGame = vi.fn(async () => ({ outcome: "found" as const, sceneId: "chapter-2", error: "" }));
+
+        const options = renderShell({ exportProgressInGame, importProgressInGame });
+        const hostApi = (await import("@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge"))
+            .createDevModeBlueprintHostApi(options);
+
+        // Before the fix both of these refused without ever reaching a shell.
+        await expect(hostApi.progress.export()).resolves.toEqual({ outcome: "written", error: "" });
+        await expect(hostApi.progress.import()).resolves.toEqual({
+            outcome: "found",
+            sceneId: "chapter-2",
+            error: "",
+        });
+        expect(exportProgressInGame).toHaveBeenCalled();
+        expect(importProgressInGame).toHaveBeenCalled();
+    });
+
+    it("refuses on a host with nowhere to write, rather than crashing", async () => {
+        const options = renderShell({});
+        const hostApi = (await import("@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge"))
+            .createDevModeBlueprintHostApi(options);
+
+        await expect(hostApi.progress.export()).resolves.toMatchObject({ outcome: "failed" });
     });
 });

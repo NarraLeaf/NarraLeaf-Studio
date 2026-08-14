@@ -249,6 +249,9 @@ export const build = {
             + "ファイルに実行属性を付けられない。{targetPlatform} 向けのビルドは {targetPlatform} の端末で行う",
         "encryption-key-unavailable": "アセットの保護が有効だが、その鍵を読めなかった",
         "web-unprotected": "Web 書き出しにアセットの保護は効かない。そのファイル群は保護されずに配布される",
+        "progress-carry-unsupported":
+            "{blueprints} は版と版のあいだで進行状況を引き継ぐが、{platform} のビルドはそれを拒む。"
+            + "ページには書き込める共有ファイルがないので、どちらのノードも失敗の枝に進む",
         "web-lossy-images": "非可逆の画像再圧縮が有効なので、書き出す画像は品質 {quality} で再エンコードされ、失われた情報は戻らない",
         "mobile-template-missing": "モバイルのシェルテンプレートを使えない：{reason}",
         "mobile-payload-too-large": "このプロジェクトのアセット（{size}）は、モバイルのパッケージに収まる大きさを超えている",

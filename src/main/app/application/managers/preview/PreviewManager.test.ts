@@ -157,6 +157,8 @@ describe("PreviewManager.stop while the artifact is still compiling", () => {
         },
         getDistDir: () => path.join(os.tmpdir(), "dist"),
         getUserDataDir: () => path.join(os.tmpdir(), "userdata"),
+        // Every host resolves which edition it is running as; this profile picked none.
+        getGlobalState: () => ({ get: () => undefined }),
         getAppInfo: () => ({ version: "0.0.0-test" }),
     } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
 
@@ -266,6 +268,8 @@ describe("PreviewManager.stop while the runtime is still booting", () => {
         },
         getDistDir: () => path.join(os.tmpdir(), "dist"),
         getUserDataDir: () => path.join(os.tmpdir(), "userdata"),
+        // Every host resolves which edition it is running as; this profile picked none.
+        getGlobalState: () => ({ get: () => undefined }),
         getAppInfo: () => ({ version: "0.0.0-test" }),
     } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
 

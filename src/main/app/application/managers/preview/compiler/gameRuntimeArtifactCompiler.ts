@@ -21,7 +21,12 @@ import type { AppTagBaseIdentity, AppTagPluginConfig, AppTagReachableScenes, Pro
 import { APP_TAG_ID_RELEASE, isBuiltinAppTagId } from "@shared/types/appTag";
 import { gameProgressKey } from "@shared/types/gameProgress";
 import { resolveShippedPluginBuildConfig } from "@shared/utils/pluginBuildConfig";
-import { collectReferencedAssetIds, restrictRecordToAssetIds } from "@shared/build/variantPayload";
+import {
+    collectReferencedAssetIds,
+    collectReferencedIds,
+    restrictCharacterUnits,
+    restrictRecordToAssetIds,
+} from "@shared/build/variantPayload";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { readProjectIconSet, resolveIconFile, resolveIconSource } from "@shared/types/projectIcons";
@@ -56,7 +61,7 @@ import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@s
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
-import { deriveGameAppId } from "@shared/types/gameBuild";
+import { deriveGameAppId, type GameBuildPlatform } from "@shared/types/gameBuild";
 import { userDataDirectoryName } from "@shared/utils/userDataLocation";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
@@ -163,6 +168,24 @@ export type GameRuntimeArtifactCompileInput = {
      * sidecars at all (a static site has no process to spawn).
      */
     sidecarPlatformKey?: string;
+    /**
+     * Every build target this one artifact serves.
+     *
+     * One compile is not one platform: the desktop compile serves whichever desktop targets the
+     * request holds, and the web compile serves the browser export and both mobile repacks. It is
+     * what a plugin's platform-scoped build config resolves against - where the served platforms
+     * agree there is one answer to ship, and where they disagree the build says so rather than
+     * picking one. Absent - Dev Mode, the preview - means no platform, and no such value travels.
+     */
+    platforms?: readonly GameBuildPlatform[];
+    /**
+     * These bytes are going into a package a player will get.
+     *
+     * Only the production build sets it. See `DevModeBundleLoadContext.packaging` for the line it
+     * draws - folding a variant is for every host, planning what a package leaves out is for the one
+     * host that produces a package.
+     */
+    packaging?: boolean;
     /**
      * Studio's own userData directory, used only as the root of the build
      * dependency cache that `dep:` sidecar includes resolve through. Passed in
@@ -320,6 +343,7 @@ export async function compileGameRuntimeArtifact(
         blueprintScriptsCompileOk: blueprintScripts.ok,
         blueprintScriptsCompileErrors: blueprintScripts.errors,
         ...(input.appTag ? { appTag: input.appTag } : {}),
+        ...(input.packaging ? { packaging: true } : {}),
         // The declarations, not the count. A pack that merely carries a plugin can still drop a
         // scene; one that carries a plugin able to start a story cannot.
         runtimePlugins: (input.runtimePlugins ?? []).map(plugin => ({
@@ -334,9 +358,16 @@ export async function compileGameRuntimeArtifact(
     // A variant that removed story also carries an asset library sized for the story it removed, and
     // a package is public the moment someone opens it. The release edition removes nothing, so it
     // narrows nothing: there is no unreachable content for it to be carrying.
-    const stripping = Boolean(input.appTag) && !isBuiltinAppTagId(input.appTag?.id ?? APP_TAG_ID_RELEASE);
+    const stripping = Boolean(input.packaging)
+        && Boolean(input.appTag)
+        && !isBuiltinAppTagId(input.appTag?.id ?? APP_TAG_ID_RELEASE);
     const shipped = stripping
-        ? await planShippedAssets(input.projectPath, assembled, input.runtimePlugins ?? [])
+        ? await planShippedAssets(
+            input.projectPath,
+            assembled,
+            input.runtimePlugins ?? [],
+            message => notices.push(message),
+        )
         : null;
     const bundle = shipped?.bundle ?? assembled;
     if (shipped && shipped.removedAssetCount > 0) {
@@ -370,6 +401,7 @@ export async function compileGameRuntimeArtifact(
             assetsDir,
             target,
             manifest: assetManifest,
+            characterIds: shipped?.characterIds ?? null,
         });
         // The desktop icon set feeds the window/dock; a web site instead gets
         // a favicon (best-effort - only a configured PNG qualifies).
@@ -395,6 +427,8 @@ export async function compileGameRuntimeArtifact(
             runtimePlugins: input.runtimePlugins ?? [],
             target,
             pluginConfig,
+            ...(input.platforms ? { platforms: input.platforms } : {}),
+            onNotice: message => notices.push(message),
             ...(input.sidecarPlatformKey ? { sidecarPlatformKey: input.sidecarPlatformKey } : {}),
             ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
             ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
@@ -638,11 +672,16 @@ async function copyOptionalFile(sourcePath: string, targetPath: string): Promise
 /**
  * Which library assets this build may carry, and the bundle narrowed to match.
  *
- * The answer is every asset id that occurs in the bytes that ship. Two of those bytes' own tables
- * are keyed by asset id over the whole library - the display names a story row shows, and the clip
- * regions marked on audio - so they would answer "all of them" whatever the story does; they are
- * held out of the sweep and narrowed to its result afterwards, which is sound because a subset adds
- * no id back.
+ * The answer is every asset id that occurs in the bytes that ship. Three of the bundle's own tables
+ * enumerate over the whole project rather than over what the story reaches - the display names a
+ * story row shows, the clip regions marked on audio, and the cast list - so each would answer "all
+ * of them" whatever the story does. They are held out of the sweep and narrowed to its result, which
+ * is sound because a subset adds no id back.
+ *
+ * The cast is narrowed *before* the asset sweep rather than after it, and that ordering is the whole
+ * point: a character sheet names every portrait, pose and avatar that character has, so a cast list
+ * narrowed afterwards would already have kept the portraits of a character this edition cannot
+ * reach. That was the last hole in "the demo does not carry the rest of the game".
  *
  * What this cannot see is an id the running game computes rather than stores. That is refused before
  * a build starts rather than guessed at here: an asset picked by an expression is exactly the shape
@@ -652,10 +691,14 @@ async function planShippedAssets(
     projectPath: string,
     bundle: DevModeBundle,
     runtimePlugins: readonly GameRuntimePluginSource[],
-): Promise<{ bundle: DevModeBundle; include: Set<string>; removedAssetCount: number }> {
+    onNotice?: (message: string) => void,
+): Promise<{
+    bundle: DevModeBundle;
+    include: Set<string>;
+    characterIds: Set<string>;
+    removedAssetCount: number;
+}> {
     const libraryAssetIds = await readLibraryAssetIds(projectPath);
-    const assetNames = bundle.storyLibrary?.assetNames ?? {};
-    const clips = bundle.audio?.clips ?? {};
     // A plugin's published data ships inside the pack and a plugin can ask for an asset's URL, so a
     // catalogue naming one is a reference like any other. It is swept from the same files the plugin
     // copier reads rather than from its output, because that copier runs after the assets are chosen.
@@ -663,32 +706,100 @@ async function planShippedAssets(
         projectPath,
         manifest: plugin.manifest,
     })));
+    const cast = planShippedCharacters(bundle, pluginData, onNotice);
+    const assetNames = cast.bundle.storyLibrary?.assetNames ?? {};
+    const clips = cast.bundle.audio?.clips ?? {};
     const swept = {
         bundle: {
-            ...bundle,
-            ...(bundle.storyLibrary ? { storyLibrary: { ...bundle.storyLibrary, assetNames: {} } } : {}),
-            ...(bundle.audio ? { audio: { ...bundle.audio, clips: {} } } : {}),
+            ...cast.bundle,
+            ...(cast.bundle.storyLibrary
+                ? { storyLibrary: { ...cast.bundle.storyLibrary, assetNames: {} } }
+                : {}),
+            ...(cast.bundle.audio ? { audio: { ...cast.bundle.audio, clips: {} } } : {}),
         },
         pluginData,
     };
     const include = collectReferencedAssetIds(swept, libraryAssetIds);
     return {
         bundle: {
-            ...bundle,
-            ...(bundle.storyLibrary
+            ...cast.bundle,
+            ...(cast.bundle.storyLibrary
                 ? {
                     storyLibrary: {
-                        ...bundle.storyLibrary,
+                        ...cast.bundle.storyLibrary,
                         assetNames: restrictRecordToAssetIds(assetNames, include).record,
                     },
                 }
                 : {}),
-            ...(bundle.audio
-                ? { audio: { ...bundle.audio, clips: restrictRecordToAssetIds(clips, include).record } }
+            ...(cast.bundle.audio
+                ? { audio: { ...cast.bundle.audio, clips: restrictRecordToAssetIds(clips, include).record } }
                 : {}),
         },
         include,
+        characterIds: cast.characterIds,
         removedAssetCount: libraryAssetIds.size - include.size,
+    };
+}
+
+/**
+ * The cast this edition can reach, and the bundle narrowed to it.
+ *
+ * A character ships when its id occurs in the bytes that ship - a story row that speaks as it, a
+ * widget bound to it, a plugin catalogue naming it. The cast list itself is held out of that sweep
+ * for the reason the asset-name table is: it lists every character by construction.
+ *
+ * The display names go with them. A `char:` translation unit belongs to a character rather than to a
+ * row, so the scene drop never touched one, and an edition that stopped shipping a character was
+ * still shipping that character's name in every language it carried - often the spoiler that got the
+ * character dropped in the first place.
+ *
+ * Exported for its own test: reaching this through a whole compile would mean writing a project on
+ * disk to assert a set operation.
+ */
+export function planShippedCharacters(
+    bundle: DevModeBundle,
+    pluginData: unknown,
+    onNotice?: (message: string) => void,
+): { bundle: DevModeBundle; characterIds: Set<string> } {
+    const storyLibrary = bundle.storyLibrary;
+    const characters = storyLibrary?.characters;
+    if (!storyLibrary || !characters || characters.length === 0) {
+        return { bundle, characterIds: new Set<string>() };
+    }
+    const knownIds = new Set(characters.map(character => character.id));
+    // The name table is the second list that enumerates the cast: every `char:` unit id *is* a
+    // character id, so sweeping it would answer "all of them" the way the asset-name table does.
+    // Held out with the same call that narrows it later, against the empty set.
+    const sweptLocalization = bundle.localization
+        ? restrictCharacterUnits(bundle.localization, new Set<string>()).bundle
+        : undefined;
+    const swept = {
+        bundle: {
+            ...bundle,
+            storyLibrary: { ...storyLibrary, characters: [] },
+            ...(sweptLocalization ? { localization: sweptLocalization } : {}),
+        },
+        pluginData,
+    };
+    const characterIds = collectReferencedIds(swept, knownIds);
+    if (characterIds.size === characters.length) {
+        return { bundle, characterIds };
+    }
+    const kept = characters.filter(character => characterIds.has(character.id));
+    onNotice?.(`${characters.length - kept.length} characters are unreachable in this edition and do not ship`);
+    const localization = bundle.localization
+        ? restrictCharacterUnits(bundle.localization, characterIds)
+        : null;
+    if (localization && localization.removedUnitCount > 0) {
+        onNotice?.(`${localization.removedUnitCount} character names belong to characters that do not ship`);
+    }
+    return {
+        bundle: {
+            ...bundle,
+            storyLibrary: { ...storyLibrary, characters: kept },
+            ...(localization ? { localization: localization.bundle } : {}),
+        },
+        characterIds,
     };
 }
 
@@ -917,6 +1028,14 @@ async function copyBakedCharacterAvatars(input: {
     assetsDir: string;
     target: PackTarget;
     manifest: Record<string, GameRuntimeAssetManifestEntry>;
+    /**
+     * The cast this edition ships, or null when it ships all of them.
+     *
+     * These bakes are derived project files rather than library assets, so the asset sweep never
+     * sees them and narrowing the cast would not have taken them away: a directory per character
+     * sits on disk, and this walk would copy every one of them into a demo.
+     */
+    characterIds: ReadonlySet<string> | null;
 }): Promise<void> {
     const root = path.join(input.projectPath, "resources", "characters", "avatars");
     let characterDirs: string[];
@@ -929,6 +1048,9 @@ async function copyBakedCharacterAvatars(input: {
     }
 
     for (const characterId of characterDirs) {
+        if (input.characterIds && !input.characterIds.has(characterId)) {
+            continue;
+        }
         const dir = path.join(root, characterId);
         const files = (await fs.readdir(dir)).filter(name => name.toLowerCase().endsWith(".png"));
         for (const fileName of files) {
@@ -1039,6 +1161,9 @@ async function copyRuntimePlugins(input: {
     downloadRewrites?: readonly DownloadRewriteRule[];
     /** What each plugin's declared fields resolve against. See {@link readPluginConfigSource}. */
     pluginConfig: { tag: ProjectAppTag; base: AppTagPluginConfig };
+    /** The build targets this artifact serves; what a platform-scoped field resolves against. */
+    platforms?: readonly GameBuildPlatform[];
+    onNotice?: (message: string) => void;
 }): Promise<GameRuntimePackPluginEntry[]> {
     const entries: GameRuntimePackPluginEntry[] = [];
     for (const plugin of input.runtimePlugins) {
@@ -1077,13 +1202,23 @@ async function copyRuntimePlugins(input: {
             { pluginId: plugin.manifest.id, manifest: plugin.manifest },
             input.pluginConfig.tag,
             input.pluginConfig.base,
+            input.platforms,
         );
+        for (const key of buildConfig.ambiguousKeys) {
+            // Named rather than dropped in silence: to the plugin this is indistinguishable from a
+            // field the author never filled in, and only the author can decide which value is right
+            // for a package that serves several platforms at once.
+            input.onNotice?.(
+                `${plugin.manifest.id}: "${key}" differs between the platforms this build produces, `
+                + "so no value ships for it",
+            );
+        }
         entries.push({
             manifest: plugin.manifest,
             entryRelativePath: relativePath,
             ...(data ? { data } : {}),
             ...(sidecars.length > 0 ? { sidecars } : {}),
-            ...(Object.keys(buildConfig).length > 0 ? { buildConfig } : {}),
+            ...(Object.keys(buildConfig.values).length > 0 ? { buildConfig: buildConfig.values } : {}),
         });
     }
     return entries;
@@ -1174,8 +1309,10 @@ async function copyPluginSidecars(input: {
  * build is the last moment before those bytes reach a player's machine, and an
  * install directory is an ordinary folder anything on the host can rewrite
  * afterwards - so the pack re-verifies rather than trusts the install record.
- * `dep:` artifacts are exempt here because the build dependency cache verified
- * the archive they came out of against its own mandatory digest.
+ * `dep:` artifacts are not verified here because the build dependency cache
+ * applies the same rule at its own door: it re-checks the directory it hands
+ * back against what was extracted into it, not just the archive that came out
+ * of the network.
  */
 async function resolveSidecarInclude(input: {
     include: string;

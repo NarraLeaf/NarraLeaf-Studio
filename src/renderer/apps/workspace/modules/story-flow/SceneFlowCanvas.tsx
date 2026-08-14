@@ -57,6 +57,14 @@ const EDGE_LABEL_MAX_CHARS = 22;
 /** What a dimmed element keeps. Low enough to recede, high enough that the path still exists. */
 const DIMMED_OPACITY = 0.3;
 
+/**
+ * What a switched-off jump's line keeps.
+ *
+ * Weaker than a dim but not invisible: the branch is written and the author has to be able to see
+ * that it is, while nothing about the line should read as a path a player takes.
+ */
+const DISABLED_LINE_OPACITY = 0.45;
+
 function clampLabel(text: string): string {
     return text.length > EDGE_LABEL_MAX_CHARS ? `${text.slice(0, EDGE_LABEL_MAX_CHARS - 1)}…` : text;
 }
@@ -371,7 +379,12 @@ function SceneFlowCanvasInner({
             highlight && !highlight.edgeIds.has(edgeId) ? DIMMED_OPACITY : undefined;
 
         return drawnLines.map(line => {
-            const opacity = dim(line.id);
+            // A switched-off jump fades rather than disappears: the author wrote this branch, and a
+            // map that removed it would be answering "what will the compiler emit" instead of "what
+            // does my story look like". Fading composes with the highlight dim rather than replacing
+            // it - a disabled line outside the highlighted route is the faintest thing on the map,
+            // which is the right reading of both facts at once.
+            const opacity = (dim(line.id) ?? 1) * (line.disabled ? DISABLED_LINE_OPACITY : 1);
             const fromArm = line.sourceBranchId !== undefined;
             return {
                 id: line.id,

@@ -14,6 +14,7 @@ import type {
     StorySceneId,
 } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listSceneIdsInDocumentOrder } from "@shared/types/story";
+import { reachableSceneIds } from "@shared/story/storyReachability";
 import { formatStoryConditionSummary, type ProjectVariableNames } from "../story/projection/storySceneProjection";
 
 /** Node box size. The layout and the node component must agree on these. */
@@ -68,6 +69,11 @@ export type SceneFlowJumpRef = {
     conditional: boolean;
     /** The fork it hangs off, when there is one. Absent exactly when `conditional` is false. */
     branch?: SceneFlowBranchLabel;
+    /**
+     * The row is switched off, or sits under a row that is. The compiler drops it, so this edge is
+     * in the map because the author wrote it, not because a player can take it.
+     */
+    disabled: boolean;
 };
 
 export type SceneFlowNodeModel = {
@@ -92,6 +98,14 @@ export type SceneFlowEdgeModel = {
     jumps: SceneFlowJumpRef[];
     /** Every jump on this edge is conditional, so the branch is not guaranteed. Drawn dashed. */
     conditional: boolean;
+    /**
+     * Every jump on this edge is switched off, so nothing the compiler emits takes it. Drawn faded.
+     *
+     * The map keeps drawing it: the author wrote this branch and can see that they did, which is the
+     * whole difference between a flow map and a picture of the package. An edge with one live jump
+     * and one disabled one is not faded - a player can still get there.
+     */
+    disabled: boolean;
     /**
      * The distinct forks that reach this target, in document order — what the collapsed line hides.
      * Deduplicated, so two options worded the same read as one path (they are, to a reader of the
@@ -440,37 +454,6 @@ function assignLayers(
     return layers;
 }
 
-/** Scenes the player can actually arrive at, following jumps from the entry scene. */
-function findReachable(
-    edges: SceneFlowEdgeModel[],
-    entrySceneId: StorySceneId | undefined,
-): Set<StorySceneId> | null {
-    if (!entrySceneId) {
-        // No entry scene declared — "unreachable" is not a claim we can make.
-        return null;
-    }
-    const outgoing = new Map<StorySceneId, StorySceneId[]>();
-    for (const edge of edges) {
-        const list = outgoing.get(edge.source);
-        if (list) {
-            list.push(edge.target);
-        } else {
-            outgoing.set(edge.source, [edge.target]);
-        }
-    }
-    const reachable = new Set<StorySceneId>([entrySceneId]);
-    const queue: StorySceneId[] = [entrySceneId];
-    for (let cursor = 0; cursor < queue.length; cursor++) {
-        for (const next of outgoing.get(queue[cursor]) ?? []) {
-            if (!reachable.has(next)) {
-                reachable.add(next);
-                queue.push(next);
-            }
-        }
-    }
-    return reachable;
-}
-
 /**
  * Column-per-layer, rows centred on the column so the trunk of the story reads as a spine.
  *
@@ -542,6 +525,13 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
         const scene = document.scenes[sceneId];
         const arms = collectSceneArms(scene, document, options?.variableNames);
         const armByBlockId = new Map(arms.map(arm => [arm.node.blockId, arm]));
+        // The rows the compiler would keep. A jump missing from this set is switched off, or sits
+        // under a row that is - the same reading `traceReachableScenes` takes, from the same helper,
+        // so the map cannot come to a different view of which rows exist.
+        const liveBlockIds = new Set(
+            listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) })
+                .map(block => block.id),
+        );
 
         // Depth-first, so the forks this collapses into one edge are listed in the order the author
         // wrote them — which is what `SceneFlowEdgeModel.branches` promises the reader of the map.
@@ -575,6 +565,7 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
             const jump: SceneFlowJumpRef = {
                 blockId: block.id,
                 conditional: branch !== null,
+                disabled: !liveBlockIds.has(block.id),
                 ...(branch ? { branch } : {}),
             };
             const existing = edgeByKey.get(key);
@@ -587,6 +578,7 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
                     target,
                     jumps: [jump],
                     conditional: false,
+                    disabled: false,
                     branches: [],
                 });
             }
@@ -640,12 +632,19 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
         return {
             ...edge,
             conditional: edge.jumps.every(jump => jump.conditional),
+            disabled: edge.jumps.every(jump => jump.disabled),
             branches,
         };
     });
 
     const layers = assignLayers(sceneIds, edges, entrySceneId);
-    const reachable = findReachable(edges, entrySceneId);
+    // The shared walk, told to follow disabled jumps. This map draws the document rather than
+    // predicting the package, so a branch the author switched off for the afternoon still leads
+    // somewhere - see `includeDisabled`. The null is kept: with no entry scene declared,
+    // "unreachable" is not a claim this map can make about anything.
+    const reachable = entrySceneId
+        ? reachableSceneIds(document, { fallback: "none", includeDisabled: true })
+        : null;
 
     const nodes: SceneFlowNodeModel[] = sceneIds.map(sceneId => {
         const scene = document.scenes[sceneId];

@@ -153,6 +153,10 @@ function mount(options: {
                         };
                     case Services.Story:
                         return story;
+                    // The variant gate reads the project's shared blueprint assets; this file is
+                    // about another gate, so it holds none.
+                    case Services.Assets:
+                        return { listSharedBlueprints: async () => [] };
                     // Every project has the release variant, so the AppTag gate always resolves a name.
                     case Services.AppTags:
                         return { resolveTag: () => RELEASE_APP_TAG };

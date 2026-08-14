@@ -252,6 +252,9 @@ export const build = {
             + "a file executable. Build the {targetPlatform} target on a {targetPlatform} machine.",
         "encryption-key-unavailable": "Asset protection is on, but its key could not be read.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
+        "progress-carry-unsupported":
+            "{blueprints} carries progress between editions, and a {platform} build refuses it: a page has no shared "
+            + "file to write, so both nodes take their failure branch.",
         "web-lossy-images": "Lossy image recompression is on, so the exported images are re-encoded at quality {quality} and lose detail permanently.",
         "mobile-template-missing": "The mobile shell templates are unavailable: {reason}",
         "mobile-payload-too-large": "This project's assets ({size}) exceed what a mobile package can hold.",

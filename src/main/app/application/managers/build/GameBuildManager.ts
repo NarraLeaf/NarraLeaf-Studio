@@ -131,6 +131,7 @@ import type {
 } from "@/buildWorker/protocol";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { collectVariantContentFindings } from "./variantContentPreflight";
+import { collectProgressCarryFindings } from "./progressCarryPreflight";
 
 type BuildSession = {
     id: string;
@@ -707,6 +708,10 @@ export class GameBuildManager {
         if (targets.some(target => target.platform === "web") && this.encryptAssetsEnabled(projectConfig)) {
             findings.push({ code: "web-unprotected", severity: "warning", section: "content" });
         }
+        findings.push(...await collectProgressCarryFindings({
+            projectPath: normalizedProjectPath,
+            platforms: targets.map(target => target.platform),
+        }));
         // The one step in the optimization pipeline that changes what the player
         // sees. It is opt-in, but a setting turned on months ago is a setting
         // nobody remembers, and this is the last moment before it is applied.
@@ -979,6 +984,9 @@ export class GameBuildManager {
                 // it: the desktop pack and the web/mobile one are the same game under one variant.
                 appTag: { id: appTag.id, name: appTag.name },
                 declaredScenes,
+                // The one compile that produces something a player receives, so the one that plans a
+                // scene drop and refuses a graph it cannot fold.
+                packaging: true,
                 // The compile can refuse this build (a blueprint whose variant test does not come out
                 // a constant), and that sentence is the author's to read.
                 locale: getMainLocale(this.app),
@@ -987,6 +995,10 @@ export class GameBuildManager {
                 productName: identity.productName,
                 ...(identity.identifier ? { identifier: identity.identifier } : {}),
                 ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
+                // Every desktop target this one pack serves. A plugin's platform-scoped build config
+                // resolves against it: one platform selected is one answer, several are an answer
+                // only when the author gave them all the same value.
+                platforms: [...new Set(desktopTargets.map(target => target.platform))],
                 // The compile runs in a utility process, so the build dependency
                 // cache root travels with the input rather than being read from
                 // Electron on the far side.
@@ -1021,7 +1033,16 @@ export class GameBuildManager {
                 mode: "production",
                 appTag: { id: appTag.id, name: appTag.name },
                 declaredScenes,
+                packaging: true,
                 locale: getMainLocale(this.app),
+                // The browser export and both mobile repacks read this one compile, so all three are
+                // what a platform-scoped plugin field has to agree across.
+                platforms: [
+                    ...new Set([
+                        ...(webTarget ? ["web" as const] : []),
+                        ...mobileTargets.map(target => target.platform),
+                    ]),
+                ],
                 shell: "web",
             }, {
                 onStart: worker => { session.worker = worker; },

@@ -13,6 +13,7 @@ import { INLangCompiler, NullNLangCompiler } from "./compiler/INLangCompiler";
 import { compileAllBlueprintScriptsForProject } from "./compiler/blueprint/compileProjectBlueprintScripts";
 import { devModeDiskBundleSource } from "./pipeline/bundleAssembler";
 import type { DevModeBundleSource } from "./pipeline/types";
+import { resolveRunVariant } from "../../utils/runVariant";
 import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
 import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
 
@@ -386,10 +387,20 @@ export class DevModeManager {
             session.revision += 1;
             started = Date.now();
             this.emitVerbose(session, `bundle assembly started: revision ${session.revision}`);
+            const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
             const bundle = await this.bundleSource.load({
                 projectPath: session.sourcePath,
                 bundleId: session.id,
                 revision: session.revision,
+                // Read per rebuild rather than captured on the session: an author switching edition
+                // expects the next reload to be the other one, not to have to stop and start.
+                // `packaging` stays off, so this folds the variant and plans no scene drop.
+                ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
+                onNotice: message => this.emitWorkspaceConsoleLog(session, {
+                    level: "info",
+                    source: "Dev Mode",
+                    message,
+                }),
                 compiled: compileResult.artifacts,
                 blueprintCompiledScripts: blueprintScripts.scripts,
                 blueprintScriptsCompileOk: true,

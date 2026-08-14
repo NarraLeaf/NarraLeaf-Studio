@@ -25,8 +25,11 @@ import type { GameVoiceBundle } from "@shared/types/voice";
  */
 const SCENE_INDEPENDENT_UNIT_PREFIXES = ["ui:", "char:", "key:"] as const;
 
-/** Canonical asset id shape. Matched anywhere in a string, so an id embedded in a URL or a bundle path counts. */
-const ASSET_ID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+/**
+ * Canonical id shape - assets and characters both. Matched anywhere in a string, so an id embedded
+ * in a URL or a bundle path counts.
+ */
+const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
 export function isSceneIndependentUnitId(unitId: string): boolean {
     return SCENE_INDEPENDENT_UNIT_PREFIXES.some(prefix => unitId.startsWith(prefix));
@@ -121,24 +124,80 @@ export function collectReferencedAssetIds(
     payload: unknown,
     libraryAssetIds: ReadonlySet<string>,
 ): Set<string> {
+    return collectReferencedIds(payload, libraryAssetIds);
+}
+
+/**
+ * Every id from `knownIds` that occurs anywhere in `payload`.
+ *
+ * The same syntactic rule the asset sweep is built on, applied to whichever id space the caller
+ * names. Characters use it for the reason assets do: the set of places that can name one grows with
+ * the command vocabulary and the widget library, and a walk that missed a place would ship a
+ * character - and therefore that character's portraits - out of an edition that cannot reach them,
+ * or worse, drop one an edition can.
+ */
+export function collectReferencedIds(
+    payload: unknown,
+    knownIds: ReadonlySet<string>,
+): Set<string> {
     const referenced = new Set<string>();
-    if (libraryAssetIds.size === 0) {
+    if (knownIds.size === 0) {
         return referenced;
     }
     const text = JSON.stringify(payload) ?? "";
-    for (const match of text.matchAll(ASSET_ID_PATTERN)) {
+    for (const match of text.matchAll(UUID_PATTERN)) {
         const candidate = match[0];
-        if (libraryAssetIds.has(candidate)) {
+        if (knownIds.has(candidate)) {
             referenced.add(candidate);
             continue;
         }
         // Ids are stored lower-case; a hand-written document may not be.
         const lowered = candidate.toLowerCase();
-        if (libraryAssetIds.has(lowered)) {
+        if (knownIds.has(lowered)) {
             referenced.add(lowered);
         }
     }
     return referenced;
+}
+
+/**
+ * Drop the display name of every character this edition does not carry.
+ *
+ * `char:` units survive the scene drop by construction - they belong to a character, not to a row -
+ * so an edition that stops shipping a character still shipped their name in every language. The
+ * name is often the spoiler ("who is in chapter three"), which is the whole reason the character was
+ * dropped.
+ *
+ * A unit whose id is not `char:<known character>` is left alone: `ui:` and `key:` are other spaces
+ * entirely, and a `char:` id belonging to no character at all is a stale row this is not the place
+ * to tidy.
+ */
+export function restrictCharacterUnits(
+    bundle: GameLocalizationBundle,
+    characterIds: ReadonlySet<string>,
+): { bundle: GameLocalizationBundle; removedUnitCount: number } {
+    let removedUnitCount = 0;
+    const tables: GameLocalizationBundle["tables"] = {};
+    for (const [locale, table] of Object.entries(bundle.tables)) {
+        const kept: Record<string, string> = {};
+        for (const [unitId, target] of Object.entries(table)) {
+            if (isDroppedCharacterUnitId(unitId, characterIds)) {
+                removedUnitCount += 1;
+                continue;
+            }
+            kept[unitId] = target;
+        }
+        tables[locale] = kept;
+    }
+    return { bundle: { ...bundle, tables }, removedUnitCount };
+}
+
+function isDroppedCharacterUnitId(unitId: string, characterIds: ReadonlySet<string>): boolean {
+    if (!unitId.startsWith("char:")) {
+        return false;
+    }
+    const characterId = unitId.slice("char:".length).split(":")[0];
+    return characterId.length > 0 && !characterIds.has(characterId);
 }
 
 /** Keep only the entries whose key is a shipped asset. */

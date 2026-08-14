@@ -159,6 +159,11 @@ export type BuildPreflightCode =
     | "sidecar-crossbuild-exec-bit"
     | "encryption-key-unavailable"
     | "web-unprotected"
+    /**
+     * The project carries progress between editions, and this target's shell cannot: a page has no
+     * shared file to write, and the mobile shells serve that same page.
+     */
+    | "progress-carry-unsupported"
     | "web-lossy-images"
     | "mobile-template-missing"
     | "mobile-payload-too-large"
