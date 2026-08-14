@@ -319,6 +319,7 @@ import {
     readDynamicInputPinIds,
     readDynamicInputPinLabels,
     resolveEffectiveBlueprintNodePins,
+    saveSchemaFieldIdFromPin,
 } from "../effectivePins";
 import { readBlueprintNodeOutputValue } from "../nodeOutputValues";
 import { readBlueprintMemoValue } from "../memoValues";
@@ -2894,6 +2895,15 @@ function resolveSelfOutput(
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME &&
         (portId === "savedAt" || portId === "createdAt" || portId === "exists")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // The project's declared save fields, published by Get Save Metadata onto one pin each. Matched
+    // by prefix rather than by name because the names are the author's: the set changes whenever a
+    // field is declared, and a fixed list here would go stale the moment one is.
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA &&
+        saveSchemaFieldIdFromPin(portId) !== null
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }

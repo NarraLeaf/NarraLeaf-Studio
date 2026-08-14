@@ -25,6 +25,7 @@ import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver
 import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
 import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
+import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 
 type SaveSchemaServiceEvents = {
     schemaChanged: SaveSchema;
@@ -309,7 +310,27 @@ export class SaveSchemaService extends Service<SaveSchemaService> implements ISa
         this.events.emit("dirtyChanged", dirty);
     }
 
+    /**
+     * Hand the window back an empty schema.
+     *
+     * The live schema is module-level and outlives this service's context, so a project closed
+     * without this would leave its fields growing pins on the next project's save nodes, for as
+     * long as it took that project's own document to load.
+     */
+    public dispose(): void {
+        setActiveSaveSchemaFields([]);
+    }
+
+    /**
+     * Announce, and publish.
+     *
+     * Both halves on every change: subscribers repaint from the event, and pin resolution - which is
+     * not a subscriber but a function called from the canvas, the validator, the linter and the
+     * graph runtime - reads the published list. The push is content-compared upstream, so emitting
+     * on every mutation costs nothing when nothing moved.
+     */
     private emitSchemaChanged(): void {
+        setActiveSaveSchemaFields(this.listFields());
         this.events.emit("schemaChanged", this.getSchema());
     }
 

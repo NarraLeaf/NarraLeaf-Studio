@@ -8,7 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, X } from "lucide-react";
+import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, X, SlidersHorizontal } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintBreakpointForNode } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
@@ -92,6 +92,8 @@ export type BlueprintFlowNodeData = {
     onPatchNodeParam?: BlueprintNodeParamPatch;
     /** Append a variadic data input pin (IR + params). */
     onAddDynamicInputPin?: (nodeId: string) => void;
+    /** Open the project save-field editor. Present on the two save nodes; see SaveSchemaFieldsModal. */
+    onEditSaveSchema?: () => void;
     /** Remove a user-added input pin and clean edges / literals. */
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void;
     /** Accessible variables for variableRef inspector controls. */
@@ -2425,6 +2427,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
         params,
         onPatchNodeParam,
         onAddDynamicInputPin,
+        onEditSaveSchema,
         onRemoveDynamicInputPin,
         memberVariables,
         persistentVariables,
@@ -2450,6 +2453,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
     const isMemo = catalog.type === BLUEPRINT_NODE_TYPE_DATA_MEMO;
     const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
     const firstNodeError = nodeDiagnostics?.find(d => d.severity === "error");
+    const showEditSaveSchema = Boolean(catalog.supportsSaveSchemaPins) && Boolean(onEditSaveSchema);
     const showAddPinRow =
         Boolean(catalog.supportsDynamicInputPins) && Boolean(onAddDynamicInputPin);
     // Fn head parameters are output pins: keep the add button beside them in the output column.
@@ -2563,6 +2567,34 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
         </Button>
     );
 
+    /**
+     * The way in to what a save slot carries.
+     *
+     * On the card rather than in a panel because the pins above it are the thing being explained:
+     * an author looking at a save node and wondering where the chapter name goes is one click from
+     * declaring it. Same dashed affordance as the add-pin row, because it does the same kind of
+     * thing - it adds a pin - even though what it writes is the project rather than this node.
+     */
+    const editSaveSchemaButton = (
+        <Button
+            key="edit-save-schema"
+            type="button"
+            data-tip={t("saveSchema.open")}
+            className="nodrag mt-0.5 flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge !py-0.5 text-fg-subtle hover:border-edge-strong hover:bg-fill-subtle hover:text-fg-muted"
+            variant="ghost"
+            size="sm"
+            aria-label={t("saveSchema.open")}
+            onMouseDown={stopFlowNodePointerBubble}
+            onPointerDown={stopFlowNodePointerBubble}
+            onClick={e => {
+                e.stopPropagation();
+                onEditSaveSchema?.();
+            }}
+        >
+            <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+        </Button>
+    );
+
     // Pair each input row with its aligned output row so both share the SAME flex row.
     // Alignment then comes from the shared row height (not from every row being a fixed
     // 20px), so expanding a pin into an inline-literal card grows that one row on both
@@ -2589,6 +2621,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
             />
         )),
         ...(showAddInInputColumn ? [addPinButton] : []),
+        ...(showEditSaveSchema && catalog.saveSchemaPinKind === "input" ? [editSaveSchemaButton] : []),
     ];
     const rightRowItems: ReactNode[] = [
         ...Array.from({ length: rightPinSpacerRows }, (_, index) => (
@@ -2611,6 +2644,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
             />
         )),
         ...(addPinInOutputColumn ? [addPinButton] : []),
+        ...(showEditSaveSchema && catalog.saveSchemaPinKind === "output" ? [editSaveSchemaButton] : []),
     ];
     const pinRowCount = Math.max(leftRowItems.length, rightRowItems.length);
 
