@@ -58,6 +58,8 @@ export const pluginPermission = {
             runtime: "游戏内能力",
             externalLink: "从游戏跳转出去",
             externalLinkNote: "此插件可以把玩家带到这些地址，它们会在游戏之外打开",
+            network: "游戏会请求的数据",
+            networkNote: "游戏运行时，此插件会从这些地址请求数据",
             studio: "Studio 权限",
         },
         sidecarPlatforms: "运行平台：{platforms}",

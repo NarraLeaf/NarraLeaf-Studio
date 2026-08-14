@@ -128,13 +128,6 @@ export const project = {
         // The addresses a build of this variant may hand to the player's browser. Named for what the
         // list decides rather than for the mechanism, and stated as a group: a variant has its own
         // list or reads the project's.
-        links: {
-            title: "Links the game can open",
-            add: "Add link",
-            remove: "Remove link",
-            placeholder: "https://example.com/store",
-            invalid: "Only addresses starting with http:// or https:// can be opened.",
-        },
         // The page a build of this variant shows when its story runs out of rows. Named for what an
         // author sees happen rather than for the engine event behind it.
         ending: {
@@ -339,6 +332,19 @@ export const project = {
         allowHttpTitle: "Allow HTTP",
         allowHttpDescription: "When off, the game is confined to the app protocol and all HTTP/HTTPS requests are blocked.",
         allowHttpWebHint: "Not enforced in the Web export, which is itself served over HTTP. Network nodes still run there.",
+        networkAllowlistTitle: "Only listed addresses",
+        networkAllowlistDescription: "Restrict the game to the addresses below. Requests anywhere else are refused.",
+        networkAllowlistWebHint: "Enforced in every build, including the Web export, through the page policy.",
+        networkAllowlist: {
+            title: "Allowed addresses",
+            description: "One address or host pattern per row.",
+            placeholder: "https://api.example.com/*",
+            invalid: "Enter an http:// or https:// address. Use * as a leading host label or a trailing path.",
+            add: "Add address",
+            remove: "Remove address",
+            fromPlugins: "Declared by installed plugins",
+            sidecarNote: "Plugin sidecars run as separate programs and are not covered by this list.",
+        },
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
         encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",

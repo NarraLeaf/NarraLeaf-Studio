@@ -16,12 +16,20 @@
  *  - The timeout, the size cap and the scheme check are only enforceable somewhere the page cannot
  *    reach around.
  *
- * ## Why it checks `allowHttp` itself
+ * ## Why it checks the project's settings itself
  *
  * The main process sits *outside* the CSP and `webRequest` cage that confines the renderer (see
- * `runtime/main/networkPolicy.ts`), so that cage cannot be what enforces the project's setting here.
- * Without the check below, routing the request through main would hand a project that switched the
- * network off a working network - the opposite of what the setting says.
+ * `runtime/main/networkPolicy.ts`), so that cage cannot be what enforces the project's settings
+ * here. Without the checks below, routing the request through main would hand a project that
+ * switched the network off a working network, and one that narrowed it to an allowlist the whole
+ * internet - the opposite of what both settings say.
+ *
+ * ## Redirects
+ *
+ * A check made once, before the request, is not a check on where the bytes came from: a `302` is a
+ * request to a second address that nothing decided. So this follows the chain itself and decides
+ * every hop, in the shells that can - see the `redirects` option for the one that cannot and what
+ * stands in for it there.
  *
  * Comments in English per project convention.
  */
@@ -33,11 +41,36 @@ import {
     type BlueprintNetworkFetchRequest,
     type BlueprintNetworkFetchResult,
 } from "@shared/types/blueprint/network";
-import { BLUEPRINT_NETWORK_METHODS_WITH_BODY } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_NETWORK_METHODS_WITH_BODY, type BlueprintNetworkMethod } from "@shared/types/blueprint/graph";
+import {
+    isNetworkAddressAllowed,
+    networkAllowlistRefusalMessage,
+    type NetworkAllowlist,
+} from "@shared/types/networkAllowlist";
 
 export type BlueprintNetworkFetchOptions = {
     /** The project's Allow HTTP setting. False refuses every request before it is made. */
     allowHttp: boolean;
+    /**
+     * The project's network allowlist, if it states one. Absent is the wide policy, which is what
+     * every project has until a team asks for a shorter answer - see `@shared/types/networkAllowlist`.
+     */
+    allowlist?: NetworkAllowlist;
+    /**
+     * Who polices a redirect, which is not the same question in every shell and must not be
+     * answered by a default.
+     *
+     * `"check"` - this process follows the chain itself and decides every hop, which is what a main
+     * process can do and therefore must. Without it the allowlist governs only the address the
+     * author wrote, and one `302` walks straight past it.
+     *
+     * `"delegate"` - the platform follows the chain and something else decides each hop. That is
+     * the web export: a browser answers a manually-followed redirect with an opaque response whose
+     * `Location` cannot be read, so checking hops here is not merely awkward but impossible, and
+     * the thing that does check them is the page's own `connect-src` - which the browser applies to
+     * every hop.
+     */
+    redirects: "check" | "delegate";
 };
 
 function networkError(message: string): BlueprintNetworkFetchResult {
@@ -111,6 +144,35 @@ async function readCappedBody(response: Response): Promise<{ bytes: Uint8Array }
 }
 
 /**
+ * How many hops a redirect chain may take before this gives up.
+ *
+ * Lower than a browser's twenty because a Fetch node is a game waiting on an answer, and a chain
+ * this long is a misconfigured endpoint rather than a route worth following. Exhausting it is a
+ * `networkError` and says so - a silent stop would hand the graph the redirect itself as if it were
+ * the response.
+ */
+const BLUEPRINT_NETWORK_MAX_REDIRECTS = 5;
+
+const REDIRECT_STATUSES: readonly number[] = [301, 302, 303, 307, 308];
+
+/**
+ * What the next hop is issued as.
+ *
+ * The rule browsers follow, written out because this code is the one following it: 303 always
+ * becomes a GET, 301 and 302 turn a POST into one (universal practice, contradicting the original
+ * text of the specification), and 307/308 exist precisely to preserve the method and the body.
+ */
+function methodAfterRedirect(
+    status: number,
+    method: BlueprintNetworkMethod,
+): { method: BlueprintNetworkMethod; keepBody: boolean } {
+    if (status === 303 || ((status === 301 || status === 302) && method === "POST")) {
+        return { method: "GET", keepBody: false };
+    }
+    return { method, keepBody: true };
+}
+
+/**
  * Execute one Fetch node request.
  *
  * Never throws: every failure is one of the four outcomes, because the node's four execution pins
@@ -132,6 +194,9 @@ export async function executeBlueprintNetworkFetch(
     if (!isBlueprintNetworkUrlAllowed(url)) {
         return networkError(`Only http and https addresses can be fetched: ${url}`);
     }
+    if (!isNetworkAddressAllowed(url, options.allowlist)) {
+        return networkError(networkAllowlistRefusalMessage(url));
+    }
 
     const timeoutMs = normalizeBlueprintNetworkTimeout(request.timeoutMs);
     const controller = new AbortController();
@@ -142,28 +207,70 @@ export async function executeBlueprintNetworkFetch(
     }, timeoutMs);
 
     try {
-        const response = await fetch(url, {
-            method: request.method,
-            headers: request.headers ?? undefined,
-            body: BLUEPRINT_NETWORK_METHODS_WITH_BODY.includes(request.method) ? request.body ?? undefined : undefined,
-            signal: controller.signal,
-            // The game holds no session with anyone; sending ambient cookies would be a surprise the
-            // author never asked for.
-            credentials: "omit",
-            redirect: "follow",
-        });
+        let target = url;
+        let method = request.method;
+        let sendBody = BLUEPRINT_NETWORK_METHODS_WITH_BODY.includes(request.method);
 
-        const read = await readCappedBody(response);
-        if ("error" in read) {
-            return { outcome: "networkError", status: response.status, body: null, error: read.error };
+        for (let hop = 0; ; hop++) {
+            const response = await fetch(target, {
+                method,
+                headers: request.headers ?? undefined,
+                body: sendBody ? request.body ?? undefined : undefined,
+                signal: controller.signal,
+                // The game holds no session with anyone; sending ambient cookies would be a surprise
+                // the author never asked for.
+                credentials: "omit",
+                // `manual` is what makes the check above hold for every hop rather than only for the
+                // address the author wrote: a 302 to somewhere else is a request to somewhere else,
+                // and `follow` would make it one nothing ever decided. `delegate` is for the shell
+                // that cannot do this - see the note on the option.
+                redirect: options.redirects === "check" ? "manual" : "follow",
+            });
+
+            if (options.redirects !== "check" || !REDIRECT_STATUSES.includes(response.status)) {
+                const read = await readCappedBody(response);
+                if ("error" in read) {
+                    return { outcome: "networkError", status: response.status, body: null, error: read.error };
+                }
+                const body = decoderFor(response.headers.get("content-type")).decode(read.bytes);
+                return {
+                    outcome: response.ok ? "success" : "httpError",
+                    status: response.status,
+                    body,
+                    error: response.ok ? null : `HTTP ${response.status} ${response.statusText}`.trim(),
+                };
+            }
+
+            const location = response.headers.get("location");
+            if (!location) {
+                // A redirect status with nowhere to go. Reported rather than returned as the
+                // response, because a graph handed a bodyless 302 would read it as an HTTP error it
+                // could do something about.
+                return networkError(`HTTP ${response.status} with no Location header: ${target}`);
+            }
+            if (hop >= BLUEPRINT_NETWORK_MAX_REDIRECTS) {
+                return networkError(`Too many redirects (over ${BLUEPRINT_NETWORK_MAX_REDIRECTS}): ${url}`);
+            }
+
+            let next: string;
+            try {
+                // Resolved against the hop it came from, because a Location may be relative.
+                next = new URL(location, target).href;
+            } catch {
+                return networkError(`Redirect to an address that does not parse: ${location}`);
+            }
+            if (!isBlueprintNetworkUrlAllowed(next)) {
+                return networkError(`Redirect to a scheme that cannot be fetched: ${next}`);
+            }
+            if (!isNetworkAddressAllowed(next, options.allowlist)) {
+                return networkError(networkAllowlistRefusalMessage(next));
+            }
+
+            const after = methodAfterRedirect(response.status, method);
+            method = after.method;
+            sendBody = sendBody && after.keepBody;
+            target = next;
         }
-        const body = decoderFor(response.headers.get("content-type")).decode(read.bytes);
-        return {
-            outcome: response.ok ? "success" : "httpError",
-            status: response.status,
-            body,
-            error: response.ok ? null : `HTTP ${response.status} ${response.statusText}`.trim(),
-        };
     } catch (error) {
         if (timedOut) {
             return { outcome: "timeout", status: 0, body: null, error: `Timed out after ${timeoutMs}ms` };

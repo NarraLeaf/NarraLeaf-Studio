@@ -1,4 +1,5 @@
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type { NetworkAccessPolicy, NetworkPluginAllowlistEntry } from "./networkAllowlist";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
 import type { DevModeSaveRecord } from "./devModeSave";
@@ -227,18 +228,6 @@ export type GameRuntimePackV1 = {
      */
     crash?: GameRuntimeCrashConfig;
     /**
-     * Web addresses this build may hand to the player's browser, resolved for the variant it was
-     * compiled as. Absent on packs produced before this field existed and on projects that declare
-     * none; both mean the same thing, and every shell reads it as "this build opens nothing".
-     *
-     * A field of its own rather than part of {@link network}, for two reasons. That block is
-     * skipped entirely for web exports, and a declaration that vanished on one shell would be a
-     * hole in the only thing standing between a graph and the player's browser. And opening a page
-     * is not a network permission: nothing is requested and nothing comes back into the game, so
-     * this is neither gated on `network.allowHttp` nor disabled with it.
-     */
-    externalLinks?: string[];
-    /**
      * The page this build shows when its story falls off the end, resolved for the variant it was
      * compiled as.
      *
@@ -381,6 +370,22 @@ export type GameRuntimeNetworkConfig = {
      * webRequest). When true, remote resources over HTTP/HTTPS are permitted.
      */
     allowHttp: boolean;
+    /**
+     * How much of the network the build may reach once {@link allowHttp} is on.
+     *
+     * Absent is `"any"`, which is what every pack written before this field
+     * existed carries and what those builds shipped with. See
+     * `@shared/types/networkAllowlist` for why the wide state is the default.
+     */
+    policy?: NetworkAccessPolicy;
+    /** The author's own entries. Only consulted when {@link policy} is `"allowlist"`. */
+    allowlist?: string[];
+    /**
+     * Hosts the plugins in this build declared and the author approved at
+     * install, kept attributed rather than merged into {@link allowlist}: the
+     * two are removed by different acts, and a merged list could not say which.
+     */
+    pluginAllowlist?: NetworkPluginAllowlistEntry[];
 };
 
 export type GameRuntimeSaveBridge = {

@@ -57,6 +57,7 @@ async function writePlugin(
             buildDependencies: [],
             buildConfig,
             externalLinks: [],
+            network: [],
         },
         permissions: [],
     };

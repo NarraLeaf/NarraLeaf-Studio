@@ -89,7 +89,6 @@ import type {
     AppTagIdentity,
     AppTagOverrideKey,
     AppTagPluginConfig,
-    AppTagResolvedExternalLinks,
     AppTagResolvedValue,
     ProjectAppTag,
     ProjectAppTagDocument,
@@ -597,16 +596,6 @@ interface IAppTagService extends IService {
         platform?: GameBuildPlatform,
     ): boolean;
     clearAllPluginConfig(id: string): boolean;
-    /** The project's own declared web addresses - what a variant that states none opens. */
-    getProjectExternalLinks(): string[];
-    /** What this variant may open, and whether it is the reason. */
-    resolveExternalLinks(id: string | null | undefined): AppTagResolvedExternalLinks;
-    /** States the list; on the release tag it states the project's. Non-web entries are dropped. */
-    setExternalLinks(id: string | null | undefined, links: readonly string[]): boolean;
-    /** Restore a variant to the project's list by removing its own. Refuses the release tag. */
-    clearExternalLinks(id: string): boolean;
-    /** Every address any build of this project could open, project and variants together. */
-    listDeclaredExternalLinks(): string[];
     /** Refuses the release tag. References are not rewritten; they resolve to release. */
     deleteTag(id: string): boolean;
 }

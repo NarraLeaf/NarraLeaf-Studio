@@ -14,6 +14,7 @@ import type {
     VcsRestoreResult,
     VcsRevisionDiffResult,
     VcsAddServerOutcome,
+    VcsServerProbe,
     VcsServerSession,
     VcsSignInOutcome,
     VcsSignInProblem,
@@ -515,6 +516,29 @@ export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
             await window.app.getVcsManager().signOut(projectPath);
             return { session: null };
         });
+    }
+}
+
+/**
+ * Ask an address what is behind it, before anything has been added.
+ *
+ * Goes to the network, and is where adding a server starts: an author is given one address
+ * and everything else is read off the server. Takes no project, and nothing is stored - what
+ * comes back is what they are then shown and, in one of the four cases, asked about.
+ *
+ * A server that cannot be reached is a successful call carrying that, not a failed one. All
+ * four answers are things the wizard draws, and a rejection would leave it with a sentence
+ * where it needs to know which of the four it is looking at.
+ */
+export class VcsProbeServerHandler extends IPCHandler<IPCEventType.vcsProbeServer> {
+    readonly name = IPCEventType.vcsProbeServer;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { address }: IPCEvents[IPCEventType.vcsProbeServer]["data"],
+    ): Promise<RequestStatus<VcsServerProbe>> {
+        return this.tryUse(() => window.app.getVcsManager().probeServer(address));
     }
 }
 
