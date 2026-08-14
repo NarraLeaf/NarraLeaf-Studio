@@ -513,6 +513,7 @@ export const workspace = {
                 appTags: "ビルドバリアント",
                 brand: "ブランドの配色",
                 dictionary: "プロジェクト辞書",
+                saveSchema: "セーブ項目",
                 characters: "キャラクター",
                 project: "プロジェクトの設定",
                 assets: "アセットのライブラリ",
@@ -644,9 +645,9 @@ export const workspace = {
             // 正当なリビジョンになり、メッセージの無いものは上の一覧で自分の名を名乗る。
             commitPlaceholder: "何が変わったか（任意）",
             commitMessage: "バージョンのメッセージ",
-            authorLabel: "これらのバージョンを誰の名前で記録するか",
-            authorPlaceholder: "あなたの名前",
-            authorSave: "この名前を保存",
+            authorLabel: "バージョンに記録される作成者",
+            authorPlaceholder: "作成者名",
+            authorSave: "保存",
             // 一瞬では終わらない。このウィンドウの未保存の作業を落ち着かせ、プロジェクト全体を
             // 対象に取り、バックエンドが自分のストアをディスクに置くのを待つ。
             committing: "このバージョンを記録している…",

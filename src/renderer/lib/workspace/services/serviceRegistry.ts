@@ -39,6 +39,7 @@ import { AudioTrackService } from "./audio/AudioTrackService";
 import { AppTagService } from "./appTag/AppTagService";
 import { BrandService } from "./brand/BrandService";
 import { DictionaryService } from "./dictionary/DictionaryService";
+import { SaveSchemaService } from "./saves/SaveSchemaService";
 import { SaveStatusService } from "./autosave/SaveStatusService";
 import { VersionControlService } from "./core/VersionControlService";
 import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
@@ -90,6 +91,7 @@ export class ServiceRegistry {
         [Services.AppTags]: AppTagService.getInstance(),
         [Services.Brand]: BrandService.getInstance(),
         [Services.Dictionary]: DictionaryService.getInstance(),
+        [Services.SaveSchema]: SaveSchemaService.getInstance(),
         [Services.SaveStatus]: SaveStatusService.getInstance(),
         [Services.VersionControl]: VersionControlService.getInstance(),
         [Services.WorkspaceFreeze]: WorkspaceFreezeService.getInstance(),

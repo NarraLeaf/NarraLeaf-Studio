@@ -1,12 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
     BLUEPRINT_NODE_TYPE_LOG,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
+import type { SaveSchemaField } from "@shared/types/saveSchema";
+import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+import { saveSchemaPinId } from "../../ui-editor/blueprint-nodes/effectivePins";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -341,6 +345,102 @@ describe("blueprint/empty-event", () => {
         const findings = await run(
             "blueprint/empty-event",
             createTestLintContext({ blueprintDocument: documentWithGraphs({ functions: { fn: {} } }) }),
+        );
+        expect(findings).toEqual([]);
+    });
+});
+describe("blueprint/save-field-empty", () => {
+    const CHAPTER: SaveSchemaField = {
+        id: "f-chapter",
+        name: "Chapter",
+        valueType: "string",
+        storageKey: "chapter",
+        defaultValue: "Prologue",
+        order: 0,
+    };
+    const PIN = saveSchemaPinId(CHAPTER.id);
+
+    function graphWithSave(saveParams: Record<string, unknown>, extraEdges: BlueprintGraphIr["edges"] = []): BlueprintGraphIr {
+        return {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                save: { id: "save", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE, params: saveParams },
+                literal: { id: "literal", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "Act One" } },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "save", port: "in" } },
+                ...(extraEdges ?? []),
+            ],
+        };
+    }
+
+    afterEach(() => {
+        setActiveSaveSchemaFields([]);
+    });
+
+    it("is an error by default", () => {
+        expect(rule("blueprint/save-field-empty").defaultSeverity).toBe("error");
+    });
+
+    it("says nothing when the project has declared no fields", async () => {
+        const findings = await run(
+            "blueprint/save-field-empty",
+            createTestLintContext({ blueprintDocument: documentWithGraphs({ events: { onBoot: graphWithSave({ id: "slot-1" }) } }) }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a declared field left empty on a save that will run", async () => {
+        setActiveSaveSchemaFields([CHAPTER]);
+        const findings = await run(
+            "blueprint/save-field-empty",
+            createTestLintContext({ blueprintDocument: documentWithGraphs({ events: { onBoot: graphWithSave({ id: "slot-1" }) } }) }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams).toEqual({ field: "Chapter" });
+        expect(findings[0].location).toMatchObject({ kind: "blueprint", nodeId: "save" });
+    });
+
+    it("accepts a wired pin", async () => {
+        setActiveSaveSchemaFields([CHAPTER]);
+        const graph = graphWithSave({ id: "slot-1" }, [
+            { from: { nodeId: "literal", port: "value" }, to: { nodeId: "save", port: PIN } },
+        ]);
+        const findings = await run(
+            "blueprint/save-field-empty",
+            createTestLintContext({ blueprintDocument: documentWithGraphs({ events: { onBoot: graph } }) }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts a value typed on the card, including an empty one", async () => {
+        // An author who typed nothing into a string field chose the empty string; a rule that argued
+        // with that would fire on a slot deliberately left unnamed.
+        setActiveSaveSchemaFields([CHAPTER]);
+        for (const value of ["Act One", ""]) {
+            const findings = await run(
+                "blueprint/save-field-empty",
+                createTestLintContext({
+                    blueprintDocument: documentWithGraphs({ events: { onBoot: graphWithSave({ id: "slot-1", [PIN]: value }) } }),
+                }),
+            );
+            expect(findings).toEqual([]);
+        }
+    });
+
+    it("leaves a save nothing leads to alone", async () => {
+        // Already blueprint/unreachable-node; saying it twice helps nobody.
+        setActiveSaveSchemaFields([CHAPTER]);
+        const graph: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                save: { id: "save", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE, params: { id: "slot-1" } },
+            },
+            edges: [],
+        };
+        const findings = await run(
+            "blueprint/save-field-empty",
+            createTestLintContext({ blueprintDocument: documentWithGraphs({ events: { onBoot: graph } }) }),
         );
         expect(findings).toEqual([]);
     });

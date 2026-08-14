@@ -170,6 +170,11 @@ export const lint = {
             description: "押せるのに、聞いているものが何もないウィジェット",
             message: "押しても何も動かない",
         },
+        blueprintSaveFieldEmpty: {
+            title: "セーブ項目が空",
+            description: "実行される Save Game ノードで、宣言済みのセーブ項目が空のまま",
+            message: "{field} が空なので、このセーブには既定値が書き込まれる",
+        },
         variablesUndeclared: {
             title: "宣言のない変数",
             description: "宣言せずに使っている変数",

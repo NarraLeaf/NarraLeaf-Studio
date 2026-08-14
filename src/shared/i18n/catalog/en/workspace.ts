@@ -515,6 +515,7 @@ export const workspace = {
                 appTags: "build variants",
                 brand: "brand palette",
                 dictionary: "project dictionary",
+                saveSchema: "save fields",
                 characters: "characters",
                 project: "project settings",
                 assets: "asset library",
@@ -675,9 +676,9 @@ export const workspace = {
             // Asked in the panel, once, while the setting is empty. Says what the name is FOR
             // rather than naming the field: "Author name" is what Settings calls it, and there it
             // sits under a heading that supplies the context this line has to carry on its own.
-            authorLabel: "Who to record these versions as",
-            authorPlaceholder: "Your name",
-            authorSave: "Save this name",
+            authorLabel: "Author recorded on versions",
+            authorPlaceholder: "Author name",
+            authorSave: "Save",
             // Never instant: the pipeline settles this window's unsaved work, stages the whole
             // project, and waits for the backend to put its stores on disk.
             committing: "Submitting this version…",

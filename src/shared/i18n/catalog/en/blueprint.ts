@@ -698,6 +698,9 @@ export const blueprint = {
         ok: "Ok",
         savedAt: "Saved At",
         createdAt: "Created At",
+        /** Get Save Line: the words a slot stopped on, and who said them. */
+        line: "Line",
+        speaker: "Speaker",
         unit: "Unit",
         dateStyle: "Date Style",
         timeStyle: "Time Style",
@@ -1182,5 +1185,6 @@ export const blueprint = {
         startOfDay: "Start Of Day",
         getTimeZone: "Get Time Zone",
         getSaveTime: "Get Save Time",
+        getSaveLine: "Get Save Line",
     },
 } as const;

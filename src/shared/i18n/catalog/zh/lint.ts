@@ -162,6 +162,11 @@ export const lint = {
             description: "可以点，但没有任何东西在听",
             message: "点下去不会运行任何东西",
         },
+        blueprintSaveFieldEmpty: {
+            title: "存档字段为空",
+            description: "会执行到的 Save Game 节点上，有声明过的存档字段没有填",
+            message: "{field} 没有填，这次存档写进去的会是它的默认值",
+        },
         variablesUndeclared: {
             title: "未声明的变量",
             description: "用到了却没有声明",

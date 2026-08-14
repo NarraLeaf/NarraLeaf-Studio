@@ -489,6 +489,7 @@ export const workspace = {
                 appTags: "变体",
                 brand: "配色方案",
                 dictionary: "工程词典",
+                saveSchema: "存档字段",
                 characters: "角色",
                 project: "项目设置",
                 assets: "资产库",
@@ -615,9 +616,9 @@ export const workspace = {
             // 没有消息的版本会在上面的列表里用自己的编号称呼自己。
             commitPlaceholder: "这次改了什么？（可选）",
             commitMessage: "版本说明",
-            authorLabel: "这些版本记在谁名下",
-            authorPlaceholder: "你的名字",
-            authorSave: "保存这个名字",
+            authorLabel: "提交版本记录的作者",
+            authorPlaceholder: "作者名",
+            authorSave: "保存",
             // 绝不是瞬时的：管线要先把这个窗口没保存的东西落完，再暂存整个工程，然后等后端把它的
             // store 写到磁盘上。
             committing: "正在提交这个版本…",

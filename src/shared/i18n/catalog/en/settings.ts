@@ -331,11 +331,11 @@ export const settings = {
         // "Access token" rather than "password": it is not one, and it cannot be chosen,
         // remembered or reset by the person pasting it.
         tokenLabel: "Access token",
-        tokenPlaceholder: "Paste the token you were given",
-        hint: "Whoever runs the server issues the token and hands it over.",
+        tokenPlaceholder: "Paste the access token",
+        hint: "The access token is issued by the server's administrator.",
         // A server with nothing to sign in to. Said rather than hidden, because the
         // absence of an entry afterwards is otherwise indistinguishable from a failure.
-        noAccount: "{name} asks nobody who they are, so no server is added.",
+        noAccount: "{name} does not require authentication, so there is nothing to add.",
         // What reaching an address came to, before anything has been added. Separate from
         // `problems`, which are refusals of a token by a server already reached.
         probe: {
@@ -351,7 +351,7 @@ export const settings = {
             // answer, so there is nothing here for a reader to correct.
             address: "This token does not say where to sign in.",
             server: "This token does not say which server it is for.",
-            certificate: "This machine does not trust the certificate that address presented. Connect a project to this server to compare its authority.",
+            certificate: "This machine does not trust the certificate presented at that address.",
             unreachable: "Nothing answered at that address.",
             refused: "The server refused this token. It may have expired or been revoked.",
             unknown: "The server could not be added.",
