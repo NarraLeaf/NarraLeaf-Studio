@@ -25,7 +25,7 @@
  * same discipline the lint rule registry and the blueprint node i18n map are held to.
  *
  * Entries are grouped by shape rather than listed one per line, because the shapes are what carry
- * the meaning: 270 nodes have no execution pins at all, 209 are one step of flow, 50 start one. Only
+ * the meaning: 285 nodes have no execution pins at all, 210 are one step of flow, 50 start one. Only
  * a dozen are irregular, and every one of them is irregular for a reason worth reading.
  */
 
@@ -193,7 +193,11 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.text.getFontSize", "blueprint.text.getFontWeight", "blueprint.text.getLineHeight",
     "blueprint.text.getText", "blueprint.text.getTextAlign", "blueprint.text.getTextColor",
     "blueprint.text.getTextVerticalAlign", "blueprint.text.getVisible", "blueprint.text.getWrapMode",
-    "blueprint.textInput.getValue",
+    "blueprint.textInput.getValue", "blueprint.time.add", "blueprint.time.difference",
+    "blueprint.time.durationParts", "blueprint.time.format", "blueprint.time.formatDuration",
+    "blueprint.time.formatLocalized", "blueprint.time.formatRelative", "blueprint.time.isSameDay",
+    "blueprint.time.make", "blueprint.time.now", "blueprint.time.parse", "blueprint.time.parts",
+    "blueprint.time.startOfDay", "blueprint.time.toIsoString", "blueprint.time.zoneOffset",
 ];
 
 /**
@@ -248,7 +252,8 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.game.choose", "blueprint.game.clearTextRead", "blueprint.game.clearVisited",
     "blueprint.game.hideDialog", "blueprint.game.history.get", "blueprint.game.history.restore",
     "blueprint.game.history.undoLast", "blueprint.game.next", "blueprint.game.save.delete",
-    "blueprint.game.save.getMetadata", "blueprint.game.save.getPreview", "blueprint.game.save.listIds",
+    "blueprint.game.save.getMetadata", "blueprint.game.save.getPreview",
+    "blueprint.game.save.getTime", "blueprint.game.save.listIds",
     "blueprint.game.save.write", "blueprint.game.setAutoForward", "blueprint.game.setBgmVolume",
     "blueprint.game.setGameSpeed", "blueprint.game.setGlobalVolume", "blueprint.game.setSentenceSpeed",
     "blueprint.game.setSkip", "blueprint.game.setSkipDelay", "blueprint.game.setSkipInterval",

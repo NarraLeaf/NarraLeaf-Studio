@@ -259,6 +259,7 @@ export function useStoryPreviewGameUi(input: {
             deleteSaveInGame: notAvailable("Delete Save"),
             listSaveIds: async () => [],
             getSaveMetadata: async () => null,
+            getSaveTimes: async () => null,
             getSavePreview: async () => null,
             writeAutoSaveInGame: notAvailable("Auto Save"),
             listAutoSaves: async () => [],

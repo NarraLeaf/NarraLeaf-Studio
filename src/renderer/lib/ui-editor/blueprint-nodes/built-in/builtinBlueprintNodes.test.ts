@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AutoSaveEntry } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordTimes } from "@shared/types/saves";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
@@ -400,6 +400,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     deleteSave: async () => undefined,
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
+                    getSaveTimes: async () => null,
                     getSavePreview: async () => null,
                     writeAutoSave: async () => undefined,
                     listAutoSaves: async () => [],
@@ -547,6 +548,7 @@ function createPageNavigationHostAdapter(
                     deleteSave: async () => undefined,
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
+                    getSaveTimes: async () => null,
                     getSavePreview: async () => null,
                     writeAutoSave: async () => undefined,
                     listAutoSaves: async () => [],
@@ -595,6 +597,7 @@ function createGameSaveHostAdapter(options: {
     listedIds?: string[];
     metadata?: unknown;
     previews?: Record<string, unknown>;
+    saveTimes?: SaveRecordTimes | null;
     history?: Array<Record<string, unknown>>;
     restoredIds?: Array<string | undefined>;
     autoSaveWrites?: boolean[];
@@ -687,6 +690,7 @@ function createGameSaveHostAdapter(options: {
                     },
                     listSaveIds: async () => options.listedIds ?? [],
                     getSaveMetadata: async () => options.metadata ?? {},
+                    getSaveTimes: async () => options.saveTimes ?? null,
                     getSavePreview: async (id: string) => options.previews?.[id] as any ?? null,
                     writeAutoSave: async () => {
                         options.autoSaveWrites?.push(true);

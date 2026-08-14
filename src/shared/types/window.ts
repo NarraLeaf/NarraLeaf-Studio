@@ -1,5 +1,6 @@
 
 import type { PluginPermissionPromptProps, PluginPermissionPromptResult } from "./pluginPermissions";
+import type { ServerTrustPromptProps, ServerTrustPromptResult } from "./serverTrust";
 
 export enum WindowAppType {
     Launcher = "launcher",
@@ -8,6 +9,7 @@ export enum WindowAppType {
     ProjectWizard = "project-wizard",
     DevMode = "dev-mode",
     PluginPermissionPrompt = "plugin-permission",
+    ServerTrustPrompt = "server-trust",
     Raw = "raw",
 }
 
@@ -57,6 +59,7 @@ export type WindowProps = {
         entry: import("./devMode").DevModeEntry;
     },
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptProps,
+    [WindowAppType.ServerTrustPrompt]: ServerTrustPromptProps,
     [WindowAppType.Raw]: {
     },
 }
@@ -101,5 +104,6 @@ export type WindowCloseResults = {
     [WindowAppType.ProjectWizard]: { created: boolean; projectPath: string } | null;
     [WindowAppType.DevMode]: null;
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptResult;
+    [WindowAppType.ServerTrustPrompt]: ServerTrustPromptResult;
     [WindowAppType.Raw]: null;
 };
