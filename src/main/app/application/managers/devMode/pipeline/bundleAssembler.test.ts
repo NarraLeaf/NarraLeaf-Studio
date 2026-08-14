@@ -522,7 +522,7 @@ describe("bundleAssembler shared blueprint variant fold", () => {
             [sharedAsset(refusingGraph)],
             context({ appTag: { id: "tag-demo", name: "Demo" }, locale: "zh" }),
             { tagName: "Demo" },
-        )).toThrow(/构建版本/);
+        )).toThrow(/变体/);
     });
 
     it("substitutes the variant name into a shared blueprint a build can fold", () => {
