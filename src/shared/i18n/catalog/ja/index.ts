@@ -43,6 +43,7 @@ import { wizard } from "./wizard";
 import { devMode } from "./devMode";
 import { developer } from "./developer";
 import { pluginPermission } from "./pluginPermission";
+import { serverTrust } from "./serverTrust";
 import { plugins } from "./plugins";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
@@ -90,6 +91,7 @@ export const ja = {
     devMode,
     developer,
     pluginPermission,
+    serverTrust,
     plugins,
     dialogs,
     defaultDoc,

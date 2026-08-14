@@ -62,6 +62,11 @@ export const lint = {
             description: "A codec some selected build targets cannot play",
             message: "{asset} does not play on {platform}",
         },
+        networkFetchNotAllowlisted: {
+            title: "Address not on the allowlist",
+            description: "A Fetch node aimed at an address this project does not allow",
+            message: "{url} is not on this project's network allowlist",
+        },
         networkFetchDisallowed: {
             title: "Network node without network access",
             description: "A network node in a project that does not allow HTTP",
@@ -152,11 +157,6 @@ export const lint = {
             title: "Event that does nothing",
             description: "An event layer with nothing wired to run",
             message: "This event runs nothing",
-        },
-        blueprintExternalLinkUndeclared: {
-            title: "Undeclared link",
-            description: "An Open Link node holding an address no build variant declares",
-            message: "{url} is not declared by any build variant, so no build opens it",
         },
         blueprintSaveFieldEmpty: {
             title: "Empty save field",

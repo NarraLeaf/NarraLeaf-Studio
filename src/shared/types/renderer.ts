@@ -30,6 +30,7 @@ import type {
     SigningInspectResult,
 } from "./signing";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
+import type { ServerTrustPromptProps } from "./serverTrust";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type {
@@ -318,6 +319,15 @@ export interface RendererPreloadedInterface {
         /** Read a stored background image's bytes (basename lookup only). */
         readBackgroundImage(file: string): Promise<RequestStatus<{ data: Uint8Array | null }>>;
         launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<{ created: boolean; projectPath: string } | null>>;
+        /**
+         * Ask the author whether a server is trusted, and answer with what the machine
+         * believes afterwards.
+         *
+         * On `app` rather than `vcs` because it needs no project: the window opens over
+         * Settings and over a workspace alike, and trust belongs to the account. Resolves
+         * once the window is gone; a window closed without an answer resolves `false`.
+         */
+        promptServerTrust(props: ServerTrustPromptProps): Promise<RequestStatus<{ trusted: boolean }>>;
         state: {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;

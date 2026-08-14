@@ -7,7 +7,7 @@ import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { getGameHostWindowBackgroundColor } from "./application/theme";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
-import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
+import { devModeNetworkPolicy, readProjectNetworkSettings } from "./application/managers/devMode/devModeNetworkPolicy";
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
 import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
 import { MediaConvertManager } from "./application/managers/media/MediaConvertManager";
@@ -1024,12 +1024,13 @@ export class App extends BaseApp {
         window.setTitle("Dev Mode - NarraLeaf Studio");
         this.applyWindowIcon(window);
 
-        // Confine the preview renderer to the app protocol unless the project
-        // opts into HTTP. Must be applied BEFORE loadFile so the initial
-        // document load and every subsequent game request is governed.
-        const allowHttp = await readProjectAllowHttp(props.projectPath);
+        // Confine the preview renderer the way a build would: to the app
+        // protocol unless the project opts into HTTP, and to the project's
+        // allowlist when it states one. Must be applied BEFORE loadFile so the
+        // initial document load and every subsequent game request is governed.
+        const { allowHttp, allowlist } = await readProjectNetworkSettings(props.projectPath);
         const previewWebContentsId = window.win.webContents.id;
-        devModeNetworkPolicy.apply(previewWebContentsId, { allowHttp });
+        devModeNetworkPolicy.apply(previewWebContentsId, { allowHttp, allowlist });
         window.onClose(() => devModeNetworkPolicy.release(previewWebContentsId));
 
         try {
@@ -1096,6 +1097,54 @@ export class App extends BaseApp {
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.PluginPermissionPrompt));
+
+        return window;
+    }
+
+    /**
+     * Raise the window that asks whether a server is trusted.
+     *
+     * Modal on whoever asked, exactly as the plugin permission prompt is: the question is
+     * about the address that window is working with, and leaving it answerable later
+     * would let a second one be raised for the same address.
+     *
+     * Shorter than the permission prompt because it holds less - an address, one line of
+     * subject, a fingerprint behind a disclosure and two buttons.
+     */
+    async launchServerTrustPrompt(
+        parent: AppWindow,
+        props: WindowProps[WindowAppType.ServerTrustPrompt],
+        options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+    ): Promise<AppWindow<WindowAppType.ServerTrustPrompt>> {
+        const config: WindowConfig<WindowAppType.ServerTrustPrompt> = {
+            windowType: WindowAppType.ServerTrustPrompt,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.None,
+            options: {
+                modal: true,
+                parent: parent.win,
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                closable: true,
+                fullscreenable: false,
+                width: 480,
+                height: 330,
+                center: true,
+                frame: false,
+                titleBarStyle: "hidden",
+                show: false,
+                ...options,
+            },
+        };
+        const window = new AppWindow<WindowAppType.ServerTrustPrompt>(this, config, props);
+        window.setTitle("Server Trust - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+        window.showWhenReady();
+
+        await window.loadFile(this.getAppEntry(WindowAppType.ServerTrustPrompt));
 
         return window;
     }

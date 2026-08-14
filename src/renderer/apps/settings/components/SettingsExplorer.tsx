@@ -10,10 +10,28 @@ import { SettingValueType } from "@/lib/settings/types";
 import { SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 import { filterCategoryEntries } from "@/lib/settings/searchSettings";
 import { useTranslation } from "@/lib/i18n";
+import { cn } from "@/lib/utils/cn";
 import { SETTING_PANELS } from "../panels";
 import { SettingColorPicker } from "./SettingColorPicker";
 import { SettingFontPicker } from "./SettingFontPicker";
+import {
+    SETTINGS_HIGHLIGHT_RING,
+    SettingsHighlightContext,
+    type SettingsHighlightState,
+} from "./settingsHighlight";
 import { ACCENT_COLOR_DEFAULT, ACCENT_SWATCHES, normalizeHexColor } from "@shared/constants/accent";
+
+/** How long the tint on a navigated-to row lasts. Long enough to be seen, short enough to be a hint. */
+const ROW_FLASH_MS = 1600;
+
+/**
+ * How long a `Custom` panel wears its mark.
+ *
+ * Longer than the row tint. A row is where the author's eye already is - they clicked it in
+ * the tree beside it - while a panel highlight arrives from another window, so the first of
+ * those seconds is spent on a window appearing and being read.
+ */
+const PANEL_HIGHLIGHT_MS = 4000;
 
 /** `null` is the Action type's stand-in: it renders a button and stores nothing. */
 export type SettingValue = string | number | boolean | null;
@@ -121,12 +139,27 @@ export function SettingsExplorer<T>({
     const [confirmingActions, setConfirmingActions] = useState<Set<string>>(new Set());
     /** The row a navigation click just landed on; cleared on a timer so the tint is a hint, not a state. */
     const [flashedSettingId, setFlashedSettingId] = useState<string | null>(null);
+    /** The `Custom` panel another window opened Settings at, marked until its own timer runs out. */
+    const [highlightedPanelId, setHighlightedPanelId] = useState<string | null>(null);
+    /** Whether that panel put the mark on a control of its own. See `settingsHighlight`. */
+    const [panelClaimedHighlight, setPanelClaimedHighlight] = useState(false);
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const categoryRefs = useRef<Record<string, HTMLElement | null>>({});
     const settingRefs = useRef<Record<string, HTMLElement | null>>({});
 
     const isSearchControlled = typeof searchQuery === "string";
     const effectiveSearch = isSearchControlled ? searchQuery! : localSearch;
+
+    // One object for the one panel that can be highlighted at a time, so the hook reading it
+    // does not re-claim on every render of this explorer.
+    const claimPanelHighlight = useCallback(() => {
+        setPanelClaimedHighlight(true);
+        return () => setPanelClaimedHighlight(false);
+    }, []);
+    const panelHighlightState = useMemo<SettingsHighlightState>(
+        () => ({ highlighted: true, claim: claimPanelHighlight }),
+        [claimPanelHighlight],
+    );
 
     const handleSearchChange = useCallback(
         (value: string) => {
@@ -519,6 +552,11 @@ export function SettingsExplorer<T>({
      * A Custom entry is its own editing surface, so it gets the full width with only its name
      * above it — a label/control row cannot hold a table, and a description under the heading
      * would just repeat what the panel's own chrome already says.
+     *
+     * It is also the one row a highlight can be sent to that a tint does not answer: the author
+     * pressed something in another window to be put in front of one control inside this panel.
+     * The panel is handed that fact and can ring the control itself; where it does not, the ring
+     * goes around the block, which still says which of these surfaces was meant.
      */
     const renderPanel = (entry: SettingEntry<T>) => {
         const { descriptor } = entry;
@@ -526,15 +564,29 @@ export function SettingsExplorer<T>({
         if (!Panel) {
             return null;
         }
+        const highlighted = highlightedPanelId === descriptor.id;
+        const marksItsOwnBlock = highlighted && !panelClaimedHighlight;
         return (
             <div
                 key={descriptor.id}
                 ref={(node) => setSettingRef(descriptor.id, node)}
-                className={`rounded-md px-2 py-2 transition-colors duration-500 ${flashedSettingId === descriptor.id ? "bg-fill" : ""}`}
+                data-settings-panel={descriptor.id}
+                data-settings-highlight={marksItsOwnBlock ? "on" : undefined}
+                className={cn(
+                    "rounded-md px-2 py-2 transition duration-500",
+                    flashedSettingId === descriptor.id && "bg-fill",
+                    marksItsOwnBlock && SETTINGS_HIGHLIGHT_RING,
+                )}
             >
                 <span className="text-sm font-medium text-fg">{descriptor.label}</span>
                 <div className="mt-2">
-                    <Panel />
+                    {highlighted ? (
+                        <SettingsHighlightContext.Provider value={panelHighlightState}>
+                            <Panel />
+                        </SettingsHighlightContext.Provider>
+                    ) : (
+                        <Panel />
+                    )}
                 </div>
             </div>
         );
@@ -628,13 +680,21 @@ export function SettingsExplorer<T>({
     }, [loading, selectedCategory, selectedSettingId, selectedCategoryScrollSignal, effectiveSearch]);
 
     // Tint the row that was navigated to, so a jump into a long category is visibly *at* something.
+    // A panel keeps its mark for longer and on its own timer - see `PANEL_HIGHLIGHT_MS`. Both are
+    // re-armed by the scroll signal, so asking Settings for the same thing twice marks it again
+    // rather than doing nothing because the selection did not change.
     useEffect(() => {
         if (loading || !selectedSettingId) {
             return;
         }
         setFlashedSettingId(selectedSettingId);
-        const timer = window.setTimeout(() => setFlashedSettingId(null), 1600);
-        return () => window.clearTimeout(timer);
+        setHighlightedPanelId(selectedSettingId);
+        const tint = window.setTimeout(() => setFlashedSettingId(null), ROW_FLASH_MS);
+        const mark = window.setTimeout(() => setHighlightedPanelId(null), PANEL_HIGHLIGHT_MS);
+        return () => {
+            window.clearTimeout(tint);
+            window.clearTimeout(mark);
+        };
     }, [loading, selectedSettingId, selectedCategoryScrollSignal]);
 
     const setCategoryRef = useCallback((categoryKey: SettingCategory["key"], node: HTMLElement | null) => {

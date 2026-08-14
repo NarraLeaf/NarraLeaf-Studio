@@ -37,10 +37,8 @@ import { listScenesInDocumentOrder } from "@shared/types/story";
 import {
     APP_TAG_OVERRIDE_KEYS,
     countAppTagReferences,
-    normalizeExternalLinkUrl,
     RELEASE_APP_TAG,
     resolveAppTagEndingSurface,
-    resolveAppTagExternalLinks,
     resolveAppTagIdentity,
     type AppTagBaseIdentity,
     type AppTagOverrideKey,
@@ -223,24 +221,7 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
         version: config.metadata?.version?.trim() ?? "",
     }), [config.identifier, config.metadata?.version, config.name]);
 
-    /**
-     * The project's own declared addresses, read off the service rather than off the config above:
-     * they are not a `.nlproj` field, they live in the variants document beside the tags.
-     *
-     * Keyed on `tags` because that array is replaced on every write to the document, root included
-     * - the release tag's own identity never changes, so nothing else here would notice the project
-     * gaining an address.
-     *
-     * An empty `tags` is the render before the effect above has read the service, which is also the
-     * render where the service may have no document yet; every project has at least the release
-     * variant, so a non-empty list is what says the document is there to be read.
-     */
-    const projectLinks = useMemo(
-        () => (tags.length > 0 ? tagService?.getProjectExternalLinks() ?? [] : []),
-        [tagService, tags],
-    );
-
-    /** The project's own ending page, read the same way and for the same reason as the links above. */
+    /** The project's own ending page. See the note on `tags` for why an empty list means "not read yet". */
     const projectEndingSurfaceId = useMemo(
         () => (tags.length > 0 ? tagService?.getProjectEndingSurfaceId() ?? "" : ""),
         [tagService, tags],
@@ -340,7 +321,6 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
                             key={tag.id}
                             tag={tag}
                             base={base}
-                            projectLinks={projectLinks}
                             projectEndingSurfaceId={projectEndingSurfaceId}
                             service={tagService}
                             uses={references[tag.id]?.total ?? 0}
@@ -366,7 +346,6 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
 function TagItem({
     tag,
     base,
-    projectLinks,
     projectEndingSurfaceId,
     service,
     uses,
@@ -378,7 +357,6 @@ function TagItem({
     tag: ProjectAppTag;
     base: AppTagBaseIdentity;
     /** The project's own declared addresses - what a variant that states none opens. */
-    projectLinks: readonly string[];
     /** The project's own ending page - what a variant that states none ends on. */
     projectEndingSurfaceId: string;
     service: AppTagService | null;
@@ -393,7 +371,6 @@ function TagItem({
     const frozen = freeze.writes(!service);
 
     const identity = useMemo(() => resolveAppTagIdentity(tag, base), [base, tag]);
-    const links = useMemo(() => resolveAppTagExternalLinks(tag, projectLinks), [projectLinks, tag]);
     const ending = useMemo(
         () => resolveAppTagEndingSurface(tag, projectEndingSurfaceId),
         [projectEndingSurfaceId, tag],
@@ -475,19 +452,7 @@ function TagItem({
                         ))}
                     </div>
                 )}
-                {/* Editable on the release row too, unlike the three keys above: the project's own
-                    list has no field higher up the page to be read from, and the release row is
-                    where the project's values are shown. */}
-                <LinksField
-                    tagId={tag.id}
-                    label={t("project.appTags.links.title")}
-                    links={links.value}
-                    overridden={links.overridden}
-                    disabled={frozen.disabled}
-                    service={service}
-                />
-
-                {/* Editable on the release row too, for the same reason the addresses are: the
+                {/* Editable on the release row too, unlike the identity keys above: the
                     project's own choice has no field higher up the page to be read from. */}
                 <EndingField
                     tagId={tag.id}
@@ -669,140 +634,6 @@ function OverrideField({
                 allowEmpty
                 onCommit={next => service?.setOverride(tagId, overrideKey, next)}
             />
-        </Field>
-    );
-}
-
-/**
- * The addresses one variant may hand to the player's browser.
- *
- * A list rather than a single field, and stated as a whole: a variant either has its own list or
- * reads the project's, which is why Restore appears once beside the group rather than per row.
- *
- * **The first edit on an inheriting variant copies what it was reading**, so a demo that needs one
- * more address than the project does not have to retype the rest. From then on the two lists are
- * separate, and Restore is what puts the variant back on the project's.
- *
- * An address that is not an absolute `http` or `https` one is not stored. The row keeps what was
- * typed and says why, rather than snapping back to the last good value, because a mistyped address
- * is nearly always one character away from a correct one.
- */
-function LinksField({
-    tagId,
-    label,
-    links,
-    overridden,
-    disabled,
-    service,
-}: {
-    tagId: string;
-    label: string;
-    links: readonly string[];
-    overridden: boolean;
-    disabled: boolean;
-    service: AppTagService | null;
-}) {
-    const { t } = useTranslation();
-    const storedKey = links.join("\n");
-    const [drafts, setDrafts] = useState<string[]>([...links]);
-    const [invalidIndexes, setInvalidIndexes] = useState<readonly number[]>([]);
-
-    useEffect(() => {
-        setDrafts(storedKey ? storedKey.split("\n") : []);
-        setInvalidIndexes([]);
-    }, [storedKey]);
-
-    const commit = useCallback((next: readonly string[]) => {
-        service?.setExternalLinks(tagId, next.filter(entry => entry.trim()));
-    }, [service, tagId]);
-
-    const commitRow = useCallback((index: number) => {
-        const value = drafts[index]?.trim() ?? "";
-        // A blank row is a row the author has not filled in, not a mistake: it is dropped on the way
-        // out rather than reported, so Add and then leave costs nothing.
-        if (value && normalizeExternalLinkUrl(value) === null) {
-            setInvalidIndexes(prev => (prev.includes(index) ? prev : [...prev, index]));
-            return;
-        }
-        setInvalidIndexes(prev => prev.filter(entry => entry !== index));
-        commit(drafts);
-    }, [commit, drafts]);
-
-    return (
-        <Field
-            label={label}
-            trailing={!overridden ? null : (
-                <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={disabled}
-                    onClick={() => service?.clearExternalLinks(tagId)}
-                    className="px-1.5"
-                    data-app-tag-links-restore={tagId}
-                >
-                    {t("project.appTags.restore")}
-                </Button>
-            )}
-        >
-            <div className="grid min-w-0 gap-1.5 [&>*]:min-w-0">
-                {drafts.map((draft, index) => (
-                    <div key={index} className="flex min-w-0 items-start gap-1">
-                        <div className="grid min-w-0 flex-1 gap-1 [&>*]:min-w-0">
-                            <Input
-                                size="sm"
-                                value={draft}
-                                placeholder={t("project.appTags.links.placeholder")}
-                                disabled={disabled}
-                                aria-label={label}
-                                className="w-full min-w-0"
-                                data-app-tag-link={`${tagId}:${index}`}
-                                onChange={event => setDrafts(prev => prev.map((entry, i) => (
-                                    i === index ? event.target.value : entry
-                                )))}
-                                onBlur={() => commitRow(index)}
-                                onKeyDown={event => {
-                                    if (event.key === "Enter") {
-                                        event.currentTarget.blur();
-                                    }
-                                }}
-                            />
-                            {invalidIndexes.includes(index) ? (
-                                <span className="text-2xs text-danger">
-                                    {t("project.appTags.links.invalid")}
-                                </span>
-                            ) : null}
-                        </div>
-                        <IconButton
-                            size="sm"
-                            variant="ghost"
-                            disabled={disabled}
-                            aria-label={t("project.appTags.links.remove")}
-                            data-app-tag-link-remove={`${tagId}:${index}`}
-                            onClick={() => {
-                                const next = drafts.filter((_, i) => i !== index);
-                                setDrafts(next);
-                                setInvalidIndexes([]);
-                                commit(next);
-                            }}
-                        >
-                            <X className="h-3.5 w-3.5" />
-                        </IconButton>
-                    </div>
-                ))}
-                <span className="flex min-w-0">
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={disabled}
-                        onClick={() => setDrafts(prev => [...prev, ""])}
-                        className="px-1.5"
-                        data-app-tag-link-add={tagId}
-                    >
-                        <Plus className="h-3.5 w-3.5" />
-                        {t("project.appTags.links.add")}
-                    </Button>
-                </span>
-            </div>
         </Field>
     );
 }

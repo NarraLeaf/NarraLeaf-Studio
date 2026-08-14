@@ -32,12 +32,13 @@ import {
 import { resolveSingleByteRange } from "@shared/utils/httpRange";
 import type { BlueprintNetworkFetchRequest } from "@shared/types/blueprint/network";
 import {
-    resolveDeclaredExternalLink,
+    resolveCoreExternalLink,
     resolvePluginExternalLinkAmong,
     type BlueprintOpenExternalRequest,
     type BlueprintOpenExternalResult,
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
+import { packNetworkAllowlist, type NetworkAllowlist } from "@shared/types/networkAllowlist";
 import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
@@ -264,16 +265,21 @@ void app.whenReady().then(async () => {
         return;
     }
     const allowHttp = pack.network?.allowHttp === true;
+    const networkAllowlist = packNetworkAllowlist(pack);
     applyRuntimeAppIdentity(pack);
     applyRuntimeMenu();
-    registerRuntimeProtocol(allowHttp);
+    registerRuntimeProtocol(allowHttp, networkAllowlist);
     sidecarHost = createSidecarHost(pack);
     registerRuntimeIpc();
     startPreviewControlServer(pack);
     // Confine the renderer to the app protocol before it loads any document
     // unless the project opted into HTTP - and unconditionally when a test asked
     // for a network-less run, which overrides the project's own flag.
-    installRuntimeNetworkPolicy(session.defaultSession, { allowHttp, blockAll: testNetworkBlocked });
+    installRuntimeNetworkPolicy(session.defaultSession, {
+        allowHttp,
+        allowlist: networkAllowlist,
+        blockAll: testNetworkBlocked,
+    });
     mainWindow = createWindow(pack);
     // After the window exists so a sidecar's first event has somewhere to land,
     // and unawaited so a slow handshake never delays the game's first paint.
@@ -740,14 +746,14 @@ function resolveAssetVersion(pack: GameRuntimePackV1): string {
     return bundleId || pack.generatedAt || String(Date.now());
 }
 
-function registerRuntimeProtocol(allowHttp: boolean): void {
+function registerRuntimeProtocol(allowHttp: boolean, allowlist: NetworkAllowlist): void {
     protocol.handle(GAME_RUNTIME_PROTOCOL, async request => {
         const url = new URL(request.url);
         try {
             if (url.hostname === "runtime") {
                 const pathname = decodeURIComponent(url.pathname);
                 if (isIndexDocument(pathname)) {
-                    return serveIndexDocument(resolveRuntimeStaticPath(appDir, pathname), allowHttp);
+                    return serveIndexDocument(resolveRuntimeStaticPath(appDir, pathname), allowHttp, allowlist);
                 }
                 // Bundled runtime files (e.g. plugin entries) come from the store;
                 // static runtime files fall back to a loose read from the app dir.
@@ -928,9 +934,13 @@ function isIndexDocument(pathname: string): boolean {
 }
 
 /** Serve the runtime document with the gated Content-Security-Policy injected. */
-async function serveIndexDocument(filePath: string, allowHttp: boolean): Promise<Response> {
+async function serveIndexDocument(
+    filePath: string,
+    allowHttp: boolean,
+    allowlist: NetworkAllowlist,
+): Promise<Response> {
     const html = await fs.readFile(filePath, "utf-8");
-    return new Response(injectRuntimeCsp(html, allowHttp), {
+    return new Response(injectRuntimeCsp(html, allowHttp, allowlist), {
         status: 200,
         headers: {
             "Content-Type": "text/html; charset=utf-8",
@@ -996,27 +1006,33 @@ function registerRuntimeIpc(): void {
     // so a request to a third-party API would be refused by CORS; and the timeout, size cap and
     // scheme check are only enforceable somewhere the page cannot reach around.
     //
-    // Which is also why `allowHttp` is re-read here from the pack. This process sits OUTSIDE the CSP
-    // and `webRequest` cage that `installRuntimeNetworkPolicy` puts the renderer in, so that cage
-    // cannot be what enforces the project's setting on this path - without the check below, routing
-    // through main would hand a game that shipped with the network off a working network.
+    // Which is also why the project's settings are re-read here from the pack. This process sits
+    // OUTSIDE the CSP and `webRequest` cage that `installRuntimeNetworkPolicy` puts the renderer in,
+    // so that cage cannot be what enforces them on this path - without the checks below, routing
+    // through main would hand a game that shipped with the network off a working network, and one
+    // shipped with an allowlist the whole internet.
+    //
+    // `redirects: "check"` because this process can: it follows the chain itself and decides every
+    // hop, so the allowlist governs where the bytes came from rather than only what was typed.
     ipcMain.handle("runtime:network:fetch", async (_event, request: BlueprintNetworkFetchRequest) => {
         const pack = await readPack();
-        return executeBlueprintNetworkFetch(request, { allowHttp: pack.network?.allowHttp === true });
+        return executeBlueprintNetworkFetch(request, {
+            allowHttp: pack.network?.allowHttp === true,
+            allowlist: packNetworkAllowlist(pack),
+            redirects: "check",
+        });
     });
 
     // The Open Link node's request.
     //
-    // Decided here because this is where it is performed: the renderer names an address, and the
-    // pack - re-read per request, like `allowHttp` above - says whether this build declares it.
-    // Nothing about the renderer's message is trusted, because the renderer is where an author's
-    // graph runs.
+    // Decided here because this is where it is performed - `shell.openExternal` runs in this
+    // process, and a renderer that asked nicely is not a boundary. What is decided is the scheme
+    // and nothing else: the address is the author's, written into their own graph.
     //
-    // Deliberately not gated on `network.allowHttp`: no request is made and no bytes come back, so
+    // Deliberately not gated on the network settings: no request is made and no bytes come back, so
     // a game shipped with the network off still opens its own store page.
     ipcMain.handle("runtime:external:open", async (_event, request: BlueprintOpenExternalRequest) => {
-        const pack = await readPack();
-        const decision = resolveDeclaredExternalLink(request, pack.externalLinks);
+        const decision = resolveCoreExternalLink(request);
         if (!decision.allowed) {
             logRuntime("warning", `Open Link refused: ${decision.result.error}`);
             return decision.result;

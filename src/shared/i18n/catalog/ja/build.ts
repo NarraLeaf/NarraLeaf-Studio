@@ -374,6 +374,11 @@ export const build = {
     networkSummary: {
         other: "ビルドを中止：動かせないネットワークノードが {count} 件ある。プロジェクト設定で HTTP の許可を有効にするか、そのノードを取り除く",
     },
+    networkAddressNotAllowlisted: "{blueprint} は {url} を要求するが、これはこのプロジェクトのネットワーク許可一覧にない",
+    networkAllowlistSummary: {
+        one: "ビルドを中止した。{count} 件のアドレスが許可一覧にない。プロジェクト設定で追加するか、ノードを直す",
+        other: "ビルドを中止した。{count} 件のアドレスが許可一覧にない。プロジェクト設定で追加するか、ノードを直す",
+    },
     /** この端末に変換器が無く、検査そのものができなかったときに出す。 */
     mediaUnchecked: {
         other: "メディアファイル {count} 件を検査していない。この端末に変換器がない",
