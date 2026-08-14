@@ -58,16 +58,26 @@ export function SettingStack({
     description,
     hint,
     tooltip,
+    helpTopic,
     children,
 }: {
     title: string;
     description: string;
     hint?: string;
     tooltip?: string;
+    /**
+     * Topic `F1` resolves to anywhere inside this row. No `?` is drawn: the row already carries a
+     * control, and a second glyph beside the hint icon would be a row of glyphs to skim past.
+     */
+    helpTopic?: string;
     children: React.ReactNode;
 }) {
     return (
-        <section className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3 [&>*]:min-w-0" data-tip={tooltip}>
+        <section
+            className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3 [&>*]:min-w-0"
+            data-tip={tooltip}
+            data-help-topic={helpTopic}
+        >
             <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
                     <span>{title}</span>

@@ -334,10 +334,10 @@ export const build = {
         one: "构建已中止：有 {count} 个网络节点无法运行；请在工程设置中开启「允许 HTTP」，或删除该节点",
         other: "构建已中止：有 {count} 个网络节点无法运行；请在工程设置中开启「允许 HTTP」，或删除这些节点",
     },
-    networkAddressNotAllowlisted: "{blueprint} 请求了 {url}，它不在本工程的网络白名单内",
+    networkAddressNotAllowlisted: "{blueprint} 请求了 {url}，该地址不在本工程的网络请求白名单内",
     networkAllowlistSummary: {
-        one: "构建已停止：有 {count} 个地址不在网络白名单内。请在工程设置里加上它，或者改掉这个节点",
-        other: "构建已停止：有 {count} 个地址不在网络白名单内。请在工程设置里加上它们，或者改掉这些节点",
+        one: "构建已停止：{count} 个地址不在网络请求白名单内。请在工程设置中添加该地址，或修改对应节点",
+        other: "构建已停止：{count} 个地址不在网络请求白名单内。请在工程设置中添加这些地址，或修改对应节点",
     },
     mediaUnchecked: {
         one: "有 {count} 个媒体文件未经检查，本机没有可用的转换工具",

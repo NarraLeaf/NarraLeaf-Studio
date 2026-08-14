@@ -79,6 +79,7 @@ export const HELP_TOPIC_IDS = [
     "icons",
     "signing",
     "assetProtection",
+    "networkAllowlist",
     "webOptimization",
     "plugins",
 ] as const;
@@ -274,7 +275,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "networkNodes",
         section: "interface",
-        related: ["blueprints", "assetProtection", "lint"],
+        related: ["blueprints", "networkAllowlist", "assetProtection", "lint"],
     },
 
     // --- Checks ---------------------------------------------------------------
@@ -377,6 +378,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "assetProtection",
         section: "ship",
         related: ["build", "webOptimization", "plugins", "networkNodes"],
+    },
+    {
+        id: "networkAllowlist",
+        section: "ship",
+        related: ["networkNodes", "assetProtection", "plugins", "lint"],
     },
     {
         id: "webOptimization",

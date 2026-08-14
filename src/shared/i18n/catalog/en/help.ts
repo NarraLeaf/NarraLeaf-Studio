@@ -599,6 +599,18 @@ export const help = {
                 + "- Android with no key chosen is signed with a local debug identity, which is only good for "
                 + "installing by hand.",
         },
+        networkAllowlist: {
+            title: "Network request allowlist",
+            body:
+                "A project that allows HTTP can reach any address. Turning on the allowlist narrows it to the addresses listed in project settings; every other request is refused, in the editor preview and in the built game.\n"
+                + "\n"
+                + "- A host on its own covers every path under it. Write https://api.example.com/v1/* to cover one part of a host.\n"
+                + "- * can replace the first host label, as in https://*.example.com/*.\n"
+                + "- The scheme, the host and the port must match exactly. https://example.com does not cover http://example.com.\n"
+                + "- Addresses a plugin declared are listed under the allowlist and are also reachable. They come from what was approved when the plugin was installed.\n"
+                + "- A Fetch node whose address is written out and not covered is reported by project checks, and the build is refused. An address a blueprint computes is refused while the game runs.\n"
+                + "- A program a plugin ships runs outside the game process. The allowlist does not cover it.",
+        },
         assetProtection: {
             title: "Protecting what you ship",
             body:
