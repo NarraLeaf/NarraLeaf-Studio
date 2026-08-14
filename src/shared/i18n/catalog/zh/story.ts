@@ -361,7 +361,7 @@ export const story = {
         labelName: "标签",
         scene: "场景",
         track: "音轨",
-        appTag: "构建版本",
+        appTag: "变体",
         displayName: "显示名",
         seekTime: "秒数",
         cameraOperation: "平移 / 缩放 / 旋转 / 压暗 / 运镜 / 复位",
@@ -537,7 +537,7 @@ export const story = {
             scene: "场景",
             audioTrack: "音轨",
             label: "本场景内的标签",
-            appTag: "构建版本",
+            appTag: "变体",
             variable: "变量",
             content: "新内容，类型随目标而定",
             color: "颜色",
@@ -594,12 +594,12 @@ export const story = {
         setBackground: "设置背景",
         transform: "变换",
         invalidHint: "无法构建",
-        // 出现在截断点这一行上，紧挨着写明它截断哪个版本的那句命令。行上只显示短的一半，
+        // 出现在截断点这一行上，紧挨着写明它截断哪个变体的那句命令。行上只显示短的一半，
         // 完整的一句放在悬停提示里。
-        cutPoint: "其他版本没有此行",
-        cutPointTitle: "{name}的剧情在此行结束；其他任何版本都不含这一行",
-        cutPointInactive: "版本已删除",
-        cutPointInactiveTitle: "这一行截断的构建版本已被删除，因此它不再截断任何内容",
+        cutPoint: "其他变体没有此行",
+        cutPointTitle: "{name}的剧情在此行结束；其他任何变体都不含这一行",
+        cutPointInactive: "变体已删除",
+        cutPointInactiveTitle: "这一行截断的变体已被删除，因此它不再截断任何内容",
         tempSpeaker: "仅名字",
         createCharacter: "创建角色「{name}」",
         voiceOutdated: "配音待更新，打开配音表",
@@ -798,8 +798,8 @@ export const story = {
         label: { label: "标签", detail: "在本场景标记一个位置，供 /goto 跳转" },
         goto: { label: "跳到标签", detail: "把播放头移到本场景的标签，与 /jump 不同，场景不会重启" },
         // 不叫「剪切」：编辑器里那个词已经归剪贴板了。这个名字说的是它造出来的那一行本身，
-        // 而它属于哪一个构建版本、其他版本里为何没有这一行，交给 detail 说。
-        cut: { label: "截断", detail: "让某个构建版本的剧情在此行结束，其他版本中没有这一行" },
+        // 而它属于哪一个变体、其他变体里为何没有这一行，交给 detail 说。
+        cut: { label: "截断", detail: "让某个变体的剧情在此行结束，其他变体中没有这一行" },
         blueprint: { label: "蓝图", detail: "运行故事动作蓝图" },
         blink: { label: "闪屏", detail: "屏幕闪烁效果" },
         vignette: { label: "暗角", detail: "屏幕暗角效果" },
@@ -912,8 +912,8 @@ export const story = {
         goto: "跳到 {name}",
         break: "跳出循环",
         cut: "{name} 在此结束",
-        // 没有版本可命名：要么这一行指向的 id 已经没人认领，要么这个读者手上根本没有版本表。
-        // 只说两种情况下都成立的那一句；「版本已被删除」由行上那个拿得到版本表的标记来说。
+        // 没有变体可命名：要么这一行指向的 id 已经没人认领，要么这个读者手上根本没有变体表。
+        // 只说两种情况下都成立的那一句；「变体已被删除」由行上那个拿得到变体表的标记来说。
         cutUnknown: "截断点",
         jump: "跳转 {scene}",
         note: "备注",

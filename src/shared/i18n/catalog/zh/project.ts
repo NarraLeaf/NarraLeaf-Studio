@@ -6,7 +6,7 @@ export const project = {
     nav: {
         app: {
             title: "应用",
-            description: "名称、版本、图标与插件",
+            description: "名称、项目版本、图标与插件",
         },
         game: {
             title: "游戏",
@@ -34,7 +34,7 @@ export const project = {
     // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
     group: {
         details: "详情",
-        appTags: "构建版本",
+        appTags: "变体",
         userData: "玩家文件",
         icons: "图标",
         dependencies: "依赖",
@@ -63,7 +63,7 @@ export const project = {
         nameRequired: "应用名称为必填项",
         identifierLabel: "标识符",
         identifierHelper: "在项目创建时设定，用于打包",
-        versionLabel: "版本",
+        versionLabel: "项目版本",
         authorLabel: "作者",
         authorPlaceholder: "作者、组织或邮箱",
         websiteLabel: "网站",
@@ -94,22 +94,22 @@ export const project = {
             persistence: "持久变量、已解锁内容与插件数据",
         },
     },
-    // 构建版本：同一个工程能发布出的几个版本。什么是构建版本、继承是什么意思，都在标题旁 `?` 打开的
+    // 变体：同一个工程能发布出的几种成品。什么是变体、继承是什么意思，都在标题旁 `?` 打开的
     // `appTags` 帮助主题里；这里的文案只命名控件，并说明按下去会发生什么。
     appTags: {
-        add: "新增版本",
-        newTagName: "新版本",
+        add: "新增变体",
+        newTagName: "新变体",
         nameTitle: "名称",
         fields: {
             displayName: "应用名称",
             identifier: "标识符",
-            version: "版本",
+            version: "项目版本",
         },
         // 只在该字段自己填了值时出现在它旁边，所以它既是「此处被覆盖」的标记，也是取消覆盖的入口。
         restore: "恢复继承",
         reachableTitle: "可以开始的场景",
-        // 该版本的构建可以交给玩家浏览器打开的地址。按这份清单决定什么来命名，而不是按机制；整份
-        // 清单一起覆盖：一个版本要么有自己的清单，要么读工程的。
+        // 该变体的构建可以交给玩家浏览器打开的地址。按这份清单决定什么来命名，而不是按机制；整份
+        // 清单一起覆盖：一个变体要么有自己的清单，要么读工程的。
         links: {
             title: "游戏可以打开的链接",
             add: "新增链接",
@@ -117,26 +117,26 @@ export const project = {
             placeholder: "https://example.com/store",
             invalid: "只有以 http:// 或 https:// 开头的地址可以打开",
         },
-        // 该版本的构建在剧本走完之后显示的页面。按作者看到的结果命名，而不是按背后的引擎事件。
+        // 该变体的构建在剧本走完之后显示的页面。按作者看到的结果命名，而不是按背后的引擎事件。
         ending: {
             title: "剧本结束后显示的页面",
             // 这是一个真正的选项，不是「没填」：画面停在最后一帧，也就是这个字段出现之前每个构建的行为。
             none: "不显示任何页面",
         },
-        // 在打开的版本里紧挨删除按钮：确认框接下来要说的就是这个数字。
+        // 在打开的变体里紧挨删除按钮：确认框接下来要说的就是这个数字。
         usedBy: {
             one: "被 {count} 处引用",
             other: "被 {count} 处引用",
         },
         delete: "删除",
         deleteConfirm: "删除「{name}」？",
-        // 如实说明后果：指向该版本的引用不会被改写，从此按发布版本的值读取。`{name}` 是发布版本的
+        // 如实说明后果：指向该变体的引用不会被改写，从此按正式变体的值读取。`{name}` 是正式变体的
         // 名称，插值而不是写死在这里，将来改名时这句会跟着改。
         deleteDetail: {
             one: "{count} 处引用将回落到 {name}",
             other: "{count} 处引用将回落到 {name}",
         },
-        // 后果的另一半，说的是那些写在剧本里的引用：截断点会保留下来，而不指向任何版本的截断点不再截断
+        // 后果的另一半，说的是那些写在剧本里的引用：截断点会保留下来，而不指向任何变体的截断点不再截断
         deleteDetailCuts: {
             one: "剧本中的 {count} 处截断点将保留，并不再生效",
             other: "剧本中的 {count} 处截断点将保留，并不再生效",
@@ -299,7 +299,7 @@ export const project = {
         allowHttpDescription: "关闭时，游戏将被限制在应用协议内，所有 HTTP/HTTPS 请求均会被阻止",
         allowHttpWebHint: "Web 导出不受此项限制，该构建本身通过 HTTP 提供；网络节点在 Web 导出中仍会运行",
         encryptAssetsTitle: "加密资源",
-        encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，不影响开发模式",
+        encryptAssetsDescription: "在打包及预览构建中加密资源、插件代码与剧本数据，不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
