@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, RefreshCw } from "lucide-react";
-import { Button, Select, Switch } from "@/lib/components/elements";
+import { Button, Select, Switch, type SelectOption } from "@/lib/components/elements";
+import type { TranslationKey } from "@shared/i18n/catalog";
+import {
+    NETWORK_ACCESS_POLICIES,
+    normalizeNetworkAccessPolicy,
+    type NetworkAccessPolicy,
+} from "@shared/types/networkAllowlist";
 import { HelpTrigger, type HelpTopicId } from "@/lib/help";
 import { useFreezeGuard, type FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
 import { cn } from "@/lib/utils/cn";
@@ -154,7 +160,13 @@ export type BuildDialogInfo = {
  */
 export type BuildContentSettings = {
     encryptAssets: boolean;
-    allowHttp: boolean;
+    /**
+     * The project's one network setting, mirrored here so a build can be started without
+     * leaving the dialog. Three positions rather than a switch, because the question has three
+     * answers and a build dialog that could only reach two of them would be a second, smaller
+     * version of the setting.
+     */
+    networkPolicy: NetworkAccessPolicy;
 };
 
 /** One plugin that ships with the game, as the Content section shows it. */
@@ -343,7 +355,10 @@ export function BuildDialogContent({
      * manifest and every write is a read-modify-write of the whole file, so two in flight together
      * would have the second clobber the first with a copy read before it landed.
      */
-    const commitContent = useCallback(async (field: keyof BuildContentSettings, value: boolean) => {
+    const commitContent = useCallback(async (
+        field: keyof BuildContentSettings,
+        value: BuildContentSettings[keyof BuildContentSettings],
+    ) => {
         if (savingContent) {
             return;
         }
@@ -1130,7 +1145,10 @@ export function ContentSection({
     saving: keyof BuildContentSettings | null;
     rescanning: boolean;
     findings: BuildPreflightFinding[];
-    onContentChange: (field: keyof BuildContentSettings, value: boolean) => void;
+    onContentChange: (
+        field: keyof BuildContentSettings,
+        value: BuildContentSettings[keyof BuildContentSettings],
+    ) => void;
     onRescanPlugins: () => void;
 }) {
     const { t } = useTranslation();
@@ -1140,6 +1158,13 @@ export function ContentSection({
     // desktop game; the web export is a static site and honours neither, which is worth a line when
     // web is in the selection and is noise on every other build.
     const buildsWeb = state.formats.web.size > 0;
+    const networkPolicyOptions: SelectOption[] = useMemo(
+        () => NETWORK_ACCESS_POLICIES.map(value => ({
+            value,
+            label: t(`build.content.networkPolicyName.${value}` as TranslationKey),
+        })),
+        [t],
+    );
 
     return (
         <div className="grid gap-3">
@@ -1151,13 +1176,14 @@ export function ContentSection({
                 frozen={freeze.writes(saving !== null)}
                 onChange={next => onContentChange("encryptAssets", next)}
             />
-            <Toggled
+            <Chosen
                 label={t("build.content.network")}
-                value={content.allowHttp ? t("build.content.networkAllowHttp") : t("build.content.networkStrict")}
-                checked={content.allowHttp}
-                loading={saving === "allowHttp"}
+                value={t(`build.content.networkPolicy.${content.networkPolicy}` as TranslationKey)}
+                selected={content.networkPolicy}
+                options={networkPolicyOptions}
+                loading={saving === "networkPolicy"}
                 frozen={freeze.writes(saving !== null)}
-                onChange={next => onContentChange("allowHttp", next)}
+                onChange={next => onContentChange("networkPolicy", normalizeNetworkAccessPolicy(next))}
             />
             {buildsWeb && (
                 <p className="text-2xs leading-relaxed text-fg-subtle">{t("build.webStaticNotice")}</p>
@@ -1189,6 +1215,49 @@ function Stated({ label, value }: { label: string; value: string }) {
         <div className="grid gap-0.5">
             <span className="text-xs text-fg">{label}</span>
             <span className="whitespace-pre-wrap text-2xs leading-relaxed text-fg-muted">{value}</span>
+        </div>
+    );
+}
+
+/**
+ * {@link Stated}, but the fact is a decision with more than two positions.
+ *
+ * Same row as {@link Toggled} with a chooser where the switch is: the line underneath still says
+ * what the current position costs the package rather than describing the setting, because that
+ * is what an author standing in a build dialog is deciding about.
+ */
+function Chosen({
+    label,
+    value,
+    selected,
+    options,
+    loading,
+    frozen,
+    onChange,
+}: {
+    label: string;
+    value: string;
+    selected: string;
+    options: SelectOption[];
+    loading: boolean;
+    frozen: FrozenControlProps;
+    onChange: (value: string | number) => void;
+}) {
+    return (
+        <div className="flex items-start justify-between gap-3" data-tip={frozen["data-tip"]}>
+            <div className="grid min-w-0 gap-0.5">
+                <span className="text-xs text-fg">{label}</span>
+                <span className="whitespace-pre-wrap text-2xs leading-relaxed text-fg-muted">{value}</span>
+            </div>
+            <Select
+                size="sm"
+                className="mt-0.5 shrink-0"
+                value={selected}
+                options={options}
+                disabled={frozen.disabled || loading}
+                ariaLabel={label}
+                onChange={onChange}
+            />
         </div>
     );
 }
@@ -1549,7 +1618,7 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                 signing={projectService.getSigningConfiguration()}
                 initialContent={{
                     encryptAssets: projectService.getSecurityConfiguration().encryptAssets,
-                    allowHttp: projectService.getNetworkConfiguration().allowHttp,
+                    networkPolicy: projectService.getNetworkConfiguration().policy,
                 }}
                 initialPlugins={initialPlugins}
                 appTagService={appTagService}
@@ -1586,8 +1655,8 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                         if (patch.encryptAssets !== undefined) {
                             await projectService.updateSecurityConfiguration({ encryptAssets: patch.encryptAssets });
                         }
-                        if (patch.allowHttp !== undefined) {
-                            await projectService.updateNetworkConfiguration({ allowHttp: patch.allowHttp });
+                        if (patch.networkPolicy !== undefined) {
+                            await projectService.updateNetworkConfiguration({ policy: patch.networkPolicy });
                         }
                     } catch (error) {
                         uiService.showNotification(error instanceof Error ? error.message : String(error), "error");

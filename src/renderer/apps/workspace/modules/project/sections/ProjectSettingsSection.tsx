@@ -13,10 +13,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n/catalog";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
+    NETWORK_ACCESS_POLICIES,
     NETWORK_POLICY_ALLOWLIST,
-    NETWORK_POLICY_ANY,
+    NETWORK_POLICY_OFF,
+    normalizeNetworkAccessPolicy,
     type NetworkPluginAllowlistEntry,
 } from "@shared/types/networkAllowlist";
 import { getInterface } from "@/lib/app/bridge";
@@ -64,47 +67,27 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
     );
     const [crash, setCrash] = useState<CrashConfiguration>(() => normalizeCrashConfiguration(config.app?.crash));
     const [savingCrash, setSavingCrash] = useState(false);
-    const [savingHttp, setSavingHttp] = useState(false);
     const [savingPolicy, setSavingPolicy] = useState(false);
     const [pluginNetwork, setPluginNetwork] = useState<readonly NetworkPluginAllowlistEntry[]>([]);
     const [savingEncrypt, setSavingEncrypt] = useState(false);
     const [savingMobile, setSavingMobile] = useState(false);
     const [savingWeb, setSavingWeb] = useState<keyof WebOptimizationConfiguration | null>(null);
 
-    const setAllowHttp = useCallback(async (next: boolean) => {
-        if (savingHttp) {
-            return;
-        }
-        const previous = network;
-        setSavingHttp(true);
-        setNetwork(current => ({ ...current, allowHttp: next }));
-        try {
-            const updated = await projectService.updateNetworkConfiguration({ allowHttp: next });
-            setNetwork(normalizeNetworkConfiguration(updated.app?.network));
-            onConfigChange(updated);
-        } catch (error) {
-            setNetwork(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSavingHttp(false);
-        }
-    }, [network, onConfigChange, projectService, savingHttp, uiService]);
-
     /**
-     * Narrow the project to a list, or widen it back.
+     * Move the project between the three positions.
      *
-     * Widening keeps the entries rather than clearing them. An author who switches back to any
-     * host has not said the list was wrong, and losing it on a toggle would make trying the
-     * narrow state a thing worth being afraid of.
+     * The allowlist entries are kept whichever position is chosen. An author who widens to any
+     * host, or switches the network off while testing something, has not said the list was
+     * wrong; losing it on the way past would make the narrow position a thing worth avoiding.
      */
-    const setNetworkPolicy = useCallback(async (narrow: boolean) => {
+    const setNetworkPolicy = useCallback(async (value: string | number) => {
         if (savingPolicy) {
             return;
         }
         const previous = network;
         setSavingPolicy(true);
-        const policy = narrow ? NETWORK_POLICY_ALLOWLIST : NETWORK_POLICY_ANY;
-        setNetwork(current => ({ ...current, policy }));
+        const policy = normalizeNetworkAccessPolicy(value);
+        setNetwork(current => ({ ...current, policy, allowHttp: policy !== NETWORK_POLICY_OFF }));
         try {
             const updated = await projectService.updateNetworkConfiguration({ policy });
             setNetwork(normalizeNetworkConfiguration(updated.app?.network));
@@ -264,6 +247,14 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         [t],
     );
 
+    const networkPolicyOptions: SelectOption[] = useMemo(
+        () => NETWORK_ACCESS_POLICIES.map(value => ({
+            value,
+            label: t(`project.settings.networkPolicy.${value}` as TranslationKey),
+        })),
+        [t],
+    );
+
     const cropAnchorYOptions: SelectOption[] = useMemo(
         () => MOBILE_CROP_ANCHORS_Y.map(value => ({
             value,
@@ -279,27 +270,24 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 helpTopic="assetProtection"
                 trailing={<HelpTrigger topic="assetProtection" />}
             >
-                <SettingRow
-                    title={t("project.settings.allowHttpTitle")}
-                    description={t("project.settings.allowHttpDescription")}
-                    hint={t("project.settings.allowHttpWebHint")}
-                    checked={network.allowHttp}
-                    loading={savingHttp}
-                    onChange={value => void setAllowHttp(value)}
-                />
-                {network.allowHttp ? (
-                    <SettingRow
-                        title={t("project.settings.networkAllowlistTitle")}
-                        description={t("project.settings.networkAllowlistDescription")}
-                        hint={t("project.settings.networkAllowlistWebHint")}
-                        checked={network.policy === NETWORK_POLICY_ALLOWLIST}
-                        loading={savingPolicy}
+                <SettingStack
+                    title={t("project.settings.networkPolicyTitle")}
+                    description={t(`project.settings.networkPolicyDetail.${network.policy}` as TranslationKey)}
+                    hint={t("project.settings.networkPolicyWebHint")}
+                    tooltip={freeze.writes(savingPolicy)["data-tip"]}
+                >
+                    <Select
+                        size="sm"
+                        value={network.policy}
+                        options={networkPolicyOptions}
+                        disabled={freeze.writes(savingPolicy).disabled}
+                        ariaLabel={t("project.settings.networkPolicyTitle")}
                         onChange={value => void setNetworkPolicy(value)}
                     />
-                ) : null}
+                </SettingStack>
                 {/* The matching rules sit on the hint beside the title, where an author reads them
                     while typing a row; the fuller answer is the `networkAllowlist` topic on F1. */}
-                {network.allowHttp && network.policy === NETWORK_POLICY_ALLOWLIST ? (
+                {network.policy === NETWORK_POLICY_ALLOWLIST ? (
                     <SettingStack
                         title={t("project.settings.networkAllowlist.title")}
                         description={t("project.settings.networkAllowlist.description")}

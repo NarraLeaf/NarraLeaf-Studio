@@ -48,15 +48,42 @@ import { isExternalLinkPatternDeclared, isValidExternalLinkPattern } from "./ext
 export const NETWORK_ALLOWLIST_SCHEMES: readonly string[] = ["http:", "https:"];
 
 /**
- * How much of the network a build with the network on may reach.
+ * How much of the network a build may reach. One authored value with three positions, because
+ * they are three answers to one question and a project can only be in one of them.
  *
- * Absent means {@link NETWORK_POLICY_ANY} everywhere it is read, which is what every pack written
- * before this existed carries and what those builds shipped with.
+ *  - `off` - no remote request of any kind. The secure default, and what every project starts at.
+ *  - `allowlist` - only the addresses the project lists, plus what its plugins declared.
+ *  - `any` - any host.
+ *
+ * A pack carries this beside `allowHttp`, which is the same fact split the way the runtime's two
+ * enforcement layers already read it. Absent means {@link NETWORK_POLICY_ANY}, which is what every
+ * pack written before this existed carries and what those builds shipped with.
  */
-export type NetworkAccessPolicy = "any" | "allowlist";
+export type NetworkAccessPolicy = "off" | "allowlist" | "any";
 
+export const NETWORK_POLICY_OFF: NetworkAccessPolicy = "off";
 export const NETWORK_POLICY_ANY: NetworkAccessPolicy = "any";
 export const NETWORK_POLICY_ALLOWLIST: NetworkAccessPolicy = "allowlist";
+
+/** The three positions in the order a chooser lists them: least reach first. */
+export const NETWORK_ACCESS_POLICIES: readonly NetworkAccessPolicy[] = [
+    NETWORK_POLICY_OFF,
+    NETWORK_POLICY_ALLOWLIST,
+    NETWORK_POLICY_ANY,
+];
+
+/**
+ * One stored value read back, or the secure position for anything this build does not recognize.
+ *
+ * A word from a future version reads as `off` rather than as the widest position: a project whose
+ * setting cannot be understood is not one this build can vouch for, and refusing requests is the
+ * failure an author notices immediately rather than the one that ships.
+ */
+export function normalizeNetworkAccessPolicy(raw: unknown): NetworkAccessPolicy {
+    return NETWORK_ACCESS_POLICIES.includes(raw as NetworkAccessPolicy)
+        ? raw as NetworkAccessPolicy
+        : NETWORK_POLICY_OFF;
+}
 
 /** One plugin's declared hosts, kept attributed so a surface can say whose they are. */
 export type NetworkPluginAllowlistEntry = {

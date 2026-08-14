@@ -277,7 +277,7 @@ describe("ContentSection", () => {
         <ContentSection
             info={info}
             state={desktopOnly}
-            content={{ encryptAssets: false, allowHttp: false }}
+            content={{ encryptAssets: false, networkPolicy: "off" as const }}
             plugins={[]}
             saving={null}
             rescanning={false}
@@ -292,14 +292,24 @@ describe("ContentSection", () => {
         frozen = false;
     });
 
-    it("offers a switch per setting, reporting what the project currently says", () => {
-        const markup = render({ content: { encryptAssets: true, allowHttp: false } });
+    it("offers a control per setting, reporting what the project currently says", () => {
+        const markup = render({ content: { encryptAssets: true, networkPolicy: "off" as const } });
 
         expect(markup).toContain('aria-label="Asset protection"');
         expect(markup).toContain('aria-label="Network policy"');
-        // The consequence line follows the switch, so the two never disagree.
+        // The consequence line follows the control, so the two never disagree.
         expect(markup).toContain("Assets and saves are encrypted in the packaged game.");
-        expect(markup).toContain("Plain HTTP is blocked.");
+        expect(markup).toContain("The packaged game refuses every HTTP and HTTPS request.");
+    });
+
+    it("names the chosen position on the chooser, and its consequence underneath", () => {
+        // Three positions rather than a switch, so the pair has to stay in step for each of them.
+        const listed = render({ content: { encryptAssets: false, networkPolicy: "allowlist" as const } });
+        expect(listed).toContain("Allowlist");
+        expect(listed).toContain("The packaged game reaches only the addresses on the project allowlist.");
+
+        const wide = render({ content: { encryptAssets: false, networkPolicy: "any" as const } });
+        expect(wide).toContain("The packaged game can reach any address over HTTP or HTTPS.");
     });
 
     it("switches off with the workspace rather than offering a write that cannot happen", () => {
@@ -345,7 +355,7 @@ describe("the variant page", () => {
             initialPage="variant"
             copyright=""
             signing={{}}
-            initialContent={{ encryptAssets: false, allowHttp: false }}
+            initialContent={{ encryptAssets: false, networkPolicy: "off" as const }}
             initialPlugins={[]}
             appTagService={null}
             loadStoryUsage={null}
@@ -402,7 +412,7 @@ describe("the variant page", () => {
                 initialPage="identity"
                 copyright=""
                 signing={{}}
-                initialContent={{ encryptAssets: false, allowHttp: false }}
+                initialContent={{ encryptAssets: false, networkPolicy: "off" as const }}
                 initialPlugins={[]}
                 appTagService={null}
             loadStoryUsage={null}
@@ -465,7 +475,7 @@ describe("the plugins page", () => {
             initialPage="plugins"
             copyright=""
             signing={{}}
-            initialContent={{ encryptAssets: false, allowHttp: false }}
+            initialContent={{ encryptAssets: false, networkPolicy: "off" as const }}
             initialPlugins={[]}
             appTagService={options.service ?? stubService()}
             loadStoryUsage={null}

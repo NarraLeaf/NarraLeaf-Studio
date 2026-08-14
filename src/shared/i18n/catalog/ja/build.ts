@@ -103,8 +103,16 @@ export const build = {
         localesNone: "ローカライズを設定していない。ゲームは 1 言語で配布される",
         localeSource: "{name}（原文）",
         network: "ネットワークの方針",
-        networkAllowHttp: "平文の HTTP を許可している",
-        networkStrict: "平文の HTTP を遮断している",
+        networkPolicyName: {
+            off: "使わない",
+            allowlist: "許可一覧",
+            any: "任意のアドレス",
+        },
+        networkPolicy: {
+            off: "パッケージしたゲームは HTTP と HTTPS の要求をすべて拒否する",
+            allowlist: "パッケージしたゲームはプロジェクトの許可一覧にあるアドレスだけに到達できる",
+            any: "パッケージしたゲームは HTTP または HTTPS で任意のアドレスに到達できる",
+        },
     },
     /**
      * プラグインのページ。フィールドのラベルと説明はプラグインのマニフェストから来るので、

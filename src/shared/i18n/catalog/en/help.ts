@@ -397,8 +397,8 @@ export const help = {
                 + "- Fetch produces a Response. Read Response Text or Read Response JSON turns it into a value.\n"
                 + "- A Response is only readable during the run that fetched it. To keep the data, read it and "
                 + "store it in a variable.\n"
-                + "- Allow HTTP in project settings decides whether these nodes work at all. With it off, the "
-                + "project reports an error and the build is refused.\n"
+                + "- The network policy in project settings decides whether these nodes work at all. With no "
+                + "network access, the project reports an error and the build is refused.\n"
                 + "- Only http and https addresses can be fetched.",
         },
         lint: {
@@ -602,7 +602,7 @@ export const help = {
         networkAllowlist: {
             title: "Network request allowlist",
             body:
-                "A project that allows HTTP can reach any address. Turning on the allowlist narrows it to the addresses listed in project settings; every other request is refused, in the editor preview and in the built game.\n"
+                "The network policy in project settings has three positions: no network access, allowlisted addresses only, and any address. The middle one narrows the project to the addresses it lists; every other request is refused, in the editor preview and in the built game.\n"
                 + "\n"
                 + "- A host on its own covers every path under it. Write https://api.example.com/v1/* to cover one part of a host.\n"
                 + "- * can replace the first host label, as in https://*.example.com/*.\n"

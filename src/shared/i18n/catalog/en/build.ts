@@ -106,8 +106,16 @@ export const build = {
         localesNone: "No localization is set up. The game ships in one language.",
         localeSource: "{name} (source)",
         network: "Network policy",
-        networkAllowHttp: "Plain HTTP is allowed.",
-        networkStrict: "Plain HTTP is blocked.",
+        networkPolicyName: {
+            off: "No network",
+            allowlist: "Allowlist",
+            any: "Any address",
+        },
+        networkPolicy: {
+            off: "The packaged game refuses every HTTP and HTTPS request.",
+            allowlist: "The packaged game reaches only the addresses on the project allowlist.",
+            any: "The packaged game can reach any address over HTTP or HTTPS.",
+        },
     },
     /**
      * The plugins page. Field labels and descriptions come from the plugin's manifest, so the only
@@ -408,8 +416,8 @@ export const build = {
      */
     networkNodeDisallowed: "{blueprint} makes a network request, which this project does not allow.",
     networkSummary: {
-        one: "Build stopped: {count} network node cannot run. Turn on Allow HTTP in project settings, or remove the node.",
-        other: "Build stopped: {count} network nodes cannot run. Turn on Allow HTTP in project settings, or remove the nodes.",
+        one: "Build stopped: {count} network node cannot run. Change the network policy in project settings, or remove the node.",
+        other: "Build stopped: {count} network nodes cannot run. Change the network policy in project settings, or remove the nodes.",
     },
     networkAddressNotAllowlisted: "{blueprint} requests {url}, which is not on this project's network request allowlist.",
     networkAllowlistSummary: {

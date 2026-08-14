@@ -59,7 +59,7 @@ export const lint = {
         },
         networkFetchDisallowed: {
             title: "网络节点无法访问网络",
-            description: "工程不允许 HTTP，但蓝图里有网络节点",
+            description: "工程的网络策略为不允许联网，但蓝图中有网络节点",
             message: "{blueprint} 发起了网络请求，本工程不允许",
         },
         storyInvalidCommand: {

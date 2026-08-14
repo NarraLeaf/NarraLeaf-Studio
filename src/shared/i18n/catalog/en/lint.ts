@@ -69,7 +69,7 @@ export const lint = {
         },
         networkFetchDisallowed: {
             title: "Network node without network access",
-            description: "A network node in a project that does not allow HTTP",
+            description: "A network node in a project whose network policy is off",
             message: "{blueprint} makes a network request, which this project does not allow",
         },
         storyInvalidCommand: {
