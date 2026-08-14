@@ -211,6 +211,15 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 `id` 会 trim，不能为空，且不能包含路径分隔符或控制字符。文件名由安全 hash 派生，真实用户 id 只保存在存档 metadata 中。`metadata` 使用现有 Blueprint JSON pin 类型，可传入 object、array、string、number、boolean 或 `null`，不会创建专用 Save Metadata 数据类型。
 
+### 存档字段
+
+工程可以声明一份**存档字段**（`editor/save-schema.json`），声明之后这个节点会为每个字段长出一个具名输入引脚，不必再用 `Make JSON Object` 拼对象、也不用手写存储 key。字段在节点卡片上的按钮里编辑，改的是整个工程共用的那一份——写档节点和读档节点因此永远长出同一批引脚。
+
+- 引脚按**字段 id** 寻址，改字段名只换标签，不会断线。
+- 字段声明的类型**就是**引脚的类型，中间没有映射表。
+- 裸 `metadata` 引脚**永远保留**：先写它，再把声明字段盖上去，重叠时以声明字段为准。这样声明第一个字段不会让原本接着 `metadata` 的图静默断掉，插件写的、历史遗留的 key 也仍然有地方搭车。
+- 会执行到的 Save Game 上，声明过的字段**必须填**（接线或在卡片上填值都算，填空串也算）。空着会报 lint error `blueprint/save-field-empty`——因为读端承诺每个字段都有值，漏填的存档在运行时和"写在该字段存在之前"的老存档完全无法区分。
+
 ## Load Save
 
 `blueprint.game.save.load` - Load Save
@@ -258,6 +267,10 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 - `next` - 读取完成后的执行出口
 
 存档不存在或没有用户 metadata 时，`metadata` 输出 `null`。
+
+工程声明了存档字段之后，这个节点会为每个字段多长出一个具名输出引脚，`metadata` 输出则原样保留、仍然给出完整的存储对象。
+
+字段输出**永远有值**：存档里没有这个 key 时给的是该字段配置的默认值。这正是"给已发布的游戏加一个存档字段"安全的原因——老存档照常显示，不会变成一片空白。
 
 ## Get Save Time
 

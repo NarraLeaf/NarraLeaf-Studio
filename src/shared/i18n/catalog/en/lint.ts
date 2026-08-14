@@ -158,6 +158,11 @@ export const lint = {
             description: "An Open Link node holding an address no build variant declares",
             message: "{url} is not declared by any build variant, so no build opens it",
         },
+        blueprintSaveFieldEmpty: {
+            title: "Empty save field",
+            description: "A Save Game node that will run with a declared save field left empty",
+            message: "{field} is empty, so this save is written with its default instead",
+        },
         variablesUndeclared: {
             title: "Undeclared variable",
             description: "A variable used without a declaration",

@@ -91,6 +91,7 @@ export type LintRuleId =
     | "blueprint/unreachable-node"
     | "blueprint/empty-event"
     | "blueprint/external-link-undeclared"
+    | "blueprint/save-field-empty"
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"

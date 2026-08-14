@@ -147,6 +147,11 @@ export const lint = {
             description: "打开链接节点上的地址没有任何变体声明过",
             message: "没有任何变体声明 {url}，因此任何构建都不会打开它",
         },
+        blueprintSaveFieldEmpty: {
+            title: "存档字段为空",
+            description: "会执行到的 Save Game 节点上，有声明过的存档字段没有填",
+            message: "{field} 没有填，这次存档写进去的会是它的默认值",
+        },
         variablesUndeclared: {
             title: "未声明的变量",
             description: "用到了却没有声明",

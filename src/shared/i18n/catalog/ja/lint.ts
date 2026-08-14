@@ -155,6 +155,11 @@ export const lint = {
             description: "どのビルドバリアントも宣言していないアドレスを持つリンクを開くノード",
             message: "{url} はどのビルドバリアントも宣言していないので、どのビルドもこれを開かない",
         },
+        blueprintSaveFieldEmpty: {
+            title: "セーブ項目が空",
+            description: "実行される Save Game ノードで、宣言済みのセーブ項目が空のまま",
+            message: "{field} が空なので、このセーブには既定値が書き込まれる",
+        },
         variablesUndeclared: {
             title: "宣言のない変数",
             description: "宣言せずに使っている変数",
