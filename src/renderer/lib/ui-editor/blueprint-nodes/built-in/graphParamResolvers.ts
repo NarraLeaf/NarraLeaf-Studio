@@ -148,6 +148,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
@@ -262,8 +263,44 @@ import {
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_VERTICAL_ALIGN,
     BLUEPRINT_NODE_TYPE_TEXT_GET_WRAP_MODE,
+    BLUEPRINT_NODE_TYPE_TIME_ADD,
+    BLUEPRINT_NODE_TYPE_TIME_DIFFERENCE,
+    BLUEPRINT_NODE_TYPE_TIME_DURATION_PARTS,
+    BLUEPRINT_NODE_TYPE_TIME_FORMAT,
+    BLUEPRINT_NODE_TYPE_TIME_FORMAT_DURATION,
+    BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED,
+    BLUEPRINT_NODE_TYPE_TIME_FORMAT_RELATIVE,
+    BLUEPRINT_NODE_TYPE_TIME_IS_SAME_DAY,
+    BLUEPRINT_NODE_TYPE_TIME_MAKE,
+    BLUEPRINT_NODE_TYPE_TIME_NOW,
+    BLUEPRINT_NODE_TYPE_TIME_PARSE,
+    BLUEPRINT_NODE_TYPE_TIME_PARTS,
+    BLUEPRINT_NODE_TYPE_TIME_START_OF_DAY,
+    BLUEPRINT_NODE_TYPE_TIME_TO_ISO_STRING,
+    BLUEPRINT_NODE_TYPE_TIME_ZONE_OFFSET,
+    BLUEPRINT_TIME_PARAM_DATE_STYLE,
+    BLUEPRINT_TIME_PARAM_TIME_STYLE,
     isBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
+import {
+    addBlueprintTime,
+    blueprintDurationParts,
+    blueprintTimeDifference,
+    blueprintTimeNow,
+    blueprintTimeParts,
+    blueprintTimeToIsoString,
+    blueprintTimeZoneName,
+    blueprintTimeZoneOffsetMinutes,
+    formatBlueprintDuration,
+    formatBlueprintRelativeTime,
+    formatBlueprintTime,
+    formatBlueprintTimeLocalized,
+    isSameBlueprintDay,
+    makeBlueprintTime,
+    parseBlueprintTime,
+    startOfBlueprintDay,
+    toBlueprintTimestamp,
+} from "@shared/blueprint/blueprintTime";
 import {
     type BlueprintElementRef,
     normalizeBlueprintImageAssetValue,
@@ -289,6 +326,12 @@ import {
     readBlueprintElementRefParams,
 } from "./elementRefUtils";
 import { readBlueprintAudioTrackParam } from "./audioTrackParams";
+import {
+    readBlueprintDurationStyle,
+    readBlueprintRelativeStyle,
+    readBlueprintTimeDisplayStyle,
+    readBlueprintTimeUnit,
+} from "./timeNodes";
 import {
     BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID,
     createDelayTimerToken,
@@ -2385,6 +2428,134 @@ function resolveWidgetPropertyNodeOutput(
     return undefined;
 }
 
+/** The pattern `Format Time` uses when its Pattern pin is left blank. */
+const DEFAULT_TIME_FORMAT_PATTERN = "YYYY-MM-DD HH:mm";
+
+/**
+ * The Time family, all pure.
+ *
+ * Every branch reads its inputs through {@link resolveInput} and answers from
+ * `@shared/blueprint/blueprintTime`, so the calendar rules have one implementation and the nodes
+ * have none of their own. Returning `undefined` for an unknown type is what lets the dispatch chain
+ * fall through to the next family.
+ */
+function resolveTimeNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    type: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const ts = (pin: string) =>
+        toBlueprintTimestamp(resolveInput(graph, nodeId, pin, params, blueprintLocals, depth, runtime));
+    const num = (pin: string) => {
+        const value = toFiniteNumber(resolveInput(graph, nodeId, pin, params, blueprintLocals, depth, runtime));
+        return Number.isNaN(value) ? 0 : value;
+    };
+    const str = (pin: string) =>
+        toBlueprintString(resolveInput(graph, nodeId, pin, params, blueprintLocals, depth, runtime));
+
+    if (type === BLUEPRINT_NODE_TYPE_TIME_NOW) {
+        return portId === "timestamp" ? blueprintTimeNow() : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_MAKE) {
+        return portId === "timestamp"
+            ? makeBlueprintTime({
+                year: num("year"),
+                month: num("month"),
+                day: num("day"),
+                hour: num("hour"),
+                minute: num("minute"),
+                second: num("second"),
+                millisecond: num("millisecond"),
+            })
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_PARTS) {
+        const parts = blueprintTimeParts(ts("timestamp"));
+        return portId in parts ? parts[portId as keyof typeof parts] : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_FORMAT) {
+        if (portId !== "result") {
+            return undefined;
+        }
+        const pattern = str("pattern");
+        return formatBlueprintTime(ts("timestamp"), pattern.length > 0 ? pattern : DEFAULT_TIME_FORMAT_PATTERN);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED) {
+        return portId === "result"
+            ? formatBlueprintTimeLocalized({
+                timestamp: ts("timestamp"),
+                locale: str("locale"),
+                dateStyle: readBlueprintTimeDisplayStyle(params, BLUEPRINT_TIME_PARAM_DATE_STYLE, "medium"),
+                // Defaults to a date with no clock: the common label is a day, and an author who
+                // wants the time can say so in one click.
+                timeStyle: readBlueprintTimeDisplayStyle(params, BLUEPRINT_TIME_PARAM_TIME_STYLE, "none"),
+            })
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_FORMAT_RELATIVE) {
+        return portId === "result"
+            ? formatBlueprintRelativeTime({
+                from: ts("from"),
+                to: ts("to"),
+                locale: str("locale"),
+                numeric: readBlueprintRelativeStyle(params),
+            })
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_FORMAT_DURATION) {
+        return portId === "result"
+            ? formatBlueprintDuration(num("milliseconds"), readBlueprintDurationStyle(params))
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_DURATION_PARTS) {
+        const parts = blueprintDurationParts(num("milliseconds"));
+        // The pin is `remainingMilliseconds` because `milliseconds` is already this node's input, and
+        // a pin id has to be unique across kinds within a node.
+        if (portId === "remainingMilliseconds") {
+            return parts.milliseconds;
+        }
+        return portId in parts ? parts[portId as keyof typeof parts] : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_ADD) {
+        return portId === "result"
+            ? addBlueprintTime(ts("timestamp"), num("amount"), readBlueprintTimeUnit(params))
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_DIFFERENCE) {
+        return portId === "difference"
+            ? blueprintTimeDifference(ts("from"), ts("to"), readBlueprintTimeUnit(params))
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_PARSE) {
+        if (portId !== "timestamp" && portId !== "ok") {
+            return undefined;
+        }
+        const parsed = parseBlueprintTime(str("value"));
+        return portId === "timestamp" ? parsed.timestamp : parsed.ok;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_TO_ISO_STRING) {
+        return portId === "result" ? blueprintTimeToIsoString(ts("timestamp")) : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_IS_SAME_DAY) {
+        return portId === "result" ? isSameBlueprintDay(ts("a"), ts("b")) : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_START_OF_DAY) {
+        return portId === "result" ? startOfBlueprintDay(ts("timestamp")) : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_ZONE_OFFSET) {
+        if (portId === "offsetMinutes") {
+            return blueprintTimeZoneOffsetMinutes(ts("timestamp"));
+        }
+        return portId === "name" ? blueprintTimeZoneName() : undefined;
+    }
+    return undefined;
+}
+
 function resolveDataNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -2717,6 +2888,14 @@ function resolveSelfOutput(
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
+    // Get Save Time, kept out of the cross-product list above because none of its port names appear
+    // there and joining it would hand `savedAt` / `exists` to every save node in it.
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME &&
+        (portId === "savedAt" || portId === "createdAt" || portId === "exists")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
     // Play Sound hands its handle to the transport nodes that follow, so the handle has to survive
     // the hop through the node output store the same way an animation token does.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY && portId === "handle") {
@@ -2992,6 +3171,19 @@ function resolveSelfOutput(
     );
     if (widgetPropertyOutput !== undefined) {
         return widgetPropertyOutput;
+    }
+    const timeOutput = resolveTimeNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    if (timeOutput !== undefined) {
+        return timeOutput;
     }
     const dataOutput = resolveDataNodeOutput(
         graph,

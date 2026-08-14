@@ -92,6 +92,7 @@ function hostOptions(overrides: Partial<GameUiSlotHostOptions>): GameUiSlotHostO
         deleteSaveInGame: async () => undefined,
         listSaveIds: async () => [],
         getSaveMetadata: async () => null,
+        getSaveTimes: async () => null,
         getSavePreview: async () => null,
         writeAutoSaveInGame: async () => undefined,
         listAutoSaves: async () => [],
