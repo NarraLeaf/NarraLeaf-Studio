@@ -254,6 +254,8 @@ export enum IPCEventType {
     blueprintProgressWrite = "blueprintProgress.write",
     blueprintProgressRead = "blueprintProgress.read",
 
+    serverTrustPrompt = "serverTrust.prompt",
+
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
     pluginList = "plugin.list",
@@ -802,7 +804,7 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCServerTrustEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -2426,6 +2428,25 @@ export type IPCBlueprintPersistenceEvents = {
         response: {
             result: GameProgressImportResult;
         };
+    };
+};
+
+/**
+ * The one question a server's certificate raises, asked in a window of its own.
+ *
+ * No project path: an authority is trusted for the account, not for a project, and the
+ * window is raised from Settings as readily as from a workspace. The response says what
+ * the machine now believes rather than which button was pressed - the install can be
+ * refused by the operating system after the author has agreed.
+ */
+export type IPCServerTrustEvents = {
+    [IPCEventType.serverTrustPrompt]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            props: WindowProps[WindowAppType.ServerTrustPrompt];
+        },
+        response: { trusted: boolean };
     };
 };
 

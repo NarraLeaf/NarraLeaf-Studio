@@ -86,6 +86,7 @@ import {
     SigningRemoveHandler,
 } from "./handlers/signingAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
+import { ServerTrustPromptHandler } from "./handlers/serverTrustAction";
 import {
     PluginApproveHandler,
     PluginInstallFromRegistryHandler,
@@ -273,6 +274,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         // Blueprint progress handlers (the Export/Import Progress nodes)
         new BlueprintProgressWriteHandler(),
         new BlueprintProgressReadHandler(),
+
+        // The server trust question, in a window of its own
+        new ServerTrustPromptHandler(),
 
         // Plugin permission handlers
         new PluginPermissionPromptLaunchHandler(),
