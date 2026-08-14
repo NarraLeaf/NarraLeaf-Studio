@@ -488,6 +488,7 @@ export const workspace = {
                 audioTracks: "音频轨道",
                 appTags: "变体",
                 brand: "配色方案",
+                saveSchema: "存档字段",
                 characters: "角色",
                 project: "项目设置",
                 assets: "资产库",

@@ -35,6 +35,8 @@ export type DocumentKind =
     | "brand"
     /** The build variants the project ships as, at `editor/app-tags.json`. */
     | "app-tags"
+    /** What one save slot carries besides the engine's own record, at `editor/save-schema.json`. */
+    | "save-schema"
     | "localization"
     | "localization-keys"
     | "voice"

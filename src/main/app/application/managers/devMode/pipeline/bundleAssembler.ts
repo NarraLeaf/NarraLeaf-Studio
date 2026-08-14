@@ -1,5 +1,7 @@
 import path from "path";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
+import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/saveSchemaModel";
+import type { SaveSchemaRuntimeTable } from "@shared/types/saveSchema";
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type {
     Blueprint,
@@ -124,6 +126,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
     const brand = await loadProjectBrand(context.projectPath);
+    const saveSchema = await loadSaveSchemaTable(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -135,6 +138,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
             sharedBlueprints,
             persistentVariables: variableTables.persistent,
             savedVariables: variableTables.saved,
+            saveSchema,
         },
         storyLibrary,
         localization,
@@ -211,6 +215,20 @@ async function loadVariableRuntimeTables(
     // older version would only mislead anything that reads it.
     const registry: VariableRegistry = { schemaVersion: VARIABLE_REGISTRY_SCHEMA_VERSION, entries };
     return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
+}
+
+/**
+ * Load the project-level save schema: what one save slot carries besides the engine's own record.
+ *
+ * Absent is a working state, not a failure - it is what every project written before the schema
+ * existed looks like, and an empty table simply means the save nodes keep their raw `metadata` pin
+ * and grow none of their own. Unreadable takes the same path for the same reason it does in the
+ * renderer service: a Dev Mode run that refuses to start over a malformed table teaches nothing that
+ * the empty table plus a lint error does not.
+ */
+async function loadSaveSchemaTable(projectPath: string): Promise<SaveSchemaRuntimeTable> {
+    const raw = await readOptionalJsonFile<unknown>(path.join(projectPath, "editor", "save-schema.json"));
+    return raw ? listSaveSchemaFields(migrateSaveSchemaToLatest(raw)) : [];
 }
 
 function readRawPersistentVariables(blueprintDocument: unknown): Record<string, BlueprintPersistentVariable> | undefined {

@@ -38,6 +38,7 @@ import { CharacterService } from "@/lib/workspace/services/core/CharacterService
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { SaveSchemaService } from "@/lib/workspace/services/saves/SaveSchemaService";
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
 
@@ -165,6 +166,7 @@ export function useStoryPreviewGameUi(input: {
                 sharedBlueprints: [],
                 persistentVariables: buildPersistentRuntimeTable(registry),
                 savedVariables: buildSavedRuntimeTable(registry),
+                saveSchema: context.services.get<SaveSchemaService>(Services.SaveSchema).listFields(),
             },
         };
     }, [context, enabled]);

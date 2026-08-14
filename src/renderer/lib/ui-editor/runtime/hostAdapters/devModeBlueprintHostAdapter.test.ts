@@ -175,6 +175,8 @@ describe("createDevModeBlueprintHostAdapter", () => {
                 sharedBlueprints: [],
                 persistentVariables: {},
                 savedVariables: {},
+
+                saveSchema: [],
             },
         };
         const debug = new DebugBridge();
@@ -330,6 +332,8 @@ describe("createDevModeBlueprintHostAdapter", () => {
                 sharedBlueprints: [],
                 persistentVariables: {},
                 savedVariables: {},
+
+                saveSchema: [],
             },
         };
         const debug = new DebugBridge();
