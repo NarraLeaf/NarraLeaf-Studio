@@ -21,6 +21,7 @@ import type {
     VcsRestoreResult,
     VcsRevisionDiffResult,
     VcsRevisionKind,
+    VcsServerProbe,
     VcsServerReach,
     VcsServerSession,
     VcsSignInResult,
@@ -63,6 +64,10 @@ import { readWorkingSetFile } from "./workingFile";
 // Same again: a child process and `fs`, with no backend in it. It is a value import
 // because trusting an authority happens on a failed sign-in, which is not a cold path.
 import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from "./authorityTrust";
+// Value import, and safe to be one for the same reason: `tls` and `https` and the module
+// above, with nothing of Lore's in it. It is not behind the plug either, because asking an
+// address what it is has to work on a host that has no backend to sign anything in.
+import { probeVcsServer } from "./serverDiscovery";
 
 /**
  * Owns Lore state for open projects.
@@ -1607,6 +1612,26 @@ export class VcsManager extends Manager {
             );
             this.app.logger.info("[Vcs] Signed out of", stored.remoteOrigin);
         });
+    }
+
+    /**
+     * Ask an address what is behind it, before anything has been added.
+     *
+     * The first thing that happens when somebody is handed a server, and the only call here
+     * that takes neither a project nor a session: there is nothing yet to take. It is not
+     * serialized for the same reason - it holds no repository and touches no store, so there
+     * is nothing for a second one to collide with.
+     *
+     * Writes nothing but the authority's certificate, and only where the answer is that this
+     * machine does not trust the server yet. That file is written before the author is asked
+     * anything, because the fingerprint they are shown has to be that file's - it is the file
+     * the install names.
+     */
+    public async probeServer(address: string): Promise<VcsServerProbe> {
+        const probe = await probeVcsServer(address, { userDataDir: this.app.getUserDataDir() });
+        // The address rather than the answer's, which a refused one does not carry.
+        this.app.logger.info("[Vcs] Probed", address, "-", probe.kind);
+        return probe;
     }
 
     /**
