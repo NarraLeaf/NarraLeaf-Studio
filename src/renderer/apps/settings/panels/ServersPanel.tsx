@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Button } from "@/lib/components/elements";
+import { cn } from "@/lib/utils/cn";
+import { SETTINGS_HIGHLIGHT_RING, useSettingsHighlight } from "../components/settingsHighlight";
 import type { VcsServerSession } from "@shared/types/vcs";
 import { ServerWizard } from "./ServerWizard";
 
@@ -28,6 +30,9 @@ export function ServersPanel() {
     const [loading, setLoading] = useState(true);
     const [adding, setAdding] = useState(false);
     const [busy, setBusy] = useState(false);
+    // Reading it also claims it, which is how the explorer knows to stop drawing a ring
+    // around the whole block: the mark belongs on the control the rail sent somebody to.
+    const highlighted = useSettingsHighlight();
 
     const load = useCallback(async () => {
         const result = await getInterface().vcs.listServers().catch(() => null);
@@ -98,7 +103,13 @@ export function ServersPanel() {
                 <ServerWizard onAdded={added} onLeave={leave} />
             ) : (
                 <div className="flex items-center gap-2">
-                    <Button size="sm" variant="secondary" className="h-7" onClick={() => setAdding(true)}>
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        className={cn("h-7", highlighted && SETTINGS_HIGHLIGHT_RING)}
+                        data-settings-highlight={highlighted ? "on" : undefined}
+                        onClick={() => setAdding(true)}
+                    >
                         {t("settings.servers.openAdd")}
                     </Button>
                 </div>
