@@ -36,6 +36,7 @@ import { storyVariableBlueprintNodes } from "./storyVariableNodes";
 import { visitedBlueprintNodes } from "./visitedNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
+import { timeBlueprintNodes } from "./timeNodes";
 import { widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 
 export { appTagBlueprintNodes } from "./appTagNodes";
@@ -69,6 +70,7 @@ export { switchBlueprintNodes } from "./switchNodes";
 export { textInputBlueprintNodes } from "./textInputNodes";
 export { stringBlueprintNodes } from "./stringNodes";
 export { textBlueprintNodes } from "./textNodes";
+export { timeBlueprintNodes } from "./timeNodes";
 export { structuralBlueprintNodes } from "./structuralNodes";
 export { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 
@@ -101,6 +103,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...mathBlueprintNodes,
     ...booleanCompareBlueprintNodes,
     ...stringBlueprintNodes,
+    ...timeBlueprintNodes,
     ...textBlueprintNodes,
     ...sliderBlueprintNodes,
     ...switchBlueprintNodes,
