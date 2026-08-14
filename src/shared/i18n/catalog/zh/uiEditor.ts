@@ -83,6 +83,7 @@ export const uiEditor = {
         loadingServices: "正在加载编辑器服务…",
         selectTool: "选择工具",
         panTool: "平移画布",
+        fitToView: "缩放至完整显示界面",
         openInDevMode: "在开发模式中打开此界面",
         componentDefinitionHint: "组件以定义形式编辑",
         bindElement: "绑定元素",
