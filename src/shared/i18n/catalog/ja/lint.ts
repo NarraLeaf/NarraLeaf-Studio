@@ -62,7 +62,7 @@ export const lint = {
         networkFetchNotAllowlisted: {
             title: "許可一覧にないアドレス",
             description: "このプロジェクトが許可していないアドレスを指す Fetch ノード",
-            message: "{url} はこのプロジェクトのネットワーク許可一覧にない",
+            message: "{url} はこのプロジェクトのネットワーク要求許可一覧にない",
         },
         networkFetchDisallowed: {
             title: "ネットワークを使えないのにネットワークノードがある",

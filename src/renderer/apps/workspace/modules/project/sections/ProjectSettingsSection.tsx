@@ -297,10 +297,14 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         onChange={value => void setNetworkPolicy(value)}
                     />
                 ) : null}
+                {/* The matching rules sit on the hint beside the title, where an author reads them
+                    while typing a row; the fuller answer is the `networkAllowlist` topic on F1. */}
                 {network.allowHttp && network.policy === NETWORK_POLICY_ALLOWLIST ? (
                     <SettingStack
                         title={t("project.settings.networkAllowlist.title")}
                         description={t("project.settings.networkAllowlist.description")}
+                        hint={t("project.settings.networkAllowlist.matchHint")}
+                        helpTopic="networkAllowlist"
                     >
                         <NetworkAllowlistField
                             entries={network.allowlist}

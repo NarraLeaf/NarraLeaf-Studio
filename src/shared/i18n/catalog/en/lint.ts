@@ -65,7 +65,7 @@ export const lint = {
         networkFetchNotAllowlisted: {
             title: "Address not on the allowlist",
             description: "A Fetch node aimed at an address this project does not allow",
-            message: "{url} is not on this project's network allowlist",
+            message: "{url} is not on this project's network request allowlist",
         },
         networkFetchDisallowed: {
             title: "Network node without network access",

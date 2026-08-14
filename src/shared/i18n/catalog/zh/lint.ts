@@ -55,7 +55,7 @@ export const lint = {
         networkFetchNotAllowlisted: {
             title: "地址不在白名单内",
             description: "Fetch 节点指向了本工程不允许的地址",
-            message: "{url} 不在本工程的网络白名单内",
+            message: "{url} 不在本工程的网络请求白名单内",
         },
         networkFetchDisallowed: {
             title: "网络节点无法访问网络",
