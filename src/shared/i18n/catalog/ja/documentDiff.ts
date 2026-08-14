@@ -72,6 +72,7 @@ export const documentDiff = {
         characterGroups: "キャラクターグループ",
         characters: "キャラクター",
         localizationKeys: "ローカライズのキー",
+        saveFields: "セーブ項目",
         storyBlocks: "ストーリーの行",
         storyChapters: "チャプター",
         storyScenes: "シーン",

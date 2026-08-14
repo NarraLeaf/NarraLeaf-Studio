@@ -7,6 +7,7 @@ import {brandSpec} from "./brand";
 import {charactersSpec} from "./characters";
 import {localizationDocumentSpec} from "./localization";
 import {localizationKeysSpec} from "./localizationKeys";
+import {saveSchemaSpec} from "./saveSchema";
 import {storyDocumentSpec} from "./story";
 import {uiDocumentSpec} from "./uiDocument";
 import {uiGraphsSpec} from "./uiGraphs";
@@ -16,6 +17,7 @@ import {voiceDocumentSpec} from "./voice";
 export {APP_TAGS_DOCUMENT_PATH, appTagsSpec} from "./appTags";
 export {AUDIO_TRACKS_DOCUMENT_PATH, audioTracksSpec} from "./audioTracks";
 export {BRAND_DOCUMENT_PATH, brandSpec} from "./brand";
+export {SAVE_SCHEMA_DOCUMENT_PATH, saveSchemaSpec} from "./saveSchema";
 export {VARIABLE_REGISTRY_DOCUMENT_PATH, variableRegistrySpec} from "./variables";
 export {VOICE_DOCUMENT_PATH, voiceDocumentSpec} from "./voice";
 export {LOCALIZATION_DOCUMENT_PATH, localizationDocumentSpec} from "./localization";
@@ -49,6 +51,7 @@ export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
     appTagsSpec,
     audioTracksSpec,
     brandSpec,
+    saveSchemaSpec,
     variableRegistrySpec,
     voiceDocumentSpec,
     localizationDocumentSpec,

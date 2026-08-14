@@ -514,6 +514,7 @@ export const workspace = {
                 audioTracks: "audio tracks",
                 appTags: "build variants",
                 brand: "brand palette",
+                saveSchema: "save fields",
                 characters: "characters",
                 project: "project settings",
                 assets: "asset library",

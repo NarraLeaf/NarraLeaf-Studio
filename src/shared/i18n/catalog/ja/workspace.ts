@@ -512,6 +512,7 @@ export const workspace = {
                 audioTracks: "オーディオトラック",
                 appTags: "ビルドバリアント",
                 brand: "ブランドの配色",
+                saveSchema: "セーブ項目",
                 characters: "キャラクター",
                 project: "プロジェクトの設定",
                 assets: "アセットのライブラリ",

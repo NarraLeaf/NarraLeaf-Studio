@@ -86,6 +86,12 @@ export const CHANGE_CATEGORY_BY_DOCUMENT_KIND: Record<DocumentKind, ChangeCatego
     variables: "story",
     "audio-tracks": "audio",
     /**
+     * What one save slot carries besides the engine's own record. Interface rather than story or
+     * settings: the fields exist to be pins on the save nodes, and the only place they are edited
+     * is the popover on a node card in the blueprint editor.
+     */
+    "save-schema": "interface",
+    /**
      * The build variants the project ships as. Settings rather than assets: a variant names how the
      * project is built, and nothing in it is content the author writes.
      */
