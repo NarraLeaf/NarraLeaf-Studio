@@ -84,6 +84,7 @@ export const uiEditor = {
         loadingServices: "Loading editor services…",
         selectTool: "Select tool",
         panTool: "Pan the canvas",
+        fitToView: "Fit the interface into the canvas",
         openInDevMode: "Open this interface in Dev Mode",
         componentDefinitionHint: "Components are edited as definitions",
         bindElement: "Bind Element",

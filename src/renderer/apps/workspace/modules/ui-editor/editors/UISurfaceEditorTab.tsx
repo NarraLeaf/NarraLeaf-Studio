@@ -10,7 +10,7 @@ import {
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
-import { MousePointer2, Move, Play, Magnet, PanelsTopLeft } from "lucide-react";
+import { MousePointer2, Move, Play, Magnet, Maximize, PanelsTopLeft } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { ContextMenu, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -43,6 +43,7 @@ import {
     usePreviewAspectId,
     usePreviewSafeAreaId,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
+import { useSurfaceViewportAutoFit } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceViewportAutoFit";
 import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
 import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceImageDrop";
 import { useSurfaceDoubleClick } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceDoubleClick";
@@ -353,6 +354,18 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         () => ({ active: freeze.frozen, reason: freeze.reason }),
         [freeze.frozen, freeze.reason],
     );
+
+    // Opening an interface shows all of it: the canvas is fitted to the free part of the editing
+    // area and centred there, and stays fitted while that area changes size - until the author
+    // zooms or pans, after which the view is theirs and only the tool bar button below refits it.
+    const { fitToViewport } = useSurfaceViewportAutoFit({
+        stateService,
+        surfaceId,
+        designSize: surface?.designSize,
+        viewportRef,
+        active,
+        enabled: Boolean(surface && stateService),
+    });
 
     const { createElementAtClientPoint, surfaceImageDropTargetProps, surfaceImageDropOverlayClass } =
         useSurfaceImageDrop({
@@ -724,6 +737,16 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             data-tip={t("uiEditor.editor.panTool")} aria-label={t("uiEditor.editor.panTool")}
                         >
                             <Move className="w-4 h-4" />
+                        </button>
+                        {/* The zoom the canvas is at, and the way back to the fit it opened with. */}
+                        <button
+                            type="button"
+                            className={`${toolButtonClass(false)} w-auto min-w-[3.25rem] gap-1 px-2 tabular-nums`}
+                            onClick={fitToViewport}
+                            data-tip={t("uiEditor.editor.fitToView")} aria-label={t("uiEditor.editor.fitToView")}
+                        >
+                            <Maximize className="h-4 w-4 shrink-0" />
+                            {Math.round(viewport.scale * 100)}%
                         </button>
                         <SurfaceEditorToolbarButtonGroup aria-label={t("uiEditor.snap.label")}>
                             <SurfaceEditorToolbarSegButton
