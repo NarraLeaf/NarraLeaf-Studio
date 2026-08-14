@@ -39,11 +39,14 @@ const PROBLEM_KEYS: Record<VcsSignInProblem["kind"], TranslationKey> = {
  * is on the interface; the lookup stays a lookup so that an address whose authority is
  * unknown is refused, rather than quietly accepted, wherever that window is absent.
  */
-type ServerTrustPrompt = (request: { address: string; authority: VcsServerAuthority }) => Promise<boolean>;
-
-function serverTrustPrompt(): ServerTrustPrompt | null {
-    const host = getInterface().app as unknown as { promptServerTrust?: ServerTrustPrompt };
-    return typeof host.promptServerTrust === "function" ? host.promptServerTrust.bind(host) : null;
+async function askToTrust(address: string, authority: VcsServerAuthority): Promise<boolean> {
+    const answer = await getInterface().app
+        .promptServerTrust({ address, authority })
+        .catch(() => null);
+    // Anything other than a window that came back saying yes is a no. A call that failed,
+    // a window that was closed, a refusal: none of them is permission, and the difference
+    // between them is not something the author is waiting to be told.
+    return answer?.success === true && answer.data.trusted;
 }
 
 /**
@@ -113,10 +116,9 @@ export function ServerWizard({ onAdded, onLeave }: ServerWizardProps) {
                 break;
             }
             if (probe.kind === "untrusted") {
-                const ask = pass === 0 ? serverTrustPrompt() : null;
-                const trusted = ask
-                    ? await ask({ address: probe.address, authority: probe.authority }).catch(() => false)
-                    : false;
+                // Asked once. A second refusal on the same address is an answer, not a
+                // question to put again.
+                const trusted = pass === 0 && await askToTrust(probe.address, probe.authority);
                 if (!trusted) {
                     setError("settings.servers.probe.untrusted");
                     break;
