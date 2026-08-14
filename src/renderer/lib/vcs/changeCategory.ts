@@ -91,6 +91,11 @@ export const CHANGE_CATEGORY_BY_DOCUMENT_KIND: Record<DocumentKind, ChangeCatego
      */
     "app-tags": "settings",
     brand: "settings",
+    /**
+     * The words the project spells on purpose. Settings rather than story: nothing in it is a line
+     * the author wrote, and it is edited from the spellchecker's menu rather than from any panel.
+     */
+    dictionary: "settings",
     localization: "localization",
     "localization-keys": "localization",
     /** Voice lines are one recorded asset per text unit, and the author browses them as sound. */

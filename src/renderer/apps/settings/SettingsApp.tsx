@@ -19,6 +19,20 @@ import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalSta
 import { WindowAppType } from "@shared/types/window";
 import { useTranslation } from "@/lib/i18n";
 import { getLocaleMeta, getRegisteredLocales, type TranslationKey } from "@shared/i18n";
+import { localeAutonym } from "@shared/types/localization";
+import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
+
+/**
+ * What a Chromium dictionary is called, in itself, with its code kept.
+ *
+ * The autonym alone is not enough here, unlike the interface-language picker: the list holds several
+ * dictionaries per language (`en-GB` beside `en-GB-oxendict`) and `Intl.DisplayNames` gives both of
+ * those the same name. The code is what tells them apart, so it stays.
+ */
+function spellcheckLanguageLabel(code: string): string {
+    const autonym = localeAutonym(code);
+    return autonym === code ? code : `${autonym} (${code})`;
+}
 
 /** Entry kinds that own their storage; the value layer must not try to load or write them. */
 function isStoredSetting(setting: AppSettingDefinition): boolean {
@@ -132,6 +146,23 @@ export function SettingsApp() {
         };
     }, []);
 
+    // The languages this build of Chromium has a dictionary for. Read once, from the session, which
+    // is the only thing that knows: the list is not a constant this app can carry, and one written
+    // down here would keep offering a dictionary Chromium had dropped.
+    const [spellcheckLanguages, setSpellcheckLanguages] = useState<string[] | null>(null);
+    useEffect(() => {
+        let mounted = true;
+        void (async () => {
+            const result = await getInterface().app.spellcheck.getStatus();
+            if (mounted && result.success) {
+                setSpellcheckLanguages(result.data.available);
+            }
+        })();
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
     const describeAppSetting = useCallback(
         (setting: AppSettingDefinition): SettingDescriptor => {
             const settingAvailability = availability[setting.key];
@@ -142,24 +173,46 @@ export function SettingsApp() {
             // installed pack appears and a removed one disappears.
             const isLanguage = setting.key === "app.language";
             const languageLocales = isLanguage ? getRegisteredLocales() : null;
+            // The spellcheck row's two fixed answers ("follow the project", "off") plus every
+            // dictionary the session reports. Appended rather than replacing, because the two fixed
+            // answers are the ones that carry meaning and they lead the list.
+            const spellcheckOptions = setting.key === SPELLCHECK_LANGUAGE_KEY && spellcheckLanguages
+                ? [...(setting.options ?? []), ...spellcheckLanguages]
+                : null;
+            // Translated keys win over plain labels for the same option, so the fixed answers keep
+            // their translation while the languages keep their autonym. Left `undefined` when there
+            // is nothing to say, because an empty map is not the same argument as no map to the
+            // controls that take it whole.
+            const merged: Record<string, string> = {
+                ...setting.optionLabels,
+                ...(spellcheckOptions
+                    ? Object.fromEntries(spellcheckLanguages!.map((code) => [code, spellcheckLanguageLabel(code)]))
+                    : {}),
+                ...(setting.optionLabelKeys
+                    ? Object.fromEntries(
+                        Object.entries(setting.optionLabelKeys).map(([option, key]) => [option, t(key)]),
+                    )
+                    : {}),
+            };
+            const optionLabels = Object.keys(merged).length > 0 ? merged : undefined;
             return {
             id: setting.key,
             type: setting.type,
             label: setting.labelKey ? t(setting.labelKey) : setting.label,
-            description: unavailable && settingAvailability?.reasonKey
+            // A reason states something true about the row whether or not the row is closed. Most
+            // are why a control is disabled; the spellcheck language's is what following the
+            // project's language amounts to when Chromium has no dictionary for it, on a control
+            // that still works.
+            description: settingAvailability?.reasonKey
                 ? t(settingAvailability.reasonKey)
                 : setting.descriptionKey
                     ? t(setting.descriptionKey, setting.descriptionParams)
                     : setting.description,
             defaultValue: setting.defaultValue,
-            options: languageLocales ?? setting.options,
+            options: languageLocales ?? spellcheckOptions ?? setting.options,
             optionLabels: languageLocales
                 ? Object.fromEntries(languageLocales.map((code) => [code, getLocaleMeta(code).nativeName]))
-                : setting.optionLabelKeys
-                    ? Object.fromEntries(
-                        Object.entries(setting.optionLabelKeys).map(([option, key]) => [option, t(key)]),
-                    )
-                    : setting.optionLabels,
+                : optionLabels,
             optionColors: setting.optionColors,
             allowCustomColor: setting.allowCustomColor,
             onPreview: setting.onPreview,
@@ -175,7 +228,7 @@ export function SettingsApp() {
             panel: setting.panel,
             };
         },
-        [t, availability],
+        [t, availability, spellcheckLanguages],
     );
 
     const invokeSettingAction = useCallback(

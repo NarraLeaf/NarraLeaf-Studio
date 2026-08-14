@@ -71,6 +71,7 @@ export const documentDiff = {
         brandColors: "ブランドの色",
         characterGroups: "キャラクターグループ",
         characters: "キャラクター",
+        dictionaryWords: "辞書の語",
         localizationKeys: "ローカライズのキー",
         storyBlocks: "ストーリーの行",
         storyChapters: "チャプター",

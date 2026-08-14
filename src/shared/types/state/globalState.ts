@@ -2,6 +2,7 @@ import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
 import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
+import { SPELLCHECK_LANGUAGE_DEFAULT } from "@shared/types/spellcheck";
 import { PersistentState } from "@shared/utils/persistentState";
 import type { VcsServerSession } from "@shared/types/vcs";
 import { RecentlyOpenedProject } from "./appStateTypes";
@@ -171,6 +172,16 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "editor.storyRowHighlight": "none" | "script" | "command";
     /**
+     * Which language the story script is spellchecked in: `"project"` follows the project's source
+     * language, `"off"` checks nothing, anything else is a Chromium dictionary name (`"en-GB"`).
+     *
+     * Global rather than per-project even though its default is read off the project, because it
+     * describes the machine this author writes on - which dictionary is installed, which regional
+     * English they want - and a `.nlproj` is shared, where one teammate's answer would override
+     * everyone else's. See `@shared/types/spellcheck`.
+     */
+    "editor.spellcheckLanguage": string;
+    /**
      * What becomes of an editor that was popped out into its own window when that window closes:
      * `"restoreTab"` puts it back as a workspace tab, `"close"` lets it go.
      *
@@ -339,6 +350,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.localizedCommands": true,
     "editor.hideParamNames": false,
     "editor.storyRowHighlight": "none",
+    "editor.spellcheckLanguage": SPELLCHECK_LANGUAGE_DEFAULT,
     "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,
     "workspace.returnToLauncherOnClose": true,

@@ -488,6 +488,7 @@ export const workspace = {
                 audioTracks: "音频轨道",
                 appTags: "变体",
                 brand: "配色方案",
+                dictionary: "工程词典",
                 characters: "角色",
                 project: "项目设置",
                 assets: "资产库",
@@ -503,6 +504,10 @@ export const workspace = {
         },
         // 冻结工作区：项目数据停止写入，编辑器状态照常。命名按作者能感知的效果（「停止保存」）来，
         // 而不是按机制来。
+        spellcheck: {
+            addToDictionary: "加入工程词典",
+            noSuggestions: "没有候选词",
+        },
         freeze: {
             command: "冻结项目（停止保存改动）",
             release: "解除冻结（恢复保存改动）",

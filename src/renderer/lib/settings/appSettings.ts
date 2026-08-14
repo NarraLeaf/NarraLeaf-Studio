@@ -27,6 +27,12 @@ import {
     STORY_ROW_HIGHLIGHT_OPTIONS,
 } from "@/lib/settings/storyRowHighlightOptions";
 import {
+    SPELLCHECK_FOLLOW_PROJECT,
+    SPELLCHECK_LANGUAGE_DEFAULT,
+    SPELLCHECK_LANGUAGE_KEY,
+    SPELLCHECK_OFF,
+} from "@shared/types/spellcheck";
+import {
     DETACHED_EDITOR_ON_CLOSE_DEFAULT,
     DETACHED_EDITOR_ON_CLOSE_KEY,
     DETACHED_EDITOR_ON_CLOSE_OPTIONS,
@@ -585,6 +591,51 @@ export const AppSettings: AppSettingDefinition[] = [
             none: "settings.items.storyRowHighlight.options.none",
             script: "settings.items.storyRowHighlight.options.script",
             command: "settings.items.storyRowHighlight.options.command",
+        },
+    },
+    {
+        /**
+         * Applied by `DictionaryService`, which pushes the project's source language and its own
+         * words into the session; the main process turns the pair into a Chromium spellchecker
+         * language (`@shared/types/spellcheck`). Only the story script is checked - translations are
+         * somebody else's language and not the author's to respell.
+         *
+         * The option list is finished at render time from the languages this build of Chromium
+         * actually has a dictionary for. It has to be, because that list is not a fact this module
+         * can know: it comes from the session, and hard-coding it here would drift the first time
+         * Chromium's own list changed, silently offering a dictionary that no longer exists.
+         */
+        key: SPELLCHECK_LANGUAGE_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Spellcheck language",
+        labelKey: "settings.items.spellcheckLanguage.label",
+        description: "Marks misspellings in the story script. Translations are never checked.",
+        descriptionKey: "settings.items.spellcheckLanguage.description",
+        defaultValue: SPELLCHECK_LANGUAGE_DEFAULT,
+        options: [SPELLCHECK_FOLLOW_PROJECT, SPELLCHECK_OFF],
+        optionLabelKeys: {
+            [SPELLCHECK_FOLLOW_PROJECT]: "settings.items.spellcheckLanguage.options.followProject",
+            [SPELLCHECK_OFF]: "settings.items.spellcheckLanguage.options.off",
+        },
+        /**
+         * Enabled, and carrying a reason anyway.
+         *
+         * Chromium has no hunspell dictionary for Chinese or Japanese - neither language has
+         * spelling in that sense - so for a project written in one, following the project's language
+         * checks nothing and always will. The row says so instead of leaving a control that looks
+         * live and produces not one underline. It stays usable because naming a language outright is
+         * still a real choice, and a control closed for the length of a project is worse than a
+         * control that explains itself.
+         */
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const { projectLanguageHasNoDictionary } = await import("@shared/types/spellcheck");
+            const result = await getInterface().app.spellcheck.getStatus();
+            return result.success && projectLanguageHasNoDictionary(result.data)
+                ? { enabled: true, reasonKey: "settings.items.spellcheckLanguage.noDictionary" as const }
+                : { enabled: true };
         },
     },
     {

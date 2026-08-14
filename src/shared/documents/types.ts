@@ -35,6 +35,8 @@ export type DocumentKind =
     | "brand"
     /** The build variants the project ships as, at `editor/app-tags.json`. */
     | "app-tags"
+    /** The words the project spells on purpose, at `editor/dictionary.json`. */
+    | "dictionary"
     | "localization"
     | "localization-keys"
     | "voice"
