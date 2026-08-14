@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { VcsChangeKind, VcsFileChange, VcsServerAuthority, VcsServerReach, VcsServerSession, VcsSignInProblem, VcsSyncState } from "@shared/types/vcs";
-import { vcsAuthorityIsVouchedFor } from "@shared/types/vcs";
+import { parseVcsRemoteUrl, vcsAuthorityIsVouchedFor } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
@@ -1293,10 +1293,12 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
     onClose: () => void;
 }) {
     const { t } = useTranslation();
+    const { context } = useWorkspace();
     const key = "workspace.shell.versionControl.server.picker";
     const [servers, setServers] = useState<VcsServerSession[]>([]);
     const [choice, setChoice] = useState<string>(MANUAL_SERVER);
     const [address, setAddress] = useState("");
+    const [name, setName] = useState("");
     const running = surface.busy !== null;
 
     useEffect(() => {
@@ -1312,13 +1314,20 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
             // one outcome a dialog about where work is sent must not make easy.
             setChoice(initialServerChoice(list, surface.remote));
             setAddress(surface.remote ?? "");
+            // The name this project answers to on the server. Its own name is the answer
+            // nearly every time, so it is filled in rather than asked for - but it is a
+            // field rather than a fact, because it is what a collaborator clones by and
+            // two projects in one folder tree can be called the same thing locally.
+            setName(vcsRemoteName(surface.remote) || projectFolderName(context) || "");
         });
         return () => {
             cancelled = true;
         };
     }, [isOpen, surface.remote]);
 
-    const chosen = choice === MANUAL_SERVER ? address.trim() : choice;
+    const chosen = choice === MANUAL_SERVER
+        ? address.trim()
+        : name.trim() === "" ? "" : `${choice}/${name.trim()}`;
 
     const connect = () => {
         if (!chosen) return;
@@ -1399,6 +1408,26 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
                         </div>
                     )}
 
+                {choice !== MANUAL_SERVER && (
+                    <div>
+                        <FieldLabel>{t(`${key}.nameLabel`)}</FieldLabel>
+                        <Input
+                            size="sm"
+                            value={name}
+                            onChange={event => setName(event.target.value)}
+                            onKeyDown={event => {
+                                if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    connect();
+                                }
+                            }}
+                            disabled={running}
+                            placeholder={t(`${key}.namePlaceholder`)}
+                            className="mt-1"
+                        />
+                    </div>
+                )}
+
                 <div>
                     <button
                         type="button"
@@ -1431,6 +1460,21 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
                         />
                     )}
                 </div>
+
+                {/* A refusal used to be read off the rail, because the form asking the question
+                    was in it. This dialog covers the rail, so the answer has to arrive here or
+                    pressing Connect does nothing visible. The sign-in line is the one refusal
+                    with a remedy that is not on this screen, and Manage servers is the way to it. */}
+                {surface.failure !== null && (
+                    <div data-vcs-seam="picker-failure" className="space-y-1">
+                        <p className="break-words text-xs text-danger">{surface.failure.text}</p>
+                        {surface.remoteNeedsSignIn && (
+                            <p className="text-xs text-fg-subtle">
+                                {t("workspace.shell.versionControl.server.signIn.required")}
+                            </p>
+                        )}
+                    </div>
+                )}
 
                 {/* Only while a server is already configured: this undoes the connection, and
                     offering it during first setup would be a control for leaving a state the
@@ -1678,6 +1722,28 @@ function serverFace(sync: VcsSyncState | null): { key: TranslationKey; tone: str
         return { key: "workspace.shell.versionControl.server.remoteAhead", tone: "text-fg-muted" };
     }
     return { key: "workspace.shell.versionControl.server.upToDate", tone: "text-success" };
+}
+
+/**
+ * The name a project answers to on its server, read off the address it is pointed at.
+ *
+ * Empty for a project with no server, and for one whose address is only an origin - a
+ * session is stored per origin, so the servers offered in the dialog carry no name.
+ */
+function vcsRemoteName(remote: string | null): string {
+    return remote ? parseVcsRemoteUrl(remote)?.name ?? "" : "";
+}
+
+/**
+ * What this project is called on disk, as the suggested name on a server.
+ *
+ * The folder rather than the title: a title has spaces and punctuation in it, and this
+ * becomes a name in a URL that a collaborator types.
+ */
+function projectFolderName(context: { project: { getConfig(): { projectPath: string } } } | null): string {
+    const projectPath = context?.project.getConfig().projectPath ?? "";
+    const segments = projectPath.split(/[\\/]+/).filter(Boolean);
+    return segments.length > 0 ? segments[segments.length - 1] : "";
 }
 
 /**

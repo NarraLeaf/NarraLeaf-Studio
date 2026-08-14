@@ -719,6 +719,8 @@ export const workspace = {
                 connect: "サーバーにつなぐ",
                 picker: {
                     title: "サーバーに接続",
+                    nameLabel: "サーバー上での名前",
+                    namePlaceholder: "my-game",
                     empty: "サーバーはまだ追加されていない。設定で追加するか、下にアドレスを入力する",
                     manual: "別のアドレス",
                     manage: "サーバーを管理",

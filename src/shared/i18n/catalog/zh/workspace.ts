@@ -486,7 +486,7 @@ export const workspace = {
                 voice: "语音库",
                 variables: "变量注册表",
                 audioTracks: "音频轨道",
-                appTags: "构建版本",
+                appTags: "变体",
                 brand: "配色方案",
                 characters: "角色",
                 project: "项目设置",
@@ -690,6 +690,8 @@ export const workspace = {
                 connect: "连接服务器",
                 picker: {
                     title: "连接服务器",
+                    nameLabel: "在服务器上的名称",
+                    namePlaceholder: "my-game",
                     empty: "尚未添加服务器。可在设置中添加，或在下方填写地址",
                     manual: "其他地址",
                     manage: "管理服务器",
