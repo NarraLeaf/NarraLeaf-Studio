@@ -28,7 +28,6 @@ import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
-import { BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
 import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/componentNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
@@ -1658,13 +1657,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             [BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE]: audioTrackService
                 .listTracks()
                 .map(track => ({ value: track.id, label: track.name })),
-            // The `Open Link` picker. Every address the project and its variants declare, because
-            // the node belongs to no variant: which build opens which of them is settled when a
-            // build is compiled. The address is both the value and the label - there is nothing
-            // else to call it, and the author reads the one they typed.
-            [BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE]: appTagService
-                .listDeclaredExternalLinks()
-                .map(url => ({ value: url, label: url })),
             callableFns: listCallableBlueprintFnOptions({
                 blueprintDocument: doc,
                 uiDocument,

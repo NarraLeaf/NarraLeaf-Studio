@@ -4,10 +4,11 @@ import {
     type GameRuntimePreloadBridge,
 } from "@shared/types/gameRuntime";
 import {
-    resolveDeclaredExternalLink,
+    resolveCoreExternalLink,
     resolvePluginExternalLinkAmong,
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
+import { packNetworkAllowlist } from "@shared/types/networkAllowlist";
 import { WebGameStorage } from "./webStorage";
 import { webProgressBridge } from "./webProgress";
 
@@ -165,15 +166,30 @@ const bridge: GameRuntimePreloadBridge = {
      *  - **CORS applies.** The request carries this page's origin, so an endpoint that sends no
      *    `Access-Control-Allow-Origin` fails here and succeeds on desktop. Reported as a
      *    `networkError`, which is what it is.
-     *  - **The project's Allow HTTP setting does not.** It is enforced by a CSP and a `webRequest`
-     *    hook that only a desktop shell has, and a web export's pack carries no `network` block at
-     *    all (see `gameRuntimeArtifactCompiler`). A game served over HTTP(S) is already on the
-     *    network by construction. The build gate still refuses to produce a web build from a project
-     *    that has network nodes with the setting off, so reaching this code in that state is not
-     *    possible through a build.
+     *  - **The project's Allow HTTP setting does not.** A game served over HTTP(S) is already on
+     *    the network by construction, and the two layers that enforce the setting - a `webRequest`
+     *    hook and an injected CSP - belong to a desktop shell. The build gate still refuses to
+     *    produce a web build from a project that has network nodes with the setting off, so reaching
+     *    this code in that state is not possible through a build.
+     *
+     * **The allowlist does apply.** Unlike the setting above it is not a question about whether the
+     * network exists but about which hosts this build was published to reach, and that answer is the
+     * same wherever the build runs. It is carried in the pack and checked here, with the page's own
+     * `connect-src` behind it as the layer that also covers script this function never sees.
+     *
+     * `redirects: "delegate"` because a page cannot do otherwise: a browser answers a manually
+     * followed redirect with an opaque response whose `Location` cannot be read. The browser applies
+     * `connect-src` to every hop, which is what stands in for the check the desktop shell makes.
      */
     network: {
-        fetch: async request => executeBlueprintNetworkFetch(request, { allowHttp: true }),
+        fetch: async request => {
+            const pack = await readPack();
+            return executeBlueprintNetworkFetch(request, {
+                allowHttp: true,
+                allowlist: packNetworkAllowlist(pack),
+                redirects: "delegate",
+            });
+        },
     },
     /**
      * The Open Link node, on a page.
@@ -189,8 +205,7 @@ const bridge: GameRuntimePreloadBridge = {
      */
     externalLink: {
         open: async request => {
-            const pack = await readPack();
-            const decision = resolveDeclaredExternalLink(request, pack.externalLinks);
+            const decision = resolveCoreExternalLink(request);
             if (!decision.allowed) {
                 console.warn(`[GameRuntime] Open Link refused: ${decision.result.error}`);
                 return decision.result;

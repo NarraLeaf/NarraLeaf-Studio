@@ -17,8 +17,9 @@ export type PluginFileSystemPermissionMode = "read" | "write" | "readwrite";
  *
  * - **Author-declared** (`filesystem`, `api`) — privileged Studio controls the
  *   plugin asks for explicitly in `permissions[]`.
- * - **Derived** (`runtime`, `sidecar`, `buildDependency`, `externalLink`) — computed from
- *   `contributes` by {@link validatePluginManifest} and *rejected* if written by
+ * - **Derived** (`runtime`, `sidecar`, `buildDependency`, `externalLink`,
+ *   `network`) — computed from `contributes` by {@link validatePluginManifest}
+ *   and *rejected* if written by
  *   hand. A capability is declared in exactly one place, so what the prompt shows
  *   and what the plugin can actually reach cannot drift apart. Adding a
  *   capability widens the permission set, which makes the update re-prompt for
@@ -80,6 +81,22 @@ export type PluginInstallPermission =
          * make the prompt and the manifest two slightly different documents.
          */
         kind: "externalLink";
+        patterns: string[];
+    }
+    | {
+        /**
+         * Derived from `contributes.network`: hosts this plugin's runtime code requests bytes from.
+         *
+         * A separate question from `externalLink` and never folded into it. Opening a page hands an
+         * address to the browser the player already uses and nothing comes back; this fetches, and
+         * what comes back runs inside the game. An author deciding about one has not decided about
+         * the other.
+         *
+         * The patterns are also what a project's network allowlist shows attributed to this plugin,
+         * which is the point of declaring them: a build narrowed to a list still reaches what the
+         * author approved here, and the list can say so rather than silently making room.
+         */
+        kind: "network";
         patterns: string[];
     };
 

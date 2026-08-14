@@ -7,7 +7,7 @@ import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { getGameHostWindowBackgroundColor } from "./application/theme";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
-import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
+import { devModeNetworkPolicy, readProjectNetworkSettings } from "./application/managers/devMode/devModeNetworkPolicy";
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
 import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
 import { MediaConvertManager } from "./application/managers/media/MediaConvertManager";
@@ -1024,12 +1024,13 @@ export class App extends BaseApp {
         window.setTitle("Dev Mode - NarraLeaf Studio");
         this.applyWindowIcon(window);
 
-        // Confine the preview renderer to the app protocol unless the project
-        // opts into HTTP. Must be applied BEFORE loadFile so the initial
-        // document load and every subsequent game request is governed.
-        const allowHttp = await readProjectAllowHttp(props.projectPath);
+        // Confine the preview renderer the way a build would: to the app
+        // protocol unless the project opts into HTTP, and to the project's
+        // allowlist when it states one. Must be applied BEFORE loadFile so the
+        // initial document load and every subsequent game request is governed.
+        const { allowHttp, allowlist } = await readProjectNetworkSettings(props.projectPath);
         const previewWebContentsId = window.win.webContents.id;
-        devModeNetworkPolicy.apply(previewWebContentsId, { allowHttp });
+        devModeNetworkPolicy.apply(previewWebContentsId, { allowHttp, allowlist });
         window.onClose(() => devModeNetworkPolicy.release(previewWebContentsId));
 
         try {

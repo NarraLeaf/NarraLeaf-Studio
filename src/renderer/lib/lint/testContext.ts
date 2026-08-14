@@ -15,6 +15,7 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         config: { ...DEFAULT_LINTING_CONFIGURATION },
         // The secure default, same as a new project. A test about the network rule turns it on.
         network: { ...DEFAULT_NETWORK_CONFIGURATION },
+        pluginNetworkDeclarations: [],
         stories: [],
         // Same footing as `assetIndex` below: a rule test asserts on the rule, so what it is given
         // is the whole project unless the test is about what happens when it is not.
@@ -31,7 +32,6 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         // The release variant, because every project has it and a rule that saw an empty list would
         // be reading a state no project can be in.
         appTags: [RELEASE_APP_TAG],
-        declaredExternalLinks: [],
         variableRegistry: [],
         persistentNameCollisions: [],
         savedNameCollisions: [],

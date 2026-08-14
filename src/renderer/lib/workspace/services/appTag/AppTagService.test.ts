@@ -402,65 +402,6 @@ describe("AppTagService plugin config", () => {
     });
 });
 
-describe("app tag external links", () => {
-    it("writes the project's own list at the document root", async () => {
-        const { service, files } = await createHarness();
-
-        expect(service.setExternalLinks(null, [" https://example.com/store ", "not a url"])).toBe(true);
-        await service.flushPendingChanges();
-
-        expect(service.getProjectExternalLinks()).toEqual(["https://example.com/store"]);
-        expect(JSON.parse(files.get(DOCUMENT)!).externalLinks).toEqual(["https://example.com/store"]);
-    });
-
-    it("lets a variant state its own list, and restores it by removing the key", async () => {
-        const { service, files } = await createHarness();
-        service.setExternalLinks(null, ["https://example.com/store"]);
-        const demo = service.createTag({ name: "Demo" });
-
-        expect(service.resolveExternalLinks(demo.id))
-            .toEqual({ value: ["https://example.com/store"], overridden: false });
-
-        service.setExternalLinks(demo.id, ["https://example.com/store", "https://example.com/full"]);
-        expect(service.resolveExternalLinks(demo.id).overridden).toBe(true);
-        await service.flushPendingChanges();
-        expect(JSON.parse(files.get(DOCUMENT)!).tags[0].externalLinks).toHaveLength(2);
-
-        expect(service.clearExternalLinks(demo.id)).toBe(true);
-        expect(service.resolveExternalLinks(demo.id))
-            .toEqual({ value: ["https://example.com/store"], overridden: false });
-        await service.flushPendingChanges();
-        expect(JSON.parse(files.get(DOCUMENT)!).tags[0]).not.toHaveProperty("externalLinks");
-    });
-
-    it("keeps a variant that states it opens nothing apart from one that inherits", async () => {
-        const { service } = await createHarness();
-        service.setExternalLinks(null, ["https://example.com/store"]);
-        const demo = service.createTag({ name: "Demo" });
-
-        service.setExternalLinks(demo.id, []);
-
-        expect(service.resolveExternalLinks(demo.id)).toEqual({ value: [], overridden: true });
-    });
-
-    it("answers every address any build could open, project and variants together", async () => {
-        const { service } = await createHarness();
-        service.setExternalLinks(null, ["https://example.com/store"]);
-        const demo = service.createTag({ name: "Demo" });
-        service.setExternalLinks(demo.id, ["https://example.com/store", "https://example.com/full"]);
-
-        expect(service.listDeclaredExternalLinks())
-            .toEqual(["https://example.com/store", "https://example.com/full"]);
-    });
-
-    it("refuses a variant that does not exist, and the release tag for a restore", async () => {
-        const { service } = await createHarness();
-
-        expect(service.setExternalLinks("no-such-tag", ["https://example.com/"])).toBe(false);
-        expect(service.clearExternalLinks(APP_TAG_ID_RELEASE)).toBe(false);
-    });
-});
-
 describe("app tag ending page", () => {
     it("writes the project's own page at the document root", async () => {
         const { service, files } = await createHarness();

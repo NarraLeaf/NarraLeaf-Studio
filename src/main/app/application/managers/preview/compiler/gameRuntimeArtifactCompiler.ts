@@ -9,6 +9,7 @@ import {
     type GameRuntimeAssetManifestEntry,
     type GameRuntimeLaunchEntry,
     type GameRuntimePackPluginEntry,
+    type GameRuntimeNetworkConfig,
     type GameRuntimePackPuppetRuntimeEntry,
     type GameRuntimePackSidecarEntry,
     type GameRuntimePackV1,
@@ -32,6 +33,11 @@ import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { readProjectIconSet, resolveIconFile, resolveIconSource } from "@shared/types/projectIcons";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import {
+    NETWORK_POLICY_ALLOWLIST,
+    normalizeNetworkAllowlistEntries,
+    type NetworkPluginAllowlistEntry,
+} from "@shared/types/networkAllowlist";
+import {
     createSealedBundle,
     runtimeSupportPath,
     RUNTIME_BUNDLE_FILENAME,
@@ -44,7 +50,7 @@ import {
     gameRuntimeBundleRuntimeEntry,
 } from "@shared/utils/gameRuntimeBundle";
 import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
-import { resolveAppTag, resolveAppTagEndingSurface, resolveAppTagExternalLinks } from "@shared/types/appTag";
+import { resolveAppTag, resolveAppTagEndingSurface } from "@shared/types/appTag";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { readPublishedPluginData } from "../../pluginRuntimeData";
 // Relative rather than "@/": this module is unit-tested, and the test runner
@@ -324,7 +330,6 @@ export async function compileGameRuntimeArtifact(
     }
 
     const projectConfig = await readProjectConfig(input.projectPath);
-    const externalLinks = await readDeclaredExternalLinks(input.projectPath, input.appTag?.id);
     const endingSurfaceId = await readEndingSurfaceId(input.projectPath, input.appTag?.id);
     const progressKey = readProgressKey(projectConfig, input.projectPath);
     const pluginConfig = await readPluginConfigSource(input.projectPath, input.appTag?.id);
@@ -461,16 +466,23 @@ export async function compileGameRuntimeArtifact(
             },
             plugins: packPlugins,
             ...(packPuppetRuntimes.length > 0 ? { puppetRuntimes: packPuppetRuntimes } : {}),
-            // The network policy is a desktop-shell mechanism (CSP + webRequest);
-            // a web export is served over HTTP(S) by nature, so its pack carries
-            // no policy at all.
-            ...(shell === "web" ? {} : {
-                network: {
-                    // Secure default: HTTP is only permitted when the project explicitly
-                    // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
-                    allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
-                },
-            }),
+            // Carried on every shell, web included.
+            //
+            // `allowHttp` is enforced by two things only a desktop shell has - an injected CSP and a
+            // `webRequest` hook - and a served page is on the network by construction, so the web
+            // export does not read it. It is still written, because it is a fact about the project
+            // rather than about one shell, and because the build gate already refuses to produce a
+            // web build from a project that has network nodes while it is off.
+            //
+            // The allowlist half is a different question - which hosts this build was published to
+            // reach - and that answer does not change with the shell, so every shell gets it and
+            // every shell enforces it.
+            network: {
+                // Secure default: HTTP is only permitted when the project explicitly
+                // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
+                allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
+                ...resolvePackNetworkAllowlist(projectConfig, packPlugins),
+            },
             // Unconditional, unlike `network` above: a crash is not a shell mechanism, and a
             // policy that applied to the desktop build but not the web one would be a setting that
             // means something different depending on where the author looks.
@@ -479,12 +491,7 @@ export async function compileGameRuntimeArtifact(
                     (projectConfig?.app as { crash?: { policy?: unknown } } | undefined)?.crash?.policy,
                 ),
             },
-            // Unconditional, unlike `network` above, and deliberately not inside it: a web export
-            // carries no network block, and a declaration that disappeared on one shell would be a
-            // hole in the boundary this list IS. Opening a page is also not a network permission -
-            // nothing is fetched - so `allowHttp` neither enables nor disables it.
-            ...(externalLinks.length > 0 ? { externalLinks } : {}),
-            // Beside the addresses above and resolved the same way: a demo ends where its cut point
+            // Resolved per variant: a demo ends where its cut point
             // is and lands on a page the full game never shows, so which surface ships is decided by
             // the same tag that decides the build's name. Omitted when blank, which is the state
             // every build was in before this field and the one the runtime treats as "show nothing".
@@ -1596,25 +1603,6 @@ async function readProjectConfig(projectPath: string): Promise<ProjectConfigData
 }
 
 /**
- * The addresses this build may open, resolved for the variant it is being compiled as.
- *
- * Per variant by nature: a demo links to the full game's store page and the release build does not,
- * so which list ships is decided by the same tag that decides the build's name. An absent tag is
- * the release variant, which reads the project's own list.
- *
- * A document that will not parse propagates, as it does everywhere else in the build: shipping a
- * build whose declared addresses could not be read would silently disable every link in it.
- */
-async function readDeclaredExternalLinks(
-    projectPath: string,
-    appTagId: string | undefined,
-): Promise<string[]> {
-    const document = await readProjectAppTagDocumentFromDir(projectPath);
-    const tag = resolveAppTag(document.tags, appTagId);
-    return resolveAppTagExternalLinks(tag, document.externalLinks).value;
-}
-
-/**
  * The page this build ends on, resolved for the variant it is being compiled as.
  *
  * Per variant for the reason the addresses are: the demo's ending is not the full game's, and the
@@ -1634,13 +1622,13 @@ async function readEndingSurfaceId(projectPath: string, appTagId: string | undef
 /**
  * The key every edition of this title carries, whichever variant is being built.
  *
- * The mirror image of {@link readDeclaredExternalLinks} and {@link readEndingSurfaceId}: those two
- * resolve for the variant, because a demo links elsewhere and ends elsewhere. This one resolves for
+ * The mirror image of {@link readEndingSurfaceId}: that one resolves for the variant, because a
+ * demo ends elsewhere. This one resolves for
  * the RELEASE tag on purpose, because the file it names is the one thing the variants have to
  * share - a demo that overrode `identifier` writes its saves where the release build cannot read
  * them, and the whole feature is the channel that survives that.
  *
- * No app-tag document is read, unlike its two neighbours. The release tag is synthesized and carries
+ * No app-tag document is read, unlike its neighbour. The release tag is synthesized and carries
  * no overrides by construction (see `RELEASE_APP_TAG`), so the project's own identity IS the release
  * identity; going to disk for it would be a read whose answer is fixed. `resolveAppTagIdentity` is
  * still what performs it, inside `gameProgressKey`, so the rule lives in one place.
@@ -1697,6 +1685,42 @@ async function readJson<T>(filePath: string): Promise<T> {
     } catch (error) {
         throw new Error(`Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
     }
+}
+
+/**
+ * The allowlist half of the pack's network block: what the author wrote, plus what each plugin in
+ * this build declared and the author approved at install.
+ *
+ * The two are kept apart in the pack rather than merged here, because they are removed by different
+ * acts - editing the project, uninstalling the plugin - and a surface reading the pack back has to
+ * be able to say which is which.
+ *
+ * Read off the plugins that were actually copied into this app dir, not off the install registry: a
+ * plugin excluded from this variant declares nothing about this artifact.
+ *
+ * Absent entirely when the project states the wide policy, which is what keeps a project that never
+ * narrowed anything byte-identical to one built before a list could be stated.
+ */
+function resolvePackNetworkAllowlist(
+    projectConfig: ProjectConfigData | null,
+    packPlugins: readonly GameRuntimePackPluginEntry[],
+): Pick<GameRuntimeNetworkConfig, "policy" | "allowlist" | "pluginAllowlist"> {
+    const network = (projectConfig?.app as { network?: { policy?: unknown; allowlist?: unknown } } | undefined)?.network;
+    if (network?.policy !== NETWORK_POLICY_ALLOWLIST) {
+        return {};
+    }
+    const pluginAllowlist: NetworkPluginAllowlistEntry[] = [];
+    for (const plugin of packPlugins) {
+        const patterns = plugin.manifest.contributes?.network ?? [];
+        if (patterns.length > 0) {
+            pluginAllowlist.push({ pluginId: plugin.manifest.id, patterns: [...patterns] });
+        }
+    }
+    return {
+        policy: NETWORK_POLICY_ALLOWLIST,
+        allowlist: normalizeNetworkAllowlistEntries(network.allowlist),
+        ...(pluginAllowlist.length > 0 ? { pluginAllowlist } : {}),
+    };
 }
 
 function readString(value: unknown): string | undefined {

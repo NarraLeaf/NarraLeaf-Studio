@@ -7,6 +7,7 @@ import {
     EXTERNAL_LINK_PATTERN_DENIED_SCHEMES,
     externalLinkPatternKey,
 } from "../types/externalLinkPattern";
+import { NETWORK_ALLOWLIST_SCHEMES } from "../types/networkAllowlist";
 import { pluginIconExtension, pluginIconExtensionList } from "./pluginIcon";
 import { GAME_BUILD_FORMATS_BY_PLATFORM, type GameBuildPlatform } from "../types/gameBuild";
 import {
@@ -83,6 +84,9 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
         }
         if (contributes.externalLinks.length > 0) {
             return invalid("Plugin contributes.externalLinks requires a runtime entry");
+        }
+        if (contributes.network.length > 0) {
+            return invalid("Plugin contributes.network requires a runtime entry");
         }
     }
 
@@ -200,6 +204,11 @@ function derivePermissionsFromContributes(
     if (contributes.externalLinks.length > 0) {
         derived.push({ kind: "externalLink", patterns: [...contributes.externalLinks] });
     }
+    // The same shape and the same reason as the line above, kept as its own permission because it
+    // is its own question: these hosts send bytes back into the game.
+    if (contributes.network.length > 0) {
+        derived.push({ kind: "network", patterns: [...contributes.network] });
+    }
     return derived;
 }
 
@@ -223,6 +232,7 @@ const CONTRIBUTES_KEYS = [
     "buildDependencies",
     "buildConfig",
     "externalLinks",
+    "network",
 ] as const;
 
 /**
@@ -294,6 +304,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         buildDependencies: [],
         buildConfig: [],
         externalLinks: [],
+        network: [],
     };
     if (value === undefined) {
         return empty;
@@ -385,6 +396,14 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         result.externalLinks = patterns;
     }
 
+    if (value.network !== undefined) {
+        const patterns = validateNetworkPatterns(value.network, pluginId);
+        if (typeof patterns === "string") {
+            return patterns;
+        }
+        result.network = patterns;
+    }
+
     return result;
 }
 
@@ -436,6 +455,60 @@ function validateExternalLinks(value: unknown, pluginId: string): string[] | str
         seen.add(key);
         // The author's own spelling is kept: it is what the install prompt shows, and the person
         // approving it should read the string the manifest holds rather than a rewrite of it.
+        patterns.push(pattern);
+    }
+    return patterns;
+}
+
+/**
+ * Address patterns the plugin fetches from.
+ *
+ * The external-link rules apply and two more sit on top, both because what comes back from a fetch
+ * runs inside the game while an opened page does not:
+ *
+ *  - `http(s)` only. There is no storefront-scheme case here.
+ *  - The path has to be written. `https://api.example.com` is a pattern whose path is exactly `/`,
+ *    which is almost certainly not what a plugin author fetching from an API meant - so it is
+ *    refused with the spelling that does mean it, rather than rewritten into it. The manifest text
+ *    and the approved text have to be the same string.
+ */
+function validateNetworkPatterns(value: unknown, pluginId: string): string[] | string {
+    if (!Array.isArray(value)) {
+        return "Plugin contributes.network must be an array of address patterns";
+    }
+    const seen = new Set<string>();
+    const patterns: string[] = [];
+    for (const item of value) {
+        const pattern = typeof item === "string" ? item.trim() : "";
+        if (!pattern) {
+            return `Plugin contributes.network entries must be non-empty strings (plugin "${pluginId}")`;
+        }
+        const key = externalLinkPatternKey(pattern);
+        if (!key) {
+            return `Plugin contributes.network entry is not an address pattern: ${pattern}. `
+                + "It must be absolute, must not carry credentials, and may use `*` only as a "
+                + "whole leading host label";
+        }
+        let parsed: URL;
+        try {
+            parsed = new URL(pattern);
+        } catch {
+            return `Plugin contributes.network entry is not an address pattern: ${pattern}`;
+        }
+        if (!NETWORK_ALLOWLIST_SCHEMES.includes(parsed.protocol.toLowerCase())) {
+            return `Plugin contributes.network entry must be http or https: ${pattern}`;
+        }
+        if (!parsed.hostname || parsed.hostname === "*") {
+            return `Plugin contributes.network entry must name a host: ${pattern}`;
+        }
+        if (parsed.pathname === "/" && !parsed.search && !parsed.hash) {
+            return `Plugin contributes.network entry "${pattern}" names only the path "/". `
+                + `Write "${parsed.protocol}//${parsed.host}/*" for the whole host.`;
+        }
+        if (seen.has(key)) {
+            return `Plugin contributes.network declares "${pattern}" more than once`;
+        }
+        seen.add(key);
         patterns.push(pattern);
     }
     return patterns;
