@@ -32,6 +32,7 @@ function viewportToSurfacePoint(point: Point2D, transform: ViewportTransform): P
 }
 
 export * from "./types";
+export * from "./fitViewport";
 
 /**
  * Convert screen coordinates to viewport coordinates.

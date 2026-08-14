@@ -84,6 +84,7 @@ export const uiEditor = {
         loadingServices: "エディタのサービスを読み込んでいる…",
         selectTool: "選択ツール",
         panTool: "キャンバスを動かす",
+        fitToView: "インターフェース全体が入るように合わせる",
         openInDevMode: "このインターフェースを開発モードで開く",
         componentDefinitionHint: "コンポーネントは定義として編集する",
         bindElement: "要素を結びつける",
