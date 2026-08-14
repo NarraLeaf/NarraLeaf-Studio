@@ -1,4 +1,6 @@
 import { isLocalizationEnabled, type LocalizationDocument } from "@shared/types/localization";
+import type { NetworkPluginAllowlistEntry } from "@shared/types/networkAllowlist";
+import { getInterface } from "@/lib/app/bridge";
 import { isVoiceEnabled, type VoiceDocument } from "@shared/types/voice";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { runLintRules, type LintRunOptions } from "@/lib/lint/engine";
@@ -173,6 +175,7 @@ export class LintService extends Service<LintService> implements ILintService {
         return {
             config: projectService.getLintingConfiguration(),
             network: projectService.getNetworkConfiguration(),
+            pluginNetworkDeclarations: await this.readPluginNetworkDeclarations(),
             stories,
             storiesComplete,
             blueprintDocument: safely(() => uiGraphService.getDocument().blueprintDocument, null),
@@ -190,7 +193,6 @@ export class LintService extends Service<LintService> implements ILintService {
             appTags: services.get<AppTagService>(Services.AppTags).listTags(),
             // The union across the project and its variants: which of them opens which address is
             // decided when a build is compiled, and a graph belongs to all of them.
-            declaredExternalLinks: services.get<AppTagService>(Services.AppTags).listDeclaredExternalLinks(),
             variableRegistry,
             persistentNameCollisions,
             savedNameCollisions,
@@ -371,6 +373,37 @@ export class LintService extends Service<LintService> implements ILintService {
             console.warn("[LintService] failed to read characters", error);
             return [];
         }
+    }
+
+    /**
+     * What every installed plugin declares in `contributes.network`, attributed.
+     *
+     * Every installed plugin rather than only the enabled ones: a disabled plugin is one click from
+     * being enabled again, and a finding that appeared and vanished with a toggle in another panel
+     * would read as a bug in the sweep. A build resolves the ones it actually ships.
+     *
+     * An unreadable list is an empty one. Every rule that reads this treats an absent declaration as
+     * "this plugin declares nothing", so the worst a failed read produces is a finding the author can
+     * act on, never a request quietly waved through.
+     */
+    private async readPluginNetworkDeclarations(): Promise<NetworkPluginAllowlistEntry[]> {
+        let result: Awaited<ReturnType<typeof getInterface>["plugins"]["list"]>;
+        try {
+            result = await getInterface().plugins.list();
+        } catch {
+            // No bridge at all, which is a harness rather than a project. Reading it as "no
+            // plugin declares anything" is the same answer a failed list gives.
+            return [];
+        }
+        if (!result.success) {
+            return [];
+        }
+        return result.data.plugins
+            .filter(plugin => (plugin.manifest.contributes?.network ?? []).length > 0)
+            .map(plugin => ({
+                pluginId: plugin.manifest.id,
+                patterns: [...(plugin.manifest.contributes?.network ?? [])],
+            }));
     }
 
     private async buildLocalizationContext(service: LocalizationService): Promise<LintContext["localization"]> {

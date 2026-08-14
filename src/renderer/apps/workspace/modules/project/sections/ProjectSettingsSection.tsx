@@ -9,12 +9,19 @@
  * which is what keeps all of this off the Game page.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import {
+    NETWORK_POLICY_ALLOWLIST,
+    NETWORK_POLICY_ANY,
+    type NetworkPluginAllowlistEntry,
+} from "@shared/types/networkAllowlist";
+import { getInterface } from "@/lib/app/bridge";
 import { SettingRow, SettingShell } from "./settingRows";
+import { NetworkAllowlistField } from "./NetworkAllowlistField";
 import { NumberField } from "./NumberField";
 import { ProjectSigningSection } from "./ProjectSigningSection";
 import { SettingsGroup } from "../components/SettingsGroup";
@@ -58,6 +65,8 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
     const [crash, setCrash] = useState<CrashConfiguration>(() => normalizeCrashConfiguration(config.app?.crash));
     const [savingCrash, setSavingCrash] = useState(false);
     const [savingHttp, setSavingHttp] = useState(false);
+    const [savingPolicy, setSavingPolicy] = useState(false);
+    const [pluginNetwork, setPluginNetwork] = useState<readonly NetworkPluginAllowlistEntry[]>([]);
     const [savingEncrypt, setSavingEncrypt] = useState(false);
     const [savingMobile, setSavingMobile] = useState(false);
     const [savingWeb, setSavingWeb] = useState<keyof WebOptimizationConfiguration | null>(null);
@@ -80,6 +89,65 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
             setSavingHttp(false);
         }
     }, [network, onConfigChange, projectService, savingHttp, uiService]);
+
+    /**
+     * Narrow the project to a list, or widen it back.
+     *
+     * Widening keeps the entries rather than clearing them. An author who switches back to any
+     * host has not said the list was wrong, and losing it on a toggle would make trying the
+     * narrow state a thing worth being afraid of.
+     */
+    const setNetworkPolicy = useCallback(async (narrow: boolean) => {
+        if (savingPolicy) {
+            return;
+        }
+        const previous = network;
+        setSavingPolicy(true);
+        const policy = narrow ? NETWORK_POLICY_ALLOWLIST : NETWORK_POLICY_ANY;
+        setNetwork(current => ({ ...current, policy }));
+        try {
+            const updated = await projectService.updateNetworkConfiguration({ policy });
+            setNetwork(normalizeNetworkConfiguration(updated.app?.network));
+            onConfigChange(updated);
+        } catch (error) {
+            setNetwork(previous);
+            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
+        } finally {
+            setSavingPolicy(false);
+        }
+    }, [network, onConfigChange, projectService, savingPolicy, uiService]);
+
+    const commitAllowlist = useCallback((allowlist: string[]) => {
+        setNetwork(current => ({ ...current, allowlist }));
+        void projectService.updateNetworkConfiguration({ allowlist })
+            .then(updated => {
+                setNetwork(normalizeNetworkConfiguration(updated.app?.network));
+                onConfigChange(updated);
+            })
+            .catch(error => {
+                uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
+            });
+    }, [onConfigChange, projectService, uiService]);
+
+    // What the installed plugins declare, read once: the panel shows them so the list answers
+    // "where does my game connect" completely, and nothing here can change them.
+    useEffect(() => {
+        let cancelled = false;
+        void getInterface().plugins.list().then(result => {
+            if (cancelled || !result.success) {
+                return;
+            }
+            setPluginNetwork(result.data.plugins
+                .filter(plugin => (plugin.manifest.contributes?.network ?? []).length > 0)
+                .map(plugin => ({
+                    pluginId: plugin.manifest.id,
+                    patterns: [...(plugin.manifest.contributes?.network ?? [])],
+                })));
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const setCrashPolicy = useCallback(async (next: string | number) => {
         if (savingCrash) {
@@ -219,6 +287,29 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                     loading={savingHttp}
                     onChange={value => void setAllowHttp(value)}
                 />
+                {network.allowHttp ? (
+                    <SettingRow
+                        title={t("project.settings.networkAllowlistTitle")}
+                        description={t("project.settings.networkAllowlistDescription")}
+                        hint={t("project.settings.networkAllowlistWebHint")}
+                        checked={network.policy === NETWORK_POLICY_ALLOWLIST}
+                        loading={savingPolicy}
+                        onChange={value => void setNetworkPolicy(value)}
+                    />
+                ) : null}
+                {network.allowHttp && network.policy === NETWORK_POLICY_ALLOWLIST ? (
+                    <SettingShell
+                        title={t("project.settings.networkAllowlist.title")}
+                        description={t("project.settings.networkAllowlist.description")}
+                    >
+                        <NetworkAllowlistField
+                            entries={network.allowlist}
+                            pluginEntries={pluginNetwork}
+                            disabled={false}
+                            onCommit={commitAllowlist}
+                        />
+                    </SettingShell>
+                ) : null}
                 <SettingRow
                     title={t("project.settings.encryptAssetsTitle")}
                     description={t("project.settings.encryptAssetsDescription")}

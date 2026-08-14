@@ -11,6 +11,12 @@ import {
     normalizeGameCrashPolicy,
     type GameCrashPolicy,
 } from "@shared/types/gameRuntime";
+import {
+    NETWORK_POLICY_ALLOWLIST,
+    NETWORK_POLICY_ANY,
+    normalizeNetworkAllowlistEntries,
+    type NetworkAccessPolicy,
+} from "@shared/types/networkAllowlist";
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
@@ -78,6 +84,16 @@ export type NetworkConfiguration = {
     allowHttp: boolean;
     allowRemoteResource: boolean;
     allowRemoteScript: boolean;
+    /**
+     * How much of the network the build reaches once {@link allowHttp} is on.
+     *
+     * `"any"` unless a team asks for less, which is deliberate: a node an author wired up is
+     * expected to run, and a default that made authored graphs fail would teach people to switch
+     * the safety off before they had a reason to understand it. See `@shared/types/networkAllowlist`.
+     */
+    policy: NetworkAccessPolicy;
+    /** The author's own allowlist entries. Only consulted when {@link policy} is `"allowlist"`. */
+    allowlist: string[];
 };
 
 /**
@@ -319,6 +335,8 @@ export const DEFAULT_NETWORK_CONFIGURATION: NetworkConfiguration = {
     allowHttp: false,
     allowRemoteResource: false,
     allowRemoteScript: false,
+    policy: NETWORK_POLICY_ANY,
+    allowlist: [],
 };
 
 /**
@@ -339,6 +357,11 @@ export function normalizeNetworkConfiguration(value: unknown): NetworkConfigurat
         allowRemoteScript: typeof record.allowRemoteScript === "boolean"
             ? record.allowRemoteScript
             : DEFAULT_NETWORK_CONFIGURATION.allowRemoteScript,
+        // Anything that is not the narrow value reads as the wide one, including a spelling from a
+        // future version: a stored word this build does not recognize must not silently become a
+        // restriction the author never chose, and it must not fail the project open either.
+        policy: record.policy === NETWORK_POLICY_ALLOWLIST ? NETWORK_POLICY_ALLOWLIST : NETWORK_POLICY_ANY,
+        allowlist: normalizeNetworkAllowlistEntries(record.allowlist),
     };
 }
 

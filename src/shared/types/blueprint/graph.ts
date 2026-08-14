@@ -861,8 +861,6 @@ export const BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL = "blueprint.app.openExternal
 /** Inspector param holding the picked address; read only when the `url` pin is unwired. */
 export const BLUEPRINT_EXTERNAL_LINK_PARAM_URL = "url";
 
-/** `dynamicOptionsSource` id for the addresses the project and its variants declare. */
-export const BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE = "externalLinks";
 export const BLUEPRINT_NODE_TYPE_GAME_START_STORY = "blueprint.game.startStory" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME = "blueprint.game.isInGame" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY = "blueprint.game.isGameOverlay" as const;

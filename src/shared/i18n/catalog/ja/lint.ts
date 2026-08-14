@@ -59,6 +59,11 @@ export const lint = {
             description: "選んだビルド対象の一部が再生できないコーデック",
             message: "{asset} は {platform} で再生できない",
         },
+        networkFetchNotAllowlisted: {
+            title: "許可一覧にないアドレス",
+            description: "このプロジェクトが許可していないアドレスを指す Fetch ノード",
+            message: "{url} はこのプロジェクトのネットワーク許可一覧にない",
+        },
         networkFetchDisallowed: {
             title: "ネットワークを使えないのにネットワークノードがある",
             description: "HTTP を許可していないプロジェクトの中のネットワークノード",
@@ -149,11 +154,6 @@ export const lint = {
             title: "何もしないイベント",
             description: "実行するものが何もつながっていないイベントレイヤー",
             message: "このイベントは何も実行しない",
-        },
-        blueprintExternalLinkUndeclared: {
-            title: "宣言されていないリンク",
-            description: "どのビルドバリアントも宣言していないアドレスを持つリンクを開くノード",
-            message: "{url} はどのビルドバリアントも宣言していないので、どのビルドもこれを開かない",
         },
         variablesUndeclared: {
             title: "宣言のない変数",

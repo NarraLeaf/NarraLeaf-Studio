@@ -37,6 +37,14 @@ export function describePluginInstallPermission(permission: PluginInstallPermiss
                 + (permission.patterns.length > 0
                     ? permission.patterns.map(pattern => singleLine(pattern, "declared address")).join(", ")
                     : "declared addresses");
+        case "network":
+            // Listed rather than counted, for the reason the addresses above are: a host is the
+            // whole content of this decision, and "connects to 3 servers" is not a thing anyone can
+            // answer.
+            return "In your game: request data from "
+                + (permission.patterns.length > 0
+                    ? permission.patterns.map(pattern => singleLine(pattern, "declared address")).join(", ")
+                    : "declared addresses");
         default:
             return exhaustive(permission);
     }
@@ -148,6 +156,10 @@ function covers(granted: PluginInstallPermission, requested: PluginInstallPermis
     // to the real one. String equality here can only ever be conservative - the worst it does is
     // ask the author again about a pattern they would have approved.
     if (granted.kind === "externalLink" && requested.kind === "externalLink") {
+        return requested.patterns.every(pattern => granted.patterns.includes(pattern));
+    }
+    // Exact declared strings, for the reason written just above.
+    if (granted.kind === "network" && requested.kind === "network") {
         return requested.patterns.every(pattern => granted.patterns.includes(pattern));
     }
     return false;
