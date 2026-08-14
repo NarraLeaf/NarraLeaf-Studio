@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
+import { useHostWindow } from "@/lib/components/layout";
 
 const PANEL_VIEWPORT_PADDING = 8;
 const PANEL_GAP = 4;
@@ -9,10 +10,17 @@ const PANEL_GAP = 4;
  * Fixed popover position (viewport / client coordinates) for a trigger + measured panel.
  * Prefers below the trigger; flips above when needed. Aligns to trigger left edge, or right-aligns
  * when overflowing the window (typical for a top-right toolbar).
+ *
+ * `viewport` is passed rather than read off a global: a detached editor draws this same subtree in
+ * a second window, where the opener's dimensions are the wrong ones to fit a panel into.
  */
-export function computeToolbarPopoverClientPosition(trigger: DOMRect, panel: DOMRect): { x: number; y: number } {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+export function computeToolbarPopoverClientPosition(
+    trigger: DOMRect,
+    panel: DOMRect,
+    viewport: { width: number; height: number },
+): { x: number; y: number } {
+    const vw = viewport.width;
+    const vh = viewport.height;
     const pw = panel.width;
     const ph = panel.height;
     const p = PANEL_VIEWPORT_PADDING;
@@ -61,6 +69,12 @@ export function useSurfaceToolbarPopover(contentKey?: unknown): SurfaceToolbarPo
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
+    // Every reach past this subtree - the window it is measured against, the document its dismissal
+    // listens on - goes to the window the author is actually looking at. In a detached editor that
+    // is not the renderer's own: a bare `document` there is the opener's, so the panel would be
+    // sized to the wrong viewport and neither a click outside nor Escape in the detached window
+    // would ever reach a listener.
+    const hostWindow = useHostWindow();
 
     const close = useCallback(() => setOpen(false), []);
     const toggle = useCallback(() => setOpen(v => !v), []);
@@ -79,19 +93,20 @@ export function useSurfaceToolbarPopover(contentKey?: unknown): SurfaceToolbarPo
             const next = computeToolbarPopoverClientPosition(
                 triggerEl.getBoundingClientRect(),
                 panelEl.getBoundingClientRect(),
+                { width: hostWindow.innerWidth, height: hostWindow.innerHeight },
             );
             setPosition(prev => (prev.x === next.x && prev.y === next.y ? prev : next));
         };
 
         updatePosition();
 
-        window.addEventListener("resize", updatePosition);
-        window.addEventListener("scroll", updatePosition, true);
+        hostWindow.addEventListener("resize", updatePosition);
+        hostWindow.addEventListener("scroll", updatePosition, true);
         return () => {
-            window.removeEventListener("resize", updatePosition);
-            window.removeEventListener("scroll", updatePosition, true);
+            hostWindow.removeEventListener("resize", updatePosition);
+            hostWindow.removeEventListener("scroll", updatePosition, true);
         };
-    }, [open, contentKey]);
+    }, [contentKey, hostWindow, open]);
 
     useEffect(() => {
         if (!open) {
@@ -108,14 +123,14 @@ export function useSurfaceToolbarPopover(contentKey?: unknown): SurfaceToolbarPo
             close();
         };
         // Deferred so the click that opened the panel does not immediately close it.
-        const timer = window.setTimeout(() => {
-            document.addEventListener("mousedown", handlePointerDown, true);
+        const timer = hostWindow.setTimeout(() => {
+            hostWindow.document.addEventListener("mousedown", handlePointerDown, true);
         }, 0);
         return () => {
-            window.clearTimeout(timer);
-            document.removeEventListener("mousedown", handlePointerDown, true);
+            hostWindow.clearTimeout(timer);
+            hostWindow.document.removeEventListener("mousedown", handlePointerDown, true);
         };
-    }, [open, close]);
+    }, [close, hostWindow, open]);
 
     useEffect(() => {
         if (!open) {
@@ -126,9 +141,9 @@ export function useSurfaceToolbarPopover(contentKey?: unknown): SurfaceToolbarPo
                 close();
             }
         };
-        document.addEventListener("keydown", onKey);
-        return () => document.removeEventListener("keydown", onKey);
-    }, [open, close]);
+        hostWindow.document.addEventListener("keydown", onKey);
+        return () => hostWindow.document.removeEventListener("keydown", onKey);
+    }, [close, hostWindow, open]);
 
     return { open, toggle, close, triggerRef, panelRef, position };
 }
@@ -148,7 +163,12 @@ export function SurfaceToolbarPopoverPanel({
     dataAttribute,
     className = "",
 }: SurfaceToolbarPopoverPanelProps) {
-    if (!popover.open || typeof document === "undefined") {
+    // The window this subtree is drawn in, not the one its React tree was created in. A detached
+    // editor portals part of the workspace's tree into a second window; `document.body` there is
+    // the opener's body, so the panel opens in the window the author is not looking at - which
+    // from the detached window is indistinguishable from a menu that refuses to open.
+    const hostWindow = useHostWindow();
+    if (!popover.open || !hostWindow?.document) {
         return null;
     }
     return createPortal(
@@ -163,7 +183,7 @@ export function SurfaceToolbarPopoverPanel({
         >
             {children}
         </div>,
-        document.body,
+        hostWindow.document.body,
     );
 }
 
