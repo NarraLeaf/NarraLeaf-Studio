@@ -21,6 +21,16 @@ import {
     readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
+import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+
+/**
+ * What a save-schema pin id starts with.
+ *
+ * Prefixed rather than the bare field id so a uuid can never collide with a node's own pin names
+ * (`id`, `metadata`, `screenshot`), and so a reader of a stored graph can tell at a glance which
+ * edges belong to the project's schema.
+ */
+const SAVE_SCHEMA_PIN_PREFIX = "field:";
 
 export type EffectiveCatalogPin = BlueprintNodeEditorCatalogEntry["pins"][number];
 
@@ -188,6 +198,56 @@ export function getDynamicInputPinRemovalIds(
     return ids.length > 0 ? ids : [pinId];
 }
 
+/** The pin id one declared save field is addressed by. Stable across renames - the id never moves. */
+export function saveSchemaPinId(fieldId: string): string {
+    return `${SAVE_SCHEMA_PIN_PREFIX}${fieldId}`;
+}
+
+/** The field id behind a save-schema pin, or null when the pin is not one. */
+export function saveSchemaFieldIdFromPin(pinId: string): string | null {
+    return pinId.startsWith(SAVE_SCHEMA_PIN_PREFIX) ? pinId.slice(SAVE_SCHEMA_PIN_PREFIX.length) : null;
+}
+
+/**
+ * Append the project's declared save fields to a node's own pins.
+ *
+ * Read from the live schema rather than from `params`, which is what makes the write node and the
+ * read node grow the same pins: they are two views of one project document, not two node-local
+ * lists that have to be kept in step by hand.
+ *
+ * The node's static pins stay exactly where they are, including the raw `metadata` pin. That pin is
+ * the escape hatch and is never taken away - an existing graph that wires it keeps working the
+ * moment a field is declared, and a key that belongs to nobody (a plugin's, a legacy one) still has
+ * somewhere to ride.
+ */
+function withSaveSchemaPins(def: BlueprintNodeDef, basePins: BlueprintNodePinDef[]): BlueprintNodePinDef[] {
+    const cfg = def.saveSchemaPins;
+    if (!cfg) {
+        return basePins;
+    }
+    const fields = getActiveSaveSchemaFields();
+    if (fields.length === 0) {
+        return basePins;
+    }
+    const schemaPins: BlueprintNodePinDef[] = fields.map(field => ({
+        id: saveSchemaPinId(field.id),
+        kind: cfg.kind,
+        semantic: "data",
+        valueType: field.valueType,
+        label: field.name,
+        // Inline literals on the write side only: an output has nothing to type into. A field the
+        // author can fill on the card is the difference between "declare a chapter name" and "wire
+        // a String node to every one of six slots".
+        allowInlineLiteral:
+            cfg.kind === "input" &&
+            (BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES as readonly string[]).includes(field.valueType),
+    }));
+    // Appended after the node's own pins rather than interleaved: the static pins are the node's
+    // identity (which slot, capture or not) and the declared fields are the project's, so a reader
+    // scanning a card sees one group and then the other.
+    return [...basePins, ...schemaPins];
+}
+
 /**
  * Effective pin defs for execution / validation: exec inputs, fixed data inputs, dynamic data inputs, outputs.
  */
@@ -243,6 +303,9 @@ export function resolveEffectiveBlueprintNodePins(
             label: ret.name,
         }));
         return [...execInputPins, ...paramInputs, ...execOutputPins, ...returnOutputs];
+    }
+    if (def.saveSchemaPins) {
+        return withSaveSchemaPins(def, typedBasePins);
     }
     const cfg = def.dynamicInputPins;
     if (!cfg || !params) {
@@ -358,6 +421,8 @@ export function resolveEffectiveBlueprintCatalogEntry(
         dynamicInputPinTypeParamKey: cfg?.pinValueTypeParamKey,
         dynamicInputPinTypeOptions: cfg?.pinValueTypeOptions,
         dynamicPinsGenerateOutputs: cfg?.editableGeneratedOutputPins,
+        supportsSaveSchemaPins: Boolean(def.saveSchemaPins),
+        saveSchemaPinKind: def.saveSchemaPins?.kind,
     };
 
     const effective = resolveEffectiveBlueprintNodePins(def, params);

@@ -73,6 +73,7 @@ import {
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
 import { BlueprintAddNodeMenu } from "../components/BlueprintAddNodeMenu";
+import { SaveSchemaFieldsModal } from "../components/SaveSchemaFieldsModal";
 import {
     generateNextDynamicInputPinIds,
     getDynamicInputPinRemovalIds,
@@ -596,6 +597,18 @@ function BlueprintFlowCanvasInner({
 
     const addDynamicInputPinRef = useRef(addDynamicInputPin);
     addDynamicInputPinRef.current = addDynamicInputPin;
+    /**
+     * The project save-field editor, opened from a save node's card.
+     *
+     * Owned here rather than by the card: the card is rendered inside the flow surface, which is
+     * scaled and translated by the viewport transform, and a dialog mounted inside it would inherit
+     * both. The canvas is outside that transform, and the modal itself lands in the window overlay
+     * host from there.
+     */
+    const [saveSchemaEditorOpen, setSaveSchemaEditorOpen] = useState(false);
+    const openSaveSchemaEditor = useCallback(() => setSaveSchemaEditorOpen(true), []);
+    const closeSaveSchemaEditor = useCallback(() => setSaveSchemaEditorOpen(false), []);
+
     const stableAddDynamicInputPin = useCallback((nodeId: string) => {
         addDynamicInputPinRef.current(nodeId);
     }, []);
@@ -826,6 +839,7 @@ function BlueprintFlowCanvasInner({
                     elementPreviews,
                     displayableTargetVariantsByNodeId,
                     onBindElementLiteral,
+                    openSaveSchemaEditor,
                 );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
                 let out = withSel;
@@ -902,6 +916,7 @@ function BlueprintFlowCanvasInner({
         displayableTargetVariantsByNodeId,
         displayableTargetVariantsSig,
         onBindElementLiteral,
+        openSaveSchemaEditor,
         setEdges,
         setNodes,
     ]);
@@ -1391,6 +1406,7 @@ function BlueprintFlowCanvasInner({
                     }}
                 />
             ) : null}
+            <SaveSchemaFieldsModal isOpen={saveSchemaEditorOpen} onClose={closeSaveSchemaEditor} />
             {nodeMenu ? (
                 <ContextMenu
                     items={nodeMenuItems}

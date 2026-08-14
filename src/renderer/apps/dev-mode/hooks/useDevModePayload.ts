@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import { getInterface } from "@/lib/app/bridge";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -70,6 +71,9 @@ export function useDevModePayload(): UseDevModePayloadResult {
              * frame against the seeds and jump one commit later.
              */
             setActiveBrandPalette(bundle.brand ?? BUILTIN_BRAND_COLORS);
+            // Same timing, same reason: a save node resolves its pins as it runs, so publishing in
+            // an effect would let the first graph of a session see a schema with no fields in it.
+            setActiveSaveSchemaFields(bundle.ui.saveSchema ?? []);
             setState(prev => ({
                 ...prev,
                 bundle,

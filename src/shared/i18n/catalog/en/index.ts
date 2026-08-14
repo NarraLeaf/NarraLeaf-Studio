@@ -22,6 +22,7 @@ import { blueprint } from "./blueprint";
 import { characters } from "./characters";
 import { properties } from "./properties";
 import { motion } from "./motion";
+import { saveSchema } from "./saveSchema";
 import { storyVars } from "./storyVars";
 import { storySnapshot } from "./storySnapshot";
 import { uiEditor } from "./uiEditor";
@@ -66,6 +67,8 @@ export const en = {
     characters,
     properties,
     motion,
+    saveSchema,
+
     storyVars,
     storySnapshot,
     uiEditor,
