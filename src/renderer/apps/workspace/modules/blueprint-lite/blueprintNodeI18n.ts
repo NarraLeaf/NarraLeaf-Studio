@@ -483,6 +483,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Start Of Day": "blueprint.node.startOfDay",
     "Get Time Zone": "blueprint.node.getTimeZone",
     "Get Save Time": "blueprint.node.getSaveTime",
+    "Get Save Line": "blueprint.node.getSaveLine",
 };
 
 /** Palette category name -> translation key, keyed by the original English category. */
@@ -804,6 +805,9 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Ok": "blueprint.port.ok",
     "Saved At": "blueprint.port.savedAt",
     "Created At": "blueprint.port.createdAt",
+    // Get Save Line: the words a slot stopped on, and who said them.
+    "Line": "blueprint.port.line",
+    "Speaker": "blueprint.port.speaker",
     "Unit": "blueprint.port.unit",
     "Date Style": "blueprint.port.dateStyle",
     "Time Style": "blueprint.port.timeStyle",

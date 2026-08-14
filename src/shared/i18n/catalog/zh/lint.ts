@@ -147,6 +147,26 @@ export const lint = {
             description: "事件层里没有接任何可执行的东西",
             message: "这个事件什么都不会执行",
         },
+        uiUnlocalizedText: {
+            title: "未本地化的文本",
+            description: "工程已有第二种语言，控件上却直接写着原文",
+            message: "{text} 没有接到本地化键上",
+        },
+        uiPageUnreachable: {
+            title: "进不去的页面",
+            description: "没有任何地方打开、嵌入这个页面，它也不是启动页",
+            message: "没有任何地方会打开这个页面",
+        },
+        uiEmptyBehavior: {
+            title: "没有处理的按钮",
+            description: "可以点，但没有任何东西在听",
+            message: "点下去不会运行任何东西",
+        },
+        blueprintSaveFieldEmpty: {
+            title: "存档字段为空",
+            description: "会执行到的 Save Game 节点上，有声明过的存档字段没有填",
+            message: "{field} 没有填，这次存档写进去的会是它的默认值",
+        },
         variablesUndeclared: {
             title: "未声明的变量",
             description: "用到了却没有声明",
@@ -229,6 +249,8 @@ export const lint = {
         network: "网络",
         story: "故事",
         blueprint: "蓝图",
+        // 跟着作者看得见的词叫：这一类说的是页面和页面上的控件，不叫内部的「Surface」。
+        ui: "页面",
         variables: "变量",
         text: "文本",
         localization: "本地化",

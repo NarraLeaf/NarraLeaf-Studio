@@ -37,6 +37,7 @@ import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
+import type { SpellcheckContextMenuPayload, SpellcheckStatus } from "./spellcheck";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
@@ -111,6 +112,11 @@ export enum IPCEventType {
     appCountWorkspaceWindows = "app.countWorkspaceWindows",
     appRequestWorkspaceView = "app.requestWorkspaceView",
     appOpenExternal = "app.openExternal",
+    spellcheckConfigure = "app.spellcheck.configure",
+    spellcheckClear = "app.spellcheck.clear",
+    spellcheckStatus = "app.spellcheck.status",
+    spellcheckReplaceMisspelling = "app.spellcheck.replaceMisspelling",
+    spellcheckContextMenu = "app.spellcheck.contextMenu",
     appPickBackgroundImage = "app.pickBackgroundImage",
     appReadBackgroundImage = "app.readBackgroundImage",
     appGlobalStateGet = "app.globalState.get",
@@ -546,6 +552,54 @@ export type IPCEvents = {
             url: string;
         },
         response: void;
+    };
+    /**
+     * Hand the session this window's project: the language its script is written in, and the words
+     * that project spells on purpose. Answers what spellchecking ended up doing, which is more than
+     * the caller asked for - the language may have no dictionary at all.
+     */
+    [IPCEventType.spellcheckConfigure]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            sourceLocale: string;
+            words: string[];
+        },
+        response: SpellcheckStatus;
+    };
+    /** Take this project's words back out of the session, so the next project does not inherit them. */
+    [IPCEventType.spellcheckClear]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: void;
+    };
+    /** What spellchecking is doing now. Read by the Settings window, which has no project of its own. */
+    [IPCEventType.spellcheckStatus]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: SpellcheckStatus;
+    };
+    /** Put `text` in place of the misspelling the context menu was opened on. */
+    [IPCEventType.spellcheckReplaceMisspelling]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            text: string;
+        },
+        response: void;
+    };
+    /**
+     * A right click landed on editable text, with whatever the spellchecker knows about the word
+     * under it. Pushed because that verdict exists only in the main process: the renderer can see
+     * the word but has no way to ask whether it is spelled correctly.
+     */
+    [IPCEventType.spellcheckContextMenu]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: SpellcheckContextMenuPayload,
+        response: never;
     };
     [IPCEventType.appPickBackgroundImage]: {
         type: IPCMessageType.request,

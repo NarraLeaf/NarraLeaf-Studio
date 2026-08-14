@@ -828,6 +828,23 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             style={{ ...props.style, caretColor: caretColor ?? undefined }}
             contentEditable={!readOnly}
             suppressContentEditableWarning
+            // The one field in Studio that is checked. It holds the source script - the prose the
+            // author writes - and Chromium checks whatever is editable and asks for it. Off while
+            // read-only, where an underline marks something that cannot be corrected, and off
+            // everywhere else in the app on purpose: the localization editor holds translations,
+            // which are not this project's language and are not the author's to respell.
+            spellCheck={!readOnly}
+            onContextMenu={event => {
+                if (readOnly) {
+                    return;
+                }
+                // Stopped, so the row's own menu does not claim this click - and deliberately NOT
+                // prevented. Blink only asks the browser process for a context menu when the page
+                // leaves the default alone, and that request is the only thing that carries the
+                // spellchecker's verdict on the word under the pointer. `preventDefault` anywhere on
+                // the way up would silently cost the suggestions and "Add to dictionary".
+                event.stopPropagation();
+            }}
             role="textbox"
             aria-multiline="false"
             aria-readonly={readOnly || undefined}

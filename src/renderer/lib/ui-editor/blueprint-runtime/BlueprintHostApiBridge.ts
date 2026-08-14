@@ -80,7 +80,7 @@ import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/u
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
-import type { AutoSaveEntry, SaveRecordTimes } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import {
     isButtonCursorValue,
@@ -393,6 +393,8 @@ export type BlueprintHostApiRuntime = {
         getSaveMetadata: (id: string) => Promise<unknown>;
         /** When a slot was written, or null when there is no such slot. */
         getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
+        /** Where a slot stopped, or null when there is no such slot. */
+        getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
         /** Write an autosave into the reserved ring now, regardless of the timer. */
         writeAutoSave: () => Promise<void>;
@@ -625,6 +627,7 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onListSaveIds?: () => Promise<string[]> | string[];
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSaveTimes?: (id: string) => Promise<SaveRecordTimes | null> | SaveRecordTimes | null;
+    onGetSaveLine?: (id: string) => Promise<SaveRecordLine | null> | SaveRecordLine | null;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onWriteAutoSave?: () => Promise<void> | void;
     onListAutoSaves?: () => Promise<AutoSaveEntry[]> | AutoSaveEntry[];
@@ -1562,6 +1565,25 @@ function normalizeSaveRecordTimes(value: unknown): SaveRecordTimes | null {
     };
 }
 
+/**
+ * A host's answer for where one slot stopped, or null when it says there is no such slot.
+ *
+ * Same split as {@link normalizeSaveRecordTimes}: a non-object is "no slot", while a present record
+ * with nothing quotable becomes empty strings. The engine writes `lastSpeaker` as null for
+ * narration, which is a real save with no speaker rather than a missing one.
+ */
+function normalizeSaveRecordLine(value: unknown): SaveRecordLine | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const toText = (raw: unknown): string => (typeof raw === "string" ? raw : "");
+    return {
+        line: toText(record.line),
+        speaker: toText(record.speaker),
+    };
+}
+
 function normalizeBlueprintChoiceCount(value: unknown): number {
     const count = Number(value);
     return Number.isInteger(count) && count > 0 ? count : 0;
@@ -1862,6 +1884,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onListSaveIds,
         onGetSaveMetadata,
         onGetSaveTimes,
+        onGetSaveLine,
         onGetSavePreview,
         onWriteAutoSave,
         onListAutoSaves,
@@ -3262,6 +3285,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("getSaveTimes: game save runtime is not available");
                     }
                     return normalizeSaveRecordTimes(await onGetSaveTimes(saveId));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSaveLine: async (id: string) => {
+                const cap = "game.getSaveLine";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("getSaveLine", id);
+                    if (!onGetSaveLine) {
+                        throw new Error("getSaveLine: game save runtime is not available");
+                    }
+                    return normalizeSaveRecordLine(await onGetSaveLine(saveId));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

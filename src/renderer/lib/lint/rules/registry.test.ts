@@ -44,6 +44,10 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "blueprint/reference-missing",
     "blueprint/unreachable-node",
     "blueprint/empty-event",
+    "ui/unlocalized-text",
+    "ui/page-unreachable",
+    "ui/empty-behavior",
+    "blueprint/save-field-empty",
     "variables/undeclared",
     "variables/unused",
     "variables/name-collision",
@@ -65,7 +69,7 @@ const ZH_KEYS = flattenCatalog(zh);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(37);
+        expect(LINT_RULES).toHaveLength(41);
     });
 
     it("gives every rule a unique id", () => {

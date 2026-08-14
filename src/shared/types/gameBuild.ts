@@ -238,6 +238,33 @@ export type GameBuildStatus =
     | "done"
     | "error";
 
+/**
+ * What one produced artifact came to on disk.
+ *
+ * `bytes` is optional because measuring is best-effort: an artifact whose size cannot be read is
+ * still reported, without a number. That is deliberately a different fact from `0` - an artifact
+ * shown as "0 B" reads as an empty build output, and the whole point of this measurement is that a
+ * wrong size is worse than no size.
+ */
+export type GameBuildArtifactSize = {
+    /** Absolute path; matches the entry of `artifacts` this size belongs to. */
+    path: string;
+    /**
+     * Total bytes. For an artifact that is a directory (the web export, a macOS `.app`) this is the
+     * sum of the whole tree, not what `stat` reports for the directory entry itself.
+     */
+    bytes?: number;
+};
+
+/**
+ * Bytes over the artifacts whose size could be read. Unmeasured artifacts contribute nothing rather
+ * than zero, so the total never claims to cover something it could not see; pair it with the count
+ * of measured artifacts when showing it.
+ */
+export function totalGameBuildArtifactBytes(sizes: GameBuildArtifactSize[]): number {
+    return sizes.reduce((total, size) => total + (size.bytes ?? 0), 0);
+}
+
 /** Snapshot returned by build.getStatus; the renderer polls this. */
 export type GameBuildStateSnapshot = {
     status: GameBuildStatus;
@@ -253,6 +280,17 @@ export type GameBuildStateSnapshot = {
     platforms?: GameBuildPlatform[];
     /** Absolute paths of produced artifacts (installers/archives/app dirs). */
     artifacts?: string[];
+    /**
+     * What each of those artifacts came to on disk, in `artifacts` order.
+     *
+     * Carried on the snapshot rather than left in the console line that prints it, because the
+     * console line is not the only place an author meets a finished build - anything polling the
+     * status can show what was shipped without walking the output folder a second time.
+     *
+     * Absent on any snapshot that is not a finished build, and an individual entry may carry no
+     * size (see {@link GameBuildArtifactSize}).
+     */
+    artifactSizes?: GameBuildArtifactSize[];
     /** Absolute output directory of the finished build. */
     outputDir?: string;
     error?: string;
