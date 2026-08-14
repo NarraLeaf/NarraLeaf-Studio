@@ -13,6 +13,7 @@ export const saveSchema = {
         name: "名称",
         type: "类型",
         default: "默认值",
+        defaultPlaceholder: "默认值",
         add: "添加字段",
         remove: "删除字段",
         newName: "字段",

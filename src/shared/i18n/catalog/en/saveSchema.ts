@@ -20,6 +20,7 @@ export const saveSchema = {
         name: "Name",
         type: "Type",
         default: "Default",
+        defaultPlaceholder: "default",
         add: "Add field",
         remove: "Remove field",
         newName: "Field",
