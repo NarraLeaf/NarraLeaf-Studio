@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -82,6 +83,7 @@ function useRuntimePack(): {
                 // web export, which has no such channel, it is the first answer there is.
                 setRuntimeCrashPolicy(nextPack.crash?.policy);
                 setActiveBrandPalette(nextPack.bundle.brand ?? BUILTIN_BRAND_COLORS);
+                setActiveSaveSchemaFields(nextPack.bundle.ui.saveSchema ?? []);
                 setPack(nextPack);
                 setError(null);
             })

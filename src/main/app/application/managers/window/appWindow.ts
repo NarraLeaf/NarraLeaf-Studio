@@ -505,6 +505,30 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             this.getApp().windowManager.unregisterWindow(this);
         });
 
+        // Chromium's verdict on the word under a right click, forwarded so the app's own menu can
+        // offer it. The renderer draws every context menu in Studio and cannot ask the spellchecker
+        // anything - `misspelledWord` exists here and nowhere else.
+        //
+        // This only fires where the page let the request through. Everywhere that opens its own menu
+        // calls `preventDefault`, which stops Blink sending the request at all, so a surface that
+        // wants the spelling rows has to leave the default alone (see `RichTextInput`). Editable
+        // targets only: a right click on a panel is not a text gesture and the app already ignores
+        // it.
+        webContents.on("context-menu", (_event, params) => {
+            if (!params.isEditable || this.isClosed() || this.isDestroyed()) {
+                return;
+            }
+            this.sendIpcEvent(IPCEventType.spellcheckContextMenu, {
+                x: params.x,
+                y: params.y,
+                misspelledWord: params.misspelledWord,
+                suggestions: [...params.dictionarySuggestions],
+                canCut: params.editFlags.canCut,
+                canCopy: params.editFlags.canCopy,
+                canPaste: params.editFlags.canPaste,
+            });
+        });
+
         webContents.on("will-frame-navigate", (event) => {
             const decision = decideWindowNavigation({
                 url: event.url,

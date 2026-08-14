@@ -278,6 +278,11 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.return", functionId: "game.getSaveTimes" });
                     return null;
                 },
+                getSaveLine: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getSaveLine" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getSaveLine" });
+                    return null;
+                },
                 getSavePreview: async (_id: string) => {
                     input.debug.emit({ type: "function.call", functionId: "game.getSavePreview" });
                     input.debug.emit({ type: "function.return", functionId: "game.getSavePreview" });

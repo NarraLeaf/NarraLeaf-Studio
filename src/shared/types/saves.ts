@@ -136,6 +136,27 @@ export type SaveRecordTimes = {
     createdAt: number;
 };
 
+/**
+ * Where one save slot stopped, as `Get Save Line` publishes it.
+ *
+ * The engine writes both fields into `SavedGameMetaData` on every serialize, so they describe the
+ * line the save is actually resuming from. A graph could only ever approximate that by reading the
+ * live backlog at `Save Game` time and writing the last entry into the save's own metadata - a
+ * second copy that drifts, because the newest backlog entry is not always the line being saved
+ * (saving from an overlay, a say followed by non-say actions, or a backlog past its cap all move
+ * the two apart).
+ *
+ * `null` from a reader means no such slot. A slot whose engine metadata carries no sentence - the
+ * save was taken before any line played - answers with empty strings, which is a real slot with
+ * nothing to quote.
+ */
+export type SaveRecordLine = {
+    /** The last sentence shown, or "" when the record carries none. */
+    line: string;
+    /** Who spoke it, or "" when the record carries no speaker (narration, or none yet). */
+    speaker: string;
+};
+
 export type AutoSaveEntry = {
     id: string;
     /** Slot index within the ring. */

@@ -2,6 +2,7 @@ import { MissingProjectConfigScreen } from "./components";
 import { ErrorScreen } from "./components/ErrorScreen";
 import { WorkspaceClosingOverlay } from "./components/WorkspaceClosingOverlay";
 import { WorkspaceOpeningOverlay } from "./components/WorkspaceOpeningOverlay";
+import { SpellcheckContextMenu } from "./components/SpellcheckContextMenu";
 import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
@@ -47,6 +48,7 @@ function WorkspaceContent() {
             <PreviewBlueprintNavigateBridge />
             <StoryRowHighlightBridge />
             <DevModeStoryRowOpenBridge />
+            <SpellcheckContextMenu />
             <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />
         </>
     );

@@ -34,6 +34,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
@@ -70,6 +71,10 @@ import type {
     BlueprintGamePreferenceKey,
     BlueprintGamePreferenceValue,
 } from "../../blueprint-runtime/BlueprintHostApiBridge";
+import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+import { buildSaveMetadataFromFields, readSaveMetadataFields } from "@shared/saves/saveSchemaModel";
+import type { SaveSchemaField } from "@shared/types/saveSchema";
+import { saveSchemaPinId } from "../effectivePins";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 import {
@@ -396,6 +401,56 @@ function resolveSaveMetadata(ctx: Parameters<NonNullable<BlueprintNodeDef["execu
         executionOwner: ctx.executionOwner,
     });
     return cloneJsonValue(value);
+}
+
+/** One save-schema pin's value, resolved like any other data input. */
+function resolveSaveSchemaPin(
+    ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
+    field: SaveSchemaField,
+): unknown {
+    return resolveDataPinValue(
+        ctx.graph,
+        ctx.node.id,
+        saveSchemaPinId(field.id),
+        ctx.params,
+        ctx.blueprintLocals,
+        undefined,
+        {
+            hostAdapter: ctx.hostAdapter,
+            eventPayload: ctx.eventPayload,
+            listItemScope: ctx.listItemScope,
+            instanceKey: ctx.instanceKey,
+            executionOwner: ctx.executionOwner,
+        },
+    );
+}
+
+/**
+ * What `Save Game` actually stores at `metadata.user`.
+ *
+ * The raw `metadata` pin comes first and the declared fields are written over it. Both survive on
+ * purpose: the raw pin is the escape hatch that keeps every graph written before the schema existed
+ * working unchanged, and a key nobody declared - a plugin's, a legacy one - still has somewhere to
+ * ride. Where the two overlap the declaration wins, because it is the one the read side is going to
+ * ask for by name.
+ *
+ * With no fields declared this is exactly what it always was: whatever the graph handed the pin.
+ */
+function resolveSaveMetadataToWrite(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): unknown {
+    const fields = getActiveSaveSchemaFields();
+    const raw = resolveSaveMetadata(ctx);
+    if (fields.length === 0) {
+        return raw;
+    }
+    const values: Record<string, unknown> = {};
+    for (const field of fields) {
+        const value = resolveSaveSchemaPin(ctx, field);
+        if (value !== undefined) {
+            values[field.id] = value;
+        }
+    }
+    const base = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+    return cloneJsonValue({ ...base, ...buildSaveMetadataFromFields(fields, values) });
 }
 
 function resolveSaveScreenshot(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): boolean {
@@ -1282,8 +1337,15 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         isPure: false,
         isLatent: true,
         pins: [execIn, execNext, saveIdIn, saveMetadataIn, saveScreenshotIn],
+        // One input pin per field the project declares, so what a slot carries is wired by name
+        // instead of assembled with Make JSON Object and a string key.
+        saveSchemaPins: { kind: "input" },
         async execute(ctx) {
-            await requireHostApi(ctx).game.writeSave(resolveSaveId(ctx), resolveSaveMetadata(ctx), resolveSaveScreenshot(ctx));
+            await requireHostApi(ctx).game.writeSave(
+                resolveSaveId(ctx),
+                resolveSaveMetadataToWrite(ctx),
+                resolveSaveScreenshot(ctx),
+            );
             return { nextPort: "next" };
         },
     },
@@ -1362,11 +1424,24 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                 label: "Metadata",
             },
         ],
+        // One output pin per field the project declares. The raw `metadata` output stays beside them
+        // and always carries the whole stored object, so declaring a field never silently unwires a
+        // graph that was reading the blob.
+        saveSchemaPins: { kind: "output" },
         async execute(ctx) {
             const metadata = await requireHostApi(ctx).game.getSaveMetadata(resolveSaveId(ctx));
+            const fields = getActiveSaveSchemaFields();
+            const byFieldId = readSaveMetadataFields(fields, metadata);
+            const outputValues: Record<string, unknown> = { metadata };
+            for (const field of fields) {
+                // Never `undefined`: a slot written before this field was declared answers with the
+                // field's configured default, which is what lets an author add a field to a shipped
+                // game without blanking every save already on a player's disk.
+                outputValues[saveSchemaPinId(field.id)] = byFieldId[field.id];
+            }
             return {
                 nextPort: "next",
-                outputValues: { metadata },
+                outputValues,
             };
         },
     },
@@ -1427,6 +1502,72 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                     savedAt: times?.savedAt ?? 0,
                     createdAt: times?.createdAt ?? 0,
                     exists: Boolean(times),
+                },
+            };
+        },
+    },
+    {
+        /**
+         * Where a slot stopped, in the words the save itself carries.
+         *
+         * The engine stamps `lastSentence` / `lastSpeaker` into the save on every serialize and no
+         * graph could read either, so the one line a save screen exists to show had to be rebuilt by
+         * hand: read the live backlog at `Save Game` time, take the newest entry, pull its text and
+         * character out, and write them into the save's own metadata. That is eight nodes per slot
+         * to restate a fact already on disk, and it is not even the same fact - the newest backlog
+         * entry is the last line *shown*, while these are the line the save *resumes from*. Saving
+         * from an overlay, a say followed by non-say actions, or a backlog past its cap all pull the
+         * two apart, and the hand-built copy is the one that is wrong.
+         *
+         * Keyed by id like the rest of the family, so it composes with `List Saves` and
+         * `List Auto Saves` alike. `storyHash` is deliberately not published here: the only use for
+         * it in a graph would be refusing to load a save, and refusing on a hash is exactly what
+         * this project decided against - it changes when a single line of text is edited, so it
+         * would reject a great many saves that load perfectly.
+         */
+        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+        displayName: "Get Save Line",
+        category: "Game",
+        keywords: ["game", "save", "line", "sentence", "text", "speaker", "character", "slot", "summary"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            saveIdIn,
+            {
+                id: "line",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Line",
+            },
+            {
+                id: "speaker",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Speaker",
+            },
+            {
+                id: "exists",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Exists",
+            },
+        ],
+        async execute(ctx) {
+            const saved = await requireHostApi(ctx).game.getSaveLine(resolveSaveId(ctx));
+            return {
+                nextPort: "next",
+                outputValues: {
+                    // Empty strings for a slot that is not there, and `exists` to tell that apart
+                    // from a real slot saved before any line played - both answer "" here.
+                    line: saved?.line ?? "",
+                    speaker: saved?.speaker ?? "",
+                    exists: Boolean(saved),
                 },
             };
         },

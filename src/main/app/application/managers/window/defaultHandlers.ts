@@ -2,6 +2,12 @@ import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
 import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
+import {
+    SpellcheckClearHandler,
+    SpellcheckConfigureHandler,
+    SpellcheckReplaceMisspellingHandler,
+    SpellcheckStatusHandler,
+} from "./handlers/spellcheckAction";
 import { AppUpdateCheckHandler, AppUpdateDownloadHandler, AppUpdateGetStateHandler, AppUpdateInstallHandler } from "./handlers/updateAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsDirectorySizeHandler, FsRequestReadHandler, FsRequestReadDirHandler, FsRequestWriteHandler,
@@ -184,6 +190,12 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppOpenExternalHandler(),
         new AppPickBackgroundImageHandler(),
         new AppReadBackgroundImageHandler(),
+
+        // Spellchecker handlers
+        new SpellcheckConfigureHandler(),
+        new SpellcheckClearHandler(),
+        new SpellcheckStatusHandler(),
+        new SpellcheckReplaceMisspellingHandler(),
 
         // Project wizard handlers
         new ProjectWizardLaunchHandler(),

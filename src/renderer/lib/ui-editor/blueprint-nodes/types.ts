@@ -250,6 +250,15 @@ export type BlueprintNodeDef = {
     pins: BlueprintNodePinDef[];
     /** When set, users may add/remove extra data input pins (persisted in params). */
     dynamicInputPins?: BlueprintNodeDynamicInputPinsConfig;
+    /**
+     * Grow one pin per field the project's save schema declares (see `@shared/types/saveSchema`).
+     *
+     * Unlike {@link dynamicInputPins}, these come from a project document rather than from this
+     * node's params - which is the point. `Save Game` and `Get Save Metadata` are a contract across
+     * time, so both read one list and grow the same pins in the same order; a per-node list would
+     * be as many copies as there are save nodes, drifting by hand.
+     */
+    saveSchemaPins?: { kind: "input" | "output" };
     inspectorParams?: BlueprintInspectorParamDef[];
     scope?: BlueprintNodeScope;
     role?: BlueprintNodeRole;
@@ -323,6 +332,10 @@ export type BlueprintNodeEditorCatalogEntry = {
     scope?: BlueprintNodeScope;
     /** When true, node card may offer add-input control (see dynamicInputPins on def). */
     supportsDynamicInputPins?: boolean;
+    /** True on the save nodes: the card offers the editor for the project's save fields. */
+    supportsSaveSchemaPins?: boolean;
+    /** Which column those pins land in, so the card puts the button beside them. */
+    saveSchemaPinKind?: "input" | "output";
     /** Label for the node-card add-input control. */
     dynamicInputPinAddLabel?: string;
     /** Param key storing user-visible labels for dynamic input pins, if editable. */

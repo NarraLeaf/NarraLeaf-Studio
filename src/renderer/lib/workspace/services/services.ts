@@ -80,6 +80,7 @@ import type {
     BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     Blueprint,
+    LiteralValue,
 } from "@shared/types/blueprint/document";
 import type { VariableRegistry, VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
 import type { AudioTrackChannel, ProjectAudioTrack, ProjectAudioTrackDocument } from "@shared/types/audioTrack";
@@ -94,6 +95,9 @@ import type {
 } from "@shared/types/appTag";
 import type { PluginBuildConfigField } from "@shared/types/plugins";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
+import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
+import type { SpellcheckStatus } from "@shared/types/spellcheck";
+import type { SaveSchema, SaveSchemaField, SaveSchemaFieldType } from "@shared/types/saveSchema";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
 import type {
     ReadonlyBlueprintSurfaceSummary,
@@ -222,6 +226,10 @@ enum Services {
     AppTags = "appTags",
     /** The project's own palette: the colours every `nlbrand:` link in the project resolves through */
     Brand = "brand",
+    /** The words the project spells on purpose, and the session's spellchecker they are pushed into */
+    Dictionary = "dictionary",
+    /** What one save slot carries besides the engine's own record; grows the pins on the save nodes */
+    SaveSchema = "saveSchema",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
     SaveStatus = "saveStatus",
     // Texture = "texture",
@@ -622,6 +630,63 @@ interface IBrandService extends IService {
     deleteColor(id: string): boolean;
     moveColor(id: string, beforeId: string | null): void;
     replaceDocument(document: ProjectBrandDocument): void;
+    flushPendingChanges(): Promise<void>;
+}
+
+/**
+ * The words the project spells on purpose - character names, place names, invented terms. See
+ * `@shared/types/dictionary` for the model.
+ *
+ * Besides owning the document it *publishes*: every change pushes the list into Chromium's session
+ * dictionary, which is machine-scoped and therefore has to be handed back when the project closes.
+ */
+interface IDictionaryService extends IService {
+    load(): Promise<string[]>;
+    save(document: ProjectDictionaryDocument): Promise<void>;
+    getDocument(): ProjectDictionaryDocument;
+    listWords(): string[];
+    hasWord(word: string): boolean;
+    /** `false` when there was nothing to add: a blank, or a word the project already spells. */
+    addWord(word: string): boolean;
+    /** `false` when the project never held it. */
+    removeWord(word: string): boolean;
+    replaceDocument(document: ProjectDictionaryDocument): void;
+    /** What the spellchecker settled on at the last push; `null` before the first one. */
+    getSpellcheckStatus(): SpellcheckStatus | null;
+    onWordsChanged(handler: (words: string[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+}
+
+/**
+ * What one save slot carries besides the engine's own record. See `@shared/types/saveSchema` for
+ * the model and `@shared/saves/saveSchemaModel` for the operations over it.
+ *
+ * One document per project on purpose: `Save Game` and `Get Save Metadata` are a contract across
+ * time, so a schema stored per node would be as many copies as there are save nodes, drifting by
+ * hand and failing silently.
+ */
+interface ISaveSchemaService extends IService {
+    load(): Promise<SaveSchema>;
+    save(schema: SaveSchema): Promise<void>;
+    getSchema(): SaveSchema;
+    /** Every declared field in pin order. */
+    listFields(): SaveSchemaField[];
+    getField(id: string): SaveSchemaField | undefined;
+    onSchemaChanged(handler: (schema: SaveSchema) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    createField(input?: { name?: string; valueType?: SaveSchemaFieldType }): SaveSchemaField;
+    /** `id` and `storageKey` are not patchable - one names every pin, the other keys every save. */
+    updateField(
+        id: string,
+        patch: { name?: string; valueType?: SaveSchemaFieldType; defaultValue?: LiteralValue; description?: string },
+    ): void;
+    deleteField(id: string): boolean;
+    moveField(id: string, beforeId: string | null): void;
+    replaceSchema(schema: SaveSchema): void;
     flushPendingChanges(): Promise<void>;
 }
 
@@ -1404,6 +1469,8 @@ export {
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IAppTagService,
     IBrandService,
+    IDictionaryService,
+    ISaveSchemaService,
     IPuppetDescriptionService,
     IMediaSupportService,
     ITestRunService, IRecoveryService,

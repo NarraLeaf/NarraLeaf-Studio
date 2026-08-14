@@ -5,6 +5,7 @@ import {
     audioTracksSpec,
     brandSpec,
     charactersSpec,
+    dictionarySpec,
     localizationDocumentSpec,
     localizationKeysSpec,
     storyDocumentSpec,
@@ -33,6 +34,7 @@ describe("document specs agree with ProjectNameConvention", () => {
         expect(audioTracksSpec.pathFor()).toBe(of(ProjectNameConvention.EditorAudioTracks));
         expect(appTagsSpec.pathFor()).toBe(of(ProjectNameConvention.EditorAppTags));
         expect(brandSpec.pathFor()).toBe(of(ProjectNameConvention.EditorBrand));
+        expect(dictionarySpec.pathFor()).toBe(of(ProjectNameConvention.EditorDictionary));
         expect(voiceDocumentSpec.pathFor({ locale: "ja" })).toBe(of(ProjectNameConvention.EditorVoiceDocument("ja")));
         expect(localizationDocumentSpec.pathFor({ locale: "zh-CN" }))
             .toBe(of(ProjectNameConvention.EditorLocalizationDocument("zh-CN")));

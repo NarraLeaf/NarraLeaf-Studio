@@ -68,6 +68,7 @@ export function blueprintIrToFlowNodes(
     elementPreviews?: Record<string, BlueprintFlowNodeData["elementPreview"]>,
     displayableTargetVariantsByNodeId?: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]>,
     onBindElementLiteral?: (nodeId: string) => void,
+    onEditSaveSchema?: () => void,
 ): Node<BlueprintFlowNodeData>[] {
     const nodes = ir.nodes ?? {};
     const wiredIn = wiredInputPortIdsByNodeId(ir);
@@ -104,6 +105,7 @@ export function blueprintIrToFlowNodes(
                 elementPreview: elementPreviews?.[n.id],
                 displayableTargetVariants: displayableTargetVariantsByNodeId?.[n.id],
                 onBindElementLiteral,
+                onEditSaveSchema,
             },
         };
     });
