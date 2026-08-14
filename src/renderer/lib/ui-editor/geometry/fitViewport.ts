@@ -77,20 +77,24 @@ export function resolveSurfaceFitInsets({ outlineCollapsed }: SurfaceFitChrome):
 /**
  * How a computed zoom answers the space it was given.
  *
- * - `contain` - all of the interface is inside the box. The one the editor picks by itself.
+ * - `contain` - all of the content is inside the box. The one an editor picks by itself.
  * - `cover` - the box has no empty side left; whatever does not fit runs past the edge.
- * - `width` - the interface spans the box horizontally, however tall that makes it.
- * - `actual` - one interface pixel is one screen pixel, which is the only mode that ignores the box
+ * - `width` - the content spans the box horizontally, however tall that makes it.
+ * - `actual` - one content pixel is one screen pixel, which is the only mode that ignores the box
  *   for its scale and uses it only to decide where the centre is.
+ *
+ * Shared vocabulary rather than a surface-editor one: the blueprint canvas offers the same four
+ * answers about a graph's bounding box, and one word per idea is what lets the two canvases be
+ * translated once and read the same way.
  */
-export type SurfaceFitMode = "contain" | "cover" | "width" | "actual";
+export type CanvasFitMode = "contain" | "cover" | "width" | "actual";
 
-/** Menu order, and the order the modes are cycled in. */
-export const SURFACE_FIT_MODES: readonly SurfaceFitMode[] = ["actual", "contain", "cover", "width"];
+/** Menu order, wherever the four are offered. */
+export const CANVAS_FIT_MODES: readonly CanvasFitMode[] = ["actual", "contain", "cover", "width"];
 
 /** A computed zoom, and whether the author asked for it or the editor decided. */
 export type SurfaceViewportFit = {
-    mode: SurfaceFitMode;
+    mode: CanvasFitMode;
     /**
      * True when the mode came from the zoom menu. It survives a resize the same way, and only this
      * one escapes {@link SURFACE_FIT_MAX_SCALE}.
@@ -149,7 +153,7 @@ export type ComputeFitViewportParams = {
     designSize: { width: number; height: number };
     insets?: FitViewportInsets;
     /** Defaults to `contain`, the answer to "show me all of it". */
-    mode?: SurfaceFitMode;
+    mode?: CanvasFitMode;
     maxScale?: number;
 };
 
@@ -231,7 +235,12 @@ export function computeZoomedViewportTransform({
     };
 }
 
-/** Holds a zoom inside the range the viewport accepts, whoever asked for it. */
+/** The range a canvas accepts. Blueprint graphs run a much narrower one than the surface editor. */
+export type ZoomRange = { min: number; max: number };
+
+export const SURFACE_ZOOM_RANGE: ZoomRange = { min: SURFACE_ZOOM_MIN_SCALE, max: SURFACE_ZOOM_MAX_SCALE };
+
+/** Holds a zoom inside the range the canvas accepts, whoever asked for it. */
 export function clampSurfaceZoomScale(scale: number, maxScale: number = SURFACE_ZOOM_MAX_SCALE): number {
     if (!Number.isFinite(scale)) {
         return SURFACE_ZOOM_MIN_SCALE;
@@ -244,9 +253,12 @@ export function clampSurfaceZoomScale(scale: number, maxScale: number = SURFACE_
  *
  * Accepts what a percentage box realistically receives - `150`, `150%`, `1 50`, a full-width `％`
  * from an IME - and returns `null` for anything that is not a number, so the box can keep the value
- * it had rather than jump to a clamped guess of what was meant.
+ * it had rather than jump to a clamped guess of what was meant. A number out of range is clamped
+ * instead, because "as far as this canvas goes" is a sensible reading of it.
+ *
+ * `range` is the canvas's own; both canvases parse the same way and only disagree about the limits.
  */
-export function parseSurfaceZoomPercent(input: string): number | null {
+export function parseZoomPercent(input: string, range: ZoomRange = SURFACE_ZOOM_RANGE): number | null {
     const cleaned = input.replace(/[%％\s,]/g, "");
     if (!cleaned || !/^\d*\.?\d+$/.test(cleaned)) {
         return null;
@@ -255,11 +267,11 @@ export function parseSurfaceZoomPercent(input: string): number | null {
     if (!Number.isFinite(percent) || percent <= 0) {
         return null;
     }
-    return clampSurfaceZoomScale(percent / 100);
+    return Math.max(range.min, Math.min(range.max, percent / 100));
 }
 
-/** The percentage the tool bar shows for a scale. */
-export function formatSurfaceZoomPercent(scale: number): number {
+/** The percentage a zoom control shows for a scale. */
+export function formatZoomPercent(scale: number): number {
     return Math.round(scale * 100);
 }
 

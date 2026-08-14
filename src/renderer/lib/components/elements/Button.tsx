@@ -10,6 +10,12 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     size?: ButtonSize;
     children: React.ReactNode;
     fullWidth?: boolean;
+    /**
+     * Declared rather than inherited: `ButtonHTMLAttributes` carries no `ref`, so without this a
+     * caller that needs to measure the button - anchoring a popover to it, say - is turned away by
+     * the type even though React 19 passes the ref straight through to the element below.
+     */
+    ref?: React.Ref<HTMLButtonElement>;
 }
 
 const variantStyles: Record<ButtonVariant, string> = {

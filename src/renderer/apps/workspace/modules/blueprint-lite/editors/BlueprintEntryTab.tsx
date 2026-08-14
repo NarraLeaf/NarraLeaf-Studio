@@ -1919,6 +1919,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 <div className="min-h-0 flex-1">
                     <BlueprintFlowCanvas
                         nodeCatalog={nodeCatalog}
+                        memberPanelCollapsed={memberPanelState.memberPanelCollapsed}
                         graphKey={graphKey}
                         ir={ir}
                         revision={revision}
