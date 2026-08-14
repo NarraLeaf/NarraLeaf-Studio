@@ -10,7 +10,7 @@ import {
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
-import { MousePointer2, Move, Play, Magnet, Maximize, PanelsTopLeft } from "lucide-react";
+import { MousePointer2, Move, Play, Magnet, PanelsTopLeft } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { ContextMenu, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -43,7 +43,8 @@ import {
     usePreviewAspectId,
     usePreviewSafeAreaId,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
-import { useSurfaceViewportAutoFit } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceViewportAutoFit";
+import { useSurfaceViewportZoom } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceViewportZoom";
+import { SurfaceZoomMenu } from "@/apps/workspace/modules/ui-editor/editors/SurfaceZoomMenu";
 import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
 import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceImageDrop";
 import { useSurfaceDoubleClick } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceDoubleClick";
@@ -356,9 +357,10 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     );
 
     // Opening an interface shows all of it: the canvas is fitted to the free part of the editing
-    // area and centred there, and stays fitted while that area changes size - until the author
-    // zooms or pans, after which the view is theirs and only the tool bar button below refits it.
-    const { fitToViewport } = useSurfaceViewportAutoFit({
+    // area and centred there, and keeps answering whichever mode is in force while that area
+    // changes size - until the author zooms, pans or types a number, after which the view is theirs
+    // and only the zoom menu in the tool bar below puts it back on a mode.
+    const zoom = useSurfaceViewportZoom({
         stateService,
         surfaceId,
         designSize: surface?.designSize,
@@ -738,16 +740,13 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         >
                             <Move className="w-4 h-4" />
                         </button>
-                        {/* The zoom the canvas is at, and the way back to the fit it opened with. */}
-                        <button
-                            type="button"
-                            className={`${toolButtonClass(false)} w-auto min-w-[3.25rem] gap-1 px-2 tabular-nums`}
-                            onClick={fitToViewport}
-                            data-tip={t("uiEditor.editor.fitToView")} aria-label={t("uiEditor.editor.fitToView")}
-                        >
-                            <Maximize className="h-4 w-4 shrink-0" />
-                            {Math.round(viewport.scale * 100)}%
-                        </button>
+                        <SurfaceZoomMenu
+                            scale={viewport.scale}
+                            fit={zoom.fit}
+                            applyFitMode={zoom.applyFitMode}
+                            setZoomScale={zoom.setZoomScale}
+                            enabled={Boolean(stateService)}
+                        />
                         <SurfaceEditorToolbarButtonGroup aria-label={t("uiEditor.snap.label")}>
                             <SurfaceEditorToolbarSegButton
                                 type="button"

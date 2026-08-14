@@ -6,8 +6,13 @@ import {
     SURFACE_FIT_OUTLINE_PANEL_INSET_PX,
     SURFACE_FIT_OUTLINE_TOGGLE_INSET_PX,
     SURFACE_FIT_TOOLBAR_INSET_PX,
+    SURFACE_ZOOM_MAX_SCALE,
+    SURFACE_ZOOM_MIN_SCALE,
     areViewportTransformsEqual,
     computeFitViewportTransform,
+    computeZoomedViewportTransform,
+    formatSurfaceZoomPercent,
+    parseSurfaceZoomPercent,
     resolveSurfaceFitInsets,
 } from "./fitViewport";
 
@@ -115,6 +120,173 @@ describe("computeFitViewportTransform", () => {
                 designSize: DESKTOP_DESIGN,
             }),
         ).toBeNull();
+    });
+});
+
+describe("fit modes", () => {
+    // A pane wider than the interface's ratio: width has slack, height decides a contain fit.
+    const CONTAINER = { width: 1200, height: 500 };
+
+    it("shows all of the interface in contain, at the cost of an empty side", () => {
+        const transform = computeFitViewportTransform({
+            container: CONTAINER,
+            designSize: DESKTOP_DESIGN,
+            mode: "contain",
+        })!;
+
+        expect(transform.scale).toBeCloseTo(500 / 1080, 5);
+        expect(1920 * transform.scale).toBeLessThanOrEqual(1200);
+        expect(1080 * transform.scale).toBeCloseTo(500, 5);
+    });
+
+    it("leaves no empty side in cover, at the cost of an edge running past the pane", () => {
+        const transform = computeFitViewportTransform({
+            container: CONTAINER,
+            designSize: DESKTOP_DESIGN,
+            mode: "cover",
+            maxScale: SURFACE_ZOOM_MAX_SCALE,
+        })!;
+
+        expect(transform.scale).toBeCloseTo(1200 / 1920, 5);
+        // The axis that decided the scale fills exactly; the other one overflows, evenly.
+        expect(1920 * transform.scale).toBeCloseTo(1200, 5);
+        expect(1080 * transform.scale).toBeGreaterThan(500);
+        expect(transform.offsetY).toBe(Math.round((500 - 1080 * transform.scale) / 2));
+    });
+
+    it("spans the pane horizontally in width, whatever that does to the height", () => {
+        const tall = computeFitViewportTransform({
+            container: { width: 1200, height: 2000 },
+            designSize: DESKTOP_DESIGN,
+            mode: "width",
+            maxScale: SURFACE_ZOOM_MAX_SCALE,
+        })!;
+
+        expect(tall.scale).toBeCloseTo(1200 / 1920, 5);
+        expect(tall.offsetX).toBe(0);
+        // Vertically centred in the space left over, since width alone decided the scale.
+        expect(tall.offsetY).toBe(Math.round((2000 - 1080 * tall.scale) / 2));
+    });
+
+    it("draws one interface pixel per screen pixel in actual, centred rather than at the origin", () => {
+        const transform = computeFitViewportTransform({
+            container: CONTAINER,
+            designSize: DESKTOP_DESIGN,
+            mode: "actual",
+            maxScale: SURFACE_ZOOM_MAX_SCALE,
+        })!;
+
+        expect(transform.scale).toBe(1);
+        // Bigger than the pane in both axes, so both offsets are negative and equal on each side.
+        expect(transform.offsetX).toBe(Math.round((1200 - 1920) / 2));
+        expect(transform.offsetY).toBe(Math.round((500 - 1080) / 2));
+    });
+
+    it("keeps the magnification ceiling off a mode the author picked", () => {
+        const params = {
+            container: { width: 1600, height: 900 },
+            designSize: { width: 200, height: 60 },
+            mode: "cover" as const,
+        };
+        // "Fill the editing area" that stopped at 2x and left a margin would be a broken promise.
+        const chosen = computeFitViewportTransform({ ...params, maxScale: SURFACE_ZOOM_MAX_SCALE })!;
+        const automatic = computeFitViewportTransform(params)!;
+
+        // 900/60 = 15x would fill it, so the only thing still holding this back is the range the
+        // viewport itself accepts - the preview ceiling is gone.
+        expect(chosen.scale).toBe(SURFACE_ZOOM_MAX_SCALE);
+        expect(automatic.scale).toBe(SURFACE_FIT_MAX_SCALE);
+    });
+
+    it("measures every mode against the same box, so switching modes moves nothing else", () => {
+        const insets = resolveSurfaceFitInsets({ outlineCollapsed: false });
+        const boxCentreX = SURFACE_FIT_OUTLINE_PANEL_INSET_PX
+            + (1600 - SURFACE_FIT_OUTLINE_PANEL_INSET_PX - SURFACE_FIT_EDGE_INSET_PX) / 2;
+
+        for (const mode of ["contain", "cover", "width", "actual"] as const) {
+            const transform = computeFitViewportTransform({
+                container: { width: 1600, height: 900 },
+                designSize: DESKTOP_DESIGN,
+                insets,
+                mode,
+                maxScale: SURFACE_ZOOM_MAX_SCALE,
+            })!;
+            expect(transform.offsetX + (1920 * transform.scale) / 2).toBeCloseTo(boxCentreX, 0);
+        }
+    });
+});
+
+describe("computeZoomedViewportTransform", () => {
+    const CONTAINER = { width: 1000, height: 800 };
+
+    it("keeps what the middle of the pane was showing", () => {
+        const current = { scale: 0.5, offsetX: -100, offsetY: -50 };
+        // What sits under the centre before: (500 + 100) / 0.5 = 1200, (400 + 50) / 0.5 = 900.
+        const next = computeZoomedViewportTransform({ current, container: CONTAINER, nextScale: 1.5 })!;
+
+        expect(next.scale).toBe(1.5);
+        expect(500 - (1200 * next.scale + next.offsetX)).toBeCloseTo(0, 0);
+        expect(400 - (900 * next.scale + next.offsetY)).toBeCloseTo(0, 0);
+    });
+
+    it("anchors on the free box, not the whole pane, so the chrome does not drag the view", () => {
+        const current = { scale: 1, offsetX: 0, offsetY: 0 };
+        const withInsets = computeZoomedViewportTransform({
+            current,
+            container: CONTAINER,
+            insets: resolveSurfaceFitInsets({ outlineCollapsed: false }),
+            nextScale: 2,
+        })!;
+        const withoutInsets = computeZoomedViewportTransform({ current, container: CONTAINER, nextScale: 2 })!;
+
+        expect(withInsets.offsetX).not.toBe(withoutInsets.offsetX);
+    });
+
+    it("holds the zoom inside the range the viewport accepts", () => {
+        const current = { scale: 1, offsetX: 0, offsetY: 0 };
+        expect(computeZoomedViewportTransform({ current, container: CONTAINER, nextScale: 40 })!.scale)
+            .toBe(SURFACE_ZOOM_MAX_SCALE);
+        expect(computeZoomedViewportTransform({ current, container: CONTAINER, nextScale: 0.001 })!.scale)
+            .toBe(SURFACE_ZOOM_MIN_SCALE);
+    });
+
+    it("refuses a pane it cannot measure, or a zoom that is not a number", () => {
+        const current = { scale: 1, offsetX: 0, offsetY: 0 };
+        expect(computeZoomedViewportTransform({ current, container: { width: 0, height: 0 }, nextScale: 2 })).toBeNull();
+        expect(computeZoomedViewportTransform({ current, container: CONTAINER, nextScale: Number.NaN })).toBeNull();
+    });
+});
+
+describe("parseSurfaceZoomPercent", () => {
+    it("reads what a percentage box realistically receives", () => {
+        expect(parseSurfaceZoomPercent("150")).toBeCloseTo(1.5, 5);
+        expect(parseSurfaceZoomPercent("150%")).toBeCloseTo(1.5, 5);
+        expect(parseSurfaceZoomPercent(" 1 50 ")).toBeCloseTo(1.5, 5);
+        // Full-width percent sign, which is what a Chinese or Japanese IME produces.
+        expect(parseSurfaceZoomPercent("150％")).toBeCloseTo(1.5, 5);
+        expect(parseSurfaceZoomPercent("62.5")).toBeCloseTo(0.625, 5);
+    });
+
+    it("clamps a number out of range rather than refusing it", () => {
+        expect(parseSurfaceZoomPercent("5000")).toBe(SURFACE_ZOOM_MAX_SCALE);
+        expect(parseSurfaceZoomPercent("1")).toBe(SURFACE_ZOOM_MIN_SCALE);
+    });
+
+    it("returns nothing for what is not a number, so the box can keep the value it had", () => {
+        expect(parseSurfaceZoomPercent("")).toBeNull();
+        expect(parseSurfaceZoomPercent("   ")).toBeNull();
+        expect(parseSurfaceZoomPercent("big")).toBeNull();
+        expect(parseSurfaceZoomPercent("1.2.3")).toBeNull();
+        expect(parseSurfaceZoomPercent("-50")).toBeNull();
+        expect(parseSurfaceZoomPercent("0")).toBeNull();
+    });
+});
+
+describe("formatSurfaceZoomPercent", () => {
+    it("is the number the tool bar shows, rounded the way the canvas is drawn", () => {
+        expect(formatSurfaceZoomPercent(0.363542)).toBe(36);
+        expect(formatSurfaceZoomPercent(1)).toBe(100);
+        expect(formatSurfaceZoomPercent(SURFACE_ZOOM_MAX_SCALE)).toBe(1000);
     });
 });
 

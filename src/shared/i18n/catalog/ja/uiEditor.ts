@@ -84,7 +84,6 @@ export const uiEditor = {
         loadingServices: "エディタのサービスを読み込んでいる…",
         selectTool: "選択ツール",
         panTool: "キャンバスを動かす",
-        fitToView: "インターフェース全体が入るように合わせる",
         openInDevMode: "このインターフェースを開発モードで開く",
         componentDefinitionHint: "コンポーネントは定義として編集する",
         bindElement: "要素を結びつける",
@@ -94,6 +93,14 @@ export const uiEditor = {
         layerFallback: "レイヤー",
         openComponent: "コンポーネントを開く",
         unlinkComponent: "コンポーネントのリンクを外す",
+    },
+    zoom: {
+        label: "拡大縮小",
+        actualSize: "実際のサイズ",
+        fitArea: "編集領域に合わせる",
+        fillArea: "編集領域いっぱいにする",
+        fitWidth: "幅に合わせる",
+        custom: "任意の値",
     },
     snap: {
         label: "スマートスナップ",

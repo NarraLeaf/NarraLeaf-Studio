@@ -83,7 +83,6 @@ export const uiEditor = {
         loadingServices: "正在加载编辑器服务…",
         selectTool: "选择工具",
         panTool: "平移画布",
-        fitToView: "缩放至完整显示界面",
         openInDevMode: "在开发模式中打开此界面",
         componentDefinitionHint: "组件以定义形式编辑",
         bindElement: "绑定元素",
@@ -93,6 +92,14 @@ export const uiEditor = {
         layerFallback: "图层",
         openComponent: "打开组件",
         unlinkComponent: "解除组件关联",
+    },
+    zoom: {
+        label: "缩放",
+        actualSize: "实际尺寸",
+        fitArea: "适应编辑区",
+        fillArea: "充满编辑区",
+        fitWidth: "适配宽度",
+        custom: "自定义",
     },
     snap: {
         label: "智能吸附",
