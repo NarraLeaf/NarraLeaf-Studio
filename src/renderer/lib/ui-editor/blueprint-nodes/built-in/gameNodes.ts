@@ -34,6 +34,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
@@ -1427,6 +1428,72 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                     savedAt: times?.savedAt ?? 0,
                     createdAt: times?.createdAt ?? 0,
                     exists: Boolean(times),
+                },
+            };
+        },
+    },
+    {
+        /**
+         * Where a slot stopped, in the words the save itself carries.
+         *
+         * The engine stamps `lastSentence` / `lastSpeaker` into the save on every serialize and no
+         * graph could read either, so the one line a save screen exists to show had to be rebuilt by
+         * hand: read the live backlog at `Save Game` time, take the newest entry, pull its text and
+         * character out, and write them into the save's own metadata. That is eight nodes per slot
+         * to restate a fact already on disk, and it is not even the same fact - the newest backlog
+         * entry is the last line *shown*, while these are the line the save *resumes from*. Saving
+         * from an overlay, a say followed by non-say actions, or a backlog past its cap all pull the
+         * two apart, and the hand-built copy is the one that is wrong.
+         *
+         * Keyed by id like the rest of the family, so it composes with `List Saves` and
+         * `List Auto Saves` alike. `storyHash` is deliberately not published here: the only use for
+         * it in a graph would be refusing to load a save, and refusing on a hash is exactly what
+         * this project decided against - it changes when a single line of text is edited, so it
+         * would reject a great many saves that load perfectly.
+         */
+        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+        displayName: "Get Save Line",
+        category: "Game",
+        keywords: ["game", "save", "line", "sentence", "text", "speaker", "character", "slot", "summary"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            saveIdIn,
+            {
+                id: "line",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Line",
+            },
+            {
+                id: "speaker",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Speaker",
+            },
+            {
+                id: "exists",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Exists",
+            },
+        ],
+        async execute(ctx) {
+            const saved = await requireHostApi(ctx).game.getSaveLine(resolveSaveId(ctx));
+            return {
+                nextPort: "next",
+                outputValues: {
+                    // Empty strings for a slot that is not there, and `exists` to tell that apart
+                    // from a real slot saved before any line played - both answer "" here.
+                    line: saved?.line ?? "",
+                    speaker: saved?.speaker ?? "",
+                    exists: Boolean(saved),
                 },
             };
         },

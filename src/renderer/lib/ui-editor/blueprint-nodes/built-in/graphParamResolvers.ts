@@ -149,6 +149,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
@@ -2893,6 +2894,14 @@ function resolveSelfOutput(
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME &&
         (portId === "savedAt" || portId === "createdAt" || portId === "exists")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // Get Save Line, separate for the same reason as Get Save Time: `speaker` is a port name several
+    // nodes in the cross-product list carry, and joining it would hand this node's outputs to them.
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE &&
+        (portId === "line" || portId === "speaker" || portId === "exists")
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }

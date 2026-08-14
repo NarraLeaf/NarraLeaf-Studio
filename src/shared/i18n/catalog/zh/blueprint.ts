@@ -697,6 +697,9 @@ export const blueprint = {
         ok: "成功",
         savedAt: "保存时间",
         createdAt: "创建时间",
+        /** Get Save Line: the words a slot stopped on, and who said them. */
+        line: "语句",
+        speaker: "说话人",
         unit: "单位",
         dateStyle: "日期样式",
         timeStyle: "时间样式",
@@ -1181,5 +1184,6 @@ export const blueprint = {
         startOfDay: "当天零点",
         getTimeZone: "获取时区",
         getSaveTime: "获取存档时间",
+        getSaveLine: "获取存档语句",
     },
 } satisfies LocaleNamespace<"blueprint">;
