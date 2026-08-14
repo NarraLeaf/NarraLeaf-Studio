@@ -201,6 +201,25 @@ export const build = {
         compressionNormal: "Normal",
         compressionStore: "None (fastest)",
     },
+    /**
+     * What a finished build came to on disk, printed under the list of artifacts in the console.
+     *
+     * The numbers themselves are not translated - the shared byte formatting is the same three
+     * letters in every locale Studio ships - so only the words around them live here.
+     */
+    size: {
+        /**
+         * Stands where a size would be for an artifact that could not be measured. Never "0 B":
+         * an author who reads that believes the build wrote nothing.
+         */
+        unknown: "size unknown",
+        /**
+         * The one total line. It counts the artifacts it managed to measure rather than all of
+         * them, so the sentence stays true when one of them could not be read.
+         */
+        totalOne: "Total size: {size} in 1 artifact.",
+        totalMany: "Total size: {size} in {count} artifacts.",
+    },
     mirror: {
         official: "official source",
         change: "Change",

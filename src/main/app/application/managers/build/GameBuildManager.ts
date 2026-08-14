@@ -73,6 +73,7 @@ import {
     signingPlatformForTarget,
     signingReachesNetwork,
 } from "./preflight";
+import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
 import { optimizeWebExportImages } from "./optimizeWebExport";
 import { openWebImageCodec, type WebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
@@ -93,7 +94,7 @@ import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProto
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
-import { getMainLocale } from "../../i18n";
+import { getMainLocale, getMainTranslator } from "../../i18n";
 import { readProjectAppTagDocumentFromDir, readProjectAppTagsFromDir } from "../../utils/appTagsFile";
 import {
     createEmptyAppTagDocument,
@@ -1159,19 +1160,25 @@ export class GameBuildManager {
         const artifacts = await this.runWorker(session, workerConfig);
         // A cancel that raced the worker's completion must win over "done".
         this.ensureNotCancelled(session);
+        // Measured before the snapshot is published so the console line below and anything else
+        // reading the finished build report the same numbers off one walk of the output. Sizing is
+        // best-effort and cannot reject, so a build that packaged successfully still finishes here.
+        const artifactSizes = await measureBuildArtifacts(artifacts);
         session.snapshot = {
             status: "done",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
             platforms: session.snapshot.platforms,
             artifacts,
+            artifactSizes,
             outputDir,
         };
         this.emit(session, {
             level: "success",
             source: "Build",
             message: artifacts.length > 0
-                ? `build finished:\n${artifacts.map(a => path.relative(session.projectPath, a)).join("\n")}`
+                ? "build finished:\n"
+                    + formatArtifactSizeReport(artifactSizes, session.projectPath, getMainTranslator(this.app))
                 : `build finished: ${path.relative(session.projectPath, outputDir)}`,
         });
         // Absent (older stored selections, non-UI callers) keeps the pre-setting
