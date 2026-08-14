@@ -59,7 +59,14 @@
   <link href="<%= style %>" rel="stylesheet">
 </head>
 
-<body>
+<!--
+  Chromium checks the spelling of every editable field it is given by default, and `spellcheck`
+  inherits. Off at the root, so the one field that wants it turns it on for itself: the story
+  script. Everything else editable in Studio is either not prose at all (an id, a path, an
+  expression) or prose in somebody else's language - the localization editor holds translations,
+  which are not the project's source language and are not the author's to respell.
+-->
+<body spellcheck="false">
   <div id="root"></div>
 </body>
 

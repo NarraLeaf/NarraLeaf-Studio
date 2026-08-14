@@ -5,6 +5,7 @@ import {assetsMetadataSpec} from "./assetsMetadata";
 import {audioTracksSpec} from "./audioTracks";
 import {brandSpec} from "./brand";
 import {charactersSpec} from "./characters";
+import {dictionarySpec} from "./dictionary";
 import {localizationDocumentSpec} from "./localization";
 import {localizationKeysSpec} from "./localizationKeys";
 import {storyDocumentSpec} from "./story";
@@ -21,6 +22,7 @@ export {VOICE_DOCUMENT_PATH, voiceDocumentSpec} from "./voice";
 export {LOCALIZATION_DOCUMENT_PATH, localizationDocumentSpec} from "./localization";
 export {LOCALIZATION_KEYS_DOCUMENT_PATH, localizationKeysSpec} from "./localizationKeys";
 export {CHARACTER_STORE_DOCUMENT_PATH, charactersSpec} from "./characters";
+export {DICTIONARY_DOCUMENT_PATH, dictionarySpec} from "./dictionary";
 export {STORY_DOCUMENT_PATH, storyDocumentSpec} from "./story";
 export {UI_DOCUMENT_PATH, uiDocumentSpec} from "./uiDocument";
 export {UI_GRAPHS_DOCUMENT_PATH, uiGraphsSpec} from "./uiGraphs";
@@ -49,6 +51,7 @@ export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
     appTagsSpec,
     audioTracksSpec,
     brandSpec,
+    dictionarySpec,
     variableRegistrySpec,
     voiceDocumentSpec,
     localizationDocumentSpec,

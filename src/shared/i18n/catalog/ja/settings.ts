@@ -172,6 +172,15 @@ export const settings = {
                 command: "コマンドを強調",
             },
         },
+        spellcheckLanguage: {
+            label: "スペルチェックの言語",
+            description: "ストーリー本文のつづりの誤りに印を付ける。訳文は対象外",
+            noDictionary: "このプロジェクトの言語にはスペル辞書がないため、本文に印は付かない。プロジェクト辞書はこのプロジェクトの用語を保持し続ける",
+            options: {
+                followProject: "プロジェクトの言語に従う",
+                off: "スペルチェックを行わない",
+            },
+        },
         detachedEditorOnClose: {
             label: "切り離したエディタのウィンドウを閉じたとき",
             description: "独立したウィンドウで開いたエディタを、ワークスペースに戻すか、ウィンドウごと閉じるか",

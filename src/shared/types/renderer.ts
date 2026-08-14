@@ -53,6 +53,7 @@ import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThem
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { SpellcheckContextMenuPayload, SpellcheckStatus } from "./spellcheck";
 import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
@@ -312,6 +313,24 @@ export interface RendererPreloadedInterface {
         requestWorkspaceView(view: WorkspaceViewRequest): Promise<RequestStatus<{ delivered: boolean }>>;
         /** Open an http(s) URL in the system browser (other schemes are refused). */
         openExternal(url: string): Promise<RequestStatus<void>>;
+        /**
+         * Chromium's spellchecker, which lives in the session and is therefore out of a renderer's
+         * reach entirely - the language, the custom dictionary and the verdict on a word are all
+         * only knowable here. The project dictionary itself is a document the workspace owns; this
+         * is only how its words get into the checker and how a misspelling gets back out.
+         */
+        spellcheck: {
+            /** Hand the session this project: the language of its script, and the words it keeps. */
+            configure(sourceLocale: string, words: string[]): Promise<RequestStatus<SpellcheckStatus>>;
+            /** Take this project's words back out, so the next project does not inherit them. */
+            clear(): Promise<RequestStatus<void>>;
+            /** What spellchecking is doing now, including every language a dictionary exists for. */
+            getStatus(): Promise<RequestStatus<SpellcheckStatus>>;
+            /** Put `text` in place of the misspelling the context menu was opened on. */
+            replaceMisspelling(text: string): Promise<RequestStatus<void>>;
+            /** A right click landed on editable text; the payload carries the spelling verdict. */
+            onContextMenu(handler: (payload: SpellcheckContextMenuPayload) => void): AppEventToken;
+        };
         /** Pick + store a custom background image; returns the stored filename (null = cancelled). */
         pickBackgroundImage(): Promise<RequestStatus<{ file: string | null }>>;
         /** Read a stored background image's bytes (basename lookup only). */

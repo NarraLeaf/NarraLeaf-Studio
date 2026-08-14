@@ -56,6 +56,7 @@ export const documentDiff = {
         brandColors: "配色",
         characterGroups: "角色分组",
         characters: "角色",
+        dictionaryWords: "词典词条",
         localizationKeys: "本地化键",
         storyBlocks: "故事行",
         storyChapters: "章节",

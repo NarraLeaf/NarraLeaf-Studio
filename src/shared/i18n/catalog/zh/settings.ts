@@ -162,6 +162,15 @@ export const settings = {
                 command: "高亮指令行",
             },
         },
+        spellcheckLanguage: {
+            label: "拼写检查语言",
+            description: "在故事正文中标出拼写错误。译文一律不检查",
+            noDictionary: "本工程所用语言没有拼写词典，正文中不会标出任何内容。工程词典仍然保存着本工程自己的词条",
+            options: {
+                followProject: "跟随工程语言",
+                off: "不检查拼写",
+            },
+        },
         detachedEditorOnClose: {
             label: "独立编辑器关闭窗口后的行为",
             description: "在独立窗口中打开的编辑器，关窗后回到工作区或随窗口一同关闭",

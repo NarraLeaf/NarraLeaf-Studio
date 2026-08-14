@@ -83,6 +83,7 @@ export const documentDiff = {
         brandColors: "Brand colors",
         characterGroups: "Character groups",
         characters: "Characters",
+        dictionaryWords: "Dictionary words",
         localizationKeys: "Localization keys",
         storyBlocks: "Story rows",
         storyChapters: "Chapters",

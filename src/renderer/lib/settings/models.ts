@@ -128,7 +128,12 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
      * Dynamic availability, re-evaluated on mount and whenever the Settings window regains focus
      * (the condition usually depends on other windows, e.g. "a workspace is open"; it may also be
      * fixed for the session, as the platform check on `app.confirmQuit` is).
-     * When unavailable, the control renders disabled and `reasonKey` replaces the description.
+     * When unavailable, the control renders disabled.
+     *
+     * `reasonKey` replaces the description whenever it is returned, `enabled` or not. Usually it is
+     * why a control is closed; it may also be something true about a row that still works, which is
+     * how the spellcheck language says that the project's language has no dictionary without taking
+     * away the ability to name another one.
      */
     availability?: () => Promise<{ enabled: boolean; reasonKey?: TranslationKey }>;
 }

@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { screen } from "electron";
+import { screen, session } from "electron";
 import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
@@ -21,6 +21,8 @@ import { getMainTranslator } from "./application/i18n";
 import { ConfirmQuitManager } from "./application/managers/confirmQuit";
 import { TrayManager } from "./application/managers/trayManager";
 import { UpdateManager } from "./application/managers/updateManager";
+import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
+import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { resolveStartupProject } from "./application/startupProject";
 
 export interface AppConfig extends BaseAppConfig {
@@ -85,6 +87,12 @@ export class App extends BaseApp {
 
         this.updateManager = new UpdateManager(this);
         this.confirmQuitManager = new ConfirmQuitManager(this);
+        // The session is resolved through a function rather than captured: `defaultSession` only
+        // exists once Electron is ready, and this constructor runs before that.
+        this.spellcheckManager = new SpellcheckManager(
+            () => session.defaultSession,
+            () => this.globalState.get(SPELLCHECK_LANGUAGE_KEY),
+        );
 
         // Built as soon as there is an Electron app to attach it to, because from here on it is
         // the only handle a windowless Studio has - see handleLastWindowClosed, which reads
@@ -118,6 +126,12 @@ export class App extends BaseApp {
     private readonly vcsManager: VcsManager;
     private readonly updateManager: UpdateManager;
     private readonly confirmQuitManager: ConfirmQuitManager;
+    private readonly spellcheckManager: SpellcheckManager;
+
+    /** Chromium's spellchecker, and the project words currently loaded into it. */
+    public getSpellcheckManager(): SpellcheckManager {
+        return this.spellcheckManager;
+    }
 
     public getDevModeManager(): DevModeManager {
         return this.devModeManager;

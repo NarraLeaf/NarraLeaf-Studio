@@ -170,6 +170,20 @@ export const settings = {
                 command: "Highlight commands",
             },
         },
+        spellcheckLanguage: {
+            label: "Spellcheck language",
+            description: "Marks misspellings in the story script. Translations are never checked.",
+            /**
+             * Shown in place of the description while the project's own language has no dictionary.
+             * A statement of what is true, not an error: Chinese and Japanese have no spelling in
+             * the hunspell sense, so there is nothing for Chromium to check and never will be.
+             */
+            noDictionary: "There is no spelling dictionary for this project's language, so nothing in the script is marked. The project dictionary still holds the project's own terms.",
+            options: {
+                followProject: "Follow the project's language",
+                off: "Do not check spelling",
+            },
+        },
         detachedEditorOnClose: {
             label: "When a detached editor window closes",
             description: "An editor opened in its own window either returns to the workspace or closes with the window.",
