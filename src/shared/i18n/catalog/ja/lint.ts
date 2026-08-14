@@ -66,7 +66,7 @@ export const lint = {
         },
         networkFetchDisallowed: {
             title: "ネットワークを使えないのにネットワークノードがある",
-            description: "HTTP を許可していないプロジェクトの中のネットワークノード",
+            description: "ネットワークポリシーが「使わない」のプロジェクトにあるネットワークノード",
             message: "{blueprint} はネットワーク要求を行うが、このプロジェクトはそれを許可していない",
         },
         storyInvalidCommand: {

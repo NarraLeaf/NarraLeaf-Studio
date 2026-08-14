@@ -12,8 +12,9 @@ import {
     type GameCrashPolicy,
 } from "@shared/types/gameRuntime";
 import {
-    NETWORK_POLICY_ALLOWLIST,
     NETWORK_POLICY_ANY,
+    NETWORK_POLICY_OFF,
+    normalizeNetworkAccessPolicy,
     normalizeNetworkAllowlistEntries,
     type NetworkAccessPolicy,
 } from "@shared/types/networkAllowlist";
@@ -81,15 +82,24 @@ export type {
 // `Record<string, unknown>` shape used by the msgpack persistence layer
 // (see ProjectConfigData in @shared/utils/nlproj).
 export type NetworkConfiguration = {
+    /**
+     * Derived from {@link policy}, never authored and never stored on its own.
+     *
+     * The two used to be separate settings and could disagree; they are now one authored value with
+     * three positions, and this is the half of it the runtime's CSP and `webRequest` layers read.
+     * Projects written before the change carry only `allowHttp`, and it is what their policy is
+     * migrated from - see {@link normalizeNetworkConfiguration}.
+     */
     allowHttp: boolean;
     allowRemoteResource: boolean;
     allowRemoteScript: boolean;
     /**
-     * How much of the network the build reaches once {@link allowHttp} is on.
+     * How much of the network the build reaches. The whole setting, in one value.
      *
-     * `"any"` unless a team asks for less, which is deliberate: a node an author wired up is
-     * expected to run, and a default that made authored graphs fail would teach people to switch
-     * the safety off before they had a reason to understand it. See `@shared/types/networkAllowlist`.
+     * `"off"` for a new project. Turning the network on means `"any"` rather than the allowlist,
+     * which is deliberate: a node an author wired up is expected to run, and a default that made
+     * authored graphs fail would teach people to switch the safety off before they had a reason to
+     * understand it. See `@shared/types/networkAllowlist`.
      */
     policy: NetworkAccessPolicy;
     /** The author's own allowlist entries. Only consulted when {@link policy} is `"allowlist"`. */
@@ -335,7 +345,7 @@ export const DEFAULT_NETWORK_CONFIGURATION: NetworkConfiguration = {
     allowHttp: false,
     allowRemoteResource: false,
     allowRemoteScript: false,
-    policy: NETWORK_POLICY_ANY,
+    policy: NETWORK_POLICY_OFF,
     allowlist: [],
 };
 
@@ -349,18 +359,21 @@ export function normalizeNetworkConfiguration(value: unknown): NetworkConfigurat
         return { ...DEFAULT_NETWORK_CONFIGURATION };
     }
     const record = value as Record<string, unknown>;
+    // One authored value decides both. A project written before the tri-state carries only
+    // `allowHttp`, so that is what its position is read from; after that the boolean is derived and
+    // the two cannot drift apart the way two independent settings could.
+    const policy = record.policy === undefined
+        ? (record.allowHttp === true ? NETWORK_POLICY_ANY : NETWORK_POLICY_OFF)
+        : normalizeNetworkAccessPolicy(record.policy);
     return {
-        allowHttp: typeof record.allowHttp === "boolean" ? record.allowHttp : DEFAULT_NETWORK_CONFIGURATION.allowHttp,
+        allowHttp: policy !== NETWORK_POLICY_OFF,
         allowRemoteResource: typeof record.allowRemoteResource === "boolean"
             ? record.allowRemoteResource
             : DEFAULT_NETWORK_CONFIGURATION.allowRemoteResource,
         allowRemoteScript: typeof record.allowRemoteScript === "boolean"
             ? record.allowRemoteScript
             : DEFAULT_NETWORK_CONFIGURATION.allowRemoteScript,
-        // Anything that is not the narrow value reads as the wide one, including a spelling from a
-        // future version: a stored word this build does not recognize must not silently become a
-        // restriction the author never chose, and it must not fail the project open either.
-        policy: record.policy === NETWORK_POLICY_ALLOWLIST ? NETWORK_POLICY_ALLOWLIST : NETWORK_POLICY_ANY,
+        policy,
         allowlist: normalizeNetworkAllowlistEntries(record.allowlist),
     };
 }

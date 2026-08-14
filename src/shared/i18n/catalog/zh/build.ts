@@ -103,8 +103,16 @@ export const build = {
         localesNone: "尚未配置本地化，游戏只发布一种语言",
         localeSource: "{name}（源语言）",
         network: "网络策略",
-        networkAllowHttp: "允许明文 HTTP",
-        networkStrict: "禁止明文 HTTP",
+        networkPolicyName: {
+            off: "不联网",
+            allowlist: "白名单",
+            any: "任意地址",
+        },
+        networkPolicy: {
+            off: "打包出的游戏会拒绝所有 HTTP 与 HTTPS 请求",
+            allowlist: "打包出的游戏只能请求工程白名单中的地址",
+            any: "打包出的游戏可以通过 HTTP 或 HTTPS 请求任意地址",
+        },
     },
     // 插件页。字段名与说明都来自插件清单，这里只写密文相关的措辞——密文是这一页唯一
     // 不会显示出来的取值。
@@ -331,8 +339,8 @@ export const build = {
     },
     networkNodeDisallowed: "{blueprint} 发起了网络请求，本工程不允许",
     networkSummary: {
-        one: "构建已中止：有 {count} 个网络节点无法运行；请在工程设置中开启「允许 HTTP」，或删除该节点",
-        other: "构建已中止：有 {count} 个网络节点无法运行；请在工程设置中开启「允许 HTTP」，或删除这些节点",
+        one: "构建已中止：{count} 个网络节点无法运行；请在工程设置中修改网络策略，或删除该节点",
+        other: "构建已中止：{count} 个网络节点无法运行；请在工程设置中修改网络策略，或删除这些节点",
     },
     networkAddressNotAllowlisted: "{blueprint} 请求了 {url}，该地址不在本工程的网络请求白名单内",
     networkAllowlistSummary: {
