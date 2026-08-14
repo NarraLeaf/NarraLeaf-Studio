@@ -278,6 +278,27 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 与 `Get Save Metadata`、`Get Save Preview` 一样按 id 取值，因此对 `List Saves` 的玩家槽位和 `List Auto Saves` 的自动存档环同样适用。
 
+## Get Save Line
+
+`blueprint.game.save.getLine` - Get Save Line
+
+读取指定本地存档停在哪一句。引擎每次序列化都会把 `lastSentence` / `lastSpeaker` 写进存档，这个节点是把它们取出来给图使用的通路。
+
+- `in` - 执行入口
+- `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖
+- `line` - 存档停在的那句话（传出引脚）
+- `speaker` - 说这句话的人；旁白或尚无对话时为空串（传出引脚）
+- `exists` - 该存档是否存在（传出引脚）
+- `next` - 读取完成后的执行出口
+
+**不要再用 `Get History` 取 backlog 最后一条来重建这两个值。** 那是同一个事实的第二份副本，而且是不准的那份：backlog 最后一条是**最后显示过**的那一句，这个节点给的是存档**将从哪一句继续**。从叠层菜单里存档、say 之后还跟着非 say 动作、backlog 超出上限被截断，三种情况都会让两者错开。
+
+存档不存在时 `line` 与 `speaker` 都是空串，**要靠 `exists` 判断**：一个在任何对话播放之前就保存的存档同样两项为空。
+
+与 `Get Save Metadata`、`Get Save Preview`、`Get Save Time` 一样按 id 取值，因此对 `List Saves` 的玩家槽位和 `List Auto Saves` 的自动存档环同样适用。
+
+存档里的 `storyHash` **刻意没有开放给图**。它唯一的用途是拒绝加载存档，而按 hash 拒绝正是本项目否决过的做法——改一行正文它就会变，会拦下大量本来能正常读取的存档。
+
 ## Get Save Preview
 
 `blueprint.game.save.getPreview` - Get Save Preview

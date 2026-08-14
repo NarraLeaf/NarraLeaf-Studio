@@ -699,6 +699,9 @@ export const blueprint = {
         ok: "成功",
         savedAt: "保存日時",
         createdAt: "作成日時",
+        /** Get Save Line: the words a slot stopped on, and who said them. */
+        line: "セリフ",
+        speaker: "話者",
         unit: "単位",
         dateStyle: "日付スタイル",
         timeStyle: "時刻スタイル",
@@ -1183,5 +1186,6 @@ export const blueprint = {
         startOfDay: "その日の 0 時",
         getTimeZone: "タイムゾーンを取得",
         getSaveTime: "セーブ時刻を取得",
+        getSaveLine: "セーブのセリフを取得",
     },
 } satisfies LocaleNamespace<"blueprint">;
