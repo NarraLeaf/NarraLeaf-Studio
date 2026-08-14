@@ -110,6 +110,10 @@ export function lintLocationLabel(location: LintLocation, projectName: string): 
                 : location.storyName;
         case "blueprint":
             return location.blueprintName || location.blueprintId;
+        case "surface":
+            return location.elementName
+                ? `${location.surfaceName} / ${location.elementName}`
+                : location.surfaceName;
         case "character":
             return location.characterName || location.characterId;
     }
@@ -131,6 +135,10 @@ export function lintLocationKey(location: LintLocation): string {
             return `story:${location.storyId}:${location.sceneId ?? ""}`;
         case "blueprint":
             return `blueprint:${location.blueprintId}:${location.graphId ?? ""}`;
+        // The page, never the widget on it: keying on the element too would give every unwired
+        // button a heading of its own, which is the one-item-groups failure the story case avoids.
+        case "surface":
+            return `surface:${location.surfaceId}`;
         case "character":
             return `character:${location.characterId}`;
     }

@@ -155,6 +155,21 @@ export const lint = {
             description: "どのビルドバリアントも宣言していないアドレスを持つリンクを開くノード",
             message: "{url} はどのビルドバリアントも宣言していないので、どのビルドもこれを開かない",
         },
+        uiUnlocalizedText: {
+            title: "ローカライズされていないテキスト",
+            description: "第二の言語がある工程で、ウィジェットに直接書かれた文",
+            message: "{text} はローカライズキーにつながっていない",
+        },
+        uiPageUnreachable: {
+            title: "たどり着けないページ",
+            description: "どこからも開かれず、埋め込まれてもいない、開始ページでもないページ",
+            message: "このページを開くものがどこにもない",
+        },
+        uiEmptyBehavior: {
+            title: "処理のないボタン",
+            description: "押せるのに、聞いているものが何もないウィジェット",
+            message: "押しても何も動かない",
+        },
         variablesUndeclared: {
             title: "宣言のない変数",
             description: "宣言せずに使っている変数",
@@ -237,6 +252,8 @@ export const lint = {
         network: "ネットワーク",
         story: "ストーリー",
         blueprint: "ブループリント",
+        // 内部の「Surface」ではなく、作者が目にする言葉で呼ぶ。ここはページとその上の部品の話。
+        ui: "ページ",
         variables: "変数",
         text: "テキスト",
         localization: "ローカライズ",

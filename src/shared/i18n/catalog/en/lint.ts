@@ -158,6 +158,23 @@ export const lint = {
             description: "An Open Link node holding an address no build variant declares",
             message: "{url} is not declared by any build variant, so no build opens it",
         },
+        uiUnlocalizedText: {
+            title: "Unlocalized text",
+            description: "Text written straight onto a widget in a project that has a second language",
+            // The literal, because the locator names the page and the widget but nothing can carry
+            // the words themselves - and on a page of forty labels they are what tells them apart.
+            message: "{text} is not bound to a localization key",
+        },
+        uiPageUnreachable: {
+            title: "Unreachable page",
+            description: "A page nothing opens, embeds, or starts on",
+            message: "Nothing opens this page",
+        },
+        uiEmptyBehavior: {
+            title: "Button with no handler",
+            description: "A clickable widget nothing listens to",
+            message: "Nothing runs when this is clicked",
+        },
         variablesUndeclared: {
             title: "Undeclared variable",
             description: "A variable used without a declaration",
@@ -241,6 +258,9 @@ export const lint = {
         network: "Network",
         story: "Story",
         blueprint: "Blueprint",
+        // The author's word for what this category is about - pages and the widgets on them - not
+        // the internal one ("surfaces"), which names nothing anybody sees in the interface.
+        ui: "Pages",
         variables: "Variables",
         text: "Text",
         localization: "Localization",

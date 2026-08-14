@@ -36,6 +36,10 @@ export function describeLintLocation(location: LintLocation): string {
         }
         case "blueprint":
             return location.blueprintName ?? location.blueprintId;
+        case "surface":
+            return location.elementName
+                ? `${location.surfaceName}${LINT_LOCATION_SEPARATOR}${location.elementName}`
+                : location.surfaceName;
         case "character":
             return location.characterName;
     }
