@@ -690,6 +690,8 @@ export const workspace = {
                 connect: "连接服务器",
                 picker: {
                     title: "连接服务器",
+                    nameLabel: "在服务器上的名称",
+                    namePlaceholder: "my-game",
                     empty: "尚未添加服务器。可在设置中添加，或在下方填写地址",
                     manual: "其他地址",
                     manage: "管理服务器",
