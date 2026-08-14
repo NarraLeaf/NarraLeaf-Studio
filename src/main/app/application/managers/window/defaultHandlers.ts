@@ -25,7 +25,7 @@ import {
     VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
     VcsGetServerSessionHandler, VcsSignInHandler, VcsSignOutHandler, VcsTrustAuthorityHandler,
-    VcsListServersHandler, VcsAddServerHandler, VcsForgetServerHandler,
+    VcsProbeServerHandler, VcsListServersHandler, VcsAddServerHandler, VcsForgetServerHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
@@ -92,6 +92,7 @@ import {
     SigningRemoveHandler,
 } from "./handlers/signingAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
+import { ServerTrustPromptHandler } from "./handlers/serverTrustAction";
 import {
     PluginApproveHandler,
     PluginInstallFromRegistryHandler,
@@ -286,6 +287,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new BlueprintProgressWriteHandler(),
         new BlueprintProgressReadHandler(),
 
+        // The server trust question, in a window of its own
+        new ServerTrustPromptHandler(),
+
         // Plugin permission handlers
         new PluginPermissionPromptLaunchHandler(),
         new PluginPermissionGrantHandler(),
@@ -376,6 +380,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsSetRemoteHandler(),
         new VcsGetServerSessionHandler(),
         new VcsSignInHandler(),
+        new VcsProbeServerHandler(),
         new VcsListServersHandler(),
         new VcsAddServerHandler(),
         new VcsForgetServerHandler(),

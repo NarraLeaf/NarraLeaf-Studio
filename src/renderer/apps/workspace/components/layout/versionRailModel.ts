@@ -5,7 +5,7 @@ import type {
     VcsHistoryEntry,
     VcsUnavailableReason,
 } from "@shared/types/vcs";
-import { VCS_DEFAULT_BRANCH } from "@shared/types/vcs";
+import { VCS_DEFAULT_BRANCH, parseVcsRemoteUrl } from "@shared/types/vcs";
 import type { TranslationKey, Translator } from "@shared/i18n";
 import { recogniseSystemRevisionMessage } from "@shared/vcs/systemRevisionMessage";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
@@ -928,20 +928,32 @@ function unnumbered(revision: RevisionId, inputs: VersionFaceInputs): string {
 /** The choice in the server dialog that is not one of the servers on this machine. */
 export const MANUAL_SERVER = "manual";
 
+/** The dialog with nothing chosen, which is how it opens for a project that uses no server. */
+export const NO_SERVER = "";
+
 /**
  * Which row the server dialog opens on.
  *
  * The server this project already uses, so that changing one is a choice between named
- * things rather than a retype. Where the project uses none - or one nobody has signed in
- * to - it opens on the address field rather than on the first server in the list:
- * connecting somewhere nobody asked for is the one outcome a dialog about where work is
- * sent must not make easy.
+ * things rather than a retype. A project that uses none opens on nothing at all rather
+ * than on the first server in the list: connecting somewhere nobody asked for is the one
+ * outcome a dialog about where work is sent must not make easy.
+ *
+ * Matched on the ORIGIN, not on the whole address. A project's remote carries the name it
+ * has on the server (`lore://host:41337/my-game`) while a session records only the origin,
+ * so comparing the two strings never matched a project that was in fact connected - and it
+ * opened on the address field with the address already in it, which reads as a server this
+ * installation has never heard of.
+ *
+ * An address that no session accounts for is the remaining case: a server that asks nobody
+ * who they are has no account to add, so it is in no list and stays with the address field.
  */
 export function initialServerChoice(
     servers: ReadonlyArray<{ remoteOrigin: string }>,
     remote: string | null,
 ): string {
-    return servers.some((server) => server.remoteOrigin === remote) && remote !== null
-        ? remote
-        : MANUAL_SERVER;
+    const address = remote?.trim() ?? "";
+    if (address === "") return NO_SERVER;
+    const origin = parseVcsRemoteUrl(address)?.origin ?? address;
+    return servers.some((server) => server.remoteOrigin === origin) ? origin : MANUAL_SERVER;
 }

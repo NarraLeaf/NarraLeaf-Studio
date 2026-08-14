@@ -411,6 +411,11 @@ export const build = {
         one: "Build stopped: {count} network node cannot run. Turn on Allow HTTP in project settings, or remove the node.",
         other: "Build stopped: {count} network nodes cannot run. Turn on Allow HTTP in project settings, or remove the nodes.",
     },
+    networkAddressNotAllowlisted: "{blueprint} requests {url}, which is not on this project's network allowlist.",
+    networkAllowlistSummary: {
+        one: "Build stopped: {count} address is not on the network allowlist. Add it in project settings, or change the node.",
+        other: "Build stopped: {count} addresses are not on the network allowlist. Add them in project settings, or change the nodes.",
+    },
     /** Printed when this computer has no converter, so the check could not be made at all. */
     mediaUnchecked: {
         one: "{count} media file was not checked. This computer has no converter.",

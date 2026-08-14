@@ -9,29 +9,75 @@
  *
  * ## What the boundary is
  *
- * A build may open the addresses its variant declared, and nothing else. The declaration lives in
- * `editor/app-tags.json` and travels in the pack (see `GameRuntimePackV1.externalLinks`); the match
- * is exact on the parsed address (see {@link isExternalLinkDeclared}). Every shell checks it in the
- * process that would perform the act, never only in the renderer, because a renderer that asked
- * nicely is not a boundary.
+ * The scheme, and only the scheme. Any address the author writes may be opened, wired or typed,
+ * with no list to keep and nothing to declare - the author wrote the graph, so an address in it is
+ * the author's decision, and asking them to copy it into a second place only produced two places to
+ * forget.
+ *
+ * What the scheme check is for is a different question, and it is not about trusting the author:
+ * `shell.openExternal` hands the address to whatever the operating system registered for it. A
+ * `file:` address runs that file's handler, and for `.exe`, `.bat` and `.lnk` that is execution on
+ * the player's machine; `javascript:` and `data:` are not addresses at all. So the reachable set is
+ * an allowlist rather than a denylist of the four known-bad ones: any software the player installs
+ * can register a new scheme, and a denylist cannot be kept ahead of that.
+ *
+ * `mailto:` is in the set because a contact link is an ordinary thing for a game to have and the
+ * handler behind it composes a message rather than running anything. An author who needs a scheme
+ * outside the set - `steam:` is the one that comes up - reaches it through a plugin, where the
+ * pattern is named in the manifest and approved by name at install.
  *
  * ## The other regime
  *
  * A *plugin* opening an address is a different question with a different answer, and the two are
- * kept apart deliberately - see {@link resolvePluginExternalLink} at the bottom of this file. The
- * node above stays exactly what it was: exact match, `http(s)` only, declared per variant.
+ * kept apart deliberately - see {@link resolvePluginExternalLink} at the bottom of this file. That
+ * one takes wildcard patterns, reaches any scheme the pattern language allows, and is authorized at
+ * install time rather than by the author writing it into a graph.
  *
  * ## What this is not
  *
  * It is not a network permission. No request is made and no bytes come back into the game; the page
- * is handed to the browser the player already uses. So it is not gated on the project's Allow HTTP
- * setting, and turning that setting off does not disable it.
+ * is handed to the browser the player already uses. So it is not gated on the project's network
+ * settings, and turning the network off does not disable it.
  *
  * Comments in English per project convention.
  */
 
-import { isExternalLinkDeclared, normalizeExternalLinkUrl } from "../appTag";
 import { isExternalLinkPatternDeclared } from "../externalLinkPattern";
+
+/**
+ * The schemes the Open Link node can reach. See the note at the top of this file for why this is an
+ * allowlist and why `mailto:` is in it.
+ */
+export const CORE_EXTERNAL_LINK_SCHEMES: readonly string[] = ["http:", "https:", "mailto:"];
+
+/**
+ * One address as it is opened: parsed, and in the form `URL` reads it back out as.
+ *
+ * Null for anything that is not an address this node can open, which is the whole check. Parsed
+ * rather than pattern-matched because the platform will parse it too, and a string that only looks
+ * like an address to a regular expression is exactly the case worth refusing.
+ */
+export function normalizeCoreExternalLinkUrl(raw: unknown): string | null {
+    if (typeof raw !== "string" || !raw.trim()) {
+        return null;
+    }
+    let parsed: URL;
+    try {
+        parsed = new URL(raw.trim());
+    } catch {
+        return null;
+    }
+    if (!CORE_EXTERNAL_LINK_SCHEMES.includes(parsed.protocol.toLowerCase())) {
+        return null;
+    }
+    // Credentials in an address handed to a browser read as one host and go to another
+    // (`https://store.example.com@evil.test/`), and no page a game shows a player carries a
+    // password. Refused here for the reason the pattern language refuses them in a declaration.
+    if (parsed.username || parsed.password) {
+        return null;
+    }
+    return parsed.href;
+}
 
 export type BlueprintOpenExternalRequest = {
     url: string;
@@ -40,9 +86,9 @@ export type BlueprintOpenExternalRequest = {
 /**
  * Which execution pin the Open Link node leaves by.
  *
- * `refused` is the address not being one this build declared, and it is separate from `failed`
- * because the two have different answers: a refusal is fixed by declaring the address, while a
- * failure is the player's machine having nothing to open it with.
+ * `refused` is the address being one this node never opens, and it is separate from `failed`
+ * because the two have different answers: a refusal is fixed by writing a different address, while
+ * a failure is the player's machine having nothing to open it with.
  */
 export type BlueprintOpenExternalOutcome = "opened" | "refused" | "failed";
 
@@ -56,28 +102,29 @@ export type BlueprintOpenExternalResult = {
  * The line a shell writes when it refuses, and the reason the node reports.
  *
  * One sentence in one place so the packaged game, Dev Mode and the web export all name the same
- * fact: which address was asked for, and that the project never declared it. A refusal that only
- * said "not allowed" would send an author to the network settings, which are not what governs this.
+ * fact: which address was asked for, and that its scheme is not one this node opens. It names the
+ * reachable set rather than saying "not allowed", because the author's next move depends on knowing
+ * that a page is fine and the thing they wrote is not a page.
  */
 export function externalLinkRefusalMessage(url: string): string {
-    return `This build does not declare the address ${url.trim() || "(none)"}. `
-        + "Add it under Project -> Build variants to open it.";
+    return `Open Link cannot open ${url.trim() || "(none)"}. `
+        + `Addresses must be ${CORE_EXTERNAL_LINK_SCHEMES.join(", ")}; `
+        + "other schemes are reached through a plugin that declares them.";
 }
 
 /**
- * Decide one request against the addresses this build declared.
+ * Decide one request from the Open Link node.
  *
  * Never throws: the node branches on the outcome, and an exception would leave the graph with
  * nowhere to go. Performing the act is the caller's - each shell opens a page its own way, and the
  * only thing they must share is this decision.
  */
-export function resolveDeclaredExternalLink(
+export function resolveCoreExternalLink(
     request: BlueprintOpenExternalRequest,
-    declared: readonly string[] | undefined,
 ): { allowed: true; url: string } | { allowed: false; result: BlueprintOpenExternalResult } {
     const url = String(request?.url ?? "");
-    const normalized = normalizeExternalLinkUrl(url);
-    if (!normalized || !isExternalLinkDeclared(declared, normalized)) {
+    const normalized = normalizeCoreExternalLinkUrl(url);
+    if (!normalized) {
         return {
             allowed: false,
             result: { outcome: "refused", error: externalLinkRefusalMessage(url) },
@@ -89,15 +136,14 @@ export function resolveDeclaredExternalLink(
 /**
  * The line a shell writes when it refuses a *plugin's* request.
  *
- * Same shape as the one above and the same two facts - which address, and that it was never
- * declared - with the third fact this case has: whose declaration was consulted. A plugin's
- * patterns are its own, so "not declared" is always a statement about one plugin, and a message
- * that left the name out would send an author looking through the project's build variants for a
- * list that has nothing to do with it.
+ * Same shape as the one above, with the fact this case has and that one does not: whose
+ * declaration was consulted. A plugin's patterns are its own, so "not declared" is always a
+ * statement about one plugin, and a message that left the name out would send an author looking
+ * through their own project for a list that has nothing to do with it.
  *
- * The remedy differs too, and says so: a project address is added in Studio, while a plugin's is
- * part of what the author approved at install, so changing it means a new version of the plugin and
- * a fresh approval.
+ * The remedy is different from the node's too, and says so: an address the author writes is the
+ * author's to change, while a plugin's is part of what was approved at install, so changing it
+ * means a new version of the plugin and a fresh approval.
  */
 export function pluginExternalLinkRefusalMessage(pluginId: string, url: string): string {
     return `The plugin ${pluginId.trim() || "(unknown)"} does not declare the address `
@@ -108,12 +154,12 @@ export function pluginExternalLinkRefusalMessage(pluginId: string, url: string):
 /**
  * Decide one plugin request against the patterns that plugin declared.
  *
- * The counterpart of {@link resolveDeclaredExternalLink}, and separate from it on purpose - the two
+ * The counterpart of {@link resolveCoreExternalLink}, and separate from it on purpose - the two
  * regimes answer different questions and must not be able to answer each other's. This one takes
- * patterns rather than addresses, accepts any scheme the pattern language allows rather than
- * `http(s)` only, and is never consulted for the Open Link node. Its result type is shared because
- * a refusal is the same event either way: the graph or the plugin is told which address was refused
- * and gets on with something else.
+ * wildcard patterns rather than deciding an address on its scheme alone, reaches any scheme the
+ * pattern language allows, and is never consulted for the Open Link node. Its result type is
+ * shared because a refusal is the same event either way: the graph or the plugin is told which
+ * address was refused and gets on with something else.
  *
  * `patterns` must come from the manifest entry of the plugin named by `pluginId`, read where the
  * act is performed. A caller that passes one plugin's id with another's patterns has already lost

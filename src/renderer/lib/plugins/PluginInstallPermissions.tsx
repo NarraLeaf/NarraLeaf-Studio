@@ -28,6 +28,12 @@ export interface GroupedInstallPermissions {
      * - its saves, its variables, its own screen - and this one leaves.
      */
     externalLinks: PermissionOf<"externalLink">[];
+    /**
+     * Hosts the plugin requests bytes from. Beside {@link externalLinks} rather than inside it:
+     * one sends the player somewhere, the other brings data back into the game, and an author who
+     * decided about one has not decided about the other.
+     */
+    network: PermissionOf<"network">[];
     /** Author-declared Studio controls (`filesystem` / `api`), kept in declaration order. */
     studio: (PermissionOf<"filesystem"> | PermissionOf<"api">)[];
 }
@@ -40,6 +46,7 @@ export function groupInstallPermissions(
         buildDependencies: [],
         runtime: [],
         externalLinks: [],
+        network: [],
         studio: [],
     };
     for (const permission of permissions ?? []) {
@@ -55,6 +62,9 @@ export function groupInstallPermissions(
                 break;
             case "externalLink":
                 grouped.externalLinks.push(permission);
+                break;
+            case "network":
+                grouped.network.push(permission);
                 break;
             default:
                 grouped.studio.push(permission);
@@ -126,6 +136,7 @@ export function PluginInstallPermissionSections({
         && !groups.buildDependencies.length
         && !groups.runtime.length
         && !groups.externalLinks.length
+        && !groups.network.length
         && !groups.studio.length
     ) {
         return null;
@@ -210,6 +221,25 @@ export function PluginInstallPermissionSections({
                         // One row per pattern, not one row per permission: the patterns are what
                         // the author is agreeing to, and a comma-joined line is a line nobody reads
                         // to the end.
+                        permission.patterns.map((pattern, index) => (
+                            <PermissionRow key={`${groupIndex}-${index}-${pattern}`}>
+                                <span className="font-mono text-xs break-all">{pattern}</span>
+                            </PermissionRow>
+                        ))
+                    ))}
+                </PermissionGroup>
+            ) : null}
+
+            {groups.network.length > 0 ? (
+                <PermissionGroup
+                    label={t("pluginPermission.permissions.section.network")}
+                    rounded={rounded}
+                >
+                    <PermissionRow>
+                        {t("pluginPermission.permissions.section.networkNote")}
+                    </PermissionRow>
+                    {groups.network.flatMap((permission, groupIndex) => (
+                        // One row per pattern, for the reason the addresses above get one each.
                         permission.patterns.map((pattern, index) => (
                             <PermissionRow key={`${groupIndex}-${index}-${pattern}`}>
                                 <span className="font-mono text-xs break-all">{pattern}</span>

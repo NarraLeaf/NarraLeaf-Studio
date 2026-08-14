@@ -7,17 +7,13 @@ import {
     findAppTagByName,
     hasAppTag,
     hasAppTagReachableScenes,
-    isExternalLinkDeclared,
     listAppTags,
     migrateProjectAppTagDocument,
-    normalizeAppTagExternalLinks,
     normalizeAppTagPluginConfig,
     normalizeAppTagReachableScenes,
-    normalizeExternalLinkUrl,
     normalizeProjectAppTags,
     resolveAppTag,
     resolveAppTagEndingSurface,
-    resolveAppTagExternalLinks,
     resolveAppTagIdentity,
     resolveAppTagPluginConfigValue,
     resolveAppTagReachableScenes,
@@ -403,78 +399,6 @@ describe("app tag scene declarations", () => {
 
         expect(document.reachableScenes).toBeUndefined();
         expect(normalizeProjectAppTags([{ id: "demo", name: "Demo", reachableScenes: {} }])[0].reachableScenes)
-            .toBeUndefined();
-    });
-});
-
-describe("app tag external links", () => {
-    it("keeps absolute http and https entries in the form a match compares", () => {
-        expect(normalizeAppTagExternalLinks([
-            " https://store.example.com/app/480 ",
-            "http://example.com",
-        ])).toEqual(["https://store.example.com/app/480", "http://example.com/"]);
-    });
-
-    it("refuses anything that is not an absolute web address", () => {
-        expect(normalizeExternalLinkUrl("file:///C:/secrets.txt")).toBeNull();
-        expect(normalizeExternalLinkUrl("javascript:alert(1)")).toBeNull();
-        expect(normalizeExternalLinkUrl("app://asset/1")).toBeNull();
-        expect(normalizeExternalLinkUrl("/app/480")).toBeNull();
-        expect(normalizeExternalLinkUrl("store.example.com")).toBeNull();
-        expect(normalizeExternalLinkUrl("")).toBeNull();
-        expect(normalizeAppTagExternalLinks("nonsense")).toEqual([]);
-    });
-
-    it("drops a repeated entry and keeps author order", () => {
-        expect(normalizeAppTagExternalLinks([
-            "https://b.example.com/",
-            "https://a.example.com/",
-            "https://b.example.com",
-        ])).toEqual(["https://b.example.com/", "https://a.example.com/"]);
-    });
-
-    it("matches exactly, so a declared host does not cover a lookalike", () => {
-        const declared = ["https://store.example.com"];
-
-        expect(isExternalLinkDeclared(declared, "https://store.example.com/")).toBe(true);
-        expect(isExternalLinkDeclared(declared, " https://store.example.com ")).toBe(true);
-        expect(isExternalLinkDeclared(declared, "https://store.example.com.evil.test/")).toBe(false);
-        expect(isExternalLinkDeclared(declared, "https://store.example.com/app/480")).toBe(false);
-        expect(isExternalLinkDeclared(declared, "http://store.example.com/")).toBe(false);
-        expect(isExternalLinkDeclared(undefined, "https://store.example.com/")).toBe(false);
-        expect(isExternalLinkDeclared(declared, "not a url")).toBe(false);
-    });
-
-    it("reads a variant's own list, and the project's when it states none", () => {
-        const base = ["https://example.com/game"];
-        const stating: ProjectAppTag = {
-            id: "demo",
-            name: "Demo",
-            overrides: {},
-            externalLinks: ["https://example.com/full-version"],
-        };
-
-        expect(resolveAppTagExternalLinks(tag("demo"), base))
-            .toEqual({ value: ["https://example.com/game"], overridden: false });
-        expect(resolveAppTagExternalLinks(stating, base))
-            .toEqual({ value: ["https://example.com/full-version"], overridden: true });
-    });
-
-    it("treats a stated empty list as a statement, not as inheritance", () => {
-        const stored = normalizeProjectAppTags([{ id: "demo", name: "Demo", externalLinks: [] }]);
-
-        expect(stored[0].externalLinks).toEqual([]);
-        expect(resolveAppTagExternalLinks(stored[0], ["https://example.com/"]))
-            .toEqual({ value: [], overridden: true });
-    });
-
-    it("carries the project's own list through a document migration", () => {
-        expect(migrateProjectAppTagDocument({
-            schemaVersion: APP_TAG_SCHEMA_VERSION,
-            tags: [],
-            externalLinks: ["https://example.com/", "not a url"],
-        }).externalLinks).toEqual(["https://example.com/"]);
-        expect(migrateProjectAppTagDocument({ schemaVersion: APP_TAG_SCHEMA_VERSION, tags: [] }).externalLinks)
             .toBeUndefined();
     });
 });

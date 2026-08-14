@@ -118,6 +118,24 @@ export function normalizeAutoSaveConfiguration(value: unknown): AutoSaveConfigur
  * `SavedGameData` blob, whereas the id feeds straight into the existing
  * `Load Save` / `Get Save Preview` / `Get Save Metadata` / `Delete Save` nodes.
  */
+/**
+ * When one save slot was written, as `Get Save Time` publishes it.
+ *
+ * The store has always stamped its records; this is the shape that carries the stamps out to a
+ * graph. Epoch milliseconds, matching {@link AutoSaveEntry} and every Time node, rather than the ISO
+ * strings the record holds - a graph compares and formats numbers, and parsing a string first would
+ * be a step every save screen has to take.
+ *
+ * `null` from a reader means no such slot. A record the store could not stamp answers 0 for the
+ * field it is missing, which is a real slot with an unknown time - not the same thing.
+ */
+export type SaveRecordTimes = {
+    /** When this slot was last written, epoch milliseconds; 0 when the record carries no stamp. */
+    savedAt: number;
+    /** When this slot was first written, epoch milliseconds; 0 when the record carries no stamp. */
+    createdAt: number;
+};
+
 export type AutoSaveEntry = {
     id: string;
     /** Slot index within the ring. */

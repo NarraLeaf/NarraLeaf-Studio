@@ -3,17 +3,16 @@
  *
  * Dev Mode has to behave like the packaged game, or an author tests something the player will not
  * get: the same address is opened here and refused in the build, and nothing in between says why.
- * So this channel resolves the request exactly as the shipped game's main process does - against
- * the project's declared addresses - and refuses everything else.
+ * So this channel resolves the request exactly as the shipped game's main process does - on the
+ * address's scheme, and nothing else.
  *
- * It is deliberately NOT a path to Studio's own `app.openExternal`. That handler exists for
- * Studio's interface, where the address comes from Studio itself; here the address comes from an
- * author's graph inside a running game, and handing that graph a general-purpose opener would make
- * Dev Mode the one shell where the declaration does not apply.
+ * It is deliberately NOT a path to Studio's own `app.openExternal`. The two answer different
+ * questions: Studio's opener is for Studio's own interface, and this one is for an address inside a
+ * running game. They agree today on `http(s)` and would not have to tomorrow, and a channel that
+ * borrowed the other's answer could not tell which one it was enforcing.
  *
- * The declaration is read off disk on every request rather than taken from the caller. A permission
- * passed in by the renderer would make this channel a way around the declaration instead of a way
- * to honour it.
+ * The decision is made here rather than taken from the caller. A verdict passed in by the renderer
+ * would make this channel a way around the check instead of a way to perform it.
  *
  * Comments in English per project convention.
  */
@@ -22,13 +21,11 @@ import { shell } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import {
-    resolveDeclaredExternalLink,
+    resolveCoreExternalLink,
     resolvePluginExternalLinkAmong,
     type BlueprintOpenExternalResult,
     type ExternalLinkDeclaringPlugin,
 } from "@shared/types/blueprint/externalLink";
-import { RELEASE_APP_TAG, resolveAppTagExternalLinks } from "@shared/types/appTag";
-import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -41,7 +38,7 @@ export class BlueprintExternalLinkOpenHandler extends IPCHandler<IPCEventType.bl
         data: IPCEvents[IPCEventType.blueprintExternalLinkOpen]["data"],
     ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>> {
         try {
-            return this.success({ result: await openDeclaredLink(data.projectPath, data.request.url) });
+            return this.success({ result: await openCoreLink(data.request.url) });
         } catch (err) {
             return this.failed(err);
         }
@@ -107,26 +104,11 @@ export class BlueprintExternalLinkOpenForPluginHandler
 }
 
 /**
- * A project in Dev Mode is being run as itself, so the release variant's list is what applies - the
- * project's own addresses. A preview compile passes no variant either, which is the same rule read
- * from the other side.
+ * The same decision the packaged game makes, made in the same place: the process that performs the
+ * act. Dev Mode opens what a build would open, which is any address whose scheme this node reaches.
  */
-async function openDeclaredLink(
-    projectPath: string,
-    url: string,
-): Promise<BlueprintOpenExternalResult> {
-    let declared: readonly string[];
-    try {
-        const document = await readProjectAppTagDocumentFromDir(projectPath);
-        declared = resolveAppTagExternalLinks(RELEASE_APP_TAG, document.externalLinks).value;
-    } catch (error) {
-        // An unreadable document declares nothing: the build would refuse this address too, and
-        // opening a page because a file failed to parse is the one outcome this must never produce.
-        console.warn("[BlueprintExternalLink] Could not read the project's declared links", error);
-        declared = [];
-    }
-
-    const decision = resolveDeclaredExternalLink({ url }, declared);
+async function openCoreLink(url: string): Promise<BlueprintOpenExternalResult> {
+    const decision = resolveCoreExternalLink({ url });
     if (!decision.allowed) {
         console.warn(`[BlueprintExternalLink] Refused: ${decision.result.error}`);
         return decision.result;

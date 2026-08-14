@@ -11,14 +11,12 @@ import {
     isBuiltinAppTagId,
     listAppTags,
     normalizeAppTagEndingSurfaceId,
-    normalizeAppTagExternalLinks,
     normalizeAppTagPluginConfig,
     normalizeAppTagReachableScenes,
     normalizeProjectAppTags,
     RELEASE_APP_TAG,
     resolveAppTag,
     resolveAppTagEndingSurface,
-    resolveAppTagExternalLinks,
     resolveAppTagIdentity,
     resolveAppTagPluginConfigValue,
     resolveAppTagReachableScenes,
@@ -31,7 +29,6 @@ import {
     type AppTagPluginConfig,
     type AppTagReachableScenes,
     type AppTagResolvedEndingSurface,
-    type AppTagResolvedExternalLinks,
     type AppTagResolvedValue,
     type ProjectAppTag,
     type ProjectAppTagDocument,
@@ -170,13 +167,11 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         const {
             pluginConfig: rawPluginConfig,
             reachableScenes: rawReachableScenes,
-            externalLinks: rawExternalLinks,
             endingSurfaceId: rawEndingSurfaceId,
             ...rest
         } = document;
         const pluginConfig = normalizeAppTagPluginConfig(rawPluginConfig);
         const reachableScenes = normalizeAppTagReachableScenes(rawReachableScenes);
-        const externalLinks = normalizeAppTagExternalLinks(rawExternalLinks);
         const endingSurfaceId = normalizeAppTagEndingSurfaceId(rawEndingSurfaceId);
         const updated: ProjectAppTagDocument = {
             ...rest,
@@ -185,7 +180,6 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             // author's last clear leaves the file rather than sitting there as `{}`.
             ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
             ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
-            ...(externalLinks.length > 0 ? { externalLinks } : {}),
             ...(endingSurfaceId ? { endingSurfaceId } : {}),
             meta: {
                 ...document.meta,
@@ -304,15 +298,6 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             document.reachableScenes = reachableScenes;
         } else {
             delete document.reachableScenes;
-        }
-        const externalLinks = normalizeAppTagExternalLinks(document.externalLinks);
-        if (externalLinks.length > 0) {
-            document.externalLinks = externalLinks;
-        } else {
-            // Deleted rather than left as `[]` for the same reason: on the project's own record
-            // "declares none" and "the key is absent" are one fact, unlike on a variant, where an
-            // empty list is the variant saying it opens nothing.
-            delete document.externalLinks;
         }
         const endingSurfaceId = normalizeAppTagEndingSurfaceId(document.endingSurfaceId);
         if (endingSurfaceId) {
@@ -617,66 +602,6 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         return true;
     }
 
-    /** The project's own declared addresses - what a variant that states none reads. A copy. */
-    public getProjectExternalLinks(): string[] {
-        return [...(this.getDocument().externalLinks ?? [])];
-    }
-
-    /** What this variant may open, and whether it is the reason. */
-    public resolveExternalLinks(id: string | null | undefined): AppTagResolvedExternalLinks {
-        return resolveAppTagExternalLinks(this.resolveTag(id), this.getDocument().externalLinks);
-    }
-
-    /**
-     * State the list for one variant, or - on the release tag - for the project.
-     *
-     * The release tag stores nothing, so a list stated while it is selected is the project's own,
-     * exactly as a variant-scoped plugin value is. Entries that are not absolute web addresses are
-     * dropped by the normalizer; the surface refuses them before they get here, and this is what
-     * makes that true of every other caller too.
-     */
-    public setExternalLinks(id: string | null | undefined, links: readonly string[]): boolean {
-        const trimmedId = typeof id === "string" ? id.trim() : "";
-        const onProject = !trimmedId || isBuiltinAppTagId(trimmedId);
-        if (!onProject && !this.getTag(trimmedId)) {
-            return false;
-        }
-        const next = normalizeAppTagExternalLinks([...links]);
-        this.applyDocumentMutation(document => {
-            if (onProject) {
-                document.externalLinks = next;
-                return;
-            }
-            document.tags = document.tags.map(tag => (
-                tag.id === trimmedId ? { ...tag, externalLinks: next } : tag
-            ));
-        });
-        return true;
-    }
-
-    /**
-     * Restore a variant to the project's list.
-     *
-     * A delete, not a copy of what was inherited: storing the project's addresses here would freeze
-     * them, and the next address the project gains would be missing from this variant with nothing
-     * saying so. Refuses the release tag, which has nothing to restore to.
-     */
-    public clearExternalLinks(id: string): boolean {
-        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
-            return false;
-        }
-        this.applyDocumentMutation(document => {
-            document.tags = document.tags.map(tag => {
-                if (tag.id !== id) {
-                    return tag;
-                }
-                const { externalLinks: _dropped, ...rest } = tag;
-                return rest;
-            });
-        });
-        return true;
-    }
-
     /** The project's own ending page - what a variant that states none reads. Blank picks none. */
     public getProjectEndingSurfaceId(): string {
         return this.getDocument().endingSurfaceId ?? "";
@@ -735,22 +660,6 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             });
         });
         return true;
-    }
-
-    /**
-     * Every address any build of this project could open, project and variants together.
-     *
-     * The union rather than one variant's list, because its readers are not building anything: the
-     * picker on an Open Link node has no variant selected, and a check that judged a graph against
-     * one variant would report a link the demo build opens as a mistake. Which variant actually
-     * opens which address is decided when a build is compiled.
-     */
-    public listDeclaredExternalLinks(): string[] {
-        const document = this.getDocument();
-        return normalizeAppTagExternalLinks([
-            ...(document.externalLinks ?? []),
-            ...document.tags.flatMap(tag => tag.externalLinks ?? []),
-        ]);
     }
 
     /**

@@ -116,13 +116,6 @@ export const project = {
         reachableTitle: "可以开始的场景",
         // 该变体的构建可以交给玩家浏览器打开的地址。按这份清单决定什么来命名，而不是按机制；整份
         // 清单一起覆盖：一个变体要么有自己的清单，要么读工程的。
-        links: {
-            title: "游戏可以打开的链接",
-            add: "新增链接",
-            remove: "移除链接",
-            placeholder: "https://example.com/store",
-            invalid: "只有以 http:// 或 https:// 开头的地址可以打开",
-        },
         // 该变体的构建在剧本走完之后显示的页面。按作者看到的结果命名，而不是按背后的引擎事件。
         ending: {
             title: "剧本结束后显示的页面",
@@ -309,6 +302,19 @@ export const project = {
         allowHttpTitle: "允许 HTTP",
         allowHttpDescription: "关闭时，游戏将被限制在应用协议内，所有 HTTP/HTTPS 请求均会被阻止",
         allowHttpWebHint: "Web 导出不受此项限制，该构建本身通过 HTTP 提供；网络节点在 Web 导出中仍会运行",
+        networkAllowlistTitle: "仅允许清单内的地址",
+        networkAllowlistDescription: "把游戏限制在下面这些地址内，请求其他地方一律拒绝",
+        networkAllowlistWebHint: "在所有构建里都生效，Web 导出通过页面策略执行",
+        networkAllowlist: {
+            title: "允许的地址",
+            description: "每行一个地址或主机匹配式",
+            placeholder: "https://api.example.com/*",
+            invalid: "请填写 http:// 或 https:// 地址。* 只能作为首个主机标签或路径末尾",
+            add: "新增地址",
+            remove: "移除地址",
+            fromPlugins: "已安装插件声明的地址",
+            sidecarNote: "插件的 sidecar 是独立进程，不受这份清单约束",
+        },
         encryptAssetsTitle: "加密资源",
         encryptAssetsDescription: "在打包及预览构建中加密资源、插件代码与剧本数据，不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
