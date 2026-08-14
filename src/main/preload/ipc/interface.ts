@@ -33,6 +33,7 @@ import type { PrivilegedActor } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
 import type { AssetExportEntry } from "@shared/types/assetExport";
 import type { UpdateState } from "@shared/constants/update";
+import type { VcsServerProbe } from "@shared/types/vcs";
 import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
@@ -522,6 +523,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsTrustAuthority, { projectPath, certificatePath }) as Promise<RequestStatus<{ installed: boolean; output: string }>>,
         signOut: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsSignOut, { projectPath }) as Promise<RequestStatus<{ session: null }>>,
+        /** Goes to the network. Reads one address and says what is behind it. */
+        probeServer: (address: string) =>
+            ipcClient.invoke(IPCEventType.vcsProbeServer, { address }) as Promise<RequestStatus<VcsServerProbe>>,
         /** Local read, and no project: servers belong to the machine. */
         listServers: () =>
             ipcClient.invoke(IPCEventType.vcsListServers, {}) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,

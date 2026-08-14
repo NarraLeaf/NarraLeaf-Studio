@@ -78,6 +78,7 @@ import type {
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsServerProbe,
     VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
@@ -323,6 +324,7 @@ export enum IPCEventType {
     vcsGetServerSession = "vcs.getServerSession",
     vcsSignIn = "vcs.signIn",
     vcsSignOut = "vcs.signOut",
+    vcsProbeServer = "vcs.probeServer",
     vcsListServers = "vcs.listServers",
     vcsAddServer = "vcs.addServer",
     vcsForgetServer = "vcs.forgetServer",
@@ -1132,6 +1134,18 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string },
         response: { session: null };
+    };
+    /**
+     * Ask an `nlteam://` address what is behind it.
+     *
+     * **Goes to the network**, and is the first thing a wizard does. Takes no project and
+     * writes nothing: an answer here is what the author is then shown and asked about.
+     */
+    [IPCEventType.vcsProbeServer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { address: string },
+        response: VcsServerProbe;
     };
     /**
      * Every server this installation is signed in to.

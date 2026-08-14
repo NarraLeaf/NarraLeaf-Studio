@@ -59,6 +59,7 @@ import type {
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
+import type { VcsServerProbe } from "./vcs";
 import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
@@ -704,6 +705,14 @@ export interface RendererPreloadedInterface {
         trustAuthority(projectPath: string, certificatePath: string): Promise<RequestStatus<{ installed: boolean; output: string }>>;
         /** Clear the stored token and Studio's record of whose it was. Local. */
         signOut(projectPath: string): Promise<RequestStatus<{ session: null }>>;
+        /**
+         * Ask an `nlteam://` address what is behind it.
+         *
+         * **Goes to the network.** The first step of adding a server, and the only one
+         * that happens before the author has decided anything: the answer says whether
+         * to carry on, to ask about a certificate, or to say nothing was there.
+         */
+        probeServer(address: string): Promise<RequestStatus<VcsServerProbe>>;
         /**
          * Every server this installation is signed in to. A local read, and the only
          * one of these calls that takes no project.
