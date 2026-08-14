@@ -6,12 +6,12 @@ export const serverTrust = {
     issuedBy: "発行元：{subject}",
     fingerprint: "指紋",
     // 代償を一文で、和らげずに書く。「このアカウント」は細部ではなく、被害の範囲そのもの。
-    meaning: "この認証局の鍵を持つものは、どのアドレスに対しても証明書を発行でき、このアカウントはそれを信じます。",
+    meaning: "信頼すると、この認証局が発行した証明書はこのアカウントで受け入れられる。",
     confirm: "信頼する",
     cancel: "キャンセル",
     working: "信頼中",
     error: {
-        load: "どのサーバーについての確認かを読み込めなかった",
+        load: "サーバーの情報を読み込めなかった",
         trust: "この認証局を信頼できなかった",
     },
 } satisfies LocaleNamespace<"serverTrust">;
