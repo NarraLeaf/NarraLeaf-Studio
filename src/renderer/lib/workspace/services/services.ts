@@ -47,6 +47,7 @@ import type {
 } from "./core/WorkspaceReloadService";
 import type { DocumentSource } from "@shared/documents/documentSource";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
+import type { HistoryLabel } from "./history/historyModel";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetCategory, AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
@@ -522,7 +523,7 @@ interface IAudioTrackService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
-    applyTrackMutation(mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[]): void;
+    applyTrackMutation(mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[], label?: HistoryLabel): void;
     createTrack(input?: Partial<Omit<ProjectAudioTrack, "id" | "builtin">>): ProjectAudioTrack;
     duplicateTrack(id: string): ProjectAudioTrack | null;
     updateTrack(id: string, patch: Partial<Omit<ProjectAudioTrack, "id" | "builtin" | "parentId">>): void;
@@ -559,7 +560,7 @@ interface IAppTagService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
-    applyTagMutation(mutator: (tags: ProjectAppTag[]) => ProjectAppTag[]): void;
+    applyTagMutation(mutator: (tags: ProjectAppTag[]) => ProjectAppTag[], label?: HistoryLabel): void;
     createTag(input?: { name?: string }): ProjectAppTag;
     /** Refuses the release tag and a blank name. Stored references hold the id, so they follow. */
     renameTag(id: string, name: string): boolean;

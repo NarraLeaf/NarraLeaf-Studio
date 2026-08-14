@@ -159,7 +159,7 @@ describe("resolveShippedPluginBuildConfig", () => {
             { [FIXTURE_ID]: { appId: "480" } },
         );
 
-        expect(shipped).toEqual({ appId: "480" });
+        expect(shipped.values).toEqual({ appId: "480" });
     });
 
     it("carries what the variant states over what the project holds", async () => {
@@ -182,14 +182,14 @@ describe("resolveShippedPluginBuildConfig", () => {
             withVariantField,
             variant({ [FIXTURE_ID]: { branch: "demo-branch" } }),
             { [FIXTURE_ID]: { appId: "480", branch: "default" } },
-        )).toEqual({ appId: "480", branch: "demo-branch" });
+        ).values).toEqual({ appId: "480", branch: "demo-branch" });
 
         // The same project under a variant that states nothing reads the project's own.
         expect(resolveShippedPluginBuildConfig(
             withVariantField,
             variant(undefined),
             { [FIXTURE_ID]: { appId: "480", branch: "default" } },
-        )).toEqual({ appId: "480", branch: "default" });
+        ).values).toEqual({ appId: "480", branch: "default" });
     });
 
     it("never carries a secret field, whichever record holds its handle", async () => {
@@ -199,13 +199,20 @@ describe("resolveShippedPluginBuildConfig", () => {
             { [FIXTURE_ID]: { appId: "480", buildToken: "handle-from-the-project" } },
         );
 
-        expect(shipped).toEqual({ appId: "480" });
+        expect(shipped.values).toEqual({ appId: "480" });
         expect(JSON.stringify(shipped)).not.toContain("handle");
     });
 
-    it("does not carry a platform-scoped value, which no single artifact could answer for", async () => {
+    /**
+     * A platform-scoped field against an artifact that serves several platforms at once.
+     *
+     * The rule is agreement, not arithmetic: one platform selected has one answer, and so does a
+     * field the author filled in the same way everywhere. Anything else is a question this artifact
+     * cannot answer, and it is named rather than resolved to whichever platform came first.
+     */
+    async function platformFieldPlugin() {
         const plugin = await fixturePlugin();
-        const withPlatformField = {
+        return {
             ...plugin,
             manifest: {
                 ...plugin.manifest,
@@ -216,21 +223,62 @@ describe("resolveShippedPluginBuildConfig", () => {
                 },
             },
         };
+    }
 
-        expect(resolveShippedPluginBuildConfig(
-            withPlatformField,
+    const DEPOTS = { [FIXTURE_ID]: { "depot@windows": "1001", "depot@macos": "1002" } };
+
+    it("carries the platform-scoped value of the one platform this artifact serves", async () => {
+        const shipped = resolveShippedPluginBuildConfig(
+            await platformFieldPlugin(),
             RELEASE_APP_TAG,
-            { [FIXTURE_ID]: { "depot@windows": "1001", "depot@macos": "1002" } },
-        )).toEqual({});
+            DEPOTS,
+            ["windows"],
+        );
+
+        expect(shipped.values).toEqual({ depot: "1001" });
+        expect(shipped.ambiguousKeys).toEqual([]);
+    });
+
+    it("names the key when the served platforms disagree, and carries nothing for it", async () => {
+        const shipped = resolveShippedPluginBuildConfig(
+            await platformFieldPlugin(),
+            RELEASE_APP_TAG,
+            DEPOTS,
+            ["windows", "macos"],
+        );
+
+        expect(shipped.values).toEqual({});
+        expect(shipped.ambiguousKeys).toEqual(["depot"]);
+    });
+
+    it("carries one value the served platforms agree on", async () => {
+        const shipped = resolveShippedPluginBuildConfig(
+            await platformFieldPlugin(),
+            RELEASE_APP_TAG,
+            { [FIXTURE_ID]: { "depot@windows": "1001", "depot@macos": "1001" } },
+            ["windows", "macos"],
+        );
+
+        expect(shipped.values).toEqual({ depot: "1001" });
+        expect(shipped.ambiguousKeys).toEqual([]);
+    });
+
+    it("carries nothing, and complains about nothing, when no platform is named", async () => {
+        // Dev Mode and the preview. There is no platform to resolve against, and a compile that is
+        // not producing a package has nothing to warn an author about.
+        const shipped = resolveShippedPluginBuildConfig(await platformFieldPlugin(), RELEASE_APP_TAG, DEPOTS);
+
+        expect(shipped.values).toEqual({});
+        expect(shipped.ambiguousKeys).toEqual([]);
     });
 
     it("leaves out a field nobody filled in, rather than carrying a blank", async () => {
-        expect(resolveShippedPluginBuildConfig(await fixturePlugin(), RELEASE_APP_TAG, {})).toEqual({});
+        expect(resolveShippedPluginBuildConfig(await fixturePlugin(), RELEASE_APP_TAG, {}).values).toEqual({});
         expect(resolveShippedPluginBuildConfig(
             await fixturePlugin(),
             RELEASE_APP_TAG,
             { [FIXTURE_ID]: { appId: "" } },
-        )).toEqual({});
+        ).values).toEqual({});
     });
 
     it("reads only the declaring plugin's own record", async () => {
@@ -240,6 +288,6 @@ describe("resolveShippedPluginBuildConfig", () => {
             { [FIXTURE_ID]: { appId: "480" }, "acme.other": { appId: "999" } },
         );
 
-        expect(shipped).toEqual({ appId: "480" });
+        expect(shipped.values).toEqual({ appId: "480" });
     });
 });

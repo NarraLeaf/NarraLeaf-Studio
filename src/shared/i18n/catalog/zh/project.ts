@@ -98,6 +98,12 @@ export const project = {
     // `appTags` 帮助主题里；这里的文案只命名控件，并说明按下去会发生什么。
     appTags: {
         add: "新增版本",
+        history: {
+            add: "新增构建版本 {name}",
+            rename: "把构建版本改名为 {name}",
+            delete: "删除构建版本 {name}",
+            edit: "修改构建版本",
+        },
         newTagName: "新版本",
         nameTitle: "名称",
         fields: {
@@ -254,6 +260,11 @@ export const project = {
         // 什么是总线、音量如何逐级相乘，已经移进 `audio` 帮助主题，由本区标题上的 `?` 打开。
         // 它原先是这里的一段话，再往前是每条轨道的每个字段上都写一遍。
         add: "新建轨道",
+        history: {
+            add: "新建音轨 {name}",
+            delete: "删除音轨 {name}",
+            edit: "修改音轨",
+        },
         newTrackName: "新建轨道",
         nameTitle: "名称",
         parentTitle: "汇入",

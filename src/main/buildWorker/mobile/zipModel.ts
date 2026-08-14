@@ -281,19 +281,62 @@ export function readLocalEntryDataSpan(buffer: Buffer, entry: ZipIndexEntry): { 
 }
 
 /**
+ * An entry must deliver exactly the byte count its central directory states.
+ * Over is the dangerous direction (see readEntryBytes), but under is checked
+ * too and for the same reason the format is parsed strictly elsewhere: the
+ * bytes go straight into a manifest parser or onto disk, where half a file
+ * looks like a whole one. Stored entries need this check as much as deflated
+ * ones - their span is arithmetic on header fields, and subarray clamps to
+ * the end of a truncated archive without a word.
+ */
+function assertDeclaredSize(data: Buffer, entry: ZipIndexEntry): Buffer {
+    if (data.length !== entry.uncompressedSize) {
+        throw new Error(
+            `Entry "${entry.name}" yields ${data.length} bytes but declares ${entry.uncompressedSize}`,
+        );
+    }
+    return data;
+}
+
+/**
  * The decompressed bytes of an entry - for the repack to read a template's
  * AndroidManifest.xml / resources.arsc / Info.plist, which may be stored or
  * deflated. Only the two methods a real template uses are handled; anything
  * else is rejected rather than returned wrong.
+ *
+ * Not every archive reaching here is one of ours: plugin packages and the
+ * third-party redistributables a plugin points a build at are downloaded
+ * bytes, and an unbounded inflate is how a 10 KB entry claiming to expand to
+ * 8 GiB takes the process with it. The ceiling is the entry's own declared
+ * uncompressedSize rather than an invented constant - the archive already
+ * states the answer, for zip64 entries too (parseZipIndex has resolved the
+ * extra field by now), and any fixed number would be simultaneously too small
+ * for some real template and too large to be a bound.
  */
 export function readEntryBytes(buffer: Buffer, entry: ZipIndexEntry): Buffer {
     const { start, end } = readLocalEntryDataSpan(buffer, entry);
     const raw = buffer.subarray(start, end);
     if (entry.method === ZIP_METHOD_STORE) {
-        return Buffer.from(raw);
+        return assertDeclaredSize(Buffer.from(raw), entry);
     }
     if (entry.method === ZIP_METHOD_DEFLATE) {
-        return zlib.inflateRawSync(raw);
+        let inflated: Buffer;
+        try {
+            // The ceiling has a floor of 1: zlib rejects maxOutputLength 0
+            // outright, and an entry that truly holds nothing still inflates
+            // to nothing under a 1-byte allowance, while one that declares
+            // nothing and produces something is caught below.
+            inflated = zlib.inflateRawSync(raw, { maxOutputLength: Math.max(entry.uncompressedSize, 1) });
+        } catch (error) {
+            // zlib's own words for a blown ceiling are "Cannot create a
+            // Buffer larger than N bytes" - no entry, no archive, nothing to
+            // act on among thousands of members.
+            throw new Error(
+                `Failed to inflate "${entry.name}" within its declared ${entry.uncompressedSize} bytes: `
+                + `${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+        return assertDeclaredSize(inflated, entry);
     }
     throw new Error(`Unsupported compression method ${entry.method} for "${entry.name}"`);
 }

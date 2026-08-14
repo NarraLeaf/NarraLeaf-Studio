@@ -118,11 +118,13 @@ export function pluginBuildConfigSlots(
  *
  *  - A `secret` field, structurally: {@link holdsPluginBuildConfigValue} narrows the field, and
  *    {@link shippedValue} takes only the narrowed type, so dropping the narrowing does not compile.
- *  - A platform-scoped field, for now. Its value is keyed by the platform it is for, and one
- *    compiled artifact is not one platform: the desktop compile serves every desktop target in the
- *    request, and the web compile serves the browser export and both mobile repacks. There is no
- *    platform here to resolve against, and answering with another platform's value would be worse
- *    than answering with nothing. A build that compiles per platform can pass one and lift this.
+ *  - A platform-scoped field whose value is not the same for every platform this artifact serves.
+ *    One compiled artifact is not one platform: the desktop compile serves every desktop target in
+ *    the request, and the web compile serves the browser export and both mobile repacks. Where the
+ *    served platforms agree - which is every single-platform build, and every field the author filled
+ *    in once - there is one answer and it travels. Where they disagree there is no answer this
+ *    artifact could give, so the key is left out and named in {@link ShippedPluginBuildConfig.ambiguousKeys}
+ *    rather than resolved to whichever platform happened to be first.
  *
  * A blank value is left out rather than carried as an empty string: never filled in and filled in
  * with nothing are the same fact to a reader, and one absent key says it without the reader having
@@ -131,27 +133,82 @@ export function pluginBuildConfigSlots(
  * Everything that survives is readable by anyone who opens the package - it sits in the pack beside
  * the manifest. That is what `secret` is for.
  */
+export type ShippedPluginBuildConfig = {
+    /** What the pack carries for this plugin, keyed by field key. */
+    values: Record<string, string>;
+    /**
+     * Platform-scoped keys the served platforms disagree about, so nothing was carried for them.
+     *
+     * Reported rather than silent: a plugin reading its own field back as absent looks exactly like
+     * an author who never filled it in, and the author is the only one who can resolve the
+     * disagreement (by building the platforms separately, or by making the values match).
+     */
+    ambiguousKeys: string[];
+};
+
 export function resolveShippedPluginBuildConfig(
     plugin: Omit<PluginBuildConfigDeclaringPlugin, "enabled">,
     tag: ProjectAppTag,
     base: AppTagPluginConfig,
-): Record<string, string> {
-    const shipped: Record<string, string> = {};
+    /** The build targets this artifact serves. Absent - Dev Mode, the preview - is "no platform". */
+    platforms?: readonly GameBuildPlatform[],
+): ShippedPluginBuildConfig {
+    const values: Record<string, string> = {};
+    const ambiguousKeys: string[] = [];
     for (const contribution of plugin.manifest.contributes?.buildConfig ?? []) {
         const field: PluginBuildConfigField = {
             ...contribution,
             pluginId: plugin.pluginId,
             pluginName: plugin.manifest.name?.trim() || plugin.pluginId,
         };
-        if (!holdsPluginBuildConfigValue(field) || isPlatformScopedBuildConfig(field.scope)) {
+        if (!holdsPluginBuildConfigValue(field)) {
             continue;
         }
-        const value = shippedValue(field, tag, base);
-        if (value) {
-            shipped[field.key] = value;
+        if (!isPlatformScopedBuildConfig(field.scope)) {
+            const value = shippedValue(field, tag, base);
+            if (value) {
+                values[field.key] = value;
+            }
+            continue;
+        }
+        const answer = platformScopedValue(field, tag, base, platforms ?? []);
+        if (answer.kind === "agreed" && answer.value) {
+            values[field.key] = answer.value;
+        } else if (answer.kind === "disagreed") {
+            ambiguousKeys.push(field.key);
         }
     }
-    return shipped;
+    return { values, ambiguousKeys };
+}
+
+/**
+ * What a platform-scoped field comes to for the platforms one artifact serves.
+ *
+ * `agreed` covers the ordinary cases in one rule: a single-platform build, and a field the author
+ * filled in with the same string everywhere. Blank counts as a value here - a field cleared on one
+ * platform and set on another is a disagreement, not an absence - which is why the blank is dropped
+ * by the caller instead.
+ */
+function platformScopedValue(
+    field: PluginBuildConfigValueField,
+    tag: ProjectAppTag,
+    base: AppTagPluginConfig,
+    platforms: readonly GameBuildPlatform[],
+): { kind: "none" } | { kind: "agreed"; value: string } | { kind: "disagreed" } {
+    const applicable = platforms.filter(platform => appliesToPlatform(field, platform));
+    if (applicable.length === 0) {
+        return { kind: "none" };
+    }
+    const answers = new Set(applicable.map(platform => resolveAppTagPluginConfigValue(
+        tag,
+        base,
+        field,
+        platform,
+    ).value));
+    if (answers.size > 1) {
+        return { kind: "disagreed" };
+    }
+    return { kind: "agreed", value: [...answers][0] ?? "" };
 }
 
 /**

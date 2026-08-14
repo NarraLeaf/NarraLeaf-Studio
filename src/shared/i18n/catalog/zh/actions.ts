@@ -22,6 +22,7 @@ export const actions = {
         menu: "运行与构建",
         // 正式构建：折进下拉框，给版本控件腾出位置。
         productionBuild: "正式构建…",
+        runAs: "运行为",
     },
     file: {
         label: "文件",

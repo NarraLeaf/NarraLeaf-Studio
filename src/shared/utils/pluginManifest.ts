@@ -173,9 +173,14 @@ function derivePermissionsFromContributes(
         derived.push({ kind: "runtime", capability });
     }
     for (const sidecar of contributes.sidecars) {
+        // `sidecarKind` travels with the id because it changes what is being approved: an
+        // `executable` is a separate process, while a `node` sidecar is the plugin's own code
+        // running with the reach of the game itself. A permission that said only "ships a helper
+        // program" would describe both and distinguish neither.
         derived.push({
             kind: "sidecar",
             id: sidecar.id,
+            sidecarKind: sidecar.kind,
             platforms: Object.keys(sidecar.targets).sort(),
         });
     }

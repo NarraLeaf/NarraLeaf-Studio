@@ -61,8 +61,8 @@ export const pluginPermission = {
      */
     permissions: {
         section: {
-            sidecar: "ネイティブプログラム",
-            sidecarNote: "このプラグインは、ビルドしたゲームの中で動くネイティブプログラムを同梱している",
+            sidecar: "プレイヤーの端末で動くプログラム",
+            sidecarNote: "このプラグインは、ビルドしたゲームの中にプログラムを同梱する",
             buildDependency: "ビルド時のダウンロード",
             runtime: "ゲームの中で",
             externalLink: "ゲームの外へのリンク",
@@ -70,6 +70,14 @@ export const pluginPermission = {
             studio: "Studio の権限",
         },
         sidecarPlatforms: "{platforms} で動く",
+        /**
+         * 見出しは両方をまとめて指すので、どちらなのかは行ごとに書く。片方は独立したプログラム、
+         * もう片方はゲームと同じ届き方をするプラグイン自身のコードで、判断が変わる。
+         */
+        sidecarKind: {
+            executable: "独立したプログラムとして動く",
+            node: "プラグイン自身のコードがゲームの一部として動く",
+        },
         buildDependencyHosts: "{hosts} からダウンロードする",
         /**
          * API 名ではなくプレイヤーのデータを主語にして書く。信頼するかどうかを決める人にとって

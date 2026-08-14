@@ -105,6 +105,13 @@ export const project = {
     // controls and say what pressing one does.
     appTags: {
         add: "Add variant",
+        // Names for the undo steps these leave behind ("Undo delete variant Demo").
+        history: {
+            add: "add variant {name}",
+            rename: "rename variant to {name}",
+            delete: "delete variant {name}",
+            edit: "edit build variants",
+        },
         newTagName: "New Variant",
         nameTitle: "Name",
         fields: {
@@ -275,6 +282,12 @@ export const project = {
         // the `?` in this section's header. It was a paragraph here, and before that the same
         // paragraph on every field of every track.
         add: "Add track",
+        // Names for the undo steps these leave behind ("Undo delete track Ambience").
+        history: {
+            add: "add track {name}",
+            delete: "delete track {name}",
+            edit: "edit audio tracks",
+        },
         newTrackName: "New Track",
         nameTitle: "Name",
         parentTitle: "Routes into",

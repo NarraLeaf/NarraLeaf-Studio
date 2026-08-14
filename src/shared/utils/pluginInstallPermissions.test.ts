@@ -146,6 +146,53 @@ describe("isPermissionSubset — externalLink", () => {
     });
 });
 
+describe("isPermissionSubset — sidecar", () => {
+    const sidecar = (sidecarKind: "executable" | "node", ...platforms: string[]) =>
+        ({ kind: "sidecar", id: "acme.steam.bridge", sidecarKind, platforms }) as const;
+
+    it("inherits the grant when nothing about the sidecar changed", () => {
+        expect(isPermissionSubset(
+            [sidecar("executable", "windows-x64")],
+            [sidecar("executable", "windows-x64", "linux-x64")],
+        )).toBe(true);
+    });
+
+    it("re-prompts when the same sidecar changes what it starts", () => {
+        // Turning a separate binary into the plugin's own code inside the game is a different
+        // thing to approve, and the id and platforms alone cannot see the difference.
+        expect(isPermissionSubset(
+            [sidecar("node", "windows-x64")],
+            [sidecar("executable", "windows-x64")],
+        )).toBe(false);
+        expect(isPermissionSubset(
+            [sidecar("executable", "windows-x64")],
+            [sidecar("node", "windows-x64")],
+        )).toBe(false);
+    });
+});
+
+describe("plugin install permission copy — sidecar", () => {
+    it("says which of the two a sidecar is", () => {
+        expect(describePluginInstallPermissions([
+            {
+                kind: "sidecar",
+                id: "acme.steam.bridge",
+                sidecarKind: "executable",
+                platforms: ["windows-x64"],
+            },
+            {
+                kind: "sidecar",
+                id: "acme.steam.helper",
+                sidecarKind: "node",
+                platforms: ["windows-x64"],
+            },
+        ])).toEqual([
+            "Ship a separate program and run it with your game (acme.steam.bridge, for windows-x64)",
+            "Ship the plugin's own code and run it as part of your game (acme.steam.helper, for windows-x64)",
+        ]);
+    });
+});
+
 describe("plugin install permission copy — externalLink", () => {
     it("names every pattern rather than counting them", () => {
         expect(describePluginInstallPermissions([

@@ -20,6 +20,7 @@ import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
+import { resolveRunVariant } from "../../utils/runVariant";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 import { currentDownloadRewrites } from "../downloadRewrites";
@@ -276,6 +277,7 @@ export class PreviewManager {
                 this.emitVerbose(session, "asset protection enabled; encrypting pack");
             }
             this.ensureNotCancelled(attempt);
+            const runVariant = await resolveRunVariant(this.app.getGlobalState(), normalizedProjectPath);
             // Compiled in a forked utility process, not on the main thread:
             // sealing a protected pack drives the native codec through many
             // seconds of synchronous CPU that would otherwise freeze Studio.
@@ -291,6 +293,11 @@ export class PreviewManager {
                 },
                 runtimePlugins: pluginSelection.selected,
                 mode: "preview",
+                // What edition this run is. Read from the machine's own setting rather than taken
+                // from the launch request: nothing about a run needs the renderer's word for it, and
+                // the three launch surfaces keep the shapes they had. `packaging` stays off - this
+                // folds the variant without planning what a package would leave out.
+                ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
                 encryptionKey,
                 // A preview runs on this machine, so it ships this machine's
                 // sidecars. Without this the preview would be the one shell that

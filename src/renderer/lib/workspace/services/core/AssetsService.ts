@@ -1,3 +1,4 @@
+import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
@@ -1266,5 +1267,34 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      */
     public getLockManager(): AssetLockManager {
         return this.lockManager;
+    }
+
+    /**
+     * Every shared blueprint asset this project holds, parsed.
+     *
+     * The renderer's blind spot until now. A blueprint asset is a file, and the checks that walk
+     * graphs walk `UIGraphService`'s document - so a `.nlbp` was judged by nothing on this side, and
+     * the build's variant refusal only reached it when the main process folded the pack and threw.
+     * That is a refusal after the author has committed to a build, phrased in the packer's terms.
+     *
+     * Reads on demand, without a cache. This has one caller, a build gate, and a project's shared
+     * blueprints are a handful of small JSON files; a cache here would buy a few milliseconds once
+     * per build in exchange for a staleness question every author-side edit would have to answer.
+     *
+     * Skips what it cannot read rather than throwing. An unreadable asset is still folded (and still
+     * refused) in the main process, so nothing ships unjudged; a gate that failed the build over a
+     * file it merely could not open would be refusing on a question it never asked.
+     */
+    public async listSharedBlueprints(): Promise<SharedBlueprintAsset[]> {
+        const assets = this.getOrderedAssets(AssetType.Blueprint);
+        const parsed: SharedBlueprintAsset[] = [];
+        for (const asset of assets) {
+            const result = await this.fetch(asset);
+            if (!result.success) {
+                continue;
+            }
+            parsed.push(result.data.data);
+        }
+        return parsed;
     }
 }

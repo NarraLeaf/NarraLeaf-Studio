@@ -234,6 +234,9 @@ export const build = {
             + "请在 {targetPlatform} 机器上构建该目标",
         "encryption-key-unavailable": "资源保护已开启，但无法取得密钥",
         "web-unprotected": "资源保护对 Web 导出不生效，其文件以明文发布",
+        "progress-carry-unsupported":
+            "{blueprints} 会在版本之间继承进度，而 {platform} 构建做不到：网页没有可写的共享文件，"
+            + "两个节点都会走失败分支",
         "web-lossy-images": "有损图像重压缩已开启，导出的图像将以质量 {quality} 重新编码，细节不可恢复",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
         "mobile-payload-too-large": "项目素材体积（{size}）超出移动端安装包能容纳的上限",

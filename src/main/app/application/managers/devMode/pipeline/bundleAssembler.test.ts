@@ -505,8 +505,12 @@ describe("bundleAssembler shared blueprint variant fold", () => {
         ],
     };
 
+    /**
+     * A build's context. `packaging` is what separates a build from every other host: only a build
+     * produces something a player receives, so only a build plans a drop or refuses a graph.
+     */
     function context(extra?: Partial<DevModeBundleLoadContext>): DevModeBundleLoadContext {
-        return { projectPath: "/project", bundleId: "b", revision: 1, ...extra };
+        return { projectPath: "/project", bundleId: "b", revision: 1, packaging: true, ...extra };
     }
 
     it("stops a build whose shared blueprint does not reduce to a fixed value", () => {
@@ -590,8 +594,12 @@ describe("bundleAssembler scene drop plan", () => {
         } as unknown as Blueprint;
     }
 
+    /**
+     * A build's context. `packaging` is what separates a build from every other host: only a build
+     * produces something a player receives, so only a build plans a drop or refuses a graph.
+     */
     function context(extra?: Partial<DevModeBundleLoadContext>): DevModeBundleLoadContext {
-        return { projectPath: "/project", bundleId: "b", revision: 1, ...extra };
+        return { projectPath: "/project", bundleId: "b", revision: 1, packaging: true, ...extra };
     }
 
     const startGame = (params: Record<string, string>) => ({
@@ -716,5 +724,73 @@ describe("bundleAssembler scene drop plan", () => {
         // because the first capability that can will be reported against a plugin the author owns.
         expect(plan).toEqual(new Map());
         expect(notices).toEqual([]);
+    });
+});
+
+/**
+ * Running as a variant in a host that packages nothing.
+ *
+ * Dev Mode, the preview and a test run all fold the variant - that is what an author asking to "run
+ * as the demo" wants to see - but none of them produces a package, so none of them has anybody to
+ * keep a scene from. Planning a drop there would decide nothing while its refusals, which stop an
+ * assembly dead and are worded for a build, would decide everything.
+ */
+describe("assembling as a variant without packaging", () => {
+    function context(extra?: Partial<DevModeBundleLoadContext>): DevModeBundleLoadContext {
+        return { projectPath: "/project", bundleId: "b", revision: 1, ...extra };
+    }
+
+    it("plans no scene drop, so nothing goes missing from a run", () => {
+        expect(planSceneDrop(context({ appTag: { id: "tag-demo", name: "Demo" } }), "tag-demo", [])).toBeNull();
+    });
+
+    /** `Get App Tag` into a comparison the fold cannot decide - what a build refuses outright. */
+    const unfoldable = {
+        assetId: "asset-1",
+        name: "Shared Menu Logic",
+        frontend: "visual",
+        blueprint: {
+            id: "bp-shared",
+            name: "Shared",
+            owner: { kind: "sharedAsset", assetId: "asset-1" },
+            frontend: "visual",
+            programKind: "graph",
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        "e-1": {
+                            id: "e-1",
+                            name: "On Init",
+                            graph: {
+                                nodes: {
+                                    head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+                                    tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
+                                    eq: { id: "eq", type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL },
+                                    label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
+                                },
+                                edges: [
+                                    { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
+                                    { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "eq", port: "a" } },
+                                    { from: { nodeId: "head", port: "then" }, to: { nodeId: "eq", port: "b" } },
+                                    { from: { nodeId: "eq", port: "result" }, to: { nodeId: "label", port: "text" } },
+                                ],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        },
+    } as unknown as SharedBlueprintAsset;
+
+    it("does not refuse a shared blueprint it cannot fold", () => {
+        // A build refuses this graph, twice. Refusing it here would take Dev Mode away from the
+        // author over a graph they are still editing.
+        expect(() => foldSharedBlueprints(
+            [unfoldable],
+            context({ appTag: { id: "tag-demo", name: "Demo" } }),
+            { tagName: "Demo" },
+        )).not.toThrow();
     });
 });

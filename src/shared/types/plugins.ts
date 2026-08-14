@@ -3,6 +3,7 @@ import type {
     PluginIdentity,
     PluginInstallPermission,
     PluginRuntimeCapability,
+    PluginSidecarKind,
 } from "./pluginPermissions";
 
 export const PluginManifestVersion = 2;
@@ -87,7 +88,7 @@ export type PluginSidecarContribution = {
     /** Prefixed with the plugin id, like every other contributed identifier. */
     id: string;
     /** `executable` spawns the binary directly; `node` runs it under the game's own Electron as Node. */
-    kind: "executable" | "node";
+    kind: PluginSidecarKind;
     /** v1 speaks newline-delimited JSON over stdio; stderr stays a plain log channel. */
     transport: "stdio-jsonl";
     /** `onGameStart` spawns with the window; `onRequest` waits for the first call. */

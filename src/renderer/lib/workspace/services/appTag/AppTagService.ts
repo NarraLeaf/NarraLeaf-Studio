@@ -43,6 +43,7 @@ import {
     pluginBuildConfigStorageKey,
     type PluginBuildConfigField,
 } from "@shared/types/plugins";
+import type { TranslationKey } from "@shared/i18n";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -51,12 +52,28 @@ import { Services, IAppTagService, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
 import { UuidService } from "../core/UuidService";
+import { HistoryService } from "../history/HistoryService";
+import type { HistoryLabel } from "../history/historyModel";
+import { projectHistoryScope } from "../history/historyScopes";
 import { EventEmitter } from "../ui/EventEmitter";
 
 type AppTagServiceEvents = {
     tagsChanged: ProjectAppTag[];
     dirtyChanged: boolean;
 };
+
+/**
+ * What the Edit menu and the undo tooltip call one of these steps.
+ *
+ * Four rather than one per mutator: the three an author performs deliberately and would look for by
+ * name, and one for every field edit. "Undo edit build variants" is vague about which field, and
+ * that is the honest reading of an undo unit that is the whole document.
+ */
+const APP_TAG_EDIT_LABEL: HistoryLabel = { key: "project.appTags.history.edit" as TranslationKey };
+
+function appTagLabel(key: string, name: string): HistoryLabel {
+    return { key: `project.appTags.history.${key}` as TranslationKey, params: { name } };
+}
 
 /**
  * The project's build variants. Owns `editor/app-tags.json`.
@@ -74,10 +91,15 @@ type AppTagServiceEvents = {
  *   {@link load} does not write one - the surface would otherwise report a change in every project
  *   the author merely opened. The file appears when the first tag does.
  *
- * **Mutations here are not undoable.** They follow `AudioTrackService`: written straight through,
- * with no history entry, because the shell's undo in a side panel addresses the project's own stack
- * and this is not on it. Deleting a variant is therefore guarded by its confirmation and by nothing
- * else, which is why the surface says how many references it is about to strand before asking.
+ * **Every mutation is one undo step on the project stack.** A variant is not "in" a document the
+ * author has open, which is exactly what `HistoryScopeKind.Project` is for - the same stack that
+ * holds creating and deleting characters, assets and scenes. Before this, deleting a variant was
+ * guarded by its confirmation and by nothing else, so an author who confirmed too fast had lost the
+ * overrides for good; the confirmation stays, because it still says what the deletion strands.
+ *
+ * The undo unit is the whole document, not the field that changed. It is a small table, and the
+ * alternative - an inverse per mutator - is fourteen inverses that each have to stay correct as the
+ * record grows a key.
  */
 export class AppTagService extends Service<AppTagService> implements IAppTagService {
     private document: ProjectAppTagDocument | null = null;
@@ -241,13 +263,15 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
     }
 
     /** The single mutation entry - mutate the list, re-normalize, bump, mark dirty, autosave, emit. */
-    public applyTagMutation(mutator: (tags: ProjectAppTag[]) => ProjectAppTag[]): void {
-        const document = this.getDocument();
+    public applyTagMutation(
+        mutator: (tags: ProjectAppTag[]) => ProjectAppTag[],
+        label: HistoryLabel = APP_TAG_EDIT_LABEL,
+    ): void {
         // Re-normalized on every mutation rather than only on load, so nothing a caller does can put
         // a duplicate id, a stored release tag or a blank override into memory.
         this.applyDocumentMutation(document => {
             document.tags = mutator([...document.tags]);
-        });
+        }, label);
     }
 
     /**
@@ -255,9 +279,16 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
      *
      * Re-normalized on every mutation rather than only on load, so nothing a caller does can put a
      * duplicate id, a stored release tag, a blank override or a blank plugin value into memory.
+     *
+     * The snapshot pair is taken here, around the normalization, so what an undo restores is a
+     * document that has already been through it - never a caller's half-built one.
      */
-    private applyDocumentMutation(mutate: (document: ProjectAppTagDocument) => void): void {
+    private applyDocumentMutation(
+        mutate: (document: ProjectAppTagDocument) => void,
+        label: HistoryLabel = APP_TAG_EDIT_LABEL,
+    ): void {
         const document = this.getDocument();
+        const before = structuredClone(document);
         mutate(document);
         document.tags = normalizeProjectAppTags(document.tags);
         const pluginConfig = normalizeAppTagPluginConfig(document.pluginConfig);
@@ -292,6 +323,31 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             delete document.endingSurfaceId;
         }
         this.commitMutation();
+        this.recordUndoStep(before, structuredClone(document), label);
+    }
+
+    /**
+     * One undo step for one mutation.
+     *
+     * Restoring goes through {@link commitMutation} rather than through the mutators, so an undo
+     * cannot be re-normalized into something other than what the author had: the snapshot already
+     * is normalized. `HistoryService` suppresses recording while an undo runs, so the restore does
+     * not push an entry of its own.
+     */
+    private recordUndoStep(
+        before: ProjectAppTagDocument,
+        after: ProjectAppTagDocument,
+        label: HistoryLabel,
+    ): void {
+        const restore = (snapshot: ProjectAppTagDocument) => {
+            this.document = structuredClone(snapshot);
+            this.commitMutation();
+        };
+        this.getContext().services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
+            label,
+            undo: () => restore(before),
+            redo: () => restore(after),
+        });
     }
 
     /**
@@ -326,7 +382,7 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             name: uniqueAppTagName(this.takenNames(null), input?.name ?? ""),
             overrides: {},
         };
-        this.applyTagMutation(tags => [...tags, tag]);
+        this.applyTagMutation(tags => [...tags, tag], appTagLabel("add", tag.name));
         return this.getTag(tag.id) ?? tag;
     }
 
@@ -359,7 +415,10 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             return false;
         }
         const unique = uniqueAppTagName(this.takenNames(id), next);
-        this.applyTagMutation(tags => tags.map(tag => (tag.id === id ? { ...tag, name: unique } : tag)));
+        this.applyTagMutation(
+            tags => tags.map(tag => (tag.id === id ? { ...tag, name: unique } : tag)),
+            appTagLabel("rename", unique),
+        );
         return true;
     }
 
@@ -774,7 +833,10 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         if (isBuiltinAppTagId(id) || !this.getTag(id)) {
             return false;
         }
-        this.applyTagMutation(tags => tags.filter(tag => tag.id !== id));
+        this.applyTagMutation(
+            tags => tags.filter(tag => tag.id !== id),
+            appTagLabel("delete", this.resolveTag(id).name),
+        );
         return true;
     }
 

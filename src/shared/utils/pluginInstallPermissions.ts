@@ -2,6 +2,7 @@ import type {
     PluginFileSystemPermissionMode,
     PluginInstallPermission,
     PluginRuntimeCapability,
+    PluginSidecarKind,
 } from "../types/pluginPermissions";
 
 export const NO_INSTALL_PERMISSIONS_COPY = "No privileged Studio controls are included in this install approval.";
@@ -23,7 +24,7 @@ export function describePluginInstallPermission(permission: PluginInstallPermiss
         case "runtime":
             return `In your game: ${describeRuntimeCapability(permission.capability)}`;
         case "sidecar":
-            return `Ship and run a native program inside your game (${singleLine(permission.id, "sidecar")}`
+            return `${describeSidecarKind(permission.sidecarKind)} (${singleLine(permission.id, "sidecar")}`
                 + `${permission.platforms.length > 0 ? `, for ${permission.platforms.join(", ")}` : ""})`;
         case "buildDependency":
             return `Download binaries while building your game (${singleLine(permission.id, "dependency")}`
@@ -38,6 +39,25 @@ export function describePluginInstallPermission(permission: PluginInstallPermiss
                     : "declared addresses");
         default:
             return exhaustive(permission);
+    }
+}
+
+/**
+ * What the sidecar actually starts. The two are not the same promise, so they do not share a line:
+ * a `node` sidecar is not a third-party binary the game launches, it is the plugin's own code with
+ * the reach of the game around it.
+ *
+ * A grant written before the kind was recorded has none, so an unknown value falls back to the
+ * looser sentence rather than guessing the lighter of the two.
+ */
+function describeSidecarKind(kind: PluginSidecarKind): string {
+    switch (kind) {
+        case "executable":
+            return "Ship a separate program and run it with your game";
+        case "node":
+            return "Ship the plugin's own code and run it as part of your game";
+        default:
+            return "Ship a program and run it with your game";
     }
 }
 
@@ -106,8 +126,15 @@ function covers(granted: PluginInstallPermission, requested: PluginInstallPermis
     }
     // Same sidecar/dependency, no new platforms or download hosts. Adding either
     // widens what reaches the player's machine, so it re-prompts.
+    //
+    // The kind is compared too, and it is not a widening test but an equality one: turning an
+    // `executable` into a `node` sidecar keeps the id and the platforms while changing what the
+    // author agreed to run, and neither direction is obviously the smaller of the two. A grant
+    // recorded before the kind existed carries none, which fails this and asks once more - the
+    // conservative answer for a permission whose original prompt could not name it.
     if (granted.kind === "sidecar" && requested.kind === "sidecar") {
         return granted.id === requested.id
+            && granted.sidecarKind === requested.sidecarKind
             && requested.platforms.every(platform => granted.platforms.includes(platform));
     }
     if (granted.kind === "buildDependency" && requested.kind === "buildDependency") {

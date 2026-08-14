@@ -479,9 +479,56 @@ describe("validatePluginManifest — capability/permission alignment", () => {
         expect(result.manifest.permissions).toEqual([
             { kind: "runtime", capability: "store" },
             { kind: "runtime", capability: "events" },
-            { kind: "sidecar", id: "acme.steam.bridge", platforms: ["windows-x64"] },
+            {
+                kind: "sidecar",
+                id: "acme.steam.bridge",
+                sidecarKind: "executable",
+                platforms: ["windows-x64"],
+            },
             { kind: "buildDependency", id: "acme.steam.sdk", hosts: ["partner.example.com"] },
         ]);
+    });
+
+    it("carries the sidecar kind, so a node sidecar cannot pass for an executable one", () => {
+        // Same id, same platform, same files: the only thing that differs is what starts, which is
+        // the whole of what the author is being asked to approve.
+        const onlySidecar = (kind: "executable" | "node") => ({
+            sidecars: [{
+                id: "acme.steam.bridge",
+                kind,
+                targets: {
+                    "windows-x64": {
+                        entry: "bin/bridge",
+                        include: ["bin/bridge"],
+                        sha256: { "bin/bridge": SIDECAR_DIGEST },
+                    },
+                },
+            }],
+        });
+
+        const executable = validatePluginManifest(fullManifest({ contributes: onlySidecar("executable") }));
+        const node = validatePluginManifest(fullManifest({ contributes: onlySidecar("node") }));
+
+        expect(executable.ok).toBe(true);
+        expect(node.ok).toBe(true);
+        if (!executable.ok || !node.ok) return;
+        expect(executable.manifest.permissions).toEqual([
+            {
+                kind: "sidecar",
+                id: "acme.steam.bridge",
+                sidecarKind: "executable",
+                platforms: ["windows-x64"],
+            },
+        ]);
+        expect(node.manifest.permissions).toEqual([
+            {
+                kind: "sidecar",
+                id: "acme.steam.bridge",
+                sidecarKind: "node",
+                platforms: ["windows-x64"],
+            },
+        ]);
+        expect(node.manifest.permissions).not.toEqual(executable.manifest.permissions);
     });
 
     it("refuses a hand-written derived permission — contributes is the only source", () => {

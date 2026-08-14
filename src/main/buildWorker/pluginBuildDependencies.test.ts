@@ -46,12 +46,18 @@ function zipTarget(sha256: string, files: Record<string, string>): PluginBuildDe
     return { url: URL_UNDER_TEST, sha256, archive: "zip", files };
 }
 
-async function ensure(target: PluginBuildDependencyTargetContribution): Promise<string> {
+type LogLine = { level: string; message: string };
+
+async function ensure(
+    target: PluginBuildDependencyTargetContribution,
+    log?: LogLine[],
+): Promise<string> {
     return ensurePluginBuildDependency({
         userDataDir,
         dependencyId: "acme.sdk.binaries",
         platformKey: "windows-x64",
         target,
+        ...(log ? { log: (level, message) => void log.push({ level, message }) } : {}),
     });
 }
 
@@ -176,6 +182,97 @@ describe("ensurePluginBuildDependency", () => {
         await expect(ensure(zipTarget(declared, { "bin/a.dll": "a.dll" })))
             .rejects.toThrow(/cached file/);
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("re-extracts a produced file that was rewritten after extraction", async () => {
+        const archive = await zipOf({ "bin/a.dll": "A" });
+        fetchMock = servingFetch(archive);
+        vi.stubGlobal("fetch", fetchMock);
+        const target = zipTarget(sha256Of(archive), { "bin/a.dll": "a.dll" });
+
+        const first = await ensure(target);
+        // The cache lives in an ordinary folder under userData, and these bytes
+        // are copied into a game that ships. Whatever is there on the next build
+        // has to be checked, not assumed.
+        await fs.writeFile(path.join(first, "a.dll"), "EVIL");
+
+        const second = await ensure(target);
+        await expect(fs.readFile(path.join(second, "a.dll"), "utf-8")).resolves.toBe("A");
+        // Repaired from the source cached beside it, so still no second download.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("re-extracts a produced file that was truncated after extraction", async () => {
+        const archive = await zipOf({ "bin/a.dll": "A" });
+        fetchMock = servingFetch(archive);
+        vi.stubGlobal("fetch", fetchMock);
+        const target = zipTarget(sha256Of(archive), { "bin/a.dll": "a.dll" });
+
+        const first = await ensure(target);
+        await fs.truncate(path.join(first, "a.dll"), 0);
+
+        await ensure(target);
+        await expect(fs.readFile(path.join(first, "a.dll"), "utf-8")).resolves.toBe("A");
+    });
+
+    it("re-extracts when a produced file was deleted", async () => {
+        const archive = await zipOf({ "bin/a.dll": "A", "bin/b.dll": "B" });
+        fetchMock = servingFetch(archive);
+        vi.stubGlobal("fetch", fetchMock);
+        const target = zipTarget(sha256Of(archive), { "bin/a.dll": "a.dll", "bin/b.dll": "nested/b.dll" });
+
+        const first = await ensure(target);
+        await fs.rm(path.join(first, "nested", "b.dll"));
+
+        await ensure(target);
+        await expect(fs.readFile(path.join(first, "nested", "b.dll"), "utf-8")).resolves.toBe("B");
+    });
+
+    it("re-extracts when a file was added to the produced directory", async () => {
+        const archive = await zipOf({ "bin/a.dll": "A" });
+        fetchMock = servingFetch(archive);
+        vi.stubGlobal("fetch", fetchMock);
+        const target = zipTarget(sha256Of(archive), { "bin/a.dll": "a.dll" });
+
+        const first = await ensure(target);
+        // `dep:` includes are not confined to the mapping's outputs, so a file
+        // nothing extracted is a file this cache cannot answer for.
+        await fs.writeFile(path.join(first, "smuggled.dll"), "EVIL");
+
+        await ensure(target);
+        await expect(fs.stat(path.join(first, "smuggled.dll"))).rejects.toThrow();
+        await expect(fs.readFile(path.join(first, "a.dll"), "utf-8")).resolves.toBe("A");
+    });
+
+    it("names the dependency and the platform when it repairs a directory", async () => {
+        const archive = await zipOf({ "bin/a.dll": "A" });
+        fetchMock = servingFetch(archive);
+        vi.stubGlobal("fetch", fetchMock);
+        const target = zipTarget(sha256Of(archive), { "bin/a.dll": "a.dll" });
+
+        const first = await ensure(target);
+        await fs.writeFile(path.join(first, "a.dll"), "EVIL");
+
+        const log: LogLine[] = [];
+        await ensure(target, log);
+        const warning = log.find(line => line.level === "warning");
+        expect(warning?.message).toMatch(/acme\.sdk\.binaries.*windows-x64.*a\.dll.*re-extracting/s);
+    });
+
+    it("reuses an unchanged directory without going back to the archive", async () => {
+        const archive = await zipOf({ "bin/a.dll": "A" });
+        fetchMock = servingFetch(archive);
+        vi.stubGlobal("fetch", fetchMock);
+        const target = zipTarget(sha256Of(archive), { "bin/a.dll": "a.dll" });
+
+        const first = await ensure(target);
+        // Verification reads the produced files, never the archive - which is
+        // the whole reason for recording digests instead of unpacking again on
+        // every build. With the source gone there is nothing to unpack from.
+        await fs.rm(buildDependencySourcePath(userDataDir, target.sha256));
+
+        expect(await ensure(target)).toBe(first);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it("reports an unusable HTTP response instead of caching it", async () => {

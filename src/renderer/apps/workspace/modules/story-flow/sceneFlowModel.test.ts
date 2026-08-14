@@ -599,3 +599,78 @@ describe("buildSceneFlowGraph layout", () => {
         expect(graph.nodeSizes.a.height).toBe(SCENE_FLOW_NODE_HEIGHT);
     });
 });
+
+/**
+ * A jump the author switched off.
+ *
+ * The map draws what the author wrote, so the edge stays - faded, and marked so the canvas can fade
+ * it. Reachability follows it for the same reason: an author who disabled one jump for the afternoon
+ * has not orphaned the half of the story behind it, and a map that said so would be reporting on a
+ * package rather than on a document. The build side reads the opposite answer out of the same walk,
+ * through `includeDisabled`.
+ */
+describe("buildSceneFlowGraph and disabled jumps", () => {
+    it("keeps a disabled jump as an edge and marks it", () => {
+        const story = document([
+            scene("a", "A", [{ ...jumpBlock("j1", "b"), disabled: true } as StoryBlock]),
+            scene("b", "B", []),
+        ], "a");
+
+        const graph = buildSceneFlowGraph(story);
+
+        expect(graph.edges).toHaveLength(1);
+        expect(graph.edges[0].disabled).toBe(true);
+        expect(graph.edges[0].jumps[0].disabled).toBe(true);
+    });
+
+    it("does not call the scene behind a disabled jump unreachable", () => {
+        const story = document([
+            scene("a", "A", [{ ...jumpBlock("j1", "b"), disabled: true } as StoryBlock]),
+            scene("b", "B", []),
+        ], "a");
+
+        const graph = buildSceneFlowGraph(story);
+
+        expect(graph.nodes.find(node => node.sceneId === "b")?.reachable).toBe(true);
+    });
+
+    it("marks a jump under a disabled container", () => {
+        const story = document([
+            scene("a", "A", [
+                { ...controlBlock("c1", ["j1"]), disabled: true } as StoryBlock,
+                jumpBlock("j1", "b", "c1"),
+            ]),
+            scene("b", "B", []),
+        ], "a");
+
+        const graph = buildSceneFlowGraph(story);
+
+        expect(graph.edges[0].disabled).toBe(true);
+    });
+
+    it("does not fade an edge one live jump still reaches", () => {
+        const story = document([
+            scene("a", "A", [
+                { ...jumpBlock("j1", "b"), disabled: true } as StoryBlock,
+                jumpBlock("j2", "b"),
+            ]),
+            scene("b", "B", []),
+        ], "a");
+
+        const graph = buildSceneFlowGraph(story);
+
+        expect(graph.edges[0].disabled).toBe(false);
+        expect(graph.edges[0].jumps.map(jump => jump.disabled)).toEqual([true, false]);
+    });
+
+    it("still says nothing about reachability when no entry scene is marked", () => {
+        const story = document([
+            scene("a", "A", [jumpBlock("j1", "b")]),
+            scene("b", "B", []),
+        ]);
+
+        const graph = buildSceneFlowGraph(story);
+
+        expect(graph.nodes.every(node => node.reachable)).toBe(true);
+    });
+});

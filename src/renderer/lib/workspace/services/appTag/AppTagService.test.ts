@@ -4,6 +4,8 @@ import { join } from "@shared/utils/path";
 import { APP_TAG_ID_RELEASE, APP_TAG_SCHEMA_VERSION, RELEASE_APP_TAG, type AppTagBaseIdentity } from "@shared/types/appTag";
 import type { PluginBuildConfigField } from "@shared/types/plugins";
 import { Services, type WorkspaceContext } from "../services";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
 import { AppTagService } from "./AppTagService";
 
 /**
@@ -25,6 +27,8 @@ type Harness = {
     service: AppTagService;
     files: Map<string, string>;
     unreadable: ReturnType<typeof vi.fn>;
+    /** The real service, not a stub: every mutation is meant to leave a step on the project stack. */
+    history: HistoryService;
 };
 
 async function createHarness(seed?: string): Promise<Harness> {
@@ -33,6 +37,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         files.set(DOCUMENT, seed);
     }
     const unreadable = vi.fn();
+    const history = new HistoryService();
     let nextId = 0;
 
     const ok = <T,>(data: T): FsRequestResult<T> => ({ ok: true, data });
@@ -57,6 +62,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         [Services.Project]: {},
         [Services.Uuid]: { generate: () => `tag-${++nextId}` },
         [Services.SaveStatus]: { register: () => undefined, reportUnreadableDocument: unreadable },
+        [Services.History]: history,
     };
 
     const ctx = {
@@ -75,7 +81,7 @@ async function createHarness(seed?: string): Promise<Harness> {
     const service = new AppTagService();
     await service.initialize(ctx, async () => undefined);
 
-    return { service, files, unreadable };
+    return { service, files, unreadable, history };
 }
 
 const ids = (service: AppTagService): string[] => service.listTags().map(tag => tag.id);
@@ -515,5 +521,48 @@ describe("app tag ending page", () => {
 
         expect(service.setEndingSurface("no-such-tag", "surface-credits")).toBe(false);
         expect(service.clearEndingSurface(APP_TAG_ID_RELEASE)).toBe(false);
+    });
+});
+
+/**
+ * Deleting a variant strands every reference to it - they resolve to release from then on - and the
+ * confirmation used to be the only thing standing in front of that.
+ */
+describe("build variant undo", () => {
+    it("puts a deleted variant back with its overrides", async () => {
+        const { service, history } = await createHarness();
+        const tag = service.createTag({ name: "Demo" });
+        service.setOverride(tag.id, "displayName", "My Game Demo");
+
+        service.deleteTag(tag.id);
+        expect(service.getTag(tag.id)).toBeUndefined();
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(service.getTag(tag.id)?.name).toBe("Demo");
+        expect(service.resolveIdentity(tag.id, BASE).displayName.value).toBe("My Game Demo");
+    });
+
+    it("undoes an override without undoing the variant that carries it", async () => {
+        const { service, history } = await createHarness();
+        const tag = service.createTag({ name: "Demo" });
+        service.setOverride(tag.id, "displayName", "My Game Demo");
+
+        history.undo(projectHistoryScope());
+
+        expect(service.getTag(tag.id)?.name).toBe("Demo");
+        // Back to inheriting, which is the absence of the key rather than a copy of the base value.
+        expect(service.listOverriddenKeys(tag.id)).toEqual([]);
+        expect(service.resolveIdentity(tag.id, BASE).displayName.value).toBe("My Game");
+    });
+
+    it("names the step it would undo", async () => {
+        const { service, history } = await createHarness();
+        const tag = service.createTag({ name: "Demo" });
+        service.deleteTag(tag.id);
+
+        expect(history.peekUndo(projectHistoryScope())).toEqual({
+            key: "project.appTags.history.delete",
+            params: { name: "Demo" },
+        });
     });
 });

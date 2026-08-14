@@ -3,6 +3,7 @@ import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBluep
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type {
     Blueprint,
+    BlueprintDocument,
     BlueprintPersistentVariable,
     SharedBlueprintAsset,
 } from "@shared/types/blueprint/document";
@@ -54,6 +55,7 @@ import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/stor
 import {
     applyAppTagToBlueprint,
     applyAppTagToBlueprintDocument,
+    collectUnfoldableAppTagGraphs,
     collectUnfoldableAppTagGraphsInBlueprint,
     type AppTagGraphFoldOptions,
     type UnfoldableAppTagGraph,
@@ -96,7 +98,9 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     };
     const localBlueprints = uigraphs.blueprintDocument;
     const variableTables = await loadVariableRuntimeTables(context.projectPath, uigraphsRaw.blueprintDocument);
-    const sharedBlueprints = foldSharedBlueprints(await loadSharedBlueprints(context.projectPath), context, fold);
+    const sharedAssets = await loadSharedBlueprints(context.projectPath);
+    const sharedBlueprints = foldSharedBlueprints(sharedAssets, context, fold);
+    reportLiveVariantReads(context, fold, localBlueprints, sharedAssets);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
     // Read from the folded document on purpose: a `Start Game` on a branch this edition does not take
     // cannot run, so the scene it names is not an entry into any story this package holds.
@@ -220,7 +224,14 @@ function readRawPersistentVariables(blueprintDocument: unknown): Record<string, 
     return raw as Record<string, BlueprintPersistentVariable>;
 }
 
-async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprintAsset[]> {
+/**
+ * Every shared blueprint asset a project holds, parsed.
+ *
+ * Exported because the build's preflight needs the same set: the renderer cannot enumerate these
+ * (they are asset files, and nothing over there resolves an asset id to a path), so a check that
+ * only reads the blueprint document is blind to exactly the graphs this loads.
+ */
+export async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprintAsset[]> {
     const shardPath = path.join(projectPath, "assets", "assets.metadata.blueprint.json");
     const shardResult = await Fs.read(shardPath, "utf-8");
     if (!shardResult.ok) {
@@ -255,11 +266,11 @@ async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprin
  * Shared blueprint assets, folded against this variant - and the one place a variant refusal is
  * raised from the main process rather than from the build gate.
  *
- * **The asymmetry is deliberate; do not tidy it away.** `BuildService`'s gate reads the blueprint
- * *document*, which is the only set of graphs the renderer can see: shared blueprints are asset files,
- * and nothing in the renderer enumerates and parses them. Removal therefore covers strictly more than
- * refusal does, which is the safe direction - nothing ever ships unfolded, and the only cost is that a
- * shared-asset problem is reported here, at assembly, instead of before the build starts.
+ * **This stays even though the gate now covers the same assets; do not tidy it away.**
+ * `BuildService`'s gate reads them through `AssetsService.listSharedBlueprints`, so an author usually
+ * hears about a refusal before the build starts rather than from the packer. That is a better first
+ * report, not a substitute: this runs over the bytes actually being packaged, and a build is entitled
+ * to assume nothing about which checks ran before it.
  *
  * Symmetry the other way round is what would be fatal. Leaving these graphs alone would ship a live
  * `Get App Tag`, and the runtime answers the release name to it (`resolveAppTagNodeOutput`) - so in a
@@ -267,9 +278,11 @@ async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprin
  * A silent wrong answer is worse than either a refusal or a leak, because nothing anywhere says it
  * happened.
  *
- * Only a build throws. Dev Mode and the preview supply no variant, so they assemble as release, the
- * runtime's answer is right by construction, and a refused graph there is something the author is
- * still editing rather than something about to be packaged. Exported for tests.
+ * Only a build throws - see `DevModeBundleLoadContext.packaging`. A host that ships nothing has
+ * nobody to keep a variant read from, and a refused graph there is something the author is still
+ * editing rather than something about to be packaged; stopping the assembly would take Dev Mode away
+ * from them over a graph they cannot ship either way. It is reported instead, by the caller.
+ * Exported for tests.
  */
 export function foldSharedBlueprints(
     assets: readonly SharedBlueprintAsset[],
@@ -277,7 +290,7 @@ export function foldSharedBlueprints(
     fold: AppTagGraphFoldOptions,
 ): SharedBlueprintAsset[] {
     return assets.map(asset => {
-        if (context.appTag) {
+        if (context.appTag && context.packaging) {
             const refused = collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold);
             if (refused.length > 0) {
                 throw new Error(describeAppTagGraphRefusal(refused[0], asset.name, context.locale));
@@ -286,6 +299,42 @@ export function foldSharedBlueprints(
         const blueprint = applyAppTagToBlueprint(asset.blueprint, fold);
         return blueprint === asset.blueprint ? asset : { ...asset, blueprint };
     });
+}
+
+/**
+ * Tell a non-packaging host which graphs still ask which edition they are.
+ *
+ * A graph the fold cannot reduce keeps its `Get App Tag` node, and the node answers the release name
+ * wherever it is read (`resolveAppTagNodeOutput` is a constant). Running as the demo, that is a
+ * wrong answer rather than a missing one - so an author who sees release content on a demo run has
+ * to be able to find out why, from the same console the rest of the run reports to.
+ *
+ * A build never reaches this: it refuses those graphs outright, at the gate and again at assembly.
+ * So this is the *only* place the situation is describable, and saying nothing is what would make it
+ * a mystery.
+ */
+function reportLiveVariantReads(
+    context: DevModeBundleLoadContext,
+    fold: AppTagGraphFoldOptions,
+    document: BlueprintDocument | null,
+    sharedAssets: readonly SharedBlueprintAsset[],
+): void {
+    if (!context.appTag || context.packaging || !context.onNotice) {
+        return;
+    }
+    const names = [
+        ...collectUnfoldableAppTagGraphs(document, fold).map(graph => graph.blueprintName),
+        ...sharedAssets.flatMap(asset =>
+            collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold).map(() => asset.name)),
+    ];
+    const distinct = [...new Set(names)];
+    if (distinct.length === 0) {
+        return;
+    }
+    context.onNotice(
+        `${distinct.join(", ")} still asks which edition it is, and this run cannot fold the answer in, `
+        + `so it reads "${RELEASE_APP_TAG.name}" there. A build refuses those graphs.`,
+    );
 }
 
 /**
@@ -353,7 +402,7 @@ export function planSceneDrop(
     appTagId: string,
     blueprints: readonly Blueprint[],
 ): SceneDropPlan {
-    if (isBuiltinAppTagId(appTagId)) {
+    if (isBuiltinAppTagId(appTagId) || !context.packaging) {
         return null;
     }
     const declared = context.declaredScenes ?? {};

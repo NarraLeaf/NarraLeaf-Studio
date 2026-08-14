@@ -102,6 +102,12 @@ export const project = {
     // 押したときに何が起きるかだけ。
     appTags: {
         add: "バリアントを追加",
+        history: {
+            add: "バリアント {name} を追加",
+            rename: "バリアントの名前を {name} に変更",
+            delete: "バリアント {name} を削除",
+            edit: "ビルドバリアントの編集",
+        },
         newTagName: "新しいバリアント",
         nameTitle: "名前",
         fields: {
@@ -263,6 +269,11 @@ export const project = {
         // バスとは何か、音量がどう掛け合わさるかは `audio` のヘルプトピックにある。
         // この節の見出しの `?` から開く。
         add: "トラックを追加",
+        history: {
+            add: "トラック {name} を追加",
+            delete: "トラック {name} を削除",
+            edit: "オーディオトラックの編集",
+        },
         newTrackName: "新規トラック",
         nameTitle: "名前",
         parentTitle: "出力先",

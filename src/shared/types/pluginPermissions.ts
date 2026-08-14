@@ -44,6 +44,16 @@ export type PluginInstallPermission =
         /** Derived from `contributes.sidecars`: a native child process shipped inside the author's game. */
         kind: "sidecar";
         id: string;
+        /**
+         * Which of the two sidecar shapes this is, carried through from the manifest because the
+         * two are different promises: `executable` starts a separate binary, `node` runs the
+         * plugin's own JavaScript under the game's Electron as Node. An author told only "this
+         * ships a helper program" has not been told which one they are approving.
+         *
+         * Named apart from `kind` above on purpose - that one says which permission this is, this
+         * one says what the sidecar runs.
+         */
+        sidecarKind: PluginSidecarKind;
         /** `<platform>-<arch>` keys the sidecar ships binaries for. */
         platforms: string[];
     }
@@ -72,6 +82,20 @@ export type PluginInstallPermission =
         kind: "externalLink";
         patterns: string[];
     };
+
+/**
+ * How a sidecar's shipped files are started.
+ *
+ * - `executable` — a separate binary, spawned as its own process.
+ * - `node` — the plugin's own JavaScript, run under the game's Electron as Node, which gives it
+ *   everything Node can reach on the player's machine.
+ *
+ * It lives here rather than beside `PluginSidecarContribution` so the contribution and the derived
+ * permission read the same union: `plugins.ts` already imports from this module, and one of the two
+ * spelling out `"executable" | "node"` by hand is how a manifest and the prompt that describes it
+ * start to disagree.
+ */
+export type PluginSidecarKind = "executable" | "node";
 
 /**
  * Capability domains a plugin's `runtime` entry can ask for. Each maps 1:1 onto a

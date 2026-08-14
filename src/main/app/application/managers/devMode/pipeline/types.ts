@@ -27,6 +27,20 @@ export type DevModeBundleLoadContext = {
      */
     appTag?: { id: string; name: string };
     /**
+     * These bytes are going into a package a player will get.
+     *
+     * The split this draws is between *folding* a variant and *planning what a package leaves out*.
+     * Folding decides what the graphs and the story say, and every host wants it: an author who runs
+     * Dev Mode as the demo is asking to see the demo's cut points and the demo's branches. Planning
+     * a scene drop decides which scenes never reach a player, and only a build has a player to keep
+     * anything from - Dev Mode ships nothing, so the plan would decide nothing while its refusals,
+     * which are phrased for a build and stop an assembly dead, would decide everything.
+     *
+     * So this gates the drop and the refusal, not the fold. Absent is "nothing is being packaged",
+     * which is what Dev Mode, the preview and a test run mean.
+     */
+    packaging?: boolean;
+    /**
      * The third-party runtime code this pack ships, and what each piece of it declared it may do.
      *
      * Only the declarations are read, and only to ask whether a plugin can start a story. This was

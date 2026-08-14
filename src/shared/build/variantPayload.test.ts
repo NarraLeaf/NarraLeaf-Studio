@@ -3,6 +3,7 @@ import {
     collectReferencedAssetIds,
     collectTextIds,
     isSceneIndependentUnitId,
+    restrictCharacterUnits,
     restrictLocalizationToTextIds,
     restrictRecordToAssetIds,
     restrictVoiceToTextIds,
@@ -124,5 +125,43 @@ describe("restrictRecordToAssetIds", () => {
         const result = restrictRecordToAssetIds({ [KEPT]: "a", [DROPPED]: "b" }, new Set([KEPT]));
         expect(result.record).toEqual({ [KEPT]: "a" });
         expect(result.removedCount).toBe(1);
+    });
+});
+
+/**
+ * A character's display name survives the scene drop by construction - it belongs to a character,
+ * not to a row - so an edition that stopped shipping the character shipped the name anyway, in every
+ * language. The name is usually the spoiler that got the character dropped.
+ */
+describe("restrictCharacterUnits", () => {
+    const bundle = (): GameLocalizationBundle => ({
+        sourceLocale: "en",
+        locales: ["en", "ja"],
+        tables: {
+            en: { [`char:${KEPT}`]: "Ren", [`char:${DROPPED}`]: "The Traitor", "ui:title": "Play" },
+            ja: { [`char:${DROPPED}`]: "裏切り者", "story-row": "…" },
+        },
+    } as unknown as GameLocalizationBundle);
+
+    it("drops the names of characters that do not ship, in every language", () => {
+        const result = restrictCharacterUnits(bundle(), new Set([KEPT]));
+
+        expect(result.bundle.tables.en).toEqual({ [`char:${KEPT}`]: "Ren", "ui:title": "Play" });
+        expect(result.bundle.tables.ja).toEqual({ "story-row": "…" });
+        expect(result.removedUnitCount).toBe(2);
+    });
+
+    it("leaves every other unit space alone", () => {
+        const result = restrictCharacterUnits(bundle(), new Set());
+
+        expect(result.bundle.tables.en["ui:title"]).toBe("Play");
+        expect(result.bundle.tables.ja["story-row"]).toBe("…");
+    });
+
+    it("keeps every name when the whole cast ships", () => {
+        const result = restrictCharacterUnits(bundle(), new Set([KEPT, DROPPED]));
+
+        expect(result.removedUnitCount).toBe(0);
+        expect(result.bundle.tables.en[`char:${DROPPED}`]).toBe("The Traitor");
     });
 });

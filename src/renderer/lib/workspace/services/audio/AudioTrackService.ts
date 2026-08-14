@@ -12,6 +12,7 @@ import {
     type ProjectAudioTrack,
     type ProjectAudioTrackDocument,
 } from "@shared/types/audioTrack";
+import type { TranslationKey } from "@shared/i18n";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -20,12 +21,28 @@ import { Services, IAudioTrackService, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
 import { UuidService } from "../core/UuidService";
+import { HistoryService } from "../history/HistoryService";
+import type { HistoryLabel } from "../history/historyModel";
+import { projectHistoryScope } from "../history/historyScopes";
 import { EventEmitter } from "../ui/EventEmitter";
 
 type AudioTrackServiceEvents = {
     tracksChanged: ProjectAudioTrack[];
     dirtyChanged: boolean;
 };
+
+/**
+ * What the Edit menu and the undo tooltip call one of these steps.
+ *
+ * Three rather than one per mutator: the two an author performs deliberately and would look for by
+ * name, and one for every property edit. Naming which property changed would need a label per field
+ * and would still be vague about a drag that moved a bus and reparented it in one gesture.
+ */
+const AUDIO_TRACK_EDIT_LABEL: HistoryLabel = { key: "project.audio.history.edit" as TranslationKey };
+
+function audioTrackLabel(key: string, name: string): HistoryLabel {
+    return { key: `project.audio.history.${key}` as TranslationKey, params: { name } };
+}
 
 /**
  * The project's audio buses. Owns `editor/audio-tracks.json`.
@@ -41,6 +58,12 @@ type AudioTrackServiceEvents = {
  * Every mutation goes through {@link applyTrackMutation}, which re-normalizes: nothing a caller does
  * can leave an unknown parent, a cycle, an out-of-range volume or a missing seed in memory. The
  * mutators below then only have to worry about what they *mean*, not about what they could corrupt.
+ *
+ * **Every mutation is also one undo step on the project stack.** A bus is not "in" a document the
+ * author has open, which is what `HistoryScopeKind.Project` is for. Deleting a track reparents its
+ * children and rewrites nothing that pointed at it, so before this there was no way back from a
+ * mis-click at all. The undo unit is the whole list rather than the field that changed: it is a
+ * small table, and an inverse per mutator is six inverses that each have to stay correct.
  */
 export class AudioTrackService extends Service<AudioTrackService> implements IAudioTrackService {
     private document: ProjectAudioTrackDocument | null = null;
@@ -167,16 +190,49 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
     }
 
     /** The single mutation entry - mutate the list, re-normalize, bump, mark dirty, autosave, emit. */
-    public applyTrackMutation(mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[]): void {
+    public applyTrackMutation(
+        mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[],
+        label: HistoryLabel = AUDIO_TRACK_EDIT_LABEL,
+    ): void {
         const document = this.getDocument();
+        const before = structuredClone(document.tracks);
         // Re-normalized on every mutation rather than only on load, so nothing a caller does can put
         // an out-of-range volume, a cycle, a missing seed or a duplicate id into memory - the
         // invariants the resolvers rely on hold between saves, not just across them.
         document.tracks = normalizeProjectAudioTracks(mutator([...document.tracks]));
+        this.commitMutation();
+        this.recordUndoStep(before, structuredClone(document.tracks), label);
+    }
+
+    /** Bump, mark dirty, autosave, emit. Shared by a mutation and by the restore an undo performs. */
+    private commitMutation(): void {
         this.revision += 1;
         this.setDirty(true);
         this.autoSaver.schedule();
         this.events.emit("tracksChanged", this.listTracks());
+    }
+
+    /**
+     * One undo step for one mutation.
+     *
+     * The snapshot is already normalized, so restoring writes it back rather than re-running it
+     * through the normalizer - an undo has to land on what the author had, not on what the rules
+     * would make of it a second time. `HistoryService` suppresses recording while an undo runs.
+     */
+    private recordUndoStep(
+        before: ProjectAudioTrack[],
+        after: ProjectAudioTrack[],
+        label: HistoryLabel,
+    ): void {
+        const restore = (snapshot: ProjectAudioTrack[]) => {
+            this.getDocument().tracks = structuredClone(snapshot);
+            this.commitMutation();
+        };
+        this.getContext().services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
+            label,
+            undo: () => restore(before),
+            redo: () => restore(after),
+        });
     }
 
     /** A new bus, appended after its would-be siblings so it lands where the author is looking. */
@@ -193,7 +249,7 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
             volume: input?.volume ?? 1,
             loop: input?.loop ?? false,
         };
-        this.applyTrackMutation(tracks => [...tracks, track]);
+        this.applyTrackMutation(tracks => [...tracks, track], audioTrackLabel("add", track.name));
         return this.getTrack(id) ?? track;
     }
 
@@ -224,7 +280,7 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
             const next = [...tracks];
             next.splice(index < 0 ? tracks.length : index + 1, 0, copy);
             return next;
-        });
+        }, audioTrackLabel("add", copy.name));
         return this.getTrack(copy.id) ?? copy;
     }
 
@@ -304,9 +360,12 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
             return false;
         }
         const inheritedParent = doomed.parentId;
-        this.applyTrackMutation(tracks => tracks
-            .filter(track => track.id !== id)
-            .map(track => (track.parentId === id ? { ...track, parentId: inheritedParent } : track)));
+        this.applyTrackMutation(
+            tracks => tracks
+                .filter(track => track.id !== id)
+                .map(track => (track.parentId === id ? { ...track, parentId: inheritedParent } : track)),
+            audioTrackLabel("delete", doomed.name),
+        );
         return true;
     }
 

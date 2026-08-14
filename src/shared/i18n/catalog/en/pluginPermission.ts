@@ -60,8 +60,8 @@ export const pluginPermission = {
      */
     permissions: {
         section: {
-            sidecar: "Native program",
-            sidecarNote: "This plugin ships a native program that runs inside the game you build.",
+            sidecar: "Programs on the player's computer",
+            sidecarNote: "This plugin ships a program inside the games you build.",
             buildDependency: "Build-time downloads",
             runtime: "In your game",
             externalLink: "Links out of your game",
@@ -69,6 +69,15 @@ export const pluginPermission = {
             studio: "Studio permissions",
         },
         sidecarPlatforms: "Runs on {platforms}",
+        /**
+         * The row's own line, because the group heading covers both and the difference is the
+         * whole decision: one starts a separate program, the other runs the plugin's code with
+         * the game's own reach.
+         */
+        sidecarKind: {
+            executable: "Runs as a separate program",
+            node: "Runs the plugin's own code as part of the game",
+        },
         buildDependencyHosts: "Downloads from {hosts}",
         /**
          * Phrased around the player's data, not the API name - "state.write"
