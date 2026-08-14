@@ -887,8 +887,17 @@ interface IUIEditorStateService extends IService {
     getTool(): UITool;
     setTool(tool: UITool): void;
     getViewportTransform(): ViewportTransform;
+    /** A hand gesture (zoom or pan); ends the automatic fit for the interface being edited. */
     updateViewport(transform: Partial<ViewportTransform>): ViewportTransform;
     resetViewport(): ViewportTransform;
+    /** Which interface the current transform describes; `null` before any editor tab claimed it. */
+    getViewportSurfaceId(): string | null;
+    /** True while the transform is still a computed fit, i.e. the editor may re-fit on its own. */
+    isViewportAutoFitted(): boolean;
+    /** Installs a computed fit as the viewport for an interface (revisable, unlike a hand gesture). */
+    applyFittedViewport(surfaceId: string, transform: ViewportTransform): ViewportTransform;
+    /** Restores the transform an interface was left at, or `null` when the caller should fit. */
+    adoptSurfaceViewport(surfaceId: string): ViewportTransform | null;
     getSelection(): SelectionState;
     setSelection(selection: SelectionState): void;
     setUIElementSelection(selection: UIElementSelection): void;
