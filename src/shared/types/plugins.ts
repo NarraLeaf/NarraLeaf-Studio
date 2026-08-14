@@ -321,10 +321,35 @@ export type PluginContributes = {
      * are refused at validation whatever a manifest says; that list and its reasoning live in the
      * same module.
      *
-     * This is separate from, and grants nothing towards, the project's own `externalLinks` - the
-     * Open Link node still opens only what the build's variant declared.
+     * This is separate from, and grants nothing towards, {@link network}: opening a page and
+     * fetching bytes are different acts, and the Open Link node the author writes is a third thing
+     * again, governed only by its scheme.
      */
     externalLinks?: string[];
+    /**
+     * Address patterns this plugin's runtime code requests bytes from.
+     *
+     * Like {@link externalLinks} and unlike everything else here, this is a list of places outside
+     * the game rather than identifiers the plugin owns, so it derives an install permission the
+     * author approves by name (`PluginInstallPermission` `kind: "network"`) and adding one to a
+     * later version re-prompts.
+     *
+     * Two rules narrower than the external-link patterns, both for the same reason - what comes
+     * back from a fetch runs inside the game, while an opened page does not:
+     *
+     *  - **`http(s)` only.** There is no storefront-scheme case here; a plugin that fetches speaks
+     *    HTTP.
+     *  - **The path is written out.** `https://api.example.com/*` is a declaration and
+     *    `https://api.example.com` is not, because the pattern language reads the second as the
+     *    single path `/`. It is refused rather than rewritten: this string is what the install
+     *    prompt shows, and a manifest whose text differs from what was approved is the one thing
+     *    this whole mechanism exists to prevent.
+     *
+     * What this reaches is *not* widened by the project's own network allowlist and does not widen
+     * it. A build narrowed to a list still reaches these hosts - the author approved them at
+     * install - and the list shows them attributed to this plugin rather than quietly making room.
+     */
+    network?: string[];
 };
 
 export type PluginManifestV2 = Omit<PluginIdentity, "id" | "name" | "version"> & Required<Pick<PluginIdentity, "id" | "name" | "version">> & {

@@ -52,6 +52,11 @@ export const lint = {
             description: "部分已选构建目标不支持的编码",
             message: "{asset} 在 {platform} 上无法播放",
         },
+        networkFetchNotAllowlisted: {
+            title: "地址不在白名单内",
+            description: "Fetch 节点指向了本工程不允许的地址",
+            message: "{url} 不在本工程的网络白名单内",
+        },
         networkFetchDisallowed: {
             title: "网络节点无法访问网络",
             description: "工程不允许 HTTP，但蓝图里有网络节点",
@@ -141,11 +146,6 @@ export const lint = {
             title: "什么都不做的事件",
             description: "事件层里没有接任何可执行的东西",
             message: "这个事件什么都不会执行",
-        },
-        blueprintExternalLinkUndeclared: {
-            title: "未声明的链接",
-            description: "打开链接节点上的地址没有任何变体声明过",
-            message: "没有任何变体声明 {url}，因此任何构建都不会打开它",
         },
         uiUnlocalizedText: {
             title: "未本地化的文本",

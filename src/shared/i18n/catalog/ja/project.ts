@@ -122,13 +122,6 @@ export const project = {
         reachableTitle: "ここから始められるシーン",
         // このバリアントのビルドがプレイヤーのブラウザに渡してよいアドレス。仕組みではなく、
         // 一覧が何を決めるかで名前を付ける。バリアントは自分の一覧を持つか、プロジェクトのものを読む。
-        links: {
-            title: "ゲームが開けるリンク",
-            add: "リンクを追加",
-            remove: "リンクを削除",
-            placeholder: "https://example.com/store",
-            invalid: "開けるのは http:// または https:// で始まるアドレスだけ",
-        },
         // このバリアントのビルドで、ストーリーの行が尽きたときに出すページ。裏側のエンジンのイベントではなく、
         // 作者から見て何が起きるかで名前を付ける。
         ending: {
@@ -320,6 +313,19 @@ export const project = {
         allowHttpTitle: "HTTP を許可",
         allowHttpDescription: "オフにすると、ゲームはアプリのプロトコルの中に閉じ、HTTP と HTTPS の要求はすべて遮断される",
         allowHttpWebHint: "Web 書き出しには効かない。書き出したもの自体が HTTP で配信される。ネットワークノードはそこでも動く",
+        networkAllowlistTitle: "一覧のアドレスだけ許可",
+        networkAllowlistDescription: "ゲームを下のアドレスに限る。ほかへの要求はすべて拒否される",
+        networkAllowlistWebHint: "Web 書き出しを含むすべてのビルドで、ページのポリシーによって効く",
+        networkAllowlist: {
+            title: "許可するアドレス",
+            description: "1 行に 1 つ、アドレスかホストのパターンを書く",
+            placeholder: "https://api.example.com/*",
+            invalid: "http:// か https:// のアドレスを入れる。* は先頭のホストラベルか末尾のパスにだけ使える",
+            add: "アドレスを追加",
+            remove: "アドレスを削除",
+            fromPlugins: "インストール済みプラグインの宣言",
+            sidecarNote: "プラグインの sidecar は別プロセスで、この一覧の対象ではない",
+        },
         encryptAssetsTitle: "アセットを暗号化",
         encryptAssetsDescription: "パッケージとプレビューのビルドで、アセット、プラグインのコード、ストーリーのバンドルを暗号化する。開発モードには影響しない",
         encryptAssetsWebHint: "Web 書き出しには当てはまらない。Web ビルドは常にアセットの保護なしで配布される",

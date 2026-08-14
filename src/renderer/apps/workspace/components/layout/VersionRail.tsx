@@ -48,6 +48,7 @@ import {
     VERSION_RAIL_COLLAPSED_WIDTH,
     VERSION_RAIL_EXPANDED_WIDTH,
     MANUAL_SERVER,
+    NO_SERVER,
     buildChangeList,
     canCommit,
     initialServerChoice,
@@ -1283,11 +1284,17 @@ function describeReach(reach: VcsServerReach): TranslationKey {
  * that list - which is why this is a dialog with names in it rather than a text field. A
  * project pointed at a server nobody has signed in to would be pointed at a refusal.
  *
+ * Adding one is therefore not offered here at all: the last row of the list opens Settings
+ * on the servers panel and closes this dialog. A token pasted into a side panel would put
+ * a machine-wide credential behind a per-project control, and there would then be two
+ * places that add a server and one of them would go stale.
+ *
  * The address field stays for the case the list cannot cover: a `loreserver` with nothing
  * in front of it asks nobody who they are, so there is no account to add and nothing to
- * put in that list. It is one option among the others rather than the way in.
+ * put in that list. It sits below the add row rather than beside the list, because a
+ * project that reaches one is the exception and typing an address is not the way in.
  */
-function ServerPickerDialog({ surface, isOpen, onClose }: {
+export function ServerPickerDialog({ surface, isOpen, onClose }: {
     surface: VersionSurface;
     isOpen: boolean;
     onClose: () => void;
@@ -1296,7 +1303,7 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
     const { context } = useWorkspace();
     const key = "workspace.shell.versionControl.server.picker";
     const [servers, setServers] = useState<VcsServerSession[]>([]);
-    const [choice, setChoice] = useState<string>(MANUAL_SERVER);
+    const [choice, setChoice] = useState<string>(NO_SERVER);
     const [address, setAddress] = useState("");
     const [name, setName] = useState("");
     const running = surface.busy !== null;
@@ -1309,7 +1316,7 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
             const list = result.success ? result.data.servers : [];
             setServers(list);
             // Seeded with the server this project already uses, so changing one is a choice
-            // between named things rather than a retype. Falling back to the address field
+            // between named things rather than a retype. Falling back to nothing chosen
             // rather than to the first server: connecting somewhere nobody asked for is the
             // one outcome a dialog about where work is sent must not make easy.
             setChoice(initialServerChoice(list, surface.remote));
@@ -1325,15 +1332,25 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
         };
     }, [isOpen, surface.remote]);
 
-    const chosen = choice === MANUAL_SERVER
-        ? address.trim()
-        : name.trim() === "" ? "" : `${choice}/${name.trim()}`;
+    /** The server chosen out of the list, as opposed to the address field or nothing yet. */
+    const picked = choice === NO_SERVER || choice === MANUAL_SERVER ? null : choice;
+    const chosen = picked !== null
+        ? (name.trim() === "" ? "" : `${picked}/${name.trim()}`)
+        : choice === MANUAL_SERVER ? address.trim() : "";
 
     const connect = () => {
         if (!chosen) return;
         void surface.setRemote(chosen).then(saved => {
             if (saved) onClose();
         });
+    };
+
+    // Adding one signs this installation in, which every project since then picks out of the
+    // list above, so it happens in Settings and this dialog steps out of the way. Left open,
+    // it would go on showing the list as it was read when it opened.
+    const addServer = () => {
+        void getInterface().app.launchSettings({ highlight: SERVERS_PANEL_SETTING_KEY });
+        onClose();
     };
 
     return (
@@ -1343,34 +1360,25 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
             title={t(`${key}.title`)}
             size="md"
             footer={(
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-end gap-2">
                     <button
                         type="button"
-                        onClick={() => void getInterface().app.launchSettings({ highlight: SERVERS_PANEL_SETTING_KEY })}
+                        onClick={onClose}
                         className={dialogFooterButtonClass({ variant: "secondary" })}
                     >
-                        {t(`${key}.manage`)}
+                        {t("workspace.shell.versionControl.server.cancel")}
                     </button>
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className={dialogFooterButtonClass({ variant: "secondary" })}
-                        >
-                            {t("workspace.shell.versionControl.server.cancel")}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={connect}
-                            disabled={running || chosen === ""}
-                            className={dialogFooterButtonClass({
-                                variant: "primary",
-                                disabled: running || chosen === "",
-                            })}
-                        >
-                            {t("workspace.shell.versionControl.server.save")}
-                        </button>
-                    </div>
+                    <button
+                        type="button"
+                        onClick={connect}
+                        disabled={running || chosen === ""}
+                        className={dialogFooterButtonClass({
+                            variant: "primary",
+                            disabled: running || chosen === "",
+                        })}
+                    >
+                        {t("workspace.shell.versionControl.server.save")}
+                    </button>
                 </div>
             )}
         >
@@ -1379,36 +1387,45 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
                     means the history is about to be shared, and one signed by the tool tells a
                     collaborator nothing. Absent the moment it is answered. */}
                 <AuthorIdentity surface={surface} />
-                {servers.length === 0
-                    ? <p>{t(`${key}.empty`)}</p>
-                    : (
-                        <div className="flex flex-col gap-1">
-                            {servers.map(server => (
-                                <button
-                                    key={server.remoteOrigin}
-                                    type="button"
-                                    aria-pressed={choice === server.remoteOrigin}
-                                    onClick={() => setChoice(server.remoteOrigin)}
-                                    data-server-choice={server.remoteOrigin}
-                                    className={cn(
-                                        "flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-left transition-colors cursor-default",
-                                        choice === server.remoteOrigin
-                                            ? "border-primary bg-fill-subtle text-fg"
-                                            : "border-edge hover:bg-fill",
-                                    )}
-                                >
-                                    <span className="min-w-0 flex-1 truncate text-sm">
-                                        {serverHost(server.remoteOrigin)}
-                                    </span>
-                                    <span className="shrink-0 text-xs text-fg-subtle">
-                                        {server.account.displayName}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                {servers.length === 0 && <p>{t(`${key}.empty`)}</p>}
+                <div className="flex flex-col gap-1">
+                    {servers.map(server => (
+                        <button
+                            key={server.remoteOrigin}
+                            type="button"
+                            aria-pressed={choice === server.remoteOrigin}
+                            onClick={() => setChoice(server.remoteOrigin)}
+                            data-server-choice={server.remoteOrigin}
+                            className={cn(
+                                "flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-left transition-colors cursor-default",
+                                choice === server.remoteOrigin
+                                    ? "border-primary bg-fill-subtle text-fg"
+                                    : "border-edge hover:bg-fill",
+                            )}
+                        >
+                            <span className="min-w-0 flex-1 truncate text-sm">
+                                {serverHost(server.remoteOrigin)}
+                            </span>
+                            <span className="shrink-0 text-xs text-fg-subtle">
+                                {server.account.displayName}
+                            </span>
+                        </button>
+                    ))}
+                    {/* The last row of the list, not a control beside it: adding a server and
+                        choosing one are the same question asked a moment apart, and an author
+                        looking at a list that does not hold their server looks at its end. */}
+                    <button
+                        type="button"
+                        onClick={addServer}
+                        data-vcs-seam="picker-add"
+                        className="flex min-h-9 items-center gap-2 rounded-md border border-dashed border-edge px-3 text-left text-sm transition-colors cursor-default hover:bg-fill hover:text-fg"
+                    >
+                        <Plus className="h-3.5 w-3.5 shrink-0" />
+                        {t(`${key}.add`)}
+                    </button>
+                </div>
 
-                {choice !== MANUAL_SERVER && (
+                {picked !== null && (
                     <div>
                         <FieldLabel>{t(`${key}.nameLabel`)}</FieldLabel>
                         <Input
@@ -1428,7 +1445,12 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
                     </div>
                 )}
 
-                <div>
+                {/* Below the add row, because a server that can be signed in to is the case
+                    this dialog is for. Kept all the same: a `loreserver` with nothing in front
+                    of it issues no token, so Settings has nothing to add for it and this field
+                    is the only place a project can be pointed at one, or read the address of
+                    the one it already uses. */}
+                <div data-vcs-seam="picker-address">
                     <button
                         type="button"
                         aria-pressed={choice === MANUAL_SERVER}
@@ -1464,7 +1486,7 @@ function ServerPickerDialog({ surface, isOpen, onClose }: {
                 {/* A refusal used to be read off the rail, because the form asking the question
                     was in it. This dialog covers the rail, so the answer has to arrive here or
                     pressing Connect does nothing visible. The sign-in line is the one refusal
-                    with a remedy that is not on this screen, and Manage servers is the way to it. */}
+                    with a remedy that is not on this screen, and the add row is the way to it. */}
                 {surface.failure !== null && (
                     <div data-vcs-seam="picker-failure" className="space-y-1">
                         <p className="break-words text-xs text-danger">{surface.failure.text}</p>

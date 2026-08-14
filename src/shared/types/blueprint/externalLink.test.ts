@@ -1,54 +1,72 @@
 import { describe, expect, it } from "vitest";
 import {
-    resolveDeclaredExternalLink,
+    normalizeCoreExternalLinkUrl,
+    resolveCoreExternalLink,
     resolvePluginExternalLink,
     resolvePluginExternalLinkAmong,
     type ExternalLinkDeclaringPlugin,
 } from "./externalLink";
 
 /**
- * The guard every shell runs before it opens a page. It is the boundary, so what it refuses matters
- * more than what it allows.
+ * The guard every shell runs before it opens a page. There is no list here to consult - the author
+ * wrote the address - so the whole of what this decides is the scheme, and what it refuses is the
+ * only thing worth testing.
  */
 
-const DECLARED = ["https://store.example.com/app/480", "http://patch.example.com/notes"];
-
-describe("declared external links", () => {
-    it("allows a declared address, in the form it will be opened as", () => {
-        const decision = resolveDeclaredExternalLink({ url: " https://store.example.com/app/480 " }, DECLARED);
-
-        expect(decision).toEqual({ allowed: true, url: "https://store.example.com/app/480" });
+describe("core external links", () => {
+    it("opens an address the author wrote, in the form it will be opened as", () => {
+        expect(resolveCoreExternalLink({ url: " https://store.example.com/app/480 " }))
+            .toEqual({ allowed: true, url: "https://store.example.com/app/480" });
     });
 
-    it("refuses a lookalike host, a longer path and a swapped scheme", () => {
+    it("opens any host, because nothing here is a list", () => {
         for (const url of [
-            "https://store.example.com.evil.test/app/480",
-            "https://store.example.com/app/480/buy",
-            "http://store.example.com/app/480",
+            "https://store.example.com/app/480",
+            "http://patch.example.com/notes",
+            "https://a.host.nobody.declared.test/anything?q=1#x",
+            "mailto:support@example.com",
         ]) {
-            expect(resolveDeclaredExternalLink({ url }, DECLARED).allowed, url).toBe(false);
+            expect(resolveCoreExternalLink({ url }).allowed, url).toBe(true);
         }
     });
 
-    it("refuses every scheme that is not http or https, however it is declared", () => {
-        for (const url of ["file:///C:/secrets.txt", "javascript:alert(1)", "app://asset/1", "/relative"]) {
-            expect(resolveDeclaredExternalLink({ url }, [url]).allowed, url).toBe(false);
+    it("refuses the schemes that turn opening a page into running something", () => {
+        for (const url of [
+            "file:///C:/secrets.txt",
+            "file://server/share/payload.lnk",
+            "javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "vbscript:msgbox(1)",
+        ]) {
+            expect(resolveCoreExternalLink({ url }).allowed, url).toBe(false);
         }
     });
 
-    it("refuses everything when the build declares nothing", () => {
-        expect(resolveDeclaredExternalLink({ url: "https://store.example.com/app/480" }, undefined).allowed)
-            .toBe(false);
-        expect(resolveDeclaredExternalLink({ url: "https://store.example.com/app/480" }, []).allowed)
-            .toBe(false);
+    it("refuses a scheme outside the set even when it is harmless-looking", () => {
+        // `steam:` is reachable, but through a plugin that declares it and an install-time approval
+        // - not through this node. See the note at the top of externalLink.ts.
+        for (const url of ["steam://run/480", "app://asset/1", "nlgame://assets/a.png", "ms-settings:"]) {
+            expect(resolveCoreExternalLink({ url }).allowed, url).toBe(false);
+        }
+    });
+
+    it("refuses anything that is not an absolute address", () => {
+        for (const url of ["", "   ", "/relative", "store.example.com", "not a url"]) {
+            expect(resolveCoreExternalLink({ url }).allowed, url).toBe(false);
+        }
+    });
+
+    it("refuses an address carrying credentials, which reads as one host and goes to another", () => {
+        expect(resolveCoreExternalLink({ url: "https://store.example.com@evil.test/" }).allowed).toBe(false);
+        expect(normalizeCoreExternalLinkUrl("https://user:pw@example.com/")).toBeNull();
     });
 
     it("names the refused address, so a log line says which one it was", () => {
-        const decision = resolveDeclaredExternalLink({ url: "https://evil.test/" }, DECLARED);
+        const decision = resolveCoreExternalLink({ url: "file:///C:/payload.exe" });
 
         expect(decision.allowed).toBe(false);
         expect(decision.allowed ? "" : decision.result.outcome).toBe("refused");
-        expect(decision.allowed ? "" : decision.result.error).toContain("https://evil.test/");
+        expect(decision.allowed ? "" : decision.result.error).toContain("file:///C:/payload.exe");
     });
 });
 
@@ -113,11 +131,11 @@ describe("plugin external links", () => {
     });
 
     it("keeps the two regimes from answering each other's question", () => {
-        // A project address is not a plugin's to open...
-        expect(resolvePluginExternalLinkAmong(PLUGINS, "acme.steam", { url: DECLARED[0] }).allowed)
+        // An address the node opens freely is still not this plugin's to open...
+        expect(resolvePluginExternalLinkAmong(PLUGINS, "acme.itch", { url: "https://anywhere.test/" }).allowed)
             .toBe(false);
-        // ...and a plugin's scheme is still refused by the node, whatever a plugin declared.
-        expect(resolveDeclaredExternalLink({ url: "steam://run/480" }, ["steam://*"]).allowed).toBe(false);
+        // ...and a scheme a plugin declared is still not one the node reaches.
+        expect(resolveCoreExternalLink({ url: "steam://run/480" }).allowed).toBe(false);
     });
 
     it("refuses a blank address without consulting anything", () => {

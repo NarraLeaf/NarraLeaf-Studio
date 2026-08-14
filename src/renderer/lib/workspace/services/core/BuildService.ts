@@ -1,6 +1,12 @@
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
 import { getInterface } from "@/lib/app/bridge";
+import {
+    isNetworkAddressAllowed,
+    NETWORK_POLICY_ALLOWLIST,
+    type NetworkAllowlist,
+    type NetworkPluginAllowlistEntry,
+} from "@shared/types/networkAllowlist";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type {
     BuildPreflightFinding,
@@ -382,6 +388,14 @@ export class BuildService extends Service<BuildService> {
         const networkRefusal = this.runNetworkGate(startedAt, platforms);
         if (networkRefusal) {
             return networkRefusal;
+        }
+        // Beside the gate above and after it, because the two are the same class of fact about the
+        // same nodes: that one refuses a request the game cannot make at all, and this one refuses
+        // an address the game will not be allowed to reach. Async only because the plugins' own
+        // declarations are read over IPC.
+        const allowlistRefusal = await this.runNetworkAllowlistGate(startedAt, platforms);
+        if (allowlistRefusal) {
+            return allowlistRefusal;
         }
         // Second of the two unconditional correctness gates, and placed *between* them on purpose.
         //
@@ -953,6 +967,93 @@ export class BuildService extends Service<BuildService> {
      * defects can leave a project unbuildable with nothing the author can do, which is a worse
      * outcome than the one the gate exists to prevent.
      */
+    /**
+     * The allowlist gate: no build ships a Fetch node aimed at an address the build refuses.
+     *
+     * Unconditional, for the reason the gate above is: `network/fetch-not-allowlisted` reports
+     * the same nodes, and lint is switchable in two ways an author can reach without knowing
+     * what they are giving up. A project that narrowed itself to a list did so deliberately, and
+     * shipping a request that list refuses is the one outcome the feature exists to prevent.
+     *
+     * Written addresses only. A computed one is not knowable here; the host refuses it at run
+     * time with a message naming the list, which is the honest place for that answer.
+     *
+     * Resolved through the same helper the lint rule uses, so "what may this project reach" has
+     * one answer rather than two that can disagree.
+     */
+    private async runNetworkAllowlistGate(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+    ): Promise<GameBuildStateSnapshot | null> {
+        const services = this.getContext().services;
+        const network = services.get<ProjectService>(Services.Project).getNetworkConfiguration();
+        if (!network.allowHttp || network.policy !== NETWORK_POLICY_ALLOWLIST) {
+            return null;
+        }
+        let document: BlueprintDocument | null;
+        try {
+            document = services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+        } catch (error) {
+            // A document that will not load is the packer's problem to report, exactly as it is for
+            // the gate above.
+            console.error("[Build] could not read the blueprint document for the allowlist check", error);
+            return null;
+        }
+        const allowlist: NetworkAllowlist = {
+            policy: network.policy,
+            entries: network.allowlist,
+            plugins: await this.listPluginNetworkDeclarations(),
+        };
+        const refused = collectBlueprintNetworkNodes(document)
+            .filter(site => site.literalUrl && !isNetworkAddressAllowed(site.literalUrl, allowlist));
+        if (refused.length === 0) {
+            return null;
+        }
+
+        const consoleService = this.tryGetConsole();
+        for (const site of refused) {
+            consoleService?.log(
+                BUILD_CONSOLE_CHANNEL,
+                "error",
+                translate("build.networkAddressNotAllowlisted", {
+                    blueprint: site.blueprintName,
+                    url: site.literalUrl ?? "",
+                }),
+                { source: BUILD_CONSOLE_SOURCE },
+            );
+        }
+        const refusal = translateN("build.networkAllowlistSummary", refused.length, { count: refused.length });
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+        this.updateState({
+            status: "error",
+            startedAt,
+            finishedAt: Date.now(),
+            platforms,
+            error: refusal,
+        });
+        return this.state;
+    }
+
+    /**
+     * What every installed plugin declares in `contributes.network`, attributed.
+     *
+     * Every installed plugin, matching what the lint rule reads: which of them a given variant
+     * actually ships is settled later, and a gate that refused an address a shipped plugin
+     * declares would refuse a build that works.
+     */
+    private async listPluginNetworkDeclarations(): Promise<NetworkPluginAllowlistEntry[]> {
+        const result = await getInterface().plugins.list();
+        if (!result.success) {
+            return [];
+        }
+        return result.data.plugins
+            .filter(plugin => (plugin.manifest.contributes?.network ?? []).length > 0)
+            .map(plugin => ({
+                pluginId: plugin.manifest.id,
+                patterns: [...(plugin.manifest.contributes?.network ?? [])],
+            }));
+    }
+
     private async runMediaGate(
         startedAt: number,
         platforms: GameBuildPlatform[],

@@ -67,6 +67,8 @@ export const pluginPermission = {
             runtime: "ゲームの中で",
             externalLink: "ゲームの外へのリンク",
             externalLinkNote: "このプラグインはプレイヤーを次のアドレスへ送り出せる。いずれもゲームの外で開く",
+            network: "ゲームが要求するデータ",
+            networkNote: "ゲームの実行中、このプラグインは次のアドレスからデータを要求する",
             studio: "Studio の権限",
         },
         sidecarPlatforms: "{platforms} で動く",

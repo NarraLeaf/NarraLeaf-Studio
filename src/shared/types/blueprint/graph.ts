@@ -713,6 +713,83 @@ export const BLUEPRINT_NODE_TYPE_STRING_MATCHES_REGEX = "blueprint.string.matche
 export const BLUEPRINT_NODE_TYPE_STRING_EXTRACT_REGEX = "blueprint.string.extractRegex" as const;
 export const BLUEPRINT_NODE_TYPE_STRING_NORMALIZE_LINE_BREAKS = "blueprint.string.normalizeLineBreaks" as const;
 
+/**
+ * Time nodes (pure data).
+ *
+ * A moment travels through a graph as one number: epoch milliseconds, on a `float` pin. That is
+ * already the shape a save carries (`AutoSaveEntry.timestamp`, `Get Latest Auto Save`'s `Timestamp`
+ * pin), so a save's stamp feeds these directly, and the existing `<` / `>` / `Min` / `Max` nodes
+ * sort and compare moments without a single node of their own. A structured Date value would have
+ * bought a nicer inspector and cost all of that.
+ *
+ * Calendar meaning is where the number stops being enough, and that is what these nodes are for:
+ * `Make Time` and `Get Time Parts` cross between the number and the local calendar, `Add Time` and
+ * `Time Difference` do arithmetic that respects month lengths, and the four formatters turn a
+ * moment into text a player reads.
+ */
+export const BLUEPRINT_NODE_TYPE_TIME_NOW = "blueprint.time.now" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_MAKE = "blueprint.time.make" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_PARTS = "blueprint.time.parts" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_FORMAT = "blueprint.time.format" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED = "blueprint.time.formatLocalized" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_FORMAT_RELATIVE = "blueprint.time.formatRelative" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_FORMAT_DURATION = "blueprint.time.formatDuration" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_DURATION_PARTS = "blueprint.time.durationParts" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_ADD = "blueprint.time.add" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_DIFFERENCE = "blueprint.time.difference" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_PARSE = "blueprint.time.parse" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_TO_ISO_STRING = "blueprint.time.toIsoString" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_IS_SAME_DAY = "blueprint.time.isSameDay" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_START_OF_DAY = "blueprint.time.startOfDay" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_ZONE_OFFSET = "blueprint.time.zoneOffset" as const;
+
+/** Inspector param key holding the calendar unit a Time node works in. */
+export const BLUEPRINT_TIME_PARAM_UNIT = "unit" as const;
+/** Inspector param key holding a formatter's style choice. */
+export const BLUEPRINT_TIME_PARAM_STYLE = "style" as const;
+/** Inspector param key holding `Format Time Localized`'s date half. */
+export const BLUEPRINT_TIME_PARAM_DATE_STYLE = "dateStyle" as const;
+/** Inspector param key holding `Format Time Localized`'s time half. */
+export const BLUEPRINT_TIME_PARAM_TIME_STYLE = "timeStyle" as const;
+
+/**
+ * Units `Add Time` and `Time Difference` accept.
+ *
+ * Months and years are in the list even though they are not fixed spans, because they are what an
+ * author means. Both nodes hand them to the calendar rather than to a multiplication - adding one
+ * month to 31 January lands on 28 February, and a difference in months counts calendar months
+ * crossed, not 30-day blocks.
+ */
+export const BLUEPRINT_TIME_UNITS = [
+    "milliseconds",
+    "seconds",
+    "minutes",
+    "hours",
+    "days",
+    "weeks",
+    "months",
+    "years",
+] as const;
+export type BlueprintTimeUnit = typeof BLUEPRINT_TIME_UNITS[number];
+
+/** `Intl.DateTimeFormat` styles, plus the `none` that drops one half of `Format Time Localized`. */
+export const BLUEPRINT_TIME_DISPLAY_STYLES = ["none", "short", "medium", "long", "full"] as const;
+export type BlueprintTimeDisplayStyle = typeof BLUEPRINT_TIME_DISPLAY_STYLES[number];
+
+/**
+ * Clock layouts for `Format Duration`.
+ *
+ * All three are digits and separators only. A "1h 20m" layout would need its unit names translated,
+ * and a node cannot reach the game's language - so that shape belongs to `Get Duration Parts` fed
+ * into an authored, translatable `Format Text`.
+ */
+export const BLUEPRINT_TIME_DURATION_STYLES = ["auto", "hoursMinutesSeconds", "minutesSeconds"] as const;
+export type BlueprintTimeDurationStyle = typeof BLUEPRINT_TIME_DURATION_STYLES[number];
+
+/** `Intl.RelativeTimeFormat` numeric modes: "1 day ago" against "yesterday". */
+export const BLUEPRINT_TIME_RELATIVE_STYLES = ["auto", "always"] as const;
+export type BlueprintTimeRelativeStyle = typeof BLUEPRINT_TIME_RELATIVE_STYLES[number];
+
 export const BLUEPRINT_NODE_TYPE_BROADCAST_SEND = "blueprint.broadcast.send" as const;
 export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broadcast.getListenerCount" as const;
 
@@ -861,8 +938,6 @@ export const BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL = "blueprint.app.openExternal
 /** Inspector param holding the picked address; read only when the `url` pin is unwired. */
 export const BLUEPRINT_EXTERNAL_LINK_PARAM_URL = "url";
 
-/** `dynamicOptionsSource` id for the addresses the project and its variants declare. */
-export const BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE = "externalLinks";
 export const BLUEPRINT_NODE_TYPE_GAME_START_STORY = "blueprint.game.startStory" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME = "blueprint.game.isInGame" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY = "blueprint.game.isGameOverlay" as const;
@@ -873,6 +948,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS = "blueprint.game.save.listI
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW = "blueprint.game.save.getPreview" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE = "blueprint.game.save.delete" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.getMetadata" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME = "blueprint.game.save.getTime" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE = "blueprint.game.autoSave.write" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST = "blueprint.game.autoSave.list" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST = "blueprint.game.autoSave.latest" as const;

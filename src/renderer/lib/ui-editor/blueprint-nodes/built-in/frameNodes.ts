@@ -5,7 +5,6 @@
  */
 
 import {
-    BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE,
     BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
@@ -253,13 +252,14 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         /**
          * A link out of the game: a store page, a patch note, a support form.
          *
-         * The picker offers the addresses the project and its variants declare, because those are
-         * the ones a build can open - the shell refuses everything else, in the process that would
-         * open the page. Wiring the pin instead is allowed for the same reason: the declaration is
-         * the boundary, so a computed address cannot reach anything a picked one could not.
+         * The address is written here or wired in, and there is nothing to declare anywhere else:
+         * the author wrote the graph, so an address in it is the author's decision. What the shell
+         * checks - in the process that would open the page, never in the renderer - is the scheme,
+         * because `shell.openExternal` hands the address to whatever the platform registered for it.
+         * See `@shared/types/blueprint/externalLink`.
          *
-         * `Failed` covers both an address this build does not declare and a browser that would not
-         * open it, with `Error` saying which. They share a pin because the author's answer to both
+         * `Failed` covers both a scheme this node does not open and a browser that would not open
+         * the page, with `Error` saying which. They share a pin because the author's answer to both
          * is the same - the player did not get the page, so show them something else - and a graph
          * that has to branch on a refusal it cannot fix is a branch that never runs in a build.
          */
@@ -287,8 +287,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             {
                 key: BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
                 label: "URL",
-                kind: "select",
-                dynamicOptionsSource: BLUEPRINT_EXTERNAL_LINK_OPTIONS_SOURCE,
+                kind: "string",
             },
         ],
         async execute(ctx) {

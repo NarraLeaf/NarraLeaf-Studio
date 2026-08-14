@@ -1,5 +1,10 @@
 import type { Session } from "electron";
 import { GAME_RUNTIME_PROTOCOL } from "@shared/types/gameRuntime";
+import {
+    isNetworkAddressAllowed,
+    networkAllowlistCspSources,
+    type NetworkAllowlist,
+} from "@shared/types/networkAllowlist";
 
 /**
  * Network enforcement for the standalone preview/packaged game runtime, gated on
@@ -89,14 +94,31 @@ export function isNetworkBlockedUrl(url: string): boolean {
 }
 
 /**
- * Build the runtime Content-Security-Policy. With HTTP disallowed the renderer
- * is limited to `nlgame:` (+ `data:`/`blob:`); enabling HTTP additionally
- * permits remote resource/connection origins (but never remote scripts, which
- * remain a separate concern).
+ * Build the runtime Content-Security-Policy.
+ *
+ * With HTTP disallowed the renderer is limited to `nlgame:` (+ `data:`/`blob:`). With it allowed the
+ * remote half is either the bare schemes - any host - or, when the project states an allowlist, the
+ * origins on it. Remote scripts are never permitted either way, which is a separate concern from
+ * both.
+ *
+ * The allowlist half is what makes this a boundary for code the main process never sees. A Fetch
+ * node's request is decided in `blueprintNetworkFetch`, but a plugin's runtime code is ordinary
+ * script in this page and calls `fetch` directly; `connect-src` is what decides that one, and the
+ * browser applies it to every redirect hop as well.
+ *
+ * An empty allowlist yields no remote sources at all, which is the honest reading of "the project
+ * states a list and the list is empty".
  */
-export function buildRuntimeCsp(allowHttp: boolean): string {
+export function buildRuntimeCsp(allowHttp: boolean, allowlist?: NetworkAllowlist): string {
     const scheme = `${GAME_RUNTIME_PROTOCOL}:`;
-    const remote = allowHttp ? " http: https: ws: wss:" : "";
+    const sources = allowHttp ? networkAllowlistCspSources(allowlist) : [];
+    // `null` is the wide policy: the schemes themselves, which is what every build shipped with
+    // before a list could be stated.
+    const remote = !allowHttp
+        ? ""
+        : sources === null
+            ? " http: https: ws: wss:"
+            : sources.length > 0 ? ` ${sources.join(" ")}` : "";
     return [
         `default-src 'self' ${scheme} data: blob:${remote}`,
         `script-src 'self' ${scheme}`,
@@ -117,14 +139,19 @@ export function buildRuntimeCsp(allowHttp: boolean): string {
  * meta tag (rather than a response header) so it is honored regardless of how
  * the custom `nlgame:` scheme is treated.
  */
-export function injectRuntimeCsp(html: string, allowHttp: boolean): string {
-    const meta = `<meta http-equiv="Content-Security-Policy" content="${buildRuntimeCsp(allowHttp)}" />`;
+export function injectRuntimeCsp(html: string, allowHttp: boolean, allowlist?: NetworkAllowlist): string {
+    const meta = `<meta http-equiv="Content-Security-Policy" content="${buildRuntimeCsp(allowHttp, allowlist)}" />`;
     return html.replace(/<head(\s[^>]*)?>/i, match => `${match}\n    ${meta}`);
 }
 
 export type RuntimeNetworkPolicyOptions = {
     /** The project's Allow HTTP flag, from `pack.network.allowHttp`. */
     allowHttp: boolean;
+    /**
+     * The project's allowlist, from the same block. Absent, or stating the wide policy, leaves this
+     * layer deciding only whether remote requests happen at all.
+     */
+    allowlist?: NetworkAllowlist;
     /**
      * Test network blocking (`NARRALEAF_TEST_NETWORK=blocked`). Overrides
      * `allowHttp`: the point of the test is to see what a game does when the
@@ -135,19 +162,21 @@ export type RuntimeNetworkPolicyOptions = {
 
 /**
  * Install the main-process request block on the given session. No-op only when
- * HTTP is allowed and no test block is in force. Must be called before the
- * window loads so the initial document and every subsequent request is
- * governed. The runtime process runs only the game, so the block applies to the
- * whole session (no per-webContents scoping).
+ * HTTP is allowed with no allowlist to enforce and no test block in force. Must
+ * be called before the window loads so the initial document and every subsequent
+ * request is governed. The runtime process runs only the game, so the block
+ * applies to the whole session (no per-webContents scoping).
  *
  * One registration, not two: `webRequest.onBeforeRequest` keeps only the last
  * listener attached, so a second call for the test block would silently unseat
  * the `allowHttp` one and hand a project that never wanted HTTP a working
- * network.
+ * network. Which is why the three questions are answered inside one callback
+ * rather than by three listeners that would take turns being the only one.
  */
 export function installRuntimeNetworkPolicy(session: Session, options: RuntimeNetworkPolicyOptions): void {
-    const { allowHttp, blockAll } = options;
-    if (allowHttp && !blockAll) {
+    const { allowHttp, allowlist, blockAll } = options;
+    const narrowed = networkAllowlistCspSources(allowlist) !== null;
+    if (allowHttp && !narrowed && !blockAll) {
         return;
     }
     session.webRequest.onBeforeRequest({ urls: BLOCKED_REMOTE_URL_PATTERNS }, (details, callback) => {
@@ -156,6 +185,17 @@ export function installRuntimeNetworkPolicy(session: Session, options: RuntimeNe
         // included. Test blocking is the wider net (it also bites when the
         // project DID allow HTTP) and the narrower veto: it spares loopback, or
         // the game could not be inspected while it ran.
-        callback({ cancel: allowHttp ? isNetworkBlockedUrl(details.url) : true });
+        if (!allowHttp) {
+            callback({ cancel: true });
+            return;
+        }
+        if (blockAll) {
+            callback({ cancel: isNetworkBlockedUrl(details.url) });
+            return;
+        }
+        // The allowlist. Second of the two layers over the same list - the CSP is the first - because
+        // a `connect-src` governs what the page's own script may ask for and this governs the
+        // session, which is what catches a subresource load the page never wrote down.
+        callback({ cancel: !isNetworkAddressAllowed(details.url, allowlist) });
     });
 }

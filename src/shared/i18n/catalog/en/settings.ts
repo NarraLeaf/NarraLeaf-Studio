@@ -319,24 +319,38 @@ export const settings = {
         add: "Add",
         adding: "Adding…",
         cancel: "Cancel",
+        continue: "Continue",
+        checking: "Checking…",
+        done: "Done",
         signOut: "Sign out",
+        // The one thing an author is handed. Every other address is behind it, including
+        // the `lore://` remote, which is stored and never named to anybody.
+        addressLabel: "Server address",
+        addressPlaceholder: "nlteam://studio.example.lan:41402",
+        reached: "{name} answered at {address}.",
         // "Access token" rather than "password": it is not one, and it cannot be chosen,
         // remembered or reset by the person pasting it.
         tokenLabel: "Access token",
         tokenPlaceholder: "Paste the token you were given",
-        // Both addresses are corrections, shown only after a token turns out to name
-        // neither. Deliberately not "auth endpoint": the word for the machinery behind it
-        // is not the reader's to learn.
-        authUrlLabel: "Sign-in address",
-        authUrlPlaceholder: "https://studio.example.lan:41402",
-        remoteUrlLabel: "Server address",
-        remoteUrlPlaceholder: "lore://studio.example.lan:41337",
         hint: "Whoever runs the server issues the token and hands it over.",
+        // A server with nothing to sign in to. Said rather than hidden, because the
+        // absence of an entry afterwards is otherwise indistinguishable from a failure.
+        noAccount: "{name} asks nobody who they are, so no server is added.",
+        // What reaching an address came to, before anything has been added. Separate from
+        // `problems`, which are refusals of a token by a server already reached.
+        probe: {
+            unreachable: "Nothing answered at that address.",
+            notAServer: "Something answered at that address, and it is not a NarraLeaf Team server.",
+            untrusted: "The server at that address was not trusted.",
+            failed: "That address could not be checked.",
+        },
         problems: {
             scheme: "A sign-in address has to start with https:// or ucs-auth://.",
             token: "That is not a token this server would have issued.",
-            address: "This token does not say where to sign in. Enter the address.",
-            server: "This token does not say which server it is for. Enter the address.",
+            // Neither names a field any more: both addresses come from the server's own
+            // answer, so there is nothing here for a reader to correct.
+            address: "This token does not say where to sign in.",
+            server: "This token does not say which server it is for.",
             certificate: "This machine does not trust the certificate that address presented. Connect a project to this server to compare its authority.",
             unreachable: "Nothing answered at that address.",
             refused: "The server refused this token. It may have expired or been revoked.",

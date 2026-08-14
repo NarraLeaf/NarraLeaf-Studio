@@ -21,6 +21,7 @@ import {
     normalizeAutoSaveConfiguration,
     parseAutoSaveSlotIndex,
     type AutoSaveEntry,
+    type SaveRecordTimes,
 } from "@shared/types/saves";
 import {
     GameLocalizationContext,
@@ -1825,6 +1826,29 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
     }, [host.saveStore]);
 
+    /**
+     * One slot's stamps, read from the record the store already keeps.
+     *
+     * The store writes ISO strings; a graph wants numbers, and the conversion happens here so every
+     * consumer sees the same epoch milliseconds `listAutoSaves` publishes. A record whose stamp is
+     * missing or unparseable answers 0 for that field rather than dropping the whole slot - the
+     * slot exists, and a save screen still has a row to draw for it.
+     */
+    const getSaveTimes = useCallback(async (id: string): Promise<SaveRecordTimes | null> => {
+        const record = await host.saveStore.read(id);
+        if (!record) {
+            return null;
+        }
+        const toMs = (iso: string | undefined): number => {
+            const parsed = Date.parse(iso ?? "");
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+        return {
+            savedAt: toMs(record.metadata.updatedAt),
+            createdAt: toMs(record.metadata.createdAt),
+        };
+    }, [host.saveStore]);
+
     const getSavePreview = useCallback(async (id: string): Promise<BlueprintImageAsset | null> => {
         const capture = await host.saveStore.readPreview(id);
         if (!capture) {
@@ -2013,6 +2037,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             deleteSaveInGame: id => deleteSave(id),
             listSaveIds,
             getSaveMetadata,
+            getSaveTimes,
             getSavePreview,
             writeAutoSaveInGame: autoSave.writeNow,
             listAutoSaves,
@@ -2175,6 +2200,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
+        getSaveTimes,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -2328,6 +2354,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onDeleteSave: deleteSave,
             onListSaveIds: listSaveIds,
             onGetSaveMetadata: getSaveMetadata,
+            onGetSaveTimes: getSaveTimes,
             onGetSavePreview: getSavePreview,
             onWriteAutoSave: autoSave.writeNow,
             onListAutoSaves: listAutoSaves,
@@ -2425,6 +2452,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
+        getSaveTimes,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -2668,6 +2696,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onDeleteSave: deleteSave,
                     onListSaveIds: listSaveIds,
                     onGetSaveMetadata: getSaveMetadata,
+                    onGetSaveTimes: getSaveTimes,
                     onGetSavePreview: getSavePreview,
                     onWriteAutoSave: autoSave.writeNow,
                     onListAutoSaves: listAutoSaves,
@@ -2796,6 +2825,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
+        getSaveTimes,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,

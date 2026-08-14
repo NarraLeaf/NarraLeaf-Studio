@@ -10,6 +10,7 @@ import type { MergedPersistentNameCollision } from "@shared/variables/mergedPers
 import type { AssetType } from "../workspace/services/assets/assetTypes";
 import type { AssetReference, ReferenceIndexResult } from "../workspace/services/references/referenceModel";
 import type { LintingConfiguration, NetworkConfiguration } from "../workspace/project/configuration";
+import type { NetworkPluginAllowlistEntry } from "@shared/types/networkAllowlist";
 
 /**
  * The snapshot every lint rule reads.
@@ -88,6 +89,14 @@ export type LintContext = {
      * blueprint *and* the setting that decides whether the shipped game may reach the network.
      */
     network: NetworkConfiguration;
+    /**
+     * What each installed plugin declared in `contributes.network`, attributed.
+     *
+     * Here for the reason {@link network} is: whether an address is a problem depends on the
+     * project's list *and* on what the author already approved at install, and a rule that
+     * read only the first would report a request that works.
+     */
+    pluginNetworkDeclarations: readonly NetworkPluginAllowlistEntry[];
     stories: readonly LintStoryEntry[];
     /**
      * Whether {@link stories} is the whole library.
@@ -123,15 +132,6 @@ export type LintContext = {
      * folds against are the same string.
      */
     appTags: readonly ProjectAppTag[];
-    /**
-     * Every web address any build of this project could open - the project's own list plus what each
-     * variant states, in the form a match compares.
-     *
-     * The union rather than one variant's list, because a rule is not building anything: an address
-     * only the demo declares is opened by the demo, and reporting it against the release list would
-     * be a finding an author cannot act on without deleting a working link.
-     */
-    declaredExternalLinks: readonly string[];
     /**
      * The project variable registry, BOTH scopes, exactly as the service holds it.
      *

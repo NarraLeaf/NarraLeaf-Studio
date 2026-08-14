@@ -25,6 +25,7 @@ function manifest(runtimeData: string[]): NormalizedPluginManifestV2 {
             buildDependencies: [],
             buildConfig: [],
             externalLinks: [],
+            network: [],
         },
         permissions: [],
     };
