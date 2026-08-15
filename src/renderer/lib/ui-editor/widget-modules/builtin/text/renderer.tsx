@@ -28,6 +28,12 @@ import {
     lineWrapCss,
     textVerticalAlignToJustifyContent,
 } from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
+import {
+    isVerticalWritingMode,
+    textBodyInlineSizeCss,
+    verticalTypographyCss,
+} from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
+import { renderVerticalTextContent } from "@/lib/ui-editor/widget-modules/shared/text/VerticalText";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
 import {
     resolveTextAppearanceTransitions,
@@ -223,10 +229,11 @@ export function TextRenderer({
     const useEffectShell = Boolean(effectTextStyle.filter) || Boolean(effectTextStyle.mixBlendMode);
 
     const textBodyStyle: CSSProperties = {
-        width: "100%",
+        ...textBodyInlineSizeCss(p.writingMode),
         margin: 0,
         padding: 4,
         boxSizing: "border-box",
+        ...verticalTypographyCss(p),
         fontSize: p.fontSize,
         fontWeight: p.fontWeight,
         fontStyle: p.fontStyle,
@@ -319,6 +326,9 @@ export function TextRenderer({
     const shellMotionActive = Object.keys(shellTransition).length > 0;
     const textMotionActive = Object.keys(textTransition).length > 0;
 
+    // The shell carries the writing mode so its own axes flip with it: `flex-direction: column`
+    // stacks along the block axis, which is the columns' direction once the text is vertical, and
+    // `textVerticalAlign` keeps meaning "where the block of text sits" in both modes.
     const outerStyle: CSSProperties = {
         width: "100%",
         height: "100%",
@@ -328,6 +338,7 @@ export function TextRenderer({
         flexDirection: "column",
         justifyContent: textVerticalAlignToJustifyContent(p.textVerticalAlign),
         alignItems: "stretch",
+        ...verticalTypographyCss(p),
     };
     const outerStaticStyle: CSSProperties = {
         ...outerStyle,
@@ -456,7 +467,11 @@ export function TextRenderer({
             background: "transparent",
             border: "none",
             outline: "none",
-            ...(p.textWrapMode === "nowrap" ? { overflowX: "auto", overflowY: "hidden" } : {}),
+            ...(p.textWrapMode === "nowrap"
+                ? isVerticalWritingMode(p.writingMode)
+                    ? { overflowX: "hidden", overflowY: "auto" }
+                    : { overflowX: "auto", overflowY: "hidden" }
+                : {}),
             ...(!editorFontFamily ? { fontFamily: "inherit" } : {}),
         };
         const textarea = (
@@ -495,6 +510,7 @@ export function TextRenderer({
         );
     }
 
+    const textContent = renderVerticalTextContent(displayText, p);
     const textNode = textMotionActive ? (
         <motion.p
             style={{ ...textBodyStyle, flexShrink: 0 }}
@@ -502,10 +518,10 @@ export function TextRenderer({
             animate={textAnimate}
             transition={textTransition}
         >
-            {displayText}
+            {textContent}
         </motion.p>
     ) : (
-        <p style={{ ...textBodyStyle, flexShrink: 0 }}>{displayText}</p>
+        <p style={{ ...textBodyStyle, flexShrink: 0 }}>{textContent}</p>
     );
 
     const effectNode = useEffectShell ? (

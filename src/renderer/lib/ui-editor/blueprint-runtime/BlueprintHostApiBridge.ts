@@ -45,6 +45,7 @@ import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/l
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
     UIDisplayableBaseTransform,
@@ -954,7 +955,9 @@ function sleepMs(durationMs: number): Promise<void> {
 
 function assertTextElement(document: UIDocument, elementId: string) {
     const el = requireDocumentElement(document, elementId, "text");
-    if (el.type !== "nl.text") {
+    // Text specialisations included: they store the same props, so every text call reads and
+    // writes the same fields on them.
+    if (!isWidgetTypeOf(el.type, "nl.text")) {
         throw new Error(`text: element is not a Text widget: ${el.type}`);
     }
     return el;
