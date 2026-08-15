@@ -1,8 +1,25 @@
 import type { CSSProperties } from "react";
-import type {
-    TextOrientation,
-    TextWritingMode,
-} from "@/lib/ui-editor/widget-modules/builtin/text/types";
+
+/**
+ * Block flow of a box.
+ *
+ * `vertical-rl` is the classic Japanese novel setting a VN wants: columns of glyphs read top to
+ * bottom, the next column to the left. `vertical-lr` is the same rotation with columns advancing
+ * rightwards, which Mongolian and some modern layouts use.
+ *
+ * Declared here rather than on the text widget because it is not only text that turns: a list
+ * whose entries are lines of a full-screen dialogue has to stack them the way the writing runs.
+ */
+export type TextWritingMode = "horizontal-tb" | "vertical-rl" | "vertical-lr";
+
+/**
+ * How glyphs sit inside a vertical column. Ignored while the box is horizontal.
+ *
+ * `mixed` is the convention: CJK stays upright and a Latin run is laid on its side, read by tilting
+ * the head clockwise. `upright` stands every glyph up, which stacks Latin letter over letter.
+ * `sideways` rotates the whole column, CJK included.
+ */
+export type TextOrientation = "mixed" | "upright" | "sideways";
 
 /** The vertical settings a text-like widget carries; every text widget's props are a superset. */
 export type VerticalTypographySettings = {
@@ -81,6 +98,21 @@ export function textBodyInlineSizeCss(writingMode: TextWritingMode): CSSProperti
         return { width: "100%" };
     }
     return { height: "100%", maxHeight: "100%" };
+}
+
+/**
+ * Whether a flex axis lands on the screen's horizontal axis, given the writing mode.
+ *
+ * Flexbox is writing-mode aware and `column` means "along the block axis", so a list that stacks
+ * its items vertically stacks them *across the screen* once the writing mode is vertical. Anything
+ * physical that has to follow - which overflow scrolls, which drag gesture pans - has to ask this
+ * rather than read the direction on its own.
+ */
+export function isPhysicallyHorizontalAxis(
+    axis: "vertical" | "horizontal",
+    writingMode: TextWritingMode,
+): boolean {
+    return isVerticalWritingMode(writingMode) ? axis === "vertical" : axis === "horizontal";
 }
 
 export type VerticalTextSegment = {

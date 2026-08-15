@@ -101,6 +101,55 @@ export const story = {
             speakerUnresolved: "This line binds no character, so the original speaker name was kept. Its text still changed.",
         },
     },
+    // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
+    // script cannot say is reported rather than refused and the file is written either way. `reason`
+    // is keyed by the printer's own codes (see `narralangPrinter`), so a new code fails the parity
+    // test rather than reaching an author as a raw identifier.
+    narralang: {
+        exportScene: "Export as NarraLang…",
+        exportStory: "Export Story as NarraLang…",
+        sceneMissing: "This scene is no longer in the story.",
+        reportTitle: "Rows without a script form",
+        reportSummary: {
+            one: "{count} row has no script form. The file does not carry it in full.",
+            other: "{count} rows have no script form. The file does not carry them in full.",
+        },
+        unresolvedRefNamed: "This row points at {what} that no longer exists.",
+        detail: {
+            asset: "an asset",
+            character: "a character",
+            appearance: "an appearance",
+            motion: "a motion",
+            scene: "a scene",
+            variable: "a variable",
+            variant: "a build variant",
+            camera: "a camera position",
+        },
+        reason: {
+            blueprintAction: "A blueprint runs this row, and a blueprint has no script form.",
+            blueprintCondition: "A blueprint decides this condition.",
+            blueprintInterpolation: "A blueprint computes a value inside this text.",
+            inlineEvent: "The text carries an event that fires while it is being typed out.",
+            invalidRow: "This row's command could not be read, so it is written as it stands.",
+            customTransform: "This movement is set frame by frame, or carries properties the script does not name.",
+            customTransition: "This transition carries properties the script does not name.",
+            effectProps: "This effect carries properties the script does not name.",
+            unresolvedRef: "This row points at something that no longer exists.",
+            unknownPayload: "This row is of a kind the script does not cover.",
+        },
+        // The scene read as a script inside the editor. Read-only this round for every scene, and
+        // read-only for good for one with rows the script cannot say - which is the whole job of
+        // `gate`: an author who is told "not yet" plans differently from one told "not ever".
+        view: {
+            open: "Read as a script",
+            close: "Back to rows",
+            readOnly: "The script view reads the scene. It does not write it.",
+            gate: {
+                one: "{count} row has no script form, so this scene will not become editable here.",
+                other: "{count} rows have no script form, so this scene will not become editable here.",
+            },
+        },
+    },
     // Pasting a wall of prose into a scene. The wizard asks one question — who is speaking — and
     // remembers the answer per project, so chapter two opens with chapter one's decisions filled in.
     paste: {
@@ -937,6 +986,7 @@ export const story = {
         vfx: "Ambience",
         nvl: "NVL",
         blueprint: "Blueprint",
+        plugin: "Plugin",
         effect: "Effect",
         camera: "Camera",
         control: "Control",
@@ -993,6 +1043,10 @@ export const story = {
         vfx: "{operation} ambience {name}",
         nvl: "NVL block",
         blueprint: "Blueprint",
+        // A plugin marker row whose plugin is not loaded, so there is no registration to read a
+        // label out of. Deliberately generic: the only other thing the row holds is the plugin id,
+        // and an id is not a name.
+        pluginAction: "Plugin action",
         effect: "{effect} screen effect",
         cameraOp: {
             pan: "Pan",

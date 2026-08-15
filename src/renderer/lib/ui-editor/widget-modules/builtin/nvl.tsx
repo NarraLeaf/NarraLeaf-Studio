@@ -32,8 +32,5 @@ export const NvlTextsWidgetModule: UIWidgetModule = extendWidgetModule(TextWidge
     inspector: () => ({
         // Same as the dialog line: the entry the list scope supplies replaces this text at run time.
         remove: ["section.localization"],
-        patch: {
-            "section.content": { helpText: translate("widgets.text.runtimeTextHelp") },
-        },
     }),
 });

@@ -24,6 +24,7 @@ import { EditorCommands } from "./EditorCommands";
 import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
 import { LintCommands } from "../../modules/lint/LintCommands";
 import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
+import { NarralangCommands } from "../../modules/story/narralang/NarralangCommands";
 import { WorkspaceCommands } from "./WorkspaceCommands";
 import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { WorkspaceHelp } from "./WorkspaceHelp";
@@ -909,6 +910,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <WorkspaceFreezeCommands />
             <LintCommands />
             <StoryScriptCommands />
+            <NarralangCommands />
             <KeybindingCheatSheet />
             {/* Present in a recovery window too: that is the one place an author most needs to be
                 told what is going on, and help reads nothing from the project. */}

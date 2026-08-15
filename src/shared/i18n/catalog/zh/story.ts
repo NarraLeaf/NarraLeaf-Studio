@@ -91,6 +91,46 @@ export const story = {
             speakerUnresolved: "这一行没有绑定角色，说话人名字保持原样，正文的修改仍然生效",
         },
     },
+    narralang: {
+        exportScene: "导出为 NarraLang…",
+        exportStory: "将故事导出为 NarraLang…",
+        sceneMissing: "该场景已不在此故事中",
+        reportTitle: "无法写成脚本的行",
+        reportSummary: {
+            other: "有 {count} 行没有对应的脚本写法，文件中不含它们的完整内容",
+        },
+        unresolvedRefNamed: "该行指向的{what}已不存在",
+        detail: {
+            asset: "资产",
+            character: "角色",
+            appearance: "外观",
+            motion: "故事动效",
+            scene: "场景",
+            variable: "变量",
+            variant: "构建变体",
+            camera: "镜头位置",
+        },
+        reason: {
+            blueprintAction: "该行由蓝图执行，蓝图没有对应的脚本写法",
+            blueprintCondition: "该条件由蓝图判定",
+            blueprintInterpolation: "正文中有一处取值由蓝图计算",
+            inlineEvent: "正文中带有逐字显示过程中触发的事件",
+            invalidRow: "该行的命令无法解析，按原样写出",
+            customTransform: "该动作逐帧设定，或带有脚本未命名的属性",
+            customTransition: "该转场带有脚本未命名的属性",
+            effectProps: "该效果带有脚本未命名的属性",
+            unresolvedRef: "该行指向的对象已不存在",
+            unknownPayload: "脚本尚未覆盖此类行",
+        },
+        view: {
+            open: "以脚本形式阅读",
+            close: "回到行视图",
+            readOnly: "脚本视图只读，不写回场景",
+            gate: {
+                other: "有 {count} 行没有对应的脚本写法，此场景今后也无法在这里编辑",
+            },
+        },
+    },
     paste: {
         title: "粘贴为行",
         action: "粘贴",
@@ -852,6 +892,7 @@ export const story = {
         vfx: "氛围",
         nvl: "NVL",
         blueprint: "蓝图",
+        plugin: "插件",
         effect: "特效",
         camera: "镜头",
         control: "控制",
@@ -905,6 +946,7 @@ export const story = {
         vfx: "{operation} 氛围特效 {name}",
         nvl: "NVL 块",
         blueprint: "蓝图",
+        pluginAction: "插件动作",
         effect: "{effect} 屏幕特效",
         // 镜头行的措辞就是作者敲进去的那个词（`story.enumValue.*`）——行里读到的和手册里教的
         // 必须是同一个词，否则又回到"打的是缩放、显示的是推拉"那种割裂。
