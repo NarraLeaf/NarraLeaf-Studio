@@ -181,7 +181,7 @@ export const settings = {
              * language. A statement of what is true, not an error - and for Chinese and Japanese a
              * permanent one, since neither has spelling in the word-list sense.
              */
-            noDictionary: "No spelling dictionary is installed for this project's language, so nothing in the script is marked. The project dictionary still holds the project's own terms.",
+            noDictionary: "No spelling dictionary is installed for this project's language.",
             options: {
                 followProject: "Follow the project's language",
                 off: "Do not check spelling",
@@ -322,29 +322,23 @@ export const settings = {
      * a licence the author has been shown.
      */
     dictionaries: {
-        loading: "Reading the cache…",
+        loading: "Loading…",
         remove: "Remove",
         browse: "Browse dictionaries",
-        refresh: "Check again",
-        browsing: "Reading the list…",
+        refresh: "Refresh",
+        browsing: "Loading…",
         download: "Download",
         downloading: "Downloading…",
-        failed: "The dictionary list could not be read. Check the network policy in Settings, then try again.",
-        /**
-         * Stated outright, because an empty list reads as a download that has not happened yet.
-         * Neither language separates words, so there is nothing a word list could be checked
-         * against and no dictionary will ever appear for them.
-         */
-        noDictionaryLanguages: "Chinese and Japanese have no spelling dictionary, and will not get one: neither language separates words, so there is nothing for a word list to check. A project written in either is never marked.",
+        failed: "The dictionary list could not be retrieved. Check the network policy in Settings.",
         installed: {
-            title: "On this machine",
-            emptyTitle: "No dictionaries yet",
-            emptyDescription: "Nothing is marked in any project until one is downloaded.",
+            title: "Installed",
+            emptyTitle: "No dictionaries installed",
+            emptyDescription: "Download a dictionary to check spelling in the script.",
         },
         available: {
             title: "Available to download",
-            prompt: "The list of dictionaries lives online. Fetch it when you want it.",
-            none: "Everything on offer is already here.",
+            prompt: "The dictionary list has not been retrieved.",
+            none: "All available dictionaries are installed.",
         },
     },
     servers: {
