@@ -113,7 +113,7 @@ export function Sidebar({ active, onChange }: SidebarProps) {
                 <button
                     className="flex items-center justify-start p-2 text-fg-muted hover:text-fg hover:bg-fill rounded-md transition-colors w-fit cursor-default"
                     onClick={openSettings}
-                    title={t("launcher.nav.settings")}
+                    data-tip={t("launcher.nav.settings")} aria-label={t("launcher.nav.settings")}
                 >
                     <Settings className="w-4 h-4" />
                 </button>

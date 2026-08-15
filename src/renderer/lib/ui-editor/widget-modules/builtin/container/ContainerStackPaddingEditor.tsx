@@ -211,7 +211,7 @@ export function ContainerStackPaddingEditor({
                       <fieldset
                           disabled={freeze.frozen}
                           aria-readonly={freeze.frozen || undefined}
-                          title={freeze.frozen ? freeze.reason : undefined}
+                          data-tip={freeze.frozen ? freeze.reason : undefined}
                           style={{ display: "contents" }}
                       >
                           <div className="grid grid-cols-2 gap-2 min-w-0">
@@ -228,7 +228,7 @@ export function ContainerStackPaddingEditor({
                                           max={CONTAINER_STACK_SPACING_ABS_MAX_PX}
                                           unit="px"
                                           aria-label={t("widgets.container.paddingSide", { side: label })}
-                                          title={t("widgets.container.paddingSide", { side: label })}
+                                          data-tip={t("widgets.container.paddingSide", { side: label })}
                                           className="w-full min-w-0"
                                           selectAllOnFocus
                                       />
@@ -258,7 +258,7 @@ export function ContainerStackPaddingEditor({
                             unit="px"
                             placeholder={uniformPlaceholder}
                             aria-label={t("widgets.container.paddingAllSides")}
-                            title={t("widgets.container.paddingAllTitle")}
+                            data-tip={t("widgets.container.paddingAllTitle")}
                             className="w-full min-w-0"
                             selectAllOnFocus
                         />
@@ -273,7 +273,7 @@ export function ContainerStackPaddingEditor({
                         aria-expanded={sidesOpen}
                         aria-label={sidesOpen ? t("widgets.container.perSidePaddingClose") : t("widgets.container.perSidePaddingEdit")}
                         className={`${controlButtonClass(sidesOpen)} cursor-default`}
-                        title={t("widgets.container.perSidePadding")}
+                        data-tip={t("widgets.container.perSidePadding")}
                     >
                         {sidesOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </InspectOnlyButton>

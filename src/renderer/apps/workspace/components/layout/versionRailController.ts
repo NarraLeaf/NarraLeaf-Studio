@@ -51,3 +51,39 @@ export function openVersionRail(): void {
 export function collapseVersionRail(): void {
     bridge?.collapse();
 }
+
+/**
+ * Whether there is a rail to open at all.
+ *
+ * A palette entry's `when` is synchronous while availability is not, so this is what the version
+ * commands ask instead: the rail registers a bridge exactly when version control exists for this
+ * project (`isVersionSurfaceVisible`), which is the same answer one round trip earlier.
+ */
+export function isVersionRailReachable(): boolean {
+    return bridge !== null;
+}
+
+/**
+ * Open the rail and put the cursor in the version message box.
+ *
+ * Two steps rather than one because the box is not mounted until the panel is: `open()` schedules a
+ * React render, so the focus has to happen after it. A frame rather than a timeout - if the form is
+ * not there by then it is because this project cannot commit (frozen, no repository), and the rail
+ * being open is the right place to have left the author anyway.
+ */
+export function openVersionRailForCommit(): void {
+    bridge?.open();
+    requestAnimationFrame(() => {
+        document.querySelector<HTMLTextAreaElement>(
+            `[${VERSION_COMMIT_MESSAGE_ATTRIBUTE}]`,
+        )?.focus();
+    });
+}
+
+/**
+ * How the commit box is found from outside the rail's tree.
+ *
+ * An attribute rather than the `aria-label`, which is translated - a selector built from English
+ * copy works until someone switches Studio to Chinese, and then silently focuses nothing.
+ */
+export const VERSION_COMMIT_MESSAGE_ATTRIBUTE = "data-vcs-commit-message";

@@ -1,3 +1,23 @@
+import {
+    GAME_RUNTIME_CROP_ANCHORS_X,
+    GAME_RUNTIME_CROP_ANCHORS_Y,
+    GAME_RUNTIME_VIEWPORT_FITS,
+    type GameRuntimeCropAnchorX,
+    type GameRuntimeCropAnchorY,
+    type GameRuntimeViewportFit,
+} from "@shared/types/gameRuntime";
+import {
+    DEFAULT_GAME_CRASH_POLICY,
+    normalizeGameCrashPolicy,
+    type GameCrashPolicy,
+} from "@shared/types/gameRuntime";
+import {
+    NETWORK_POLICY_ANY,
+    NETWORK_POLICY_OFF,
+    normalizeNetworkAccessPolicy,
+    normalizeNetworkAllowlistEntries,
+    type NetworkAccessPolicy,
+} from "@shared/types/networkAllowlist";
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
@@ -62,9 +82,39 @@ export type {
 // `Record<string, unknown>` shape used by the msgpack persistence layer
 // (see ProjectConfigData in @shared/utils/nlproj).
 export type NetworkConfiguration = {
+    /**
+     * Derived from {@link policy}, never authored and never stored on its own.
+     *
+     * The two used to be separate settings and could disagree; they are now one authored value with
+     * three positions, and this is the half of it the runtime's CSP and `webRequest` layers read.
+     * Projects written before the change carry only `allowHttp`, and it is what their policy is
+     * migrated from - see {@link normalizeNetworkConfiguration}.
+     */
     allowHttp: boolean;
     allowRemoteResource: boolean;
     allowRemoteScript: boolean;
+    /**
+     * How much of the network the build reaches. The whole setting, in one value.
+     *
+     * `"off"` for a new project. Turning the network on means `"any"` rather than the allowlist,
+     * which is deliberate: a node an author wired up is expected to run, and a default that made
+     * authored graphs fail would teach people to switch the safety off before they had a reason to
+     * understand it. See `@shared/types/networkAllowlist`.
+     */
+    policy: NetworkAccessPolicy;
+    /** The author's own allowlist entries. Only consulted when {@link policy} is `"allowlist"`. */
+    allowlist: string[];
+};
+
+/**
+ * What the shipped game does when it stops working (see {@link GameCrashPolicy}).
+ *
+ * A project setting rather than a build-dialog one: it is a decision about the game, not about one
+ * build of it, and an author who wanted the stack on screen while testing would otherwise have to
+ * remember to change it back before shipping.
+ */
+export type CrashConfiguration = {
+    policy: GameCrashPolicy;
 };
 
 export type SecurityConfiguration = {
@@ -96,6 +146,24 @@ export const MOBILE_ORIENTATIONS = ["landscape", "portrait", "auto"] as const;
 
 export type MobileOrientation = typeof MOBILE_ORIENTATIONS[number];
 
+/**
+ * How the stage meets a screen whose aspect ratio is not the design's.
+ *
+ * `contain` letterboxes — the whole design is visible and bars fill the rest. `cover` fills the
+ * screen and crops the overflow. Exactly one axis ever overflows: a screen that is relatively wider
+ * than the design crops vertically, a relatively narrower one crops horizontally.
+ */
+export const MOBILE_VIEWPORT_FITS = GAME_RUNTIME_VIEWPORT_FITS;
+export type MobileViewportFit = GameRuntimeViewportFit;
+
+/** Which part survives a horizontal crop. Named for what is KEPT, like CSS `object-position`. */
+export const MOBILE_CROP_ANCHORS_X = GAME_RUNTIME_CROP_ANCHORS_X;
+export type MobileCropAnchorX = GameRuntimeCropAnchorX;
+
+/** Which part survives a vertical crop. */
+export const MOBILE_CROP_ANCHORS_Y = GAME_RUNTIME_CROP_ANCHORS_Y;
+export type MobileCropAnchorY = GameRuntimeCropAnchorY;
+
 export type MobileConfiguration = {
     /**
      * Orientation the mobile shells lock the game to at startup. A project-level
@@ -103,20 +171,41 @@ export type MobileConfiguration = {
      * that plays in landscape does so on every device.
      */
     orientation: MobileOrientation;
+    /**
+     * `contain` (default) keeps every project that predates this setting looking exactly as it did.
+     * Opting into `cover` is a decision about the game's art, so it is never inferred.
+     */
+    fit: MobileViewportFit;
+    /** Only consulted under `cover`, and only on the axis that actually overflows. */
+    cropAnchorX: MobileCropAnchorX;
+    cropAnchorY: MobileCropAnchorY;
 };
 
-/** Visual novels are overwhelmingly landscape, including every project predating this setting. */
+/**
+ * Visual novels are overwhelmingly landscape, including every project predating this setting — and
+ * letterboxing is what every project predating the crop setting shipped with, so it stays the
+ * default. A centred crop is the least surprising anchor once an author does opt in.
+ */
 export const DEFAULT_MOBILE_CONFIGURATION: MobileConfiguration = {
     orientation: "landscape",
+    fit: "contain",
+    cropAnchorX: "center",
+    cropAnchorY: "center",
 };
 
 /** Coerce a persisted value into a complete MobileConfiguration. */
 export function normalizeMobileConfiguration(value: unknown): MobileConfiguration {
     const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+    const pick = <T extends string>(
+        candidate: unknown,
+        allowed: readonly T[],
+        fallback: T,
+    ): T => (allowed.includes(candidate as T) ? candidate as T : fallback);
     return {
-        orientation: MOBILE_ORIENTATIONS.includes(record.orientation as MobileOrientation)
-            ? record.orientation as MobileOrientation
-            : DEFAULT_MOBILE_CONFIGURATION.orientation,
+        orientation: pick(record.orientation, MOBILE_ORIENTATIONS, DEFAULT_MOBILE_CONFIGURATION.orientation),
+        fit: pick(record.fit, MOBILE_VIEWPORT_FITS, DEFAULT_MOBILE_CONFIGURATION.fit),
+        cropAnchorX: pick(record.cropAnchorX, MOBILE_CROP_ANCHORS_X, DEFAULT_MOBILE_CONFIGURATION.cropAnchorX),
+        cropAnchorY: pick(record.cropAnchorY, MOBILE_CROP_ANCHORS_Y, DEFAULT_MOBILE_CONFIGURATION.cropAnchorY),
     };
 }
 
@@ -126,6 +215,11 @@ export function normalizeMobileConfiguration(value: unknown): MobileConfiguratio
  * the actual build request is sent with explicit targets.
  */
 export type BuildConfiguration = {
+    /**
+     * The build variant selected last time. Absent means the release variant, which is also what a
+     * stored id whose variant has since been deleted resolves to.
+     */
+    appTagId?: string;
     platforms: GameBuildPlatform[];
     formats: Partial<Record<GameBuildPlatform, GameBuildFormat[]>>;
     /** Arch chosen per desktop platform; the web export has none. */
@@ -219,6 +313,8 @@ export type ProjectAppConfiguration = {
     voice?: VoiceConfiguration;
     /** Asset-protection policy applied at pack time; absent until configured. */
     security?: SecurityConfiguration;
+    /** What the shipped game does when it stops working; absent until configured. */
+    crash?: CrashConfiguration;
     /** What the exported static site may do to the author's bytes; absent until configured. */
     webOptimization?: WebOptimizationConfiguration;
     /** Mobile shell behaviour; absent until configured (see the defaults). */
@@ -249,6 +345,8 @@ export const DEFAULT_NETWORK_CONFIGURATION: NetworkConfiguration = {
     allowHttp: false,
     allowRemoteResource: false,
     allowRemoteScript: false,
+    policy: NETWORK_POLICY_OFF,
+    allowlist: [],
 };
 
 /**
@@ -261,15 +359,38 @@ export function normalizeNetworkConfiguration(value: unknown): NetworkConfigurat
         return { ...DEFAULT_NETWORK_CONFIGURATION };
     }
     const record = value as Record<string, unknown>;
+    // One authored value decides both. A project written before the tri-state carries only
+    // `allowHttp`, so that is what its position is read from; after that the boolean is derived and
+    // the two cannot drift apart the way two independent settings could.
+    const policy = record.policy === undefined
+        ? (record.allowHttp === true ? NETWORK_POLICY_ANY : NETWORK_POLICY_OFF)
+        : normalizeNetworkAccessPolicy(record.policy);
     return {
-        allowHttp: typeof record.allowHttp === "boolean" ? record.allowHttp : DEFAULT_NETWORK_CONFIGURATION.allowHttp,
+        allowHttp: policy !== NETWORK_POLICY_OFF,
         allowRemoteResource: typeof record.allowRemoteResource === "boolean"
             ? record.allowRemoteResource
             : DEFAULT_NETWORK_CONFIGURATION.allowRemoteResource,
         allowRemoteScript: typeof record.allowRemoteScript === "boolean"
             ? record.allowRemoteScript
             : DEFAULT_NETWORK_CONFIGURATION.allowRemoteScript,
+        policy,
+        allowlist: normalizeNetworkAllowlistEntries(record.allowlist),
     };
+}
+
+/**
+ * A project that never chose shows the failure on screen, which is what every build did before
+ * this setting existed. Changing this default would quietly change what an existing project ships.
+ */
+export const DEFAULT_CRASH_CONFIGURATION: CrashConfiguration = {
+    policy: DEFAULT_GAME_CRASH_POLICY,
+};
+
+export function normalizeCrashConfiguration(value: unknown): CrashConfiguration {
+    if (!value || typeof value !== "object") {
+        return { ...DEFAULT_CRASH_CONFIGURATION };
+    }
+    return { policy: normalizeGameCrashPolicy((value as Record<string, unknown>).policy) };
 }
 
 /**

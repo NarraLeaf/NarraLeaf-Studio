@@ -12,6 +12,7 @@ import { RunControl } from "../../modules/actions/RunControl";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { useTranslation } from "@/lib/i18n";
 import { WorkspaceMenuAction } from "@shared/types/menu";
+import { TooltipGroup } from "@/lib/tooltip";
 
 /**
  * Registered actions the Run split-button draws itself, so this bar must not draw them a second time.
@@ -88,7 +89,7 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
     };
 
     return (
-        <div className="flex items-center gap-0.5">
+        <TooltipGroup className="flex items-center gap-0.5">
             <RunControl />
 
             {/* Standalone actions (Build, plugin actions) sit immediately right of the Run button */}
@@ -116,7 +117,7 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
                             h-8 px-2 rounded-md flex items-center gap-1.5 text-sm transition-colors cursor-default relative
                             ${stateClasses}
                         `}
-                        title={title}
+                        data-tip={title}
                         aria-label={label}
                     >
                         {action.icon && <span className="w-4 h-4">{action.icon}</span>}
@@ -134,6 +135,6 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
             {visibleActionGroups.map((group) => (
                 <ActionDropdown key={group.id} group={group} />
             ))}
-        </div>
+        </TooltipGroup>
     );
 }

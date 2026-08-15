@@ -207,7 +207,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
                     <button
                         type="button"
                         onClick={openPanelMenu}
-                        title={t("plugins.moreActions")}
+                        data-tip={t("plugins.moreActions")}
                         aria-label={t("plugins.moreActions")}
                         className="grid h-7 w-7 shrink-0 cursor-default place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                     >
@@ -357,7 +357,7 @@ function InstalledRow({
             <button
                 type="button"
                 onClick={onMenu}
-                title={t("plugins.moreActionsNamed", { name: plugin.manifest.name })}
+                data-tip={t("plugins.moreActionsNamed", { name: plugin.manifest.name })}
                 aria-label={t("plugins.moreActionsNamed", { name: plugin.manifest.name })}
                 className="grid h-6 w-6 shrink-0 cursor-default place-items-center rounded-md text-fg-muted opacity-0 transition hover:bg-fill-strong hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
             >
@@ -405,7 +405,7 @@ function StoreRow({
                     type="button"
                     disabled={busy}
                     onClick={event => { event.stopPropagation(); onInstall(); }}
-                    title={updateAvailable ? t("plugins.store.update") : t("plugins.store.install")}
+                    data-tip={updateAvailable ? t("plugins.store.update") : t("plugins.store.install")}
                     aria-label={updateAvailable ? t("plugins.store.update") : t("plugins.store.install")}
                     className="grid h-6 w-6 shrink-0 cursor-default place-items-center rounded-md text-fg-muted transition hover:bg-fill-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                 >

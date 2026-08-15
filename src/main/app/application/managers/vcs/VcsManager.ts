@@ -21,13 +21,24 @@ import type {
     VcsRestoreResult,
     VcsRevisionDiffResult,
     VcsRevisionKind,
+    VcsServerProbe,
+    VcsServerReach,
+    VcsServerSession,
+    VcsSignInResult,
     VcsStatus,
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
-import { composeVcsIdentity } from "@shared/types/vcs";
+import { composeVcsIdentity, parseVcsRemoteUrl, VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
+import {
+    composeRestoreMessage,
+    VCS_CHECKPOINT_MESSAGES,
+    VCS_DEFAULT_COMMIT_MESSAGE,
+    VCS_DEFAULT_MERGE_MESSAGE,
+} from "@shared/vcs/systemRevisionMessage";
 import { BaseApp } from "../../baseApp";
 import { Manager } from "../manager";
 import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backend";
@@ -35,6 +46,9 @@ import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backen
 // at load time. See backend.ts for why that matters.
 import type { LoreGlobals, LoreHex, StoreHandle } from "./lore";
 import type { InitRepositoryOptions } from "./repository";
+// Type-only for the same reason: `revisionReader` reaches the binding, and only its shapes are
+// wanted here.
+import type { RevisionFileEntry } from "./revisionReader";
 // Value imports, and safe to be ones for the same reason as the two below: pure policy over bytes,
 // with the reader imported for types alone. `documentDiff` is also where the main process picks up
 // `@shared/documents/specs`, so this edge is what populates the document registry in this process.
@@ -45,6 +59,15 @@ import { diffWorkingTree } from "./diff/workingTreeDiff";
 import { materializeRevisionSnapshot, type RevisionSnapshotResult } from "./revisionSnapshot";
 // Same argument: policy plus `fs`, with the reader imported for types alone.
 import { applyRevisionRestore, planRevisionRestore, readWorkingSetPaths } from "./revisionRestore";
+// Same argument again: `fs` and the working-set predicate, and no backend anywhere in it.
+import { readWorkingSetFile } from "./workingFile";
+// Same again: a child process and `fs`, with no backend in it. It is a value import
+// because trusting an authority happens on a failed sign-in, which is not a cold path.
+import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from "./authorityTrust";
+// Value import, and safe to be one for the same reason: `tls` and `https` and the module
+// above, with nothing of Lore's in it. It is not behind the plug either, because asking an
+// address what it is has to work on a host that has no backend to sign anything in.
+import { probeVcsServer } from "./serverDiscovery";
 
 /**
  * Owns Lore state for open projects.
@@ -76,6 +99,16 @@ interface VcsSession {
     /** Repository (partition) id, hex. Learned on first use. */
     repositoryId: LoreHex;
     globals: LoreGlobals;
+    /**
+     * The origin of this project's server, or null when it has none.
+     *
+     * Read once, on opening the session, because it decides two things every write in this
+     * class needs: which signed-in account (if any) authors a revision, and which account id
+     * the calls that reach the network carry. A pure local read of the repository's own config,
+     * and it cannot go stale under us - {@link VcsManager.setRemote} closes the session around
+     * every change to it, for a different reason that happens to guarantee this one too.
+     */
+    remoteOrigin: string | null;
     /**
      * What each revision already said about itself, remembered for the life of the session.
      *
@@ -122,33 +155,19 @@ interface VcsSession {
 export type PendingSaveFlush = (projectPath: string) => Promise<void>;
 
 /**
- * What a checkpoint's message says, by why it was taken.
+ * What Studio writes when nobody typed a message.
  *
- * Not translated, deliberately. A commit message is permanent repository content that
- * travels to collaborators and outlives the interface language it was written under; a
- * history where the same automatic checkpoint reads differently depending on who was
- * looking when it happened is worse than one that reads in English throughout.
- *
- * Same argument for the restore message built in {@link VcsManager.restoreRevision}.
+ * The literals live in `@shared/vcs/systemRevisionMessage` rather than here, and the reason is worth
+ * keeping in view: the bytes are STILL English and still permanent repository content - that
+ * decision has not changed - but the rail now recognises these exact sentences and reads them back
+ * in the author's language. Two copies of the wording would mean a checkpoint that quietly reverted
+ * to English the day one of them was reworded, so there is one copy and both processes import it.
  */
-const CHECKPOINT_MESSAGES: Readonly<Record<VcsCheckpointReason, string>> = {
-    interval: "Checkpoint",
-    "project-close": "Checkpoint before closing the project",
-    build: "Checkpoint before build",
-    restore: "Checkpoint before restore",
-};
+const CHECKPOINT_MESSAGES = VCS_CHECKPOINT_MESSAGES;
 
-const DEFAULT_COMMIT_MESSAGE = "Commit";
+const DEFAULT_COMMIT_MESSAGE = VCS_DEFAULT_COMMIT_MESSAGE;
 
-/**
- * What a merge the author did not name records.
- *
- * Not translated, for the reason on {@link CHECKPOINT_MESSAGES}: this sentence is permanent
- * repository content that travels to the collaborator whose work was just merged, and a history
- * that reads in whichever language happened to be selected is worse than one that reads in English
- * throughout.
- */
-const DEFAULT_MERGE_MESSAGE = "Merge";
+const DEFAULT_MERGE_MESSAGE = VCS_DEFAULT_MERGE_MESSAGE;
 
 /**
  * The two sides a path can be taken from, in the order they are applied.
@@ -206,6 +225,8 @@ function isNothingToCommit(error: unknown): boolean {
  * tell errors apart by name across a boundary where `instanceof` is not reliable.
  */
 export class VcsProjectPathError extends Error {
+    readonly code = VcsErrorCode.ProjectPath;
+
     constructor(readonly projectPath: string) {
         super(
             `Version control needs an absolute project path with no control characters, got `
@@ -215,6 +236,27 @@ export class VcsProjectPathError extends Error {
             + `"ack".`,
         );
         this.name = "VcsProjectPathError";
+    }
+}
+
+/**
+ * Refused because the app is on its way out, rather than started and abandoned.
+ *
+ * Not a nicety. Every Lore call is a koffi `async` call, and koffi delivers its result by
+ * calling back into JS from a worker thread. A call still in flight when Node tears the main
+ * process's environment down has that callback land on an environment that can no longer take
+ * one, and koffi's answer to that is `napi_fatal_error` - `abort()`, SIGABRT, and the macOS
+ * "NarraLeaf Studio quit unexpectedly" report on top of what the author thought was a clean
+ * quit. So once {@link VcsManager.dispose} has drained the last call, nothing may start another.
+ *
+ * Named rather than anonymous for the reason {@link isNothingToCommit} explains.
+ */
+export class VcsShuttingDownError extends Error {
+    readonly code = VcsErrorCode.ShuttingDown;
+
+    constructor() {
+        super("Version control is closing with the app; this call was refused rather than started");
+        this.name = "VcsShuttingDownError";
     }
 }
 
@@ -305,6 +347,13 @@ export class VcsManager extends Manager {
      * own. See {@link sessionFor} for what the second store costs.
      */
     private readonly opening = new Map<string, Promise<VcsSession>>();
+    /**
+     * Latched by {@link dispose} and never cleared: it is set on the way out of the process, and
+     * the only thing that could clear it is the app not quitting after all, which does not happen
+     * once the quit has got as far as draining. See {@link VcsShuttingDownError} for what starting
+     * a call after the drain costs.
+     */
+    private shuttingDown = false;
 
     constructor(app: BaseApp, private readonly flushPendingSaves?: PendingSaveFlush) {
         super(app);
@@ -319,6 +368,21 @@ export class VcsManager extends Manager {
     /** Whether this host can run version control at all, and why not if it cannot. */
     public async getAvailability(): Promise<VcsAvailability> {
         return getVcsAvailability();
+    }
+
+    /**
+     * The backend every call in this class starts from, refused once the app is quitting.
+     *
+     * One check covers the whole surface precisely because reaching the backend is the only way
+     * to reach Lore: there is no verb that does not come through here first. {@link releaseSession}
+     * is the one deliberate exception - it calls `requireVcsBackend` directly - because closing a
+     * store is the work the latch exists to protect, not work it should refuse.
+     */
+    private async requireBackend(): Promise<VcsBackend> {
+        if (this.shuttingDown) {
+            throw new VcsShuttingDownError();
+        }
+        return requireVcsBackend();
     }
 
     /**
@@ -436,7 +500,7 @@ export class VcsManager extends Manager {
      * So callers that arrive during an open join it instead of starting another.
      */
     private async sessionFor(projectPath: string): Promise<{ session: VcsSession; backend: VcsBackend }> {
-        const backend = await requireVcsBackend();
+        const backend = await this.requireBackend();
         const key = projectKey(projectPath);
         const existing = this.sessions.get(key);
         if (existing) return { session: existing, backend };
@@ -484,8 +548,19 @@ export class VcsManager extends Manager {
                 throw error;
             }
 
+            // Local read of the repository's own config; no socket. Failure is not fatal to
+            // opening: a project whose server cannot be read is one that authors revisions from
+            // the settings, which is exactly what an offline project does anyway.
+            const remote = await backend.readRemote(globals).catch(() => null);
+
             const session: VcsSession = {
-                root, store, repositoryId, globals, details: new Map(), diffs: new Map(),
+                root,
+                store,
+                repositoryId,
+                globals,
+                remoteOrigin: remote ? parseVcsRemoteUrl(remote)?.origin ?? remote : null,
+                details: new Map(),
+                diffs: new Map(),
             };
             this.sessions.set(key, session);
             this.app.logger.info("[Vcs] Opened session", root, repositoryId);
@@ -539,7 +614,7 @@ export class VcsManager extends Manager {
         options: InitRepositoryOptions = {},
     ): Promise<VcsRepositoryInfo> {
         return this.serialize(projectPath, async () => {
-            const backend = await requireVcsBackend();
+            const backend = await this.requireBackend();
             const root = projectRoot(projectPath);
             const globals = this.globalsFor(root);
             // Decided before the attempt, because the cleanup below must not run when
@@ -600,16 +675,47 @@ export class VcsManager extends Manager {
      * The two settings are composed by {@link composeVcsIdentity}, which owns the
      * `Name <email>` shape and the four ways those two fields can be empty.
      */
-    private resolveIdentity(explicit?: string): string {
+    private resolveIdentity(explicit?: string, remoteOrigin?: string | null): string {
+        const signedIn = this.storedServerSession(remoteOrigin);
         const state = this.app.getGlobalState();
         const configuredName = state.get("versionControl.authorName");
         const configuredEmail = state.get("versionControl.authorEmail");
         return explicit?.trim()
+            || signedIn?.account.identity
             || composeVcsIdentity(
                 typeof configuredName === "string" ? configuredName : "",
                 typeof configuredEmail === "string" ? configuredEmail : "",
             )
             || UNCONFIGURED_IDENTITY;
+    }
+
+    /**
+     * The identity a call that reaches the network has to carry.
+     *
+     * **Not the author's name, and the difference is the whole of it.** The backend keeps a
+     * signed-in session in a per-user store and looks it up by the account id the server issued,
+     * so an online call carrying `Ada Blackwood <ada@example.com>` where the store holds a
+     * session under a random identifier fails with `No token stored` - which reads as a token
+     * nobody ever presented, and is one presented under a different key.
+     *
+     * A project with no signed-in server falls back to the author's identity, because a bare
+     * server has no session to look up and records whatever it is told. That fallback is what
+     * keeps Studio working against a `loreserver` with nothing in front of it.
+     */
+    private resolveOnlineIdentity(remoteOrigin: string | null): string {
+        return this.storedServerSession(remoteOrigin)?.account.userId ?? this.resolveIdentity();
+    }
+
+    /** The session recorded for this server, if this installation has signed in to it. */
+    private storedServerSession(remoteOrigin: string | null | undefined): VcsServerSession | null {
+        if (!remoteOrigin) return null;
+        const stored = this.app.getGlobalState().get("versionControl.serverSessions");
+        const sessions = Array.isArray(stored) ? (stored as VcsServerSession[]) : [];
+        return sessions.find((session) => session.remoteOrigin === remoteOrigin) ?? null;
+    }
+
+    private writeStoredServerSessions(sessions: VcsServerSession[]): void {
+        this.app.getGlobalState().set("versionControl.serverSessions", sessions);
     }
 
     /**
@@ -693,7 +799,7 @@ export class VcsManager extends Manager {
 
             const { session, backend } = await this.sessionFor(projectPath);
             return backend.commitWorkingTree(
-                { ...session.globals, identity: this.resolveIdentity(options.identity) },
+                { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) },
                 { message, kind },
             );
         });
@@ -753,7 +859,7 @@ export class VcsManager extends Manager {
             }
 
             const { session, backend } = await this.sessionFor(projectPath);
-            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity) };
+            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) };
 
             const entries = await backend.listFilesAt(
                 globals,
@@ -805,9 +911,9 @@ export class VcsManager extends Manager {
                     // history whose entries read in whichever language happened to be selected that
                     // day is worse than one that reads in English throughout. The label is a
                     // revision number, which is not language.
-                    message: `Restore version ${
-                        options.label?.trim() || revision.slice(0, RESTORE_MESSAGE_HASH_LENGTH)
-                    }`,
+                    message: composeRestoreMessage(
+                        options.label?.trim() || revision.slice(0, RESTORE_MESSAGE_HASH_LENGTH),
+                    ),
                     kind: "commit",
                 })
                 .catch((error) => {
@@ -972,6 +1078,18 @@ export class VcsManager extends Manager {
         });
     }
 
+    /**
+     * The same file as the working tree holds it now - {@link readBlob}'s other side.
+     *
+     * Outside the per-project serialization, and that is the point rather than an oversight: it
+     * touches no store handle and no session, so queueing it behind an in-flight commit would make
+     * looking at a sprite wait on a write it has nothing to do with. What it reads may therefore be
+     * mid-restore, which is the same thing the author would see by opening the file themselves.
+     */
+    public async readWorkingFile(request: VcsWorkingFileRequest): Promise<Buffer> {
+        return readWorkingSetFile(request.projectPath, request.path);
+    }
+
     /** Batched sibling of readBlob; reuses one revision-tree handle. */
     public async readBlobs(
         projectPath: string,
@@ -1133,16 +1251,12 @@ export class VcsManager extends Manager {
             const cached = session.diffs.get(key);
             if (cached) return cached;
 
+            const reader = this.revisionEntryReader(session, backend);
             const result = await diffRevisions(
                 {
                     changedPaths: (a, b) => backend.changedPaths(session.globals, a, b),
-                    documentsAt: (revision, paths) => backend.documentsAt(
-                        session.globals,
-                        session.store,
-                        session.repositoryId,
-                        revision,
-                        { paths },
-                    ),
+                    entriesAt: reader.entriesAt,
+                    readAt: reader.readAt,
                 },
                 { from, to, onDegrade: (reason) => this.app.logger.info("[Vcs] Diff degraded:", reason) },
             );
@@ -1169,21 +1283,41 @@ export class VcsManager extends Manager {
     public async diffWorkingTree(projectPath: string): Promise<VcsWorkingTreeDiffResult> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
+            const reader = this.revisionEntryReader(session, backend);
             return diffWorkingTree(
                 {
                     status: () => backend.getStatus(session.globals),
-                    documentsAt: (revision, paths) => backend.documentsAt(
-                        session.globals,
-                        session.store,
-                        session.repositoryId,
-                        revision,
-                        { paths },
-                    ),
+                    entriesAt: reader.entriesAt,
+                    readAt: reader.readAt,
+                    // Both of these go through the backend's own guard rather than a `path.join`:
+                    // a status entry is repository-relative text and these are the lines that
+                    // would otherwise reach any file on the disk (§4.16 - the compiler cannot tell
+                    // the two directions of path apart).
+                    statWorking: async (relative) => {
+                        const absolute = backend.repositoryPath(session.root, relative);
+                        return fs.stat(absolute).then((stat) => ({ size: stat.size })).catch(() => null);
+                    },
+                    // A positioned read that stops after `length` bytes, which is what makes
+                    // classifying an extensionless asset by its header affordable. `open` plus
+                    // one `read` rather than a stream: the length is a few dozen bytes and the
+                    // handle is closed on the way out however the read went.
+                    readWorkingHead: async (relative, length) => {
+                        const absolute = backend.repositoryPath(session.root, relative);
+                        const handle = await fs.open(absolute, "r").catch(() => null);
+                        if (!handle) {
+                            return null;
+                        }
+                        try {
+                            const buffer = Buffer.alloc(length);
+                            const { bytesRead } = await handle.read(buffer, 0, length, 0);
+                            return buffer.subarray(0, bytesRead);
+                        } catch {
+                            return null;
+                        } finally {
+                            await handle.close().catch(() => undefined);
+                        }
+                    },
                     readWorking: async (relative) => {
-                        // Through the backend's own guard rather than a `path.join`: a status entry
-                        // is repository-relative text and this is the line that would otherwise read
-                        // any file on the disk (§4.16 - the compiler cannot tell the two directions
-                        // of path apart).
                         const absolute = backend.repositoryPath(session.root, relative);
                         return fs.readFile(absolute).catch(() => null);
                     },
@@ -1191,6 +1325,49 @@ export class VcsManager extends Manager {
                 { onDegrade: (reason) => this.app.logger.info("[Vcs] Diff degraded:", reason) },
             );
         });
+    }
+
+    /**
+     * The two revision-side ports a comparison needs, sharing **one tree walk per revision**.
+     *
+     * The pairing is the point. `entriesAt` walks a revision's tree and reads nothing;
+     * `readAt` then fetches blobs by the addresses that walk already produced, so it never
+     * walks again. Issuing the two as independent calls onto the backend would walk twice, and
+     * on a project with a remote the first walk of a revision can go to the network
+     * (docs/version-control.md §6) - which is the same reason the reads are batched rather than
+     * taken one document at a time.
+     *
+     * The memo lives for one comparison. Revisions are immutable, so caching it longer would be
+     * sound, but a whole project's file list per revision is not a thing to hold onto for a
+     * cache that already keeps the finished answers.
+     */
+    private revisionEntryReader(session: VcsSession, backend: VcsBackend): {
+        entriesAt: (revision: string) => Promise<ReadonlyMap<string, RevisionFileEntry>>;
+        readAt: (revision: string, paths: readonly string[]) => Promise<ReadonlyMap<string, Buffer | null>>;
+    } {
+        const walked = new Map<string, Promise<Map<string, RevisionFileEntry>>>();
+        const entriesAt = (revision: string): Promise<Map<string, RevisionFileEntry>> => {
+            const pending = walked.get(revision)
+                ?? backend.entriesAt(session.globals, session.store, session.repositoryId, revision);
+            walked.set(revision, pending);
+            return pending;
+        };
+        return {
+            entriesAt,
+            readAt: async (revision, paths) => {
+                const entries = await entriesAt(revision);
+                const out = new Map<string, Buffer | null>();
+                for (const path of paths) {
+                    const entry = entries.get(path.replace(/\\/g, "/"));
+                    // Absent is an answer rather than a failure: it is what tells an addition
+                    // from a removal. Only a read that fails throws.
+                    out.set(path, entry
+                        ? await backend.readEntryBytes(session.globals, session.store, session.repositoryId, entry)
+                        : null);
+                }
+                return out;
+            },
+        };
     }
 
     /**
@@ -1268,26 +1445,354 @@ export class VcsManager extends Manager {
         // it from inside our own block would wait on the block it is already in.
         await this.closeProject(projectPath);
         return this.serialize(projectPath, async () => {
-            const backend = await requireVcsBackend();
+            const backend = await this.requireBackend();
             await backend.writeRemote(root, url);
             if (!url || !repositoryId) {
                 this.app.logger.info("[Vcs] Disconnected from server", root);
                 return;
             }
             try {
-                await backend.publishToRemote(this.globalsFor(root, { online: true }), {
-                    url,
-                    repositoryId,
-                });
+                await backend.publishToRemote(
+                    {
+                        ...this.globalsFor(root, { online: true }),
+                        // Registering the repository is an online call like any other, so it
+                        // needs the account id when the server it is being registered on is one
+                        // this installation has signed in to.
+                        identity: this.resolveOnlineIdentity(parseVcsRemoteUrl(url)?.origin ?? null),
+                    },
+                    { url, repositoryId },
+                );
             } catch (error) {
-                // Put the address back to what it was, so a failed connection leaves the
-                // project in the state the author can retry from rather than in the
-                // pushes-but-cannot-be-cloned state described above.
-                await backend.writeRemote(root, previous).catch(() => undefined);
+                // A server that refused because this installation has not signed in never
+                // got as far as registering anything, so there is no half-made state to
+                // undo - and the address is the one thing worth keeping, because signing
+                // in is only reachable from a project that has a server. Putting it back
+                // is what made the two steps circular: no address, no sign-in; no sign-in,
+                // no address, on exactly the servers that ask who is calling.
+                //
+                // Every other failure still rolls back, for the reason it always did: a
+                // half-registered address leaves the project able to push and unable to be
+                // cloned.
+                if (!vcsSignInRequired(error instanceof Error ? error.message : String(error))) {
+                    await backend.writeRemote(root, previous).catch(() => undefined);
+                }
                 throw error;
             }
             this.app.logger.info("[Vcs] Connected to server", root, url);
         });
+    }
+
+    /**
+     * Who this installation is signed in to this project's server as, or null.
+     *
+     * **Two stores have to agree**, and asking only one of them is how this goes wrong. Studio
+     * records the account a token named; the backend records the token itself, in a per-user
+     * store outside any repository that the author's own `lore` CLI can also clear. A record
+     * here with nothing behind it there is an interface saying "signed in as Ada" over a
+     * connection that will be refused - so the backend is asked, and a record it does not
+     * recognise is dropped rather than shown.
+     *
+     * A purely local read: no socket, so a panel may ask on opening.
+     */
+    public async getServerSession(projectPath: string): Promise<VcsServerSession | null> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            return this.confirmStoredSession(backend, session);
+        });
+    }
+
+    /**
+     * Present a token to this project's server and keep the session.
+     *
+     * There is no password exchange and deliberately none: whoever runs the server mints a
+     * token for a collaborator and hands it over, and the collaborator pastes it here. A token
+     * lasts weeks, so this is not something anybody does daily.
+     *
+     * Signing in is a machine-level act rather than a project-level one - the backend stores
+     * the session per user, not per repository - so one sign-in serves every project pointed
+     * at the same server. The project is still where it happens, because the server address is
+     * the project's and there is nowhere else to learn it.
+     *
+     * **The token never comes back out of this method.** It goes to the backend's store and is
+     * not written to the global state, not logged and not returned.
+     *
+     * Ends by actually reaching the server, and the verdict is part of the answer. A sign-in
+     * that succeeds against an endpoint whose data port then refuses this account is the
+     * failure that otherwise turns up hours later as a push nobody can explain.
+     */
+    public async signIn(
+        projectPath: string,
+        options: { authUrl: string; token: string },
+    ): Promise<VcsSignInResult> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            if (!session.remoteOrigin) {
+                throw new Error(
+                    "This project has no server yet. Connect it to one first, so there is somewhere"
+                    + " to sign in to.",
+                );
+            }
+
+            const signedIn = await backend.signInToServer(
+                { ...session.globals, offline: false },
+                {
+                    remoteUrl: session.remoteOrigin,
+                    authUrl: options.authUrl,
+                    token: options.token,
+                    userDataDir: this.app.getUserDataDir(),
+                },
+            );
+
+            const others = this.storedServerSessions()
+                .filter((stored) => stored.remoteOrigin !== signedIn.remoteOrigin);
+            this.writeStoredServerSessions([...others, signedIn]);
+            this.app.logger.info(
+                "[Vcs] Signed in", signedIn.remoteOrigin, "at", signedIn.authUrl,
+                "as", signedIn.account.username || signedIn.account.displayName,
+            );
+
+            return { session: signedIn, reach: await this.reachServer(backend, session, signedIn) };
+        });
+    }
+
+    /**
+     * Tell this account's trust store to believe a server's certificate authority.
+     *
+     * **This is the only method in Studio that changes a setting belonging to the
+     * operating system**, and it exists because the alternative was not a worse
+     * experience but an impossible one: the command an author was told to ask for names a
+     * certificate file that lives on the server, so it could not be run on their machine.
+     *
+     * What the author decided is settled before this is called. The interface has already
+     * shown them the authority, its fingerprint and the server it answers for, and has
+     * only offered the button where the token they pasted vouches for that fingerprint.
+     * See `authorityTrust.ts` for what trusting an authority costs if that decision is
+     * wrong.
+     *
+     * **The path is checked against Studio's own directory rather than taken as given.**
+     * A renderer names a file here, and a renderer is where untrusted content ends up; a
+     * path passed straight to `certutil` would let a document decide which certificate
+     * this machine installs. Only files this process wrote are eligible, and it wrote
+     * them from a certificate an endpoint had just presented.
+     */
+    public async trustAuthority(certificatePath: string): Promise<{ installed: boolean; output: string }> {
+        const directory = authorityDirectory(this.app.getUserDataDir());
+        const target = path.resolve(certificatePath);
+        if (path.dirname(target) !== path.resolve(directory) || !target.endsWith(".crt")) {
+            throw new Error("That certificate is not one this installation wrote.");
+        }
+        await fs.access(target);
+
+        const outcome = await runAuthorityInstall(authorityInstallPlan(target));
+        this.app.logger.info(
+            "[Vcs]", outcome.installed ? "Trusted" : "Failed to trust", "a server authority from", target,
+        );
+        return outcome;
+    }
+
+    /**
+     * Take this account back off the machine.
+     *
+     * Clears the backend's stored token as well as Studio's record of who it belonged to.
+     * Doing only the second would leave a token on the machine that nothing in the interface
+     * mentions, which is the opposite of what somebody signing out is asking for.
+     */
+    public async signOut(projectPath: string): Promise<void> {
+        return this.serialize(projectPath, async () => {
+            const { session, backend } = await this.sessionFor(projectPath);
+            const stored = this.storedServerSession(session.remoteOrigin);
+            if (!stored) return;
+
+            await backend.signOutOfServer(session.globals, {
+                authUrl: stored.authUrl,
+                userId: stored.account.userId,
+            });
+            this.writeStoredServerSessions(
+                this.storedServerSessions().filter((other) => other.remoteOrigin !== stored.remoteOrigin),
+            );
+            this.app.logger.info("[Vcs] Signed out of", stored.remoteOrigin);
+        });
+    }
+
+    /**
+     * Ask an address what is behind it, before anything has been added.
+     *
+     * The first thing that happens when somebody is handed a server, and the only call here
+     * that takes neither a project nor a session: there is nothing yet to take. It is not
+     * serialized for the same reason - it holds no repository and touches no store, so there
+     * is nothing for a second one to collide with.
+     *
+     * Writes nothing but the authority's certificate, and only where the answer is that this
+     * machine does not trust the server yet. That file is written before the author is asked
+     * anything, because the fingerprint they are shown has to be that file's - it is the file
+     * the install names.
+     */
+    public async probeServer(address: string): Promise<VcsServerProbe> {
+        const probe = await probeVcsServer(address, { userDataDir: this.app.getUserDataDir() });
+        // The address rather than the answer's, which a refused one does not carry.
+        this.app.logger.info("[Vcs] Probed", address, "-", probe.kind);
+        return probe;
+    }
+
+    /**
+     * Every server this installation is signed in to.
+     *
+     * A read of Studio's own record, with no project and no socket: a session belongs to
+     * the machine, and Settings lists them with nothing open. Confirming each one against
+     * the backend's store is deliberately not done here - that is a call per server, and
+     * this answers a panel that opens.
+     */
+    public listServers(): VcsServerSession[] {
+        return this.storedServerSessions();
+    }
+
+    /**
+     * Sign in to the server a token names, rather than to a project's server.
+     *
+     * **This is what makes a server a thing of its own rather than a property of a
+     * project.** `signIn` above is told where to present the token, because a project
+     * knows its own address; here nothing does, so the token is read first and its own
+     * audience says both where to sign in and which server the session is for. Pasting a
+     * token is then the whole of adding a server.
+     *
+     * The two addresses are corrections rather than fields: a plain `loreserver` mints
+     * tokens that name neither, and for those the panel asks once, after this has answered
+     * that the token says nothing.
+     */
+    public async addServer(
+        options: { authUrl: string; remoteUrl: string; token: string },
+    ): Promise<{ session: VcsServerSession; servers: VcsServerSession[] }> {
+        const backend = await requireVcsBackend();
+        // Reading the token is also how a paste that is not a token is refused before
+        // anything is opened: it throws the same coded refusal the panel already draws.
+        const read = backend.readSignInToken(options.token);
+        const remoteUrl = options.remoteUrl.trim() || read.remotes[0] || "";
+        if (!remoteUrl) {
+            throw new backend.VcsSignInError(
+                { kind: "server" },
+                "This token does not say which server it is for, so the address has to be typed.",
+            );
+        }
+
+        // No repository: the store this writes is per-user and outside any of them. The
+        // backend wants the field, and an empty one is what the calls that have no project
+        // pass - the same shape `clone` signs in under.
+        const signedIn = await backend.signInToServer(
+            { repositoryPath: "", offline: false, cache: false },
+            {
+                remoteUrl,
+                authUrl: options.authUrl,
+                token: options.token,
+                userDataDir: this.app.getUserDataDir(),
+            },
+        );
+
+        const servers = [
+            ...this.storedServerSessions().filter((stored) => stored.remoteOrigin !== signedIn.remoteOrigin),
+            signedIn,
+        ];
+        this.writeStoredServerSessions(servers);
+        this.app.logger.info(
+            "[Vcs] Added server", signedIn.remoteOrigin, "at", signedIn.authUrl,
+            "as", signedIn.account.username || signedIn.account.displayName,
+        );
+        return { session: signedIn, servers };
+    }
+
+    /**
+     * Take a server off this machine, the stored token with it.
+     *
+     * The record goes even where the backend could not be asked to drop its token. An
+     * entry that cannot be removed because the machine is offline is a worse answer than
+     * a token left behind: the second is written to the log and can be cleared by signing
+     * in again, the first is a list nobody can correct.
+     */
+    public async forgetServer(remoteOrigin: string): Promise<VcsServerSession[]> {
+        const stored = this.storedServerSession(remoteOrigin);
+        if (!stored) return this.storedServerSessions();
+
+        const backend = await requireVcsBackend().catch(() => null);
+        if (backend) {
+            await backend
+                .signOutOfServer(
+                    { repositoryPath: "", offline: false, cache: false },
+                    { authUrl: stored.authUrl, userId: stored.account.userId },
+                )
+                .catch((error: unknown) => {
+                    this.app.logger.warn(
+                        "[Vcs] Removed", stored.remoteOrigin,
+                        "without clearing its token:", error instanceof Error ? error.message : String(error),
+                    );
+                });
+        }
+
+        const servers = this.storedServerSessions()
+            .filter((other) => other.remoteOrigin !== stored.remoteOrigin);
+        this.writeStoredServerSessions(servers);
+        this.app.logger.info("[Vcs] Removed server", stored.remoteOrigin);
+        return servers;
+    }
+
+    /** Every session this installation has recorded, in the order they were written. */
+    private storedServerSessions(): VcsServerSession[] {
+        const stored = this.app.getGlobalState().get("versionControl.serverSessions");
+        return Array.isArray(stored) ? (stored as VcsServerSession[]) : [];
+    }
+
+    /** The stored record for this project's server, once the backend has confirmed it exists. */
+    private async confirmStoredSession(
+        backend: VcsBackend,
+        session: VcsSession,
+    ): Promise<VcsServerSession | null> {
+        const stored = this.storedServerSession(session.remoteOrigin);
+        if (!stored) return null;
+
+        const live = await backend.readServerSessions(session.globals).catch(() => null);
+        // A read that failed says nothing about whether the session exists, so the record
+        // stands. Only an answer that came back and did not contain it is evidence.
+        if (!live) return stored;
+        const present = live.some(
+            (entry) => entry.userId === stored.account.userId && entry.authUrl === stored.authUrl,
+        );
+        if (present) return stored;
+
+        this.writeStoredServerSessions(
+            this.storedServerSessions().filter((other) => other.remoteOrigin !== stored.remoteOrigin),
+        );
+        this.app.logger.info("[Vcs] The stored sign-in for", stored.remoteOrigin, "is no longer held by the backend");
+        return null;
+    }
+
+    /**
+     * Whether this Studio and that server can actually work together, said as a word.
+     *
+     * Signing in proves only that the sign-in endpoint accepted the token. The work happens on
+     * a different port, over a different protocol, against a server running whatever version
+     * its operator installed - so the question is settled by reaching it, once, at the moment
+     * somebody connects.
+     *
+     * Deliberately not a pair of version numbers on screen. Studio pins a client library and a
+     * server runs a build nobody here chose; asking an author to compare two numbers asks them
+     * to know which pairs work, which is not knowledge they have and not knowledge this
+     * interface should require.
+     */
+    private async reachServer(
+        backend: VcsBackend,
+        session: VcsSession,
+        signedIn: VcsServerSession,
+    ): Promise<VcsServerReach> {
+        try {
+            const state = await backend.readSyncState({
+                ...session.globals,
+                offline: false,
+                identity: signedIn.account.userId,
+            });
+            if (!state.remoteAvailable) return "dataPortSilent";
+            return state.remoteAuthorized ? "ready" : "notPermitted";
+        } catch (error) {
+            this.app.logger.warn("[Vcs] Could not reach the server after signing in", error);
+            return "dataPortSilent";
+        }
     }
 
     /**
@@ -1304,7 +1809,11 @@ export class VcsManager extends Manager {
     public async getSyncState(projectPath: string): Promise<VcsSyncState> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            return backend.readSyncState({ ...session.globals, offline: false });
+            return backend.readSyncState({
+                ...session.globals,
+                offline: false,
+                identity: this.resolveOnlineIdentity(session.remoteOrigin),
+            });
         });
     }
 
@@ -1323,7 +1832,8 @@ export class VcsManager extends Manager {
             const result = await backend.pushToRemote({
                 ...session.globals,
                 offline: false,
-                identity: this.resolveIdentity(),
+                // The account id, not the author's name - see `resolveOnlineIdentity`.
+                identity: this.resolveOnlineIdentity(session.remoteOrigin),
             });
             this.app.logger.info(
                 "[Vcs] Pushed", session.root, result.branch,
@@ -1359,7 +1869,11 @@ export class VcsManager extends Manager {
             }
 
             const { session, backend } = await this.sessionFor(projectPath);
-            const globals = { ...session.globals, identity: this.resolveIdentity() };
+            // The account id rather than the author's name, because the fetch below is what the
+            // backend looks a signed-in session up for. The revision an automatic merge records
+            // therefore carries the account id while a session is in force; the author's own
+            // commits do not, because those are offline and go through `resolveIdentity`.
+            const globals = { ...session.globals, identity: this.resolveOnlineIdentity(session.remoteOrigin) };
 
             // Offline and non-scanning, so establishing the precondition costs neither a
             // socket nor the staged-state side effect a scan would have (§4.17). This
@@ -1523,7 +2037,7 @@ export class VcsManager extends Manager {
             }
 
             const { session, backend } = await this.sessionFor(projectPath);
-            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity) };
+            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) };
 
             // **Tier two, and it is written BEFORE anything is settled and after the flush above.**
             // The composed bytes are an answer neither side wrote, so they go into the working tree
@@ -1640,11 +2154,16 @@ export class VcsManager extends Manager {
     ): Promise<{ root: string; branch: string; fileCount: number }> {
         const root = projectRoot(destination);
         return this.serialize(root, async () => {
-            const backend = await requireVcsBackend();
+            const backend = await this.requireBackend();
             const globals = this.globalsFor(root, { online: true });
             try {
                 const cloned = await backend.cloneInto(
-                    { ...globals, identity: this.resolveIdentity() },
+                    {
+                        ...globals,
+                        // Online, so the account id if this installation has signed in to the
+                        // server the copy is coming from.
+                        identity: this.resolveOnlineIdentity(parseVcsRemoteUrl(repositoryUrl)?.origin ?? null),
+                    },
                     { repositoryUrl, onProgress: options.onProgress },
                 );
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
@@ -1740,12 +2259,39 @@ export class VcsManager extends Manager {
         }
     }
 
-    /** Release every session; called on app teardown. */
+    /**
+     * Release every session and stop taking new work. Awaited on the way out of the app.
+     *
+     * **Awaited, and that is the whole point.** Closing a store is itself three Lore calls, so
+     * firing this off and quitting anyway leaves koffi work in flight while Node destroys the
+     * environment underneath it - which is not a leak but a SIGABRT (see
+     * {@link VcsShuttingDownError}). The latch is set first so that nothing arriving during the
+     * drain - a renderer's interval checkpoint, a window closing behind us - can open a session
+     * this call has already walked past.
+     *
+     * Three sets of keys, because a project can be in any of three states and only the first is
+     * obvious. Opens in flight: quitting during one would otherwise leave the repository locked,
+     * and on Windows that is a directory the author cannot move or delete. Queued operations: a
+     * verb that has not reached `sessionFor` yet is in neither of the other two maps, and
+     * `closeProject` waits behind it rather than racing it.
+     *
+     * A failure to close one project does not stop the others; the alternative is a rejected
+     * `Promise.all` that abandons the sessions it had not got to yet.
+     */
     public async dispose(): Promise<void> {
-        // Opens in flight included: quitting while one is still opening would otherwise leave the
-        // repository locked, and on Windows that is a directory the author cannot move or delete.
-        const keys = new Set([...this.sessions.keys(), ...this.opening.keys()]);
-        await Promise.all([...keys].map((key) => this.closeProject(key)));
+        this.shuttingDown = true;
+        const keys = new Set([...this.sessions.keys(), ...this.opening.keys(), ...this.operations.keys()]);
+        await Promise.all([...keys].map((key) => this.closeProject(key).catch((error) => {
+            this.app.logger.warn("[Vcs] Failed to close a session while quitting", key, error);
+        })));
+    }
+
+    /**
+     * Whether anything is still talking to Lore. Read after a bounded drain to say, in the log,
+     * whether the quit is about to do the one thing {@link dispose} exists to prevent.
+     */
+    public get busy(): boolean {
+        return this.operations.size > 0 || this.opening.size > 0;
     }
 
     /** Exposed for diagnostics: which projects currently hold a Lore store. */

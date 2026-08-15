@@ -60,7 +60,8 @@ const OPEN_LOCALE_MENU = function (display) {
     const row = Array.from(document.querySelectorAll('[data-panel-id] .group'))
         .find((r) => r.textContent.includes(display));
     if (!row) return false;
-    const more = Array.from(row.querySelectorAll('button')).find((b) => b.getAttribute('title') === 'More');
+    const more = Array.from(row.querySelectorAll('button'))
+        .find((b) => (b.getAttribute('data-tip') || b.getAttribute('title')) === 'More');
     if (!more) return false;
     more.click();
     return true;

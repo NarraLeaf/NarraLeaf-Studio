@@ -4,6 +4,7 @@ import {
     buildDocumentChangeRows,
     documentDiffTierCaption,
     formatBytes,
+    isWholeDocumentChange,
     resolveDocumentChangeLabel,
     type LabelTranslator,
 } from "./documentChangeView";
@@ -188,6 +189,19 @@ describe("resolveDocumentChangeLabel", () => {
         );
 
         expect(view.primary).toBe("documentDiff.someone.renamed.this");
+    });
+});
+
+describe("isWholeDocumentChange", () => {
+    it("names the three kinds a tier caption would be a lie about", () => {
+        // A tier is a caveat about how two versions were compared. Two of these have no second
+        // version at all, and the third has one holding the same bytes - which the working-tree
+        // comparison established by reading both copies in full.
+        expect(isWholeDocumentChange("added")).toBe(true);
+        expect(isWholeDocumentChange("removed")).toBe(true);
+        expect(isWholeDocumentChange("moved")).toBe(true);
+        // The only kind where a comparison happened and its tier is worth saying out loud.
+        expect(isWholeDocumentChange("changed")).toBe(false);
     });
 });
 

@@ -97,7 +97,7 @@ function SceneDefaultBackgroundField({ data }: CustomFieldProps<StorySceneEditor
                     type="button"
                     className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={!assetId}
-                    title={t("story.sceneEditor.clearBackground")}
+                    data-tip={t("story.sceneEditor.clearBackground")} aria-label={t("story.sceneEditor.clearBackground")}
                     onClick={() => data.onUpdateScene({ defaultBackgroundAssetId: null })}
                 >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -174,7 +174,7 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
                     type="button"
                     className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={!bgm}
-                    title={t("story.sceneEditor.clearSceneMusic")}
+                    data-tip={t("story.sceneEditor.clearSceneMusic")} aria-label={t("story.sceneEditor.clearSceneMusic")}
                     onClick={() => data.onUpdateScene({ bgm: null })}
                 >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -200,7 +200,7 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
                             max={1}
                             step={0.05}
                             value={bgm.volume ?? 1}
-                            title={t("story.sceneEditor.sceneMusicVolume")}
+                            data-tip={t("story.sceneEditor.sceneMusicVolume")} aria-label={t("story.sceneEditor.sceneMusicVolume")}
                             className="h-9 min-w-0 flex-1"
                             onChange={event => patch({ volume: Number(event.target.value) })}
                         />

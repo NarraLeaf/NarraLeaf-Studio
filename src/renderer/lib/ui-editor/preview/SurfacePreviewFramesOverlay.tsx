@@ -1,7 +1,12 @@
 import { useMemo } from "react";
 import type { SurfacePreviewRect, SurfacePreviewSize } from "./surfacePreviewFrames";
-import { computeSafeAreaFrameById, computeScreenRatioFrameById, computeUnsafeBands } from "./surfacePreviewFrames";
-import type { SafeAreaMobileOrientation } from "./surfacePreviewFrames";
+import {
+    computeSafeAreaFrameById,
+    computeScreenRatioFrameById,
+    computeScreenRatioStrips,
+    computeUnsafeBands,
+} from "./surfacePreviewFrames";
+import type { SafeAreaMobileOrientation, SurfacePreviewFit } from "./surfacePreviewFrames";
 
 export type SurfacePreviewFramesOverlayProps = {
     /** Surface design size; the design rect is `{x: 0, y: 0, ...designSize}`. */
@@ -12,6 +17,8 @@ export type SurfacePreviewFramesOverlayProps = {
     safeAreaId: string | null;
     /** The project's `app.mobile.orientation`; decides which edge the device inset lands on. */
     mobileOrientation?: SafeAreaMobileOrientation | null;
+    /** The project's `app.mobile.fit`. Under `cover` the screen frame marks a crop, not bars. */
+    stageFit?: SurfacePreviewFit;
     /** Canvas CSS scale, so hairlines can be kept at 1 device px. */
     viewportScale: number;
 };
@@ -38,7 +45,7 @@ export type SurfacePreviewFramesOverlayProps = {
  * `SurfacePreviewFramesReadout`.
  */
 export function SurfacePreviewFramesOverlay(props: SurfacePreviewFramesOverlayProps) {
-    const { designSize, aspectId, safeAreaId, mobileOrientation, viewportScale } = props;
+    const { designSize, aspectId, safeAreaId, mobileOrientation, stageFit, viewportScale } = props;
 
     // The parent is CSS-scaled, so a 1px stroke authored in design units renders at `scale` px.
     // Divide it back out to keep every hairline at one device pixel at any zoom. Blink derives a
@@ -49,12 +56,12 @@ export function SurfacePreviewFramesOverlay(props: SurfacePreviewFramesOverlayPr
     }, [viewportScale]);
 
     const screenFrame = useMemo(
-        () => computeScreenRatioFrameById(designSize, aspectId),
-        [designSize, aspectId],
+        () => computeScreenRatioFrameById(designSize, aspectId, stageFit),
+        [designSize, aspectId, stageFit],
     );
     const safeFrame = useMemo(
-        () => computeSafeAreaFrameById(designSize, safeAreaId, mobileOrientation),
-        [designSize, safeAreaId, mobileOrientation],
+        () => computeSafeAreaFrameById(designSize, safeAreaId, mobileOrientation, stageFit),
+        [designSize, safeAreaId, mobileOrientation, stageFit],
     );
     const unsafeBands = useMemo(
         () => computeUnsafeBands(designSize, safeFrame),
@@ -65,49 +72,21 @@ export function SurfacePreviewFramesOverlay(props: SurfacePreviewFramesOverlayPr
         return null;
     }
 
-    // Bar regions: the parts of the screen rect the design rect does not cover. Exactly one axis
-    // ever has bars, so at most two of these are non-empty. They sit outside the surface and paint
-    // onto the canvas background, which is intended.
+    // Where the design rect and the player's screen disagree: bars outside it under `contain`,
+    // cropped-away design inside it under `cover`. One helper for both, so the two readings cannot
+    // drift apart — and under `cover` the strips sit ON the surface, which is the point.
     const screenRect = screenFrame?.screenRect;
-    const bars: SurfacePreviewRect[] = [];
-    if (screenRect) {
-        if (screenFrame.pillarbox > 0) {
-            bars.push({
-                x: screenRect.x,
-                y: screenRect.y,
-                width: screenFrame.pillarbox,
-                height: screenRect.height,
-            });
-            bars.push({
-                x: designSize.width,
-                y: screenRect.y,
-                width: screenFrame.pillarbox,
-                height: screenRect.height,
-            });
-        }
-        if (screenFrame.letterbox > 0) {
-            bars.push({
-                x: screenRect.x,
-                y: screenRect.y,
-                width: screenRect.width,
-                height: screenFrame.letterbox,
-            });
-            bars.push({
-                x: screenRect.x,
-                y: designSize.height,
-                width: screenRect.width,
-                height: screenFrame.letterbox,
-            });
-        }
-    }
+    const strips = computeScreenRatioStrips(designSize, screenFrame);
 
     return (
         <div className="pointer-events-none absolute inset-0 z-[4]">
-            {bars.map((bar, i) => (
+            {strips.map((strip, i) => (
                 <div
-                    key={`preview-bar-${i}`}
-                    className="absolute bg-fill-subtle"
-                    style={{ left: bar.x, top: bar.y, width: bar.width, height: bar.height }}
+                    key={`preview-strip-${i}`}
+                    // A crop is a loss, a bar is not — the cropped strips read as danger, the bars
+                    // stay the quiet fill they have always been.
+                    className={`absolute ${screenFrame?.cropped ? "bg-danger/20" : "bg-fill-subtle"}`}
+                    style={{ left: strip.x, top: strip.y, width: strip.width, height: strip.height }}
                 />
             ))}
             {screenRect ? (

@@ -47,6 +47,7 @@ import type {
 } from "./core/WorkspaceReloadService";
 import type { DocumentSource } from "@shared/documents/documentSource";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
+import type { HistoryLabel } from "./history/historyModel";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetCategory, AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
@@ -79,10 +80,24 @@ import type {
     BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     Blueprint,
+    LiteralValue,
 } from "@shared/types/blueprint/document";
 import type { VariableRegistry, VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
 import type { AudioTrackChannel, ProjectAudioTrack, ProjectAudioTrackDocument } from "@shared/types/audioTrack";
+import type {
+    AppTagBaseIdentity,
+    AppTagIdentity,
+    AppTagOverrideKey,
+    AppTagPluginConfig,
+    AppTagResolvedValue,
+    ProjectAppTag,
+    ProjectAppTagDocument,
+} from "@shared/types/appTag";
+import type { PluginBuildConfigField } from "@shared/types/plugins";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
+import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
+import type { SpellcheckStatus } from "@shared/types/spellcheck";
+import type { SaveSchema, SaveSchemaField, SaveSchemaFieldType } from "@shared/types/saveSchema";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
 import type {
     ReadonlyBlueprintSurfaceSummary,
@@ -96,12 +111,18 @@ import type { ReactElement } from "react";
 import type { ElementRendererDefinition } from "../../ui-editor/runtime/ElementRendererRegistry";
 import type { RenderComponentOptions, RenderDocumentSurfaceOptions, RenderSurfaceOptions } from "../../ui-editor/runtime/types";
 import type { ViewportTransform } from "../../ui-editor/geometry/types";
+import type { SurfaceViewportFit } from "../../ui-editor/geometry/fitViewport";
 import type { UITool } from "../../ui-editor/editor/types";
 import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/snapping/types";
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
-import type { GameBuildRequest, GameBuildStateSnapshot, GameBuildStatus } from "@shared/types/gameBuild";
+import type {
+    GameBuildPlatform,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GameBuildStatus,
+} from "@shared/types/gameBuild";
 import type {
     ConsoleAppendInput,
     ConsoleChannelDefinition,
@@ -202,8 +223,14 @@ enum Services {
     VariableRegistry = "variableRegistry",
     /** Project-level audio tracks: the authoring-time mix presets every audio surface points at */
     AudioTracks = "audioTracks",
+    /** The build variants the project ships as, and what each one says differently from the project */
+    AppTags = "appTags",
     /** The project's own palette: the colours every `nlbrand:` link in the project resolves through */
     Brand = "brand",
+    /** The words the project spells on purpose, and the session's spellchecker they are pushed into */
+    Dictionary = "dictionary",
+    /** What one save slot carries besides the engine's own record; grows the pins on the save nodes */
+    SaveSchema = "saveSchema",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
     SaveStatus = "saveStatus",
     // Texture = "texture",
@@ -504,7 +531,7 @@ interface IAudioTrackService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
-    applyTrackMutation(mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[]): void;
+    applyTrackMutation(mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[], label?: HistoryLabel): void;
     createTrack(input?: Partial<Omit<ProjectAudioTrack, "id" | "builtin">>): ProjectAudioTrack;
     duplicateTrack(id: string): ProjectAudioTrack | null;
     updateTrack(id: string, patch: Partial<Omit<ProjectAudioTrack, "id" | "builtin" | "parentId">>): void;
@@ -515,6 +542,67 @@ interface IAudioTrackService extends IService {
     /** Refuses the three seeded buses; promotes the children of whatever it does delete. */
     deleteTrack(id: string): boolean;
     moveTrack(id: string, beforeId: string | null): void;
+}
+
+/**
+ * The project's build variants - what the same project can be shipped as, and what each variant says
+ * differently from the project itself. See `@shared/types/appTag` for the model.
+ *
+ * Every read answers: the release tag is prepended rather than stored, so a project with no document
+ * still has one tag and an unknown id still resolves.
+ */
+interface IAppTagService extends IService {
+    load(): Promise<ProjectAppTag[]>;
+    save(document: ProjectAppTagDocument): Promise<void>;
+    getDocument(): ProjectAppTagDocument;
+    /** Release first, then the author's own. */
+    listTags(): ProjectAppTag[];
+    listAuthoredTags(): ProjectAppTag[];
+    getTag(id: string): ProjectAppTag | undefined;
+    /** Whether the project has a tag under this id. Always true for the release tag. */
+    hasTag(id: string | null | undefined): boolean;
+    /** Total: an unknown or blank id answers the release tag. */
+    resolveTag(id: string | null | undefined): ProjectAppTag;
+    resolveIdentity(id: string | null | undefined, base: AppTagBaseIdentity): AppTagIdentity;
+    onTagsChanged(handler: (tags: ProjectAppTag[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    applyTagMutation(mutator: (tags: ProjectAppTag[]) => ProjectAppTag[], label?: HistoryLabel): void;
+    createTag(input?: { name?: string }): ProjectAppTag;
+    /** Refuses the release tag and a blank name. Stored references hold the id, so they follow. */
+    renameTag(id: string, name: string): boolean;
+    /** A blank value clears the key instead of storing it. */
+    setOverride(id: string, key: AppTagOverrideKey, value: string): boolean;
+    /** Restore one key to the inherited value by removing it. */
+    clearOverride(id: string, key: AppTagOverrideKey): boolean;
+    clearAllOverrides(id: string): boolean;
+    listOverriddenKeys(id: string): AppTagOverrideKey[];
+    /** The project's own plugin build values - what a variant states nothing against. */
+    getProjectPluginConfig(): AppTagPluginConfig;
+    /** Only what this variant states. Empty for the release tag, which stores nothing. */
+    getVariantPluginConfig(id: string | null | undefined): AppTagPluginConfig;
+    resolvePluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform?: GameBuildPlatform,
+    ): AppTagResolvedValue;
+    /** Routed by the field's scope; a blank value clears it. */
+    setPluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        value: string,
+        platform?: GameBuildPlatform,
+    ): boolean;
+    /** Restore one field to the inherited value by removing it. */
+    clearPluginConfigValue(
+        id: string | null | undefined,
+        field: PluginBuildConfigField,
+        platform?: GameBuildPlatform,
+    ): boolean;
+    clearAllPluginConfig(id: string): boolean;
+    /** Refuses the release tag. References are not rewritten; they resolve to release. */
+    deleteTag(id: string): boolean;
 }
 
 /**
@@ -543,6 +631,65 @@ interface IBrandService extends IService {
     deleteColor(id: string): boolean;
     moveColor(id: string, beforeId: string | null): void;
     replaceDocument(document: ProjectBrandDocument): void;
+    flushPendingChanges(): Promise<void>;
+}
+
+/**
+ * The words the project spells on purpose - character names, place names, invented terms. See
+ * `@shared/types/dictionary` for the model.
+ *
+ * Besides owning the document it *publishes*: every change pushes the list into Chromium's session
+ * dictionary, which is machine-scoped and therefore has to be handed back when the project closes.
+ */
+interface IDictionaryService extends IService {
+    load(): Promise<string[]>;
+    save(document: ProjectDictionaryDocument): Promise<void>;
+    getDocument(): ProjectDictionaryDocument;
+    listWords(): string[];
+    hasWord(word: string): boolean;
+    /** `false` when there was nothing to add: a blank, or a word the project already spells. */
+    addWord(word: string): boolean;
+    /** `false` when the project never held it. */
+    removeWord(word: string): boolean;
+    replaceDocument(document: ProjectDictionaryDocument): void;
+    /** What the spellchecker settled on at the last push; `null` before the first one. */
+    getSpellcheckStatus(): SpellcheckStatus | null;
+    /** The language settled on, whenever it changes - so an open story row can re-check. */
+    onStatusChanged(handler: (status: SpellcheckStatus | null) => void): () => void;
+    onWordsChanged(handler: (words: string[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+}
+
+/**
+ * What one save slot carries besides the engine's own record. See `@shared/types/saveSchema` for
+ * the model and `@shared/saves/saveSchemaModel` for the operations over it.
+ *
+ * One document per project on purpose: `Save Game` and `Get Save Metadata` are a contract across
+ * time, so a schema stored per node would be as many copies as there are save nodes, drifting by
+ * hand and failing silently.
+ */
+interface ISaveSchemaService extends IService {
+    load(): Promise<SaveSchema>;
+    save(schema: SaveSchema): Promise<void>;
+    getSchema(): SaveSchema;
+    /** Every declared field in pin order. */
+    listFields(): SaveSchemaField[];
+    getField(id: string): SaveSchemaField | undefined;
+    onSchemaChanged(handler: (schema: SaveSchema) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    createField(input?: { name?: string; valueType?: SaveSchemaFieldType }): SaveSchemaField;
+    /** `id` and `storageKey` are not patchable - one names every pin, the other keys every save. */
+    updateField(
+        id: string,
+        patch: { name?: string; valueType?: SaveSchemaFieldType; defaultValue?: LiteralValue; description?: string },
+    ): void;
+    deleteField(id: string): boolean;
+    moveField(id: string, beforeId: string | null): void;
+    replaceSchema(schema: SaveSchema): void;
     flushPendingChanges(): Promise<void>;
 }
 
@@ -798,8 +945,16 @@ interface IUIEditorStateService extends IService {
     getTool(): UITool;
     setTool(tool: UITool): void;
     getViewportTransform(): ViewportTransform;
+    /** A hand gesture (zoom, pan, or a typed zoom); ends the fit mode the interface was following. */
     updateViewport(transform: Partial<ViewportTransform>): ViewportTransform;
-    resetViewport(): ViewportTransform;
+    /** Which interface the current transform describes; `null` before any editor tab claimed it. */
+    getViewportSurfaceId(): string | null;
+    /** The fit mode in force, or `null` once the author moved the view by hand. */
+    getViewportFit(): SurfaceViewportFit | null;
+    /** Installs a computed zoom for an interface (stays live across resizes, unlike a hand gesture). */
+    applyFittedViewport(surfaceId: string, transform: ViewportTransform, fit: SurfaceViewportFit): ViewportTransform;
+    /** Restores a hand-set view (`null`), or returns the mode the caller must recompute. */
+    adoptSurfaceViewport(surfaceId: string): SurfaceViewportFit | null;
     getSelection(): SelectionState;
     setSelection(selection: SelectionState): void;
     setUIElementSelection(selection: UIElementSelection): void;
@@ -1207,6 +1362,8 @@ interface IVersionControlService extends IService {
     /** `includeDetails` costs one backend call per revision; leave it off unless they are shown. */
     getHistory(limit?: number, options?: { includeDetails?: boolean }): Promise<VcsHistoryEntry[]>;
     readBlob(revision: RevisionId, path: string): Promise<Uint8Array>;
+    /** The same file on disk now; `null` = it is there and too large to hand over. */
+    readWorkingFile(path: string): Promise<Uint8Array | null>;
     /** Every document at one revision in one round trip; `null` = absent at that revision. */
     readRevisionDocuments(revision: RevisionId, paths?: readonly string[]): Promise<Map<string, string | null>>;
     /** Show a past revision in the real editors. Freezes first; awaitable because it may go to the network. */
@@ -1321,7 +1478,10 @@ export {
     IWorkspaceReloadService, IVideoService,
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
-    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IBrandService,
+    IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IAppTagService,
+    IBrandService,
+    IDictionaryService,
+    ISaveSchemaService,
     IPuppetDescriptionService,
     IMediaSupportService,
     ITestRunService, IRecoveryService,

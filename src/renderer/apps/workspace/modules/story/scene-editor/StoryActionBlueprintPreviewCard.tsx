@@ -19,12 +19,18 @@ import {
 } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintLayerPreview";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { blueprintEntryContextMenu } from "@/apps/workspace/modules/blueprint-lite/hooks/blueprintEntryGesture";
+import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 
 export function StoryActionBlueprintPreviewCard(props: {
     /** Owner blueprint id; may be empty (the card stays clickable so `onOpen` can create it). */
     blueprintId: string;
-    /** Ensure the blueprint exists (when needed) and open its editor. */
-    onOpen: () => void;
+    /**
+     * Ensure the blueprint exists (when needed) and open its editor. Called with
+     * `{ inOwnWindow: true }` for the right click, which every blueprint entry answers by opening
+     * a window of its own.
+     */
+    onOpen: (options?: BlueprintOpenOptions) => void;
     /** Preview height; defaults to the standard entry height. */
     heightClassName?: string;
     /**
@@ -60,9 +66,12 @@ export function StoryActionBlueprintPreviewCard(props: {
                 card is disabled for exactly as long as the freeze lasts. */}
             <InspectOnlyButton
                 disabled={frozen && !props.blueprintId}
-                title={frozen && !props.blueprintId ? reason : undefined}
+                // The freeze reason wins the tooltip while there is one: it says why the card
+                // cannot be used at all, which outranks telling the author about a gesture.
+                data-tip={frozen && !props.blueprintId ? reason : t("blueprint.entry.openInWindow")}
                 className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 cursor-default"
-                onClick={props.onOpen}
+                onClick={() => props.onOpen()}
+                onContextMenu={blueprintEntryContextMenu(props.onOpen)}
                 aria-label={props.ariaLabel ?? (props.blueprintId ? t("story.blueprintCard.openAria") : t("story.blueprintCard.createAria"))}
             >
                 <BlueprintLayerPreview model={previewModel} heightClassName={props.heightClassName} variant={props.variant ?? "mini"} />

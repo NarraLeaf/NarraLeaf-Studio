@@ -68,7 +68,7 @@ export function AppearanceStep() {
                                 role="radio"
                                 aria-checked={selected}
                                 aria-label={name}
-                                title={name}
+                                data-tip={name}
                                 onClick={() => setAccent(preset.id)}
                                 className={`h-5 w-5 rounded-full transition duration-150 ${
                                     selected

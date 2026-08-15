@@ -57,7 +57,7 @@ function StateIndicator({ state }: { state: LocalizationUnitState }) {
         ? `${label}: ${t("workspace.localization.table.staleHint")}`
         : label;
     return (
-        <span className="absolute inset-y-0 left-0 flex w-2 justify-center py-3" title={title}>
+        <span className="absolute inset-y-0 left-0 flex w-2 justify-center py-3" data-tip={title}>
             <span aria-hidden className={`w-0.5 rounded-full ${STATE_INDICATOR_CLASS[state]}`} />
         </span>
     );
@@ -109,7 +109,7 @@ function AutosizeTextarea(props: {
             onFocus={props.onFocus}
             onBlur={props.onBlur}
             readOnly={freeze.frozen}
-            title={freeze.frozen ? freeze.reason : undefined}
+            data-tip={freeze.frozen ? freeze.reason : undefined}
             className="min-h-[3.25rem] w-full resize-none overflow-hidden rounded-md border border-edge-subtle bg-transparent px-2 py-1.5 text-sm leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50 focus:bg-surface-raised"
         />
     );
@@ -355,7 +355,7 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
                 type="button"
                 className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
                 onClick={submit}
-                title={t("workspace.localization.table.addKey")}
+                data-tip={t("workspace.localization.table.addKey")} aria-label={t("workspace.localization.table.addKey")}
             >
                 <Check className="h-3.5 w-3.5" />
             </button>

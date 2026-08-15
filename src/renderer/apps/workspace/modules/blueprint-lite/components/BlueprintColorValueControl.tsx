@@ -44,7 +44,7 @@ export function BlueprintColorValueControl({ value, onChange }: Props) {
                 allowOpacity
                 onChange={next => onChange(normalizeBlueprintRGBAColor(next))}
             />
-            <span className="min-w-0 truncate font-mono text-2xs text-fg-muted" title={displayValue}>
+            <span className="min-w-0 truncate font-mono text-2xs text-fg-muted" data-tip={displayValue}>
                 {displayValue}
             </span>
         </div>

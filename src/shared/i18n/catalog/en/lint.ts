@@ -22,6 +22,12 @@ export const lint = {
             title: "Unused asset",
             description: "Nothing in the project references this asset",
             message: "{asset} is not used anywhere",
+            // The three the rule reports instead of a list, when the reference index does not
+            // cover the whole project. Naming the site is the point: "the index is incomplete" on
+            // its own gives an author nothing to go and look at.
+            messageIndexUnresolved: "Unused assets not listed: {location} points at an asset that cannot be identified",
+            messageIndexUnreadable: "Unused assets not listed: {location} could not be read",
+            messageIndexNotBuilt: "Unused assets not listed: the project could not be scanned",
         },
         assetsMissing: {
             title: "Missing asset",
@@ -33,6 +39,13 @@ export const lint = {
             description: "The file cannot be read or decoded",
             message: "{asset} cannot be decoded",
             messageMissingBytes: "{asset} cannot be read from disk",
+        },
+        assetsOversized: {
+            title: "Large file",
+            description: "A file a build carries that is over the size this project allows",
+            // Both numbers in the sentence: what this file is, and what the project said, so the
+            // finding can be acted on without opening the settings page it came from.
+            message: "{asset} is {size}, over the {limit} a build should carry",
         },
         portabilityAssetName: {
             title: "Unsafe file name",
@@ -49,9 +62,14 @@ export const lint = {
             description: "A codec some selected build targets cannot play",
             message: "{asset} does not play on {platform}",
         },
+        networkFetchNotAllowlisted: {
+            title: "Address not on the allowlist",
+            description: "A Fetch node aimed at an address this project does not allow",
+            message: "{url} is not on this project's network request allowlist",
+        },
         networkFetchDisallowed: {
             title: "Network node without network access",
-            description: "A network node in a project that does not allow HTTP",
+            description: "A network node in a project whose network policy is off",
             message: "{blueprint} makes a network request, which this project does not allow",
         },
         storyInvalidCommand: {
@@ -99,6 +117,68 @@ export const lint = {
             title: "Empty scene",
             description: "A scene with no content",
             message: "This scene has no rows",
+        },
+        storyAppTagUnknown: {
+            title: "Unknown build variant",
+            description: "A row compared with a variant the project does not have",
+            message: "No build variant is named \"{name}\", so this row is in no build",
+        },
+        storyCutPointOrphan: {
+            title: "Cut point with no variant",
+            description: "A cut point written while the project has no build variant",
+            // The row is inert rather than wrong, so the sentence says what it does now, not what
+            // the author did. Both remedies are in it because either one is a complete answer.
+            message: "This project has no build variant, so this cut point ends nothing. Add a variant, or delete the row",
+        },
+        storyCutPointUnreachable: {
+            title: "Cut point out of reach",
+            description: "A cut point in a scene nothing can get to",
+            message: "Nothing can reach this scene, so this cut point never ends a build",
+        },
+        blueprintReferenceMissing: {
+            title: "Missing target",
+            description: "A node naming something the project no longer has",
+            // The generic fallback; every kind the rule can resolve has a sentence of its own
+            // below, because "something" is exactly the word an author cannot act on.
+            message: "Names something the project no longer has",
+            messageSurface: "Opens a page that no longer exists",
+            messageStory: "Starts a story that no longer exists",
+            messageScene: "Names a scene that no longer exists",
+            messageChoice: "Names a choice that no longer exists",
+            messageCharacter: "Names a character that no longer exists",
+            messageTextKey: "Names a text key the project does not declare",
+        },
+        blueprintUnreachableNode: {
+            title: "Unreachable node",
+            description: "A node no entry point in its graph can reach",
+            message: "Nothing reaches this node, so it never runs",
+        },
+        blueprintEmptyEvent: {
+            title: "Event that does nothing",
+            description: "An event layer with nothing wired to run",
+            message: "This event runs nothing",
+        },
+        uiUnlocalizedText: {
+            title: "Unlocalized text",
+            description: "Text written straight onto a widget in a project that has a second language",
+            // The literal, because the locator names the page and the widget but nothing can carry
+            // the words themselves - and on a page of forty labels they are what tells them apart.
+            message: "{text} is not bound to a localization key",
+        },
+        uiPageUnreachable: {
+            title: "Unreachable page",
+            description: "A page nothing opens, embeds, or starts on",
+            message: "Nothing opens this page",
+        },
+        uiEmptyBehavior: {
+            title: "Button with no handler",
+            description: "A clickable widget nothing listens to",
+            message: "Nothing runs when this is clicked",
+        },
+        blueprintSaveFieldEmpty: {
+            title: "Empty save field",
+            description: "A Save Game node that will run with a declared save field left empty",
+            message: "{field} is empty, so this save is written with its default instead",
         },
         variablesUndeclared: {
             title: "Undeclared variable",
@@ -182,6 +262,10 @@ export const lint = {
         portability: "Portability",
         network: "Network",
         story: "Story",
+        blueprint: "Blueprint",
+        // The author's word for what this category is about - pages and the widgets on them - not
+        // the internal one ("surfaces"), which names nothing anybody sees in the interface.
+        ui: "Pages",
         variables: "Variables",
         text: "Text",
         localization: "Localization",

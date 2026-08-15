@@ -42,6 +42,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Fetch": "blueprint.node.fetch",
     "Read Response Text": "blueprint.node.readResponseText",
     "Read Response JSON": "blueprint.node.readResponseJson",
+    "Get Build Variant": "blueprint.node.getAppTag",
     "Get Auto Forward": "blueprint.node.getAutoForward",
     "Get BGM Volume": "blueprint.node.getBgmVolume",
     "Get Button Enabled": "blueprint.node.getButtonEnabled",
@@ -163,6 +164,8 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Element Click": "blueprint.node.elementClick",
     "Element Flush": "blueprint.node.elementFlush",
     "Emit Page Event": "blueprint.node.emitPageEvent",
+    "Export Progress": "blueprint.node.exportProgress",
+    "Import Progress": "blueprint.node.importProgress",
     "Ends With": "blueprint.node.endsWith",
     "Equal": "blueprint.node.equal",
     "Equals": "blueprint.node.equals",
@@ -249,6 +252,12 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get Wrap Mode": "blueprint.node.getWrapMode",
     "Go Page": "blueprint.node.goPage",
     "Go back": "blueprint.node.goBack",
+    "Show Layer": "blueprint.node.showLayer",
+    "Hide Layer": "blueprint.node.hideLayer",
+    "Wait For Layer": "blueprint.node.waitForLayer",
+    "Close This Layer": "blueprint.node.closeThisLayer",
+    "Is Layer Mounted": "blueprint.node.isLayerMounted",
+    "Show Confirm": "blueprint.node.showConfirm",
     "Memo": "blueprint.node.memo",
     "Clear Page": "blueprint.node.clearPage",
     "Greater Than": "blueprint.node.greaterThan",
@@ -337,6 +346,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "On Key Down": "blueprint.node.onKeyDown",
     "On Key Up": "blueprint.node.onKeyUp",
     "On Preference Changed": "blueprint.node.onPreferenceChanged",
+    "Open Link": "blueprint.node.openLink",
     "Open page": "blueprint.node.openPage",
     "Or": "blueprint.node.or",
     "Pad End": "blueprint.node.padEnd",
@@ -456,6 +466,24 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Vector2D": "blueprint.node.vector2d",
     "While": "blueprint.node.while",
     "Xor": "blueprint.node.xor",
+    // Time nodes, plus the save-slot stamp reader they were built for.
+    "Now": "blueprint.node.now",
+    "Make Time": "blueprint.node.makeTime",
+    "Get Time Parts": "blueprint.node.getTimeParts",
+    "Format Time": "blueprint.node.formatTime",
+    "Format Time Localized": "blueprint.node.formatTimeLocalized",
+    "Format Relative Time": "blueprint.node.formatRelativeTime",
+    "Format Duration": "blueprint.node.formatDuration",
+    "Get Duration Parts": "blueprint.node.getDurationParts",
+    "Add Time": "blueprint.node.addTime",
+    "Time Difference": "blueprint.node.timeDifference",
+    "Parse Time": "blueprint.node.parseTime",
+    "To ISO String": "blueprint.node.toIsoString",
+    "Is Same Day": "blueprint.node.isSameDay",
+    "Start Of Day": "blueprint.node.startOfDay",
+    "Get Time Zone": "blueprint.node.getTimeZone",
+    "Get Save Time": "blueprint.node.getSaveTime",
+    "Get Save Line": "blueprint.node.getSaveLine",
 };
 
 /** Palette category name -> translation key, keyed by the original English category. */
@@ -486,6 +514,7 @@ const CATEGORY_KEYS: Record<string, TranslationKey> = {
     "Switch": "blueprint.category.switch",
     "Text": "blueprint.category.text",
     "Text Input": "blueprint.category.textInput",
+    "Time": "blueprint.category.time",
     "Variables": "blueprint.category.variables",
     "Voice": "blueprint.category.voice",
     "Widget": "blueprint.category.widget",
@@ -494,12 +523,14 @@ const CATEGORY_KEYS: Record<string, TranslationKey> = {
 
 /** Port / inspector / option label -> translation key, keyed by the original English label. */
 const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
+    "Add Button": "blueprint.port.addButton",
     "Add Case": "blueprint.port.addCase",
     "Add If condition": "blueprint.port.addIfCondition",
     "Add parameter": "blueprint.port.addParameter",
     "Add return value": "blueprint.port.addReturnValue",
     "Add value": "blueprint.port.addValue",
     "After": "blueprint.port.after",
+    "Build Variant": "blueprint.port.appTag",
     "Alt": "blueprint.port.alt",
     "Animation": "blueprint.port.animation",
     "AnimationToken": "blueprint.port.animationToken",
@@ -612,6 +643,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Float": "blueprint.port.float",
     "Fn Name": "blueprint.port.fnName",
     "Found": "blueprint.port.found",
+    "Missing": "blueprint.port.missing",
     "Frame": "blueprint.port.frame",
     "From": "blueprint.port.from",
     "Function": "blueprint.port.function",
@@ -633,6 +665,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Is Entering": "blueprint.port.isEntering",
     "Is Exiting": "blueprint.port.isExiting",
     "Is Fullscreen": "blueprint.port.isFullscreen",
+    "Is Mounted": "blueprint.port.isMounted",
     "Is Picked": "blueprint.port.isPicked",
     "Is Read": "blueprint.port.isRead",
     "Is Visited": "blueprint.port.isVisited",
@@ -643,6 +676,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Key": "blueprint.port.key",
     "Language": "blueprint.port.language",
     "Languages": "blueprint.port.languages",
+    "Layer": "blueprint.port.layer",
     "Linear": "blueprint.port.linear",
     "List": "blueprint.port.list",
     "Loop": "blueprint.port.loop",
@@ -659,6 +693,13 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Metadata": "blueprint.port.metadata",
     "Min": "blueprint.port.min",
     "Mode": "blueprint.port.mode",
+    "Modal": "blueprint.port.modal",
+    "Dismissible": "blueprint.port.dismissible",
+    "Dismissed": "blueprint.port.dismissed",
+    "Message": "blueprint.port.message",
+    "Pressed": "blueprint.port.pressed",
+    "Tag": "blueprint.port.tag",
+    "Group": "blueprint.port.group",
     "NVL Mode": "blueprint.port.nvlMode",
     "Name": "blueprint.port.name",
     "Nametag": "blueprint.port.nametag",
@@ -738,6 +779,52 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Width": "blueprint.port.width",
     "Width %": "blueprint.port.widthPct",
     "Wrap Mode": "blueprint.port.wrapMode",
+    // Time node pins, unit / style options, and Get Save Time's stamps.
+    "Year": "blueprint.port.year",
+    "Month": "blueprint.port.month",
+    "Day": "blueprint.port.day",
+    "Hour": "blueprint.port.hour",
+    "Minute": "blueprint.port.minute",
+    "Second": "blueprint.port.second",
+    "Millisecond": "blueprint.port.millisecond",
+    "Weekday": "blueprint.port.weekday",
+    "Day Of Year": "blueprint.port.dayOfYear",
+    "Locale": "blueprint.port.locale",
+    "Milliseconds": "blueprint.port.milliseconds",
+    "Days": "blueprint.port.days",
+    "Hours": "blueprint.port.hours",
+    "Minutes": "blueprint.port.minutes",
+    "Seconds": "blueprint.port.seconds",
+    "Remaining Milliseconds": "blueprint.port.remainingMilliseconds",
+    "Total Hours": "blueprint.port.totalHours",
+    "Total Minutes": "blueprint.port.totalMinutes",
+    "Total Seconds": "blueprint.port.totalSeconds",
+    "Negative": "blueprint.port.negative",
+    "Amount": "blueprint.port.amount",
+    "Difference": "blueprint.port.difference",
+    "Ok": "blueprint.port.ok",
+    "Saved At": "blueprint.port.savedAt",
+    "Created At": "blueprint.port.createdAt",
+    // Get Save Line: the words a slot stopped on, and who said them.
+    "Line": "blueprint.port.line",
+    "Speaker": "blueprint.port.speaker",
+    "Unit": "blueprint.port.unit",
+    "Date Style": "blueprint.port.dateStyle",
+    "Time Style": "blueprint.port.timeStyle",
+    "Wording": "blueprint.port.wording",
+    "Layout": "blueprint.port.layout",
+    "Weeks": "blueprint.port.weeks",
+    "Months": "blueprint.port.months",
+    "Years": "blueprint.port.years",
+    "Short": "blueprint.port.short",
+    "Medium": "blueprint.port.medium",
+    "Long": "blueprint.port.long",
+    "Full": "blueprint.port.full",
+    "Auto": "blueprint.port.auto",
+    "Always Numeric": "blueprint.port.alwaysNumeric",
+    "Hours Minutes Seconds": "blueprint.port.hoursMinutesSeconds",
+    "Minutes Seconds": "blueprint.port.minutesSeconds",
+    "Offset Minutes": "blueprint.port.offsetMinutes",
 };
 
 /** Localize a node title, falling back to the original English text when unmapped. */
@@ -752,8 +839,21 @@ export function resolveBlueprintCategoryLabel(category: string, t: Translate): s
     return key ? t(key) : category;
 }
 
-/** Localize a port / inspector / option label, falling back to the original English text when unmapped. */
+/**
+ * Localize a port / inspector / option label, falling back to the original English text when
+ * unmapped.
+ *
+ * A trailing ordinal is translated by its stem and put back: pins generated in groups are labelled
+ * `Button 1`, `Button 2` and so on to tell them apart, and mapping each of those separately would
+ * mean a catalogue entry per button an author might ever add. The exact text is tried first, so a
+ * label that genuinely reads as one phrase - `Case 0`, `Then 1` - keeps its own translation.
+ */
 export function resolveBlueprintLabel(text: string, t: Translate): string {
     const key = PORT_LABEL_KEYS[text];
-    return key ? t(key) : text;
+    if (key) {
+        return t(key);
+    }
+    const ordinal = /^(.*\S)\s+(\d+)$/.exec(text);
+    const stemKey = ordinal ? PORT_LABEL_KEYS[ordinal[1]] : undefined;
+    return stemKey ? `${t(stemKey)} ${ordinal![2]}` : text;
 }

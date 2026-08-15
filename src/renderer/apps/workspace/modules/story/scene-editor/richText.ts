@@ -282,7 +282,7 @@ function createPauseChip(pause: number | true, options: RichRenderOptions): HTML
     if (options.interactive) {
         span.setAttribute("role", "button");
     }
-    span.title = pause === true ? options.titles.pauseClick : options.titles.pauseSeconds(storyMsToSeconds(pause));
+    span.dataset.tip = pause === true ? options.titles.pauseClick : options.titles.pauseSeconds(storyMsToSeconds(pause));
     const label = pause === true ? "" : `<span class="ml-0.5">${formatStorySecondsLabel(pause)}</span>`;
     // PAUSE_ICON_SVG is a trusted static string; the label only interpolates a rounded number.
     span.innerHTML = `${PAUSE_ICON_SVG}${label}`;
@@ -301,7 +301,7 @@ function createInterpolationChip(interp: StoryInterpolationRef, label: string, m
     if (options.interactive) {
         span.setAttribute("role", "button");
     }
-    span.title = options.titles.insertedValue(label);
+    span.dataset.tip = options.titles.insertedValue(label);
     // INTERP_ICON_SVG is a trusted static string; the label is set via textContent (no HTML injection).
     span.innerHTML = INTERP_ICON_SVG;
     const labelSpan = globalThis.document.createElement("span");
@@ -331,7 +331,7 @@ function createEventChip(event: StoryInlineEvent, options: RichRenderOptions): H
         // stored `pose` / `tags` are ids, and an id dropped into a paragraph reads as `pro5swd`.
         // With no lookup, or nothing that resolves, the icon alone says the face changes here.
         const form = options.resolveAppearance?.(event.expression) ?? null;
-        span.title = form ? `${options.titles.expressionEvent}: ${form}` : options.titles.expressionEvent;
+        span.dataset.tip = form ? `${options.titles.expressionEvent}: ${form}` : options.titles.expressionEvent;
         span.innerHTML = EVENT_FACE_ICON_SVG;
         if (form) {
             const labelSpan = globalThis.document.createElement("span");
@@ -340,7 +340,7 @@ function createEventChip(event: StoryInlineEvent, options: RichRenderOptions): H
             span.appendChild(labelSpan);
         }
     } else {
-        span.title = options.titles.soundEvent;
+        span.dataset.tip = options.titles.soundEvent;
         span.innerHTML = EVENT_SOUND_ICON_SVG;
     }
     return span;
@@ -576,6 +576,25 @@ export function rubyRunAt(runs: StoryRichRun[], unit: number): { start: number; 
 }
 
 /**
+ * The marks carried by the unit at `unit`, or `undefined` where it carries none.
+ *
+ * What an accepted spelling suggestion is written with. A misspelled word can be bold, coloured or
+ * annotated like any other, and a replacement spliced in bare would strip that styling off the one
+ * word the author fixed - the correction would be visible as a hole in the sentence.
+ */
+export function marksAtUnit(runs: StoryRichRun[], unit: number): StoryTextMarks | undefined {
+    let pos = 0;
+    for (const run of runs) {
+        const len = runLength(run);
+        if (unit < pos + len) {
+            return isTextRun(run) || isInterpolationRun(run) ? cleanMarks(run.marks) : undefined;
+        }
+        pos += len;
+    }
+    return undefined;
+}
+
+/**
  * Apply a marks patch to the text units in [start, end), splitting runs at the boundaries.
  *
  * `textOnly` leaves inline value chips in the range untouched. Ruby is the mark that needs it: a
@@ -756,12 +775,24 @@ export function markSelectedChips(root: HTMLElement, range: { start: number; end
     });
 }
 
-export function setSelectionUnitRange(root: HTMLElement, start: number, end: number): void {
+/**
+ * A DOM range over units `[start, end)`, without touching the selection.
+ *
+ * The measuring half of {@link setSelectionUnitRange}, split out because the spellcheck overlay needs
+ * the geometry of a word and must on no account select it: the author is typing in this field, and
+ * moving the caret to measure something would be the field taking their place in the sentence away.
+ */
+export function createUnitRange(root: HTMLElement, start: number, end: number): Range {
     const startPoint = pointAt(root, start);
     const endPoint = pointAt(root, end);
     const range = globalThis.document.createRange();
     range.setStart(startPoint.node, startPoint.offset);
     range.setEnd(endPoint.node, endPoint.offset);
+    return range;
+}
+
+export function setSelectionUnitRange(root: HTMLElement, start: number, end: number): void {
+    const range = createUnitRange(root, start, end);
     const selection = globalThis.window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);

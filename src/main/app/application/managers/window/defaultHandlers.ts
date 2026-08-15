@@ -1,7 +1,18 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler } from "./handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppReportRendererErrorHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
+import {
+    SpellcheckCheckHandler,
+    SpellcheckClearHandler,
+    SpellcheckConfigureHandler,
+    SpellcheckDownloadHandler,
+    SpellcheckListAvailableHandler,
+    SpellcheckListInstalledHandler,
+    SpellcheckRemoveHandler,
+    SpellcheckStatusHandler,
+    SpellcheckSuggestHandler,
+} from "./handlers/spellcheckAction";
 import { AppUpdateCheckHandler, AppUpdateDownloadHandler, AppUpdateGetStateHandler, AppUpdateInstallHandler } from "./handlers/updateAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsDirectorySizeHandler, FsRequestReadHandler, FsRequestReadDirHandler, FsRequestWriteHandler,
@@ -12,11 +23,14 @@ import {
 } from "./handlers/fsAction";
 import {
     VcsGetAvailabilityHandler, VcsIsRepositoryHandler, VcsGetInfoHandler, VcsGetHistoryHandler, VcsReadBlobHandler,
+    VcsReadWorkingFileHandler,
     VcsReadRevisionDocumentsHandler, VcsGetChangedPathsHandler, VcsGetThreeWayHandler, VcsGetMergeBaseHandler,
     VcsDiffRevisionsHandler, VcsDiffWorkingTreeHandler,
     VcsInitRepositoryHandler,
     VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
+    VcsGetServerSessionHandler, VcsSignInHandler, VcsSignOutHandler, VcsTrustAuthorityHandler,
+    VcsProbeServerHandler, VcsListServersHandler, VcsAddServerHandler, VcsForgetServerHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
@@ -73,6 +87,8 @@ import {
     GameBuildStartHandler,
 } from "./handlers/gameBuildAction";
 import {
+    PluginBuildSecretAvailableHandler,
+    PluginBuildSecretSetHandler,
     SigningImportHandler,
     SigningInspectHandler,
     SigningKeystoreAliasesHandler,
@@ -81,6 +97,7 @@ import {
     SigningRemoveHandler,
 } from "./handlers/signingAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
+import { ServerTrustPromptHandler } from "./handlers/serverTrustAction";
 import {
     PluginApproveHandler,
     PluginInstallFromRegistryHandler,
@@ -116,6 +133,14 @@ import {
 } from "./handlers/blueprintPersistenceAction";
 import { BlueprintNetworkFetchHandler } from "./handlers/blueprintNetworkAction";
 import {
+    BlueprintExternalLinkOpenForPluginHandler,
+    BlueprintExternalLinkOpenHandler,
+} from "./handlers/blueprintExternalLinkAction";
+import {
+    BlueprintProgressReadHandler,
+    BlueprintProgressWriteHandler,
+} from "./handlers/blueprintProgressAction";
+import {
     PrivilegedBashExecuteHandler,
     PrivilegedFsCallHandler,
     PrivilegedPermissionRevokePluginHandler,
@@ -134,6 +159,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         new AppPropsHandler(),
         new AppWindowControlHandler(),
+        new AppDetachedWindowControlHandler(),
         new AppWindowCloseHandler(),
         new AppWindowEditCommandHandler(),
         new AppWindowCloseWithHandler(),
@@ -142,6 +168,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppWindowControlAbilityHandler(),
         new AppWindowReadyHandler(),
         new AppTerminateHandler(),
+        new AppReportRendererErrorHandler(),
         new AppGlobalStateGetHandler(),
         new AppGlobalStateSetHandler(),
         new AppGlobalStateGetAllHandler(),
@@ -169,6 +196,17 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppOpenExternalHandler(),
         new AppPickBackgroundImageHandler(),
         new AppReadBackgroundImageHandler(),
+
+        // Spellchecker handlers
+        new SpellcheckConfigureHandler(),
+        new SpellcheckClearHandler(),
+        new SpellcheckStatusHandler(),
+        new SpellcheckCheckHandler(),
+        new SpellcheckSuggestHandler(),
+        new SpellcheckListInstalledHandler(),
+        new SpellcheckListAvailableHandler(),
+        new SpellcheckDownloadHandler(),
+        new SpellcheckRemoveHandler(),
 
         // Project wizard handlers
         new ProjectWizardLaunchHandler(),
@@ -239,6 +277,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new SigningKeystoreAliasesHandler(),
         new SigningMacIdentitiesHandler(),
 
+        // Plugin build-config secrets (same vault; the value goes up, a handle comes back)
+        new PluginBuildSecretSetHandler(),
+        new PluginBuildSecretAvailableHandler(),
+
         // Blueprint persistent variable storage handlers
         new BlueprintPersistenceGetAllHandler(),
         new BlueprintPersistenceGetValueHandler(),
@@ -247,6 +289,17 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // Blueprint network handler (the Fetch node)
         new BlueprintNetworkFetchHandler(),
+
+        // Blueprint external link handler (the Open Link node)
+        new BlueprintExternalLinkOpenHandler(),
+        new BlueprintExternalLinkOpenForPluginHandler(),
+
+        // Blueprint progress handlers (the Export/Import Progress nodes)
+        new BlueprintProgressWriteHandler(),
+        new BlueprintProgressReadHandler(),
+
+        // The server trust question, in a window of its own
+        new ServerTrustPromptHandler(),
 
         // Plugin permission handlers
         new PluginPermissionPromptLaunchHandler(),
@@ -320,6 +373,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsGetStatusHandler(),
         new VcsGetHistoryHandler(),
         new VcsReadBlobHandler(),
+        new VcsReadWorkingFileHandler(),
         new VcsReadRevisionDocumentsHandler(),
         new VcsGetChangedPathsHandler(),
         new VcsDiffRevisionsHandler(),
@@ -335,6 +389,14 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsAbortMergeHandler(),
         new VcsGetRemoteHandler(),
         new VcsSetRemoteHandler(),
+        new VcsGetServerSessionHandler(),
+        new VcsSignInHandler(),
+        new VcsProbeServerHandler(),
+        new VcsListServersHandler(),
+        new VcsAddServerHandler(),
+        new VcsForgetServerHandler(),
+        new VcsSignOutHandler(),
+        new VcsTrustAuthorityHandler(),
         new VcsGetSyncStateHandler(),
         new VcsPushHandler(),
         new VcsSyncHandler(),

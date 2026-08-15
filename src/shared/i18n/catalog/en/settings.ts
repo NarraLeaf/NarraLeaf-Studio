@@ -51,6 +51,10 @@ export const settings = {
             label: "Version control",
             description: "Checkpoints and the identity recorded on them.",
         },
+        servers: {
+            label: "Servers",
+            description: "Servers this installation is signed in to, and the accounts it uses.",
+        },
         network: {
             label: "Network",
             description: "Where Studio downloads plugins, templates and build tooling from.",
@@ -69,6 +73,11 @@ export const settings = {
         developerMode: {
             label: "Developer options",
             description: "Right-click menus gain a section for copying the ID of the item clicked.",
+        },
+        confirmQuit: {
+            label: "Confirm before quitting with ⌘Q",
+            description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
+            unsupportedPlatform: "Not available on this operating system.",
         },
         themeMode: {
             label: "Theme",
@@ -89,6 +98,10 @@ export const settings = {
                 rose: "Rose",
                 slate: "Slate",
             },
+        },
+        tooltipDelay: {
+            label: "Tooltip delay",
+            description: "How long the pointer rests on a control before its tooltip appears. Within a toolbar the wait applies to the first tooltip only.",
         },
         reduceMotion: {
             label: "Reduce motion",
@@ -157,6 +170,31 @@ export const settings = {
                 command: "Highlight commands",
             },
         },
+        dictionaries: {
+            label: "Spelling dictionaries",
+        },
+        spellcheckLanguage: {
+            label: "Spellcheck language",
+            description: "Marks misspellings in the story script. Translations are never checked.",
+            /**
+             * Shown in place of the description while no dictionary covers the project's own
+             * language. A statement of what is true, not an error - and for Chinese and Japanese a
+             * permanent one, since neither has spelling in the word-list sense.
+             */
+            noDictionary: "No spelling dictionary is installed for this project's language, so nothing in the script is marked. The project dictionary still holds the project's own terms.",
+            options: {
+                followProject: "Follow the project's language",
+                off: "Do not check spelling",
+            },
+        },
+        detachedEditorOnClose: {
+            label: "When a detached editor window closes",
+            description: "An editor opened in its own window either returns to the workspace or closes with the window.",
+            options: {
+                restoreTab: "Return it to the workspace",
+                close: "Close the editor",
+            },
+        },
         editorLineNumbers: {
             label: "Show line numbers",
             description: "In the built-in text editor, for files opened from the asset library.",
@@ -201,6 +239,10 @@ export const settings = {
         versionControlAuthor: {
             label: "Author name",
             description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
+            // Replaces the description above while the field is closed, so the row says why
+            // rather than merely refusing to be typed in. Shown on both author fields.
+            fromServer:
+                "Comes from the server this installation is signed in to. Sign out to record a name of your own again.",
         },
         versionControlAuthorEmail: {
             label: "Author email",
@@ -245,6 +287,9 @@ export const settings = {
         cacheInventory: {
             label: "Cached files",
         },
+        servers: {
+            label: "Servers",
+        },
         settingsTransfer: {
             label: "Move settings between machines",
         },
@@ -264,6 +309,88 @@ export const settings = {
         },
     },
     // The Data panel's own chrome.
+    /**
+     * Servers this installation is signed in to.
+     *
+     * A server is added here and nowhere else. The words avoid "log in" and "account
+     * details": what is pasted is a token somebody issued, and the panel says so once
+     * rather than explaining it beside every field.
+     */
+    /**
+     * The dictionary cache panel. Nothing here reaches the network until it is asked to: the index
+     * is remote, so browsing it is a press, and each download is a second press against a size and
+     * a licence the author has been shown.
+     */
+    dictionaries: {
+        loading: "Reading the cache…",
+        remove: "Remove",
+        browse: "Browse dictionaries",
+        refresh: "Check again",
+        browsing: "Reading the list…",
+        download: "Download",
+        downloading: "Downloading…",
+        failed: "The dictionary list could not be read. Check the network policy in Settings, then try again.",
+        /**
+         * Stated outright, because an empty list reads as a download that has not happened yet.
+         * Neither language separates words, so there is nothing a word list could be checked
+         * against and no dictionary will ever appear for them.
+         */
+        noDictionaryLanguages: "Chinese and Japanese have no spelling dictionary, and will not get one: neither language separates words, so there is nothing for a word list to check. A project written in either is never marked.",
+        installed: {
+            title: "On this machine",
+            emptyTitle: "No dictionaries yet",
+            emptyDescription: "Nothing is marked in any project until one is downloaded.",
+        },
+        available: {
+            title: "Available to download",
+            prompt: "The list of dictionaries lives online. Fetch it when you want it.",
+            none: "Everything on offer is already here.",
+        },
+    },
+    servers: {
+        empty: "No servers have been added.",
+        openAdd: "Add a server",
+        add: "Add",
+        adding: "Adding…",
+        cancel: "Cancel",
+        continue: "Continue",
+        checking: "Checking…",
+        done: "Done",
+        signOut: "Sign out",
+        // The one thing an author is handed. Every other address is behind it, including
+        // the `lore://` remote, which is stored and never named to anybody.
+        addressLabel: "Server address",
+        addressPlaceholder: "nlteam://studio.example.lan:41402",
+        reached: "{name} answered at {address}.",
+        // "Access token" rather than "password": it is not one, and it cannot be chosen,
+        // remembered or reset by the person pasting it.
+        tokenLabel: "Access token",
+        tokenPlaceholder: "Paste the access token",
+        hint: "The access token is issued by the server's administrator.",
+        // A server with nothing to sign in to. Said rather than hidden, because the
+        // absence of an entry afterwards is otherwise indistinguishable from a failure.
+        noAccount: "{name} does not require authentication, so there is nothing to add.",
+        // What reaching an address came to, before anything has been added. Separate from
+        // `problems`, which are refusals of a token by a server already reached.
+        probe: {
+            unreachable: "Nothing answered at that address.",
+            notAServer: "Something answered at that address, and it is not a NarraLeaf Team server.",
+            untrusted: "The server at that address was not trusted.",
+            failed: "That address could not be checked.",
+        },
+        problems: {
+            scheme: "A sign-in address has to start with https:// or ucs-auth://.",
+            token: "That is not a token this server would have issued.",
+            // Neither names a field any more: both addresses come from the server's own
+            // answer, so there is nothing here for a reader to correct.
+            address: "This token does not say where to sign in.",
+            server: "This token does not say which server it is for.",
+            certificate: "This machine does not trust the certificate presented at that address.",
+            unreachable: "Nothing answered at that address.",
+            refused: "The server refused this token. It may have expired or been revoked.",
+            unknown: "The server could not be added.",
+        },
+    },
     data: {
         cache: {
             measuring: "Measuring…",
@@ -292,6 +419,10 @@ export const settings = {
                 uiTemplatePosters: {
                     label: "Template store posters",
                     description: "Downloaded again the next time you open the store.",
+                },
+                spellcheckDictionaries: {
+                    label: "Spelling dictionaries",
+                    description: "Word lists downloaded for spellchecking. Your project's own terms are not here.",
                 },
                 psdImports: {
                     label: "PSD import leftovers",

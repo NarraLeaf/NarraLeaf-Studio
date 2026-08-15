@@ -247,7 +247,7 @@ export function KeybindingsPanel() {
                                         key={row.id}
                                         className="group flex h-9 items-center gap-3 rounded-md px-2 transition-colors hover:bg-fill-subtle"
                                     >
-                                        <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" title={row.id}>
+                                        <span className="min-w-0 flex-1 truncate text-sm text-fg-muted" data-tip={row.id}>
                                             {row.name}
                                         </span>
 
@@ -260,7 +260,7 @@ export function KeybindingsPanel() {
                                         {conflictWith && !recording && (
                                             <span
                                                 className="flex shrink-0 items-center gap-1 text-2xs text-warning"
-                                                title={t("workspace.shell.keybindings.conflict", {
+                                                data-tip={t("workspace.shell.keybindings.conflict", {
                                                     name: conflictWith.join("、"),
                                                 })}
                                             >
@@ -276,7 +276,7 @@ export function KeybindingsPanel() {
                                             <button
                                                 type="button"
                                                 onClick={() => setRecordingId(row.id)}
-                                                title={t("workspace.shell.keybindings.record")}
+                                                data-tip={t("workspace.shell.keybindings.record")} aria-label={t("workspace.shell.keybindings.record")}
                                                 className="shrink-0 rounded-md border border-edge bg-fill-subtle px-2 py-0.5 text-xs tabular-nums text-fg-muted transition-colors hover:border-edge-strong hover:text-fg"
                                             >
                                                 {formatKeybinding(row.effectiveKey, isMac)}
@@ -288,7 +288,7 @@ export function KeybindingsPanel() {
                                                 <button
                                                     type="button"
                                                     onClick={() => setRecordingId(row.id)}
-                                                    title={t("workspace.shell.keybindings.record")}
+                                                    data-tip={t("workspace.shell.keybindings.record")}
                                                     aria-label={t("workspace.shell.keybindings.record")}
                                                     className="rounded-md p-1 text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover:opacity-100"
                                                 >
@@ -299,7 +299,7 @@ export function KeybindingsPanel() {
                                                 <button
                                                     type="button"
                                                     onClick={() => applyOverride(row.id, null)}
-                                                    title={t("workspace.shell.keybindings.reset")}
+                                                    data-tip={t("workspace.shell.keybindings.reset")}
                                                     aria-label={t("workspace.shell.keybindings.reset")}
                                                     className="rounded-md p-1 text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover:opacity-100"
                                                 >

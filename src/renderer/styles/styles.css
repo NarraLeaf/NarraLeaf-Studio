@@ -994,6 +994,43 @@ input[type="radio"]:focus {
 }
 
 /*
+ * Misspellings in the story editor, drawn by Studio.
+ *
+ * Chromium used to draw this squiggle itself, off its own spellchecker. It no longer checks
+ * anything (see `@shared/types/spellcheck`), so the wave is ours to paint — over the text, never
+ * inside it. The layer is an absolutely positioned sibling of the contentEditable field, not a span
+ * within it: the document model is runs and marks, and a span injected to carry a decoration would
+ * round-trip to disk, split runs the author never split, and put a node in the middle of the caret's
+ * path.
+ *
+ * The wave is a MASK, not a background image. A mask carries only alpha, so the colour stays a
+ * design-system token and follows the theme; baking the colour into the data URI would fix a
+ * light-theme red into a dark-theme window and put an invented hex in the stylesheet at the same
+ * time.
+ *
+ * The whole layer is inert. A three-pixel strip that took the pointer would sit exactly where a
+ * click lands when the author aims at the lower half of a line, and clicking a misspelled word must
+ * put the caret in it — the word is marked precisely because it is the one they want to edit. The
+ * suggestions are reached by right-clicking the word, which hit-tests the text underneath.
+ */
+.story-rt-spell-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.story-rt-spell {
+    position: absolute;
+    height: 3px;
+    pointer-events: none;
+    background-color: rgb(var(--nl-danger));
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3' viewBox='0 0 6 3'%3E%3Cpath d='M0 2.5 Q1.5 0.5 3 2.5 T6 2.5' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E");
+    mask-repeat: repeat-x;
+    mask-size: 6px 3px;
+    mask-position: 0 100%;
+}
+
+/*
  * Speaker colours for the story editor's gutter (gutter 规范 §4).
  *
  * One hue per character, carried in from JS as `--nl-speaker-h` (see storySpeakerIdentity.ts) and
@@ -1036,8 +1073,14 @@ input[type="radio"]:focus {
  *
  * Written as a fallback on the same three properties rather than as a separate class, so every
  * surface below reads one variable and never has to ask which kind of speaker it is drawing.
+ *
+ * The selector is over-qualified on purpose. These have to beat the light theme's
+ * `:root.nl-studio .nl-speaker`, and beating it by source order is not available: that rule is more
+ * specific, so on the light theme a neutral speaker was resolving to `hsl(<no hue> …)` — invalid at
+ * computed-value time, which takes the whole declaration with it. The continuation rule and the
+ * unassigned disc then painted with no colour at all and simply vanished, on one theme only.
  */
-.nl-speaker-neutral {
+:root .nl-speaker.nl-speaker-neutral {
     --nl-speaker-disc: rgb(var(--nl-fg-subtle));
     --nl-speaker-ink: rgb(var(--nl-surface));
     --nl-speaker-name: rgb(var(--nl-fg-muted));

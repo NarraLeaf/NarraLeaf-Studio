@@ -16,6 +16,8 @@
 
 import { ASSET_CATEGORY_ORDER, AssetCategory, categoryOfAssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
+import { referenceCoverageGapsFor } from "@/lib/workspace/services/assets/assetDeleteGuard";
+import type { ReferenceIndexResult } from "@/lib/workspace/services/references/referenceModel";
 
 /**
  * Fixed presentation order — the same sections the sidebar draws.
@@ -37,6 +39,13 @@ export interface AssetOverviewEntry {
     bytes: number | null;
     referenced: boolean;
     referenceCount: number;
+    /**
+     * Whether the index can answer "is this used?" for this asset at all.
+     *
+     * False and `referenced: false` is not an orphan - it is an unknown, and counting it as an
+     * orphan is how this page tells an author to delete a file that something is still drawing.
+     */
+    usageKnown: boolean;
 }
 
 export interface AssetOverviewCategoryBucket {
@@ -85,6 +94,11 @@ export interface AssetOverviewInput {
     bytesByAssetId: ReadonlyMap<string, number>;
     /** `assetId -> how many sites hold it`. Absent means unreferenced. */
     referenceCountByAssetId: ReadonlyMap<string, number>;
+    /**
+     * How far the index covers the project. Read per asset kind, so a picture the index cannot
+     * identify does not turn every sound on the page into an unknown as well.
+     */
+    indexResult: ReferenceIndexResult;
     /** Total bytes under `assets/`, from the directory walk. */
     directoryBytes: number;
     directoryFileCount: number;
@@ -112,11 +126,14 @@ export function buildAssetOverview(input: AssetOverviewInput): AssetOverviewSumm
             bytes: input.bytesByAssetId.has(asset.id) ? input.bytesByAssetId.get(asset.id)! : null,
             referenced: referenceCount > 0,
             referenceCount,
+            usageKnown: referenceCoverageGapsFor(input.indexResult, [asset.type]).length === 0,
         };
     });
 
     const referenced = entries.filter(entry => entry.referenced);
-    const orphan = entries.filter(entry => !entry.referenced);
+    // Unknown usage is deliberately in neither group: the orphan total drives a "you could save this
+    // much" reading, and bytes it cannot vouch for do not belong in it.
+    const orphan = entries.filter(entry => !entry.referenced && entry.usageKnown);
 
     const byCategory = ASSET_OVERVIEW_CATEGORY_ORDER.map(category => {
         const ofCategory = entries.filter(entry => categoryOfAssetType(entry.asset.type) === category);

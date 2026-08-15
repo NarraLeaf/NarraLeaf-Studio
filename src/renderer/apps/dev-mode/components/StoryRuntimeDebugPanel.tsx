@@ -568,7 +568,7 @@ function VariablesTab(props: {
                         <ul className="space-y-1">
                             {scopeRows.map(row => (
                                 <li key={`${scope}:${row.variable.id}`} className="flex items-center gap-2">
-                                    <span className="w-[42%] shrink-0 truncate text-fg-muted" title={row.variable.name}>
+                                    <span className="w-[42%] shrink-0 truncate text-fg-muted" data-tip={row.variable.name}>
                                         {row.variable.name}
                                     </span>
                                     <VariableValueEditor
@@ -761,7 +761,7 @@ function ExecutionContextTab(props: {
         <div className="min-h-0 flex-1 space-y-3 overflow-auto p-2">
             <div>
                 <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t("devMode.runtime.contextScene")}</h3>
-                <p className="truncate text-fg" title={view.sceneName}>{view.sceneName}</p>
+                <p className="truncate text-fg" data-tip={view.sceneName}>{view.sceneName}</p>
             </div>
 
             {view.chain.length > 0 || view.orphanRound ? (
@@ -797,7 +797,7 @@ function ExecutionContextTab(props: {
                                 </span>
                                 <span
                                     className={`min-w-0 truncate ${branch.current ? "text-fg" : "text-fg-muted"}`}
-                                    title={branch.sentence ?? undefined}
+                                    data-tip={branch.sentence ?? undefined}
                                 >
                                     {branch.sentence}
                                 </span>
@@ -930,7 +930,7 @@ function TimelineTab(props: {
                             <span
                                 className="min-w-0 flex-1 truncate text-2xs"
                                 style={{ paddingLeft: row.depth * 10 }}
-                                title={row.speaker ? `${row.speaker}: ${row.summary}` : row.summary}
+                                data-tip={row.speaker ? `${row.speaker}: ${row.summary}` : row.summary}
                             >
                                 {/* Repeated on every line, unlike the editor's grouped nametag: at
                                     380px there is no second line to hang an attribution rail from, so
@@ -1185,7 +1185,7 @@ function SceneTab(props: {
                     {focused && liveValue !== null ? (
                         <span
                             className="shrink-0 tabular-nums text-fg"
-                            title={t("devMode.runtime.focusLive")}
+                            data-tip={t("devMode.runtime.focusLive")}
                         >
                             {`${focused.name} = ${liveValue}`}
                         </span>

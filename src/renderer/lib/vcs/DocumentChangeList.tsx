@@ -13,12 +13,19 @@ import {
 } from "./documentChangeView";
 
 /**
- * One document's changes, drawn the same way in both places they appear.
+ * One document's changes.
  *
- * The version rail expands it under a file row at 320px and the `vcs-changes` tab draws it at editor
- * width; `dense` is the whole of the difference, because two renderings of one list would drift and
- * the author would have to learn each of them. Everything that can be wrong about the list - what
- * fits, what was left out, how a label becomes text - is in `documentChangeView`, not here.
+ * Drawn at editor width, as the body of the comparison tab's detail pane and through the generic
+ * presenter (`vcs/presenters/GenericChangeDetail`). Everything that can be wrong about the list -
+ * what fits, what was left out, how a label becomes text - is in `documentChangeView`, not here.
+ *
+ * **It draws one document, and is no longer what a list of documents is made of.** The tab used to
+ * mount one of these per changed file, stacked; now the file list is an index of one line per file
+ * (`vcs/changeIndex`) and exactly one of these is on screen at a time. That is why nothing here
+ * needs to be smaller than it is: the caveats below have a pane to be stated in.
+ *
+ * `dense` is the second rendering, kept and currently unused: the version rail drew this list under
+ * an expanded file row at 320px until that expansion was replaced by the two-pane tab.
  *
  * Three things this must never do quietly, all of them the same failure in different clothes:
  *
@@ -35,7 +42,7 @@ export interface DocumentChangeListProps {
     readonly diff: DocumentDiff;
     /** Rows, not changes - a group and its children are separate rows. */
     readonly limit: number;
-    /** The 320px rendering: smaller type, tighter rows. */
+    /** The 320px rendering: smaller type, tighter rows. No caller since the rail stopped expanding. */
     readonly dense?: boolean;
     /**
      * What to offer instead of a plain count when rows were left out - the rail's "view all N".
@@ -45,16 +52,20 @@ export interface DocumentChangeListProps {
      */
     readonly footer?: ReactNode;
     /**
-     * Whether the whole document appeared or disappeared, when the caller knows.
+     * Whether what happened is a fact about the whole document, when the caller knows.
      *
      * It suppresses the tier caption, and the reason is that the caption would otherwise say
      * something false. A document that was added has nothing to be compared against, so the engine
      * reports it as one `opaque` row on purpose - but `opaque`'s caption reads "Not read" and its
      * hint offers "too large, not text, or unreadable", none of which happened. Seen in the real
-     * app: a new 20-byte `.txt` announced itself as unreadable.
+     * app: a new 20-byte `.txt` announced itself as unreadable, and a renamed note did the same -
+     * that one twice as false, since a working-tree rename is confirmed by reading both copies of
+     * the file in full.
      *
      * A caption is a caveat about how the rows below were produced. For a document that is wholly
-     * added or removed there is exactly one row and it is not in doubt, so there is no caveat.
+     * added, removed or moved there is exactly one row and it is not in doubt, so there is no
+     * caveat. `vcs/documentChangeView.ts`'s `isWholeDocumentChange` is where the three are named,
+     * and every caller should reach it through that rather than spelling the kinds again.
      *
      * A boolean rather than a change kind because the two callers speak different vocabularies -
      * the working-tree list says `deleted` and the diff model says `removed` - and a prop typed as
@@ -75,7 +86,7 @@ export function DocumentChangeList({ diff, limit, dense = false, footer, wholeDo
                 // Quiet by design: one dimmed line, no badge and no colour. It is a caveat about how
                 // the rows below were produced, not a status of the document - and a 320px rail has
                 // no room for something that looks like a warning next to fifty file rows.
-                <p className={cn("truncate text-2xs text-fg-subtle", dense ? "" : "mb-0.5")} title={t(caption.hintKey)}>
+                <p className={cn("truncate text-2xs text-fg-subtle", dense ? "" : "mb-0.5")} data-tip={t(caption.hintKey)}>
                     {t(caption.key)}
                 </p>
             )}
@@ -126,7 +137,7 @@ function ChangeLine({ row, dense }: { row: DocumentChangeRow; dense: boolean }) 
             )}
             // The full path, because a row shows the change and not where in the document it sits.
             // Absent for a change at the document root, where there is no path to give.
-            title={path || undefined}
+            data-tip={path || undefined}
         >
             <span
                 aria-hidden
@@ -146,7 +157,7 @@ function ChangeLine({ row, dense }: { row: DocumentChangeRow; dense: boolean }) 
             {row.truncated > 0 && (
                 <span
                     className="ml-auto shrink-0 text-2xs text-fg-subtle"
-                    title={t("documentDiff.rows.moreInGroup", { count: String(row.truncated) })}
+                    data-tip={t("documentDiff.rows.moreInGroup", { count: String(row.truncated) })}
                 >
                     +{row.truncated}
                 </span>
@@ -171,13 +182,13 @@ function ValuePair({ from, to }: { from?: string; to?: string }) {
     return (
         <span className="flex min-w-0 shrink items-baseline gap-1 text-2xs text-fg-subtle">
             {from !== undefined && (
-                <span className="min-w-0 max-w-[12rem] truncate font-mono" title={from || undefined}>
+                <span className="min-w-0 max-w-[12rem] truncate font-mono" data-tip={from || undefined}>
                     {from}
                 </span>
             )}
             {from !== undefined && to !== undefined && <span aria-hidden>→</span>}
             {to !== undefined && (
-                <span className="min-w-0 max-w-[12rem] truncate font-mono text-fg-muted" title={to || undefined}>
+                <span className="min-w-0 max-w-[12rem] truncate font-mono text-fg-muted" data-tip={to || undefined}>
                     {to}
                 </span>
             )}

@@ -181,6 +181,32 @@ export type VcsRevisionKind = "commit" | "checkpoint";
 export const VCS_REVISION_KIND_KEY = "narraleaf.kind";
 
 /**
+ * The refusals the interface has its own words for.
+ *
+ * A failed call crosses IPC as a sentence, and rendering that sentence is right for anything the
+ * backend refuses with a remedy in it ("Branch has diverged, sync to merge remote changes") -
+ * translating those would put Studio's guess in front of the server's own answer. It is wrong for
+ * these four: three are facts about this installation, and the first is not a failure at all - it
+ * is what an author is told when they submit a version having changed nothing, which is an ordinary
+ * Tuesday and was arriving as red English text in a Chinese panel.
+ *
+ * Set as `code` on the error and carried by `ipcHost.failed`. Namespaced because `RequestStatus.code`
+ * is shared with everything else that throws, including Node's own `ENOENT`.
+ */
+export const VcsErrorCode = {
+    /** The working tree matches the last version, so there was nothing to record. */
+    NothingToCommit: "vcs/nothing-to-commit",
+    /** No usable backend on this host: a platform Epic ships no library for, or a broken install. */
+    Unavailable: "vcs/unavailable",
+    /** A project path this layer will not work in. Reaches an author only through a defect. */
+    ProjectPath: "vcs/project-path",
+    /** The app is closing and refused to start another call rather than abandoning it. */
+    ShuttingDown: "vcs/shutting-down",
+} as const;
+
+export type VcsErrorCode = (typeof VcsErrorCode)[keyof typeof VcsErrorCode];
+
+/**
  * When Studio takes a checkpoint on its own initiative.
  *
  * `interval` is the timer; the other three are the unconditional ones, taken at the
@@ -343,6 +369,29 @@ export interface VcsBlobRequest {
     path: string;
 }
 
+/** {@link VcsBlobRequest}'s working-tree twin: the same file as it is on disk now. */
+export interface VcsWorkingFileRequest {
+    projectPath: string;
+    /**
+     * Repository-relative path. Absolute paths, escaping paths and paths outside version
+     * control are rejected rather than skipped.
+     */
+    path: string;
+}
+
+/**
+ * One working-tree file's bytes, or the reason they were not read.
+ *
+ * `contentBase64: null` with a `refusal` is an answer, not a failure: a file too large to draw is
+ * an ordinary thing for a project to hold, and the surface says so rather than showing nothing. A
+ * path that should never have been asked for is a failure and arrives as one.
+ */
+export interface VcsWorkingFileRead {
+    contentBase64: string | null;
+    /** Present exactly when `contentBase64` is null. */
+    refusal?: "tooLarge";
+}
+
 /**
  * How one path differs from the last commit.
  *
@@ -436,6 +485,342 @@ export interface VcsSyncState {
     remoteAhead: boolean;
     remoteRevision?: RevisionId;
 }
+
+/**
+ * The two URL schemes a sign-in address may use.
+ *
+ * Measured, not read off a document: the client answers anything else with
+ * `no authentication implementation registered for scheme 'http' (available:
+ * ["ucs-auth", "https"])`. `http` is the one people will actually type, and it is
+ * refused - so the address field validates before a socket is opened rather than
+ * passing that sentence on.
+ */
+export const VCS_SIGN_IN_SCHEMES: readonly string[] = ["https", "ucs-auth"];
+
+/** Whether this address is one the sign-in call would even attempt. */
+export function isVcsSignInAddress(url: string): boolean {
+    const match = /^([a-z][a-z0-9+.-]*):\/\/[^/?#\s]+\/*$/i.exec(url.trim());
+    return match !== null && VCS_SIGN_IN_SCHEMES.includes(match[1].toLowerCase());
+}
+
+/**
+ * Who a server says this installation is.
+ *
+ * Everything here is read out of the token the author pasted. The token is issued by
+ * the server's operator and carries the account it belongs to, so this is the server's
+ * answer rather than something typed into a preference - which is the whole point of
+ * signing in at all.
+ */
+export interface VcsServerAccount {
+    /**
+     * The account id the server keys its stored session by.
+     *
+     * **Never shown and never asked for.** It is a random identifier, an author has no
+     * way to know theirs, and it is only here because the backend's session lookup uses
+     * it - see `serverSession.ts`.
+     */
+    userId: string;
+    /** The account's display name, e.g. `Ada Blackwood`. */
+    displayName: string;
+    /** The account's name on the server, e.g. `ada`. */
+    username: string;
+    /** The address recorded on revisions, or "" when the token carries none. */
+    email: string;
+    /**
+     * What is recorded as the author of a revision while this session is in force -
+     * `composeVcsIdentity` applied to the two fields above.
+     */
+    identity: string;
+    /** When the pasted token stops being accepted. Epoch ms; 0 when it did not say. */
+    expiresAt: number;
+}
+
+/**
+ * Everything a pasted token answers about itself.
+ *
+ * **The point of this type is the two addresses.** A token names, in `aud`, every remote
+ * it may be presented to - the https origin of the endpoint that issued it and the
+ * `lore://` origin of the server it is good for. Both were things an author was
+ * previously asked to type, having been told them by somebody else, and neither is
+ * knowledge they have any way to check. A token that carries them is a token that can be
+ * pasted on its own.
+ *
+ * The fields are empty rather than absent when a token says nothing, because a plain
+ * loreserver's token says nothing and that has to stay a working case: then the address
+ * field appears and the author types what they were told, as before.
+ */
+export interface VcsSignInToken {
+    account: VcsServerAccount;
+    /** Where to present it, from `aud`: `https://team.example.lan:41402`. */
+    authUrl: string;
+    /** The servers it is good for, from `aud`: `lore://team.example.lan:41337`. */
+    remotes: readonly string[];
+    /** SHA-256 of the authority signing that endpoint, from `authority_sha256`. */
+    authorityFingerprint: string;
+}
+
+/**
+ * Pull the addresses out of a token's audience.
+ *
+ * The audience is a flat list holding every spelling of every host this token may be
+ * sent to - measured against a real Team server, seven entries for one host, because the client
+ * compares the audience against the address it is dialling and the two are not written
+ * the same way. Studio wants two of them and recognises them by scheme.
+ *
+ * Order is kept: the first sign-in address is the one a token names first, and a Team
+ * server writes its own endpoint before any data remote.
+ */
+export function vcsAddressesInAudience(audience: readonly unknown[]): {
+    authUrls: string[];
+    remotes: string[];
+} {
+    const authUrls: string[] = [];
+    const remotes: string[] = [];
+    for (const entry of audience) {
+        if (typeof entry !== "string") continue;
+        // A trailing slash is one of the spellings the audience carries on purpose, and
+        // it is not one of the two things being read out here.
+        const address = entry.trim().replace(/\/+$/, "");
+        if (isVcsSignInAddress(address)) {
+            if (!authUrls.includes(address)) authUrls.push(address);
+            continue;
+        }
+        if (/^lore:\/\/[^/?#\s]+$/i.test(address) && !remotes.includes(address)) {
+            remotes.push(address);
+        }
+    }
+    return { authUrls, remotes };
+}
+
+/**
+ * What a server says about itself at the one address an author is given.
+ *
+ * `nlteam://host:port` names the endpoint that mints and verifies tokens, and asking it
+ * over HTTP/1.1 returns this. It is what somebody would otherwise have written in a chat
+ * message: whether a token is needed at all, where to present one, and which data remote
+ * the repositories live on.
+ *
+ * **The data remote never reaches a person.** It is a fact about the storage this server
+ * happens to run, not something anybody chose, and Studio stores it without showing it.
+ */
+export interface VcsServerDiscovery {
+    /** Bumped only when a field an older Studio relies on changes meaning. */
+    protocol: number;
+    /** What this deployment calls itself, for a list a person reads. */
+    name: string;
+    auth: {
+        /** False for a server that asks nobody who they are; then no token is wanted. */
+        required: boolean;
+        /** Where a token is presented, e.g. `https://team.example.lan:41402`. */
+        url: string;
+    };
+    /** The remote the repositories live on. Stored, never shown. */
+    data: { url: string };
+    /** SHA-256 of the authority answering, as a label rather than as evidence. */
+    authority: { sha256: string };
+    /** The server's own version, for a support conversation. */
+    version: string;
+}
+
+/**
+ * What reaching an address came to, before anything has been added.
+ *
+ * Four answers because four different things happen next: carry on, ask whether to trust
+ * this machine, say nothing answered, or say that something answered and it was not a
+ * server of this kind. Only the second is a question for the author.
+ */
+export type VcsServerProbe =
+    /** It answered and this machine already trusts it. */
+    | { kind: "ready"; address: string; discovery: VcsServerDiscovery }
+    /**
+     * It answered, and its certificate chains to an authority this machine does not
+     * trust. The discovery document is read over that same connection, so it is carried
+     * here too - it is what the trust prompt names, and it is not acted on until the
+     * author says yes.
+     */
+    | { kind: "untrusted"; address: string; authority: VcsServerAuthority; discovery: VcsServerDiscovery | null }
+    /** Nothing answered at that address. */
+    | { kind: "unreachable"; detail: string }
+    /** Something answered and it was not a NarraLeaf Team server. */
+    | { kind: "not-a-server"; detail: string };
+
+/**
+ * A signed-in session, as Studio holds it.
+ *
+ * One per server, not one per project: the backend keeps the session in a per-user
+ * store outside any repository, so signing in once serves every project pointed at
+ * that server.
+ */
+export interface VcsServerSession {
+    /** Where the sign-in happened, e.g. `https://studio.example.lan:41402`. */
+    authUrl: string;
+    /** The server this session is good for, as an origin: `lore://host:41337`. */
+    remoteOrigin: string;
+    account: VcsServerAccount;
+    /** When this installation signed in. Epoch ms. */
+    signedInAt: number;
+}
+
+/**
+ * The authority a sign-in endpoint's certificate chains up to, and what can be done
+ * about it on this machine.
+ *
+ * Read off the connection itself: a certificate is public, and the endpoint hands its
+ * whole chain over before anything is trusted. What is NOT public is which authority is
+ * the right one, and that is the entire question - the certificate in front of Studio
+ * looks the same whether it belongs to the server the author means or to something
+ * standing in its place.
+ *
+ * {@link expected} is the answer, when a token supplies one. See
+ * {@link vcsAuthorityIsVouchedFor}.
+ */
+export interface VcsServerAuthority {
+    /** SHA-256 of the authority, colon-separated upper-case hex. */
+    fingerprint: string;
+    /**
+     * The fingerprint the pasted token named, empty when it named none.
+     *
+     * A plain loreserver, or a Team server older than this claim, mints tokens that say nothing
+     * about certificates; then this is empty and the author is back to comparing by eye,
+     * which is what they did before and still works.
+     */
+    expected: string;
+    /** The authority's subject, e.g. `CN=NarraLeaf Team`. Shown, never compared. */
+    subject: string;
+    /** When it stops being valid, as an ISO date. Shown so a decade-long one reads as one. */
+    expiresAt: string;
+    /** Where Studio wrote the certificate on this machine, for the command below. */
+    path: string;
+    /**
+     * Whether Studio can put this into the trust store itself.
+     *
+     * False on Linux and anything else: the only store other programs read there is
+     * machine-wide and needs root, and a per-user NSS database would be believed by
+     * browsers and by nothing else. So the command is printed for a person to run.
+     */
+    canInstall: boolean;
+    /** The command that installs it here, as a person would type it. */
+    command: string;
+}
+
+/**
+ * Whether the token vouches for the authority the endpoint actually presented.
+ *
+ * True is the case worth having: the author pasted a token their server's operator gave
+ * them, that token names an authority, and the machine on the other end of the wire is
+ * signed by exactly that authority. Nobody has to read 95 characters aloud.
+ *
+ * **What this is worth.** The claim's own signature is not checked and cannot be - the
+ * key that would check it is published behind the certificate under discussion. What
+ * carries the weight is the channel: the token reached the author from the operator, out
+ * of band, which is the same channel a spoken fingerprint would have travelled. So this
+ * is worth what the spoken comparison was worth, and no less; anything able to rewrite a
+ * token in flight could equally have dictated a fingerprint of its own.
+ *
+ * False with a non-empty {@link VcsServerAuthority.expected} is a different thing
+ * entirely, and the interface must not treat it as merely "not vouched for": the token
+ * named an authority and something else answered. That is the shape an interception has.
+ */
+export function vcsAuthorityIsVouchedFor(authority: VcsServerAuthority): boolean {
+    const expected = authority.expected.trim().toUpperCase();
+    return expected.length > 0 && expected === authority.fingerprint.trim().toUpperCase();
+}
+
+/**
+ * Why a sign-in did not happen, in a form the interface can put words to.
+ *
+ * Coded rather than passed through as a sentence because **the backend collapses every
+ * transport failure into one string**: an untrusted certificate, a port nothing listens
+ * on, a name that does not resolve and an endpoint speaking plain HTTP all come back as
+ * `failed to connect to auth endpoint: transport error` (measured, all four). Handing
+ * that to an author would tell them nothing about which of four different things to do
+ * next, so the transport is diagnosed separately and reported as one of these.
+ */
+export type VcsSignInProblem =
+    /** The address is not `https` or `ucs-auth`. Refused before any socket is opened. */
+    | { kind: "scheme" }
+    /** The pasted text is not a token this server would have issued. */
+    | { kind: "token" }
+    /**
+     * The token is a token, and it does not say where to sign in.
+     *
+     * Answered when nothing was typed into the address field and the token's audience
+     * named no https endpoint - a plain loreserver's does not. It is what makes the
+     * address field appear at all: the author is asked for it once it is established
+     * that nothing else can supply it, rather than in front of every sign-in.
+     */
+    | { kind: "address" }
+    /**
+     * The endpoint answered, but its certificate is signed by an authority this machine
+     * does not trust.
+     *
+     * The only refusal here whose remedy changes the machine rather than the project,
+     * which is why it carries a whole {@link VcsServerAuthority} instead of a string:
+     * what to do about it depends on whether the token vouched for this authority, and
+     * on whether this platform lets Studio act on the answer.
+     */
+    | { kind: "certificate"; authority: VcsServerAuthority }
+    /**
+     * The token is a token, and it does not say which server it is good for.
+     *
+     * Only reachable where a server is being added on its own rather than from a project,
+     * because a project already knows its own address. A plain loreserver's token names
+     * nothing, so the address is asked for once and then kept.
+     */
+    | { kind: "server" }
+    /** Nothing answered at that address. */
+    | { kind: "unreachable"; detail: string }
+    /** The endpoint answered and refused the token: expired, revoked, or another server's. */
+    | { kind: "refused"; detail: string }
+    /** Anything else, with whatever the backend said. */
+    | { kind: "unknown"; detail: string };
+
+/**
+ * What a completed sign-in came to, including whether the two ends can work together.
+ *
+ * The compatibility verdict is deliberately a word rather than a version string. Studio
+ * pins a client library and a server runs whatever its operator installed; a pair of
+ * numbers on screen asks the author to know which pairs are good, which is not knowledge
+ * they have. So the sign-in ends by actually reaching the server's data port and reports
+ * what happened.
+ */
+export type VcsServerReach =
+    /** Signed in, and the server answered a repository read. */
+    | "ready"
+    /** Signed in, but the server will not give this account this project. */
+    | "notPermitted"
+    /** Signed in, and the data port did not answer. */
+    | "dataPortSilent";
+
+export interface VcsSignInResult {
+    session: VcsServerSession;
+    reach: VcsServerReach;
+}
+
+/**
+ * What a sign-in attempt came to, success or refusal alike.
+ *
+ * A refusal is DATA rather than a thrown error, and that is the whole reason this shape
+ * exists: an untrusted certificate and a token that has expired are ordinary answers a
+ * person acts on, not faults, and each of them needs a different sentence. Carrying the
+ * reason as a code lets the interface say that sentence in the reader's own language
+ * instead of relaying an English one from the backend.
+ */
+export type VcsSignInOutcome =
+    | ({ ok: true } & VcsSignInResult)
+    | { ok: false; problem: VcsSignInProblem };
+
+/**
+ * What adding a server came to.
+ *
+ * The same refusals as a sign-in, because it is one: what differs is where the server
+ * came from. A sign-in from a project is told which server to present the token to; here
+ * the token says, and the whole list is returned so the panel showing it does not have to
+ * ask again.
+ */
+export type VcsAddServerOutcome =
+    | { ok: true; session: VcsServerSession; servers: VcsServerSession[] }
+    | { ok: false; problem: VcsSignInProblem };
 
 /**
  * The server a project synchronises with, as the author configured it.
@@ -825,4 +1210,25 @@ export interface VcsWorkingTreeDiffResult {
     pathCount: number;
     complete: boolean;
     readFailure: string | null;
+}
+
+/**
+ * Whether a refusal from a server is one that signing in would settle.
+ *
+ * Matched on the message because that is all there is: the strings come from the client
+ * library and carry no code of their own. Both ends of this read the same list — the main
+ * process decides from it whether a failed connection leaves the address in place, and the
+ * renderer decides from it whether to offer a way in — and two lists would drift.
+ *
+ * Wrong in either direction it costs a sentence, never an act: an unrecognised refusal
+ * behaves as every refusal used to, and a recognised one only keeps an address and offers
+ * a form.
+ */
+export function vcsSignInRequired(message: string): boolean {
+    const said = message.toLowerCase();
+    return (
+        said.includes("no token stored")
+        || said.includes("not authorized to access repository")
+        || said.includes("authorization header required")
+    );
 }

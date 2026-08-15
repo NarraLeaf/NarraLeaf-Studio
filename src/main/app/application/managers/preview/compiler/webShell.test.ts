@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import { WEB_SHELL_VARIANT_META, type GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { buildWebIndexHtml } from "./webShell";
 
 function packWith(overrides: {
@@ -79,6 +79,21 @@ describe("buildWebIndexHtml", () => {
     it("links the apple-touch icon, which iOS uses instead of rel=icon", () => {
         const html = buildWebIndexHtml(packWith({}), { hasFavicon: true, hasAppleTouchIcon: true });
         expect(html).toContain("<link rel=\"apple-touch-icon\" href=\"./apple-touch-icon.png\" />");
+    });
+
+    it("marks the mobile variant so the runtime knows which shell is serving it", () => {
+        // The pack is built once and the mobile repack serves this same site, so this meta is the
+        // only thing that distinguishes a phone — and it is what gates the stage crop. A rename on
+        // one side alone would turn cropping off on every handset with nothing else to notice.
+        const mobile = buildWebIndexHtml(packWith({}), { hasFavicon: false, variant: "mobile" });
+        expect(mobile).toContain(`<meta name="${WEB_SHELL_VARIANT_META}" content="mobile" />`);
+        expect(mobile).toContain("viewport-fit=cover");
+
+        for (const options of [{ hasFavicon: false }, { hasFavicon: false, variant: "web" as const }]) {
+            const web = buildWebIndexHtml(packWith({}), options);
+            expect(web).not.toContain(WEB_SHELL_VARIANT_META);
+            expect(web).not.toContain("viewport-fit=cover");
+        }
     });
 
     it("omits each icon link independently", () => {

@@ -1093,10 +1093,10 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             onMouseDownCapture={focusEditor}
         >
             <div className="flex h-12 shrink-0 items-center gap-2 border-b border-edge px-3">
-                <div className="min-w-0 flex-[0_1_320px] truncate text-sm font-medium text-fg" title={asset.name}>
+                <div className="min-w-0 flex-[0_1_320px] truncate text-sm font-medium text-fg" data-tip={asset.name}>
                     {asset.name}
                 </div>
-                <button className={ICON_BUTTON_CLASS} type="button" onClick={togglePlayback} title={playing ? t("motion.editor.pause") : t("motion.editor.play")}>
+                <button className={ICON_BUTTON_CLASS} type="button" onClick={togglePlayback} data-tip={playing ? t("motion.editor.pause") : t("motion.editor.play")} aria-label={playing ? t("motion.editor.pause") : t("motion.editor.play")}>
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                 </button>
                 <input
@@ -1297,7 +1297,7 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                                                     }}
                                                     onClick={() => selectKeyframe(track, keyframe)}
                                                     onPointerDown={freeze.gesture((event: ReactPointerEvent<HTMLButtonElement>) => startKeyframeDrag(event, track, keyframe))}
-                                                    title={`${getStoryMotionPropertyMeta(track.property).label} ${formatStoryMotionTime(keyframe.timeMs, STORY_MOTION_FPS)}`}
+                                                    data-tip={`${getStoryMotionPropertyMeta(track.property).label} ${formatStoryMotionTime(keyframe.timeMs, STORY_MOTION_FPS)}`} aria-label={`${getStoryMotionPropertyMeta(track.property).label} ${formatStoryMotionTime(keyframe.timeMs, STORY_MOTION_FPS)}`}
                                                 />
                                             ))}
                                             <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-edge-subtle" />

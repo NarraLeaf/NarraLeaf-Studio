@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
+import { CircleQuestionMark, LibraryBig } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
 import { HelpOverlay, HELP_TOPICS, helpTitleKey, openHelpTopic, requestContextHelp } from "@/lib/help";
 import { Services } from "@/lib/workspace/services/services";
@@ -72,12 +73,19 @@ export function WorkspaceHelp() {
                 titleKey: "help.ui.allTopics",
                 categoryKey: "help.ui.title",
                 order: -1,
+                // The one row here that is not a topic, so it is the one row that does not wear the
+                // topic glyph: it opens the shelf rather than answering a question.
+                icon: <LibraryBig className="w-4 h-4" />,
                 run: () => openHelpTab(context),
             },
             ...HELP_TOPICS.map(topic => ({
                 id: `help:${topic.id}`,
                 titleKey: helpTitleKey(topic.id),
                 categoryKey: "help.ui.title" as TranslationKey,
+                // One glyph for all of them on purpose. Forty-nine hand-picked icons would be
+                // forty-nine guesses at what a topic is about, when what the column has to say is
+                // "this row answers a question" - the title already says which one.
+                icon: <CircleQuestionMark className="w-4 h-4" />,
                 // From the palette there is nothing to anchor to, so this centres - and the popover
                 // is still the right surface, because the author asked one question.
                 run: () => openHelpTopic(topic.id),

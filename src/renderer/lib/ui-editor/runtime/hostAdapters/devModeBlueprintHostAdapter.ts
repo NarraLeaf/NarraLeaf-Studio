@@ -1,5 +1,6 @@
 import type { UIComponentId, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle } from "@shared/types/devMode";
+import { isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
 import { BLUEPRINT_HOST_API_CONTRACT_VERSION } from "@shared/types/blueprint/hostApi";
 import type { UIHostAdapter, UIHostAdapterBlueprintRuntime } from "../types";
 import {
@@ -87,7 +88,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
     ) => {
         const flushedElement = eventName === "flush" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
         const clickedElement = eventName === "mouseClick" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
-        await dispatchBlueprintUiEvent({
+        const handledByWidget = await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
             persistentVariables,
@@ -136,13 +137,14 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 executionManager,
             });
         }
+        let handledByElementEvent = false;
         if (eventName === "mouseClick" && clickedElement) {
             const target = {
                 surfaceId: surface.id,
                 elementId,
                 elementType: clickedElement.type,
             };
-            await dispatchBlueprintElementClickEvent({
+            handledByElementEvent = await dispatchBlueprintElementClickEvent({
                 document,
                 blueprintDocument,
                 persistentVariables,
@@ -158,6 +160,21 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 },
                 executionManager,
             });
+        }
+
+        // Nothing listened here, so the event was never this element's to keep. Handing it up is the
+        // same walk `Continue Event Bubble` makes, and the parent decides the same way in turn - so
+        // a run of elements with no listener passes it along until one has, or until the root.
+        if (
+            !handledByWidget
+            && !handledByElementEvent
+            && isPointerPositionElementEvent(eventName)
+            && !eventOptions?.eventControl?.isPropagationStopped()
+        ) {
+            const parentId = readRuntimeElement(elementId, eventOptions?.componentId)?.parentId;
+            if (parentId) {
+                await dispatchElementBlueprintEventNow(parentId, eventName, eventPayload, eventOptions);
+            }
         }
     };
 
@@ -213,6 +230,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 executionId: `flush-cascade-${Date.now()}`,
                 eventId: "flush",
                 message: `Flush cascade exceeded ${MAX_FLUSH_CASCADE_ROUNDS} rounds; dropped pending element flush events: ${elementIds}`,
+                surfaceId: surface.id,
             });
             resolvePendingFlushes(droppedItems);
             return;
@@ -230,6 +248,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                         executionId: `flush-${Date.now()}`,
                         eventId: "flush",
                         message,
+                        surfaceId: surface.id,
                     });
                 } finally {
                     resolvePendingFlushes([item]);

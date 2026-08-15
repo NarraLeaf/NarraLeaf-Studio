@@ -2,7 +2,12 @@ import type { StoryLiteralValue, StoryVariableRef, StoryVariableValueType } from
 import { storyVariableRefKey } from "@shared/types/story";
 import { inferStoryExpressionType } from "@shared/utils/storyExpressionEval";
 import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
-import { createStoryExpressionScope, formatStoryExpressionName, parseStoryExpression } from "@shared/utils/storyExpressionParser";
+import {
+    createStoryExpressionScope,
+    formatStoryExpressionName,
+    isAdvisoryStoryExpressionIssue,
+    parseStoryExpression,
+} from "@shared/utils/storyExpressionParser";
 import {
     allowsFreeValue,
     freeTargetKind,
@@ -307,6 +312,17 @@ function resolveAgainstType(
             const found = exact ?? context.labels.find(name => name.trim().toLowerCase() === needle);
             return found ? { value: { kind: "label", name: found } } : { issue: { code: "unknownLabel", span, value } };
         }
+        case "appTag": {
+            // By name, the way a scene is - the author types what the variant is called and the row
+            // keeps its id, so a later rename does not reach the stored row at all.
+            const found = findByName(context.appTags, value);
+            if (found === "ambiguous") {
+                return { issue: { code: "ambiguousName", span, value } };
+            }
+            return found
+                ? { value: { kind: "appTag", appTagId: found.id } }
+                : { issue: { code: "unknownAppTag", span, value } };
+        }
         case "variable": {
             const needle = value.trim().toLowerCase();
             const matches = context.variables.filter(entry => entry.name.trim().toLowerCase() === needle);
@@ -392,8 +408,12 @@ function resolveExpression(
     }
 
     const { expression, issues } = parseStoryExpression(source, expressionScope(context));
-    if (issues.length > 0) {
-        return { issue: { code: "expressionError", span, value: source, issue: issues[0] } };
+    // Advisory issues carry a perfectly good tree, so they must not stop a line committing - a
+    // comparison against a variant that was deleted on purpose is a note, not a broken row. The
+    // condition editor's field renders them, and the project sweep reports every one of them.
+    const blocking = issues.filter(issue => !isAdvisoryStoryExpressionIssue(issue));
+    if (blocking.length > 0) {
+        return { issue: { code: "expressionError", span, value: source, issue: blocking[0] } };
     }
 
     if (type.expects === "boolean") {
@@ -426,7 +446,12 @@ function matchCompoundAssignment(value: string): { op: "+" | "-" | "*" | "/"; re
 export function expressionScope(context: StoryCommandContext): StoryExpressionScope {
     return createStoryExpressionScope(
         context.variables.map(entry => ({ name: entry.name, ref: entry.ref })),
-        { scenes: context.scenes, options: context.choiceOptions, blueprints: context.valueBlueprints },
+        {
+            scenes: context.scenes,
+            options: context.choiceOptions,
+            blueprints: context.valueBlueprints,
+            appTags: context.appTags,
+        },
     );
 }
 
@@ -519,6 +544,8 @@ function issueForUnresolvable(type: StoryCommandParamType, value: string, span: 
             return { code: "unknownAudioTrack", span, value };
         case "label":
             return { code: "unknownLabel", span, value };
+        case "appTag":
+            return { code: "unknownAppTag", span, value };
         case "variable":
             return { code: "unknownVariable", span, value };
         case "target":

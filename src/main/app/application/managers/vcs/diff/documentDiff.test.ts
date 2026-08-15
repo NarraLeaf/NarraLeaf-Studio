@@ -184,18 +184,57 @@ describe("tier 3 and 4 - no spec", () => {
         expect(diff.changes[0].path).toEqual(["a"]);
     });
 
-    it("reports bytes that are not JSON by size alone", () => {
+    it("hands an asset to the content step rather than reporting it as raw bytes", () => {
+        // The step between structural and opaque. These two are truncated PNG signatures, so no
+        // dimensions come out of them, and the size row is what is left - but it is the content
+        // step's row, which is how a real PNG gets a dimension row beside it.
         const diff = diffDocumentBytes({
             path: "assets/content/ab/cd/portrait.png",
             base: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
             head: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d]),
         });
 
+        // `content`, not `opaque`, and the difference is a sentence the author reads: `opaque`'s
+        // caption says "Not read. Too large, not text, or unreadable. Only its size is reported",
+        // which would sit directly above a row naming this file's dimensions. A provider that
+        // opens the header earns the rung that says so; one that reads no header stays on
+        // `opaque`, which the `.blend` case below pins.
+        expect(diff.tier).toBe("content");
+        expect(diff.changes).toEqual([{
+            path: ["size"],
+            kind: "changed",
+            label: { key: "documentDiff.content.size", params: { fromBytes: 4, toBytes: 5 } },
+        }]);
+    });
+
+    it("keeps a format nobody can open on the tier that admits it read nothing", () => {
+        // The other half of the rule above, and the reason the rule is on `headBytes` rather than
+        // on "the content step ran": this file went through the same step and came out with a
+        // size row, because there is no reader for it. "Only its size is reported" is the whole
+        // truth here, so `opaque` and its caption are the honest pair.
+        const diff = diffDocumentBytes({
+            path: "assets/content/ab/cd/scene.blend",
+            base: Buffer.from([0x42, 0x4c, 0x45, 0x4e]),
+            head: Buffer.from([0x42, 0x4c, 0x45, 0x4e, 0x44]),
+        });
+
+        expect(diff.tier).toBe("opaque");
+    });
+
+    it("reports text that is not JSON by size alone, without calling the format unrecognised", () => {
+        // The content step is skipped for a path whose class says its bytes were worth reading.
+        // "Studio does not recognise this format" about an author's `.txt` would be false.
+        const diff = diffDocumentBytes({
+            path: "notes/todo.txt",
+            base: Buffer.from("one"),
+            head: Buffer.from("two!"),
+        });
+
         expect(diff.tier).toBe("opaque");
         expect(diff.changes).toEqual([{
             path: [],
             kind: "changed",
-            label: { key: "documentDiff.opaque.changed", params: { fromBytes: 4, toBytes: 5 } },
+            label: { key: "documentDiff.opaque.changed", params: { fromBytes: 3, toBytes: 4 } },
         }]);
     });
 
@@ -210,6 +249,142 @@ describe("tier 3 and 4 - no spec", () => {
 
         expect(diff.tier).toBe("opaque");
         expect(onDegrade).toHaveBeenCalledWith(expect.stringContaining("parse ceiling"));
+    });
+});
+
+/**
+ * The path shape a real project actually holds, which is where this whole step was silently dead.
+ *
+ * Studio writes an asset's contents under its id, sharded two levels deep and with no extension:
+ * `assets/content/99/55/3d15abb54213bad7203798a1adc4`. Everything above classifies by name, so
+ * every one of those was `unknown`, and `unknown` means "read it, it might be JSON" - which read
+ * both copies of a sprite in full and then reported two byte counts. Measured in the app: a
+ * 1088x1984 PNG replaced by a 1024x1024 one said "Not read - Changed (1.6 MB -> 226.6 KB)".
+ *
+ * These fixtures therefore use the shard shape and nothing else. A test written against
+ * `assets/content/ab/cd/portrait.png` passes either way, which is exactly how the defect got past
+ * a full round of them.
+ */
+describe("an asset stored under its id, with no extension to read", () => {
+    const SHARD = "assets/content/99/55/3d15abb54213bad7203798a1adc4";
+
+    /** A PNG signature, an IHDR and as much filler as the file is supposed to weigh. */
+    function png(width: number, height: number, size = 64): Buffer {
+        const out = Buffer.alloc(Math.max(size, 33), 0x7f);
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(out, 0);
+        out.writeUInt32BE(13, 8);
+        out.write("IHDR", 12);
+        out.writeUInt32BE(width, 16);
+        out.writeUInt32BE(height, 20);
+        return out;
+    }
+
+    /** A 44-byte WAVE header whose `data` chunk declares a length it does not carry. */
+    function wav(sampleRate: number, seconds: number): Buffer {
+        const channels = 2;
+        const byteRate = sampleRate * channels * 2;
+        const out = Buffer.alloc(44);
+        out.write("RIFF", 0);
+        out.writeUInt32LE(36 + byteRate * seconds, 4);
+        out.write("WAVE", 8);
+        out.write("fmt ", 12);
+        out.writeUInt32LE(16, 16);
+        out.writeUInt16LE(1, 20);
+        out.writeUInt16LE(channels, 22);
+        out.writeUInt32LE(sampleRate, 24);
+        out.writeUInt32LE(byteRate, 28);
+        out.writeUInt16LE(channels * 2, 32);
+        out.writeUInt16LE(16, 34);
+        out.write("data", 36);
+        out.writeUInt32LE(byteRate * seconds, 40);
+        return out;
+    }
+
+    const keys = (diff: DocumentDiff): string[] => diff.changes.map((change) => change.label.key);
+
+    it("names the resolution of a bitmap that has no name to be read", () => {
+        const diff = diffDocumentBytes({
+            path: SHARD,
+            base: png(1088, 1984, 1_600_000),
+            head: png(1024, 1024, 226_000),
+        });
+
+        // `content`, whose caption is "Format only". Not `opaque`, whose caption is "Not read" -
+        // the sentence that was on screen above this file's size row.
+        expect(diff.tier).toBe("content");
+        expect(diff.changes[0]).toEqual({
+            path: ["dimensions"],
+            kind: "changed",
+            label: {
+                key: "documentDiff.content.dimensions",
+                params: { fromWidth: 1088, fromHeight: 1984, toWidth: 1024, toHeight: 1024 },
+            },
+        });
+        expect(keys(diff)).toEqual(["documentDiff.content.dimensions", "documentDiff.content.size"]);
+    });
+
+    it("names the length of a sound the same way", () => {
+        const diff = diffDocumentBytes({ path: SHARD, base: wav(44_100, 12), head: wav(44_100, 30) });
+
+        expect(diff.tier).toBe("content");
+        expect(keys(diff)).toEqual(["documentDiff.content.duration"]);
+        expect(diff.changes[0].label.params).toEqual({ fromSeconds: 12, toSeconds: 30 });
+    });
+
+    it("recognises a font under an id as a font", () => {
+        // Nothing here reads the family - the name table is past these bytes - so what is pinned
+        // is the rung. `content` says the format was recognised and what it reports was compared;
+        // `unknown`'s provider would instead have claimed Studio cannot read the format at all.
+        const font = (size: number): Buffer => {
+            const out = Buffer.alloc(size, 0x11);
+            out.write("OTTO", 0);
+            return out;
+        };
+
+        const diff = diffDocumentBytes({ path: SHARD, base: font(900), head: font(1200) });
+
+        expect(diff.tier).toBe("content");
+        expect(keys(diff)).toEqual(["documentDiff.content.size"]);
+    });
+
+    it("falls back to two byte counts for bytes nothing recognises", () => {
+        // The honest half of the same change. No header placed these, so the class stays
+        // `unknown`, the content step is never reached, and `opaque` plus its "Not read" caption
+        // is the true pair rather than the false one.
+        const diff = diffDocumentBytes({
+            path: SHARD,
+            base: Buffer.from("QRSTUVWXYZ not a format anybody knows"),
+            head: Buffer.from("QRSTUVWXYZ still not a format anybody knows"),
+        });
+
+        expect(diff.tier).toBe("opaque");
+        expect(keys(diff)).toEqual(["documentDiff.opaque.changed"]);
+    });
+
+    it("still parses a document that happens to live under an id", () => {
+        // Non-vacuous the other way: the sniff must not stop an extensionless JSON being read as
+        // JSON. Nothing places `{`, so the class stays `unknown` and the structural tier answers.
+        const diff = diffDocumentBytes({
+            path: SHARD,
+            base: bytes({ a: 1 }),
+            head: bytes({ a: 2 }),
+        });
+
+        expect(diff.tier).toBe("structural");
+    });
+
+    it("takes the class from the caller when the caller already settled it", () => {
+        // The working-tree side probes the file's front before planning, so it arrives knowing.
+        // Passing it through has to actually route the comparison, or the probe bought nothing.
+        const diff = diffDocumentBytes({
+            path: SHARD,
+            contentClass: "bitmap",
+            base: png(64, 64, 100),
+            head: png(32, 32, 120),
+        });
+
+        expect(diff.tier).toBe("content");
+        expect(keys(diff)).toContain("documentDiff.content.dimensions");
     });
 });
 

@@ -3,10 +3,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
+import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "@shared/types/ui-editor/pageAnimation";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
+import { buildSurfaceAnimationPlan } from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
 import { BlueprintWidgetInitLifecycle } from "./BlueprintWidgetInitLifecycle";
+import { ElementAnimationPresence } from "./ElementAnimationLayer";
 import { SurfaceElementTree } from "./SurfaceElementTree";
 
 function flattenNodes(node: ReactNode): ReactNode[] {
@@ -102,6 +105,113 @@ describe("SurfaceElementTree", () => {
 
         expect(componentRootLifecycle?.props.componentId).toBe("component");
         expect(componentRootLifecycle?.props.instanceKey).toBe("component:instance");
+    });
+
+    /**
+     * Every instance of one definition shares the element ids inside it, so if that content were
+     * addressable there would be no telling six placements apart.
+     */
+    describe("a linked component instance", () => {
+        function renderInstanceMarkup(): string {
+            const document: UIDocument = {
+                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+                id: "doc",
+                name: "Doc",
+                surfaces: [
+                    {
+                        id: "surface",
+                        name: "Surface",
+                        host: "player",
+                        kind: "stageSurface",
+                        designSize: { width: 320, height: 180 },
+                        rootElementId: "root",
+                        mount: { kind: "slot", slotId: "onStage" },
+                    },
+                ],
+                components: [
+                    {
+                        id: "component",
+                        name: "Component",
+                        rootElementId: "component-root",
+                        elements: {
+                            "component-root": {
+                                id: "component-root",
+                                type: "nl.container",
+                                parentId: null,
+                                childrenIds: ["component-child"],
+                                layout: { x: 0, y: 0, width: 160, height: 80 },
+                            },
+                            "component-child": {
+                                id: "component-child",
+                                type: "nl.container",
+                                parentId: "component-root",
+                                childrenIds: [],
+                                layout: { x: 4, y: 4, width: 40, height: 20 },
+                            },
+                        },
+                    },
+                ],
+                elements: {
+                    root: {
+                        id: "root",
+                        type: "nl.root",
+                        parentId: null,
+                        childrenIds: ["instance"],
+                        layout: { x: 0, y: 0, width: 320, height: 180 },
+                    },
+                    instance: {
+                        id: "instance",
+                        type: "nl.container",
+                        parentId: "root",
+                        childrenIds: [],
+                        layout: { x: 8, y: 8, width: 160, height: 80 },
+                        extra: { componentLink: { componentId: "component", linked: true } },
+                    },
+                },
+            };
+            const surface = document.surfaces[0]!;
+            const hostAdapter: UIHostAdapter = {
+                host: "player",
+                blueprintRuntime: {
+                    surfaceId: surface.id,
+                    setSurfaceState: () => undefined,
+                    getSurfaceState: () => undefined,
+                    emitDebug: () => undefined,
+                    dispatchElementBlueprintEvent: async () => undefined,
+                },
+            };
+            const rendererRegistry = new ElementRendererRegistry([
+                { type: "nl.root", render: props => <>{props.children}</> },
+                { type: "nl.container", render: props => <>{props.children}</> },
+            ]);
+            return renderToStaticMarkup(
+                <>
+                    {SurfaceElementTree({
+                        document,
+                        surface,
+                        rootElement: document.elements.root!,
+                        rendererRegistry,
+                        hostAdapter,
+                    })}
+                </>,
+            );
+        }
+
+        function tagFor(markup: string, elementId: string): string {
+            return markup.match(new RegExp(`<[^>]*data-ui-element-id="${elementId}"[^>]*>`))?.[0] ?? "";
+        }
+
+        it("leaves its content unaddressable, so the instance is what a click resolves to", () => {
+            const markup = renderInstanceMarkup();
+
+            // Element events find their owner by walking up to the nearest tagged ancestor. Content
+            // carries no tag of its own, so that walk passes straight through it to the placement -
+            // which is why six instances of one definition are six distinct click targets even
+            // though they share every id inside.
+            expect(tagFor(markup, "component-child")).toBe("");
+            expect(tagFor(markup, "component-root")).toBe("");
+            expect(tagFor(markup, "instance")).not.toBe("");
+        });
     });
 
     /**
@@ -819,5 +929,99 @@ describe("SurfaceElementTree", () => {
         );
 
         expect(markup).toContain("Page loop blocked");
+    });
+
+    /**
+     * The tree is what decides which elements can animate at all, and it has to leave the rest
+     * exactly as they were: a presence wrapper around every widget would put an AnimatePresence in
+     * the editing canvas, where nothing animates and everything re-renders.
+     */
+    describe("element animations", () => {
+        function animatedDocument(): UIDocument {
+            return {
+                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+                id: "doc",
+                name: "Doc",
+                surfaces: [
+                    {
+                        id: "surface",
+                        name: "Surface",
+                        host: "app",
+                        kind: "appSurface",
+                        designSize: { width: 320, height: 180 },
+                        rootElementId: "root",
+                    },
+                ],
+                elements: {
+                    root: {
+                        id: "root",
+                        type: "nl.root",
+                        parentId: null,
+                        childrenIds: ["moving", "still"],
+                        layout: { x: 0, y: 0, width: 320, height: 180 },
+                    },
+                    moving: {
+                        id: "moving",
+                        type: "nl.container",
+                        parentId: "root",
+                        childrenIds: [],
+                        layout: { x: 0, y: 0, width: 40, height: 20 },
+                        animation: {
+                            ...DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
+                            enter: "fade",
+                            exit: "fade",
+                        },
+                    },
+                    still: {
+                        id: "still",
+                        type: "nl.container",
+                        parentId: "root",
+                        childrenIds: [],
+                        layout: { x: 0, y: 40, width: 40, height: 20 },
+                    },
+                },
+            };
+        }
+
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "nl.root", render: props => <>{props.children}</> },
+            { type: "nl.container", render: props => <>{props.children}</> },
+        ]);
+
+        function renderTree(withPlan: boolean): ReactNode {
+            const document = animatedDocument();
+            const surface = document.surfaces[0]!;
+            return SurfaceElementTree({
+                document,
+                surface,
+                rootElement: document.elements.root!,
+                rendererRegistry,
+                hostAdapter: { host: "app" },
+                animationPlan: withPlan
+                    ? buildSurfaceAnimationPlan({
+                          elements: document.elements,
+                          rootElementId: "root",
+                          rootSettings: surface.settings?.pageAnimation,
+                      })
+                    : null,
+            });
+        }
+
+        function wrappedElementIds(node: ReactNode): string[] {
+            return flattenNodes(node)
+                .filter(
+                    (item): item is React.ReactElement<{ children?: ReactNode }> =>
+                        isValidElement(item) && item.type === ElementAnimationPresence,
+                )
+                .map(item => String(item.key));
+        }
+
+        it("wraps only what the plan says can move", () => {
+            expect(wrappedElementIds(renderTree(true))).toEqual(["moving"]);
+        });
+
+        it("adds nothing at all to a host that passes no plan", () => {
+            expect(wrappedElementIds(renderTree(false))).toEqual([]);
+        });
     });
 });

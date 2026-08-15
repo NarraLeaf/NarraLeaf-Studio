@@ -35,6 +35,8 @@ export const project = {
     // sentence: the rows under it say what they do.
     group: {
         details: "Details",
+        appTags: "Build variants",
+        userData: "Player files",
         icons: "Icons",
         dependencies: "Dependencies",
         saving: "Saving",
@@ -48,6 +50,7 @@ export const project = {
         security: "Security",
         signing: "Signing",
         optimization: "Optimization",
+        crash: "Crashes",
         mobile: "Mobile",
     },
     home: {
@@ -77,6 +80,82 @@ export const project = {
         copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. Left empty, no file is shipped.",
         descriptionPlaceholder: "Describe your project…",
         required: "Required",
+    },
+    // Where a shipped game writes what belongs to the player. Stated, not offered: nothing on this
+    // part is a setting, and it names no storefront, because which of them to hand this to is the
+    // author's decision. The description says what the paths are, and stops there.
+    userData: {
+        description: "Where a shipped game keeps the player's saves and progress. The folder is named "
+            + "after the identifier, so renaming the application leaves it where it is.",
+        copy: "Copy locations",
+        copied: "Locations copied.",
+        copyFailed: "Could not copy the locations.",
+        platform: {
+            windows: "Windows",
+            macos: "macOS",
+            linux: "Linux",
+        },
+        content: {
+            saves: "Save slots",
+            persistence: "Persistent variables, unlocked content, and plugin data",
+        },
+    },
+    // Build variants: the editions the same project ships as. What a variant is and what inheriting
+    // means live in the `appTags` help topic, reached by the `?` on this heading; the words here name
+    // controls and say what pressing one does.
+    appTags: {
+        add: "Add variant",
+        // Names for the undo steps these leave behind ("Undo delete variant Demo").
+        history: {
+            add: "add variant {name}",
+            rename: "rename variant to {name}",
+            delete: "delete variant {name}",
+            edit: "edit build variants",
+        },
+        newTagName: "New Variant",
+        nameTitle: "Name",
+        fields: {
+            displayName: "Application name",
+            identifier: "Identifier",
+            version: "Version",
+        },
+        // Sits beside a field only while that field states a value of its own, so it is the mark of
+        // an override as well as the way out of one.
+        restore: "Restore",
+        // Heading for the scene lists, shown only where the project holds something that can start a
+        // scene the build cannot read. Each list below it is labelled with that thing's own name.
+        reachableTitle: "Scenes these can start",
+        // The addresses a build of this variant may hand to the player's browser. Named for what the
+        // list decides rather than for the mechanism, and stated as a group: a variant has its own
+        // list or reads the project's.
+        // The page a build of this variant shows when its story runs out of rows. Named for what an
+        // author sees happen rather than for the engine event behind it.
+        ending: {
+            title: "Page shown when the story ends",
+            // A real choice, not the empty state: the last frame stays on screen, which is what
+            // every build did before this field existed.
+            none: "Show nothing",
+        },
+        // Beside Delete inside an open variant: the count the confirmation is about to be about.
+        usedBy: {
+            one: "Used by {count} reference",
+            other: "Used by {count} references",
+        },
+        delete: "Delete",
+        deleteConfirm: "Delete \"{name}\"?",
+        // The honest consequence: nothing pointing at this variant is rewritten, so those references
+        // read the release values from now on. `{name}` is the release variant's name, interpolated
+        // rather than written here so this line follows it if it is ever renamed.
+        deleteDetail: {
+            one: "{count} reference falls back to {name}.",
+            other: "{count} references fall back to {name}.",
+        },
+        // The second half of that consequence, for the references that are rows in the script: a cut
+        // point is kept, and one that names no variant ends nothing.
+        deleteDetailCuts: {
+            one: "{count} cut point stays in the script and stops taking effect.",
+            other: "{count} cut points stay in the script and stop taking effect.",
+        },
     },
     assets: {
         master: "Choose the app icon",
@@ -196,6 +275,12 @@ export const project = {
         // the `?` in this section's header. It was a paragraph here, and before that the same
         // paragraph on every field of every track.
         add: "Add track",
+        // Names for the undo steps these leave behind ("Undo delete track Ambience").
+        history: {
+            add: "add track {name}",
+            delete: "delete track {name}",
+            edit: "edit audio tracks",
+        },
         newTrackName: "New Track",
         nameTitle: "Name",
         parentTitle: "Routes into",
@@ -235,9 +320,38 @@ export const project = {
         },
     },
     settings: {
-        allowHttpTitle: "Allow HTTP",
-        allowHttpDescription: "When off, the game is confined to the app protocol and all HTTP/HTTPS requests are blocked.",
-        allowHttpWebHint: "Not enforced in the Web export, which is itself served over HTTP. Network nodes still run there.",
+        // What the shipped game does when it stops working. The choice is who the build is for:
+        // the author testing it, a player holding it, or a machine running it unattended.
+        crashPolicyTitle: "When the game stops working",
+        crashPolicyDescription: "The failure is written to the game's log under all three.",
+        crashPolicy: {
+            details: "Show the error",
+            log: "Say only that it stopped",
+            restart: "Restart the game",
+        },
+        networkPolicyTitle: "Network policy",
+        networkPolicy: {
+            off: "No network access",
+            allowlist: "Allowlisted addresses only",
+            any: "Any address",
+        },
+        networkPolicyDetail: {
+            off: "The game is confined to the app protocol. Every HTTP and HTTPS request is refused.",
+            allowlist: "Only addresses on the allowlist below can be requested. Every other request is refused.",
+            any: "The game can request any address over HTTP or HTTPS.",
+        },
+        networkPolicyWebHint: "The Web export is served over HTTP and cannot enforce the off position. It does enforce the allowlist, through the page policy.",
+        networkAllowlist: {
+            title: "Network request allowlist",
+            description: "One address or host pattern per row.",
+            matchHint: "A host on its own covers every path under it. * can replace the first host label (*.example.com) or end a path (/v1/*). The scheme, the host and the port must match exactly.",
+            placeholder: "https://api.example.com/*",
+            invalid: "Enter an http:// or https:// address. Use * as a leading host label or at the end of a path.",
+            add: "Add address",
+            remove: "Remove address",
+            fromPlugins: "Declared by installed plugins",
+            sidecarNote: "A program a plugin ships runs outside the game process and is not covered by the allowlist.",
+        },
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
         encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",
@@ -264,6 +378,31 @@ export const project = {
             landscape: "Landscape",
             portrait: "Portrait",
             auto: "Follow device",
+        },
+        stageFitTitle: "Screen fit",
+        /**
+         * Where it applies, not what it does — the title and the two option labels already say
+         * that, and this column is ~200px wide, where a long sentence wraps one word per line.
+         */
+        stageFitDescription: "Mobile builds and Dev Mode. Desktop and web always letterbox.",
+        stageFit: {
+            contain: "Letterbox",
+            cover: "Fill and crop",
+        },
+        /** Named for what survives, not for what goes: an author decides what to keep. */
+        cropAnchorYTitle: "Keep vertically",
+        cropAnchorYDescription: "Kept when the screen is wider than the stage.",
+        cropAnchorY: {
+            top: "Top",
+            center: "Center",
+            bottom: "Bottom",
+        },
+        cropAnchorXTitle: "Keep horizontally",
+        cropAnchorXDescription: "Kept when the screen is narrower than the stage.",
+        cropAnchorX: {
+            left: "Left",
+            center: "Center",
+            right: "Right",
         },
     },
     dependencies: {

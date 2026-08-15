@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import type { Dirent } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import type { PluginBuildDependencyTargetContribution } from "@shared/types/plugins";
@@ -21,8 +22,11 @@ import { parseZipIndex, readEntryBytes, type ZipIndex, type ZipIndexEntry } from
  *
  * Layout under `<userData>/cache/build-deps/<sha256>/`:
  *
- *   source          the verified bytes exactly as downloaded
- *   out/<layout>/   the produced dependency directory
+ *   source                     the verified bytes exactly as downloaded
+ *   out/<layout>/              the produced dependency directory
+ *   out/<layout>.sha256.json   what the extraction wrote there, so a later build
+ *                              can tell that directory from one something else
+ *                              has since written into
  *
  * The cache key is the content digest, not the URL, so re-pointing a URL at
  * identical bytes never re-downloads. `source` is kept beside the produced
@@ -62,6 +66,10 @@ const CACHE_BUCKET_NAME = "build-deps";
 /** Name the raw download takes in the cache; stable because the URL is not the key. */
 const SOURCE_FILE_NAME = "source";
 const ARTIFACT_DIR_NAME = "out";
+/** Suffix of the digest record, appended to the artifact directory's own path. */
+const ARTIFACT_RECORD_SUFFIX = ".sha256.json";
+/** A record this version does not recognise counts as none: extract, then overwrite it. */
+const ARTIFACT_RECORD_VERSION = 1;
 /** Enough top-level names to orient an author without pasting a whole archive listing. */
 const MAX_LISTED_ARCHIVE_ENTRIES = 24;
 /** A reachability probe answers in well under this; the build dialog waits on it. */
@@ -107,14 +115,38 @@ export function resolveBuildDependencyFile(dependencyDir: string, relativePath: 
 /**
  * The produced dependency directory for one target, downloading and unpacking
  * it if this host has not done so before. Returns an absolute path.
+ *
+ * A hit is re-verified rather than assumed: these bytes are copied into a game
+ * that ships to players, and the directory holding them is an ordinary folder
+ * under userData that anything on this host can rewrite between builds. The
+ * package-relative half of the same `include` syntax already re-hashes at pack
+ * time for exactly that reason (see `resolveSidecarInclude`); pinning the
+ * archive says nothing about what is in the directory it was unpacked into.
  */
 export async function ensurePluginBuildDependency(input: PluginBuildDependencyRequest): Promise<string> {
     const { userDataDir, target, log } = input;
     const where = describeTarget(input);
     const dependencyDir = buildDependencyCacheDir(userDataDir, target.sha256);
     const artifactDir = path.join(dependencyDir, ARTIFACT_DIR_NAME, layoutKey(target));
-    if (await exists(artifactDir)) {
-        return artifactDir;
+    const recordPath = `${artifactDir}${ARTIFACT_RECORD_SUFFIX}`;
+
+    const recorded = await readArtifactRecord(recordPath);
+    if (recorded) {
+        const verdict = await verifyArtifactDir(artifactDir, recorded);
+        if (verdict.status === "verified") {
+            return artifactDir;
+        }
+        // Not a build failure, deliberately: `source` beside it is pinned to the
+        // declared digest, so extracting again yields bytes this build knows,
+        // and refusing would only ask an author to delete a folder the build can
+        // rebuild itself. Worth saying out loud all the same - a directory that
+        // stopped matching is either a half-written cache or something writing
+        // where nothing should, and neither is silent-worthy.
+        log?.(
+            "warning",
+            `${where}: ${artifactDir} is no longer what was extracted into it (${verdict.reason}); `
+                + "re-extracting it from the verified source",
+        );
     }
 
     const source = await readCachedSource(dependencyDir, target.sha256, where)
@@ -123,20 +155,14 @@ export async function ensurePluginBuildDependency(input: PluginBuildDependencyRe
     const stagingDir = `${dependencyDir}.out-staging-${process.pid}-${stagingSequence++}`;
     try {
         await fs.mkdir(stagingDir, { recursive: true });
+        const digests: ArtifactDigests = {};
         if (target.archive === "none") {
-            await writeArtifactFile(stagingDir, target.fileName, source);
+            await writeArtifactFile(stagingDir, target.fileName, source, digests);
         } else {
-            await extractMappedEntries(source, target.files, stagingDir, where);
+            await extractMappedEntries(source, target.files, stagingDir, where, digests);
         }
-        await fs.mkdir(path.dirname(artifactDir), { recursive: true });
-        try {
-            await fs.rename(stagingDir, artifactDir);
-        } catch (error) {
-            // Lost a race against a concurrent build; its directory is equivalent.
-            if (!(await exists(artifactDir))) {
-                throw error;
-            }
-        }
+        await installArtifactDir({ stagingDir, artifactDir, digests, where });
+        await writeArtifactRecord(recordPath, digests);
         log?.("info", `${where} ready at ${artifactDir}`);
         return artifactDir;
     } finally {
@@ -295,10 +321,189 @@ async function downloadSource(
     return buffer;
 }
 
-async function writeArtifactFile(root: string, relativePath: string, bytes: Buffer): Promise<void> {
+/** Every file one extraction produced, keyed by its path inside the artifact directory. */
+type ArtifactDigests = Record<string, string>;
+
+type ArtifactVerdict =
+    | { status: "verified" }
+    /** Says which file and how, because the log line is all an author will see. */
+    | { status: "changed"; reason: string };
+
+/**
+ * Whether an artifact directory still holds exactly what was extracted into it.
+ *
+ * Digests recorded at extraction time rather than re-extracting on every build:
+ * the directory is a cache that outlives builds, a dependency runs to tens of
+ * megabytes, and every Run reaches this path - hashing the handful of files an
+ * author mapped is one read, while re-extracting is a read, an inflate and a
+ * write. The record can be wrong about nothing, because it is a pure function
+ * of the pinned source bytes and the target's `files` mapping, and the path it
+ * sits at already keys both: two builds racing write identical bytes, a record
+ * that is absent or unreadable only costs the next build an extraction, and
+ * there is never anything to migrate.
+ *
+ * Extra files count as a change too. `dep:<id>/<path>` includes are not limited
+ * to the mapping's outputs, so a file that was never extracted here is a file
+ * this cache cannot vouch for.
+ */
+async function verifyArtifactDir(artifactDir: string, recorded: ArtifactDigests): Promise<ArtifactVerdict> {
+    const found = new Set<string>();
+    const pending = [""];
+    while (pending.length > 0) {
+        const relative = pending.pop() as string;
+        let entries: Dirent[];
+        try {
+            entries = await fs.readdir(path.join(artifactDir, relative), { withFileTypes: true });
+        } catch (error) {
+            // Also how a lost race reads from here: a concurrent build renaming
+            // its own directory into place makes this vanish for an instant.
+            // "Cannot vouch for it" is the honest answer either way, and it
+            // costs an extraction rather than a build.
+            return { status: "changed", reason: `${relative || "."} could not be read (${messageOf(error)})` };
+        }
+        for (const entry of entries) {
+            const child = relative ? `${relative}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) {
+                pending.push(child);
+            } else if (entry.isFile()) {
+                found.add(child);
+            } else {
+                // A symlink's bytes would hash to whatever it points at today.
+                return { status: "changed", reason: `${child} is not a regular file` };
+            }
+        }
+    }
+    for (const relative of found) {
+        if (!(relative in recorded)) {
+            return { status: "changed", reason: `${relative} was added after it was extracted` };
+        }
+    }
+    for (const [relative, expected] of Object.entries(recorded)) {
+        if (!found.has(relative)) {
+            return { status: "changed", reason: `${relative} is missing` };
+        }
+        let bytes: Buffer;
+        try {
+            bytes = await fs.readFile(path.join(artifactDir, ...relative.split("/")));
+        } catch (error) {
+            return { status: "changed", reason: `${relative} could not be read (${messageOf(error)})` };
+        }
+        const digest = createHash("sha256").update(bytes).digest("hex");
+        if (digest !== expected) {
+            return { status: "changed", reason: `${relative} has sha256 ${digest}, not the extracted ${expected}` };
+        }
+    }
+    return { status: "verified" };
+}
+
+async function readArtifactRecord(recordPath: string): Promise<ArtifactDigests | null> {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(await fs.readFile(recordPath, "utf-8"));
+    } catch {
+        return null;
+    }
+    if (!parsed || typeof parsed !== "object") {
+        return null;
+    }
+    const record = parsed as { version?: unknown; files?: unknown };
+    if (record.version !== ARTIFACT_RECORD_VERSION || !record.files || typeof record.files !== "object") {
+        return null;
+    }
+    const digests: ArtifactDigests = {};
+    for (const [relative, digest] of Object.entries(record.files as Record<string, unknown>)) {
+        if (typeof digest !== "string") {
+            return null;
+        }
+        digests[relative] = digest;
+    }
+    return digests;
+}
+
+/**
+ * Best-effort on purpose: a record that could not be written costs the next
+ * build an extraction, which is not worth failing a build over. Written through
+ * a staging file so a reader never parses half of one.
+ */
+async function writeArtifactRecord(recordPath: string, digests: ArtifactDigests): Promise<void> {
+    const stagingPath = `${recordPath}.staging-${process.pid}-${stagingSequence++}`;
+    try {
+        await fs.writeFile(stagingPath, `${JSON.stringify({ version: ARTIFACT_RECORD_VERSION, files: digests })}\n`);
+        await fs.rename(stagingPath, recordPath);
+    } catch {
+        await fs.rm(stagingPath, { force: true }).catch(() => undefined);
+    }
+}
+
+/**
+ * Move a staged extraction into place, over whatever is already there.
+ *
+ * The plain case is a rename, as it always was. When something occupies the
+ * path, the two possibilities are a concurrent build that got there first and a
+ * directory this call set out to replace - and they are told apart by the same
+ * digests, not by assumption: identical source bytes through an identical
+ * mapping produce identical files, so a rival build's directory verifies
+ * against ours and is kept.
+ */
+async function installArtifactDir(input: {
+    stagingDir: string;
+    artifactDir: string;
+    digests: ArtifactDigests;
+    where: string;
+}): Promise<void> {
+    const { stagingDir, artifactDir, digests, where } = input;
+    await fs.mkdir(path.dirname(artifactDir), { recursive: true });
+    try {
+        await fs.rename(stagingDir, artifactDir);
+        return;
+    } catch (error) {
+        if (!(await exists(artifactDir))) {
+            throw error;
+        }
+    }
+    if ((await verifyArtifactDir(artifactDir, digests)).status === "verified") {
+        return;
+    }
+    // Renaming onto a non-empty directory is an error on every platform, so the
+    // stale one moves aside first. It is discarded rather than kept: it holds
+    // bytes no one can account for.
+    const discardDir = `${artifactDir}.stale-${process.pid}-${stagingSequence++}`;
+    let swapError: unknown;
+    try {
+        await fs.rename(artifactDir, discardDir);
+        await fs.rename(stagingDir, artifactDir);
+    } catch (error) {
+        swapError = error;
+    }
+    await fs.rm(discardDir, { recursive: true, force: true }).catch(() => undefined);
+    if (!swapError) {
+        return;
+    }
+    // A build that lost the race mid-swap can still be right; anything else
+    // leaves bytes at this path that nothing has vouched for, and those must not
+    // reach a game.
+    if ((await verifyArtifactDir(artifactDir, digests)).status === "verified") {
+        return;
+    }
+    throw new Error(
+        `${where}: ${artifactDir} holds files that are not the ones extracted from the declared archive, `
+            + `and it could not be replaced (${messageOf(swapError)}); delete that directory and build again`,
+    );
+}
+
+async function writeArtifactFile(
+    root: string,
+    relativePath: string,
+    bytes: Buffer,
+    digests: ArtifactDigests,
+): Promise<void> {
     const target = resolveBuildDependencyFile(root, relativePath);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, bytes);
+    // Keyed by where the file landed rather than by what was declared: the two
+    // differ whenever a mapping spells a path with `.` or a backslash, and the
+    // verification walk can only see the former.
+    digests[path.relative(root, target).split(path.sep).join("/")] = createHash("sha256").update(bytes).digest("hex");
 }
 
 async function extractMappedEntries(
@@ -306,6 +511,7 @@ async function extractMappedEntries(
     files: Record<string, string>,
     root: string,
     where: string,
+    digests: ArtifactDigests,
 ): Promise<void> {
     let index: ZipIndex;
     try {
@@ -325,7 +531,7 @@ async function extractMappedEntries(
         if (!entry) {
             throw new Error(describeMissingEntry(where, inner, key, index.entries));
         }
-        await writeArtifactFile(root, output, readEntryBytes(archive, entry));
+        await writeArtifactFile(root, output, readEntryBytes(archive, entry), digests);
     }
 }
 

@@ -355,7 +355,7 @@ function ListContentPaddingEditor({
                                           max={LIST_SPACING_MAX_PX}
                                           unit="px"
                                           aria-label={t("widgets.list.contentPaddingSide", { side: label })}
-                                          title={t("widgets.list.contentPaddingSide", { side: label })}
+                                          data-tip={t("widgets.list.contentPaddingSide", { side: label })}
                                           className="w-full min-w-0"
                                           selectAllOnFocus
                                       />
@@ -385,7 +385,7 @@ function ListContentPaddingEditor({
                             unit="px"
                             placeholder={uniformPlaceholder}
                             aria-label={t("widgets.list.contentPaddingAll")}
-                            title={t("widgets.list.contentPaddingAll")}
+                            data-tip={t("widgets.list.contentPaddingAll")}
                             className="w-full min-w-0"
                             selectAllOnFocus
                         />
@@ -400,7 +400,7 @@ function ListContentPaddingEditor({
                         aria-expanded={sidesOpen}
                         aria-label={sidesOpen ? t("widgets.list.contentPaddingPerSideClose") : t("widgets.list.contentPaddingPerSideEdit")}
                         className={`${controlButtonClass(sidesOpen)} cursor-default`}
-                        title={t("widgets.list.contentPaddingPerSide")}
+                        data-tip={t("widgets.list.contentPaddingPerSide")}
                     >
                         {sidesOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </InspectOnlyButton>
@@ -794,6 +794,7 @@ export function createListInspector(ctx: InspectorContext) {
                                     { value: "none", label: t("widgets.list.runtimePreviewOnly") },
                                     { value: "surfaceState", label: t("widgets.list.runtimePageState") },
                                     { value: "globalState", label: t("widgets.list.runtimeAppState") },
+                                    { value: "pageProp", label: t("widgets.list.runtimePageProps") },
                                 ],
                                 getValue: (d: D) => getLiveListProps(d).itemsBinding?.kind ?? "none",
                                 setValue: (_d: D, v: string | number) => {
@@ -809,7 +810,21 @@ export function createListInspector(ctx: InspectorContext) {
                                 type: "text",
                                 label: t("widgets.list.stateKey"),
                                 placeholder: t("widgets.list.stateKeyPlaceholder"),
-                                hidden: (d: D) => getLiveListProps(d).itemsBinding == null,
+                                hidden: (d: D) => {
+                                    const binding = getLiveListProps(d).itemsBinding;
+                                    return binding == null || binding.kind === "pageProp";
+                                },
+                                getValue: (d: D) => getLiveListProps(d).itemsBinding?.key ?? "",
+                                setValue: (_d: D, v: string) => patchItemsBinding({ key: v }),
+                            }),
+                            // Same control, its own label: a page prop is named by whoever opened the
+                            // page, so calling it a state key would send the author looking for a store.
+                            defineField<D, any>({
+                                id: "list.itemsBindingPropName",
+                                type: "text",
+                                label: t("widgets.list.propName"),
+                                placeholder: t("widgets.list.propNamePlaceholder"),
+                                hidden: (d: D) => getLiveListProps(d).itemsBinding?.kind !== "pageProp",
                                 getValue: (d: D) => getLiveListProps(d).itemsBinding?.key ?? "",
                                 setValue: (_d: D, v: string) => patchItemsBinding({ key: v }),
                             }),

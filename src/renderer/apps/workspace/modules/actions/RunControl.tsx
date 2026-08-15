@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, FlaskConical, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronRight, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
@@ -12,7 +12,10 @@ import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
-import { readProjectMobileOrientation } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
+import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { readProjectMobileOrientation, readProjectViewportConfig } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
@@ -44,6 +47,14 @@ import type { TranslationKey } from "@shared/i18n";
  */
 type RunMode = "devMode" | "preview";
 const RUN_MODE_SETTINGS_KEY = "ui.runMode";
+/**
+ * Which build variant this machine runs this project as, bucketed by project.
+ *
+ * A machine habit rather than a project field, and the reasoning is in `runVariant.ts` on the main
+ * process side, which reads this very key when it assembles. Kept in sync by name only, because the
+ * two sides mean the same setting: a value written here decides what the next Dev Mode run *is*.
+ */
+const RUN_VARIANT_SETTINGS_KEY = "ui.runVariantByProject";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
 
 const RUN_MODE_META: Record<RunMode, {
@@ -97,6 +108,9 @@ export function RunControl() {
     const [buildStatus, setBuildStatus] = useState<GameBuildStatus>("idle");
     const [activeRun, setActiveRun] = useState<TestRunRecord | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [variantOpen, setVariantOpen] = useState(false);
+    const [variants, setVariants] = useState<ProjectAppTag[]>([]);
+    const [variantId, setVariantId] = useState<string | null>(null);
 
     // The selected mode is a global UI habit; follow live changes so a second window stays in sync.
     useEffect(() => {
@@ -108,6 +122,42 @@ export function RunControl() {
         const token = getInterface().app.state.onGlobalStateChanged?.(change => {
             if (change.key === RUN_MODE_SETTINGS_KEY) {
                 setMode(normalizeRunMode(change.value));
+            }
+        });
+        return () => token?.cancel();
+    }, [context]);
+
+    // The project's variants, followed live: an author who builds one in the Project panel and comes
+    // straight back here must find it in the list. `AppTagService` emits on every mutation, so this
+    // is the whole subscription.
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const tags = context.services.get<AppTagService>(Services.AppTags);
+        const read = () => setVariants(tags.listAuthoredTags());
+        read();
+        return tags.onTagsChanged(read);
+    }, [context]);
+
+    // Which one is selected, from the same store the main process reads.
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const read = (value: unknown) => {
+            const record = value && typeof value === "object" && !Array.isArray(value)
+                ? value as Record<string, unknown>
+                : {};
+            const stored = record[projectKey];
+            setVariantId(typeof stored === "string" && stored ? stored : null);
+        };
+        read(settings.getSync(RUN_VARIANT_SETTINGS_KEY));
+        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
+            if (change.key === RUN_VARIANT_SETTINGS_KEY) {
+                read(change.value);
             }
         });
         return () => token?.cancel();
@@ -255,6 +305,7 @@ export function RunControl() {
                 kind: "surface",
                 surfaceId: MAIN_APP_SURFACE_ID,
                 mobileOrientation: readProjectMobileOrientation(context),
+                viewport: readProjectViewportConfig(context),
             });
         })();
     };
@@ -321,6 +372,9 @@ export function RunControl() {
                 id: WorkspaceRunCommand.RunDevMode,
                 titleKey: "actions.run.runDevMode",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                // The run modes already own a glyph each (RUN_MODE_META) - reused here rather than
+                // chosen again, so the palette row and the button that does the same thing match.
+                icon: RUN_MODE_META.devMode.icon,
                 when: idle,
                 run: () => launch("devMode"),
             },
@@ -328,6 +382,7 @@ export function RunControl() {
                 id: WorkspaceRunCommand.RunPreview,
                 titleKey: "actions.run.runPreview",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                icon: RUN_MODE_META.preview.icon,
                 // Preview is what a frozen workspace is specifically not claiming to be; see above.
                 when: () => idle() && !runStateRef.current.frozen,
                 run: () => launch("preview"),
@@ -336,6 +391,9 @@ export function RunControl() {
                 id: WorkspaceRunCommand.StopDevMode,
                 titleKey: "workspace.shell.stopDevMode",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                // Stopping is one act with one glyph, whatever is running - the same square the
+                // button turns into.
+                icon: <Square className="w-4 h-4" />,
                 when: () => runStateRef.current.devActive,
                 run: () => runStateRef.current.runOrStop(),
             },
@@ -343,6 +401,7 @@ export function RunControl() {
                 id: WorkspaceRunCommand.StopPreview,
                 titleKey: "workspace.shell.stopPreview",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                icon: <Square className="w-4 h-4" />,
                 when: () => runStateRef.current.previewActive,
                 run: () => runStateRef.current.runOrStop(),
             },
@@ -355,6 +414,7 @@ export function RunControl() {
                 id: TEST_RUN_COMMAND_ID,
                 titleKey: "test.action.run",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                icon: <FlaskConical className="w-4 h-4" />,
                 when: () => !runStateRef.current.testActive,
                 run: () => runStateRef.current.openTest(),
             },
@@ -362,6 +422,7 @@ export function RunControl() {
                 id: WorkspaceRunCommand.StopTest,
                 titleKey: "test.action.stop",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
+                icon: <Square className="w-4 h-4" />,
                 when: () => runStateRef.current.testActive,
                 run: () => runStateRef.current.runOrStop(),
             },
@@ -371,10 +432,51 @@ export function RunControl() {
         ]);
     }, [context]);
 
+    /**
+     * The variant a run assembles as, or null for the whole game.
+     *
+     * A stored id whose variant has since been deleted reads as null rather than as an error, which
+     * is the same answer the main process gives: deleting a variant must not leave every run of the
+     * project refusing to start.
+     */
+    const selectedVariant = useMemo(
+        () => variants.find(variant => variant.id === variantId) ?? null,
+        [variants, variantId],
+    );
+
+    const selectVariant = useCallback((id: string | null): void => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const current = settings.getSync(RUN_VARIANT_SETTINGS_KEY);
+        const record: Record<string, unknown> = current && typeof current === "object" && !Array.isArray(current)
+            ? { ...current as Record<string, unknown> }
+            : {};
+        if (id) {
+            record[projectKey] = id;
+        } else {
+            // Deleted rather than stored as the release id, so "runs the whole game" and "never
+            // chose" are one state - the same rule the variant overrides themselves follow.
+            delete record[projectKey];
+        }
+        void settings.set(RUN_VARIANT_SETTINGS_KEY, record);
+        setVariantId(id);
+        setVariantOpen(false);
+    }, [context]);
+
     // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
     // thing to stop.
     const runTitle = testActive ? t("test.action.stop") : running ? t(meta.stopKey) : t(meta.runKey);
-    const runLabel = testActive ? t("test.statusBar.label") : t(meta.labelKey);
+    // The variant rides on the face whenever it is not the whole game. "Dev Mode is the preview you
+    // can trust at any moment" only holds while it cannot quietly have become something else, and a
+    // setting one click deep in a menu is quiet.
+    const runLabel = testActive
+        ? t("test.statusBar.label")
+        : selectedVariant
+            ? `${t(meta.labelKey)} · ${selectedVariant.name}`
+            : t(meta.labelKey);
 
     return (
         <div className="relative flex items-center">
@@ -383,7 +485,7 @@ export function RunControl() {
                     type="button"
                     onClick={runOrStop}
                     disabled={previewBlocked}
-                    title={previewBlocked ? frozenTitle : runTitle}
+                    data-tip={previewBlocked ? frozenTitle : runTitle}
                     aria-label={runTitle}
                     aria-pressed={running || undefined}
                     className={cn(
@@ -406,7 +508,7 @@ export function RunControl() {
                 <button
                     type="button"
                     onClick={() => setMenuOpen(open => !open)}
-                    title={t("actions.run.menu")}
+                    data-tip={t("actions.run.menu")}
                     aria-label={t("actions.run.menu")}
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
@@ -421,7 +523,13 @@ export function RunControl() {
 
             {menuOpen && (
                 <>
-                    <div className="nl-window-content-layer z-10" onClick={() => setMenuOpen(false)} />
+                    <div
+                        className="nl-window-content-layer z-10"
+                        onClick={() => {
+                            setMenuOpen(false);
+                            setVariantOpen(false);
+                        }}
+                    />
                     <div
                         role="menu"
                         aria-label={t("actions.run.menu")}
@@ -443,7 +551,7 @@ export function RunControl() {
                                     aria-checked={selected}
                                     aria-disabled={optionBlocked || undefined}
                                     disabled={optionBlocked}
-                                    title={frozen && option === "preview" ? frozenTitle : undefined}
+                                    data-tip={frozen && option === "preview" ? frozenTitle : undefined}
                                     onClick={() => selectMode(option)}
                                     className={cn(
                                         "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
@@ -459,6 +567,57 @@ export function RunControl() {
                             );
                         })}
 
+                        {/* Which edition the three run entries above assemble as. Only where there is
+                            something to pick: a project with no variant of its own has one answer, and
+                            a row offering it would be a control that cannot do anything. */}
+                        {variants.length > 0 && (
+                            <>
+                                <div className="my-1 mx-2 h-px bg-fill-strong" />
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    aria-expanded={variantOpen}
+                                    aria-label={t("actions.run.runAs")}
+                                    onClick={() => setVariantOpen(open => !open)}
+                                    className={cn(
+                                        "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                        "text-fg-muted hover:bg-fill hover:text-fg",
+                                    )}
+                                >
+                                    <span className="flex h-4 w-4 items-center justify-center">
+                                        <GitBranch className="h-4 w-4" />
+                                    </span>
+                                    <span className="flex-1 text-left">{t("actions.run.runAs")}</span>
+                                    <span className="text-fg-subtle">
+                                        {selectedVariant?.name ?? RELEASE_APP_TAG.name}
+                                    </span>
+                                    <span className="w-3">
+                                        <ChevronRight className={cn("h-3 w-3 transition-transform", variantOpen && "rotate-90")} />
+                                    </span>
+                                </button>
+                                {variantOpen && [null, ...variants].map(variant => {
+                                    const id = variant?.id ?? null;
+                                    const selected = id === (selectedVariant?.id ?? null);
+                                    return (
+                                        <button
+                                            key={id ?? RELEASE_APP_TAG.id}
+                                            type="button"
+                                            role="menuitemradio"
+                                            aria-checked={selected}
+                                            onClick={() => selectVariant(id)}
+                                            className={cn(
+                                                "flex w-full cursor-default items-center gap-2 py-1.5 pl-9 pr-3 text-sm transition-colors",
+                                                selected ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                            )}
+                                        >
+                                            <span className="flex-1 text-left">{variant?.name ?? RELEASE_APP_TAG.name}</span>
+                                            <span className="w-3">{selected && <Check className="h-3 w-3" />}</span>
+                                        </button>
+                                    );
+                                })}
+                            </>
+                        )}
+
                         <div className="my-1 mx-2 h-px bg-fill-strong" />
 
                         {/* Production Build. Not a run mode - it produces a package rather than
@@ -469,7 +628,7 @@ export function RunControl() {
                             role="menuitem"
                             aria-disabled={buildBlocked || undefined}
                             disabled={buildBlocked}
-                            title={buildBlocked ? frozenTitle : undefined}
+                            data-tip={buildBlocked ? frozenTitle : undefined}
                             onClick={() => {
                                 setMenuOpen(false);
                                 if (workspace) {

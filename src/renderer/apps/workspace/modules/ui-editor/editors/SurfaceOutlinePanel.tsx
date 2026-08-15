@@ -83,7 +83,7 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
                         type="button"
                         className="text-fg-muted hover:text-fg transition-colors"
                         onClick={toggleCollapsed}
-                        title={isCollapsed ? t("uiEditor.editor.expandOutline") : t("uiEditor.editor.collapseOutline")}
+                        data-tip={isCollapsed ? t("uiEditor.editor.expandOutline") : t("uiEditor.editor.collapseOutline")} aria-label={isCollapsed ? t("uiEditor.editor.expandOutline") : t("uiEditor.editor.collapseOutline")}
                     >
                         {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
                     </button>
@@ -115,7 +115,7 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
                     type="button"
                     className="absolute left-3 top-3 z-20 h-10 w-10 flex items-center justify-center rounded-full border border-edge-strong bg-surface-canvas/80 text-fg-muted hover:text-fg focus:outline-none"
                     onClick={() => setCollapsed(false)}
-                    title={t("uiEditor.editor.expandOutline")}
+                    data-tip={t("uiEditor.editor.expandOutline")} aria-label={t("uiEditor.editor.expandOutline")}
                 >
                     <ChevronDown className="w-4 h-4" />
                 </button>

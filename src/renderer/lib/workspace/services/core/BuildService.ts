@@ -1,17 +1,24 @@
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
 import { getInterface } from "@/lib/app/bridge";
+import {
+    isNetworkAddressAllowed,
+    NETWORK_POLICY_ALLOWLIST,
+    type NetworkAllowlist,
+    type NetworkPluginAllowlistEntry,
+} from "@shared/types/networkAllowlist";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type {
     BuildPreflightFinding,
-    BuildPreflightSection,
     GameBuildPlatform,
     GameBuildRequest,
     GameBuildStateSnapshot,
     GameBuildStatus,
 } from "@shared/types/gameBuild";
+// Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
+import type { BuildDialogPage } from "@/apps/workspace/modules/actions/buildDialogState";
 import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument, SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import { collectBlueprintNetworkNodes } from "@/lib/lint/rules";
 // One spelling of "where is this finding", shared with the report tab - see locationText.ts.
 import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
@@ -21,6 +28,33 @@ import { ConsoleService, type ConsoleLogLevel } from "./ConsoleService";
 import { CharacterService } from "./CharacterService";
 import { StoryService } from "../story/StoryService";
 import { collectInvalidBlocks, type InvalidStoryBlockRef } from "../story/storyModel";
+import {
+    collectNestedCutPoints,
+    collectUnfoldableAppTagUses,
+    type NestedCutPoint,
+    type UnfoldableAppTagUse,
+} from "@shared/story/appTagFold";
+import {
+    solveReleaseContent,
+    type ReleaseContentAnswer,
+    type ReleaseContentBlockerReason,
+    type ReleaseContentPlugin,
+    type ReleaseContentStory,
+} from "@/lib/build/releaseContent";
+import {
+    collectUnfoldableAppTagGraphs,
+    collectUnfoldableAppTagGraphsInBlueprint,
+    type UnfoldableAppTagGraph,
+    type AppTagGraphRefusalReason,
+} from "@shared/blueprint/appTagGraphFold";
+import { AppTagService } from "../appTag/AppTagService";
+// Type-only, like `LintService` below: this gate needs `listSharedBlueprints()` and nothing else,
+// and a value import would pull every asset service into the build path and its tests.
+import type { AssetsService } from "./AssetsService";
+import type { ReferenceIndexGap } from "../references/referenceModel";
+// Type-only, like `LintService` above: the gate needs `getIndexResult()` and nothing else, and a
+// value import would drag every extractor into the build path and its tests.
+import type { ReferenceService } from "../references/ReferenceService";
 import { translate, translateN } from "@/lib/i18n";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
@@ -43,8 +77,12 @@ type BuildServiceEvents = {
  */
 export type BuildDialogDraft = {
     request: GameBuildRequest;
-    /** Section the dialog was showing, so reopening lands where the user left. */
-    section: BuildPreflightSection;
+    /**
+     * Page the dialog was showing, so reopening lands where the user left. A page rather than a
+     * finding's section: the dialog has one page no finding can name, and a page that is not shown
+     * for this project is clamped to the first one that is.
+     */
+    page: BuildDialogPage;
 };
 
 const IDLE_STATE: GameBuildStateSnapshot = { status: "idle" };
@@ -81,6 +119,30 @@ const BUILD_DONE_LINGER_MS = 1400;
  * report tab. Only the per-finding lines are capped; the summary and the refusal count are not.
  */
 const LINT_CONSOLE_FINDING_LIMIT = 200;
+
+/**
+ * Blocker reason -> the line the console prints, remedy included.
+ *
+ * A table rather than a switch so the three cannot drift: each one names what to go and look at and
+ * what to state instead, and an author who has three of them gets three usable instructions.
+ */
+const BLOCKER_MESSAGE_KEYS: Record<ReleaseContentBlockerReason, "build.contentBlockedStartStory" | "build.contentBlockedScript" | "build.contentBlockedPlugin"> = {
+    unreadableStartStoryTarget: "build.contentBlockedStartStory",
+    scriptBlueprint: "build.contentBlockedScript",
+    storyStartingPlugin: "build.contentBlockedPlugin",
+};
+
+/**
+ * Why one graph was refused -> the console line that says so.
+ *
+ * Three reasons rather than one message with a hedge in it: each names a different thing to change,
+ * and the console is what an author comes back to.
+ */
+const APP_TAG_GRAPH_MESSAGE_KEYS: Record<AppTagGraphRefusalReason, "build.appTagGraphUnresolved" | "build.appTagGraphUnknownNode" | "build.appTagGraphFnHead"> = {
+    unresolved: "build.appTagGraphUnresolved",
+    unknownNode: "build.appTagGraphUnknownNode",
+    fnHeadRemoved: "build.appTagGraphFnHead",
+};
 
 /** Finding severity -> the console level it is logged at. */
 const LINT_CONSOLE_LEVELS: Record<LintSeverity, ConsoleLogLevel> = {
@@ -228,12 +290,112 @@ export class BuildService extends Service<BuildService> {
             });
             return this.state;
         }
+        // Beside the invalid-command gate, and in the same class as it.
+        //
+        // ## Why this is a gate and not a preflight finding
+        //
+        // The line between the two is: a condition whose report needs per-row story detail is a
+        // gate, and a condition that is a property of the project's configuration is a preflight
+        // finding. This one is the first kind twice over. It quotes the author's own expression -
+        // `use.source` is the text they typed, and without it "an AppTag comparison is undecidable"
+        // names nothing they can find - and it reads every story document the editor is holding,
+        // unsaved edits included, which the main process has no copy of. The same is true of the
+        // undecidable-entry refusal further down (see `runReleaseContentGate`), which names the
+        // blueprint and the node.
+        //
+        // The three variant conditions that DID become preflight findings are in
+        // `variantContentPreflight.ts`, and its header states the same criterion from that side.
+        //
+        // The test that comment states for the unconditional class is "decided by measurement, not
+        // an opinion an author may reasonably overrule", and this meets it exactly: `AppTag` has no
+        // play-time value at all, so a comparison the fold cannot decide is not a style a project
+        // might tolerate - it is an expression that cannot be compiled under any setting. It is also
+        // free, reading documents the story service already holds, so it sits with the other free
+        // gate rather than behind the media probe.
+        //
+        // Every build refuses it, the release variant included. This is not a leak-only concern: the
+        // release build has no more of a value for `AppTag` than a demo does.
+        const unfoldable = await this.collectUnfoldableAppTagUses(request.appTagId);
+        if (unfoldable.length > 0) {
+            const consoleService = this.tryGetConsole();
+            for (const use of unfoldable) {
+                consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate("build.appTagUnresolved", {
+                    story: use.storyName,
+                    scene: use.sceneName,
+                    source: use.source,
+                }), { source: BUILD_CONSOLE_SOURCE });
+            }
+            this.updateState({
+                status: "error",
+                startedAt,
+                finishedAt: Date.now(),
+                platforms,
+                error: translateN("build.appTagUnresolvedSummary", unfoldable.length, { count: unfoldable.length }),
+            });
+            return this.state;
+        }
+        // The other half of the same gate, over the same documents the sweep above just read.
+        //
+        // A cut point inside a condition or a group cannot be honoured: whether the story ends there
+        // depends on a test only the running game performs, and there is no "end the story" action to
+        // emit instead - so the package's content boundary would have to be guessed. That is the
+        // unconditional class exactly, and refusing is the alternative to shipping a boundary nobody
+        // chose. Release refuses it too: the row is equally unanalysable there, and an author who
+        // only ever builds release should learn about it at their first build, not their first demo.
+        const nestedCuts = await this.collectNestedCutPoints();
+        if (nestedCuts.length > 0) {
+            const consoleService = this.tryGetConsole();
+            const appTags = this.getContext().services.get<AppTagService>(Services.AppTags);
+            for (const cut of nestedCuts) {
+                consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate("build.cutPointNested", {
+                    story: cut.storyName,
+                    scene: cut.sceneName,
+                    // `getTag`, not `resolveTag`: an id no variant answers to must not print as
+                    // "main", which is the one variant a cut point can never mean.
+                    variant: appTags.getTag(cut.appTagId)?.name ?? cut.appTagId,
+                }), { source: BUILD_CONSOLE_SOURCE });
+            }
+            this.updateState({
+                status: "error",
+                startedAt,
+                finishedAt: Date.now(),
+                platforms,
+                error: translateN("build.cutPointNestedSummary", nestedCuts.length, { count: nestedCuts.length }),
+            });
+            return this.state;
+        }
+        // What this variant's package comes to, and whether anything about it cannot be decided.
+        //
+        // Beside the two sweeps above rather than in the main-process preflight, because it has
+        // per-row story detail: it names the scene a jump leads to and the blueprint a node sits in,
+        // and the preflight has neither document. It reads the story documents those two sweeps have
+        // just put in the service's cache, so it is free in the same sense they are.
+        const contentRefusal = await this.runReleaseContentGate(startedAt, platforms, request.appTagId);
+        if (contentRefusal) {
+            return contentRefusal;
+        }
+        // The blueprint half of the `AppTag` gate above, and unconditional for the same reason: a
+        // graph that names the variant without deciding a branch with it cannot be compiled under any
+        // variant, release included. Free like the two before it - it walks the blueprint document
+        // already in memory.
+        const appTagGraphRefusal = await this.runAppTagGraphGate(startedAt, platforms, request.appTagId);
+        if (appTagGraphRefusal) {
+            return appTagGraphRefusal;
+        }
         // Third of the unconditional correctness gates, and placed here for the same reason the
         // invalid-command gate is first: it is free. It walks the blueprint document already in
         // memory, so a build that will be refused anyway does not first pay for a media probe.
         const networkRefusal = this.runNetworkGate(startedAt, platforms);
         if (networkRefusal) {
             return networkRefusal;
+        }
+        // Beside the gate above and after it, because the two are the same class of fact about the
+        // same nodes: that one refuses a request the game cannot make at all, and this one refuses
+        // an address the game will not be allowed to reach. Async only because the plugins' own
+        // declarations are read over IPC.
+        const allowlistRefusal = await this.runNetworkAllowlistGate(startedAt, platforms);
+        if (allowlistRefusal) {
+            return allowlistRefusal;
         }
         // Second of the two unconditional correctness gates, and placed *between* them on purpose.
         //
@@ -301,6 +463,400 @@ export class BuildService extends Service<BuildService> {
             }
         }
         return found;
+    }
+
+    /**
+     * Every `AppTag` comparison the build cannot decide, across every story - not just the loaded
+     * ones, for the same reason the invalid-command sweep reads them all: a story the author never
+     * opened this session ships exactly like one they did.
+     *
+     * The variant's name is passed for completeness only. Whether a mention reduces to a literal is
+     * a property of the expression, not of which variant is being built: `AppTag == someVariable`
+     * is undecidable under every one of them, which is why one refusal covers them all.
+     */
+    private async collectUnfoldableAppTagUses(appTagId: string | undefined): Promise<UnfoldableAppTagUse[]> {
+        const services = this.getContext().services;
+        const story = services.get<StoryService>(Services.Story);
+        const tagName = services.get<AppTagService>(Services.AppTags).resolveTag(appTagId).name;
+        const found: UnfoldableAppTagUse[] = [];
+        for (const entry of story.getLibraryIndex().stories) {
+            try {
+                found.push(...collectUnfoldableAppTagUses(await story.loadStory(entry.id), { tagName }));
+            } catch (error) {
+                // A story that will not load is the packer's problem to report, not ours to mask.
+                console.error(`[Build] could not scan story ${entry.id} for AppTag comparisons`, error);
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Every cut point that is not at the top level of its scene, across every story - the same reach
+     * as the two sweeps above, and free for the same reason: by now each document is in the story
+     * service's cache, so this reads memory rather than disk.
+     *
+     * Takes no variant. A cut point inside a condition is unanalysable under every one of them,
+     * release included, so one refusal covers them all.
+     */
+    private async collectNestedCutPoints(): Promise<NestedCutPoint[]> {
+        const story = this.getContext().services.get<StoryService>(Services.Story);
+        const found: NestedCutPoint[] = [];
+        for (const entry of story.getLibraryIndex().stories) {
+            try {
+                found.push(...collectNestedCutPoints(await story.loadStory(entry.id)));
+            } catch (error) {
+                // A story that will not load is the packer's problem to report, not ours to mask.
+                console.error(`[Build] could not scan story ${entry.id} for cut points`, error);
+            }
+        }
+        return found;
+    }
+
+    /**
+     * The release content gate: no variant build starts while something in the project can name a
+     * scene the build cannot read.
+     *
+     * ## Why this refuses where it used to shrug
+     *
+     * The packer's answer to an unreadable mechanism is to ship every story whole. That is safe -
+     * nothing is missing from the package - but it is silently the opposite of what the author asked
+     * for: a demo that carries the whole script, with the cut point they wrote doing nothing. The
+     * only way to learn it was to unpack the build. So the three mechanisms become a refusal with the
+     * remedy attached, and the remedy is one an author can actually use: state which scenes the thing
+     * starts, per variant, which is exactly the shape a chapter select has.
+     *
+     * ## And why it stays quiet almost always
+     *
+     * Only when the variant removes something. A build that keeps every scene cannot be made wrong by
+     * a mechanism nobody can read, so a release build - which cuts nothing by construction - never
+     * reaches the refusal, and neither does a variant whose cut points are all in stories it does not
+     * touch. That condition lives in the solver ({@link ReleaseContentAnswer.blockers}) rather than
+     * here, so the panel that offers the remedy and the gate that demands it agree about when it
+     * matters.
+     *
+     * ## What it prints when it passes
+     *
+     * The kept and dropped counts, and every dropped scene by name. A variant build changes which
+     * bytes ship, and the console is where an author finds out that it did.
+     */
+    private async runReleaseContentGate(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+        appTagId: string | undefined,
+    ): Promise<GameBuildStateSnapshot | null> {
+        const consoleService = this.tryGetConsole();
+        const services = this.getContext().services;
+        const appTags = services.get<AppTagService>(Services.AppTags);
+        const appTag = appTags.resolveTag(appTagId);
+
+        let answer: ReleaseContentAnswer;
+        try {
+            answer = solveReleaseContent({
+                appTag,
+                projectDeclaredScenes: appTags.getDocument().reachableScenes ?? {},
+                stories: await this.loadAllStories(),
+                blueprints: this.listProjectBlueprints(),
+                plugins: await this.listShippingPlugins(),
+                // The four sets this gate cannot be stopped by. Nothing about a surface, an asset, a
+                // localization key or a plugin's presence blocks a build, and assembling them means
+                // an asset reference index rebuild - which the gates around this one deliberately do
+                // not pay for. The panel that reports what a variant contains passes them all.
+                surfaces: [],
+                assets: [],
+                assetReferences: new Map(),
+                localizationKeys: [],
+            });
+        } catch (error) {
+            // Untranslated, like the media gate's own failure: this reports Studio malfunctioning
+            // rather than something the project did, and a gate that fails closed on its own defect
+            // can leave a project unbuildable with nothing the author can do about it.
+            console.error("[Build] the release content check failed to run", error);
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "warning", "The build content check failed to run", {
+                source: BUILD_CONSOLE_SOURCE,
+            });
+            return null;
+        }
+
+        for (const stale of answer.staleDeclarations) {
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "warning", translate("build.contentStaleDeclaration", {
+                location: stale.location,
+                variant: answer.appTagName,
+            }), { source: BUILD_CONSOLE_SOURCE });
+        }
+
+        if (answer.blockers.length > 0) {
+            for (const blocker of answer.blockers) {
+                consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate(BLOCKER_MESSAGE_KEYS[blocker.reason], {
+                    location: blocker.location,
+                    variant: answer.appTagName,
+                }), { source: BUILD_CONSOLE_SOURCE });
+            }
+            const refusal = translateN("build.contentBlockedSummary", answer.blockers.length, {
+                count: answer.blockers.length,
+                variant: answer.appTagName,
+            });
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+            // `startedAt` and `platforms` carried through for the reason the gates either side carry
+            // them: the dashboard archives a refused run as a finished build.
+            this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: refusal });
+            return this.state;
+        }
+
+        if (answer.removedScenes.length > 0) {
+            const coverageRefusal = await this.refuseOnTrimCoverageGaps(startedAt, platforms, answer.appTagName);
+            if (coverageRefusal) {
+                return coverageRefusal;
+            }
+            const kept = answer.members.filter(member => member.kind === "scene").length;
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "info", translateN("build.contentKept", kept, {
+                count: kept,
+                variant: answer.appTagName,
+            }), { source: BUILD_CONSOLE_SOURCE });
+            for (const removed of answer.removedScenes) {
+                consoleService?.log(BUILD_CONSOLE_CHANNEL, "info", translate("build.contentDropped", {
+                    scene: removed.sceneName,
+                    story: removed.storyName,
+                }), { source: BUILD_CONSOLE_SOURCE });
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The reference index gate: a build that removes scenes does not start while a story document is
+     * missing from the index that says what those scenes hold.
+     *
+     * ## The question, which is not "is the index complete"
+     *
+     * The established ruling for a trimming pass is that it asks **"is there a gap in a document that
+     * could touch what I am removing"**, never the project-wide question. Asking the broad one hands
+     * the feature a permanent off switch: one `app://fs` URL pasted into a widget prop leaves a
+     * `hashUrlUnresolved` gap that can never be resolved - those tokens are per-process and a token
+     * another session minted resolves to nothing here, forever - and every variant build in that
+     * project would refuse from then on, over a widget that has nothing to do with any scene.
+     *
+     * So the gaps this reads are the ones in a **story** document, plus the ones that describe no
+     * document at all (an index that never built, a slice that threw before it could say where). A
+     * gap in a widget, a voice table or a character says nothing about which scenes a story can
+     * reach.
+     *
+     * ## The one gap that matters wherever it is
+     *
+     * A trimming build also leaves out assets, and it decides which by reading the ids written in the
+     * bytes it ships. An asset the running game *computes* the id of is invisible to that reading -
+     * and `computedAssetPin` is the index reporting exactly that shape, in any document. It is
+     * refused rather than worked around, because the alternative is a shipped game whose art is
+     * missing with nothing anywhere having said so. The remedy is to name the asset in the pin
+     * instead of wiring a value into it.
+     *
+     * ## Why it is a gate and not a preflight finding
+     *
+     * The criterion is stated at the `AppTag` gate above, and this one fails it for a reason of its
+     * own: the index lives in the renderer and reflects the documents the editor is holding, unsaved
+     * edits included. The main-process preflight computes from disk and has no route to it - it
+     * could only rebuild a second index that would answer a different question about a different
+     * copy of the project.
+     */
+    private async refuseOnTrimCoverageGaps(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+        variant: string,
+    ): Promise<GameBuildStateSnapshot | null> {
+        let gaps: readonly ReferenceIndexGap[];
+        try {
+            const references = this.getContext().services.get<ReferenceService>(Services.Reference);
+            // The index builds itself when something asks it to, and a build started from a project
+            // that has just opened is the one caller that arrives first. Reading it unbuilt reports
+            // one gap covering everything, which reads as "the project cannot be read" and refuses a
+            // build that has nothing wrong with it.
+            await references.ensureReady();
+            gaps = references.getIndexResult().gaps;
+        } catch (error) {
+            // A service this build cannot reach is Studio malfunctioning rather than the project
+            // being wrong, and the same bargain the media gate makes applies: a gate with no way
+            // past it that fails closed on its own defect leaves a project unbuildable.
+            console.error("[Build] the reference index could not be consulted for the content check", error);
+            return null;
+        }
+        const touching = gaps.filter(gap => !gap.slice
+            || gap.slice === "story"
+            || gap.slice === "storyAnimation"
+            || gap.reason === "computedAssetPin");
+        if (touching.length === 0) {
+            return null;
+        }
+
+        const consoleService = this.tryGetConsole();
+        for (const gap of touching) {
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate("build.contentCoverageGap", {
+                // A gap with no site is the index itself; it has no location to name, and the
+                // sentence has to read as one either way.
+                location: gap.location ?? translate("build.contentCoverageWholeProject"),
+                variant,
+            }), { source: BUILD_CONSOLE_SOURCE });
+        }
+        const refusal = translateN("build.contentCoverageSummary", touching.length, {
+            count: touching.length,
+            variant,
+        });
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+        this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: refusal });
+        return this.state;
+    }
+
+    /** Every story in the project, in library order. The three sweeps before this one cached them. */
+    private async loadAllStories(): Promise<ReleaseContentStory[]> {
+        const story = this.getContext().services.get<StoryService>(Services.Story);
+        const loaded: ReleaseContentStory[] = [];
+        for (const entry of story.getLibraryIndex().stories) {
+            try {
+                loaded.push({ id: entry.id, name: entry.name, document: await story.loadStory(entry.id) });
+            } catch (error) {
+                // A story that will not load is the packer's problem to report, not ours to mask -
+                // the same reading the three sweeps above take of the same failure.
+                console.error(`[Build] could not read story ${entry.id} for the content check`, error);
+            }
+        }
+        return loaded;
+    }
+
+    /**
+     * The blueprints this gate can read.
+     *
+     * The project's own document only. A blueprint kept as a shared asset is not here, which is the
+     * same reach every blueprint lint rule has - they all read `ctx.blueprintDocument` - and the
+     * packer still refuses one it cannot read, so a script blueprint hiding in an asset costs a whole
+     * story rather than a wrong package.
+     */
+    private listProjectBlueprints(): Blueprint[] {
+        const services = this.getContext().services;
+        try {
+            const document = services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+            return Object.values(document?.blueprints ?? {});
+        } catch (error) {
+            console.error("[Build] could not read the blueprint document for the content check", error);
+            return [];
+        }
+    }
+
+    /** The enabled plugins with a runtime entry - the ones whose code ships inside the game. */
+    private async listShippingPlugins(): Promise<ReleaseContentPlugin[]> {
+        const result = await getInterface().plugins.list();
+        if (!result.success) {
+            return [];
+        }
+        return result.data.plugins
+            .filter(plugin => plugin.enabled && plugin.manifest.entries?.runtime)
+            .map(plugin => ({
+                id: plugin.manifest.id,
+                name: plugin.manifest.name ?? plugin.manifest.id,
+                runtimeCapabilities: plugin.manifest.contributes.runtimeCapabilities ?? [],
+            }));
+    }
+
+    /**
+     * The blueprint variant gate: no build ships a graph that still asks which edition it is.
+     *
+     * `Get App Tag` has no play-time value. The bundler substitutes the variant's name, folds the
+     * comparison it feeds, and deletes the arm this edition does not take - so a graph the fold cannot
+     * reduce to a decided branch is not a leak an author might tolerate, it is a graph nothing can
+     * compile. Refused in every build including release, the same standing the story-side `AppTag`
+     * gate above has and for the same reason.
+     *
+     * Reads the same module the bundler removes with (`@shared/blueprint/appTagGraphFold`), never a
+     * second implementation: a refusal and a removal that judged different graphs would be exactly the
+     * failure both exist to prevent.
+     *
+     * ## Shared blueprint assets are judged here too
+     *
+     * They did not use to be, and the gap had a shape worth remembering: a `.nlbp` is an asset file
+     * rather than an entry in the document, so nothing on this side enumerated them and the refusal
+     * only arrived when the main process folded the pack and threw. That is a refusal *after* the
+     * author has committed to a build, phrased in the packer's words rather than the editor's.
+     * `AssetsService.listSharedBlueprints` is what closed it.
+     *
+     * The main process still folds and still throws, and that has to stay: this gate reads the assets
+     * as the author's project holds them right now, and a build is entitled to assume nothing about
+     * what ran before it. Do not narrow the removal to match the refusal - a shared asset that
+     * shipped unfolded would answer the release name in every edition, which is a silently wrong
+     * package rather than a failed build.
+     *
+     * Asynchronous only because of those assets; the document half is in memory as before.
+     */
+    private async runAppTagGraphGate(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+        appTagId: string | undefined,
+    ): Promise<GameBuildStateSnapshot | null> {
+        const services = this.getContext().services;
+        let document: BlueprintDocument | null;
+        try {
+            document = services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+        } catch (error) {
+            // A document that will not load is the packer's problem to report, not this gate's to
+            // guess at - the same bargain the network gate makes.
+            console.error("[Build] could not read the blueprint document for the variant check", error);
+            return null;
+        }
+        // The name is passed for completeness only. Whether a graph reduces is a property of the
+        // graph, so a chain that stops at a text field stops under every variant.
+        const tagName = services.get<AppTagService>(Services.AppTags).resolveTag(appTagId).name;
+        const refused = [
+            ...collectUnfoldableAppTagGraphs(document, { tagName }),
+            ...await this.collectUnfoldableSharedBlueprints(tagName),
+        ];
+        if (refused.length === 0) {
+            return null;
+        }
+
+        const consoleService = this.tryGetConsole();
+        for (const graph of refused) {
+            consoleService?.log(
+                BUILD_CONSOLE_CHANNEL,
+                "error",
+                translate(APP_TAG_GRAPH_MESSAGE_KEYS[graph.reason], {
+                    blueprint: graph.blueprintName,
+                    graph: graph.graphName,
+                }),
+                { source: BUILD_CONSOLE_SOURCE },
+            );
+        }
+        const refusal = translateN("build.appTagGraphSummary", refused.length, { count: refused.length });
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+        // `startedAt` and `platforms` carried through for the reason every gate around it carries
+        // them: the dashboard archives a refused run as a finished build.
+        this.updateState({
+            status: "error",
+            startedAt,
+            finishedAt: Date.now(),
+            platforms,
+            error: refusal,
+        });
+        return this.state;
+    }
+
+    /**
+     * The same sweep over the project's shared blueprint assets.
+     *
+     * Named by the asset rather than by the blueprint inside it: an author looking for "Continue" in
+     * the asset browser will not find a blueprint whose inner `name` drifted from the file's, and the
+     * asset's name is the one the browser shows.
+     *
+     * Answers an empty list if the assets cannot be listed at all. The removal in the main process is
+     * the backstop, and a build refused because a *gate* could not read something is a build refused
+     * for a reason the author cannot act on.
+     */
+    private async collectUnfoldableSharedBlueprints(tagName: string): Promise<UnfoldableAppTagGraph[]> {
+        let assets: SharedBlueprintAsset[];
+        try {
+            assets = await this.getContext().services.get<AssetsService>(Services.Assets).listSharedBlueprints();
+        } catch (error) {
+            console.error("[Build] could not read the shared blueprints for the variant check", error);
+            return [];
+        }
+        return assets.flatMap(asset =>
+            collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, { tagName })
+                .map(graph => ({ ...graph, blueprintName: asset.name || graph.blueprintName })));
     }
 
     /**
@@ -411,6 +967,93 @@ export class BuildService extends Service<BuildService> {
      * defects can leave a project unbuildable with nothing the author can do, which is a worse
      * outcome than the one the gate exists to prevent.
      */
+    /**
+     * The allowlist gate: no build ships a Fetch node aimed at an address the build refuses.
+     *
+     * Unconditional, for the reason the gate above is: `network/fetch-not-allowlisted` reports
+     * the same nodes, and lint is switchable in two ways an author can reach without knowing
+     * what they are giving up. A project that narrowed itself to a list did so deliberately, and
+     * shipping a request that list refuses is the one outcome the feature exists to prevent.
+     *
+     * Written addresses only. A computed one is not knowable here; the host refuses it at run
+     * time with a message naming the list, which is the honest place for that answer.
+     *
+     * Resolved through the same helper the lint rule uses, so "what may this project reach" has
+     * one answer rather than two that can disagree.
+     */
+    private async runNetworkAllowlistGate(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+    ): Promise<GameBuildStateSnapshot | null> {
+        const services = this.getContext().services;
+        const network = services.get<ProjectService>(Services.Project).getNetworkConfiguration();
+        if (!network.allowHttp || network.policy !== NETWORK_POLICY_ALLOWLIST) {
+            return null;
+        }
+        let document: BlueprintDocument | null;
+        try {
+            document = services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+        } catch (error) {
+            // A document that will not load is the packer's problem to report, exactly as it is for
+            // the gate above.
+            console.error("[Build] could not read the blueprint document for the allowlist check", error);
+            return null;
+        }
+        const allowlist: NetworkAllowlist = {
+            policy: network.policy,
+            entries: network.allowlist,
+            plugins: await this.listPluginNetworkDeclarations(),
+        };
+        const refused = collectBlueprintNetworkNodes(document)
+            .filter(site => site.literalUrl && !isNetworkAddressAllowed(site.literalUrl, allowlist));
+        if (refused.length === 0) {
+            return null;
+        }
+
+        const consoleService = this.tryGetConsole();
+        for (const site of refused) {
+            consoleService?.log(
+                BUILD_CONSOLE_CHANNEL,
+                "error",
+                translate("build.networkAddressNotAllowlisted", {
+                    blueprint: site.blueprintName,
+                    url: site.literalUrl ?? "",
+                }),
+                { source: BUILD_CONSOLE_SOURCE },
+            );
+        }
+        const refusal = translateN("build.networkAllowlistSummary", refused.length, { count: refused.length });
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
+        this.updateState({
+            status: "error",
+            startedAt,
+            finishedAt: Date.now(),
+            platforms,
+            error: refusal,
+        });
+        return this.state;
+    }
+
+    /**
+     * What every installed plugin declares in `contributes.network`, attributed.
+     *
+     * Every installed plugin, matching what the lint rule reads: which of them a given variant
+     * actually ships is settled later, and a gate that refused an address a shipped plugin
+     * declares would refuse a build that works.
+     */
+    private async listPluginNetworkDeclarations(): Promise<NetworkPluginAllowlistEntry[]> {
+        const result = await getInterface().plugins.list();
+        if (!result.success) {
+            return [];
+        }
+        return result.data.plugins
+            .filter(plugin => (plugin.manifest.contributes?.network ?? []).length > 0)
+            .map(plugin => ({
+                pluginId: plugin.manifest.id,
+                patterns: [...(plugin.manifest.contributes?.network ?? [])],
+            }));
+    }
+
     private async runMediaGate(
         startedAt: number,
         platforms: GameBuildPlatform[],

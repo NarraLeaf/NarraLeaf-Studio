@@ -1,6 +1,10 @@
 import type { StoryVariableRef } from "@shared/types/story";
 import {
+    APP_TAG_EXPR_KEYWORD,
+    appTagExpr,
+    collectAppTagComparisonNames,
     formatStoryLiteral,
+    isAppTagExpr,
     isStoryExprFunction,
     isStoryVisitedCall,
     storyVisitedRefToken,
@@ -68,7 +72,28 @@ export type StoryExpressionIssue =
      * picking one of two things an author can reasonably expect is the failure this whole language
      * avoids elsewhere. The escape without a rename is the quoted call, `'min'()`.
      */
-    | { code: "blueprintShadowsFunction"; span: StoryExpressionSpan; name: string };
+    | { code: "blueprintShadowsFunction"; span: StoryExpressionSpan; name: string }
+    /**
+     * `AppTag == "Demo"` where the project has no variant called `Demo`.
+     *
+     * Advisory - see {@link isAdvisoryStoryExpressionIssue}. The comparison is well-formed and folds
+     * to a constant `false` when the package is produced, so nothing about it is broken; what it
+     * means is that the content behind it ships in no variant at all, which is worth saying and is
+     * never worth refusing. A variant deleted on purpose would otherwise lock every row that named
+     * it.
+     */
+    | { code: "unknownAppTagName"; span: StoryExpressionSpan; name: string };
+
+/**
+ * Whether an issue describes what the expression MEANS rather than whether it can be read.
+ *
+ * Every other code here says the tree is unusable, and the command line refuses to commit a line
+ * carrying one. An advisory issue carries a perfectly good tree, so a surface that gates on issues
+ * must gate on the non-advisory ones and display the rest.
+ */
+export function isAdvisoryStoryExpressionIssue(issue: StoryExpressionIssue): boolean {
+    return issue.code === "unknownAppTagName";
+}
 
 export type StoryExpressionParse = {
     expression: StoryExpression;
@@ -98,6 +123,19 @@ export type StoryExpressionScope = {
     lookupVisited: (call: StoryVisitedCall, name: string) => StoryExpressionNameResolution;
     /** A `mode:"value"` Story Action Blueprint's name → its id. */
     lookupBlueprint: (name: string) => StoryExpressionNameResolution;
+    /**
+     * Whether the project has a build variant of this name - what `AppTag == "Demo"` is checked
+     * against.
+     *
+     * Optional, and an omitted predicate means "this caller cannot enumerate the variants", not
+     * "there are none". That is the opposite convention to `lookupVisited` above, and deliberately
+     * so: an unresolvable scene name changes what the tree IS (there is no id to store), while an
+     * unknown variant name changes nothing at all - the comparison is a string against a string
+     * either way, and it folds to `false` when the package is produced. So a caller with no list
+     * stays silent rather than reporting a name it has no standing to judge, which is what lets the
+     * document migration and the fold parse without one.
+     */
+    hasAppTagName?: (name: string) => boolean;
 };
 
 /**
@@ -174,6 +212,10 @@ const FUNCTION_ARITY: Readonly<Record<StoryExprFunction, { min: number; max: num
     pad: { min: 2, max: 3, label: "2-3" },
     str: { min: 1, max: 1, label: "1" },
     num: { min: 1, max: 1, label: "1" },
+    // Never consulted: `AppTag` is intercepted as a keyword in `parseIdentifier`, so no call ever
+    // reaches the whitelist under this name. The entry exists because the table is keyed by the
+    // whole `StoryExprFunction` union, which is the mechanism that made adding the constant safe.
+    appTag: { min: 0, max: 0, label: "0" },
 };
 
 // ── Tokenizer ─────────────────────────────────────────────────────────────────────────────────────
@@ -510,6 +552,14 @@ class ExpressionParser {
         if (lowered === "null") {
             return { kind: "literal", value: null };
         }
+        // `AppTag` is a keyword for the same reason those three are: it names a value the language
+        // decides, not one the project declares. Reserving the bare word is what makes the fold
+        // sound - if a variable could win this name, the same source would mean the build variant in
+        // one project and a save file's number in another. `'AppTag'` reaches such a variable, and
+        // `validateSceneDeclaration` refuses new ones.
+        if (lowered === APP_TAG_EXPR_KEYWORD.toLowerCase()) {
+            return appTagExpr();
+        }
 
         if (this.peekPunct("(")) {
             return this.parseCall(token);
@@ -710,6 +760,17 @@ export function parseStoryExpression(source: string, scope: StoryExpressionScope
     }
     const tokens = tokenize(source, issues);
     const ast = new ExpressionParser(source, tokens, scope, issues).parse();
+    // After the tree exists, not during: `AppTag == "Demo"` is only a comparison once both operands
+    // and the operator have been read, and this is the one check here that is about a pair of nodes
+    // rather than about a token. The span is the whole source - the name's own offsets are gone by
+    // now, and an advisory that underlines the line reads the same as one that underlines the word.
+    if (scope.hasAppTagName) {
+        for (const name of collectAppTagComparisonNames(ast)) {
+            if (!scope.hasAppTagName(name)) {
+                issues.push({ code: "unknownAppTagName", span: { start: 0, end: source.length }, name });
+            }
+        }
+    }
     return { expression: { source, ast }, issues };
 }
 
@@ -721,7 +782,11 @@ export function parseStoryExpression(source: string, scope: StoryExpressionScope
  */
 export function formatStoryExpressionName(name: string): string {
     const lowered = name.toLowerCase();
-    const keyword = lowered === "true" || lowered === "false" || lowered === "null";
+    // `AppTag` sits with the three literal keywords: a variable that happens to carry the name would
+    // re-lex as the build-variant constant if it were printed bare, so the printer quotes it - which
+    // is the spelling that still reaches the variable.
+    const keyword = lowered === "true" || lowered === "false" || lowered === "null"
+        || lowered === APP_TAG_EXPR_KEYWORD.toLowerCase();
     // A dot never passes isIdentifierPart, so a dotted name (which would re-parse as a scope prefix)
     // is quoted by the same test.
     const bare = name.length > 0 && !keyword && isIdentifierStart(name[0]) && [...name].every(isIdentifierPart);
@@ -745,6 +810,14 @@ export type StoryExpressionEntities = {
     options?: readonly StoryExpressionNamedEntry[];
     /** `mode: "value"` Story Action Blueprints - the only ones an expression may call. */
     blueprints?: readonly StoryExpressionNamedEntry[];
+    /**
+     * The project's build variants, release included - what `AppTag == "Demo"` is checked against.
+     *
+     * Names only; there is no id to bind, because the comparison IS a string comparison at play time
+     * and renaming a variant renames what the story must say. Omitting the list is silence rather
+     * than "no variants" - see `hasAppTagName` on the scope.
+     */
+    appTags?: readonly StoryExpressionNamedEntry[];
 };
 
 /**
@@ -782,7 +855,11 @@ export function formatStoryExpr(expr: StoryExpr): string {
         case "ternary":
             return `(${formatStoryExpr(expr.test)} ? ${formatStoryExpr(expr.consequent)} : ${formatStoryExpr(expr.alternate)})`;
         case "call":
-            return `${expr.fn}(${expr.args.map(formatStoryExpr).join(", ")})`;
+            // `AppTag` is written as a bare word and has no call spelling at all (the parser reads it
+            // as a keyword), so printing `appTag()` would produce a source the lexer then chokes on.
+            return isAppTagExpr(expr)
+                ? APP_TAG_EXPR_KEYWORD
+                : `${expr.fn}(${expr.args.map(formatStoryExpr).join(", ")})`;
         case "array":
             return `[${expr.items.map(formatStoryExpr).join(", ")}]`;
         case "index":
@@ -830,5 +907,12 @@ export function createStoryExpressionScope(
         },
         lookupVisited: (call, name) => byName(call === "visited" ? entities.scenes : entities.options, name),
         lookupBlueprint: name => byName(entities.blueprints, name),
+        // Exact, case included, unlike every other name table here. The comparison the author wrote
+        // is a string equality the fold performs verbatim, so a check that accepted "demo" for
+        // "Demo" would pass a line that then ships nowhere - which is the one thing this predicate
+        // exists to catch. Absent list, absent predicate: see `hasAppTagName` on the scope type.
+        ...(entities.appTags
+            ? { hasAppTagName: (name: string) => entities.appTags!.some(tag => tag.name === name) }
+            : {}),
     };
 }

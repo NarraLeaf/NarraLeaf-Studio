@@ -3,6 +3,7 @@ import { Settings, PanelLeft, PanelRight, PanelBottom } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { WindowAppType } from "@shared/types/window";
 import { useTranslation } from "@/lib/i18n";
+import { TooltipGroup } from "@/lib/tooltip";
 
 interface ControlBarProps {
     leftSidebarVisible: boolean;
@@ -31,7 +32,7 @@ export function ControlBar({
     };
 
     return (
-        <div className="flex items-center gap-1">
+        <TooltipGroup className="flex items-center gap-1">
             {/* Left Sidebar Toggle */}
             <button
                 onClick={onToggleLeftSidebar}
@@ -42,7 +43,7 @@ export function ControlBar({
                         : "text-fg-muted hover:bg-fill hover:text-fg"
                     }
                 `}
-                title={t("workspace.shell.toggleLeftSidebar")}
+                data-tip={t("workspace.shell.toggleLeftSidebar")}
                 aria-label={t("workspace.shell.toggleLeftSidebar")}
             >
                 <PanelLeft className="w-4 h-4" />
@@ -58,7 +59,7 @@ export function ControlBar({
                         : "text-fg-muted hover:bg-fill hover:text-fg"
                     }
                 `}
-                title={t("workspace.shell.toggleBottomPanel")}
+                data-tip={t("workspace.shell.toggleBottomPanel")}
                 aria-label={t("workspace.shell.toggleBottomPanel")}
             >
                 <PanelBottom className="w-4 h-4" />
@@ -74,7 +75,7 @@ export function ControlBar({
                         : "text-fg-muted hover:bg-fill hover:text-fg"
                     }
                 `}
-                title={t("workspace.shell.toggleRightSidebar")}
+                data-tip={t("workspace.shell.toggleRightSidebar")}
                 aria-label={t("workspace.shell.toggleRightSidebar")}
             >
                 <PanelRight className="w-4 h-4" />
@@ -84,12 +85,12 @@ export function ControlBar({
             <button
                 onClick={handleOpenSettings}
                 className="w-8 h-8 rounded-md flex items-center justify-center text-fg-muted hover:bg-fill hover:text-fg transition-colors cursor-default"
-                title={t("workspace.shell.openSettings")}
+                data-tip={t("workspace.shell.openSettings")}
                 aria-label={t("workspace.shell.openSettings")}
             >
                 <Settings className="w-4 h-4" />
             </button>
-        </div>
+        </TooltipGroup>
     );
 }
 

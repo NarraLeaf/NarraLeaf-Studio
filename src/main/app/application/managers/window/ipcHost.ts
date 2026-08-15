@@ -89,10 +89,21 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
         return win.getWebContents().send(this.getEventName(key), data);
     }
 
+    /**
+     * A rejection, as the renderer will see it.
+     *
+     * The message crosses as prose because that is all most failures have. A thrower that gave
+     * itself a string `code` gets it carried too - `Error` does not declare one, so this reads the
+     * property rather than narrowing to a class, which also means a `code` set by Node (`ENOENT`)
+     * or by a library arrives instead of being invented here. Anything non-string is dropped: the
+     * field exists to be compared against a literal.
+     */
     public failed<T>(err: unknown): RequestStatus<T> {
+        const code = err instanceof Error ? (err as Error & { code?: unknown }).code : undefined;
         return {
             success: false,
             error: err instanceof Error ? err.message : String(err),
+            ...(typeof code === "string" ? { code } : {}),
         };
     }
 

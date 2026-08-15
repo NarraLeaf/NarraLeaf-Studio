@@ -112,6 +112,8 @@ function fakeApp(): App {
         isQuitting: () => false,
         windowManager: { getWindows: () => [] },
         getVcsManager: () => vcs,
+        // Every host resolves which edition it is running as; this profile picked none.
+        getGlobalState: () => ({ get: () => undefined }),
         launchDevMode: async () => {
             const window = fakeWindow();
             launchedWindows.push(window);

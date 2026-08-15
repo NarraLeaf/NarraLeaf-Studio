@@ -1,9 +1,11 @@
 /**
  * Pure geometry for the UI Surface editor's preview overlays.
  *
- * The engine letterboxes on every run path (`computeStageViewportMetrics`: `fit = min(W/dw, H/dh)`,
- * centred, aspect preserved), so nothing is ever cropped. These frames therefore do NOT show "what
- * gets cut off". They show two independent things:
+ * The stage fits itself to the screen with `computeStageViewportMetrics`. Under `contain` (the
+ * default) nothing is ever cropped and the leftover shows as bars; a project that opts into `cover`
+ * for its mobile builds fills the screen and loses the overflow instead. Both frames below take the
+ * project's fit, because under `cover` there are no bars to talk about and no inset the bars absorb.
+ * They show two independent things:
  *
  * 1. **Screen-ratio frame** — where the letterbox / pillarbox bars land around the design rect on a
  *    player screen of a given aspect ratio.
@@ -83,6 +85,12 @@ export function isSurfacePreviewAspectPresetId(id: unknown): id is SurfacePrevie
 /* -------------------------------------------------------------------------- */
 
 export type SurfacePreviewOrientation = "landscape" | "portrait";
+
+/**
+ * The project's `app.mobile.fit`. `contain` letterboxes, `cover` fills the screen and crops — and it
+ * changes both frames, so it is threaded through rather than assumed.
+ */
+export type SurfacePreviewFit = "contain" | "cover";
 
 export type SafeAreaGeometry = {
     /** Logical screen size in pt (iOS) or dp (Android), in this orientation. */
@@ -166,9 +174,8 @@ type SafeAreaDeviceSpec = {
  * the portrait top inset, 21pt home indicator) is from the iPhone X measurements and has held for
  * every generation since.
  *
- * ⚠ **The Android entry is a typical device, not a measured one.** Cutout geometry is per-OEM and
- * no first-party table exists; its name says so. The honest fix is to read `env(safe-area-inset-*)`
- * off a real handset, which nothing in this product does yet.
+ * This list is iPhone and iPad only — Android has no per-device numbers to copy, and is carried as
+ * AOSP cutout shapes instead; see `ANDROID_CUTOUT_PRESETS` for why.
  */
 const SAFE_AREA_DEVICES: readonly SafeAreaDeviceSpec[] = [
     // 750x1334 @2x. Home button: no ears and no home indicator, so with the status bar hidden it is
@@ -193,10 +200,6 @@ const SAFE_AREA_DEVICES: readonly SafeAreaDeviceSpec[] = [
     { id: "ipad-10", reference: "iPad (10th gen)", family: "ipad", points: { width: 820, height: 1180 }, housing: 0, homeIndicator: [20, 20] },
     // 1668x2388 @2x.
     { id: "ipad-pro-11", reference: "iPad Pro 11\"", family: "ipad", points: { width: 834, height: 1194 }, housing: 0, homeIndicator: [20, 20] },
-    // Pixel-class 1080x2400 @2.625. Housing = a punch hole on the top edge, which lands on a short
-    // edge in landscape; mirrored like iOS because the shell may lock either landscape rotation.
-    // No home-indicator inset: the gesture strip is not reported as safe-area here (see above).
-    { id: "android-punch-hole", reference: "Android punch-hole (typical)", family: "android", points: { width: 412, height: 915 }, housing: 48, homeIndicator: [0, 0] },
 ];
 
 /**
@@ -224,7 +227,82 @@ function expandSafeAreaDevice(device: SafeAreaDeviceSpec): SafeAreaPreset {
     };
 }
 
-export const SAFE_AREA_PRESETS: readonly SafeAreaPreset[] = SAFE_AREA_DEVICES.map(expandSafeAreaDevice);
+/**
+ * Android is cutout SHAPES, not phone models — and that is not a shortcut.
+ *
+ * A phone's cutout geometry lives in `config_mainBuiltInDisplayCutout`, a framework overlay that
+ * ships **in the vendor image, not in AOSP** (source.android.com/docs/core/display/display-cutouts).
+ * The Pixel device trees on android.googlesource.com do not contain it, and no OEM publishes an
+ * equivalent of Apple's per-generation numbers. So there is nothing to copy: a list of phone names
+ * here would be a list of guesses wearing real names, which is worse than no list.
+ *
+ * What Google DOES publish is the emulation overlays under `frameworks/base/packages/overlays/` —
+ * the same set Developer options → "Display cutout" switches on. Every number below is read from
+ * one of those configs, so an author can select the matching shape on a real handset and compare
+ * against the same geometry.
+ *
+ * Not carried, and why:
+ * - **Narrow / Wide** vary the cutout's *width*. This model only consumes inset depth per edge, so
+ *   they are indistinguishable from Corner here — shipping them would add rows that cannot move the
+ *   frame, which is the exact "I picked one and nothing happened" this feature was reported for.
+ * - **Tall** is also 48dp deep (`DisplayCutoutEmulationTallOverlay`), and **Hole** is a 136px
+ *   bounding box ≈ 48dp at the reference density — both land on `android-cutout`, so its name says
+ *   which shapes it covers rather than pretending they differ.
+ *
+ * Screen: 412x915dp, i.e. 1080x2400 @420dpi — the Pixel-class profile these overlays are authored
+ * against. It is the letterbox that decides whether a cutout reaches the content at all, so this is
+ * the number that actually matters here, and it is a real published configuration.
+ *
+ * No bottom inset on any of them: the shell hides the navigation bar, and the gesture strip is a
+ * touch-routing hazard rather than an occlusion (see the note on the device table above).
+ */
+const ANDROID_SCREEN = { width: 412, height: 915 };
+
+const ANDROID_CUTOUT_PRESETS: readonly SafeAreaPreset[] = [
+    {
+        // DisplayCutoutEmulationCornerOverlay: path max Y = 48, "@dp". Covers Tall (identical depth)
+        // and Hole (136px approximation rect ≈ 48dp at 2.625), plus Narrow/Wide, which differ only
+        // in width. Landscape mirrors onto both sides: the shell may lock either rotation.
+        id: "android-cutout",
+        reference: "Cutout · corner / tall / hole",
+        family: "android",
+        portrait: { screen: ANDROID_SCREEN, insets: { left: 0, right: 0, top: 48, bottom: 0 } },
+        landscape: {
+            screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
+            insets: { left: 48, right: 48, top: 0, bottom: 0 },
+        },
+    },
+    {
+        // DisplayCutoutEmulationDoubleOverlay: 32dp top AND bottom. The only shape with two opposed
+        // insets, so rotating it puts one on each side rather than mirroring a single edge.
+        id: "android-cutout-double",
+        reference: "Double cutout",
+        family: "android",
+        portrait: { screen: ANDROID_SCREEN, insets: { left: 0, right: 0, top: 32, bottom: 32 } },
+        landscape: {
+            screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
+            insets: { left: 32, right: 32, top: 0, bottom: 0 },
+        },
+    },
+    {
+        // DisplayCutoutEmulationWaterfallOverlay: no cutout path at all — curved edges instead,
+        // `waterfall_display_left/right_edge_size` = 20dp, top/bottom 0. The only entry whose insets
+        // land on the TOP and bottom in landscape, which is worth having: nothing else tests that.
+        id: "android-waterfall",
+        reference: "Waterfall edges",
+        family: "android",
+        portrait: { screen: ANDROID_SCREEN, insets: { left: 20, right: 20, top: 0, bottom: 0 } },
+        landscape: {
+            screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
+            insets: { left: 0, right: 0, top: 20, bottom: 20 },
+        },
+    },
+];
+
+export const SAFE_AREA_PRESETS: readonly SafeAreaPreset[] = [
+    ...SAFE_AREA_DEVICES.map(expandSafeAreaDevice),
+    ...ANDROID_CUTOUT_PRESETS,
+];
 
 /**
  * Ids this table used to ship, mapped to the device they actually described.
@@ -236,7 +314,9 @@ export const SAFE_AREA_PRESETS: readonly SafeAreaPreset[] = SAFE_AREA_DEVICES.ma
 const LEGACY_SAFE_AREA_PRESET_IDS: Readonly<Record<string, string>> = {
     "ios-dynamic-island": "iphone-15-pro",
     "ios-notch": "iphone-14",
-    "android-gesture": "android-punch-hole",
+    "android-gesture": "android-cutout",
+    // Shipped for part of one day, between the device-table rebuild and the move to AOSP shapes.
+    "android-punch-hole": "android-cutout",
 };
 
 export function getSafeAreaPreset(id: string | null | undefined): SafeAreaPreset | null {
@@ -286,19 +366,57 @@ export function resolveSafeAreaOrientation(
 
 export type ScreenRatioFrame = {
     /**
-     * The player's screen expressed in design-space coordinates. Always *contains* the design rect
-     * and touches it on the constrained axis, because the engine scales by `min(W/dw, H/dh)`.
+     * The player's screen expressed in design-space coordinates.
+     *
+     * Under `contain` it *contains* the design rect and touches it on the constrained axis; under
+     * `cover` it is *inscribed in* it, and everything outside is design the player never sees.
      */
     screenRect: SurfacePreviewRect;
-    /** Pillarbox bar thickness in design units (per side). 0 when the screen is not relatively wider. */
+    /** True when this frame describes a crop rather than bars. */
+    cropped: boolean;
+    /**
+     * Per-side thickness of the strip where the two rects differ, in design units — bar under
+     * `contain`, cropped-away design under `cover`. Always >= 0; exactly one of the two is non-zero.
+     */
     pillarbox: number;
-    /** Letterbox bar thickness in design units (per side). 0 when the screen is not relatively taller. */
     letterbox: number;
     /** `pillarbox / screenRect.width` — 0 .. 0.5. Handy for "12% of the screen is bar". */
     pillarboxFraction: number;
     /** `letterbox / screenRect.height` — 0 .. 0.5. */
     letterboxFraction: number;
 };
+
+/**
+ * The strips where the design rect and the screen rect differ, in design space.
+ *
+ * One helper for both fits, because the picture is the same either way: a band on each side of the
+ * shorter rect. Under `contain` those bands are the bars, outside the design; under `cover` they are
+ * the parts of the design that get cut, inside it. Corners go to the horizontal band so a
+ * translucent fill never stacks — same rule as {@link computeUnsafeBands}.
+ */
+export function computeScreenRatioStrips(
+    designSize: SurfacePreviewSize,
+    frame: ScreenRatioFrame | null | undefined,
+): SurfacePreviewRect[] {
+    if (!frame || !isUsableSize(designSize)) {
+        return [];
+    }
+    const { screenRect, pillarbox, letterbox, cropped } = frame;
+    // The strips live between the outer rect and the inner one; which is which is the only
+    // difference the fit makes here.
+    const outer = cropped ? { x: 0, y: 0, width: designSize.width, height: designSize.height } : screenRect;
+    const inner = cropped ? screenRect : { x: 0, y: 0, width: designSize.width, height: designSize.height };
+    const strips: SurfacePreviewRect[] = [];
+    if (letterbox > 0) {
+        strips.push({ x: outer.x, y: outer.y, width: outer.width, height: letterbox });
+        strips.push({ x: outer.x, y: inner.y + inner.height, width: outer.width, height: letterbox });
+    }
+    if (pillarbox > 0) {
+        strips.push({ x: outer.x, y: inner.y, width: pillarbox, height: inner.height });
+        strips.push({ x: inner.x + inner.width, y: inner.y, width: pillarbox, height: inner.height });
+    }
+    return strips;
+}
 
 function isUsableSize(size: SurfacePreviewSize | null | undefined): size is SurfacePreviewSize {
     return (
@@ -323,6 +441,8 @@ function isUsableSize(size: SurfacePreviewSize | null | undefined): size is Surf
 export function computeScreenRatioFrame(input: {
     designSize: SurfacePreviewSize;
     preset: SurfacePreviewAspectPreset;
+    /** The project's stage fit; omitted means `contain`. */
+    stageFit?: SurfacePreviewFit;
 }): ScreenRatioFrame | null {
     const { designSize, preset } = input;
     if (!isUsableSize(designSize)) {
@@ -336,23 +456,32 @@ export function computeScreenRatioFrame(input: {
     const dw = designSize.width;
     const dh = designSize.height;
     // Divide last so exact-match cases (16:9 vs 1920x1080) come out exact rather than off by an ulp.
-    const screenW = Math.max(dw, (dh * rw) / rh);
-    const screenH = Math.max(dh, (dw * rh) / rw);
+    // `contain` grows the screen around the design (the excess is bars); `cover` inscribes it (the
+    // excess is design that never reaches the player). The rest of this function does not care
+    // which — it measures the difference between the two rects, and only the sign flips.
+    const cover = input.stageFit === "cover";
+    const screenW = cover ? Math.min(dw, (dh * rw) / rh) : Math.max(dw, (dh * rw) / rh);
+    const screenH = cover ? Math.min(dh, (dw * rh) / rw) : Math.max(dh, (dw * rh) / rw);
     if (!Number.isFinite(screenW) || !Number.isFinite(screenH)) {
         return null;
     }
 
-    const pillarbox = (screenW - dw) / 2;
-    const letterbox = (screenH - dh) / 2;
+    // Absolute, so a caller never has to know the sign convention: the screen rect's own position
+    // already says which side of the design rect the strip is on.
+    const pillarbox = Math.abs(screenW - dw) / 2;
+    const letterbox = Math.abs(screenH - dh) / 2;
+    const offsetX = (dw - screenW) / 2;
+    const offsetY = (dh - screenH) / 2;
 
     return {
         screenRect: {
             // `-0` is harmless in CSS but poisons equality checks and snapshots — normalize it away.
-            x: pillarbox === 0 ? 0 : -pillarbox,
-            y: letterbox === 0 ? 0 : -letterbox,
+            x: offsetX === 0 ? 0 : offsetX,
+            y: offsetY === 0 ? 0 : offsetY,
             width: screenW,
             height: screenH,
         },
+        cropped: cover,
         pillarbox,
         letterbox,
         pillarboxFraction: screenW > 0 ? pillarbox / screenW : 0,
@@ -395,6 +524,8 @@ export function computeSafeAreaFrameForGeometry(input: {
     designSize: SurfacePreviewSize;
     geometry: SafeAreaGeometry;
     orientation: SurfacePreviewOrientation;
+    /** The project's stage fit; omitted means `contain`. */
+    stageFit?: SurfacePreviewFit;
 }): SafeAreaFrame | null {
     const { designSize, geometry, orientation } = input;
     if (!isUsableSize(designSize) || !isUsableSize(geometry.screen)) {
@@ -412,13 +543,18 @@ export function computeSafeAreaFrameForGeometry(input: {
 
     const dw = designSize.width;
     const dh = designSize.height;
-    const fit = Math.min(geometry.screen.width / dw, geometry.screen.height / dh);
+    const fit = input.stageFit === "cover"
+        ? Math.max(geometry.screen.width / dw, geometry.screen.height / dh)
+        : Math.min(geometry.screen.width / dw, geometry.screen.height / dh);
     if (!Number.isFinite(fit) || fit <= 0) {
         return null;
     }
 
     const cw = dw * fit;
     const ch = dh * fit;
+    // Under `cover` these go NEGATIVE — the content runs off the screen instead of leaving a bar —
+    // and the `max(0, inset - ox)` below then correctly reports MORE than the raw inset: the part of
+    // the design outside the screen is lost too, and an author planning a margin needs the total.
     const ox = (geometry.screen.width - cw) / 2;
     const oy = (geometry.screen.height - ch) / 2;
 
@@ -455,8 +591,10 @@ export function computeSafeAreaFrame(input: {
     preset: SafeAreaPreset;
     /** The project's `app.mobile.orientation`; omitted / `auto` falls back to the design size. */
     mobileOrientation?: SafeAreaMobileOrientation | null;
+    /** The project's `app.mobile.fit`; omitted means `contain`. */
+    stageFit?: SurfacePreviewFit;
 }): SafeAreaFrame | null {
-    const { designSize, preset, mobileOrientation } = input;
+    const { designSize, preset, mobileOrientation, stageFit } = input;
     if (!isUsableSize(designSize)) {
         return null;
     }
@@ -465,6 +603,7 @@ export function computeSafeAreaFrame(input: {
         designSize,
         geometry: preset[orientation],
         orientation,
+        stageFit,
     });
 }
 
@@ -515,9 +654,10 @@ export function computeUnsafeBands(
 export function computeScreenRatioFrameById(
     designSize: SurfacePreviewSize,
     aspectId: string | null | undefined,
+    stageFit?: SurfacePreviewFit,
 ): ScreenRatioFrame | null {
     const preset = getSurfacePreviewAspectPreset(aspectId);
-    return preset ? computeScreenRatioFrame({ designSize, preset }) : null;
+    return preset ? computeScreenRatioFrame({ designSize, preset, stageFit }) : null;
 }
 
 /** Resolve a device preset id and compute its safe frame in one step. Unknown id => `null`. */
@@ -525,7 +665,8 @@ export function computeSafeAreaFrameById(
     designSize: SurfacePreviewSize,
     safeAreaId: string | null | undefined,
     mobileOrientation?: SafeAreaMobileOrientation | null,
+    stageFit?: SurfacePreviewFit,
 ): SafeAreaFrame | null {
     const preset = getSafeAreaPreset(safeAreaId);
-    return preset ? computeSafeAreaFrame({ designSize, preset, mobileOrientation }) : null;
+    return preset ? computeSafeAreaFrame({ designSize, preset, mobileOrientation, stageFit }) : null;
 }

@@ -16,6 +16,13 @@ export type BehaviorGraphExecutionTrace = {
     graphId: UIGraphId;
     blueprintId?: string;
     eventId?: string;
+    /**
+     * Surface the graph belongs to, carried so an `execution.error` raised in here says where it
+     * happened. The dispatcher reports the same failure a second time when it catches it, and the
+     * two reports have to be the SAME report - a host that collapses repeats by their text would
+     * otherwise list one failure twice, once with a place and once without.
+     */
+    surfaceId?: string;
     emit: (event: BlueprintDebugEvent) => void;
 };
 

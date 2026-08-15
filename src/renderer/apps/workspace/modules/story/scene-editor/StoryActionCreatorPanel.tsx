@@ -18,7 +18,9 @@ import {
 import { localizeSpecCommand } from "./commands/specPalette";
 import { getCommandSpec, listCommandSpecs } from "./commands/registry";
 import { specGroupIds } from "./commands/specSidebar";
-import { buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandSidebarGroup } from "./commands/specSidebar";
+import { availableSidebarGroups, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandSidebarGroup } from "./commands/specSidebar";
+import { EMPTY_STORY_COMMAND_CONTEXT, type StoryCommandContext } from "./storyCommandValues";
+import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
 import { searchActionCommands } from "./storyCommandSearch";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
 import { FAVORITES_SETTING_KEY, migrateStarredActionIds } from "./storyActionCreatorFavorites";
@@ -112,9 +114,28 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
 
     const localize = useCallback((command: PaletteActionCommand) => localizeSpecCommand(command, ct), [ct]);
 
+    /**
+     * What the availability gate reads. The panel is a catalogue, not an editor of one scene - it has
+     * no story document and no caret - so it builds the one table the gate asks about (the project's
+     * build variants) onto the empty context rather than projecting a whole project it cannot see.
+     */
+    const appTags = useProjectAppTags();
+    const commandContext = useMemo<StoryCommandContext>(
+        () => ({ ...EMPTY_STORY_COMMAND_CONTEXT, appTags: appTags.map(tag => ({ id: tag.id, name: tag.name })) }),
+        [appTags],
+    );
+
+    /**
+     * The browse content, gated to what this project can act on.
+     *
+     * Gated here rather than in each tab below, because both of them read this one list: the starred
+     * tab picks its entries out of these groups and the subject tabs are these groups filtered. A
+     * command hidden by {@link StoryCommandSpec.available} is therefore not listable, not starrable
+     * from the list, and not shown as a stale favourite.
+     */
     const sidebarGroups = useMemo(
-        () => buildSpecSidebarGroups(pluginCommands, localize),
-        [localize, pluginCommands],
+        () => availableSidebarGroups(buildSpecSidebarGroups(pluginCommands, localize), commandContext),
+        [commandContext, localize, pluginCommands],
     );
 
     /**
@@ -215,7 +236,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                             "ml-auto grid h-7 w-7 place-items-center rounded-md transition-colors",
                             starredIds.has(openCommandId) ? "text-warning" : "text-fg-subtle hover:text-warning",
                         ].join(" ")}
-                        title={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
+                        data-tip={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")} aria-label={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
                         onClick={() => toggleStarred(openCommandId)}
                     >
                         <Star className="h-3.5 w-3.5" fill={starredIds.has(openCommandId) ? "currentColor" : "none"} />
@@ -393,7 +414,7 @@ function ActionCreatorRow(props: {
             <button
                 type="button"
                 className="mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-subtle opacity-0 transition hover:bg-fill-strong hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 group-hover:opacity-100"
-                title={t("story.manual.insert")}
+                data-tip={t("story.manual.insert")}
                 aria-label={t("story.manual.insert")}
                 onClick={() => props.onCreate(props.command.id)}
             >

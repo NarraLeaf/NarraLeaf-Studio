@@ -1,3 +1,4 @@
+import type { ProjectAppTag } from "@shared/types/appTag";
 import type { StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -7,8 +8,9 @@ import type { GameBuildPlatform } from "@shared/types/gameBuild";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { MergedPersistentNameCollision } from "@shared/variables/mergedPersistentView";
 import type { AssetType } from "../workspace/services/assets/assetTypes";
-import type { AssetReference } from "../workspace/services/references/referenceModel";
+import type { AssetReference, ReferenceIndexResult } from "../workspace/services/references/referenceModel";
 import type { LintingConfiguration, NetworkConfiguration } from "../workspace/project/configuration";
+import type { NetworkPluginAllowlistEntry } from "@shared/types/networkAllowlist";
 
 /**
  * The snapshot every lint rule reads.
@@ -87,13 +89,49 @@ export type LintContext = {
      * blueprint *and* the setting that decides whether the shipped game may reach the network.
      */
     network: NetworkConfiguration;
+    /**
+     * What each installed plugin declared in `contributes.network`, attributed.
+     *
+     * Here for the reason {@link network} is: whether an address is a problem depends on the
+     * project's list *and* on what the author already approved at install, and a rule that
+     * read only the first would report a request that works.
+     */
+    pluginNetworkDeclarations: readonly NetworkPluginAllowlistEntry[];
     stories: readonly LintStoryEntry[];
+    /**
+     * Whether {@link stories} is the whole library.
+     *
+     * `false` when the index could not be read at all, or when a story in it failed to load - that
+     * story is simply absent from the list above, and a rule that asks "does this scene id still
+     * exist" would answer no for every scene in it. The same distinction `assetIndex.complete`
+     * draws, for the same reason: a rule must be able to tell an empty project from an unread one.
+     * A story that failed to load already reports itself; nothing else should pile on.
+     */
+    storiesComplete: boolean;
     blueprintDocument: BlueprintDocument | null;
     uiDocument: UIDocument | null;
     assets: readonly LintAssetEntry[];
     referencedAssetIds: ReadonlySet<string>;
     assetReferences: ReadonlyMap<string, readonly AssetReference[]>;
+    /**
+     * Whether the two sets above describe the whole project.
+     *
+     * Carried rather than inferred, because the two ways of inferring it are both wrong: an empty
+     * key set is what a genuinely tidy project looks like, and a full one says nothing about the
+     * document the index could not read. `assets/unused` is the rule that cannot survive either
+     * mistake - every asset in the project is "unused" to an index that never ran.
+     */
+    assetIndex: ReferenceIndexResult;
     characters: readonly LintCharacterEntry[];
+    /**
+     * Every build variant the project has, release included - the list `AppTag == "Demo"` is checked
+     * against.
+     *
+     * Names as stored. Every surface shows a variant under the name stored here, the release one
+     * included - it is called "main" in every language - so what a rule checks and what the build
+     * folds against are the same string.
+     */
+    appTags: readonly ProjectAppTag[];
     /**
      * The project variable registry, BOTH scopes, exactly as the service holds it.
      *
@@ -107,6 +145,15 @@ export type LintContext = {
     /** The same cross-surface ambiguity for the `saved` scope, which is now project-level too. */
     savedNameCollisions: readonly PersistentNameCollision[];
     localization: LintLocalizationContext | null;
+    /**
+     * Named localization keys, by name - the registry `Get Text` picks from.
+     *
+     * Separate from {@link localization}, which is about translations of the script: a project can
+     * declare named keys with no target locale configured at all. `null` means the key document had
+     * not finished loading when the sweep started, which is not the same as a project with no keys
+     * and must not be read as one.
+     */
+    localizationKeyNames: ReadonlySet<string> | null;
     voice: LintVoiceContext | null;
     buildPlatforms: readonly GameBuildPlatform[];
     io: LintIo;

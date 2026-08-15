@@ -232,6 +232,8 @@ export function locationSortKey(location: LintLocation): string {
                 location.graphId ?? "",
                 location.nodeId ?? "",
             ].join(" ");
+        case "surface":
+            return ["surface", location.surfaceName, location.surfaceId, location.elementName ?? "", location.elementId ?? ""].join(" ");
         case "character":
             return `character ${location.characterName} ${location.characterId}`;
     }

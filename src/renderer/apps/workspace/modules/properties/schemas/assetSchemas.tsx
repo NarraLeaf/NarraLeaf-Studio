@@ -107,7 +107,7 @@ function createCommonAssetFields<T extends AssetType>(t: TranslateFn): FieldDefi
             type: "custom",
             // Last field on every asset type: "what breaks if I delete this?", answered in the
             // panel the user is already in rather than in the delete dialog after the fact.
-            component: ({ data }) => <AssetReferencesSection assetId={data.asset.id} />,
+            component: ({ data }) => <AssetReferencesSection assetId={data.asset.id} assetType={data.asset.type} />,
             order: 400,
         },
     ];

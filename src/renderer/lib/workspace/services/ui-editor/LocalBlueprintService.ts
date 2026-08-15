@@ -37,6 +37,7 @@ import {
 import type { UIDocument, UIElement, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { VariableRegistry, VariableRegistryEntry } from "@shared/types/variables/registry";
+import type { SaveSchema } from "@shared/types/saveSchema";
 import type { StoryVariableValueType } from "@shared/types/story/document";
 import type { TranslationKey } from "@shared/i18n";
 import { RendererError } from "@shared/utils/error";
@@ -51,6 +52,7 @@ import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "./UIGraphService";
 import { UIDocumentService } from "./UIDocumentService";
 import { VariableRegistryService } from "../variables/VariableRegistryService";
+import { SaveSchemaService } from "../saves/SaveSchemaService";
 import {
     createMainBlueprint,
     createTypeScriptMainBlueprint,
@@ -132,6 +134,12 @@ export type BlueprintEditorHistorySnapshot = {
      * own service/file since M-VAR) undoes with the same Ctrl+Z as the blueprint edit that made it.
      */
     registry: VariableRegistry;
+    /**
+     * The project-level save schema, captured for the same reason the registry is: the fields are
+     * edited from a popover on a save node's card, so adding one is a blueprint edit in every way
+     * the author can see and has to undo with the same Ctrl+Z.
+     */
+    saveSchema: SaveSchema;
 };
 
 type LocalBlueprintHistoryEvents = {
@@ -269,7 +277,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const uuid = ctx.services.get<UuidService>(Services.Uuid);
         const graph = ctx.services.get<UIGraphService>(Services.UIGraph);
         const registry = ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
-        await depend([fs, project, uuid, graph, registry]);
+        const saveSchema = ctx.services.get<SaveSchemaService>(Services.SaveSchema);
+        await depend([fs, project, uuid, graph, registry, saveSchema]);
 
         // The stacks live in HistoryService; re-shape its "some stack changed" event into the
         // blueprint-shaped one this service's subscribers already listen for.
@@ -311,6 +320,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             limit: this.historyLimit,
         });
         this.registeredHistoryScopes.set(blueprintId, dispose);
+    }
+
+    private getSaveSchemaService(): SaveSchemaService {
+        return this.getContext().services.get<SaveSchemaService>(Services.SaveSchema);
     }
 
     private getVariableRegistryService(): VariableRegistryService {
@@ -396,6 +409,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             blueprint: cloneBlueprintHistoryValue(blueprint),
             uiBehavior: captureUIBehaviorSnapshot(uidoc.getDocument()),
             registry: cloneBlueprintHistoryValue(this.getVariableRegistryService().getRegistry()),
+            saveSchema: cloneBlueprintHistoryValue(this.getSaveSchemaService().getSchema()),
         };
     }
 
@@ -1055,6 +1069,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const registryService = this.getVariableRegistryService();
         if (JSON.stringify(registryService.getRegistry()) !== JSON.stringify(snapshot.registry)) {
             registryService.replaceRegistry(cloneBlueprintHistoryValue(snapshot.registry));
+        }
+        const saveSchemaService = this.getSaveSchemaService();
+        if (JSON.stringify(saveSchemaService.getSchema()) !== JSON.stringify(snapshot.saveSchema)) {
+            saveSchemaService.replaceSchema(cloneBlueprintHistoryValue(snapshot.saveSchema));
         }
     }
 

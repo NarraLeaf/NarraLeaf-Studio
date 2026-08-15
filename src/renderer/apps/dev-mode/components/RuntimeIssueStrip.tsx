@@ -65,12 +65,19 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
     let headline = "";
     if (newest) {
         const location = newest.location;
+        // No place, no place column. An issue that has no row is normal here - a refused load, a
+        // boot failure - and prefixing it with a phrase about not finding one reads as part of the
+        // message and turns the line into a sentence that says two things at once.
         const where = location
             ? location.lineNumber > 0
                 ? t("devMode.issues.atLine", { line: location.lineNumber, scene: location.sceneName })
                 : t("devMode.issues.inScene", { scene: location.sceneName })
-            : t("devMode.issues.noLocation");
-        headline = `${where} · ${newest.message}`;
+            : newest.surface
+              // A Game UI failure has a place too, and it is the one that identifies it: several
+              // surfaces can fail with the same sentence, and only the surface name tells them apart.
+              ? t("devMode.issues.onSurface", { surface: newest.surface.surfaceName })
+              : null;
+        headline = where ? `${where} · ${newest.message}` : newest.message;
     } else if (sessionError) {
         headline = sessionError.split("\n").find(line => line.trim().length > 0)?.trim() ?? sessionError;
     }
@@ -108,7 +115,7 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
                 type="button"
                 className={cn("shrink-0 rounded-md p-0.5", tone.ghost, inlineFailure && "mt-0.5")}
                 onClick={onDismiss}
-                title={t("devMode.dismiss")}
+                data-tip={t("devMode.dismiss")}
                 aria-label={t("devMode.dismiss")}
             >
                 <X className="h-3 w-3" aria-hidden />

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, ReactNode, useLayoutEffect } from "
 import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
 import { cn } from "../../utils/cn";
+import { useHostWindow } from "../layout/hostWindow";
 
 // Menu item types
 export interface ContextMenuItemDef {
@@ -74,6 +75,9 @@ export function ContextMenu({
     iconsEnabled = false,
 }: ContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
+    /** The window this menu is drawn in - the renderer's own, or a detached editor's. */
+    const hostWindow = useHostWindow();
+    const doc = hostWindow.document;
     const [adjustedPosition, setAdjustedPosition] = useState(position);
     /**
      * The highlighted row, as an index into the *enabled* items. `-1` is "nothing highlighted", which is
@@ -101,8 +105,8 @@ export function ContextMenu({
         if (!menuRef.current || !visible) return;
 
         const rect = menuRef.current.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+        const viewportWidth = hostWindow.innerWidth;
+        const viewportHeight = hostWindow.innerHeight;
         let { x, y } = position;
         const padding = 8;
 
@@ -147,14 +151,14 @@ export function ContextMenu({
 
         // Delay to prevent immediate closure from the opening click
         const timer = setTimeout(() => {
-            document.addEventListener('mousedown', handleClickOutside, true);
+            doc.addEventListener('mousedown', handleClickOutside, true);
         }, 0);
 
         return () => {
             clearTimeout(timer);
-            document.removeEventListener('mousedown', handleClickOutside, true);
+            doc.removeEventListener('mousedown', handleClickOutside, true);
         };
-    }, [visible, onClose]);
+    }, [doc, visible, onClose]);
 
     // Keyboard navigation
     useEffect(() => {
@@ -218,9 +222,9 @@ export function ContextMenu({
             }
         };
 
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [visible, focusedIndex, items, onClose]);
+        doc.addEventListener('keydown', handleKeyDown);
+        return () => doc.removeEventListener('keydown', handleKeyDown);
+    }, [doc, visible, focusedIndex, items, onClose]);
 
     if (!visible) return null;
 
@@ -278,7 +282,9 @@ export function ContextMenu({
         return menuContent;
     }
 
-    return createPortal(menuContent, document.body);
+    // `doc.body`, not `document.body`: a menu raised inside a detached editor window belongs in
+    // that window, and a portal into the opener's body would open it on the other screen.
+    return createPortal(menuContent, doc.body);
 }
 
 // ContextMenuItem component
@@ -369,7 +375,7 @@ function ContextMenuItem({
                         ? "bg-fill text-fg"
                         : "text-fg-muted hover:bg-fill hover:text-fg",
                 )}
-                title={item.tooltip}
+                data-tip={item.tooltip}
                 onClick={handleClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseDown={(e) => e.stopPropagation()}

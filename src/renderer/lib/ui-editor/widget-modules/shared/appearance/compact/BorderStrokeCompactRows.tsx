@@ -130,7 +130,7 @@ export function BorderStrokeCompactRows({
                     disabled>` a frozen workspace puts around an inspector field caught it, and the
                     author could not find out that a stroke was, say, top-only. */}
                 <InspectOnlyButton
-                    title={t("widgetAppearance.border.sidesTitle")}
+                    data-tip={t("widgetAppearance.border.sidesTitle")}
                     aria-label={t("widgetAppearance.border.sidesExpandAria")}
                     aria-expanded={sidesExpanded}
                     onClick={toggleSidesExpanded}

@@ -17,6 +17,7 @@ import type {
 } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
+import { DraftTextInput } from "@/lib/components/inputs/DraftTextInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -90,14 +91,19 @@ const ButtonLabelBlueprintValueField = createBlueprintValueField({
     renderLiteralEditor: ({ data, liveElement }) => {
         const buttonProps = getButtonProps(liveElement);
         return (
-            <textarea
+            <DraftTextInput
+                multiline
                 className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-surface-sunken px-2 py-1.5 text-xs text-fg outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40"
                 value={buttonProps.label}
                 rows={4}
-                onChange={event => {
+                draftResetKey={liveElement.id}
+                readCommittedValue={() =>
+                    getButtonProps(data.documentService.getDocument().elements[liveElement.id] ?? liveElement).label
+                }
+                onCommit={next => {
                     data.documentService.updateElementProps(liveElement.id, {
                         ...liveElement.props,
-                        label: event.target.value,
+                        label: next,
                     });
                 }}
             />
@@ -230,7 +236,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                                                             max={4}
                                                             step={0.05}
                                                             leftIcon={<Baseline className="w-4 h-4 text-fg-muted" />}
-                                                            title={t("widgets.typography.lineHeightHint")}
+                                                            data-tip={t("widgets.typography.lineHeightHint")}
                                                         />
                                                     );
                                                 },

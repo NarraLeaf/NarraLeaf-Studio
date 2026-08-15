@@ -51,7 +51,7 @@ export type StoryCommandHighlight = {
  * have gone on being wrong for every command that names its object after what it is.
  */
 const ENTITY_KINDS: ReadonlySet<string> = new Set([
-    "asset", "character", "scene", "audioTrack", "variable", "label", "target",
+    "asset", "character", "scene", "audioTrack", "variable", "label", "appTag", "target",
 ]);
 
 /**

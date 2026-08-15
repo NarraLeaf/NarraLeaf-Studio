@@ -7,9 +7,13 @@ import zlib from "zlib";
 import { path7za } from "7zip-bin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+    CENTRAL_HEADER_SIZE,
     crc32,
+    EOCD_SIZE,
     findMisalignedStoredEntries,
+    LOCAL_HEADER_SIZE,
     parseZipIndex,
+    readEntryBytes,
     readLocalEntryDataSpan,
     toDosDateTime,
     ZIP_METHOD_DEFLATE,
@@ -122,5 +126,178 @@ describe("parseZipIndex against 7za-produced archives", () => {
     it("rejects non-zip input loudly", () => {
         expect(() => parseZipIndex(Buffer.from("definitely not a zip file, way too short?")))
             .toThrow(/end-of-central-directory/);
+    });
+});
+
+/**
+ * A one-entry archive assembled field by field. Every fixture below turns on
+ * a central directory that disagrees with the bytes it describes, which no
+ * writer - ours or 7za's - will produce on request.
+ */
+function forgeArchive(options: {
+    name: string;
+    method: number;
+    /** The entry's data exactly as it lies in the file: deflated, or stored. */
+    data: Buffer;
+    /** What the directory claims the entry expands to. */
+    declaredUncompressedSize: number;
+    /** Defaults to the real length; larger is what a truncated archive looks like. */
+    declaredCompressedSize?: number;
+    /**
+     * State the uncompressed size the way an archive past 4 GiB has to: the
+     * 32-bit field saturated, the real value in a zip64 extra block.
+     */
+    zip64Size?: boolean;
+}): Buffer {
+    const nameBytes = Buffer.from(options.name, "utf8");
+    const compressedSize = options.declaredCompressedSize ?? options.data.length;
+    const { dosTime, dosDate } = toDosDateTime(new Date(Date.UTC(2020, 0, 1)));
+    const checksum = crc32(options.data);
+
+    const extra = Buffer.alloc(options.zip64Size ? 12 : 0);
+    if (options.zip64Size) {
+        extra.writeUInt16LE(0x0001, 0);
+        extra.writeUInt16LE(8, 2);
+        extra.writeBigUInt64LE(BigInt(options.declaredUncompressedSize), 4);
+    }
+    const uncompressedField = options.zip64Size ? 0xffffffff : options.declaredUncompressedSize >>> 0;
+
+    const local = Buffer.alloc(LOCAL_HEADER_SIZE);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(options.zip64Size ? 45 : 20, 4);
+    local.writeUInt16LE(options.method, 8);
+    local.writeUInt16LE(dosTime, 10);
+    local.writeUInt16LE(dosDate, 12);
+    local.writeUInt32LE(checksum, 14);
+    local.writeUInt32LE(compressedSize >>> 0, 18);
+    local.writeUInt32LE(uncompressedField, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    local.writeUInt16LE(extra.length, 28);
+
+    const central = Buffer.alloc(CENTRAL_HEADER_SIZE);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE((3 << 8) | 20, 4);
+    central.writeUInt16LE(options.zip64Size ? 45 : 20, 6);
+    central.writeUInt16LE(options.method, 10);
+    central.writeUInt16LE(dosTime, 12);
+    central.writeUInt16LE(dosDate, 14);
+    central.writeUInt32LE(checksum, 16);
+    central.writeUInt32LE(compressedSize >>> 0, 20);
+    central.writeUInt32LE(uncompressedField, 24);
+    central.writeUInt16LE(nameBytes.length, 28);
+    central.writeUInt16LE(extra.length, 30);
+    central.writeUInt32LE(((0o100000 | 0o644) << 16) >>> 0, 38);
+    central.writeUInt32LE(0, 42);
+
+    const eocd = Buffer.alloc(EOCD_SIZE);
+    eocd.writeUInt32LE(0x06054b50, 0);
+    eocd.writeUInt16LE(1, 8);
+    eocd.writeUInt16LE(1, 10);
+    eocd.writeUInt32LE(CENTRAL_HEADER_SIZE + nameBytes.length + extra.length, 12);
+    eocd.writeUInt32LE(LOCAL_HEADER_SIZE + nameBytes.length + extra.length + options.data.length, 16);
+
+    return Buffer.concat([local, nameBytes, extra, options.data, central, nameBytes, extra, eocd]);
+}
+
+function onlyEntry(archive: Buffer) {
+    return parseZipIndex(archive).entries[0];
+}
+
+describe("readEntryBytes against an archive that lies about its sizes", () => {
+    // A miniature zip bomb: kilobytes on disk, megabytes out, and a directory
+    // entry claiming it is neither.
+    const expansion = Buffer.alloc(8 * 1024 * 1024, 0);
+    const deflatedExpansion = zlib.deflateRawSync(expansion);
+
+    it("returns a deflated entry that tells the truth about itself", () => {
+        const payload = Buffer.from("hello ".repeat(200));
+        const archive = forgeArchive({
+            name: "readme.txt",
+            method: ZIP_METHOD_DEFLATE,
+            data: zlib.deflateRawSync(payload),
+            declaredUncompressedSize: payload.length,
+        });
+        expect(readEntryBytes(archive, onlyEntry(archive)).equals(payload)).toBe(true);
+    });
+
+    it("refuses a deflate stream that expands past its declared size", () => {
+        const archive = forgeArchive({
+            name: "bomb.txt",
+            method: ZIP_METHOD_DEFLATE,
+            data: deflatedExpansion,
+            declaredUncompressedSize: 64,
+        });
+        expect(() => readEntryBytes(archive, onlyEntry(archive)))
+            .toThrow(/Failed to inflate "bomb\.txt" within its declared 64 bytes/);
+    });
+
+    it("refuses a deflate stream that stops short of its declared size", () => {
+        const payload = Buffer.from("half a file");
+        const archive = forgeArchive({
+            name: "truncated.txt",
+            method: ZIP_METHOD_DEFLATE,
+            data: zlib.deflateRawSync(payload),
+            declaredUncompressedSize: payload.length * 2,
+        });
+        expect(() => readEntryBytes(archive, onlyEntry(archive)))
+            .toThrow(/"truncated\.txt" yields 11 bytes but declares 22/);
+    });
+
+    it("refuses an entry that declares nothing and carries something", () => {
+        const archive = forgeArchive({
+            name: "sneaky.txt",
+            method: ZIP_METHOD_DEFLATE,
+            data: deflatedExpansion,
+            declaredUncompressedSize: 0,
+        });
+        expect(() => readEntryBytes(archive, onlyEntry(archive))).toThrow(/"sneaky\.txt"/);
+    });
+
+    it("reads an entry that is genuinely empty", () => {
+        // The ceiling's floor of 1 must not turn a zero-byte file into an error.
+        const archive = forgeArchive({
+            name: "empty.txt",
+            method: ZIP_METHOD_DEFLATE,
+            data: zlib.deflateRawSync(Buffer.alloc(0)),
+            declaredUncompressedSize: 0,
+        });
+        expect(readEntryBytes(archive, onlyEntry(archive)).length).toBe(0);
+    });
+
+    it("takes a zip64 entry's size from the extra field, not the saturated sentinel", () => {
+        const payload = Buffer.from("carried in the zip64 block");
+        const archive = forgeArchive({
+            name: "zip64.txt",
+            method: ZIP_METHOD_DEFLATE,
+            data: zlib.deflateRawSync(payload),
+            declaredUncompressedSize: payload.length,
+            zip64Size: true,
+        });
+        // Reading 0xffffffff as the size would leave the entry unbounded and
+        // then fail the equality check, so passing here means the extra field
+        // is what bounded the inflate.
+        expect(readEntryBytes(archive, onlyEntry(archive)).equals(payload)).toBe(true);
+    });
+
+    it("refuses a stored entry whose data span disagrees with its declared size", () => {
+        const archive = forgeArchive({
+            name: "asset.dat",
+            method: ZIP_METHOD_STORE,
+            data: Buffer.from("stored-payload"),
+            declaredUncompressedSize: 40,
+        });
+        expect(() => readEntryBytes(archive, onlyEntry(archive)))
+            .toThrow(/"asset\.dat" yields 14 bytes but declares 40/);
+    });
+
+    it("refuses a stored entry whose span runs off the end of the archive", () => {
+        const archive = forgeArchive({
+            name: "asset.dat",
+            method: ZIP_METHOD_STORE,
+            data: Buffer.from("stored-payload"),
+            declaredUncompressedSize: 4096,
+            declaredCompressedSize: 4096,
+        });
+        expect(() => readEntryBytes(archive, onlyEntry(archive))).toThrow(/"asset\.dat" yields \d+ bytes/);
     });
 });

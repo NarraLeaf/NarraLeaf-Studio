@@ -32,7 +32,7 @@ function Swatch(props: { color: string; active?: boolean; onPick: (color: string
                 props.active ? "border-fg ring-2 ring-fg/80 ring-offset-1 ring-offset-surface-raised" : "border-edge-strong"
             }`}
             style={{ backgroundColor: props.color }}
-            title={props.color}
+            data-tip={props.color} aria-label={props.color}
             onClick={() => props.onPick(props.color)}
         />
     );

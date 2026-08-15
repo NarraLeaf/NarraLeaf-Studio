@@ -24,7 +24,7 @@ export function BlueprintDebuggerToolbar(props: {
                 <ToolbarButton
                     size="sm"
                     aria-label={t("devMode.debugger.resume")}
-                    title={t("devMode.debugger.resume")}
+                    data-tip={t("devMode.debugger.resume")}
                     onClick={() => session?.resume()}
                 >
                     <Play className="h-3.5 w-3.5 text-primary" aria-hidden />
@@ -34,7 +34,7 @@ export function BlueprintDebuggerToolbar(props: {
                     size="sm"
                     active={snapshot.pausePending}
                     aria-label={t("devMode.debugger.pause")}
-                    title={t("devMode.debugger.pause")}
+                    data-tip={t("devMode.debugger.pause")}
                     onClick={() =>
                         snapshot.pausePending ? session?.cancelPauseRequest() : session?.requestPause()
                     }
@@ -46,7 +46,7 @@ export function BlueprintDebuggerToolbar(props: {
                 size="sm"
                 disabled={!paused}
                 aria-label={t("devMode.debugger.stepOver")}
-                title={t("devMode.debugger.stepOver")}
+                data-tip={t("devMode.debugger.stepOver")}
                 onClick={() => session?.stepOver()}
             >
                 <Redo2 className="h-3.5 w-3.5" aria-hidden />
@@ -55,7 +55,7 @@ export function BlueprintDebuggerToolbar(props: {
                 size="sm"
                 disabled={!paused}
                 aria-label={t("devMode.debugger.stepInto")}
-                title={t("devMode.debugger.stepInto")}
+                data-tip={t("devMode.debugger.stepInto")}
                 onClick={() => session?.stepInto()}
             >
                 <ArrowDownToLine className="h-3.5 w-3.5" aria-hidden />
@@ -64,7 +64,7 @@ export function BlueprintDebuggerToolbar(props: {
                 size="sm"
                 disabled={!paused}
                 aria-label={t("devMode.debugger.stepOut")}
-                title={t("devMode.debugger.stepOut")}
+                data-tip={t("devMode.debugger.stepOut")}
                 onClick={() => session?.stepOut()}
             >
                 <ArrowUpFromLine className="h-3.5 w-3.5" aria-hidden />

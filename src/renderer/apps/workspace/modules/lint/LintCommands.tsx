@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { ListChecks } from "lucide-react";
 import { Services } from "@/lib/workspace/services/services";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { useWorkspace } from "../../context";
@@ -36,6 +37,8 @@ export function LintCommands() {
             id: LINT_PROJECT_COMMAND_ID,
             titleKey: "lint.command.runProject",
             categoryKey: "lint.command.category",
+            // The report tab's own glyph (`openLintReportTab`): one sweep, one mark for it.
+            icon: <ListChecks className="w-4 h-4" />,
             run: () => {
                 openLintReportTab(context);
                 void runProjectLint(context).catch(error => {

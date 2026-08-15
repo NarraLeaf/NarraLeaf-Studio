@@ -19,6 +19,26 @@ export const documentDiff = {
         changed: "已改动（{fromBytes} → {toBytes}）",
         unread: "已改动，未查看内容",
     },
+    /**
+     * 素材：不读内容，只读文件头。
+     *
+     * 由 `vcs/diff/contentDiff.ts` 发出。每一行都是有条件的：把时长写在文件末尾的容器报不出时长，
+     * 名称表落在前缀之外的字体报不出字族。
+     *
+     * `changed` / `notInspected` / `unrecognized` 是三件不同的事，必须保持三句话：第一句是文件头
+     * 读到了、数值相同；第二句是这次比较没有花这些字节；第三句是 Studio 对这个格式永远说不出更多。
+     */
+    content: {
+        size: "大小（{fromBytes} → {toBytes}）",
+        dimensions: "尺寸（{fromWidth}×{fromHeight} → {toWidth}×{toHeight}）",
+        duration: "时长（{fromSeconds} 秒 → {toSeconds} 秒）",
+        sampleRate: "采样率（{fromHertz} Hz → {toHertz} Hz）",
+        family: "字族（{from} → {to}）",
+        changed: "内容已改动",
+        notInspected: "内容已改动，未读取文件头。",
+        unrecognized: "内容已改动。Studio 无法识别此格式。",
+        moved: "自 {from} 移动而来",
+    },
     summary: {
         title: "名称",
         count: "{name}",
@@ -30,16 +50,24 @@ export const documentDiff = {
         root: "文档本身",
     },
     count: {
+        appTags: "变体",
         assets: "素材",
         audioTracks: "音轨",
         brandColors: "配色",
         characterGroups: "角色分组",
         characters: "角色",
+        dictionaryWords: "词典词条",
         localizationKeys: "本地化键",
+        saveFields: "存档字段",
         storyBlocks: "故事行",
         storyChapters: "章节",
         storyScenes: "场景",
         translationUnits: "译文",
+        uiBlueprints: "蓝图",
+        uiComponents: "组件",
+        uiElements: "界面元素",
+        uiGraphNodes: "蓝图节点",
+        uiSurfaces: "界面",
         variables: "变量",
         voiceUnits: "语音",
     },
@@ -102,6 +130,82 @@ export const documentDiff = {
         removed: "删除译文",
         changed: "译文改动",
     },
+    /**
+     * 界面文档：界面与界面上的元素。
+     *
+     * 作者自己写的字（界面名、元素名）由 subject 带，画在这些标签旁边，所以这里不再重复它。
+     * `element*` 那几条是碎句：它们挂在「元素改动」下面，只说这个元素的哪一部分变了。
+     */
+    uiDocument: {
+        renamed: "界面文档改名",
+        surfaceAdded: "新增界面（{elements} 个元素）",
+        surfaceRemoved: "删除界面（{elements} 个元素）",
+        surfaceChanged: "界面改动",
+        surfaceRenamed: "改名",
+        /** 界面排版所用的设计区域，不是渲染分辨率。 */
+        surfaceDesignSize: "设计尺寸（{fromWidth}×{fromHeight} → {toWidth}×{toHeight}）",
+        surfaceSettings: "背景或页面动画改动",
+        surfaceRoot: "根元素改变",
+        surfaceField: "{field} 改动",
+        componentAdded: "新增组件（{elements} 个元素）",
+        componentRemoved: "删除组件（{elements} 个元素）",
+        componentChanged: "组件改动",
+        componentRenamed: "改名",
+        componentField: "{field} 改动",
+        elementAdded: "新增元素",
+        elementRemoved: "删除元素",
+        elementChanged: "元素改动",
+        elementRenamed: "改名",
+        /** 换了控件类型，比如文本变成按钮；两个类型 id 画成「旧 → 新」一对。 */
+        elementType: "元素类型改变",
+        /** 换了父级，不是同级重排——重排是 elementOrder 那条。 */
+        elementMoved: "移到了别的父级下",
+        elementOrder: "子元素顺序调整",
+        elementLayout: "位置或尺寸改动",
+        elementStyle: "样式改动",
+        elementProps: "内容改动",
+        elementBehavior: "行为改动",
+        elementBinding: "绑定改动",
+        elementAnimation: "动画改动",
+        elementField: "{field} 改动",
+    },
+    /**
+     * 蓝图文档：界面背后的逻辑。
+     *
+     * `nodeMoved` 是这一层的形状所围绕的那一条。拖动节点不改变玩家看到的任何东西，用跟改参数
+     * 一样的话去说它，就等于把「顺手理了理版面」抬到跟「改了游戏行为」同一级。所以它自成一行、
+     * 自带一个标记。
+     *
+     * 这里没有任何一条给节点起名字：节点类型是 `blueprint.event.head.appBoot` 这样的标识符，
+     * 它的人类名字来自编辑器自己的一张表，把标识符摆在作者面前会被读成作者自己写的字。
+     */
+    uiGraphs: {
+        /** 一个宿主槽位当前生效的是哪个蓝图。 */
+        ownerRecord: "生效蓝图改变",
+        blueprintAdded: "新增蓝图（{nodes} 个节点）",
+        blueprintRemoved: "删除蓝图（{nodes} 个节点）",
+        blueprintChanged: "蓝图改动",
+        blueprintRenamed: "改名",
+        /** TypeScript 蓝图，整个程序就是一份代码。 */
+        blueprintSource: "代码改动",
+        blueprintField: "{field} 改动",
+        graphAdded: "新增图（{nodes} 个节点）",
+        graphRemoved: "删除图（{nodes} 个节点）",
+        graphChanged: "图改动",
+        graphRenamed: "改名",
+        graphField: "{field} 改动",
+        graphOrder: "图的顺序调整",
+        nodeAdded: "新增节点",
+        nodeRemoved: "删除节点",
+        nodeChanged: "节点改动",
+        nodeParams: "取值改动",
+        /** 在画布上拖动过。说得平直，是为了让它同样容易被略过。 */
+        nodeMoved: "在画布上移动",
+        nodeType: "节点类型改变",
+        nodeField: "{field} 改动",
+        edgeAdded: "新增连线",
+        edgeRemoved: "删除连线",
+    },
     assets: {
         added: "新增素材",
         removed: "删除素材",
@@ -115,6 +219,8 @@ export const documentDiff = {
         summaryHint: "没有比较内容本身，这些是两个版本各自报告的数字",
         structural: "结构级",
         structuralHint: "仅按 JSON 结构比较，所以生成的 id 和重排过的数组都会被算成改动",
+        content: "仅格式信息",
+        contentHint: "比较的是文件自述的信息，没有比较内容本身",
         opaque: "未读取",
         opaqueHint: "文件过大、非文本或无法读取，只能报告体积",
     },
@@ -126,15 +232,93 @@ export const documentDiff = {
         emptyFormatting: "只有格式变了",
         emptyUntracked: "编辑器记录的内容没有变化",
         emptyCounts: "总数没有变化",
-        notInspected: "该文件未被查看",
         moreInGroup: "另有 {count} 处",
-        viewAll: "查看全部 {count} 处",
         showing: "已显示 {shown} / {total}",
     },
     rail: {
-        expand: "展开内部改动",
-        collapse: "收起内部改动",
         compareWithPrevious: "与上一个版本对比",
+    },
+    /** 某一种格式自己的详情面板所加的词（`renderer/lib/vcs/presenters`）。变更本身怎么读仍在上面的分档键里。 */
+    presenter: {
+        /** 两个版本的称呼，所有格式共用一份，避免同一个词在一次对比里出现两种写法。 */
+        before: "更改前",
+        after: "更改后",
+        image: {
+            modeLabel: "对比方式",
+            sideBySide: "并排",
+            swipe: "滑动分割",
+            difference: "差异",
+            splitPosition: "分割位置",
+            /** 差异模式要求两边像素一一对应，尺寸不同就无从相减。 */
+            sizeDiffers: "两个版本尺寸不同，无法逐像素比较",
+            /** 画面位置上可能出现的四种状态，各自是不同的事实，不合并成一句。 */
+            tooLarge: "该文件过大，无法在此显示",
+            unsupported: "该图片格式无法在此显示",
+            unreadable: "该图片无法读取",
+        },
+        audio: {
+            play: "播放",
+            pause: "暂停",
+            /** 解码后得到的声道数。 */
+            mono: "单声道",
+            stereo: "立体声",
+            channels: "{count} 声道",
+            /**
+             * 波形位置上可能出现的四种状态。
+             *
+             * `tooLarge` 说的是文件，它从未被读取；`tooLong` 说的是声音本身：字节已经在手上，
+             * 解码它要占用的内存超出预览允许的额度，所以下方的数字照常给出，只是不画波形。
+             */
+            tooLarge: "该文件过大，无法在此播放",
+            tooLong: "该音轨过长，无法在此预览",
+            unreadable: "该音频无法读取",
+        },
+        font: {
+            sizeLabel: "字号",
+            /** 样张同时含中英文：只看拉丁字母看不出中文字形是否随字体一起装上。 */
+            sample: "The quick brown fox 0123 汉字排版样张",
+            unreadable: "该字体无法加载",
+            tooLarge: "该文件过大，无法在此显示",
+        },
+        brand: {
+            added: "新增",
+            removed: "删除",
+            unreadable: "该调色板无法读取",
+            tooLarge: "该文件过大，无法在此显示",
+            unchangedOne: "另有 1 个颜色未变",
+            unchangedMany: "另有 {count} 个颜色未变",
+            /** 指向本调色板另一个条目、但最终没有落到颜色上的值：名字不存在，或者成环。 */
+            unresolved: "无颜色",
+        },
+    },
+    /** 变更文件的分组标题，用作者编辑它们的面板名，而不是它们在磁盘上的目录名。 */
+    category: {
+        story: "故事",
+        characters: "角色",
+        interface: "界面",
+        assets: "素材",
+        localization: "本地化",
+        audio: "音频",
+        settings: "项目",
+        other: "其他",
+    },
+    /** 对比的两栏：左边是变更文件索引，右边是其中一个文件的改动。 */
+    shell: {
+        fileList: "变更文件",
+        resize: "调整文件列表宽度",
+        selectPrompt: "展开一个分组并选中文件，即可查看其中的改动",
+        changes: {
+            one: "{count} 处改动",
+            other: "{count} 处改动",
+        },
+        fileAdded: "新增",
+        fileRemoved: "删除",
+        fileMoved: "移动",
+        /** 每组只说一次，不逐行重复；具体是哪一种，写在该文件自己的详情里。 */
+        partial: {
+            one: "本组有 {count} 个文件未被完整比较",
+            other: "本组有 {count} 个文件未被完整比较",
+        },
     },
     tab: {
         workingTree: "改动",
@@ -157,7 +341,11 @@ export const documentDiff = {
      * 是在跟同伴的改动对齐，不是在做三路合并。
      *
      * `notSaved` 是这整个界面之所以诚实的那一句——哪些冲突已经决定过，没有任何地方读得出来，
-     * 所以这份记录只属于这个窗口；说出来，好过暗示一份关掉标签页就没了的进度。
+     * 所以这份记录属于 Studio 而不属于仓库；说出来，好过暗示工程自己知道这份进度。
+     *
+     * 它原本还写着「仅在本窗口打开期间有效」，那句当时是真的，现在不是了：选择存在工程旁边的
+     * 一份草稿里（`mergeDecisionDraft`）。没变的是要紧的那一半——按下完成之前一个文件都不动，
+     * 所以现在只说这一句。草稿存在哪里不该由这行文案解释。
      */
     resolve: {
         tab: "合并",
@@ -173,12 +361,18 @@ export const documentDiff = {
         takeAllMine: "全部保留我的",
         takeAllTheirs: "全部保留对方的",
         rowsOmitted: "另有 {count} 个文件未列出，可用上方的两个链接一次性选择",
+        /** 两栏：左边是有冲突的文件，右边是选中文件内部的变更。 */
+        fileList: "有冲突的文件",
+        decision: "保留哪一边",
+        /** 三态里唯一带标记的一态：它是拦住「完成合并」的那一态，必须一眼找得到。 */
+        pending: "尚未选边",
+        selectPrompt: "选中一个文件，查看其中的变更",
         finish: "完成合并",
         finishUndecided: {
             one: "还有 {count} 个文件没选边",
             other: "还有 {count} 个文件没选边",
         },
-        notSaved: "这些选择仅在本窗口打开期间有效；按下完成之前不会写入任何文件",
+        notSaved: "完成合并之前不会写入任何文件",
         abandon: "放弃合并",
         abandonConfirm: "放弃这次合并？",
         abandonConfirmDetail:
@@ -215,5 +409,40 @@ export const documentDiff = {
                 unreadable: "两个版本中有一个无法读取，因此只能整份取一边",
             },
         },
+    },
+    /** 把一个页面 / 一张图的两个版本并排画出来，改动直接盖在原处。两块画布共用同一套词。 */
+    canvas: {
+        before: "更改前",
+        after: "更改后",
+        surfaceLabel: "页面",
+        graphLabel: "蓝图",
+        unnamed: "未命名",
+        /** `moved` 特意写清楚它为什么画得最淡：它不改变游戏的行为。 */
+        legend: {
+            added: "新增",
+            removed: "删除",
+            changed: "已修改",
+            moved: "仅位置变动",
+        },
+        markLabel: "查看这条改动",
+        /** 与蓝图编辑器同一个词：同一张图、同一个结果，换个说法会被读成另一种行为。 */
+        fitView: "适应视图",
+        oneChange: "当前只看一条改动",
+        showAll: "显示全部改动",
+        /** 画布没有标出来的那些改动，一行说清；标了九条却不说另外三条，读起来就像一共只有九条。 */
+        notMarked: {
+            one: "另有 {count} 条改动没有标在这里：",
+            other: "另有 {count} 条改动没有标在这里：",
+        },
+        onOtherPages: "{count} 条在其他页面",
+        onOtherGraphs: "{count} 条在其他蓝图",
+        offCanvas: "{count} 条无法画在页面上",
+        /** 组件内部的元素本来就不带 id：同一个组件的每个实例共用内部 id，带上就分不清是哪一处放置。 */
+        unplaced: "{count} 条在画面上定位不到",
+        notDrawn: "该版本的页面无法绘制",
+        emptyGraph: "这张图里没有节点",
+        tooLarge: "该文件过大，无法在此绘制",
+        unreadable: "该文件无法按界面文档读取：{error}",
+        readFailed: "该版本无法读取：{error}",
     },
 } satisfies LocaleNamespace<"documentDiff">;

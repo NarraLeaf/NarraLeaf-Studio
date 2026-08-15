@@ -12,9 +12,11 @@ src/shared/i18n/
   locales.ts          Locale registry: SUPPORTED_LOCALES, LOCALE_META, normalizeLocale()
   translator.ts       createTranslator(locale) -> { t, tn, has, formatNumber/Date/List }
   catalog/
-    en.ts             Source of truth. Every key lives here (`as const`).
-    zh.ts / ja.ts     Other locales (satisfies LocaleMessages — may be partial).
-    types.ts          Messages / TranslationKey / PluralKey / LocaleMessages
+    en/               Source of truth. Every key lives here, one file per namespace (`as const`).
+    zh/ , ja/         Other locales. Same file names; each `satisfies LocaleNamespace<"…">`,
+                      so a key may be missing (it falls back to en) but a stray one is an error.
+                      `parity.test.ts` then requires a built-in locale to translate every en key.
+    types.ts          Messages / TranslationKey / PluralKey / LocaleMessages / LocaleNamespace
     index.ts          CATALOGS registry
   index.ts            Barrel — import from "@shared/i18n"
 
@@ -55,7 +57,7 @@ function Save() {
 
 ## Adding / changing strings
 
-1. Add the key to `catalog/en.ts` (this defines the type — do it first).
+1. Add the key to `catalog/en/<namespace>.ts` (this defines the type — do it first).
 2. Translate it in the other locales. They're typed `satisfies LocaleMessages`,
    so a typo or wrong shape fails the build; a *missing* key is allowed and falls
    back to English at runtime, so you can translate incrementally.
@@ -68,9 +70,10 @@ namespace tree shallow-ish and named after the app/panel it serves.
 The system is in place; converting a surface is mechanical:
 
 1. `const { t } = useTranslation();`
-2. Move each visible literal into `catalog/en.ts` under the surface's namespace.
+2. Move each visible literal into `catalog/en/<namespace>.ts`, under the surface's namespace.
 3. Replace the literal with `t("namespace.key")`.
-4. Translate the new keys in `zh.ts` (and others) as desired.
+4. Translate the new keys in every other locale (`catalog/zh/…`, `catalog/ja/…`);
+   `catalog/parity.test.ts` fails until they are all there.
 
 Reference conversions already done: the Settings window
 (`apps/settings/SettingsApp.tsx` + `SettingsExplorer.tsx`, including the live
@@ -92,11 +95,15 @@ picker is the worked example.
 
 1. Append the code to `SUPPORTED_LOCALES` in `locales.ts`.
 2. Add its `LOCALE_META` entry (native/English name, BCP-47 `intl` tag, `dir`).
-3. Create `catalog/<code>.ts` (`satisfies LocaleMessages`) and register it in
-   `catalog/index.ts`.
+3. Create `catalog/<code>/` with one file per namespace (each
+   `satisfies LocaleNamespace<"…">`) plus its `index.ts`
+   (`satisfies LocaleMessages`), and register that catalog in `catalog/index.ts`.
 
 The Settings language picker, formatters, and fallback all read the registry, so
-nothing else changes.
+nothing else changes. `catalog/parity.test.ts` covers every locale in `CATALOGS`
+automatically, so step 3 is not optional once the code is in the registry: a
+built-in locale has to translate every English key (only the `.one` plural forms
+are exempt, for locales with a single plural form such as zh and ja).
 
 ## Notes / trade-offs
 

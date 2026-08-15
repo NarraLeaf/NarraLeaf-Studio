@@ -486,7 +486,10 @@ export const workspace = {
                 voice: "语音库",
                 variables: "变量注册表",
                 audioTracks: "音频轨道",
+                appTags: "变体",
                 brand: "配色方案",
+                dictionary: "工程词典",
+                saveSchema: "存档字段",
                 characters: "角色",
                 project: "项目设置",
                 assets: "资产库",
@@ -609,11 +612,16 @@ export const workspace = {
             // 没有消息的版本会在上面的列表里用自己的编号称呼自己。
             commitPlaceholder: "这次改了什么？（可选）",
             commitMessage: "版本说明",
+            authorLabel: "提交版本记录的作者",
+            authorPlaceholder: "作者名",
+            authorSave: "保存",
             // 绝不是瞬时的：管线要先把这个窗口没保存的东西落完，再暂存整个工程，然后等后端把它的
             // store 写到磁盘上。
             committing: "正在提交这个版本…",
             // 「还没人看过」，这和「干净」不是一回事——而这个区别很重要，因为「看」就是一次扫描，
             // 这个界面绝不自己发起。
+            nothingToCommit: "自上个版本以来没有变更",
+            closingWithApp: "Studio 正在关闭，重启后再试",
             changesUnknown: "未检查",
             noChanges: "没有变更",
             changesCount: "{count} 项变更",
@@ -639,8 +647,35 @@ export const workspace = {
             // 作者会以为自己看全了要提交的东西，然后就提交了。
             changesMore: "还有 {count} 项未显示",
             // 检查点是 Studio 按计时器记下的；写一天下来会有几十个。
+            command: {
+                openRail: "打开版本控制",
+                commit: "提交版本",
+                refreshChanges: "检查变更",
+                compareChanges: "与上一个版本比较变更",
+            },
+            filterPlaceholder: "按名称或编号查找版本",
+            filterNoMatch: "已读取的 {count} 个版本里没有匹配",
+            today: "今天",
+            yesterday: "昨天",
+            compareBase: {
+                set: "让其他版本与这个版本比较",
+                clear: "不再与这个版本比较",
+                current: "正在与 {version} 比较",
+                compare: "与 {version} 比较",
+            },
             showCheckpoints: "显示 {count} 个检查点",
             hideCheckpoints: "隐藏检查点",
+            systemMessage: {
+                unnamed: "未命名的版本",
+                enabled: "已启用版本控制",
+                created: "已创建工程",
+                merge: "合并",
+                checkpoint: "检查点",
+                checkpointClose: "关闭工程前的检查点",
+                checkpointBuild: "构建前的检查点",
+                checkpointRestore: "还原前的检查点",
+                restored: "还原到 {version}",
+            },
             // 版本控制是**可选能力**——Epic 不为 macOS Intel 与 Windows ARM64 提供原生后端——所以
             // 这两句话不一样，因为作者只有其中一种情况能自己动手。两者都不渲染成禁用控件：在那些
             // 机器上这个功能从未发货，灰掉的轨道会把一台好机器说成装坏了。
@@ -655,6 +690,15 @@ export const workspace = {
                 // 没连服务器——在有人明确说要连之前，每个工程都是这个状态。
                 none: "没有连接服务器",
                 connect: "连接服务器",
+                picker: {
+                    title: "连接服务器",
+                    nameLabel: "在服务器上的名称",
+                    namePlaceholder: "my-game",
+                    empty: "尚未添加服务器",
+                    // 列表的最后一行。省略号是「会打开别处」的既有写法：它打开设置并关闭本对话框。
+                    add: "添加服务器…",
+                    manual: "其他地址",
+                },
                 // 只有这一个字段。实测：后端只保留 URL 的**源**，仓库靠它自己的 id 认，
                 // 所以真的没有第二样东西要填——旁边不需要「仓库名」。
                 addressLabel: "服务器地址",
@@ -685,6 +729,50 @@ export const workspace = {
                 sync: "从服务器获取",
                 syncing: "正在从服务器获取版本…",
                 syncedNothing: "已是最新",
+                signIn: {
+                    required: "这台服务器要求先登录，然后才能把项目指向它。",
+                    open: "登录此服务器",
+                    signedInAs: "已登录为 {name}",
+                    signOut: "退出登录",
+                    addressLabel: "登录地址",
+                    addressPlaceholder: "https://studio.example.lan:41402",
+                    tokenLabel: "访问令牌",
+                    tokenPlaceholder: "粘贴你拿到的令牌",
+                    hint: "令牌由服务器的管理者签发并交给你。",
+                    trust: {
+                        open: "在这台电脑上信任该服务器",
+                        title: "信任该服务器？",
+                        vouched: "你粘贴的令牌点名了这个证书发放机构，在那个地址上应答的也正是它。",
+                        compare: "请通过这条连接以外的途径，与服务器管理者给你的指纹核对。",
+                        authorityLabel: "颁发者",
+                        fingerprintLabel: "指纹",
+                        meaning: "持有该机构密钥的任何一方，都能为任意地址签发证书，而这个账户都会相信。受影响的只有这台电脑上的这个账户。",
+                        manual: "这个系统没有按账户的信任库，Studio 无法代劳。请运行下面这条命令，然后重新登录：",
+                        copy: "复制命令",
+                        confirm: "信任",
+                        cancel: "取消",
+                    },
+                    submit: "登录",
+                    cancel: "取消",
+                    reach: {
+                        ready: "此服务器与这份 Studio 可以协同工作。",
+                        notPermitted: "已登录，但该账号尚未获得此项目的访问权。请向服务器的管理者申请。",
+                        dataPortSilent: "已登录，但服务器本身没有响应。",
+                    },
+                    problem: {
+                        scheme: "登录地址必须以 https:// 或 ucs-auth:// 开头。",
+                        token: "这不是此服务器签发的令牌。请粘贴你拿到的完整令牌。",
+                        address: "这个令牌没有写明去哪里登录，所以还需要地址。",
+                        certificate:
+                            "这台电脑尚未被告知信任此服务器所用的证书颁发机构。它的指纹是 {fingerprint}。",
+                        mismatch:
+                            "那个地址上的服务器不是这个令牌对应的那一台。令牌点名的是 {expected}，"
+                            + "应答的却是 {found}。不要信任它，请向服务器的管理者核实。",
+                        unreachable: "该地址没有任何响应（{detail}）。",
+                        refused: "服务器不接受该令牌（{detail}）。",
+                        unknown: "登录未能完成（{detail}）。",
+                    },
+                },
             },
             // 同步时合不拢的文件。用常驻通知而不是行内错误：同步在收尾时会离开版本视图，
             // 而轨道会因为这个状态变化重新读一遍，行内错误在有人看见之前就被清掉了。
@@ -826,7 +914,8 @@ export const workspace = {
             occurrences: "×{count}",
         },
         // 标题栏里类 PyCharm 的项目选择器：显示当前项目名，下拉列出最近工作区。
-        // 从这里打开的项目各自开一个新窗口，当前窗口留在原地，所以这行文案说的是"打开"不是"切换"。
+        // 从这里选的项目既可以换到当前窗口，也可以另开一个窗口，所以文案说的是「打开」不是「切换」，
+        // 由 `openTarget` 那个对话框问清楚。
         projectSwitcher: {
             openAnother: "打开其他项目",
             recentProjects: "最近项目",
@@ -835,6 +924,14 @@ export const workspace = {
             newProject: "新建项目…",
             noRecent: "无最近工作区",
             untitled: "未命名项目",
+            // 选中项目之后、真正打开之前问的一句。对话框已经写出选中的项目，
+            // 这行说的是当前窗口里那个项目会怎么样，也是按钮上说不出来的部分。
+            openTarget: {
+                title: "打开项目",
+                detail: "在当前窗口打开会关闭「{current}」，未保存的更改会自动保存",
+                thisWindow: "在当前窗口打开",
+                newWindow: "在新窗口打开",
+            },
         },
         closeConfirm: {
             message: "关闭当前工作区？",

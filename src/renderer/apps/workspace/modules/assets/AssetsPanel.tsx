@@ -261,10 +261,11 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         refresh: refreshSnapshot,
         bytesByAssetId,
         referencedAssetIds,
+        usageUnknownAssetIds,
     } = useAssetLibrarySnapshot(context, viewMode === "overview" || filtersNeedLibrarySnapshot(activeFilters));
 
     const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups, matchedGroupIds } =
-        useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds });
+        useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds });
 
     /**
      * A search or a filter is narrowing the library. The views read this to stop hiding hits: the
@@ -618,7 +619,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                 <button
                                     onClick={handleRefresh}
                                     disabled={loading}
-                                    title={t("common.refresh")}
+                                    data-tip={t("common.refresh")}
                                     aria-label={t("common.refresh")}
                                     className="p-1 rounded-md hover:bg-fill"
                                 >
@@ -661,7 +662,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                             setSearchQuery("");
                                         }}
                                         className="h-9 w-9 flex items-center justify-center rounded-md border border-edge-strong bg-fill-subtle text-fg-muted hover:bg-fill"
-                                        title={t("assets.closeSearch")}
+                                        data-tip={t("assets.closeSearch")} aria-label={t("assets.closeSearch")}
                                     >
                                         <X className="w-4 h-4" />
                                     </button>
@@ -682,7 +683,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                                 ? "border-primary bg-primary/10 text-primary"
                                                 : "border-edge-strong bg-fill-subtle text-fg-muted hover:bg-fill"
                                         }`}
-                                        title={t("assets.searchTooltip")}
+                                        data-tip={t("assets.searchTooltip")} aria-label={t("assets.searchTooltip")}
                                     >
                                         <Search className="w-4 h-4" />
                                     </button>
@@ -695,7 +696,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                     type="button"
                                     onClick={assetsIconToolbarCenter.onBack}
                                     className="p-1 rounded-md hover:bg-fill shrink-0"
-                                    title={t("assets.backToParent")}
+                                    data-tip={t("assets.backToParent")} aria-label={t("assets.backToParent")}
                                 >
                                     <ChevronLeft className="w-4 h-4" />
                                 </button>
@@ -718,7 +719,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                 <button
                                     onClick={handleRefresh}
                                     disabled={loading}
-                                    title={t("common.refresh")}
+                                    data-tip={t("common.refresh")}
                                     aria-label={t("common.refresh")}
                                     className="p-1 rounded-md hover:bg-fill"
                                 >
@@ -821,7 +822,7 @@ function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mo
                 <button
                     key={id}
                     type="button"
-                    title={label}
+                    data-tip={label} aria-label={label}
                     aria-pressed={mode === id}
                     onClick={() => onChange(id)}
                     className={`p-1 rounded-md ${mode === id ? "bg-primary/80 text-on-primary" : "text-fg-muted hover:bg-fill"}`}

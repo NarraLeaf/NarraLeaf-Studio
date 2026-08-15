@@ -25,6 +25,8 @@ Unlike traditional lightweight editors, NarraLeaf Studio does not require users 
 
 ### NarraLeaf Team
 
+[NarraLeaf Team](https://github.com/NarraLeaf/NarraLeaf-Team) is the collaboration solution for NarraLeaf Studio. It deploys easily onto a device on your own network or a remote container, and gives everyone on the team central version management and real-time collaboration (in development). With Team, creators sync the team's projects and start working right away.
+
 ### Game Compatibility
 
 For game compatibility, see [docs/game-compatibility.md](docs/game-compatibility.md).

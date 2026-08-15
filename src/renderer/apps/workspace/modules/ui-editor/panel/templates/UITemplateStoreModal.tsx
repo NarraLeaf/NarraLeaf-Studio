@@ -3,6 +3,7 @@ import { AlertTriangle, ChevronLeft, LayoutTemplate, RefreshCw } from "lucide-re
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { Button, EmptyState, Modal, SearchInput, TabStrip } from "@/lib/components/elements";
+import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import type { UIStageSlotId, UISurface, UISurfaceKind } from "@shared/types/ui-editor/document";
@@ -180,7 +181,7 @@ export function UITemplateStoreModal({
 
     const placementLabel = useCallback((entry: UITemplateRegistryEntry): string => {
         if (entry.surface.kind === "stageSurface") {
-            return t(`uiEditor.templateStore.slot.${entry.surface.slotId ?? "onStage"}`);
+            return getStageSlotLabel(entry.surface.slotId ?? "onStage", t);
         }
         return t("uiEditor.templateStore.placement.page");
     }, [t]);
@@ -194,7 +195,7 @@ export function UITemplateStoreModal({
         if (!occupiedStageSlotIds.has(slotId)) {
             return undefined;
         }
-        return t("uiEditor.templateStore.slotTaken", { slot: t(`uiEditor.templateStore.slot.${slotId}`) });
+        return t("uiEditor.templateStore.slotTaken", { slot: getStageSlotLabel(slotId, t) });
     }, [occupiedStageSlotIds, t]);
 
     const handleApply = async (entry: UITemplateRegistryEntry) => {
@@ -212,7 +213,7 @@ export function UITemplateStoreModal({
                 const slot = result.skippedSlots[0];
                 onNotify(
                     slot
-                        ? t("uiEditor.templateStore.slotTaken", { slot: t(`uiEditor.templateStore.slot.${slot}`) })
+                        ? t("uiEditor.templateStore.slotTaken", { slot: getStageSlotLabel(slot, t) })
                         : t("uiEditor.templateStore.error.apply"),
                     "warning",
                 );
@@ -376,7 +377,7 @@ export function UITemplateStoreModal({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => { setOpenThemeId(null); setDetailId(null); }}
-                                title={t("uiEditor.templateStore.themesBack")}
+                                data-tip={t("uiEditor.templateStore.themesBack")}
                                 aria-label={t("uiEditor.templateStore.themesBack")}
                             >
                                 <ChevronLeft className="h-4 w-4" />
@@ -396,7 +397,7 @@ export function UITemplateStoreModal({
                         size="sm"
                         onClick={() => void refresh()}
                         disabled={loading}
-                        title={t("uiEditor.templateStore.retry")}
+                        data-tip={t("uiEditor.templateStore.retry")}
                         aria-label={t("uiEditor.templateStore.retry")}
                     >
                         <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />

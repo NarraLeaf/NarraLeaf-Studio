@@ -1,8 +1,14 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
-import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
+import { BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "./gameProgress";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
@@ -24,6 +30,7 @@ import type {
     SigningInspectResult,
 } from "./signing";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
+import type { ServerTrustPromptProps } from "./serverTrust";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type {
@@ -48,12 +55,19 @@ import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type {
+    AvailableSpellcheckDictionary,
+    InstalledSpellcheckDictionary,
+    SpellcheckRange,
+    SpellcheckStatus,
+} from "./spellcheck";
+import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "./vcs";
+import type { VcsServerProbe } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -106,6 +120,13 @@ export interface RendererPreloadedInterface {
     getAppInfo(): Promise<RequestStatus<AppInfo>>;
     getWindowProps<T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>>;
     terminate(err?: string): Promise<void>;
+    /**
+     * Record a renderer failure in the main-process log, which outlives this window.
+     *
+     * Reporting only. Nothing about what the window does next is decided here - that is the
+     * caller's business, and most callers keep running.
+     */
+    reportError(report: RendererErrorReport): void;
 
     // Window
     window: {
@@ -124,6 +145,16 @@ export interface RendererPreloadedInterface {
             getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
             onFullscreenChanged(handler: (payload: { isFullscreen: boolean }) => void): AppEventToken;
         };
+        /**
+         * The same controls, for a window this one detached part of itself into (see
+         * `detachedWindowGuard` in the main process). Named rather than implicit: a detached popup
+         * sends IPC through its opener, so `control.close()` from the buttons drawn in that popup
+         * would close the window it was detached FROM.
+         */
+        detachedControl(
+            key: string,
+            control: "status" | "minimize" | "toggleMaximize" | "close",
+        ): Promise<RequestStatus<{ status: WindowVisibilityStatus }>>;
     };
 
     // File System
@@ -296,11 +327,56 @@ export interface RendererPreloadedInterface {
         requestWorkspaceView(view: WorkspaceViewRequest): Promise<RequestStatus<{ delivered: boolean }>>;
         /** Open an http(s) URL in the system browser (other schemes are refused). */
         openExternal(url: string): Promise<RequestStatus<void>>;
+        /**
+         * Studio's own spellchecker, which runs in the main process.
+         *
+         * It is here rather than in the renderer for two reasons that both hold whatever the
+         * renderer does about them. The dictionaries are downloaded, and every remote byte in this
+         * app goes through main. And the checking itself needs a thread the renderer does not have:
+         * the window document is `file://` while its scripts are `app://`, so no Web Worker can be
+         * started, and a scene checked on every keystroke on the renderer's own thread is a stutter
+         * the author feels.
+         *
+         * The project dictionary is a document the workspace owns; {@link configure} is only how its
+         * words reach the checker.
+         */
+        spellcheck: {
+            /** Tell the checker about this project: the language of its script, and the words it keeps. */
+            configure(sourceLocale: string, words: string[]): Promise<RequestStatus<SpellcheckStatus>>;
+            /** Forget this window's project words, so the next project does not inherit them. */
+            clear(): Promise<RequestStatus<void>>;
+            /** What spellchecking is doing now, including every language a dictionary is installed for. */
+            getStatus(): Promise<RequestStatus<SpellcheckStatus>>;
+            /**
+             * The misspellings in one run of plain text. `start`/`end` are offsets into `text`; the
+             * caller maps them back onto whatever it built the string from.
+             */
+            check(text: string, language: string): Promise<RequestStatus<{ ranges: SpellcheckRange[] }>>;
+            /** Replacements for one misspelling, nearest first, at most five. */
+            suggest(word: string, language: string): Promise<RequestStatus<{ suggestions: string[] }>>;
+            /** The dictionaries on this machine. No network. */
+            listInstalled(): Promise<RequestStatus<{ languages: InstalledSpellcheckDictionary[] }>>;
+            /** The dictionaries the registry offers, with their licences. Goes to the network. */
+            listAvailable(): Promise<RequestStatus<{ entries: AvailableSpellcheckDictionary[] }>>;
+            /** Fetch one dictionary into the cache. Author-initiated, and sha256-verified. */
+            download(code: string): Promise<RequestStatus<{ ok: boolean }>>;
+            /** Delete one dictionary from the cache. */
+            remove(code: string): Promise<RequestStatus<{ ok: boolean }>>;
+        };
         /** Pick + store a custom background image; returns the stored filename (null = cancelled). */
         pickBackgroundImage(): Promise<RequestStatus<{ file: string | null }>>;
         /** Read a stored background image's bytes (basename lookup only). */
         readBackgroundImage(file: string): Promise<RequestStatus<{ data: Uint8Array | null }>>;
         launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<{ created: boolean; projectPath: string } | null>>;
+        /**
+         * Ask the author whether a server is trusted, and answer with what the machine
+         * believes afterwards.
+         *
+         * On `app` rather than `vcs` because it needs no project: the window opens over
+         * Settings and over a workspace alike, and trust belongs to the account. Resolves
+         * once the window is gone; a window closed without an answer resolves `false`.
+         */
+        promptServerTrust(props: ServerTrustPromptProps): Promise<RequestStatus<{ trusted: boolean }>>;
         state: {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
@@ -517,6 +593,15 @@ export interface RendererPreloadedInterface {
         /** File contents at a revision, base64-encoded. */
         readBlob(projectPath: string, revision: RevisionId, path: string): Promise<RequestStatus<{ contentBase64: string }>>;
         /**
+         * The same file as the working tree holds it now, base64-encoded.
+         *
+         * The comparison's other side, and narrow by design: one repository-relative path, under
+         * version control, under a size ceiling. `refusal: "tooLarge"` with no content is an
+         * answer about a file that is really there. A path outside the project or outside version
+         * control is a failure instead, because no comparison can name one.
+         */
+        readWorkingFile(projectPath: string, path: string): Promise<RequestStatus<VcsWorkingFileRead>>;
+        /**
          * Every document at one revision, base64-encoded, in one round trip.
          *
          * `contentBase64: null` means the revision does not contain that path - which is
@@ -651,6 +736,60 @@ export interface RendererPreloadedInterface {
          */
         getSyncState(projectPath: string): Promise<RequestStatus<VcsSyncState>>;
         /**
+         * Who this installation is signed in to this project's server as, or null.
+         *
+         * A LOCAL read - no socket - so a panel may ask it on open. Null on a project
+         * whose server does not ask who is calling, which is every bare `loreserver`.
+         */
+        getServerSession(projectPath: string): Promise<RequestStatus<{ session: VcsServerSession | null }>>;
+        /**
+         * Sign this installation in to this project's server with a token its operator
+         * issued.
+         *
+         * **Goes to the network**, and to two different places: the sign-in endpoint,
+         * then the server itself so the answer can say whether the two ends can work
+         * together. Failures carry a coded reason rather than a sentence, because the
+         * backend reports four unrelated transport problems with one string.
+         *
+         * The token is handed on and forgotten. It is not stored by Studio and does not
+         * come back in the response.
+         */
+        signIn(projectPath: string, authUrl: string, token: string): Promise<RequestStatus<VcsSignInOutcome>>;
+        /**
+         * Put a server's certificate authority into this account's trust store.
+         *
+         * **Changes a setting of the operating system**, which nothing else on this
+         * interface does. Only a certificate Studio itself wrote is eligible.
+         */
+        trustAuthority(projectPath: string, certificatePath: string): Promise<RequestStatus<{ installed: boolean; output: string }>>;
+        /** Clear the stored token and Studio's record of whose it was. Local. */
+        signOut(projectPath: string): Promise<RequestStatus<{ session: null }>>;
+        /**
+         * Ask an `nlteam://` address what is behind it.
+         *
+         * **Goes to the network.** The first step of adding a server, and the only one
+         * that happens before the author has decided anything: the answer says whether
+         * to carry on, to ask about a certificate, or to say nothing was there.
+         */
+        probeServer(address: string): Promise<RequestStatus<VcsServerProbe>>;
+        /**
+         * Every server this installation is signed in to. A local read, and the only
+         * one of these calls that takes no project.
+         *
+         * Settings is the caller: servers belong to the machine, so they are listed and
+         * managed with no project open.
+         */
+        listServers(): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
+        /**
+         * Sign in to the server a token names, rather than to a project's server.
+         *
+         * **Goes to the network.** Pass empty strings for the two addresses: a token
+         * carries both, and they are asked for only after this answers that it does not.
+         */
+        addServer(authUrl: string, remoteUrl: string, token: string): Promise<RequestStatus<VcsAddServerOutcome>>;
+        /** Take a server off this machine, token and record together. Local. */
+        forgetServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
+        /**
          * Send this branch's revisions to the server. Writes nothing locally, so a
          * failure leaves the project exactly as it was.
          *
@@ -724,6 +863,26 @@ export interface RendererPreloadedInterface {
         macIdentities(): Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>;
     };
 
+    /**
+     * Plugin build-config secrets, in the same machine vault the signing
+     * passwords live in. The value goes up once and a handle comes back; there is
+     * no entry that reads a value out.
+     */
+    pluginBuildSecret: {
+        /**
+         * Seal `value` and answer the handle the project stores. Pass `handle` to
+         * fill in one the project already refers to. `value` is plain text - do
+         * not log it or hold it after the call resolves.
+         */
+        set(value: string, handle?: string): Promise<RequestStatus<{ handle: string; available: boolean }>>;
+        /**
+         * Whether the secret behind a handle is on this machine. False is the
+         * ordinary answer for a project a collaborator configured, and means
+         * "set, not available here" rather than "empty".
+         */
+        available(handle: string): Promise<RequestStatus<{ available: boolean }>>;
+    };
+
     blueprintPersistence: {
         getAll(projectRef: BlueprintPersistenceProjectRef): Promise<RequestStatus<{ values: Record<string, unknown> }>>;
         getValue(projectRef: BlueprintPersistenceProjectRef, key: string): Promise<RequestStatus<{ value: unknown }>>;
@@ -742,6 +901,47 @@ export interface RendererPreloadedInterface {
             projectPath: string,
             request: BlueprintNetworkFetchRequest,
         ): Promise<RequestStatus<{ result: BlueprintNetworkFetchResult }>>;
+    };
+
+    blueprintExternalLink: {
+        /**
+         * One Open Link node request, decided and performed by the main process for a Dev Mode
+         * preview.
+         *
+         * `projectPath` decides whose declared addresses apply; the handler reads them off disk
+         * rather than taking the renderer's word for it, so a preview refuses exactly what the
+         * shipped game refuses.
+         */
+        open(
+            projectPath: string,
+            request: BlueprintOpenExternalRequest,
+        ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>>;
+        /**
+         * One runtime plugin's request, decided against that plugin's declared patterns.
+         *
+         * No project path: a plugin's declaration is the plugin's, identical in every project it is
+         * installed into, so the project is not what decides this one.
+         */
+        openForPlugin(
+            pluginId: string,
+            request: BlueprintOpenExternalRequest,
+        ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>>;
+    };
+
+    blueprintProgress: {
+        /**
+         * One Export Progress node request, performed by the main process for a Dev Mode preview.
+         *
+         * `projectPath` decides which title's document is written; the handler derives the key from
+         * the project's identity rather than taking one from the renderer, so a preview writes the
+         * same file the shipped build would and can reach no other.
+         */
+        write(
+            projectPath: string,
+            request: GameProgressExportRequest,
+        ): Promise<RequestStatus<{ result: GameProgressExportResult }>>;
+        /** One Import Progress node request, read from the same file and keyed the same way. */
+        read(projectPath: string): Promise<RequestStatus<{ result: GameProgressImportResult }>>;
     };
 
     pluginPermissions: {

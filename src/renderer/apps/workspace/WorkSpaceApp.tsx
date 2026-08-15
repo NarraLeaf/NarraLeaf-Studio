@@ -2,6 +2,7 @@ import { MissingProjectConfigScreen } from "./components";
 import { ErrorScreen } from "./components/ErrorScreen";
 import { WorkspaceClosingOverlay } from "./components/WorkspaceClosingOverlay";
 import { WorkspaceOpeningOverlay } from "./components/WorkspaceOpeningOverlay";
+import { EditableTextContextMenu } from "./components/EditableTextContextMenu";
 import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
@@ -14,6 +15,7 @@ import { useRecoveryOffer } from "./hooks/useRecoveryOffer";
 import { useUpdateOffer } from "./hooks/useUpdateOffer";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
+import { DetachedEditorsHost } from "./detached/DetachedEditorsHost";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
 import { StoryRowHighlightBridge } from "./modules/story/scene-editor/StoryRowHighlightBridge";
 import { DevModeStoryRowOpenBridge } from "./modules/story/scene-editor/DevModeStoryRowOpenBridge";
@@ -42,9 +44,11 @@ function WorkspaceContent() {
 
     return (
         <>
+            <DetachedEditorsHost />
             <PreviewBlueprintNavigateBridge />
             <StoryRowHighlightBridge />
             <DevModeStoryRowOpenBridge />
+            <EditableTextContextMenu />
             <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />
         </>
     );

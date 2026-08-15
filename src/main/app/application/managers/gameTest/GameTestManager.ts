@@ -19,6 +19,7 @@ import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { findWorkspaceWindow } from "../../utils/workspaceConsole";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
+import { resolveRunVariant } from "../../utils/runVariant";
 import {
     formatPreviewProcessOutput,
     hostSidecarPlatformKey,
@@ -343,6 +344,7 @@ export class GameTestManager {
             const encryptionKey = await this.resolveEncryptionKey(session.projectPath);
             this.ensureNotCancelled(session);
 
+            const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
             const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
                 projectPath: session.projectPath,
                 entry: TEST_LAUNCH_ENTRY,
@@ -356,6 +358,11 @@ export class GameTestManager {
                     controlPort: session.controlPort,
                     controlToken: session.controlToken,
                 },
+                // What edition this run is. Read from the machine's own setting rather than taken
+                // from the launch request: nothing about a run needs the renderer's word for it, and
+                // the three launch surfaces keep the shapes they had. `packaging` stays off - this
+                // folds the variant without planning what a package would leave out.
+                ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
                 runtimePlugins: pluginSelection.selected,
                 // "preview" and not "production": a test needs the control server, which a shipped
                 // pack deliberately does not have.

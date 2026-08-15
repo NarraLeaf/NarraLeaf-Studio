@@ -6,7 +6,7 @@ export const project = {
     nav: {
         app: {
             title: "应用",
-            description: "名称、版本、图标与插件",
+            description: "名称、项目版本、图标与插件",
         },
         game: {
             title: "游戏",
@@ -34,6 +34,8 @@ export const project = {
     // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
     group: {
         details: "详情",
+        appTags: "变体",
+        userData: "玩家文件",
         icons: "图标",
         dependencies: "依赖",
         saving: "存档",
@@ -46,6 +48,7 @@ export const project = {
         security: "安全",
         signing: "签名",
         optimization: "优化",
+        crash: "崩溃",
         mobile: "移动端",
     },
     home: {
@@ -60,7 +63,7 @@ export const project = {
         nameRequired: "应用名称为必填项",
         identifierLabel: "标识符",
         identifierHelper: "在项目创建时设定，用于打包",
-        versionLabel: "版本",
+        versionLabel: "项目版本",
         authorLabel: "作者",
         authorPlaceholder: "作者、组织或邮箱",
         websiteLabel: "网站",
@@ -73,6 +76,70 @@ export const project = {
         copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt；留空则不生成该文件",
         descriptionPlaceholder: "描述你的项目…",
         required: "必填",
+    },
+    // 发布出去的游戏把属于玩家的东西写在哪里。只陈述，不提供开关：这一部分没有任何设置，也不点名
+    // 任何平台，把这些交给谁是作者自己的判断。描述只说这些路径是什么，到此为止。
+    userData: {
+        description: "发布后的游戏把玩家的存档与进度存放在这里。目录名取自标识符，所以改应用名称不会挪动它。",
+        copy: "复制位置",
+        copied: "位置已复制",
+        copyFailed: "无法复制位置",
+        platform: {
+            windows: "Windows",
+            macos: "macOS",
+            linux: "Linux",
+        },
+        content: {
+            saves: "存档槽",
+            persistence: "持久变量、已解锁内容与插件数据",
+        },
+    },
+    // 变体：同一个工程能发布出的几种成品。什么是变体、继承是什么意思，都在标题旁 `?` 打开的
+    // `appTags` 帮助主题里；这里的文案只命名控件，并说明按下去会发生什么。
+    appTags: {
+        add: "新增变体",
+        history: {
+            add: "新增变体 {name}",
+            rename: "把变体改名为 {name}",
+            delete: "删除变体 {name}",
+            edit: "修改构建变体",
+        },
+        newTagName: "新变体",
+        nameTitle: "名称",
+        fields: {
+            displayName: "应用名称",
+            identifier: "标识符",
+            version: "项目版本",
+        },
+        // 只在该字段自己填了值时出现在它旁边，所以它既是「此处被覆盖」的标记，也是取消覆盖的入口。
+        restore: "恢复继承",
+        reachableTitle: "可以开始的场景",
+        // 该变体的构建可以交给玩家浏览器打开的地址。按这份清单决定什么来命名，而不是按机制；整份
+        // 清单一起覆盖：一个变体要么有自己的清单，要么读工程的。
+        // 该变体的构建在剧本走完之后显示的页面。按作者看到的结果命名，而不是按背后的引擎事件。
+        ending: {
+            title: "剧本结束后显示的页面",
+            // 这是一个真正的选项，不是「没填」：画面停在最后一帧，也就是这个字段出现之前每个构建的行为。
+            none: "不显示任何页面",
+        },
+        // 在打开的变体里紧挨删除按钮：确认框接下来要说的就是这个数字。
+        usedBy: {
+            one: "被 {count} 处引用",
+            other: "被 {count} 处引用",
+        },
+        delete: "删除",
+        deleteConfirm: "删除「{name}」？",
+        // 如实说明后果：指向该变体的引用不会被改写，从此按正式变体的值读取。`{name}` 是正式变体的
+        // 名称，插值而不是写死在这里，将来改名时这句会跟着改。
+        deleteDetail: {
+            one: "{count} 处引用将回落到 {name}",
+            other: "{count} 处引用将回落到 {name}",
+        },
+        // 后果的另一半，说的是那些写在剧本里的引用：截断点会保留下来，而不指向任何变体的截断点不再截断
+        deleteDetailCuts: {
+            one: "剧本中的 {count} 处截断点将保留，并不再生效",
+            other: "剧本中的 {count} 处截断点将保留，并不再生效",
+        },
     },
     assets: {
         master: "选择应用图标",
@@ -186,6 +253,11 @@ export const project = {
         // 什么是总线、音量如何逐级相乘，已经移进 `audio` 帮助主题，由本区标题上的 `?` 打开。
         // 它原先是这里的一段话，再往前是每条轨道的每个字段上都写一遍。
         add: "新建轨道",
+        history: {
+            add: "新建音轨 {name}",
+            delete: "删除音轨 {name}",
+            edit: "修改音轨",
+        },
         newTrackName: "新建轨道",
         nameTitle: "名称",
         parentTitle: "汇入",
@@ -220,11 +292,38 @@ export const project = {
         },
     },
     settings: {
-        allowHttpTitle: "允许 HTTP",
-        allowHttpDescription: "关闭时，游戏将被限制在应用协议内，所有 HTTP/HTTPS 请求均会被阻止",
-        allowHttpWebHint: "Web 导出不受此项限制，该构建本身通过 HTTP 提供；网络节点在 Web 导出中仍会运行",
+        crashPolicyTitle: "游戏停止工作时",
+        crashPolicyDescription: "三种方式都会把错误写入游戏日志",
+        crashPolicy: {
+            details: "显示错误内容",
+            log: "只说明已停止",
+            restart: "重新启动游戏",
+        },
+        networkPolicyTitle: "网络策略",
+        networkPolicy: {
+            off: "不允许联网",
+            allowlist: "仅白名单内的地址",
+            any: "任意地址",
+        },
+        networkPolicyDetail: {
+            off: "游戏被限制在应用协议内，所有 HTTP 与 HTTPS 请求都会被拒绝",
+            allowlist: "只有下方白名单中的地址可以被请求，其余请求会被拒绝",
+            any: "游戏可以通过 HTTP 或 HTTPS 请求任意地址",
+        },
+        networkPolicyWebHint: "Web 导出通过 HTTP 提供，无法执行「不允许联网」；白名单在 Web 导出中通过页面策略执行",
+        networkAllowlist: {
+            title: "网络请求白名单",
+            description: "每行一个地址或主机模式",
+            matchHint: "只写主机表示该主机下的所有路径；* 可以替换首个主机标签（*.example.com），或出现在路径末尾（/v1/*）；协议、主机与端口需完全一致",
+            placeholder: "https://api.example.com/*",
+            invalid: "请填写 http:// 或 https:// 地址；* 只能替换首个主机标签，或出现在路径末尾",
+            add: "新增地址",
+            remove: "移除地址",
+            fromPlugins: "已安装插件声明的地址",
+            sidecarNote: "插件附带的程序在游戏进程之外运行，不受该白名单约束",
+        },
         encryptAssetsTitle: "加密资源",
-        encryptAssetsDescription: "在打包及预览版本中加密资源、插件代码与剧本数据，不影响开发模式",
+        encryptAssetsDescription: "在打包及预览构建中加密资源、插件代码与剧本数据，不影响开发模式",
         encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
@@ -247,6 +346,26 @@ export const project = {
             landscape: "横屏",
             portrait: "竖屏",
             auto: "跟随设备",
+        },
+        stageFitTitle: "屏幕适配",
+        stageFitDescription: "对移动端构建与开发模式生效；桌面与 Web 始终留黑边",
+        stageFit: {
+            contain: "留黑边",
+            cover: "填满并裁剪",
+        },
+        cropAnchorYTitle: "垂直保留",
+        cropAnchorYDescription: "屏幕比舞台更宽时保留哪一部分",
+        cropAnchorY: {
+            top: "顶部",
+            center: "居中",
+            bottom: "底部",
+        },
+        cropAnchorXTitle: "水平保留",
+        cropAnchorXDescription: "屏幕比舞台更窄时保留哪一部分",
+        cropAnchorX: {
+            left: "左侧",
+            center: "居中",
+            right: "右侧",
         },
     },
     dependencies: {

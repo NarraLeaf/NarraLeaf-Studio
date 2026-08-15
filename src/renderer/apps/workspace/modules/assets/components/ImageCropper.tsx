@@ -448,11 +448,11 @@ export function ImageCropper({
                             }}
                             className="p-1 rounded-md hover:bg-fill disabled:opacity-50"
                             disabled={loading}
-                            title={t("assets.cropper.reload")}
+                            data-tip={t("assets.cropper.reload")} aria-label={t("assets.cropper.reload")}
                         >
                             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                         </button>
-                        <button onClick={onClose} className="p-1 rounded-md hover:bg-fill" title={t("common.close")}>
+                        <button onClick={onClose} className="p-1 rounded-md hover:bg-fill" data-tip={t("common.close")} aria-label={t("common.close")}>
                             <X className="w-4 h-4" />
                         </button>
                     </div>

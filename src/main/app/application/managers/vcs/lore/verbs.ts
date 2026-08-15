@@ -347,12 +347,29 @@ export async function listRevisionMetadata(
 
 // -- content ----------------------------------------------------------------
 
-export async function openStore(globals: LoreGlobals, repositoryPath: string): Promise<StoreHandle> {
+/**
+ * Open the content store for a repository.
+ *
+ * `remoteUrl` is what lets the store fetch a fragment it does not already hold. Studio
+ * never passes one and the default is therefore the same store it has always opened -
+ * a purely local one - but the value is the CALLER's rather than a constant here,
+ * because the day Studio checks out part of a repository instead of all of it, the
+ * decision belongs to whoever opened the store and not to this function.
+ *
+ * Passing one is not free and is not a tidying-up change: it makes a blob read able to
+ * wait on a socket, which is the property `VcsManager.globalsFor` exists to keep off
+ * the path of opening a project.
+ */
+export async function openStore(
+    globals: LoreGlobals,
+    repositoryPath: string,
+    options: { remoteUrl?: string } = {},
+): Promise<StoreHandle> {
     const result = await invoke("storageOpen", globals, {
         repositoryPath: scopeString(repositoryPath),
         inMemory: 0,
-        remoteConfig: { remoteUrl: scopeString(undefined) },
-        hasRemoteConfig: 0,
+        remoteConfig: { remoteUrl: scopeString(options.remoteUrl) },
+        hasRemoteConfig: options.remoteUrl ? 1 : 0,
         cacheTargetBytes: 0,
         cacheTargetFragments: 0,
     });
@@ -903,6 +920,44 @@ export async function loginWithToken(
         authUrl: scopeString(options.authUrl),
     });
     return result.first<LoreAuthIdentityPayload>(LoreTag.AUTH_IDENTITY);
+}
+
+/**
+ * Every session Lore is holding for this operating-system account.
+ *
+ * The ONLY way to answer "am I still signed in": the store is Lore's, it outlives the
+ * process, and the `lore` CLI writes and clears it too - so anything Studio remembered
+ * for itself would be a second copy that goes stale without saying so.
+ *
+ * `withToken` is left off deliberately. The token would come back in an event payload,
+ * and payloads decoded here end up in logs and IPC messages; nothing above needs it,
+ * because the token's only job after a login is to sit in this store.
+ *
+ * Purely local - no socket - so it is safe to ask while a panel is opening.
+ */
+export async function listAuthSessions(globals: LoreGlobals): Promise<LoreAuthIdentityPayload[]> {
+    const result = await invoke("authList", globals, { withToken: 0 });
+    return result.of<LoreAuthIdentityPayload>(LoreTag.AUTH_IDENTITY);
+}
+
+/**
+ * Forget one stored session.
+ *
+ * All three arguments identify WHICH session, and an entry is written per resource as
+ * well as one for the endpoint itself (measured: a signed-in account has a row with an
+ * empty `resource` plus one per repository it has opened). Passing an empty resource
+ * therefore clears the endpoint-level row and leaves the per-repository ones, which is
+ * why {@link listAuthSessions} is what a caller should iterate rather than guessing.
+ */
+export async function logoutFromRemote(
+    globals: LoreGlobals,
+    options: { authUrl: string; resource: string; userId: string },
+): Promise<void> {
+    await invoke("authLogout", globals, {
+        authUrl: scopeString(options.authUrl),
+        resource: scopeString(options.resource),
+        userId: scopeString(options.userId),
+    });
 }
 
 // -- argument helpers -------------------------------------------------------

@@ -1,19 +1,26 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
-import type { DocumentDiffEntry } from "@shared/documents/diff";
 import type { Translator } from "@shared/i18n";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
-import { DocumentChangeList } from "@/lib/vcs/DocumentChangeList";
-import { buildDocumentChangeRows, CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "@/lib/vcs/documentChangeView";
+import { EmptyState } from "@/lib/components/elements";
+// Not in the barrel, and present all the same - see `lib/components/elements/README.md`.
+import { PanelHeader } from "@/lib/components/elements/PanelHeader";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import type { ChangeCategory } from "@/lib/vcs/changeCategory";
+import { buildChangeIndex, type ChangeIndexGroup } from "@/lib/vcs/changeIndex";
+import { ChangeIndexPane } from "@/lib/vcs/ChangeIndexPane";
+import { IndexDivider, INDEX_DEFAULT_WIDTH } from "@/lib/vcs/IndexDivider";
+import { ChangeDetailHost } from "@/lib/vcs/presenters/ChangeDetailHost";
+import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import { useDocumentDiff, type DocumentDiffRequest } from "@/lib/vcs/useDocumentDiff";
-import { shortRevision, splitChangePath } from "../../components/layout/versionRailModel";
+import { shortRevision } from "../../components/layout/versionRailModel";
 import { VcsResolvePanel } from "./VcsResolvePanel";
 import type { VcsChangesPayload } from "./vcsChangesIds";
 
 /**
- * The same `DocumentChange` list the version rail expands, at editor width.
+ * A comparison as two panes: which files changed, and what changed in the one being looked at.
  *
  * It exists because the rail cannot be the only home for this. A 320px column can show eight rows
  * of one file's changes and nothing more, and conflict resolution - the same list with a side to
@@ -21,6 +28,14 @@ import type { VcsChangesPayload } from "./vcsChangesIds";
  * a tab rather than a modal: a comparison is a document, and the workspace already opens documents
  * in tabs, which is also what lets the author keep one open beside the editors they are about to
  * change.
+ *
+ * **An index and a detail, not one long list.** This tab used to draw every changed document
+ * expanded, one section under the next, with every change under each of those - forty changed files
+ * were forty sections and a thousand rows in a single scroller, and the first question anyone has
+ * ("did the story change?") could only be answered by scrolling past the assets. The left pane
+ * answers that question in headings and one line per file; the right draws exactly one file, through
+ * exactly one presenter (`lib/vcs/presenters`), so a format can take its own detail over later
+ * without this file learning about it.
  *
  * **The comparison half is read-only by construction, therefore never gated on the freeze.** Nothing
  * below can write project data even in principle, and a frozen workspace - which is what a revision
@@ -35,17 +50,16 @@ import type { VcsChangesPayload } from "./vcsChangesIds";
  */
 
 /**
- * Rows this tab will draw before it stops adding documents.
+ * Files this tab will list before it stops adding them.
  *
- * The list is not virtualised, and this is what makes that safe rather than lucky: a comparison may
- * carry up to `DIFF_PATH_LIMIT` (2000) documents of up to `DOCUMENT_DIFF_CHANGE_LIMIT` (200) changes
- * each, which is a first commit or a bulk import rather than an edit. Past this the honest answer is
- * a count of what was left out - and a restore is not something anyone reads change by change.
+ * The index is not virtualised, and this is what makes that safe rather than lucky: a comparison may
+ * carry up to `DIFF_PATH_LIMIT` (2000) documents, which is a first commit or a bulk import rather
+ * than an edit. Past this the honest answer is a count of what was left out - and a restore is not
+ * something anyone reads file by file. Rows are one per file now, so the budget counts files; the
+ * per-file ceiling on change rows moved to the detail, where the rows themselves are
+ * (`DOCUMENT_ROW_CEILING` in `presenters/GenericChangeDetail`).
  */
 const TAB_ROW_BUDGET = 1000;
-
-/** Most rows any ONE document may spend of that budget, so the first file cannot take all of it. */
-const DOCUMENT_ROW_CEILING = 200;
 
 export function VcsChangesTab({ payload }: { payload?: VcsChangesPayload }) {
     // A tab restored from a persisted layout can arrive without one; the working tree is the answer
@@ -66,146 +80,151 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
     const diff = useDocumentDiff(request, { enabled: true });
     const result = diff.result;
 
-    /**
-     * How many rows each document may draw, and how many documents did not fit.
-     *
-     * Allotted in list order rather than by size, so the budget cannot reorder the comparison: the
-     * documents that survive are the first ones the main process listed, which is the order the
-     * author's own tree is in.
-     */
-    const plan = useMemo(() => {
-        const entries: { entry: DocumentDiffEntry; limit: number }[] = [];
-        let budget = TAB_ROW_BUDGET;
-        let omitted = 0;
-        for (const entry of result?.documents ?? []) {
-            if (budget <= 0) {
-                omitted += 1;
-                continue;
-            }
-            const limit = Math.min(budget, DOCUMENT_ROW_CEILING);
-            // Built once here only to charge the budget honestly - a document with two changes must
-            // not cost the same as one with two hundred. The list rebuilds it from the same inputs.
-            const rows = buildDocumentChangeRows(entry.diff, limit).rows.length;
-            budget -= Math.max(1, rows);
-            entries.push({ entry, limit });
-        }
-        return { entries, omitted };
-    }, [result]);
+    const index = useMemo(
+        () => buildChangeIndex(result?.documents ?? [], { rowBudget: TAB_ROW_BUDGET }),
+        [result],
+    );
 
+    /**
+     * Which groups the author has opened or closed, over the model's default.
+     *
+     * An override rather than a copy of the whole open/closed state, so a group that arrives in a
+     * later comparison starts at whatever its size says it should - the author's decision about the
+     * assets group is not a decision about a group they have not seen yet.
+     */
+    const [openOverrides, setOpenOverrides] = useState<Partial<Record<ChangeCategory, boolean>>>({});
+    const isOpen = useCallback(
+        (group: ChangeIndexGroup) => openOverrides[group.category] ?? !group.collapsed,
+        [openOverrides],
+    );
+
+    /**
+     * The selected file, resolved against the current index rather than stored as truth.
+     *
+     * A re-read can drop the file that was selected, and a selection kept in state would then point
+     * at a document the comparison no longer carries. The fallback is the first file of the first
+     * OPEN heading, so the pane is never blank on arrival and the fallback is never a file with
+     * nothing on screen pointing at it. A file the author picked and then closed the heading over
+     * stays selected, because closing a heading is not a decision about what to look at.
+     */
+    const [selectedPath, setSelectedPath] = useState<string | null>(null);
+    const firstVisible = index.groups.find(isOpen)?.rows[0] ?? null;
+    const selected = index.rows.find(row => row.path === selectedPath) ?? firstVisible;
+
+    /**
+     * The two versions this tab is between, for a presenter that shows the file itself.
+     *
+     * Named here because this is the only place that knows: the change model says what differs and
+     * deliberately not where it came from. The working tree's older side is the revision it was
+     * compared against, which a repository with nothing recorded yet does not have - and then
+     * there is no older side at all rather than one to guess at.
+     */
+    const comparison = useMemo<ComparisonSides>(
+        () => (mode.mode === "between"
+            ? { before: { at: "revision", revision: mode.from }, after: { at: "revision", revision: mode.to } }
+            : {
+                before: result?.head ? { at: "revision", revision: result.head } : null,
+                after: { at: "working-tree" },
+            }),
+        [mode.mode, mode.mode === "between" ? mode.from : null, mode.mode === "between" ? mode.to : null, result?.head],
+    );
+
+    const [indexWidth, setIndexWidth] = useState(INDEX_DEFAULT_WIDTH);
     const heading = comparisonHeading(mode, result?.head, t);
+    const hasRows = index.rows.length > 0;
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-surface" data-help-topic="versionChanges">
-            <div className="group/help flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
+        <div
+            className="flex h-full min-h-0 flex-col overflow-hidden bg-surface"
+            data-help-topic="versionChanges"
+        >
+            <PanelHeader size="sm" className="group/help">
                 <span className="min-w-0 flex-1 truncate text-xs text-fg-subtle">{heading}</span>
                 {/* Only the working tree can have moved. A revision pair is immutable and answered
                     from the main process's cache, so a button here would be a control that cannot
                     change what it is beside. */}
                 {mode.mode === "working-tree" && (
-                    <button
-                        type="button"
+                    <ToolbarButton
+                        size="xs"
                         onClick={diff.reload}
                         disabled={diff.loading}
-                        title={t("documentDiff.tab.refresh")}
+                        data-tip={t("documentDiff.tab.refresh")}
                         aria-label={t("documentDiff.tab.refresh")}
-                        className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
                     >
                         {diff.loading
                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             : <RotateCcw className="h-3.5 w-3.5" />}
-                    </button>
+                    </ToolbarButton>
                 )}
                 <HelpTrigger topic="versionChanges" />
-            </div>
+            </PanelHeader>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-                {diff.loading && result === null && (
-                    <p className="flex items-center gap-2 text-xs text-fg-subtle">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        {t("documentDiff.rows.loading")}
-                    </p>
-                )}
+            {/* Said once for the whole comparison, above both panes: these are facts about the read,
+                not about any one file, and a pane is the wrong place for them. */}
+            {result?.readFailure && (
+                // Above everything, because the empty list underneath it means the opposite of what
+                // an empty list usually means (docs §4.29).
+                <p className="shrink-0 px-3 pt-2 text-xs text-danger">
+                    {t("documentDiff.tab.readFailure", { error: result.readFailure })}
+                </p>
+            )}
+            {result && !result.complete && (
+                <p className="shrink-0 px-3 pt-2 text-2xs text-warning">
+                    {t("documentDiff.tab.incomplete", {
+                        shown: String(result.documents.length),
+                        total: String(result.pathCount),
+                    })}
+                </p>
+            )}
 
-                {diff.error && <p className="text-xs text-danger">{diff.error}</p>}
-
-                {/* Null with no error is the one answer that is about the INSTALLATION rather than
-                    about this project: version control ships no backend for some hosts, and that is
-                    a fact rather than a failure. */}
-                {!diff.loading && !diff.error && result === null && (
-                    <p className="text-xs text-fg-subtle">{t("documentDiff.tab.unavailable")}</p>
-                )}
-
-                {result && result.readFailure && (
-                    // Said out loud and above everything, because the empty list underneath it means
-                    // the opposite of what an empty list usually means (docs §4.29).
-                    <p className="mb-2 text-xs text-danger">
-                        {t("documentDiff.tab.readFailure", { error: result.readFailure })}
-                    </p>
-                )}
-
-                {result && !result.complete && (
-                    <p className="mb-2 text-2xs text-warning">
-                        {t("documentDiff.tab.incomplete", {
-                            shown: String(result.documents.length),
-                            total: String(result.pathCount),
-                        })}
-                    </p>
-                )}
-
-                {result && result.documents.length === 0 && !result.readFailure && (
-                    <p className="text-xs text-fg-subtle">
-                        {mode.mode === "working-tree"
-                            ? t("documentDiff.tab.emptyWorkingTree")
-                            : t("documentDiff.tab.empty")}
-                    </p>
-                )}
-
-                {plan.entries.map(({ entry, limit }) => (
-                    <DocumentSection key={entry.path} entry={entry} limit={limit} />
-                ))}
-
-                {plan.omitted > 0 && (
-                    <p className="pt-2 text-2xs text-fg-subtle">
-                        {t("documentDiff.tab.documentsOmitted", { count: String(plan.omitted) })}
-                    </p>
-                )}
-            </div>
-        </div>
-    );
-}
-
-/**
- * One document: what happened to the file, then what changed inside it.
- *
- * The path is split the way the rail splits it - the file name is what identifies a document in this
- * project and the directory is what merely locates it - so the two surfaces name the same file the
- * same way. Here there is room for both, so neither is truncated away.
- */
-function DocumentSection({ entry, limit }: { entry: DocumentDiffEntry; limit: number }) {
-    const { directory, name } = splitChangePath(entry.path);
-
-    return (
-        <section className="border-b border-edge py-2 last:border-b-0">
-            <div className="flex items-baseline gap-1.5 overflow-hidden">
-                <span
-                    aria-hidden
-                    className={cn("w-2 shrink-0 text-center font-mono text-2xs", CHANGE_KIND_TINT[entry.kind])}
-                >
-                    {CHANGE_KIND_GLYPH[entry.kind]}
-                </span>
-                <span className="min-w-0 truncate text-xs font-medium text-fg">{name}</span>
-                {directory !== null && (
-                    <span className="min-w-0 shrink truncate text-2xs text-fg-subtle">{directory}</span>
-                )}
-            </div>
-            <div className="mt-1 pl-3.5">
-                <DocumentChangeList
-                    diff={entry.diff}
-                    limit={limit}
-                    wholeDocument={entry.kind === "added" || entry.kind === "removed"}
+            {diff.loading && result === null && (
+                <p className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-fg-subtle">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    {t("documentDiff.rows.loading")}
+                </p>
+            )}
+            {diff.error && <p className="shrink-0 px-3 py-2 text-xs text-danger">{diff.error}</p>}
+            {/* Null with no error is the one answer that is about the INSTALLATION rather than
+                about this project: version control ships no backend for some hosts, and that is
+                a fact rather than a failure. */}
+            {!diff.loading && !diff.error && result === null && (
+                <p className="shrink-0 px-3 py-2 text-xs text-fg-subtle">{t("documentDiff.tab.unavailable")}</p>
+            )}
+            {result && !hasRows && !result.readFailure && (
+                <EmptyState
+                    size="sm"
+                    className="flex-1"
+                    description={mode.mode === "working-tree"
+                        ? t("documentDiff.tab.emptyWorkingTree")
+                        : t("documentDiff.tab.empty")}
                 />
-            </div>
-        </section>
+            )}
+
+            {hasRows && (
+                <div className="flex min-h-0 flex-1">
+                    <ChangeIndexPane
+                        index={index}
+                        isOpen={isOpen}
+                        onToggle={group => setOpenOverrides(current => ({
+                            ...current,
+                            [group.category]: !isOpen(group),
+                        }))}
+                        selectedPath={selected?.path ?? null}
+                        onSelect={setSelectedPath}
+                        style={{ width: `${indexWidth}px` }}
+                        className="shrink-0 border-r border-edge"
+                    />
+
+                    <IndexDivider width={indexWidth} onWidth={setIndexWidth} />
+
+                    <div className="min-h-0 min-w-0 flex-1">
+                        {selected
+                            ? <ChangeDetailHost key={selected.path} entry={selected.entry} sides={comparison} />
+                            : <EmptyState size="sm" description={t("documentDiff.shell.selectPrompt")} />}
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -218,7 +237,13 @@ function comparisonHeading(
     switch (payload.mode) {
         case "working-tree":
             return head
-                ? t("documentDiff.tab.comparingWorkingTree", { version: shortRevision(head) })
+                // `#36` when the opener knew it, which is every path an author can actually take to
+                // this tab; the hash only for a tab restored from a persisted layout, where nobody
+                // is left to ask. Naming it the way the rail, the status cell and the switcher menu
+                // all name it is the whole point - one version with two names reads as two versions.
+                ? t("documentDiff.tab.comparingWorkingTree", {
+                    version: payload.headLabel ?? shortRevision(head),
+                })
                 // A repository with no revisions: there is no version to have changed since, and
                 // saying so beats naming one that does not exist.
                 : t("documentDiff.tab.comparingWorkingTreeUnknown");

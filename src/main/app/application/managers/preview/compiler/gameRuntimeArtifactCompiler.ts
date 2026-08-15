@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import type { LocaleCode } from "@shared/i18n";
 import fs from "fs/promises";
 import path from "path";
 import { assembleDevModeBundleFromProjectPath } from "../../devMode/pipeline/bundleAssembler";
@@ -8,15 +9,34 @@ import {
     type GameRuntimeAssetManifestEntry,
     type GameRuntimeLaunchEntry,
     type GameRuntimePackPluginEntry,
+    type GameRuntimeNetworkConfig,
     type GameRuntimePackPuppetRuntimeEntry,
     type GameRuntimePackSidecarEntry,
     type GameRuntimePackV1,
     type GameRuntimeProjectIcon,
     type GameRuntimeProjectIconPlatform,
+    normalizeGameCrashPolicy,
+    normalizeGameRuntimeViewportConfig,
 } from "@shared/types/gameRuntime";
+import type { AppTagBaseIdentity, AppTagPluginConfig, AppTagReachableScenes, ProjectAppTag } from "@shared/types/appTag";
+import { APP_TAG_ID_RELEASE, isBuiltinAppTagId } from "@shared/types/appTag";
+import { gameProgressKey } from "@shared/types/gameProgress";
+import { resolveShippedPluginBuildConfig } from "@shared/utils/pluginBuildConfig";
+import {
+    collectReferencedAssetIds,
+    collectReferencedIds,
+    restrictCharacterUnits,
+    restrictRecordToAssetIds,
+} from "@shared/build/variantPayload";
+import type { DevModeBundle } from "@shared/types/devMode";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { readProjectIconSet, resolveIconFile, resolveIconSource } from "@shared/types/projectIcons";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
+import {
+    NETWORK_POLICY_ALLOWLIST,
+    normalizeNetworkAllowlistEntries,
+    type NetworkPluginAllowlistEntry,
+} from "@shared/types/networkAllowlist";
 import {
     createSealedBundle,
     runtimeSupportPath,
@@ -29,6 +49,8 @@ import {
     gameRuntimeBundleAssetEntry,
     gameRuntimeBundleRuntimeEntry,
 } from "@shared/utils/gameRuntimeBundle";
+import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
+import { resolveAppTag, resolveAppTagEndingSurface } from "@shared/types/appTag";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { readPublishedPluginData } from "../../pluginRuntimeData";
 // Relative rather than "@/": this module is unit-tested, and the test runner
@@ -45,6 +67,8 @@ import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@s
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
+import { deriveGameAppId, type GameBuildPlatform } from "@shared/types/gameBuild";
+import { userDataDirectoryName } from "@shared/utils/userDataLocation";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "model", "other"] as const;
@@ -117,6 +141,32 @@ export type GameRuntimeArtifactCompileInput = {
     /** Runtime entries of enabled plugins to ship inside the pack. */
     runtimePlugins?: GameRuntimePluginSource[];
     /**
+     * The build variant this artifact is. Absent is the release variant, which is what every preview
+     * compile passes - nothing about a preview picks one.
+     *
+     * It reaches the bundle assembler and decides what the story documents contain, so it is not a
+     * label on the output: two artifacts compiled from one project under two variants carry
+     * different story bytes.
+     */
+    appTag?: { id: string; name: string };
+    /**
+     * What the author says each mechanism the build cannot read can start, already resolved for
+     * {@link appTag}. Absent is "nothing declared", which is what every preview compile passes.
+     *
+     * Read only by `planSceneDrop`. Without it a project with a chapter select ships every story
+     * whole under every variant, which is the whole of what makes a demo a demo.
+     */
+    declaredScenes?: AppTagReachableScenes;
+    /**
+     * The language a failure this compile reports is written in.
+     *
+     * Carried on the input rather than read from Electron because this module also runs off the main
+     * process (see compileGameRuntimeArtifactInWorker), where the stored `app.language` is out of
+     * reach. Absent falls back to English, which is what a preview compile takes: previews report
+     * nothing an author reads in their own language today.
+     */
+    locale?: LocaleCode;
+    /**
      * `<platform>-<arch>` this app dir's native payload is built for - the key
      * plugin sidecar binaries are declared under. A production build passes the
      * target's key; a preview passes the host's own, so an author can exercise a
@@ -124,6 +174,24 @@ export type GameRuntimeArtifactCompileInput = {
      * sidecars at all (a static site has no process to spawn).
      */
     sidecarPlatformKey?: string;
+    /**
+     * Every build target this one artifact serves.
+     *
+     * One compile is not one platform: the desktop compile serves whichever desktop targets the
+     * request holds, and the web compile serves the browser export and both mobile repacks. It is
+     * what a plugin's platform-scoped build config resolves against - where the served platforms
+     * agree there is one answer to ship, and where they disagree the build says so rather than
+     * picking one. Absent - Dev Mode, the preview - means no platform, and no such value travels.
+     */
+    platforms?: readonly GameBuildPlatform[];
+    /**
+     * These bytes are going into a package a player will get.
+     *
+     * Only the production build sets it. See `DevModeBundleLoadContext.packaging` for the line it
+     * draws - folding a variant is for every host, planning what a package leaves out is for the one
+     * host that produces a package.
+     */
+    packaging?: boolean;
     /**
      * Studio's own userData directory, used only as the root of the build
      * dependency cache that `dep:` sidecar includes resolve through. Passed in
@@ -163,6 +231,23 @@ export type GameRuntimeArtifactCompileInput = {
      * verbatim (protection off).
      */
     encryptionKey?: string;
+    /**
+     * The app id this build ships under, as the build resolved it. Only the
+     * production electron shell reads it, to name the per-user directory the
+     * game keeps the player's files in; passing it keeps that name and the
+     * packager's identity from being derived twice and disagreeing.
+     */
+    appId?: string;
+    /**
+     * The application name and identifier this build ships under, as the build
+     * resolved them - a variant's overrides folded in. They name the installed
+     * folder, the window and the web storage, so a demo installed beside the
+     * release is a second application and not a second executable dropped into
+     * the first one's folder. Absent for preview and Dev Mode, which have no
+     * variant to fold and keep the project's own values.
+     */
+    productName?: string;
+    identifier?: string;
 };
 
 export type GameRuntimeArtifactCompileResult = {
@@ -173,6 +258,15 @@ export type GameRuntimeArtifactCompileResult = {
     packPath: string;
     pack: GameRuntimePackV1;
     copiedAssetCount: number;
+    /**
+     * Lines the caller has to put in the build console: decisions the compile made that change what
+     * ships and that the author cannot see from the artifact.
+     *
+     * They travel on the result because the compile runs in a utility process, which has no channel
+     * to the workspace window - `console.log` there reaches Studio's terminal, not the console the
+     * author is reading.
+     */
+    notices: string[];
 };
 
 /**
@@ -236,20 +330,54 @@ export async function compileGameRuntimeArtifact(
     }
 
     const projectConfig = await readProjectConfig(input.projectPath);
+    const endingSurfaceId = await readEndingSurfaceId(input.projectPath, input.appTag?.id);
+    const progressKey = readProgressKey(projectConfig, input.projectPath);
+    const pluginConfig = await readPluginConfigSource(input.projectPath, input.appTag?.id);
     const blueprintScripts = await compileAllBlueprintScriptsForProject(input.projectPath);
     if (!blueprintScripts.ok) {
         const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
         throw new Error(`Blueprint script compile failed:\n${detail}`);
     }
     const bundleId = crypto.randomUUID();
-    const bundle = await assembleDevModeBundleFromProjectPath({
+    const notices: string[] = [];
+    const assembled = await assembleDevModeBundleFromProjectPath({
         projectPath: input.projectPath,
         bundleId,
         revision: 1,
         blueprintCompiledScripts: blueprintScripts.scripts,
         blueprintScriptsCompileOk: blueprintScripts.ok,
         blueprintScriptsCompileErrors: blueprintScripts.errors,
+        ...(input.appTag ? { appTag: input.appTag } : {}),
+        ...(input.packaging ? { packaging: true } : {}),
+        // The declarations, not the count. A pack that merely carries a plugin can still drop a
+        // scene; one that carries a plugin able to start a story cannot.
+        runtimePlugins: (input.runtimePlugins ?? []).map(plugin => ({
+            id: plugin.manifest.id,
+            name: plugin.manifest.name ?? plugin.manifest.id,
+            runtimeCapabilities: plugin.manifest.contributes.runtimeCapabilities ?? [],
+        })),
+        ...(input.declaredScenes ? { declaredScenes: input.declaredScenes } : {}),
+        ...(input.locale ? { locale: input.locale } : {}),
+        onNotice: message => notices.push(message),
     });
+    // A variant that removed story also carries an asset library sized for the story it removed, and
+    // a package is public the moment someone opens it. The release edition removes nothing, so it
+    // narrows nothing: there is no unreachable content for it to be carrying.
+    const stripping = Boolean(input.packaging)
+        && Boolean(input.appTag)
+        && !isBuiltinAppTagId(input.appTag?.id ?? APP_TAG_ID_RELEASE);
+    const shipped = stripping
+        ? await planShippedAssets(
+            input.projectPath,
+            assembled,
+            input.runtimePlugins ?? [],
+            message => notices.push(message),
+        )
+        : null;
+    const bundle = shipped?.bundle ?? assembled;
+    if (shipped && shipped.removedAssetCount > 0) {
+        notices.push(`${shipped.removedAssetCount} assets are unreachable in this edition and do not ship`);
+    }
 
     // Everything below either writes loose files or streams into the store; on
     // any failure the store handle is released so a failed compile leaks nothing.
@@ -268,6 +396,7 @@ export async function compileGameRuntimeArtifact(
             projectPath: input.projectPath,
             assetsDir,
             target,
+            include: shipped?.include ?? null,
         });
         // Baked character avatars are derived project files, not library assets, so the walk
         // above never sees them. Without this pass a packaged game resolves every avatar to
@@ -277,6 +406,7 @@ export async function compileGameRuntimeArtifact(
             assetsDir,
             target,
             manifest: assetManifest,
+            characterIds: shipped?.characterIds ?? null,
         });
         // The desktop icon set feeds the window/dock; a web site instead gets
         // a favicon (best-effort - only a configured PNG qualifies).
@@ -301,6 +431,9 @@ export async function compileGameRuntimeArtifact(
             projectPath: input.projectPath,
             runtimePlugins: input.runtimePlugins ?? [],
             target,
+            pluginConfig,
+            ...(input.platforms ? { platforms: input.platforms } : {}),
+            onNotice: message => notices.push(message),
             ...(input.sidecarPlatformKey ? { sidecarPlatformKey: input.sidecarPlatformKey } : {}),
             ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
             ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
@@ -317,8 +450,11 @@ export async function compileGameRuntimeArtifact(
             mode,
             runtimeVersion: input.runtimeVersion,
             project: {
-                name: projectConfig?.name?.trim() || path.basename(input.projectPath) || "NarraLeaf Game",
-                identifier: projectConfig?.identifier?.trim() || undefined,
+                name: input.productName?.trim()
+                    || projectConfig?.name?.trim()
+                    || path.basename(input.projectPath)
+                    || "NarraLeaf Game",
+                identifier: input.identifier?.trim() || projectConfig?.identifier?.trim() || undefined,
                 version: readString(projectConfig?.metadata?.version),
                 metadata: normalizeRecord(projectConfig?.metadata),
                 icon: projectIcon,
@@ -330,16 +466,48 @@ export async function compileGameRuntimeArtifact(
             },
             plugins: packPlugins,
             ...(packPuppetRuntimes.length > 0 ? { puppetRuntimes: packPuppetRuntimes } : {}),
-            // The network policy is a desktop-shell mechanism (CSP + webRequest);
-            // a web export is served over HTTP(S) by nature, so its pack carries
-            // no policy at all.
-            ...(shell === "web" ? {} : {
-                network: {
-                    // Secure default: HTTP is only permitted when the project explicitly
-                    // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
-                    allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
-                },
-            }),
+            // Carried on every shell, web included.
+            //
+            // `allowHttp` is enforced by two things only a desktop shell has - an injected CSP and a
+            // `webRequest` hook - and a served page is on the network by construction, so the web
+            // export does not read it. It is still written, because it is a fact about the project
+            // rather than about one shell, and because the build gate already refuses to produce a
+            // web build from a project that has network nodes while it is off.
+            //
+            // The allowlist half is a different question - which hosts this build was published to
+            // reach - and that answer does not change with the shell, so every shell gets it and
+            // every shell enforces it.
+            network: {
+                // Secure default: HTTP is only permitted when the project explicitly
+                // opts in via app.network.allowHttp. Mirrors normalizeNetworkConfiguration.
+                allowHttp: (projectConfig?.app as { network?: { allowHttp?: unknown } } | undefined)?.network?.allowHttp === true,
+                ...resolvePackNetworkAllowlist(projectConfig, packPlugins),
+            },
+            // Unconditional, unlike `network` above: a crash is not a shell mechanism, and a
+            // policy that applied to the desktop build but not the web one would be a setting that
+            // means something different depending on where the author looks.
+            crash: {
+                policy: normalizeGameCrashPolicy(
+                    (projectConfig?.app as { crash?: { policy?: unknown } } | undefined)?.crash?.policy,
+                ),
+            },
+            // Resolved per variant: a demo ends where its cut point
+            // is and lands on a page the full game never shows, so which surface ships is decided by
+            // the same tag that decides the build's name. Omitted when blank, which is the state
+            // every build was in before this field and the one the runtime treats as "show nothing".
+            ...(endingSurfaceId ? { endingSurfaceId } : {}),
+            // Unconditional and deliberately NOT resolved for `input.appTag`, unlike the two above:
+            // this is the one field whose whole job is to be the same in every variant, so that a
+            // demo and the full game - which have different app ids, different user-data
+            // directories and different protection keys - can still hand a playthrough to each
+            // other. See `@shared/types/gameProgress`. Omitted when the project names nothing the
+            // key could be derived from, which the shells read as "this build carries no progress".
+            ...(progressKey ? { progressKey } : {}),
+            // Unconditional, unlike `network` above: the fit describes the game's art rather than a
+            // shell mechanism, and the web export shares its pack with the mobile repack.
+            viewport: normalizeGameRuntimeViewportConfig(
+                (projectConfig?.app as { mobile?: unknown } | undefined)?.mobile,
+            ),
             ...(input.preview ? { preview: input.preview } : {}),
         };
 
@@ -358,7 +526,7 @@ export async function compileGameRuntimeArtifact(
         } else {
             await fs.writeFile(
                 path.join(appDir, "package.json"),
-                JSON.stringify(buildAppManifest(mode, input.runtimeVersion, pack, projectConfig), null, 2),
+                JSON.stringify(buildAppManifest(mode, input.runtimeVersion, pack, projectConfig, input.appId), null, 2),
                 "utf-8",
             );
         }
@@ -370,6 +538,7 @@ export async function compileGameRuntimeArtifact(
             packPath,
             pack,
             copiedAssetCount: Object.keys(assetManifest).length,
+            notices,
         };
     } catch (error) {
         if (target.kind === "sealed") {
@@ -383,16 +552,23 @@ export async function compileGameRuntimeArtifact(
 
 /**
  * The loose app manifest Electron reads before any pack (possibly sealed) is
- * open. Production identity fields drive the shell's app name - and with it
- * the default OS userData location - plus the packager's product metadata.
- * `narraleaf.mode` is the early mode marker the runtime consults before
- * app-ready; the pack's own `mode` stays authoritative.
+ * open. Production identity fields drive the shell's app name plus the
+ * packager's product metadata. `narraleaf.mode` is the early mode marker the
+ * runtime consults before app-ready; the pack's own `mode` stays authoritative.
+ *
+ * `narraleaf.userDataDir` travels the same way and for the same reason: the
+ * runtime has to settle where the player's files live before Chromium starts,
+ * which is long before it can open a sealed pack. It is resolved here rather
+ * than in the runtime so the name is decided by the same code the build dialog
+ * and the Project panel read - see userDataLocation.ts for why it is the app id
+ * and not the display name.
  */
 function buildAppManifest(
     mode: "preview" | "production",
     runtimeVersion: string,
     pack: GameRuntimePackV1,
     projectConfig: ProjectConfigData | null,
+    appId: string | undefined,
 ): Record<string, unknown> {
     const base = {
         private: true,
@@ -400,13 +576,15 @@ function buildAppManifest(
         narraleaf: { mode },
     };
     if (mode === "preview") {
+        // Preview keeps its userData beside the compiled app, so there is no
+        // per-user directory to name.
         return {
             name: "narraleaf-preview-runtime",
             version: runtimeVersion,
             ...base,
         };
     }
-    const identifier = readString(projectConfig?.identifier);
+    const identifier = pack.project.identifier ?? readString(projectConfig?.identifier);
     return {
         name: sanitizeProjectFileName(identifier ?? pack.project.name),
         productName: pack.project.name,
@@ -414,6 +592,16 @@ function buildAppManifest(
         description: readString(projectConfig?.metadata?.description),
         author: readString(projectConfig?.metadata?.author) ?? "NarraLeaf",
         ...base,
+        narraleaf: {
+            ...base.narraleaf,
+            // The build's own app id when there is one, so a game writes under
+            // the identity it ships with. The fallback derives from the same
+            // project fields the build would have used; it only diverges from
+            // the build's answer for a project with no identifier whose variant
+            // renames it, and there the project's own name is the more stable
+            // of the two anyway.
+            userDataDir: userDataDirectoryName(appId ?? deriveGameAppId(identifier, pack.project.name)),
+        },
     };
 }
 
@@ -488,10 +676,165 @@ async function copyOptionalFile(sourcePath: string, targetPath: string): Promise
     }
 }
 
+/**
+ * Which library assets this build may carry, and the bundle narrowed to match.
+ *
+ * The answer is every asset id that occurs in the bytes that ship. Three of the bundle's own tables
+ * enumerate over the whole project rather than over what the story reaches - the display names a
+ * story row shows, the clip regions marked on audio, and the cast list - so each would answer "all
+ * of them" whatever the story does. They are held out of the sweep and narrowed to its result, which
+ * is sound because a subset adds no id back.
+ *
+ * The cast is narrowed *before* the asset sweep rather than after it, and that ordering is the whole
+ * point: a character sheet names every portrait, pose and avatar that character has, so a cast list
+ * narrowed afterwards would already have kept the portraits of a character this edition cannot
+ * reach. That was the last hole in "the demo does not carry the rest of the game".
+ *
+ * What this cannot see is an id the running game computes rather than stores. That is refused before
+ * a build starts rather than guessed at here: an asset picked by an expression is exactly the shape
+ * that would go missing from a shipped game with nothing anywhere saying so.
+ */
+async function planShippedAssets(
+    projectPath: string,
+    bundle: DevModeBundle,
+    runtimePlugins: readonly GameRuntimePluginSource[],
+    onNotice?: (message: string) => void,
+): Promise<{
+    bundle: DevModeBundle;
+    include: Set<string>;
+    characterIds: Set<string>;
+    removedAssetCount: number;
+}> {
+    const libraryAssetIds = await readLibraryAssetIds(projectPath);
+    // A plugin's published data ships inside the pack and a plugin can ask for an asset's URL, so a
+    // catalogue naming one is a reference like any other. It is swept from the same files the plugin
+    // copier reads rather than from its output, because that copier runs after the assets are chosen.
+    const pluginData = await Promise.all(runtimePlugins.map(plugin => readPublishedPluginData({
+        projectPath,
+        manifest: plugin.manifest,
+    })));
+    const cast = planShippedCharacters(bundle, pluginData, onNotice);
+    const assetNames = cast.bundle.storyLibrary?.assetNames ?? {};
+    const clips = cast.bundle.audio?.clips ?? {};
+    const swept = {
+        bundle: {
+            ...cast.bundle,
+            ...(cast.bundle.storyLibrary
+                ? { storyLibrary: { ...cast.bundle.storyLibrary, assetNames: {} } }
+                : {}),
+            ...(cast.bundle.audio ? { audio: { ...cast.bundle.audio, clips: {} } } : {}),
+        },
+        pluginData,
+    };
+    const include = collectReferencedAssetIds(swept, libraryAssetIds);
+    return {
+        bundle: {
+            ...cast.bundle,
+            ...(cast.bundle.storyLibrary
+                ? {
+                    storyLibrary: {
+                        ...cast.bundle.storyLibrary,
+                        assetNames: restrictRecordToAssetIds(assetNames, include).record,
+                    },
+                }
+                : {}),
+            ...(cast.bundle.audio
+                ? { audio: { ...cast.bundle.audio, clips: restrictRecordToAssetIds(clips, include).record } }
+                : {}),
+        },
+        include,
+        characterIds: cast.characterIds,
+        removedAssetCount: libraryAssetIds.size - include.size,
+    };
+}
+
+/**
+ * The cast this edition can reach, and the bundle narrowed to it.
+ *
+ * A character ships when its id occurs in the bytes that ship - a story row that speaks as it, a
+ * widget bound to it, a plugin catalogue naming it. The cast list itself is held out of that sweep
+ * for the reason the asset-name table is: it lists every character by construction.
+ *
+ * The display names go with them. A `char:` translation unit belongs to a character rather than to a
+ * row, so the scene drop never touched one, and an edition that stopped shipping a character was
+ * still shipping that character's name in every language it carried - often the spoiler that got the
+ * character dropped in the first place.
+ *
+ * Exported for its own test: reaching this through a whole compile would mean writing a project on
+ * disk to assert a set operation.
+ */
+export function planShippedCharacters(
+    bundle: DevModeBundle,
+    pluginData: unknown,
+    onNotice?: (message: string) => void,
+): { bundle: DevModeBundle; characterIds: Set<string> } {
+    const storyLibrary = bundle.storyLibrary;
+    const characters = storyLibrary?.characters;
+    if (!storyLibrary || !characters || characters.length === 0) {
+        return { bundle, characterIds: new Set<string>() };
+    }
+    const knownIds = new Set(characters.map(character => character.id));
+    // The name table is the second list that enumerates the cast: every `char:` unit id *is* a
+    // character id, so sweeping it would answer "all of them" the way the asset-name table does.
+    // Held out with the same call that narrows it later, against the empty set.
+    const sweptLocalization = bundle.localization
+        ? restrictCharacterUnits(bundle.localization, new Set<string>()).bundle
+        : undefined;
+    const swept = {
+        bundle: {
+            ...bundle,
+            storyLibrary: { ...storyLibrary, characters: [] },
+            ...(sweptLocalization ? { localization: sweptLocalization } : {}),
+        },
+        pluginData,
+    };
+    const characterIds = collectReferencedIds(swept, knownIds);
+    if (characterIds.size === characters.length) {
+        return { bundle, characterIds };
+    }
+    const kept = characters.filter(character => characterIds.has(character.id));
+    onNotice?.(`${characters.length - kept.length} characters are unreachable in this edition and do not ship`);
+    const localization = bundle.localization
+        ? restrictCharacterUnits(bundle.localization, characterIds)
+        : null;
+    if (localization && localization.removedUnitCount > 0) {
+        onNotice?.(`${localization.removedUnitCount} character names belong to characters that do not ship`);
+    }
+    return {
+        bundle: {
+            ...bundle,
+            storyLibrary: { ...storyLibrary, characters: kept },
+            ...(localization ? { localization: localization.bundle } : {}),
+        },
+        characterIds,
+    };
+}
+
+/** Every asset id the project's library declares, across all shards. */
+async function readLibraryAssetIds(projectPath: string): Promise<Set<string>> {
+    const ids = new Set<string>();
+    for (const type of ASSET_TYPES) {
+        const metadata = await readOptionalJson<Record<string, unknown>>(
+            path.join(projectPath, "assets", `assets.metadata.${type}.json`),
+        );
+        for (const assetId of Object.keys(metadata ?? {})) {
+            ids.add(assetId);
+        }
+    }
+    return ids;
+}
+
 async function copyProjectAssets(input: {
     projectPath: string;
     assetsDir: string;
     target: PackTarget;
+    /**
+     * The ids this build is allowed to carry, or null to carry the library whole.
+     *
+     * Null is the release edition and every preview: nothing was removed from the story, so no asset
+     * can have lost its last reference, and narrowing there could only ever take something away.
+     */
+    include: ReadonlySet<string> | null;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
     for (const type of ASSET_TYPES) {
@@ -501,6 +844,9 @@ async function copyProjectAssets(input: {
             continue;
         }
         for (const [assetId, rawAsset] of Object.entries(metadata)) {
+            if (input.include && !input.include.has(assetId)) {
+                continue;
+            }
             const normalized = normalizeAssetRecord(assetId, type, rawAsset);
             const sourcePath = resolveAssetSourcePath(input.projectPath, normalized);
             if (BUNDLE_ASSET_TYPES.has(type)) {
@@ -689,6 +1035,14 @@ async function copyBakedCharacterAvatars(input: {
     assetsDir: string;
     target: PackTarget;
     manifest: Record<string, GameRuntimeAssetManifestEntry>;
+    /**
+     * The cast this edition ships, or null when it ships all of them.
+     *
+     * These bakes are derived project files rather than library assets, so the asset sweep never
+     * sees them and narrowing the cast would not have taken them away: a directory per character
+     * sits on disk, and this walk would copy every one of them into a demo.
+     */
+    characterIds: ReadonlySet<string> | null;
 }): Promise<void> {
     const root = path.join(input.projectPath, "resources", "characters", "avatars");
     let characterDirs: string[];
@@ -701,6 +1055,9 @@ async function copyBakedCharacterAvatars(input: {
     }
 
     for (const characterId of characterDirs) {
+        if (input.characterIds && !input.characterIds.has(characterId)) {
+            continue;
+        }
         const dir = path.join(root, characterId);
         const files = (await fs.readdir(dir)).filter(name => name.toLowerCase().endsWith(".png"));
         for (const fileName of files) {
@@ -809,6 +1166,11 @@ async function copyRuntimePlugins(input: {
     hostUserDataDir?: string;
     /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
+    /** What each plugin's declared fields resolve against. See {@link readPluginConfigSource}. */
+    pluginConfig: { tag: ProjectAppTag; base: AppTagPluginConfig };
+    /** The build targets this artifact serves; what a platform-scoped field resolves against. */
+    platforms?: readonly GameBuildPlatform[];
+    onNotice?: (message: string) => void;
 }): Promise<GameRuntimePackPluginEntry[]> {
     const entries: GameRuntimePackPluginEntry[] = [];
     for (const plugin of input.runtimePlugins) {
@@ -841,11 +1203,29 @@ async function copyRuntimePlugins(input: {
                 ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             })
             : [];
+        // Per plugin and nothing wider: the entry a plugin reads at runtime is its own, so a value
+        // one plugin's author typed is never in front of another's code.
+        const buildConfig = resolveShippedPluginBuildConfig(
+            { pluginId: plugin.manifest.id, manifest: plugin.manifest },
+            input.pluginConfig.tag,
+            input.pluginConfig.base,
+            input.platforms,
+        );
+        for (const key of buildConfig.ambiguousKeys) {
+            // Named rather than dropped in silence: to the plugin this is indistinguishable from a
+            // field the author never filled in, and only the author can decide which value is right
+            // for a package that serves several platforms at once.
+            input.onNotice?.(
+                `${plugin.manifest.id}: "${key}" differs between the platforms this build produces, `
+                + "so no value ships for it",
+            );
+        }
         entries.push({
             manifest: plugin.manifest,
             entryRelativePath: relativePath,
             ...(data ? { data } : {}),
             ...(sidecars.length > 0 ? { sidecars } : {}),
+            ...(Object.keys(buildConfig.values).length > 0 ? { buildConfig: buildConfig.values } : {}),
         });
     }
     return entries;
@@ -936,8 +1316,10 @@ async function copyPluginSidecars(input: {
  * build is the last moment before those bytes reach a player's machine, and an
  * install directory is an ordinary folder anything on the host can rewrite
  * afterwards - so the pack re-verifies rather than trusts the install record.
- * `dep:` artifacts are exempt here because the build dependency cache verified
- * the archive they came out of against its own mandatory digest.
+ * `dep:` artifacts are not verified here because the build dependency cache
+ * applies the same rule at its own door: it re-checks the directory it hands
+ * back against what was extracted into it, not just the archive that came out
+ * of the network.
  */
 async function resolveSidecarInclude(input: {
     include: string;
@@ -1220,6 +1602,71 @@ async function readProjectConfig(projectPath: string): Promise<ProjectConfigData
     return readProjectConfigFromDir(projectPath);
 }
 
+/**
+ * The page this build ends on, resolved for the variant it is being compiled as.
+ *
+ * Per variant for the reason the addresses are: the demo's ending is not the full game's, and the
+ * same story document produces both. An absent tag is the release variant, which reads the project's
+ * own choice. A blank answer is a build that shows nothing when its story ends, which is what every
+ * build did before this existed.
+ *
+ * A document that will not parse propagates, exactly as it does above: a build whose variant record
+ * could not be read has no business guessing at which page it ends on.
+ */
+async function readEndingSurfaceId(projectPath: string, appTagId: string | undefined): Promise<string> {
+    const document = await readProjectAppTagDocumentFromDir(projectPath);
+    const tag = resolveAppTag(document.tags, appTagId);
+    return resolveAppTagEndingSurface(tag, document.endingSurfaceId).value;
+}
+
+/**
+ * The key every edition of this title carries, whichever variant is being built.
+ *
+ * The mirror image of {@link readEndingSurfaceId}: that one resolves for the variant, because a
+ * demo ends elsewhere. This one resolves for
+ * the RELEASE tag on purpose, because the file it names is the one thing the variants have to
+ * share - a demo that overrode `identifier` writes its saves where the release build cannot read
+ * them, and the whole feature is the channel that survives that.
+ *
+ * No app-tag document is read, unlike its neighbour. The release tag is synthesized and carries
+ * no overrides by construction (see `RELEASE_APP_TAG`), so the project's own identity IS the release
+ * identity; going to disk for it would be a read whose answer is fixed. `resolveAppTagIdentity` is
+ * still what performs it, inside `gameProgressKey`, so the rule lives in one place.
+ *
+ * The project directory's name backs a project that has neither an identifier nor a name, which is
+ * the same fallback `pack.project.name` takes a few lines above.
+ */
+function readProgressKey(projectConfig: ProjectConfigData | null, projectPath: string): string {
+    const base: AppTagBaseIdentity = {
+        displayName: projectConfig?.name?.trim() || path.basename(projectPath) || "",
+        identifier: projectConfig?.identifier?.trim() ?? "",
+        version: readString(projectConfig?.metadata?.version) ?? "",
+    };
+    return gameProgressKey(base);
+}
+
+/**
+ * The two records a plugin's declared fields are resolved against: the variant being compiled, and
+ * the project's own values that every variant inherits.
+ *
+ * The pair travels rather than a finished answer, because the answer is per plugin and the plugins
+ * are not known here - a field belongs to whichever plugin declared it, and only the copy pass
+ * knows which plugins this pack ships. Resolution itself is `resolveShippedPluginBuildConfig`.
+ *
+ * A document that will not parse propagates, as it does for the addresses and the ending page: a
+ * build that could not read its variant record has no business guessing what the author typed.
+ */
+async function readPluginConfigSource(
+    projectPath: string,
+    appTagId: string | undefined,
+): Promise<{ tag: ProjectAppTag; base: AppTagPluginConfig }> {
+    const document = await readProjectAppTagDocumentFromDir(projectPath);
+    return {
+        tag: resolveAppTag(document.tags, appTagId),
+        base: document.pluginConfig ?? {},
+    };
+}
+
 async function readOptionalJson<T>(filePath: string): Promise<T | null> {
     try {
         return await readJson<T>(filePath);
@@ -1238,6 +1685,42 @@ async function readJson<T>(filePath: string): Promise<T> {
     } catch (error) {
         throw new Error(`Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
     }
+}
+
+/**
+ * The allowlist half of the pack's network block: what the author wrote, plus what each plugin in
+ * this build declared and the author approved at install.
+ *
+ * The two are kept apart in the pack rather than merged here, because they are removed by different
+ * acts - editing the project, uninstalling the plugin - and a surface reading the pack back has to
+ * be able to say which is which.
+ *
+ * Read off the plugins that were actually copied into this app dir, not off the install registry: a
+ * plugin excluded from this variant declares nothing about this artifact.
+ *
+ * Absent entirely when the project states the wide policy, which is what keeps a project that never
+ * narrowed anything byte-identical to one built before a list could be stated.
+ */
+function resolvePackNetworkAllowlist(
+    projectConfig: ProjectConfigData | null,
+    packPlugins: readonly GameRuntimePackPluginEntry[],
+): Pick<GameRuntimeNetworkConfig, "policy" | "allowlist" | "pluginAllowlist"> {
+    const network = (projectConfig?.app as { network?: { policy?: unknown; allowlist?: unknown } } | undefined)?.network;
+    if (network?.policy !== NETWORK_POLICY_ALLOWLIST) {
+        return {};
+    }
+    const pluginAllowlist: NetworkPluginAllowlistEntry[] = [];
+    for (const plugin of packPlugins) {
+        const patterns = plugin.manifest.contributes?.network ?? [];
+        if (patterns.length > 0) {
+            pluginAllowlist.push({ pluginId: plugin.manifest.id, patterns: [...patterns] });
+        }
+    }
+    return {
+        policy: NETWORK_POLICY_ALLOWLIST,
+        allowlist: normalizeNetworkAllowlistEntries(network.allowlist),
+        ...(pluginAllowlist.length > 0 ? { pluginAllowlist } : {}),
+    };
 }
 
 function readString(value: unknown): string | undefined {

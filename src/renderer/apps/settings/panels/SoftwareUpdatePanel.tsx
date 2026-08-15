@@ -81,15 +81,75 @@ export function SoftwareUpdatePanel() {
 
     return (
         <div className="flex flex-col gap-2">
-            <div className="flex flex-col gap-0.5">
-                <p className="text-sm text-fg">{t(STATUS_KEYS[state.status], { version })}</p>
-                <p className="text-xs text-fg-subtle">
-                    {state.status === "error" && state.error
-                        ? state.error
-                        : t("update.versions", { current: state.currentVersion })}
-                </p>
+            {/* Laid out as a settings row - state on the left, the presses on the right - because
+                that is what every other row in this pane does, and a panel that reads top-to-bottom
+                while its neighbours read left-to-right looks like a different kind of thing. The
+                status line takes the label's weight: it is what this row is about. */}
+            <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex flex-col gap-1 min-w-0 grow basis-64">
+                    <span className="text-sm font-medium text-fg">{t(STATUS_KEYS[state.status], { version })}</span>
+                    <span className="text-xs text-fg-subtle">
+                        {state.status === "error" && state.error
+                            ? state.error
+                            : t("update.versions", { current: state.currentVersion })}
+                    </span>
+                    {state.status === "manual" && (
+                        <span className="text-xs text-fg-subtle">{t(unsupportedKey())}</span>
+                    )}
+                </div>
+
+                {/* `max-w-full` rather than `shrink-0`, for the same reason the ordinary rows carry
+                    it: once these buttons have wrapped onto their own line they must stay inside
+                    the pane instead of running off its right edge. */}
+                <div className="flex flex-wrap items-center justify-end gap-2 ml-auto min-w-0 max-w-full">
+                    {version && (
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7"
+                            onClick={() => openReleases(state.releaseUrl ?? UPDATE_RELEASES_URL)}
+                        >
+                            {t("update.actions.releaseNotes")}
+                        </Button>
+                    )}
+
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        className="h-7"
+                        disabled={busy || state.status === "checking" || state.status === "downloading"}
+                        onClick={() => void check()}
+                    >
+                        {t("update.actions.check")}
+                    </Button>
+
+                    {state.canInstall && state.status === "available" && (
+                        <Button size="sm" variant="primary" className="h-7" disabled={busy} onClick={() => void download()}>
+                            {t("update.actions.download")}
+                        </Button>
+                    )}
+
+                    {state.status === "ready" && (
+                        <Button size="sm" variant="primary" className="h-7" onClick={() => void install()}>
+                            {t("update.actions.install")}
+                        </Button>
+                    )}
+
+                    {state.status === "manual" && (
+                        <Button
+                            size="sm"
+                            variant="primary"
+                            className="h-7"
+                            onClick={() => openReleases(state.releaseUrl ?? UPDATE_RELEASES_URL)}
+                        >
+                            {t("update.actions.openDownloadPage")}
+                        </Button>
+                    )}
+                </div>
             </div>
 
+            {/* Full width under the row, not squeezed into the control column: the bar is a
+                measurement of the download, and a short one reads as a smaller job. */}
             {state.status === "downloading" && (
                 <div className="flex flex-col gap-1">
                     {percent === null
@@ -102,56 +162,6 @@ export function SoftwareUpdatePanel() {
                     </p>
                 </div>
             )}
-
-            {state.status === "manual" && (
-                <p className="text-xs text-fg-subtle">{t(unsupportedKey())}</p>
-            )}
-
-            <div className="flex flex-wrap items-center gap-2">
-                <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-7"
-                    disabled={busy || state.status === "checking" || state.status === "downloading"}
-                    onClick={() => void check()}
-                >
-                    {t("update.actions.check")}
-                </Button>
-
-                {state.canInstall && state.status === "available" && (
-                    <Button size="sm" variant="primary" className="h-7" disabled={busy} onClick={() => void download()}>
-                        {t("update.actions.download")}
-                    </Button>
-                )}
-
-                {state.status === "ready" && (
-                    <Button size="sm" variant="primary" className="h-7" onClick={() => void install()}>
-                        {t("update.actions.install")}
-                    </Button>
-                )}
-
-                {state.status === "manual" && (
-                    <Button
-                        size="sm"
-                        variant="primary"
-                        className="h-7"
-                        onClick={() => openReleases(state.releaseUrl ?? UPDATE_RELEASES_URL)}
-                    >
-                        {t("update.actions.openDownloadPage")}
-                    </Button>
-                )}
-
-                {version && (
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7"
-                        onClick={() => openReleases(state.releaseUrl ?? UPDATE_RELEASES_URL)}
-                    >
-                        {t("update.actions.releaseNotes")}
-                    </Button>
-                )}
-            </div>
         </div>
     );
 }

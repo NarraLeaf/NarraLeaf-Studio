@@ -20,6 +20,9 @@ function manifest(id: string, version: string, blueprintNodes: string[] = [], wi
             runtimeCapabilities: [],
             sidecars: [],
             buildDependencies: [],
+            buildConfig: [],
+            externalLinks: [],
+            network: [],
         },
         permissions: [],
     };

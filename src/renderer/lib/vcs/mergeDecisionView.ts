@@ -1,7 +1,7 @@
 import type { DocumentMergeDecision, DocumentMergeSide } from "@shared/documents/diff";
 import { mergeDecisionKey, type DocumentMergeSideName } from "@shared/documents/mergeApply";
 import type { TranslationKey } from "@shared/i18n";
-import type { VcsMergeDocumentBlocker, VcsMergeSideChoice } from "@shared/types/vcs";
+import type { VcsMergeDocument, VcsMergeDocumentBlocker, VcsMergeSideChoice } from "@shared/types/vcs";
 import type { LabelTranslator } from "./documentChangeView";
 
 /**
@@ -51,6 +51,98 @@ export function countUndecidedChanges(
         }
     }
     return count;
+}
+
+/**
+ * What one window knows about one conflicted document's insides.
+ *
+ * Read on demand - a decision carries BOTH sides' values verbatim, so a merge with two hundred
+ * conflicted files fetched up front would be a message almost none of which is ever looked at.
+ * `undefined` for a path nobody has opened, which is a fourth state and the one that decides
+ * whether the per-change control may be offered at all.
+ */
+export type MergeDocumentEntry =
+    | { readonly status: "loading" }
+    | { readonly status: "error"; readonly message: string }
+    | { readonly status: "ready"; readonly document: VcsMergeDocument };
+
+/**
+ * Everything a window has decided about a merge, and everywhere it exists.
+ *
+ * Nothing readable says which conflicts an author has already settled (docs §4.24), so this record
+ * belongs to the window drawing it and is never presented as repository state. Read-only here: this
+ * module answers questions about the choices and records none.
+ */
+export interface MergeChoiceState {
+    /** Whole-file choices, keyed by repository-relative path. Absent means undecided. */
+    readonly decisions: Readonly<Record<string, VcsMergeSideChoice>>;
+    /**
+     * Paths being settled change by change.
+     *
+     * Separate from {@link changeChoices}, because "this file is being merged" and "this change goes
+     * to theirs" are different facts: a document whose every inner change merged automatically has
+     * nothing to choose and still has to be marked as merged.
+     */
+    readonly perChange: Readonly<Record<string, true>>;
+    readonly changeChoices: Readonly<Record<string, MergeChangeChoices>>;
+    readonly documents: Readonly<Record<string, MergeDocumentEntry>>;
+}
+
+/** The answer a file has, or `none` - which is the state that stops the merge being finished. */
+export type MergeFileDecision = VcsMergeSideChoice | "per-change" | "none";
+
+/** One conflicted file, as the index draws it and as the finish button counts it. */
+export interface ConflictRowView {
+    readonly path: string;
+    readonly decision: MergeFileDecision;
+    /**
+     * Whether this file has an answer the author gave.
+     *
+     * The one predicate behind both the row's marker and the finish button, so the two cannot
+     * disagree about whether a merge can be closed.
+     */
+    readonly settled: boolean;
+    /**
+     * Whether this file may be settled change by change.
+     *
+     * False until the document has been READ, because that is a property of the document and not of
+     * the interface: the control cannot be drawn before anyone has looked (see
+     * {@link VcsMergeDocument.blocked}, which is the other half of the answer).
+     */
+    readonly mergeable: boolean;
+    /** Conflicts inside it still needing a side. Zero for anything not being merged per change. */
+    readonly undecidedChanges: number;
+}
+
+export function buildConflictRows(
+    paths: readonly string[],
+    state: MergeChoiceState,
+): ConflictRowView[] {
+    return paths.map(path => {
+        const whole = state.decisions[path];
+        const entry = state.documents[path];
+        const document = entry?.status === "ready" ? entry.document : null;
+        const mergeable = document !== null && document.blocked === undefined;
+        const merging = state.perChange[path] === true;
+        const undecidedChanges = mergeable && merging
+            ? countUndecidedChanges(document.decisions, state.changeChoices[path] ?? {})
+            : 0;
+        return {
+            path,
+            decision: whole ?? (merging ? "per-change" : "none"),
+            // Per-change counts only when every `conflict` inside has a side; an `auto-*` row needs
+            // nothing, because the merge already had a right answer for it. A blocked document can
+            // never be settled this way, however many changes it reports.
+            settled: whole !== undefined || (merging && mergeable && undecidedChanges === 0),
+            mergeable,
+            undecidedChanges,
+        };
+    });
+}
+
+/** Files still needing an answer. Counted over every conflict, not over the rows an index drew. */
+export function countUndecidedFiles(rows: readonly ConflictRowView[]): number {
+    return rows.reduce((count, row) => (row.settled ? count : count + 1), 0);
 }
 
 /**

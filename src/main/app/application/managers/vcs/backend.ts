@@ -1,5 +1,5 @@
 import type { VcsAvailability } from "@shared/types/vcs";
-import { isVcsPlatformSupported } from "@shared/types/vcs";
+import { isVcsPlatformSupported, VcsErrorCode } from "@shared/types/vcs";
 
 /**
  * The plug in "pluggable version control".
@@ -46,6 +46,12 @@ export type VcsBackend =
     & typeof import("./revisionReader")
     & typeof import("./repository")
     & typeof import("./remote")
+    /**
+     * Signing in to a server that verifies who is calling. Behind the same plug as the
+     * rest: it reaches the binding for the login itself, and it is meaningless on a host
+     * with no backend to sign anything in.
+     */
+    & typeof import("./serverSession")
     & typeof import("./merge")
     /**
      * Per-change resolution. Reaches no native code at all - it is `fs` plus the document
@@ -90,10 +96,11 @@ export async function loadVcsBackend(): Promise<VcsBackend | null> {
         try {
             // Dynamic on purpose: these imports are what reach the native library, and
             // a static one would run `koffi.load()` during main-process startup.
-            const [reader, repository, remote, merge, mergeDocument] = await Promise.all([
+            const [reader, repository, remote, serverSession, merge, mergeDocument] = await Promise.all([
                 import("./revisionReader"),
                 import("./repository"),
                 import("./remote"),
+                import("./serverSession"),
                 import("./merge"),
                 import("./mergeDocument"),
             ]);
@@ -102,7 +109,7 @@ export async function loadVcsBackend(): Promise<VcsBackend | null> {
             // module resolved.
             const { loadLoreLibrary } = await import("./lore");
             loadLoreLibrary();
-            cached = { ...reader, ...repository, ...remote, ...merge, ...mergeDocument };
+            cached = { ...reader, ...repository, ...remote, ...serverSession, ...merge, ...mergeDocument };
             availability = { available: true };
             return cached;
         } catch (error) {
@@ -132,6 +139,9 @@ export async function getVcsAvailability(): Promise<VcsAvailability> {
 
 /** Thrown by every VCS operation on a host without a usable backend. */
 export class VcsUnavailableError extends Error {
+    /** Carried across IPC by `ipcHost.failed`, so the renderer says this in the author's language. */
+    readonly code = VcsErrorCode.Unavailable;
+
     constructor(readonly availability: Extract<VcsAvailability, { available: false }>) {
         super(
             availability.reason === "unsupported-platform"

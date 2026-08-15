@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { ArrowRightFromLine, CircleX, Minimize2, SquareX, X } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useKeybinding } from "../../hooks";
 import { useRegistry } from "../../registry";
@@ -62,6 +63,10 @@ export function EditorCommands() {
                 id: "editor:close-other-groups",
                 titleKey: "workspace.shell.commandPalette.editor.closeOtherGroups",
                 categoryKey: "workspace.shell.commandPalette.categoryEditor",
+                // The five below are one act at five scopes, so they read as one family and differ
+                // only in how much they take: one tab, the rest, everything rightwards, all of them,
+                // and - the odd one out - the split back down to a single group.
+                icon: <Minimize2 className="w-4 h-4" />,
                 when: focus => !!activeTarget(focus) && groupCount() > 1,
                 run: () => {
                     const target = activeTarget();
@@ -74,6 +79,7 @@ export function EditorCommands() {
                 id: "editor:close-tab",
                 titleKey: "workspace.shell.commandPalette.editor.closeTab",
                 categoryKey: "workspace.shell.commandPalette.categoryEditor",
+                icon: <X className="w-4 h-4" />,
                 // Claiming the chord is what keeps this off the list twice: EditorGroup registers
                 // the same close on `mod+w` per group, and without a claim here the palette listed
                 // both — one "Close Tab" under Editor and another under General.
@@ -93,6 +99,7 @@ export function EditorCommands() {
                 id: "editor:close-others",
                 titleKey: "workspace.shell.commandPalette.editor.closeOthers",
                 categoryKey: "workspace.shell.commandPalette.categoryEditor",
+                icon: <SquareX className="w-4 h-4" />,
                 when: focus => {
                     const target = activeTarget(focus);
                     return !!target && closableOtherTabIds(target.group, target.index).length > 0;
@@ -108,6 +115,7 @@ export function EditorCommands() {
                 id: "editor:close-to-right",
                 titleKey: "workspace.shell.commandPalette.editor.closeToRight",
                 categoryKey: "workspace.shell.commandPalette.categoryEditor",
+                icon: <ArrowRightFromLine className="w-4 h-4" />,
                 when: focus => {
                     const target = activeTarget(focus);
                     return !!target && closableTabIdsToRight(target.group, target.index).length > 0;
@@ -123,6 +131,7 @@ export function EditorCommands() {
                 id: "editor:close-all",
                 titleKey: "workspace.shell.commandPalette.editor.closeAll",
                 categoryKey: "workspace.shell.commandPalette.categoryEditor",
+                icon: <CircleX className="w-4 h-4" />,
                 when: focus => {
                     const target = activeTarget(focus);
                     return !!target && closableTabIds(target.group.tabs).length > 0;

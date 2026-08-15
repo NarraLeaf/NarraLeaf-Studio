@@ -6,6 +6,22 @@ export const uiEditor = {
         pageDescription: "Pages are complete screens such as title, settings, save, history, or gallery.",
         gameUiDescription: "Game UI belongs to active gameplay, such as dialog, choices, HUD, shortcuts, and notifications.",
     },
+    // The five stage slots a Game UI can take. Named once here because the author meets the same
+    // five in the create dialog, the surface list, the properties panel and the template store.
+    stageSlot: {
+        onStage: "On Stage",
+        dialog: "Dialog",
+        notification: "Notification",
+        choice: "Choice",
+        nvl: "NVL",
+    },
+    stageSlotDescription: {
+        onStage: "Always available while the game is running.",
+        dialog: "The main conversation or narration interface.",
+        notification: "Short runtime messages and prompts.",
+        choice: "Player choice menus and decision prompts.",
+        nvl: "Full-screen novel-mode dialog history.",
+    },
     panel: {
         interfaceType: "Interface Type",
         createPage: "Create Page",
@@ -77,6 +93,14 @@ export const uiEditor = {
         layerFallback: "Layer",
         openComponent: "Open component",
         unlinkComponent: "Unlink component",
+    },
+    zoom: {
+        label: "Zoom",
+        actualSize: "Actual size",
+        fitArea: "Fit the editing area",
+        fillArea: "Fill the editing area",
+        fitWidth: "Fit the width",
+        custom: "Custom",
     },
     snap: {
         label: "Smart snap",
@@ -173,13 +197,6 @@ export const uiEditor = {
         placement: {
             page: "A new page",
             gameUi: "Game UI · {slot}",
-        },
-        slot: {
-            onStage: "On stage",
-            dialog: "Dialog",
-            notification: "Notification",
-            choice: "Choice",
-            nvl: "NVL",
         },
         error: {
             load: "Could not load the template store.",

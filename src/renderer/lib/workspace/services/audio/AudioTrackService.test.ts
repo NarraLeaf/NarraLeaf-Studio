@@ -8,6 +8,8 @@ import {
     AUDIO_TRACK_SCHEMA_VERSION,
 } from "@shared/types/audioTrack";
 import { Services, type WorkspaceContext } from "../services";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
 import { AudioTrackService } from "./AudioTrackService";
 
 /**
@@ -23,14 +25,21 @@ type Harness = {
     service: AudioTrackService;
     files: Map<string, string>;
     unreadable: ReturnType<typeof vi.fn>;
+    /** The real service, not a stub: every mutation is meant to leave a step on the project stack. */
+    history: HistoryService;
 };
 
-async function createHarness(seed?: string, reuse?: AudioTrackService): Promise<Harness> {
+async function createHarness(
+    seed?: string,
+    reuse?: AudioTrackService,
+    reuseHistory?: HistoryService,
+): Promise<Harness> {
     const files = new Map<string, string>();
     if (seed !== undefined) {
         files.set(DOCUMENT, seed);
     }
     const unreadable = vi.fn();
+    const history = reuseHistory ?? new HistoryService();
     let nextId = 0;
 
     const ok = <T,>(data: T): FsRequestResult<T> => ({ ok: true, data });
@@ -55,6 +64,7 @@ async function createHarness(seed?: string, reuse?: AudioTrackService): Promise<
         [Services.Project]: {},
         [Services.Uuid]: { generate: () => `track-${++nextId}` },
         [Services.SaveStatus]: { register: () => undefined, reportUnreadableDocument: unreadable },
+        [Services.History]: history,
     };
 
     const ctx = {
@@ -73,7 +83,7 @@ async function createHarness(seed?: string, reuse?: AudioTrackService): Promise<
     const service = reuse ?? new AudioTrackService();
     await service.initialize(ctx, async () => undefined);
 
-    return { service, files, unreadable };
+    return { service, files, unreadable, history };
 }
 
 const ids = (service: AudioTrackService): string[] => service.listTracks().map(track => track.id);
@@ -388,5 +398,54 @@ describe("AudioTrackService when the file on disk cannot be read", () => {
         expect(ids(service)).toContain("b");
         const roots = service.listTracks().filter(track => track.parentId === null);
         expect(roots.map(track => track.id)).toContain("a");
+    });
+});
+
+/**
+ * Deleting a bus promotes its children and rewrites nothing that pointed at it, so before these
+ * mutations reached the project's undo stack a mis-click past the confirmation was permanent.
+ */
+describe("audio track undo", () => {
+    it("puts a deleted track and its routing back", async () => {
+        const { service, history } = await createHarness();
+        const parent = service.createTrack({ name: "Ambience" });
+        const child = service.createTrack({ name: "Rain", parentId: parent.id });
+
+        service.deleteTrack(parent.id);
+        expect(service.getTrack(parent.id)).toBeUndefined();
+        // Promotion, which is what an undo has to reverse as well as the deletion itself.
+        expect(service.getTrack(child.id)?.parentId).toBeNull();
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(service.getTrack(parent.id)?.name).toBe("Ambience");
+        expect(service.getTrack(child.id)?.parentId).toBe(parent.id);
+    });
+
+    it("redoes what it undid, and reports the track by name", async () => {
+        const { service, history } = await createHarness();
+        const track = service.createTrack({ name: "Ambience" });
+
+        history.undo(projectHistoryScope());
+        expect(service.getTrack(track.id)).toBeUndefined();
+
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(service.getTrack(track.id)?.name).toBe("Ambience");
+        expect(history.peekUndo(projectHistoryScope())).toEqual({
+            key: "project.audio.history.add",
+            params: { name: "Ambience" },
+        });
+    });
+
+    it("undoes a volume edit without touching the rest of the tree", async () => {
+        const { service, history } = await createHarness();
+        const track = service.createTrack({ name: "Ambience", volume: 0.5 });
+
+        service.updateTrack(track.id, { volume: 0.2 });
+        expect(service.getTrack(track.id)?.volume).toBe(0.2);
+
+        history.undo(projectHistoryScope());
+        expect(service.getTrack(track.id)?.volume).toBe(0.5);
+        // The track itself is still there: the step undone is the edit, not its creation.
+        expect(service.getTrack(track.id)?.name).toBe("Ambience");
     });
 });

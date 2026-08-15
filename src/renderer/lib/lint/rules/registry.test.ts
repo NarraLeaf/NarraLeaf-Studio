@@ -23,10 +23,12 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "assets/unused",
     "assets/missing",
     "assets/unreadable",
+    "assets/oversized",
     "portability/asset-name",
     "portability/case-collision",
     "portability/media-format",
     "network/fetch-disallowed",
+    "network/fetch-not-allowlisted",
     "story/invalid-command",
     "story/goto-missing",
     "story/label-duplicate",
@@ -36,6 +38,16 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/dead-end",
     "story/unreachable-scene",
     "story/empty-scene",
+    "story/app-tag-unknown",
+    "story/cut-point-orphan",
+    "story/cut-point-unreachable",
+    "blueprint/reference-missing",
+    "blueprint/unreachable-node",
+    "blueprint/empty-event",
+    "ui/unlocalized-text",
+    "ui/page-unreachable",
+    "ui/empty-behavior",
+    "blueprint/save-field-empty",
     "variables/undeclared",
     "variables/unused",
     "variables/name-collision",
@@ -57,7 +69,7 @@ const ZH_KEYS = flattenCatalog(zh);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(29);
+        expect(LINT_RULES).toHaveLength(41);
     });
 
     it("gives every rule a unique id", () => {
@@ -115,7 +127,9 @@ describe("lint rule registry", () => {
 
     it("declares option specs only where they are called for", () => {
         const withOptions = LINT_RULES.filter(rule => rule.options).map(rule => rule.id);
-        expect(withOptions).toEqual(["text/overlong"]);
+        expect(withOptions).toEqual(["assets/oversized", "text/overlong"]);
+        expect(getLintRule("assets/oversized")?.options?.maxMegabytes)
+            .toEqual({ kind: "number", default: 64, min: 1, max: 4096 });
         const overlong = getLintRule("text/overlong");
         expect(overlong?.options?.maxChars).toEqual({ kind: "number", default: 120, min: 1, max: 2000 });
         expect(overlong?.options?.countMode).toEqual({

@@ -1,4 +1,5 @@
 import type { UISurface } from "@shared/types/ui-editor/document";
+import type { SurfaceNavigationElements } from "@/lib/ui-editor/runtime/game/surfaceNavigationController";
 import { SURFACE_PREPAINT_TIMEOUT_MS } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
 import {
     initialNavigationState,
@@ -14,6 +15,8 @@ export type NavigationOpenInput = {
     targetSurface: UISurface;
     currentHiddenForGame: boolean;
     reducedMotion: boolean | null;
+    /** The bundle's elements, so the transition counts what each Page's contents cost. */
+    elements?: SurfaceNavigationElements;
     createNextEntry: (waitForExit: boolean) => AppNavEntry;
 };
 
@@ -22,6 +25,7 @@ export type NavigationCloseInput = {
     targetSurface: UISurface | null;
     targetHiddenForGame: boolean;
     reducedMotion: boolean | null;
+    elements?: SurfaceNavigationElements;
     /** Land on this stack index instead of the entry directly below the top. See the close update. */
     targetIndex?: number;
 };
@@ -112,7 +116,7 @@ export class NavigationController {
         return reduction.transition ? this.beginTransitionWait(reduction.transition) : Promise.resolve();
     }
 
-    /** Pop to `targetIndex` (default: one layer); resolves immediately when there is nothing to close. */
+    /** Pop to `targetIndex` (default: one page); resolves immediately when there is nothing to close. */
     public close(input: NavigationCloseInput): Promise<void> {
         const reduction = this.dispatch({ type: "CLOSE", ...input });
         return reduction.transition ? this.beginTransitionWait(reduction.transition) : Promise.resolve();
@@ -129,7 +133,7 @@ export class NavigationController {
         this.tryCompleteTransitionWait();
     }
 
-    /** AnimatePresence finished exiting all layers (wait mode). */
+    /** The page lane's AnimatePresence finished exiting every outgoing page (wait mode). */
     public markAllExited(): void {
         this.wait.exitDone = true;
         this.tryCompleteTransitionWait();

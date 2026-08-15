@@ -65,7 +65,7 @@ export function ProjectGameSection({ projectService, uiService, config, onConfig
             <SettingShell
                 title={t("project.game.autoSaveIntervalTitle")}
                 description={t("project.game.autoSaveIntervalDescription")}
-                titleAttr={freeze.writes().title}
+                tooltip={freeze.writes()["data-tip"]}
             >
                 <NumberField
                     value={autoSave.intervalSeconds}
@@ -80,7 +80,7 @@ export function ProjectGameSection({ projectService, uiService, config, onConfig
             <SettingShell
                 title={t("project.game.autoSaveSlotsTitle")}
                 description={t("project.game.autoSaveSlotsDescription")}
-                titleAttr={freeze.writes().title}
+                tooltip={freeze.writes()["data-tip"]}
             >
                 <NumberField
                     value={autoSave.slots}

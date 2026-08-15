@@ -33,6 +33,7 @@ const CONTEXT: StoryCommandContext = {
         { id: "t_amb", name: "Ambience" },
     ],
     labels: ["intro", "after refusal"],
+    appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var_gold" }, valueType: "number", defaultValue: 10 },
     ],
@@ -499,6 +500,7 @@ describe("projectStoryCommandLine", () => {
             "/jump 'Chapter 2' t=fade d=0.6",
             "/goto intro",
             "/label after refusal",
+            "/cut Demo",
             "/transform hero d=0.5",
             "/hide petals d=0.5",
             "/show title t=fade d=0.2",

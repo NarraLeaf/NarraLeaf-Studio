@@ -58,16 +58,18 @@ const COMMAND_STROKE = 1.6;
 /**
  * The width of a paragraph's continuation rule.
  *
- * 2 rather than the hairline it started as. A hairline is the right weight for a line that is only
- * *structure* — the nesting connector still uses one — but this one is carrying a speaker's colour,
- * and colour needs area before it is colour at all: at 1px, against the editor surface and at 55%,
- * the hue was a suggestion rather than an attribution, which is the whole job the rule has.
+ * A hairline, the same weight as the nesting connector's (`w-px`). It was widened to 2 once, on the
+ * argument that a line carrying a speaker's colour needs area before the hue reads as attribution
+ * rather than as a suggestion — and that was overruled on sight: at 2 it is visibly the heaviest line
+ * in the editor, and a column of them turns a page of dialogue into a page of bars. Every line in
+ * this editor is one hairline; this one is not the exception. If the hue reads too faintly, spend it
+ * on the rule's opacity, not on its width.
  *
  * Square ends, no radius: the rule is drawn per row but has to read as one line, so consecutive rows
  * butt flush. A radius on each segment pinches it at every row boundary — a seam per row, which is
  * exactly what a single line must not have.
  */
-const CONTINUATION_RULE_PX = 2;
+const CONTINUATION_RULE_PX = 1;
 
 /**
  * The vertical padding a row's content column holds (`py-1`), in px.
@@ -185,7 +187,7 @@ export function StorySpeakerPortraitMark(props: { identity: StorySpeakerIdentity
                 borderStyle: "solid",
                 borderColor: "var(--nl-speaker-disc)",
             }}
-            title={props.identity.name}
+            data-tip={props.identity.name}
         >
             {props.showingSprite ? (
                 <HeadThumbnail url={props.url} alt="" frame={props.frame} className="h-full w-full" iconClassName="h-3 w-3" />
@@ -223,7 +225,7 @@ export function StorySpeakerDiscMark(props: { identity: StorySpeakerIdentity }) 
                 backgroundColor: "var(--nl-speaker-disc)",
                 color: "var(--nl-speaker-ink)",
             }}
-            title={identity.name}
+            data-tip={identity.name}
         >
             {storySpeakerInitial(identity.name)}
         </span>
@@ -273,7 +275,7 @@ export function StoryNarratorRingMark(props: { glyph?: string; label: string }) 
         <span
             className="flex shrink-0 select-none items-center justify-center rounded-full border border-edge-strong text-fg-muted"
             style={{ width: STORY_MARK_PX, height: STORY_MARK_PX }}
-            title={props.label}
+            data-tip={props.label}
         >
             {props.glyph ? (
                 <span className="text-[12.5px] leading-none">{props.glyph}</span>

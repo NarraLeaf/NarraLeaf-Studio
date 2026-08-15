@@ -4,6 +4,7 @@
  */
 
 import type { BlueprintNodeDef } from "../types";
+import { appTagBlueprintNodes } from "./appTagNodes";
 import { backlogBlueprintNodes } from "./backlogNodes";
 import { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 import { broadcastBlueprintNodes } from "./broadcastNodes";
@@ -17,6 +18,7 @@ import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { fnBlueprintNodes } from "./fnNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { gameBlueprintNodes } from "./gameNodes";
+import { layerBlueprintNodes } from "./layerNodes";
 import { listBlueprintNodes } from "./listNodes";
 import { localizationBlueprintNodes } from "./localizationNodes";
 import { voiceBlueprintNodes } from "./voiceNodes";
@@ -24,6 +26,7 @@ import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
 import { networkBlueprintNodes } from "./networkNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
+import { progressBlueprintNodes } from "./progressNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { soundBlueprintNodes } from "./soundNodes";
 import { structuralBlueprintNodes } from "./structuralNodes";
@@ -33,8 +36,10 @@ import { storyVariableBlueprintNodes } from "./storyVariableNodes";
 import { visitedBlueprintNodes } from "./visitedNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
+import { timeBlueprintNodes } from "./timeNodes";
 import { widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 
+export { appTagBlueprintNodes } from "./appTagNodes";
 export { backlogBlueprintNodes } from "./backlogNodes";
 export { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 export { broadcastBlueprintNodes } from "./broadcastNodes";
@@ -48,6 +53,7 @@ export { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 export { fnBlueprintNodes } from "./fnNodes";
 export { frameBlueprintNodes } from "./frameNodes";
 export { gameBlueprintNodes } from "./gameNodes";
+export { layerBlueprintNodes } from "./layerNodes";
 export { listBlueprintNodes } from "./listNodes";
 export { localizationBlueprintNodes } from "./localizationNodes";
 export { voiceBlueprintNodes } from "./voiceNodes";
@@ -55,6 +61,7 @@ export { localVariableBlueprintNodes } from "./localVariableNodes";
 export { mathBlueprintNodes } from "./mathNodes";
 export { networkBlueprintNodes } from "./networkNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
+export { progressBlueprintNodes } from "./progressNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
 export { visitedBlueprintNodes } from "./visitedNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
@@ -63,6 +70,7 @@ export { switchBlueprintNodes } from "./switchNodes";
 export { textInputBlueprintNodes } from "./textInputNodes";
 export { stringBlueprintNodes } from "./stringNodes";
 export { textBlueprintNodes } from "./textNodes";
+export { timeBlueprintNodes } from "./timeNodes";
 export { structuralBlueprintNodes } from "./structuralNodes";
 export { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 
@@ -73,9 +81,12 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...broadcastBlueprintNodes,
     ...fnBlueprintNodes,
     ...frameBlueprintNodes,
+    ...layerBlueprintNodes,
     ...componentBlueprintNodes,
     ...gameBlueprintNodes,
     ...visitedBlueprintNodes,
+    ...appTagBlueprintNodes,
+    ...progressBlueprintNodes,
     ...backlogBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,
@@ -92,6 +103,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...mathBlueprintNodes,
     ...booleanCompareBlueprintNodes,
     ...stringBlueprintNodes,
+    ...timeBlueprintNodes,
     ...textBlueprintNodes,
     ...sliderBlueprintNodes,
     ...switchBlueprintNodes,

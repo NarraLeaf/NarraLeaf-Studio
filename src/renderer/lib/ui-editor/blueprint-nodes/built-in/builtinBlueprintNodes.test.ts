@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AutoSaveEntry } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
@@ -134,6 +134,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_QUIT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
@@ -221,6 +222,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
@@ -312,10 +314,30 @@ const SILENT_SOUND_HOST: BlueprintHostApiRuntime["sound"] = {
     setTrackVolume: async () => undefined,
 };
 
+/** No host in these tests composites layers; a show reports a handle nothing else knows. */
+const SILENT_LAYER_HOST: BlueprintHostApiRuntime["layers"] = {
+    show: async () => "layer:test:1",
+    hide: async () => undefined,
+    hideGroup: async () => undefined,
+    wait: async () => null,
+    closeSelf: async () => undefined,
+    isMounted: () => false,
+};
+
 /** No host in these tests reaches a network; every request reports the same refusal. */
 const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
     fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
 };
+
+/** No host in these tests owns a filesystem, so neither progress node can do anything here. */
+const NO_PROGRESS_HOST: BlueprintHostApiRuntime["progress"] = {
+    export: async () => ({ outcome: "failed", error: "no progress store" }),
+    import: async () => ({ outcome: "failed", sceneId: "", error: "no progress store" }),
+};
+
+/** A host that declares no addresses, which is what an unconfigured project is. */
+const NO_DECLARED_LINKS: BlueprintHostApiRuntime["navigation"]["openExternal"] =
+    async () => ({ outcome: "refused", error: "not declared" });
 
 function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAdapter {
     return {
@@ -330,13 +352,15 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 navigation: {
                     openSurface: async () => undefined,
                     getPageProps: () => ({}),
-                    closeLayer: async () => undefined,
+                    pageBack: async () => undefined,
                     clearPages: async () => undefined,
                     clearGameOverlay: async () => undefined,
                     quitApplication: async () => undefined,
                     getFullscreen: async () => false,
                     setFullscreen: async () => undefined,
+                    openExternal: NO_DECLARED_LINKS,
                 },
+                layers: SILENT_LAYER_HOST,
                 widget: {} as any,
                 state: {
                     get: () => undefined,
@@ -377,6 +401,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     deleteSave: async () => undefined,
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
+                    getSaveTimes: async () => null,
+                    getSaveLine: async () => null,
                     getSavePreview: async () => null,
                     writeAutoSave: async () => undefined,
                     listAutoSaves: async () => [],
@@ -407,6 +433,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -429,7 +456,8 @@ function createPageNavigationHostAdapter(
     openedPageProps: unknown[] = [],
     pageProps: Record<string, unknown> = {},
     quitApplicationCalls: boolean[] = [],
-    fullscreen: { current: boolean; setCalls: boolean[] } = { current: false, setCalls: [] },
+    fullscreen: { current: boolean; setCalls: boolean[] } | undefined = { current: false, setCalls: [] },
+    openedExternalUrls: string[] = [],
 ): UIHostAdapter {
     return {
         host: "player",
@@ -446,18 +474,25 @@ function createPageNavigationHostAdapter(
                         openedPageProps.push(props);
                     },
                     getPageProps: () => pageProps,
-                    closeLayer: async () => undefined,
+                    pageBack: async () => undefined,
                     clearPages: async () => undefined,
                     clearGameOverlay: async () => undefined,
                     quitApplication: async () => {
                         quitApplicationCalls.push(true);
                     },
-                    getFullscreen: async () => fullscreen.current,
+                    getFullscreen: async () => fullscreen?.current === true,
                     setFullscreen: async (next: boolean) => {
-                        fullscreen.setCalls.push(next);
-                        fullscreen.current = next;
+                        if (fullscreen) {
+                            fullscreen.setCalls.push(next);
+                            fullscreen.current = next;
+                        }
+                    },
+                    openExternal: async request => {
+                        openedExternalUrls.push(request.url);
+                        return { outcome: "opened", error: null };
                     },
                 },
+                layers: SILENT_LAYER_HOST,
                 widget: {
                     getFrameProperties: (elementId: string) => ({
                         targetSurfaceId: frameTargets[elementId] ?? null,
@@ -515,6 +550,8 @@ function createPageNavigationHostAdapter(
                     deleteSave: async () => undefined,
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
+                    getSaveTimes: async () => null,
+                    getSaveLine: async () => null,
                     getSavePreview: async () => null,
                     writeAutoSave: async () => undefined,
                     listAutoSaves: async () => [],
@@ -545,6 +582,7 @@ function createPageNavigationHostAdapter(
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -562,6 +600,8 @@ function createGameSaveHostAdapter(options: {
     listedIds?: string[];
     metadata?: unknown;
     previews?: Record<string, unknown>;
+    saveTimes?: SaveRecordTimes | null;
+    saveLine?: SaveRecordLine | null;
     history?: Array<Record<string, unknown>>;
     restoredIds?: Array<string | undefined>;
     autoSaveWrites?: boolean[];
@@ -601,13 +641,15 @@ function createGameSaveHostAdapter(options: {
                 navigation: {
                     openSurface: async () => undefined,
                     getPageProps: () => ({}),
-                    closeLayer: async () => undefined,
+                    pageBack: async () => undefined,
                     clearPages: async () => undefined,
                     clearGameOverlay: async () => undefined,
                     quitApplication: async () => undefined,
                     getFullscreen: async () => false,
                     setFullscreen: async () => undefined,
+                    openExternal: NO_DECLARED_LINKS,
                 },
+                layers: SILENT_LAYER_HOST,
                 widget: {} as any,
                 state: {
                     get: () => undefined,
@@ -652,6 +694,8 @@ function createGameSaveHostAdapter(options: {
                     },
                     listSaveIds: async () => options.listedIds ?? [],
                     getSaveMetadata: async () => options.metadata ?? {},
+                    getSaveTimes: async () => options.saveTimes ?? null,
+                    getSaveLine: async () => options.saveLine ?? null,
                     getSavePreview: async (id: string) => options.previews?.[id] as any ?? null,
                     writeAutoSave: async () => {
                         options.autoSaveWrites?.push(true);
@@ -706,6 +750,7 @@ function createGameSaveHostAdapter(options: {
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -1571,6 +1616,53 @@ describe("built-in blueprint nodes", () => {
         expect(await runSetFullscreen("bogus", true)).toEqual([false]);
     });
 
+    it("hands Open Link to the host and branches on what it answers", async () => {
+        registerCoreBlueprintNodes();
+
+        const runOpenLink = async (adapter: UIHostAdapter, locals: Record<string, unknown>) => {
+            await executeGraph({
+                graph: {
+                    id: "openLink",
+                    entries: { main: { start: { nodeId: "open", port: "in" } } },
+                    nodes: {
+                        open: {
+                            id: "open",
+                            type: BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+                            params: { url: "https://store.example.com/app/480" },
+                        },
+                        opened: { id: "opened", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "opened" } },
+                        failed: { id: "failed", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "failed" } },
+                    },
+                    edges: [
+                        { from: { nodeId: "open", port: "next" }, to: { nodeId: "opened", port: "in" } },
+                        { from: { nodeId: "open", port: "failed" }, to: { nodeId: "failed", port: "in" } },
+                        { from: { nodeId: "open", port: "error" }, to: { nodeId: "failed", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "open", port: "in" } },
+                hostAdapter: adapter,
+                blueprintLocals: locals,
+            });
+            return locals;
+        };
+
+        // The address reaches the host untouched; the host is what decides it.
+        const openedUrls: string[] = [];
+        const opened: Record<string, unknown> = {};
+        await runOpenLink(
+            createPageNavigationHostAdapter([], {}, [], [], [], {}, [], undefined, openedUrls),
+            opened,
+        );
+        expect(openedUrls).toEqual(["https://store.example.com/app/480"]);
+        expect(opened).toHaveProperty("opened");
+        expect(opened).not.toHaveProperty("failed");
+
+        // A refusal is a branch with a reason on it, not a thrown error.
+        const refused: Record<string, unknown> = {};
+        await runOpenLink(createPersistenceHostAdapter({}), refused);
+        expect(refused).toMatchObject({ failed: "not declared" });
+    });
+
     it("executes Start Game as a terminal host API node", async () => {
         registerCoreBlueprintNodes();
 
@@ -2287,6 +2379,66 @@ describe("built-in blueprint nodes", () => {
             blueprintLocals: localsFromPreview,
         });
         expect(localsFromPreview.preview).toEqual(preview);
+
+        // Get Save Line publishes what the engine already stamped into the save, so a screen shows
+        // the line the slot resumes from instead of rebuilding it from the live backlog. A slot
+        // that is not there and a slot saved before any line played both read "" - Exists is what
+        // separates them.
+        const localsFromLine: Record<string, unknown> = {};
+        const readSaveLine = async (
+            saveLine: SaveRecordLine | null,
+            locals: Record<string, unknown>,
+        ): Promise<void> => {
+            await executeGraph({
+                graph: {
+                    id: "lineSave",
+                    entries: { main: { start: { nodeId: "line", port: "in" } } },
+                    nodes: {
+                        line: {
+                            id: "line",
+                            type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+                            params: { id: "slot-a" },
+                        },
+                        captureLine: {
+                            id: "captureLine",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "line" },
+                        },
+                        captureSpeaker: {
+                            id: "captureSpeaker",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "speaker" },
+                        },
+                        captureExists: {
+                            id: "captureExists",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "exists" },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "line", port: "next" }, to: { nodeId: "captureLine", port: "in" } },
+                        { from: { nodeId: "line", port: "line" }, to: { nodeId: "captureLine", port: "value" } },
+                        { from: { nodeId: "captureLine", port: "next" }, to: { nodeId: "captureSpeaker", port: "in" } },
+                        { from: { nodeId: "line", port: "speaker" }, to: { nodeId: "captureSpeaker", port: "value" } },
+                        { from: { nodeId: "captureSpeaker", port: "next" }, to: { nodeId: "captureExists", port: "in" } },
+                        { from: { nodeId: "line", port: "exists" }, to: { nodeId: "captureExists", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "line", port: "in" } },
+                hostAdapter: createGameSaveHostAdapter({ saveLine }),
+                blueprintLocals: locals,
+            });
+        };
+        await readSaveLine({ line: "Good morning.", speaker: "Alice" }, localsFromLine);
+        expect(localsFromLine.line).toBe("Good morning.");
+        expect(localsFromLine.speaker).toBe("Alice");
+        expect(localsFromLine.exists).toBe(true);
+
+        const localsFromMissingLine: Record<string, unknown> = {};
+        await readSaveLine(null, localsFromMissingLine);
+        expect(localsFromMissingLine.line).toBe("");
+        expect(localsFromMissingLine.speaker).toBe("");
+        expect(localsFromMissingLine.exists).toBe(false);
 
         const loadedIds: string[] = [];
         const localsAfterLoad: Record<string, unknown> = {};

@@ -88,7 +88,25 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // engages and a one-shot option that never greys out - i.e. a story that runs, plausibly, and gates
 // nothing. An `invoke` fails the same way, silently turning a computed bonus into "no bonus".
 // Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 15 as const;
+// v16 adds `AppTag` to the story expression language: the build variant a package is being produced
+// as, readable as a string (`AppTag == "Demo"`). It is a compile-time constant, not a value the game
+// has - the transform in `@shared/story/appTagFold` replaces every mention with the variant's name
+// while the bundle is assembled, and a build refuses any mention it could not replace.
+// No migration: a v15 document cannot contain the node, so the ladder in
+// `migrateStoryDocumentToLatest` gains no step, only the stamp it already ends with.
+// The bump is not additive, and it is the same silent-wrong-answer as v14 and v15, one layer down.
+// `AppTag` is stored as a `call` node with a `fn` older Studios have never heard of - which is
+// exactly why it is a `call` and not a new node kind: every switch over `kind` would have returned
+// `undefined` for a new kind and dropped the expression, while every switch over `fn` is exhaustive
+// over a closed union that the compiler checks. But a v15 Studio still meets `fn: "appTag"` at
+// runtime, falls off the end of `evaluateCall` with `undefined`, and reads `AppTag == "Demo"` as
+// false - a demo-only branch that silently never runs, in a story that otherwise plays. Refusing the
+// document is the point.
+// v16 also carries the `cut` control payload, which would not have needed a version of its own: an
+// older Studio reads it as an ordinary group with no children and compiles nothing, which is not a
+// wrong answer, only an incomplete one. It rides along because the two shipped together and one
+// stamp cannot describe half a document.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 16 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -820,6 +838,35 @@ export type StoryControlPayload =
            */
           control: "goto";
           targetLabel: string;
+      }
+    | {
+          /**
+           * Where one build variant's story ends. The rest of the scene, and everything the story
+           * reaches after it, is not in that variant's package; every other variant does not have
+           * this row at all.
+           *
+           * Control flow rather than a block kind of its own: it says where playback of an edition
+           * stops, which is the same question `break` and `goto` answer for a loop and a scene. Not
+           * a container — it carries nothing and takes no children, so `canAcceptChildren` refuses
+           * it the way it refuses the other three single-instruction control rows.
+           *
+           * Names the variant by its id, under the field name every stored reference to a variant
+           * uses (`APP_TAG_REFERENCE_FIELDS`), so renaming a variant cannot invalidate the
+           * row and the "how many things use this variant" sweep counts it without being taught
+           * about story rows. An id no variant answers to resolves to release, and a cut point
+           * naming release cuts nothing — which is what makes deleting a variant safe to do with
+           * its rows still written.
+           *
+           * **Needed no version of its own.** The payload is additive: a document that predates it
+           * simply has no such row, so the migration ladder gains no step. It is the one direction
+           * that decides this, and here it is benign - an older Studio meets an unknown control
+           * payload, reads the row as an ordinary group and compiles it as one, which emits nothing
+           * because the row has no children. Nothing it can do with the document is silently wrong;
+           * it just does not know what the row means. It is stamped v16 because `AppTag` shipped in
+           * the same document and that one does have to be refused.
+           */
+          control: "cut";
+          appTagId: string;
       };
 
 export type StoryJumpPayload = {

@@ -4,14 +4,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { PROJECT_DOCUMENT_SPECS } from "@shared/documents/specs";
 import { flattenCatalog } from "../flatten";
-import { en } from "./en";
-import { zh } from "./zh";
+import { CATALOGS } from "./index";
 
 /**
- * Every `documentDiff.*` key a producer emits must exist in BOTH catalogues.
+ * Every `documentDiff.*` key a producer emits must exist in EVERY catalogue.
  *
- * This is the one gap `parity.test.ts` cannot see. That test compares en against zh, so a key
- * missing from BOTH passes it - and these keys are missing from both by construction, because
+ * This is the one gap `parity.test.ts` cannot see. That test compares each translation against en,
+ * so a key missing from ALL of them passes it - and these keys are missing from all by construction,
+ * because
  * nothing but a producer ever writes them: a spec's `diff` hands back a translation key as a plain
  * string (the diff model is shared with the main process, which has no business importing a
  * renderer's key union), so no `satisfies`, no `TranslationKey` cast and no `tsc` run has an opinion
@@ -35,6 +35,11 @@ const PRODUCER_DIRS = [
     "shared/documents",
     "main/app/application/managers/vcs",
     "renderer/lib/vcs",
+    // The comparison tab and the merge panel. Not producers of label keys, but the same failure
+    // reaches the author from here: a `documentDiff.*` string these write renders as itself, and
+    // `tsc` has no opinion about it either, because `t()` takes a key union that a hand-written
+    // dotted string satisfies only if it is right.
+    "renderer/apps/workspace/modules/vcs-changes",
 ];
 
 /**
@@ -126,8 +131,22 @@ function emittedCountKeys(text: (rel: string) => string, files: string[]): Map<s
     return found;
 }
 
-const enKeys = new Set(flattenCatalog(en).keys());
-const zhKeys = new Set(flattenCatalog(zh).keys());
+/** Every built-in catalogue, so a locale added to the registry is checked without editing this. */
+const CATALOGUE_KEYS = Object.entries(CATALOGS).map(
+    ([locale, catalog]) => [locale, new Set(flattenCatalog(catalog).keys())] as const,
+);
+
+/**
+ * Whether a key a producer wrote resolves to text in this catalogue.
+ *
+ * A key passed to `tn()` names the BASE of a plural pair, so the catalogue holds `<key>.one` and
+ * `<key>.other` and never `<key>` itself. Without this, every pluralised line in a scanned file
+ * would be reported as missing from both catalogues - a false positive that would be silenced by
+ * un-pluralising the copy, which is the opposite of what this test is protecting.
+ */
+function resolves(keys: ReadonlySet<string>, key: string): boolean {
+    return keys.has(key) || keys.has(`${key}.other`);
+}
 
 describe("documentDiff producer keys", () => {
     const emitted = new Map([...emittedLabelKeys(), ...emittedCountKeys(sourceOf, PRODUCER_FILES)]);
@@ -140,9 +159,9 @@ describe("documentDiff producer keys", () => {
         expect([...emitted.keys()]).toContain("documentDiff.count.storyScenes");
     });
 
-    for (const [locale, keys] of [["en", enKeys], ["zh", zhKeys]] as const) {
+    for (const [locale, keys] of CATALOGUE_KEYS) {
         it(`translates every key a producer emits in ${locale}`, () => {
-            const missing = [...emitted.keys()].filter((key) => !keys.has(key)).sort();
+            const missing = [...emitted.keys()].filter((key) => !resolves(keys, key)).sort();
 
             expect(
                 missing,

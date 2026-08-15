@@ -60,6 +60,10 @@ const { postcssPlugin } = require('./postCss-plugin');
             format: 'iife',
             sourcemap: isDev(),
             minify: !isDev(),
+            // A crash screen that reports `at t (index.js:1:948213)` reports nothing. Function
+            // names survive minification for a few kilobytes, and they are the whole difference
+            // between a stack an author can send on and one nobody can act on.
+            keepNames: true,
             // Dev-only debug hooks compile in for dev builds and tree-shake out otherwise.
             define: { __NLS_STUDIO_DEV__: JSON.stringify(isDev()) },
             jsx: 'automatic',

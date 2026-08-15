@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
-import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
+import { blueprintEntryContextMenu } from "@/apps/workspace/modules/blueprint-lite/hooks/blueprintEntryGesture";
+import { useOpenBlueprintTarget, type BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -45,7 +46,7 @@ export const ReadonlyBlueprintSection = selfReadOnly(function ReadonlyBlueprintS
         [localBp, nodeCatalog, summary.blueprintId, blueprintRevision],
     );
 
-    const openEntry = () => {
+    const openEntry = (options?: BlueprintOpenOptions) => {
         if (!summary.blueprintId || !surfaceId) {
             return;
         }
@@ -56,7 +57,7 @@ export const ReadonlyBlueprintSection = selfReadOnly(function ReadonlyBlueprintS
             componentId: componentId ?? undefined,
             elementId: element.id,
             title: `${widgetOwnerLabel.titlePrefix} - ${element.name ?? element.type}`,
-        });
+        }, options);
     };
 
     const canOpenEntry = summary.hasWidgetMain && Boolean(summary.blueprintId);
@@ -67,7 +68,9 @@ export const ReadonlyBlueprintSection = selfReadOnly(function ReadonlyBlueprintS
                 type="button"
                 className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:cursor-default"
                 disabled={!canOpenEntry}
-                onClick={openEntry}
+                onClick={() => openEntry()}
+                onContextMenu={blueprintEntryContextMenu(openEntry)}
+                data-tip={canOpenEntry ? t("blueprint.entry.openInWindow") : undefined}
                 aria-label={canOpenEntry ? t("widgetChrome.blueprint.openControlBlueprint") : t("widgetChrome.blueprint.noBlueprintForControl")}
             >
                 <BlueprintLayerPreview model={previewModel} />

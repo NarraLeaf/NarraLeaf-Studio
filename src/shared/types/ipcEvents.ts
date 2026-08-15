@@ -11,6 +11,12 @@ import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "./gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -31,6 +37,12 @@ import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
+import type {
+    AvailableSpellcheckDictionary,
+    InstalledSpellcheckDictionary,
+    SpellcheckRange,
+    SpellcheckStatus,
+} from "./spellcheck";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
@@ -72,18 +84,26 @@ import type {
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsServerProbe,
+    VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
+    VcsAddServerOutcome,
+    VcsSignInOutcome,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingFileRead,
+    VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "./vcs";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
     appTerminate = "app.terminate",
+    appReportRendererError = "app.reportRendererError",
     appWindowControl = "app.window.setControl",
+    appDetachedWindowControl = "app.window.detachedControl",
     appWindowEditCommand = "app.window.editCommand",
     appWindowClose = "app.window.close",
     appWindowCloseWith = "app.window.closeWith",
@@ -98,6 +118,15 @@ export enum IPCEventType {
     appCountWorkspaceWindows = "app.countWorkspaceWindows",
     appRequestWorkspaceView = "app.requestWorkspaceView",
     appOpenExternal = "app.openExternal",
+    spellcheckConfigure = "app.spellcheck.configure",
+    spellcheckClear = "app.spellcheck.clear",
+    spellcheckStatus = "app.spellcheck.status",
+    spellcheckCheck = "app.spellcheck.check",
+    spellcheckSuggest = "app.spellcheck.suggest",
+    spellcheckListInstalled = "app.spellcheck.listInstalled",
+    spellcheckListAvailable = "app.spellcheck.listAvailable",
+    spellcheckDownload = "app.spellcheck.download",
+    spellcheckRemove = "app.spellcheck.remove",
     appPickBackgroundImage = "app.pickBackgroundImage",
     appReadBackgroundImage = "app.readBackgroundImage",
     appGlobalStateGet = "app.globalState.get",
@@ -228,11 +257,20 @@ export enum IPCEventType {
     signingKeystoreAliases = "signing.keystoreAliases",
     signingMacIdentities = "signing.macIdentities",
 
+    pluginBuildSecretSet = "pluginBuildSecret.set",
+    pluginBuildSecretAvailable = "pluginBuildSecret.available",
+
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
     blueprintPersistenceSetValue = "blueprintPersistence.setValue",
     blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
     blueprintNetworkFetch = "blueprintNetwork.fetch",
+    blueprintExternalLinkOpen = "blueprintExternalLink.open",
+    blueprintExternalLinkOpenForPlugin = "blueprintExternalLink.openForPlugin",
+    blueprintProgressWrite = "blueprintProgress.write",
+    blueprintProgressRead = "blueprintProgress.read",
+
+    serverTrustPrompt = "serverTrust.prompt",
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -284,6 +322,7 @@ export enum IPCEventType {
     vcsGetStatus = "vcs.getStatus",
     vcsGetHistory = "vcs.getHistory",
     vcsReadBlob = "vcs.readBlob",
+    vcsReadWorkingFile = "vcs.readWorkingFile",
     vcsReadRevisionDocuments = "vcs.readRevisionDocuments",
     vcsGetChangedPaths = "vcs.getChangedPaths",
     vcsDiffRevisions = "vcs.diffRevisions",
@@ -300,6 +339,14 @@ export enum IPCEventType {
     vcsGetRemote = "vcs.getRemote",
     vcsSetRemote = "vcs.setRemote",
     vcsGetSyncState = "vcs.getSyncState",
+    vcsGetServerSession = "vcs.getServerSession",
+    vcsSignIn = "vcs.signIn",
+    vcsSignOut = "vcs.signOut",
+    vcsProbeServer = "vcs.probeServer",
+    vcsListServers = "vcs.listServers",
+    vcsAddServer = "vcs.addServer",
+    vcsForgetServer = "vcs.forgetServer",
+    vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
     vcsClone = "vcs.clone",
@@ -310,10 +357,26 @@ export type RequestStatus<T> = {
     success: true;
     data: T;
     error?: never;
+    code?: never;
 } | {
     success: false;
     data?: never;
+    /**
+     * What went wrong, as a sentence. Written in English by whoever threw, and rendered verbatim
+     * wherever no {@link code} identifies it - which is the right default for a backend refusal
+     * that names its own remedy, and the wrong one for a situation the interface has words for.
+     */
     error?: string;
+    /**
+     * A stable identifier for a failure the renderer is expected to recognise, when the thrower
+     * gave itself one (`error.code`).
+     *
+     * Optional and additive: everything that threw a plain `Error` before still arrives with
+     * `error` alone and is shown as it always was. It exists because the alternative is matching
+     * on English prose - the renderer's only way to tell "nothing has changed since the last
+     * version", which is an ordinary answer, from a real failure - and prose is what gets reworded.
+     */
+    code?: string;
 };
 
 export type BlueprintPersistenceProjectRef = {
@@ -346,6 +409,27 @@ export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery";
  */
 export type WorkspaceCloseStage = "saving" | "checkpoint" | "launcher";
 
+/**
+ * Which part of a renderer noticed a failure, so the log line says where to look.
+ *
+ * `boundary` is the window-level one - the whole page has been replaced by the crash screen.
+ * `panel` is a single workspace region that failed on its own and left the rest of the window
+ * working. `window` and `rejection` are the two failures React never sees: a script error that
+ * reached the top of the stack, and a promise nobody attached a catch to.
+ */
+export type RendererErrorSource = "boundary" | "panel" | "window" | "rejection";
+
+/** One renderer failure, flattened to strings before it leaves the window that saw it. */
+export interface RendererErrorReport {
+    source: RendererErrorSource;
+    /** Names the failing region when the reporter has a name for it. */
+    label: string | null;
+    message: string;
+    stack: string | null;
+    /** React's own component stack, for the two boundary sources. */
+    componentStack: string | null;
+}
+
 export type IPCEvents = {
     [IPCEventType.getPlatform]: {
         type: IPCMessageType.request,
@@ -361,6 +445,23 @@ export type IPCEvents = {
         },
         response: never;
     };
+    /**
+     * A renderer failure that did not take the process down: the report, not the reaction.
+     *
+     * The renderer keeps its own console in a ring buffer, but that buffer dies with the window -
+     * and a window that has just crashed is one reload away from being gone. This puts the same
+     * facts in `<userData>/logs/main.log`, which outlives every window, so "it crashed once
+     * yesterday" is still answerable today.
+     *
+     * A message rather than a request on purpose: the reporter is a crash path, and a crash path
+     * must not be able to hang waiting for a reply.
+     */
+    [IPCEventType.appReportRendererError]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: RendererErrorReport,
+        response: never;
+    };
     [IPCEventType.appWindowControl]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -374,6 +475,29 @@ export type IPCEvents = {
      * Used by the renderer when a native Edit-menu command routed to a surface action should
      * fall back to normal text editing because the user is in a text field.
      */
+    /**
+     * Drive one of the sending window's DETACHED windows (see `detachedWindowGuard`).
+     *
+     * A detached window is frameless and wears the editor's own title row as its title bar, so its
+     * minimise / maximise / close buttons are drawn by the renderer - but that renderer is the
+     * opener's, and every other window-control call resolves to "the window that sent this IPC".
+     * Sent blind, those buttons would drive the workspace window instead of the one they are drawn
+     * in. Hence the key: the popup names itself, and the main process looks it up among the
+     * children of the sender, which is also what stops a window from reaching another's.
+     */
+    [IPCEventType.appDetachedWindowControl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** The detached window's key, as given to `window.open`'s frame name. */
+            key: string,
+            /** `status` only reads; the rest act and then report where the window ended up. */
+            control: "status" | "minimize" | "toggleMaximize" | "close",
+        },
+        response: {
+            status: WindowVisibilityStatus,
+        };
+    };
     [IPCEventType.appWindowEditCommand]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
@@ -476,6 +600,104 @@ export type IPCEvents = {
             url: string;
         },
         response: void;
+    };
+    /**
+     * Tell the checker about this window's project: the language its script is written in, and the
+     * words that project spells on purpose.
+     *
+     * This is how the main process learns the project dictionary. The document itself stays in the
+     * renderer, which owns it; `DictionaryService` re-sends the list on load and after every edit,
+     * and the words are held against this window - so two projects open at once do not see each
+     * other's cast. Answers what spellchecking ended up doing, which is more than the caller asked
+     * for: no dictionary may be installed for the language at all.
+     */
+    [IPCEventType.spellcheckConfigure]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            sourceLocale: string;
+            words: string[];
+        },
+        response: SpellcheckStatus;
+    };
+    /** Forget this window's project words. Sent when a workspace closes or switches project. */
+    [IPCEventType.spellcheckClear]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: void;
+    };
+    /** What spellchecking is doing now. Read by the Settings window, which has no project of its own. */
+    [IPCEventType.spellcheckStatus]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: SpellcheckStatus;
+    };
+    /**
+     * Check one run of plain text, answering the misspellings in it.
+     *
+     * In main rather than the renderer because the renderer has no thread to spare: this window's
+     * document is `file://` and its scripts are `app://`, so a Web Worker cannot be started at all
+     * (the same reason the Monaco integration is worker-free), and checking a scene on every
+     * keystroke on the renderer's own thread is not acceptable.
+     *
+     * `start`/`end` are offsets into `text`, not DOM positions - the caller built the string and is
+     * the only thing that can map a range back onto what it came from.
+     */
+    [IPCEventType.spellcheckCheck]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            text: string;
+            language: string;
+        },
+        response: { ranges: SpellcheckRange[] };
+    };
+    /** Replacements for one misspelling, nearest first. At most {@link SPELLCHECK_MAX_SUGGESTIONS}. */
+    [IPCEventType.spellcheckSuggest]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            word: string;
+            language: string;
+        },
+        response: { suggestions: string[] };
+    };
+    /** The dictionaries on this machine. Read from the cache, so it needs no network. */
+    [IPCEventType.spellcheckListInstalled]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: { languages: InstalledSpellcheckDictionary[] };
+    };
+    /** The dictionaries the registry offers, with their licences. Goes to the network. */
+    [IPCEventType.spellcheckListAvailable]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: { entries: AvailableSpellcheckDictionary[] };
+    };
+    /**
+     * Fetch one dictionary into the cache. Author-initiated only, and the bytes are refused unless
+     * their sha256 is the one the index named.
+     */
+    [IPCEventType.spellcheckDownload]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            code: string;
+        },
+        response: { ok: boolean };
+    };
+    /** Delete one dictionary from the cache. `ok: false` means there was nothing there. */
+    [IPCEventType.spellcheckRemove]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            code: string;
+        },
+        response: { ok: boolean };
     };
     [IPCEventType.appPickBackgroundImage]: {
         type: IPCMessageType.request,
@@ -734,7 +956,7 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCServerTrustEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -859,6 +1081,19 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: VcsBlobRequest,
         response: { contentBase64: string };
+    };
+    /**
+     * The same file as the working tree holds it now - the other side of a comparison.
+     *
+     * Narrow on purpose: one versioned path, under a size ceiling, and nothing else. See
+     * `managers/vcs/workingFile.ts` for what it refuses and why each refusal is a refusal
+     * rather than an empty answer.
+     */
+    [IPCEventType.vcsReadWorkingFile]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: VcsWorkingFileRequest,
+        response: VcsWorkingFileRead;
     };
     /**
      * Every document at one revision, in one round trip.
@@ -1013,6 +1248,95 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { projectPath: string },
         response: VcsSyncState;
+    };
+    /** Local read: who this installation is signed in to this project's server as. */
+    [IPCEventType.vcsGetServerSession]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: { session: VcsServerSession | null };
+    };
+    /**
+     * **Goes to the network**, twice: the sign-in endpoint and then the server itself.
+     *
+     * The token travels one way only. It is handed to the backend's own store and is never
+     * written to Studio's state, logged, or returned in the response.
+     */
+    [IPCEventType.vcsSignIn]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; authUrl: string; token: string },
+        response: VcsSignInOutcome;
+    };
+    /**
+     * **Changes a setting of the operating system**, and is the only event here that does.
+     *
+     * Puts a server's certificate authority into this account's trust store, having been
+     * asked to by somebody who was shown its fingerprint. Only a certificate this process
+     * wrote is eligible - the path is checked against Studio's own directory, because a
+     * renderer names it and a renderer is where untrusted content ends up.
+     */
+    [IPCEventType.vcsTrustAuthority]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; certificatePath: string },
+        response: { installed: boolean; output: string };
+    };
+    /** Local: clears the stored token as well as Studio's record of whose it was. */
+    [IPCEventType.vcsSignOut]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: { session: null };
+    };
+    /**
+     * Ask an `nlteam://` address what is behind it.
+     *
+     * **Goes to the network**, and is the first thing a wizard does. Takes no project and
+     * writes nothing: an answer here is what the author is then shown and asked about.
+     */
+    [IPCEventType.vcsProbeServer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { address: string },
+        response: VcsServerProbe;
+    };
+    /**
+     * Every server this installation is signed in to.
+     *
+     * Takes no project: a session belongs to the machine rather than to a repository, and
+     * Settings asks this with no project open at all.
+     */
+    [IPCEventType.vcsListServers]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: { servers: VcsServerSession[] };
+    };
+    /**
+     * Sign in to a server named by the token rather than by a project.
+     *
+     * The token carries the address of the endpoint that issued it and of the server it is
+     * good for, so pasting one is the whole of adding a server. `authUrl` and `remoteUrl`
+     * are the corrections for a token that names neither, and are empty otherwise.
+     */
+    [IPCEventType.vcsAddServer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { authUrl: string; remoteUrl: string; token: string },
+        response: VcsAddServerOutcome;
+    };
+    /**
+     * Take a server off this machine: the stored token and Studio's record of it.
+     *
+     * Projects pointed at that server keep their address. What they lose is the account,
+     * which is what signing out means.
+     */
+    [IPCEventType.vcsForgetServer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: { servers: VcsServerSession[] };
     };
     [IPCEventType.vcsPush]: {
         type: IPCMessageType.request,
@@ -2065,6 +2389,57 @@ export type IPCSigningEvents = {
     };
 };
 
+/**
+ * Plugin build-config secrets, sealed in the same machine vault the signing
+ * passwords live in.
+ *
+ * Two events, and there is deliberately no third. The value goes up once, when
+ * the author types it, and what comes back is a handle - the project file stores
+ * that. Nothing here reads a secret back: unsealing happens in the main process
+ * alone, when a build needs the value, and a "read it" event would be the whole
+ * point of the vault undone.
+ */
+export type IPCPluginBuildSecretEvents = {
+    /**
+     * Seal a value and answer the handle to store. The payload is plaintext - do
+     * not log it, do not keep it, do not send it anywhere else.
+     */
+    [IPCEventType.pluginBuildSecretSet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** Plain text, one way only. */
+            value: string;
+            /**
+             * The handle to fill in, when the project already refers to one and
+             * the author is supplying the value on this machine. Omit to mint one.
+             */
+            handle?: string;
+        },
+        response: {
+            /** What the project stores in place of the value. */
+            handle: string;
+            /** False when the OS keyring refused; the handle exists, the value was not stored. */
+            available: boolean;
+        };
+    };
+    /**
+     * Whether the secret behind a handle is on this machine and can be unsealed.
+     * False is the ordinary answer for a project a collaborator configured, and
+     * means "set, not available here" rather than "empty".
+     */
+    [IPCEventType.pluginBuildSecretAvailable]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            handle: string;
+        },
+        response: {
+            available: boolean;
+        };
+    };
+};
+
 export type IPCBlueprintPersistenceEvents = {
     [IPCEventType.blueprintPersistenceGetAll]: {
         type: IPCMessageType.request,
@@ -2126,6 +2501,104 @@ export type IPCBlueprintPersistenceEvents = {
         response: {
             result: BlueprintNetworkFetchResult;
         };
+    };
+    /**
+     * One Open Link node request, decided and performed by the main process on the Dev Mode
+     * preview's behalf.
+     *
+     * The renderer sends the address and never the permission: the handler reads the project's own
+     * declared addresses off disk and refuses anything else, which is what makes Dev Mode behave
+     * like the shipped game rather than like a window with Studio's privileges behind it.
+     *
+     * The project path, not a window handle, identifies whose declaration applies - the same shape
+     * the Fetch channel above uses.
+     */
+    [IPCEventType.blueprintExternalLinkOpen]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            request: BlueprintOpenExternalRequest;
+        },
+        response: {
+            result: BlueprintOpenExternalResult;
+        };
+    };
+    /**
+     * One runtime plugin's request to open an address, decided by the main process against that
+     * plugin's own declared patterns.
+     *
+     * A channel of its own rather than a flag on the one above, because the two consult different
+     * declarations and neither must be able to reach the other's. This one never looks at the
+     * project's variant list, and the Open Link node never looks at a plugin's manifest.
+     *
+     * `pluginId` selects whose declaration applies; the handler reads it from the installed
+     * plugin's manifest rather than taking any patterns from the renderer, which is what keeps this
+     * a way to honour the declaration instead of a way around it.
+     */
+    [IPCEventType.blueprintExternalLinkOpenForPlugin]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+            request: BlueprintOpenExternalRequest;
+        },
+        response: {
+            result: BlueprintOpenExternalResult;
+        };
+    };
+    /**
+     * The Export Progress node's request, in a Dev Mode preview.
+     *
+     * Dev Mode has to behave like the packaged game, so the write is made where the packaged game
+     * makes it - in the process that owns the filesystem - and the file it writes is the very same
+     * one, named by the key the build would carry. The renderer sends what the playthrough holds
+     * and never which file: the handler derives the key from the project's own identity, exactly as
+     * the pack compiler does, so a preview cannot be talked into writing another title's document.
+     *
+     * The project path, not a window handle, identifies whose progress this is - the same shape the
+     * external-link channels above use.
+     */
+    [IPCEventType.blueprintProgressWrite]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            request: GameProgressExportRequest;
+        },
+        response: {
+            result: GameProgressExportResult;
+        };
+    };
+    /** The Import Progress node's request, read by the same process and keyed the same way. */
+    [IPCEventType.blueprintProgressRead]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            result: GameProgressImportResult;
+        };
+    };
+};
+
+/**
+ * The one question a server's certificate raises, asked in a window of its own.
+ *
+ * No project path: an authority is trusted for the account, not for a project, and the
+ * window is raised from Settings as readily as from a workspace. The response says what
+ * the machine now believes rather than which button was pressed - the install can be
+ * refused by the operating system after the author has agreed.
+ */
+export type IPCServerTrustEvents = {
+    [IPCEventType.serverTrustPrompt]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            props: WindowProps[WindowAppType.ServerTrustPrompt];
+        },
+        response: { trusted: boolean };
     };
 };
 

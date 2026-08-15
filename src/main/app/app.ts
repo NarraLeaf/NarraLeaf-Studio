@@ -1,13 +1,13 @@
 import fs from "fs";
 import path from "path";
-import { screen } from "electron";
+import { screen, session } from "electron";
 import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { getGameHostWindowBackgroundColor } from "./application/theme";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
-import { devModeNetworkPolicy, readProjectAllowHttp } from "./application/managers/devMode/devModeNetworkPolicy";
+import { devModeNetworkPolicy, readProjectNetworkSettings } from "./application/managers/devMode/devModeNetworkPolicy";
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
 import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
 import { MediaConvertManager } from "./application/managers/media/MediaConvertManager";
@@ -18,8 +18,11 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
 import { TRAY_RESIDENCY_NOTICE_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { getMainTranslator } from "./application/i18n";
+import { ConfirmQuitManager } from "./application/managers/confirmQuit";
 import { TrayManager } from "./application/managers/trayManager";
 import { UpdateManager } from "./application/managers/updateManager";
+import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
+import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { resolveStartupProject } from "./application/startupProject";
 
 export interface AppConfig extends BaseAppConfig {
@@ -83,6 +86,13 @@ export class App extends BaseApp {
         });
 
         this.updateManager = new UpdateManager(this);
+        this.confirmQuitManager = new ConfirmQuitManager(this);
+        // Everything is read through a function rather than captured: this constructor runs before
+        // Electron is ready, and `getUserDataDir` has no answer until it is.
+        this.spellcheckManager = new SpellcheckManager({
+            userDataDir: () => this.getUserDataDir(),
+            readSetting: () => this.globalState.get(SPELLCHECK_LANGUAGE_KEY),
+        });
 
         // Built as soon as there is an Electron app to attach it to, because from here on it is
         // the only handle a windowless Studio has - see handleLastWindowClosed, which reads
@@ -100,6 +110,11 @@ export class App extends BaseApp {
             this.trayManager = tray;
 
             this.updateManager.initialize();
+
+            // After ready, because it listens for webContents being created and the first window is
+            // opened from the same ready handler in `index.ts`. Ordering only matters in that
+            // direction: a window built before the listener exists would never see a ⌘Q at all.
+            this.confirmQuitManager.initialize();
         });
     }
 
@@ -110,6 +125,13 @@ export class App extends BaseApp {
     private readonly mediaConvertManager: MediaConvertManager;
     private readonly vcsManager: VcsManager;
     private readonly updateManager: UpdateManager;
+    private readonly confirmQuitManager: ConfirmQuitManager;
+    private readonly spellcheckManager: SpellcheckManager;
+
+    /** Studio's own spellchecker: the downloaded dictionaries, and each window's project words. */
+    public getSpellcheckManager(): SpellcheckManager {
+        return this.spellcheckManager;
+    }
 
     public getDevModeManager(): DevModeManager {
         return this.devModeManager;
@@ -344,9 +366,22 @@ export class App extends BaseApp {
      * only from Task Manager. A tray that failed to appear (no StatusNotifier host on Linux, a
      * missing icon resource) therefore falls back to the old behaviour rather than stranding it.
      * macOS always has the Dock, so it never needs the fallback.
+     *
+     * A quit gets here too, and must not be treated as this gesture: the windows a quit closes on
+     * its way out arrive at the same listener, with the tray still up and `hasWindows()` already
+     * false. Electron's own `window-all-closed` is silent during a quit for exactly this reason
+     * (`Browser::OnWindowAllClosed` shuts down instead of emitting), but the window event this
+     * runs on is Studio's, so the distinction has to be made here.
      */
     public handleLastWindowClosed(): void {
         if (process.platform === "darwin") {
+            return;
+        }
+        // Closing the last window on the way out of a quit is not "the user closed the last
+        // window". Announcing residency there says the opposite of what is happening - and, being
+        // a once-per-profile notice, it spends itself on the one moment it cannot be true, so the
+        // first real residency is then the silent one.
+        if (this.isQuitting()) {
             return;
         }
         if (this.trayManager?.isActive()) {
@@ -563,6 +598,21 @@ export class App extends BaseApp {
     }
 
     /**
+     * Whether a workspace other than this one is still on screen.
+     *
+     * Read while a window is closing, so the closing window itself is excluded by identity rather
+     * than by `isClosed()`: at this point the close has been taken over and re-issued, and the
+     * window is still very much alive.
+     */
+    private hasOtherOpenWorkspace(window: AppWindow<WindowAppType.Workspace>): boolean {
+        return this.windowManager.getWindows().some(other =>
+            other !== window
+            && !other.isClosed()
+            && other.getWindowType() === WindowAppType.Workspace
+        );
+    }
+
+    /**
      * Decide what closing a workspace means, honouring the user's preferences: confirm first if
      * asked, then either fall back to the launcher or let the close stand (which quits the app
      * when this was the last window).
@@ -592,7 +642,14 @@ export class App extends BaseApp {
             return;
         }
 
-        if (this.globalState.get("workspace.returnToLauncherOnClose")) {
+        // "Return to the launcher" means "leave me somewhere to work", so it only applies when this
+        // was the last project on screen. With a second workspace still open the author already has
+        // somewhere to be, and opening the home screen next to it puts a window they did not ask for
+        // on the desktop - the exact outcome of closing the second window the project switcher just
+        // opened. The preference is not consulted at all in that case, rather than being read and
+        // overridden, because it answers a question ("what happens when I leave Studio's last
+        // project") this close is not asking.
+        if (this.globalState.get("workspace.returnToLauncherOnClose") && !this.hasOtherOpenWorkspace(window)) {
             this.reportWorkspaceCloseStage(window, "launcher");
             try {
                 await this.ensureLauncher();
@@ -981,12 +1038,13 @@ export class App extends BaseApp {
         window.setTitle("Dev Mode - NarraLeaf Studio");
         this.applyWindowIcon(window);
 
-        // Confine the preview renderer to the app protocol unless the project
-        // opts into HTTP. Must be applied BEFORE loadFile so the initial
-        // document load and every subsequent game request is governed.
-        const allowHttp = await readProjectAllowHttp(props.projectPath);
+        // Confine the preview renderer the way a build would: to the app
+        // protocol unless the project opts into HTTP, and to the project's
+        // allowlist when it states one. Must be applied BEFORE loadFile so the
+        // initial document load and every subsequent game request is governed.
+        const { allowHttp, allowlist } = await readProjectNetworkSettings(props.projectPath);
         const previewWebContentsId = window.win.webContents.id;
-        devModeNetworkPolicy.apply(previewWebContentsId, { allowHttp });
+        devModeNetworkPolicy.apply(previewWebContentsId, { allowHttp, allowlist });
         window.onClose(() => devModeNetworkPolicy.release(previewWebContentsId));
 
         try {
@@ -1053,6 +1111,54 @@ export class App extends BaseApp {
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.PluginPermissionPrompt));
+
+        return window;
+    }
+
+    /**
+     * Raise the window that asks whether a server is trusted.
+     *
+     * Modal on whoever asked, exactly as the plugin permission prompt is: the question is
+     * about the address that window is working with, and leaving it answerable later
+     * would let a second one be raised for the same address.
+     *
+     * Shorter than the permission prompt because it holds less - an address, one line of
+     * subject, a fingerprint behind a disclosure and two buttons.
+     */
+    async launchServerTrustPrompt(
+        parent: AppWindow,
+        props: WindowProps[WindowAppType.ServerTrustPrompt],
+        options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+    ): Promise<AppWindow<WindowAppType.ServerTrustPrompt>> {
+        const config: WindowConfig<WindowAppType.ServerTrustPrompt> = {
+            windowType: WindowAppType.ServerTrustPrompt,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.None,
+            options: {
+                modal: true,
+                parent: parent.win,
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                closable: true,
+                fullscreenable: false,
+                width: 480,
+                height: 330,
+                center: true,
+                frame: false,
+                titleBarStyle: "hidden",
+                show: false,
+                ...options,
+            },
+        };
+        const window = new AppWindow<WindowAppType.ServerTrustPrompt>(this, config, props);
+        window.setTitle("Server Trust - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+        window.showWhenReady();
+
+        await window.loadFile(this.getAppEntry(WindowAppType.ServerTrustPrompt));
 
         return window;
     }

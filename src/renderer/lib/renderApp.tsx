@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { getInterface, hardenRendererBridge, initializeRendererBridge } from "./app/bridge";
 import { installConsoleBuffer } from "./app/diagnostics/consoleBuffer";
 import { CriticalErrorBoundary } from "./app/errorHandling/CriticalErrorBoundary";
+import { installGlobalErrorReporting } from "./app/errorHandling/crashRecovery";
 import { RenderingStatusAnnouncer } from "./components/announcers/RenderingStatusAnnouncer";
 import { initI18n } from "./i18n";
 import { initAppearance, isReduceMotionEnabled, subscribeReduceMotion } from "./appearance";
@@ -66,6 +67,10 @@ async function renderApp(children: React.ReactNode) {
 
     // Validate environment
     validateEnv();
+
+    // Needs the bridge, so it comes after validateEnv: from here on a script error or a rejected
+    // promise reaches `main.log`, which outlives this window, instead of only the buffer above.
+    installGlobalErrorReporting();
 
     // Get platform info
     const platformResult = await getInterface().getPlatform();

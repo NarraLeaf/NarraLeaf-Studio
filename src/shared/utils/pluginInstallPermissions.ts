@@ -2,6 +2,7 @@ import type {
     PluginFileSystemPermissionMode,
     PluginInstallPermission,
     PluginRuntimeCapability,
+    PluginSidecarKind,
 } from "../types/pluginPermissions";
 
 export const NO_INSTALL_PERMISSIONS_COPY = "No privileged Studio controls are included in this install approval.";
@@ -23,13 +24,48 @@ export function describePluginInstallPermission(permission: PluginInstallPermiss
         case "runtime":
             return `In your game: ${describeRuntimeCapability(permission.capability)}`;
         case "sidecar":
-            return `Ship and run a native program inside your game (${singleLine(permission.id, "sidecar")}`
+            return `${describeSidecarKind(permission.sidecarKind)} (${singleLine(permission.id, "sidecar")}`
                 + `${permission.platforms.length > 0 ? `, for ${permission.platforms.join(", ")}` : ""})`;
         case "buildDependency":
             return `Download binaries while building your game (${singleLine(permission.id, "dependency")}`
                 + `${permission.hosts.length > 0 ? `, from ${permission.hosts.join(", ")}` : ""})`;
+        case "externalLink":
+            // The patterns are listed rather than counted: "open 3 addresses" is not something a
+            // person can decide about, and the whole value of a declared pattern is that it is
+            // readable.
+            return "In your game: send the player to "
+                + (permission.patterns.length > 0
+                    ? permission.patterns.map(pattern => singleLine(pattern, "declared address")).join(", ")
+                    : "declared addresses");
+        case "network":
+            // Listed rather than counted, for the reason the addresses above are: a host is the
+            // whole content of this decision, and "connects to 3 servers" is not a thing anyone can
+            // answer.
+            return "In your game: request data from "
+                + (permission.patterns.length > 0
+                    ? permission.patterns.map(pattern => singleLine(pattern, "declared address")).join(", ")
+                    : "declared addresses");
         default:
             return exhaustive(permission);
+    }
+}
+
+/**
+ * What the sidecar actually starts. The two are not the same promise, so they do not share a line:
+ * a `node` sidecar is not a third-party binary the game launches, it is the plugin's own code with
+ * the reach of the game around it.
+ *
+ * A grant written before the kind was recorded has none, so an unknown value falls back to the
+ * looser sentence rather than guessing the lighter of the two.
+ */
+function describeSidecarKind(kind: PluginSidecarKind): string {
+    switch (kind) {
+        case "executable":
+            return "Ship a separate program and run it with your game";
+        case "node":
+            return "Ship the plugin's own code and run it as part of your game";
+        default:
+            return "Ship a program and run it with your game";
     }
 }
 
@@ -98,13 +134,33 @@ function covers(granted: PluginInstallPermission, requested: PluginInstallPermis
     }
     // Same sidecar/dependency, no new platforms or download hosts. Adding either
     // widens what reaches the player's machine, so it re-prompts.
+    //
+    // The kind is compared too, and it is not a widening test but an equality one: turning an
+    // `executable` into a `node` sidecar keeps the id and the platforms while changing what the
+    // author agreed to run, and neither direction is obviously the smaller of the two. A grant
+    // recorded before the kind existed carries none, which fails this and asks once more - the
+    // conservative answer for a permission whose original prompt could not name it.
     if (granted.kind === "sidecar" && requested.kind === "sidecar") {
         return granted.id === requested.id
+            && granted.sidecarKind === requested.sidecarKind
             && requested.platforms.every(platform => granted.platforms.includes(platform));
     }
     if (granted.kind === "buildDependency" && requested.kind === "buildDependency") {
         return granted.id === requested.id
             && requested.hosts.every(host => granted.hosts.includes(host));
+    }
+    // Every pattern the new version wants must be one the author already approved, compared as the
+    // exact declared string. Deliberately NOT "is the new pattern covered by an approved one": that
+    // would need this to reason about wildcards, and a subset test that has to decide whether
+    // `https://*.example.com/*` swallows `https://a.example.com/x` is a second matcher living next
+    // to the real one. String equality here can only ever be conservative - the worst it does is
+    // ask the author again about a pattern they would have approved.
+    if (granted.kind === "externalLink" && requested.kind === "externalLink") {
+        return requested.patterns.every(pattern => granted.patterns.includes(pattern));
+    }
+    // Exact declared strings, for the reason written just above.
+    if (granted.kind === "network" && requested.kind === "network") {
+        return requested.patterns.every(pattern => granted.patterns.includes(pattern));
     }
     return false;
 }

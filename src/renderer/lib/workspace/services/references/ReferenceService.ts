@@ -16,10 +16,26 @@ import {
     extractUIDocumentAssetReferences,
     extractVoiceAssetReferences,
     type AssetReference,
+    type BlueprintAssetPin,
+    type ReferenceIndexGap,
+    type ReferenceIndexResult,
     type ReferenceScannableCharacter,
+    type ReferenceSliceKind,
 } from "./referenceModel";
+import { lookupAssetIdForToken } from "@/lib/workspace/assets/assetUrlTokens";
 
 const REBUILD_DEBOUNCE_MS = 300;
+
+/**
+ * What a whole-slice failure names as its place.
+ *
+ * These three slices are one document each, and the document has no name an author gave it - the
+ * blueprint document is the project's graphs, the UI document is its interface. The word is what
+ * the sidebar calls the thing, so a message built from it points somewhere real.
+ */
+const BLUEPRINT_SLICE_LOCATION = "Blueprints";
+const UI_SLICE_LOCATION = "Interface";
+const CHARACTER_SLICE_LOCATION = "Characters";
 
 /**
  * Reference Service — the asset reverse-lookup index ("what uses this file?").
@@ -40,6 +56,10 @@ const REBUILD_DEBOUNCE_MS = 300;
  * This supersedes `AssetLockManager` as the answer to "is this referenced". The lock manager only
  * ever covered story blocks and character variants, so an image used solely from a widget or a
  * blueprint node reported as unused — the delete guard let it through without a warning.
+ *
+ * Every slice also reports what it could not read, and {@link getIndexResult} is the honest answer
+ * to "does this index cover the project". A caller that deletes on this index's word has to consult
+ * it: an empty reference list from a slice that threw looks exactly like an unused asset.
  */
 export class ReferenceService extends Service<ReferenceService> {
     private storyReferences = new Map<string, AssetReference[]>();
@@ -48,6 +68,12 @@ export class ReferenceService extends Service<ReferenceService> {
     private blueprintReferences: AssetReference[] = [];
     private uiReferences: AssetReference[] = [];
     private characterReferences: AssetReference[] = [];
+
+    /**
+     * Coverage gaps keyed the same way the reference slices are, so a rebuild replaces the gaps its
+     * slice reported last time instead of appending to them forever.
+     */
+    private sliceGaps = new Map<string, ReferenceIndexGap[]>();
 
     /**
      * `assetId → references`, rebuilt lazily on first query after any slice changes.
@@ -130,6 +156,21 @@ export class ReferenceService extends Service<ReferenceService> {
         return new Set(this.getIndex().keys());
     }
 
+    /**
+     * Whether the index covers the whole project, and where it does not.
+     *
+     * An index that has not been built is incomplete rather than empty: nothing has been read, so
+     * every asset in the project would otherwise read as unreferenced. That distinction is the whole
+     * reason this exists — "nothing uses this" and "I have not looked" produce the same empty list.
+     */
+    public getIndexResult(): ReferenceIndexResult {
+        if (!this.isReady()) {
+            return { complete: false, gaps: [{ reason: "indexNotBuilt" }] };
+        }
+        const gaps = [...this.sliceGaps.values()].flat();
+        return { complete: gaps.length === 0, gaps };
+    }
+
     private getIndex(): Map<string, AssetReference[]> {
         if (!this.indexCache) {
             const all: AssetReference[] = [];
@@ -171,9 +212,57 @@ export class ReferenceService extends Service<ReferenceService> {
         this.blueprintReferences = [];
         this.uiReferences = [];
         this.characterReferences = [];
+        this.sliceGaps.clear();
         this.indexCache = null;
         this.readyPromise = null;
         this.changeListeners.clear();
+    }
+
+    /**
+     * Replace one slice's gaps. Always called on a rebuild, with an empty list when the slice read
+     * cleanly, so a gap can never outlive the problem that produced it.
+     */
+    private setSliceGaps(key: string, gaps: readonly ReferenceIndexGap[]): void {
+        if (gaps.length === 0) {
+            this.sliceGaps.delete(key);
+        } else {
+            this.sliceGaps.set(key, [...gaps]);
+        }
+    }
+
+    /** The one gap a document that will not load produces, named by whatever the author calls it. */
+    private setDocumentUnreadable(key: string, slice: ReferenceSliceKind, location: string): void {
+        this.sliceGaps.set(key, [{ reason: "documentUnreadable", slice, location }]);
+    }
+
+    /**
+     * Asset-bearing pins for a node type, read off the node catalogue, or null when the catalogue
+     * has never heard of the type.
+     *
+     * The null branch is the point. `resolveCatalogEntry` never throws for an unknown type — it
+     * returns a two-exec-pin stub — so asking it alone cannot tell "this node holds no assets" from
+     * "nobody knows what this node holds". A graph left behind by an uninstalled plugin is the
+     * second, and reading it as the first is how the asset it names goes quiet. `get()` is the only
+     * call that distinguishes them.
+     */
+    private resolveBlueprintAssetPins(nodeType: string): readonly BlueprintAssetPin[] | null {
+        const catalog = this.getContext().services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
+        try {
+            if (!catalog.get(nodeType)) {
+                return null;
+            }
+            return catalog.resolveCatalogEntry(nodeType).pins.flatMap(pin => (pin.assetRef
+                ? [{
+                    pinId: pin.id,
+                    kind: pin.assetRef.kind,
+                    paramKey: pin.assetRef.paramKey ?? pin.id,
+                    input: pin.kind === "input",
+                    origin: pin.assetRef.origin,
+                }]
+                : []));
+        } catch {
+            return null;
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -192,8 +281,10 @@ export class ReferenceService extends Service<ReferenceService> {
                 try {
                     const document = await storyService.loadStory(entry.id);
                     this.storyReferences.set(entry.id, extractStoryAssetReferences(document, entry.name));
+                    this.setSliceGaps(`story:${entry.id}`, []);
                 } catch (error) {
                     console.warn(`[ReferenceService] Failed to scan story ${entry.id}:`, error);
+                    this.setDocumentUnreadable(`story:${entry.id}`, "story", entry.name);
                 }
             }),
         );
@@ -207,8 +298,10 @@ export class ReferenceService extends Service<ReferenceService> {
                 try {
                     const document = await voiceService.loadDocument(locale.code);
                     this.voiceReferences.set(locale.code, extractVoiceAssetReferences(document));
+                    this.setSliceGaps(`voice:${locale.code}`, []);
                 } catch (error) {
                     console.warn(`[ReferenceService] Failed to scan voice locale ${locale.code}:`, error);
+                    this.setDocumentUnreadable(`voice:${locale.code}`, "voice", locale.code);
                 }
             }),
         );
@@ -315,9 +408,26 @@ export class ReferenceService extends Service<ReferenceService> {
             const document = storyService.getStoryDocument(storyId);
             const name = storyService.listStories().find(entry => entry.id === storyId)?.name ?? storyId;
             this.storyReferences.set(storyId, extractStoryAssetReferences(document, name));
-        } catch {
-            // Story vanished between the event and the rebuild; the library resync removes it.
+            this.setSliceGaps(`story:${storyId}`, []);
+        } catch (error) {
             this.storyReferences.delete(storyId);
+            /**
+             * Two different failures arrive here and they must not be treated alike.
+             *
+             * A story that has been deleted is gone from the library, contributes nothing, and is
+             * nothing to report. A story that is still in the library and will not read is a hole:
+             * its references have just been dropped, and clearing its gap as well would leave the
+             * index reporting full coverage over a document it could not open. This runs on every
+             * scene edit, so getting it wrong here is the likeliest way for the whole signal to be
+             * silently false.
+             */
+            const entry = storyService.listStories().find(story => story.id === storyId);
+            if (entry) {
+                console.warn(`[ReferenceService] Failed to rescan story ${storyId}:`, error);
+                this.setDocumentUnreadable(`story:${storyId}`, "story", entry.name);
+            } else {
+                this.setSliceGaps(`story:${storyId}`, []);
+            }
         }
         this.emitChanged();
     }
@@ -330,14 +440,19 @@ export class ReferenceService extends Service<ReferenceService> {
         for (const storyId of [...this.storyReferences.keys()]) {
             if (!liveIds.has(storyId)) {
                 this.storyReferences.delete(storyId);
+                // A story that is gone contributes no references and no gap; leaving its gap behind
+                // would keep the index incomplete over a document nobody can open any more.
+                this.setSliceGaps(`story:${storyId}`, []);
             }
         }
         for (const entry of entries) {
             try {
                 const document = await storyService.loadStory(entry.id);
                 this.storyReferences.set(entry.id, extractStoryAssetReferences(document, entry.name));
+                this.setSliceGaps(`story:${entry.id}`, []);
             } catch (error) {
                 console.warn(`[ReferenceService] Failed to scan story ${entry.id}:`, error);
+                this.setDocumentUnreadable(`story:${entry.id}`, "story", entry.name);
             }
         }
         this.emitChanged();
@@ -356,6 +471,7 @@ export class ReferenceService extends Service<ReferenceService> {
         for (const animationId of [...this.storyAnimationReferences.keys()]) {
             if (!liveIds.has(animationId)) {
                 this.storyAnimationReferences.delete(animationId);
+                this.setSliceGaps(`storyAnimation:${animationId}`, []);
             }
         }
         await Promise.all(
@@ -363,8 +479,10 @@ export class ReferenceService extends Service<ReferenceService> {
                 try {
                     const animation = await storyService.loadAnimationAsset(entry.id);
                     this.storyAnimationReferences.set(entry.id, extractStoryAnimationAssetReferences(animation));
+                    this.setSliceGaps(`storyAnimation:${entry.id}`, []);
                 } catch (error) {
                     console.warn(`[ReferenceService] Failed to scan animation ${entry.id}:`, error);
+                    this.setDocumentUnreadable(`storyAnimation:${entry.id}`, "storyAnimation", entry.name);
                 }
             }),
         );
@@ -377,26 +495,37 @@ export class ReferenceService extends Service<ReferenceService> {
 
         try {
             const document = blueprintService.getBlueprintDocument();
-            this.blueprintReferences = extractBlueprintAssetReferences(document, type => {
-                try {
-                    return catalog.resolveCatalogEntry(type).displayName;
-                } catch {
-                    return undefined;
-                }
+            const extraction = extractBlueprintAssetReferences(document, {
+                resolveNodeLabel: type => {
+                    try {
+                        return catalog.resolveCatalogEntry(type).displayName;
+                    } catch {
+                        return undefined;
+                    }
+                },
+                resolveAssetPins: type => this.resolveBlueprintAssetPins(type),
             });
+            this.blueprintReferences = extraction.references;
+            this.setSliceGaps("blueprint", extraction.gaps);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan blueprints:", error);
             this.blueprintReferences = [];
+            this.setSliceGaps("blueprint", [{ reason: "sliceFailed", slice: "blueprint", location: BLUEPRINT_SLICE_LOCATION }]);
         }
     }
 
     private rebuildUISlice(): void {
         const uiDocumentService = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
         try {
-            this.uiReferences = extractUIDocumentAssetReferences(uiDocumentService.getDocument());
+            const extraction = extractUIDocumentAssetReferences(uiDocumentService.getDocument(), {
+                resolveAssetToken: lookupAssetIdForToken,
+            });
+            this.uiReferences = extraction.references;
+            this.setSliceGaps("ui", extraction.gaps);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan the UI document:", error);
             this.uiReferences = [];
+            this.setSliceGaps("ui", [{ reason: "sliceFailed", slice: "ui", location: UI_SLICE_LOCATION }]);
         }
     }
 
@@ -432,9 +561,11 @@ export class ReferenceService extends Service<ReferenceService> {
                 };
             });
             this.characterReferences = extractCharacterAssetReferences(characters);
+            this.setSliceGaps("character", []);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan characters:", error);
             this.characterReferences = [];
+            this.setSliceGaps("character", [{ reason: "sliceFailed", slice: "character", location: CHARACTER_SLICE_LOCATION }]);
         }
     }
 

@@ -189,7 +189,7 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                                             max={CONTAINER_STACK_SPACING_ABS_MAX_PX}
                                             unit="px"
                                             aria-label={t("widgets.container.gapHint")}
-                                            title={t("widgets.container.gapHint")}
+                                            data-tip={t("widgets.container.gapHint")}
                                         />
                                     </div>
                                 );

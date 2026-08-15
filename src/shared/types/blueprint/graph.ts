@@ -713,6 +713,83 @@ export const BLUEPRINT_NODE_TYPE_STRING_MATCHES_REGEX = "blueprint.string.matche
 export const BLUEPRINT_NODE_TYPE_STRING_EXTRACT_REGEX = "blueprint.string.extractRegex" as const;
 export const BLUEPRINT_NODE_TYPE_STRING_NORMALIZE_LINE_BREAKS = "blueprint.string.normalizeLineBreaks" as const;
 
+/**
+ * Time nodes (pure data).
+ *
+ * A moment travels through a graph as one number: epoch milliseconds, on a `float` pin. That is
+ * already the shape a save carries (`AutoSaveEntry.timestamp`, `Get Latest Auto Save`'s `Timestamp`
+ * pin), so a save's stamp feeds these directly, and the existing `<` / `>` / `Min` / `Max` nodes
+ * sort and compare moments without a single node of their own. A structured Date value would have
+ * bought a nicer inspector and cost all of that.
+ *
+ * Calendar meaning is where the number stops being enough, and that is what these nodes are for:
+ * `Make Time` and `Get Time Parts` cross between the number and the local calendar, `Add Time` and
+ * `Time Difference` do arithmetic that respects month lengths, and the four formatters turn a
+ * moment into text a player reads.
+ */
+export const BLUEPRINT_NODE_TYPE_TIME_NOW = "blueprint.time.now" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_MAKE = "blueprint.time.make" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_PARTS = "blueprint.time.parts" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_FORMAT = "blueprint.time.format" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED = "blueprint.time.formatLocalized" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_FORMAT_RELATIVE = "blueprint.time.formatRelative" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_FORMAT_DURATION = "blueprint.time.formatDuration" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_DURATION_PARTS = "blueprint.time.durationParts" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_ADD = "blueprint.time.add" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_DIFFERENCE = "blueprint.time.difference" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_PARSE = "blueprint.time.parse" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_TO_ISO_STRING = "blueprint.time.toIsoString" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_IS_SAME_DAY = "blueprint.time.isSameDay" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_START_OF_DAY = "blueprint.time.startOfDay" as const;
+export const BLUEPRINT_NODE_TYPE_TIME_ZONE_OFFSET = "blueprint.time.zoneOffset" as const;
+
+/** Inspector param key holding the calendar unit a Time node works in. */
+export const BLUEPRINT_TIME_PARAM_UNIT = "unit" as const;
+/** Inspector param key holding a formatter's style choice. */
+export const BLUEPRINT_TIME_PARAM_STYLE = "style" as const;
+/** Inspector param key holding `Format Time Localized`'s date half. */
+export const BLUEPRINT_TIME_PARAM_DATE_STYLE = "dateStyle" as const;
+/** Inspector param key holding `Format Time Localized`'s time half. */
+export const BLUEPRINT_TIME_PARAM_TIME_STYLE = "timeStyle" as const;
+
+/**
+ * Units `Add Time` and `Time Difference` accept.
+ *
+ * Months and years are in the list even though they are not fixed spans, because they are what an
+ * author means. Both nodes hand them to the calendar rather than to a multiplication - adding one
+ * month to 31 January lands on 28 February, and a difference in months counts calendar months
+ * crossed, not 30-day blocks.
+ */
+export const BLUEPRINT_TIME_UNITS = [
+    "milliseconds",
+    "seconds",
+    "minutes",
+    "hours",
+    "days",
+    "weeks",
+    "months",
+    "years",
+] as const;
+export type BlueprintTimeUnit = typeof BLUEPRINT_TIME_UNITS[number];
+
+/** `Intl.DateTimeFormat` styles, plus the `none` that drops one half of `Format Time Localized`. */
+export const BLUEPRINT_TIME_DISPLAY_STYLES = ["none", "short", "medium", "long", "full"] as const;
+export type BlueprintTimeDisplayStyle = typeof BLUEPRINT_TIME_DISPLAY_STYLES[number];
+
+/**
+ * Clock layouts for `Format Duration`.
+ *
+ * All three are digits and separators only. A "1h 20m" layout would need its unit names translated,
+ * and a node cannot reach the game's language - so that shape belongs to `Get Duration Parts` fed
+ * into an authored, translatable `Format Text`.
+ */
+export const BLUEPRINT_TIME_DURATION_STYLES = ["auto", "hoursMinutesSeconds", "minutesSeconds"] as const;
+export type BlueprintTimeDurationStyle = typeof BLUEPRINT_TIME_DURATION_STYLES[number];
+
+/** `Intl.RelativeTimeFormat` numeric modes: "1 day ago" against "yesterday". */
+export const BLUEPRINT_TIME_RELATIVE_STYLES = ["auto", "always"] as const;
+export type BlueprintTimeRelativeStyle = typeof BLUEPRINT_TIME_RELATIVE_STYLES[number];
+
 export const BLUEPRINT_NODE_TYPE_BROADCAST_SEND = "blueprint.broadcast.send" as const;
 export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broadcast.getListenerCount" as const;
 
@@ -796,8 +873,8 @@ export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
  * Pop the page opened last and reveal whatever it covered - the other half of Go Page.
  *
  * Every page a game opens over a running story (save, load, config, backlog) needs a way out, and
- * Go Page is not it: navigation is a stack, so "go to the page I came from" pushes a third layer
- * over the two already there and the game is still buried. The host has had `navigation.closeLayer`
+ * Go Page is not it: navigation is a stack, so "go to the page I came from" pushes a third page
+ * over the two already there and the game is still buried. The host has had `navigation.pageBack`
  * since the stack existed; until this node there was no way for an author to reach it.
  */
 export const BLUEPRINT_NODE_TYPE_PAGE_BACK = "blueprint.page.back" as const;
@@ -812,10 +889,55 @@ export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSur
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING = "blueprint.page.isSurfaceEntering" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING = "blueprint.page.isSurfaceTransitioning" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_QUIT = "blueprint.page.quit" as const;
+/**
+ * Put a page on screen over whatever is already there, and hand back the handle that names it.
+ *
+ * The other half of `Go Page`, for the case that is not navigation at all: a confirm, a tooltip, a
+ * pause sheet. Go Page replaces the screen and Go back reveals what it covered, which is the wrong
+ * shape for something that has to appear *over* a page and give it back untouched - an author who
+ * built one out of the page stack had to remember to pop exactly as many pages as they pushed, and
+ * the story underneath was hidden the whole time.
+ */
+export const BLUEPRINT_NODE_TYPE_LAYER_SHOW = "blueprint.layer.show" as const;
+export const BLUEPRINT_NODE_TYPE_LAYER_HIDE = "blueprint.layer.hide" as const;
+/** Wait here until that layer closes, and read whatever it closed with. */
+export const BLUEPRINT_NODE_TYPE_LAYER_WAIT = "blueprint.layer.wait" as const;
+/**
+ * Close the layer this graph is running in, with a value for whoever is waiting on it.
+ *
+ * The page a layer shows never learns its own handle - it is a page like any other, and could be
+ * opened as one - so this is how the inside of a layer closes itself. On a page that is not a
+ * layer it does nothing.
+ */
+export const BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF = "blueprint.layer.closeSelf" as const;
+export const BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED = "blueprint.layer.isMounted" as const;
+/**
+ * Ask a question over the page that is already on screen, and continue on the answer.
+ *
+ * `Show Layer` and `Wait For Layer` fused, with one exec output per button, because that is the
+ * shape a question has: every answer leads somewhere different. Assembled out of the two nodes it
+ * stands for, the same graph is a handle, a wait, and a switch over an index whose meaning lives
+ * nowhere on the canvas - three rows of bookkeeping between the question and the branches that
+ * answer it.
+ */
+export const BLUEPRINT_NODE_TYPE_LAYER_CONFIRM = "blueprint.layer.confirm" as const;
 // App window nodes. The older node types in this group keep their `blueprint.page.*`
 // ids from when the category was named "Page"; only the palette label changed.
 export const BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN = "blueprint.app.getFullscreen" as const;
 export const BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN = "blueprint.app.setFullscreen" as const;
+/**
+ * Hand one web address to the player's browser.
+ *
+ * Only the addresses the build's variant declares are opened, and the shell that opens the page is
+ * what enforces that - not this node and not the graph. The `url` pin may be wired: the declaration
+ * is the boundary, so a computed address is as safe as a picked one, and one that is not declared
+ * leaves by `Failed` wherever it came from.
+ */
+export const BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL = "blueprint.app.openExternal" as const;
+
+/** Inspector param holding the picked address; read only when the `url` pin is unwired. */
+export const BLUEPRINT_EXTERNAL_LINK_PARAM_URL = "url";
+
 export const BLUEPRINT_NODE_TYPE_GAME_START_STORY = "blueprint.game.startStory" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME = "blueprint.game.isInGame" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY = "blueprint.game.isGameOverlay" as const;
@@ -826,6 +948,8 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS = "blueprint.game.save.listI
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW = "blueprint.game.save.getPreview" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE = "blueprint.game.save.delete" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.getMetadata" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME = "blueprint.game.save.getTime" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE = "blueprint.game.save.getLine" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE = "blueprint.game.autoSave.write" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST = "blueprint.game.autoSave.list" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST = "blueprint.game.autoSave.latest" as const;
@@ -870,6 +994,32 @@ export const BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED = "blueprint.game.isScene
 export const BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED = "blueprint.game.isOptionPicked" as const;
 /** Wipe the running game's visited record. The `Clear Text Read` of this family. */
 export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisited" as const;
+/**
+ * The build variant this package is, as its name - the blueprint spelling of the story language's
+ * `AppTag`.
+ *
+ * Unlike every other reader in this family it has no play-time value at all. The name is decided
+ * when the package is produced, so `@shared/blueprint/appTagGraphFold` substitutes it and removes
+ * this node before the graph reaches a pack; a graph the fold cannot reduce to a decided branch is
+ * refused rather than shipped. A node that reaches the running game is therefore one only Dev Mode
+ * or the preview is executing, and both of those are always the release edition.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG = "blueprint.game.getAppTag" as const;
+/**
+ * Hand this playthrough to another edition of the same title, and take one back.
+ *
+ * A demo and the full game are separate packages with separate app ids, so they keep separate
+ * user-data directories and their asset protection keys differ on purpose - the release build
+ * cannot read the demo's save files and must not try. These two nodes are the channel that does
+ * cross: one plain JSON document per title, holding the project-level variables, where the player
+ * had got to, and which scenes they had seen. See `@shared/types/gameProgress`.
+ *
+ * `Import Progress` deliberately does NOT jump anywhere. It hands the scene id out as data, and the
+ * author wires it into `Start Game` - which is the node that already knows how to start a story, in
+ * the graph that already knows what else should happen first.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS = "blueprint.game.progress.export" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS = "blueprint.game.progress.import" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;

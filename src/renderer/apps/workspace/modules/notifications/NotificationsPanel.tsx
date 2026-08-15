@@ -51,7 +51,7 @@ export function NotificationsPanel() {
                     <button
                         type="button"
                         onClick={() => notifications?.clearHistory()}
-                        title={t("workspace.shell.notifications.clearAll")}
+                        data-tip={t("workspace.shell.notifications.clearAll")}
                         className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                     >
                         <Trash2 className="h-3.5 w-3.5" />

@@ -14,7 +14,7 @@ export enum SettingScope {
  * so this module - which the workspace imports too - stays free of React: the Settings window
  * resolves the id against its own panel registry.
  */
-export type SettingPanelId = "keybindings" | "downloadSources" | "cacheInventory" | "settingsTransfer" | "softwareUpdate";
+export type SettingPanelId = "keybindings" | "downloadSources" | "cacheInventory" | "settingsTransfer" | "softwareUpdate" | "servers" | "dictionaries";
 
 /**
  * Lightweight descriptor that the shared UI layer understands.
@@ -56,7 +56,7 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     danger?: boolean;
     /** Action only: invoke on the first click - for navigation-style actions with no consequence. */
     skipConfirm?: boolean;
-    /** Action only: renders the button disabled (the row description carries the reason). */
+    /** Renders the control disabled; the row description carries the reason. See `availability`. */
     disabled?: boolean;
     /** Custom only: which panel to render in place of a control. */
     panel?: SettingPanelId;
@@ -125,9 +125,15 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     /** Action only: invoke on the first click - for navigation-style actions with no consequence. */
     skipConfirm?: boolean;
     /**
-     * Action only: dynamic availability, re-evaluated on mount and whenever the Settings window
-     * regains focus (the condition usually depends on other windows, e.g. "a workspace is open").
-     * When unavailable, the button renders disabled and `reasonKey` replaces the description.
+     * Dynamic availability, re-evaluated on mount and whenever the Settings window regains focus
+     * (the condition usually depends on other windows, e.g. "a workspace is open"; it may also be
+     * fixed for the session, as the platform check on `app.confirmQuit` is).
+     * When unavailable, the control renders disabled.
+     *
+     * `reasonKey` replaces the description whenever it is returned, `enabled` or not. Usually it is
+     * why a control is closed; it may also be something true about a row that still works, which is
+     * how the spellcheck language says that the project's language has no dictionary without taking
+     * away the ability to name another one.
      */
     availability?: () => Promise<{ enabled: boolean; reasonKey?: TranslationKey }>;
 }
@@ -147,6 +153,7 @@ export interface SettingCategory {
 }
 
 export type AppSettingCategoryKey =
+    | "servers"
     | "general"
     | "appearance"
     | "editor"
