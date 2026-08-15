@@ -35,8 +35,5 @@ export const DialogSentenceWidgetModule: UIWidgetModule = extendWidgetModule(Tex
         // which is also why the localization pipeline never collected it. The inherited section
         // offered an opt-in that nothing downstream reads.
         remove: ["section.localization"],
-        patch: {
-            "section.content": { helpText: translate("widgets.text.runtimeTextHelp") },
-        },
     }),
 });

@@ -117,8 +117,7 @@ describe("widget module inheritance", () => {
         // Everything else the parent offers is still there, unrestated.
         expect(allFieldIds(schema)).toContain("section.typography");
         expect(allFieldIds(schema)).toContain("text.appearance.panel");
-        expect(findField(schema, "section.content")?.helpText).toBeTruthy();
-        expect(findField(inherited, "section.content")?.helpText).toBeUndefined();
+        expect(findField(schema, "section.content")).toBeTruthy();
     });
 
     it("warns when a module claims a parent the shared table does not know", () => {
