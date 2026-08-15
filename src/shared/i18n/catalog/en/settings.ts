@@ -18,6 +18,8 @@ export const settings = {
         // chosen there, the download just goes to where the tool publishes.
         noMirror: "No mirror",
         chinaMirror: "Mirror in China",
+        // Placeholder of the last row, which is the field for an address Studio does not offer.
+        customPlaceholder: "Custom address",
     },
     // The font chooser (SettingFontPicker): presets plus whatever is installed on this computer.
     fontPicker: {
