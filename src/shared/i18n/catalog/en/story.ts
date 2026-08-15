@@ -126,6 +126,18 @@ export const story = {
             unresolvedRef: "This row points at something that no longer exists.",
             unknownPayload: "This row is of a kind the script does not cover.",
         },
+        // The scene read as a script inside the editor. Read-only this round for every scene, and
+        // read-only for good for one with rows the script cannot say - which is the whole job of
+        // `gate`: an author who is told "not yet" plans differently from one told "not ever".
+        view: {
+            open: "Read as a script",
+            close: "Back to rows",
+            readOnly: "The script view reads the scene. It does not write it.",
+            gate: {
+                one: "{count} row has no script form, so this scene will not become editable here.",
+                other: "{count} rows have no script form, so this scene will not become editable here.",
+            },
+        },
     },
     // Pasting a wall of prose into a scene. The wizard asks one question — who is speaking — and
     // remembers the answer per project, so chapter two opens with chapter one's decisions filled in.
