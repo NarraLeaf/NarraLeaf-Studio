@@ -181,7 +181,7 @@ export function AppCrashScreen({ error }: AppCrashScreenProps) {
                             type="button"
                             onClick={() => void handleCopy()}
                             className="nl-focus-ring absolute right-2 top-2 rounded-md p-1.5 text-danger/70 opacity-0 transition-opacity hover:bg-danger/10 hover:text-danger group-hover:opacity-100 cursor-default"
-                            title={t("crash.screen.copyDetails")}
+                            data-tip={t("crash.screen.copyDetails")}
                             aria-label={t("crash.screen.copyDetails")}
                         >
                             {copied ? <ClipboardCheck className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
