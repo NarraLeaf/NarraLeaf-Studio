@@ -83,3 +83,96 @@ describe("ContainerRenderer", () => {
         expect(markup).toContain("data-child-marker=\"true\"");
     });
 });
+
+const IMAGE_FILL_URL = "file:///fills/stone.png";
+const IMAGE_TAG = "data-ui-image-fill=\"true\"";
+const CROP_MASK = "ui-image-crop-mask";
+
+/**
+ * A stack container is the plainest widget that puts author content inside the chrome: the image
+ * fill and the children are siblings under one chrome root, which is exactly where the fill used to
+ * paint over the content.
+ */
+function createStackDocument(props: Record<string, unknown>): UIDocument {
+    const document = createDocument();
+    document.elements.container.props = {
+        ...defaultContainerWidgetProps,
+        layoutKind: "stack",
+        fillType: "image",
+        backgroundImage: IMAGE_FILL_URL,
+        ...props,
+    };
+    return document;
+}
+
+/** The inline style React serialised onto the first tag carrying `marker`. */
+function inlineStyleOf(markup: string, marker: string): string {
+    const tag = new RegExp(`<[^>]*${marker}[^>]*>`).exec(markup)?.[0] ?? "";
+    return /style="([^"]*)"/.exec(tag)?.[1] ?? "";
+}
+
+function renderStack(document: UIDocument, editorStateService?: unknown): string {
+    return renderToStaticMarkup(
+        <ContainerRenderer
+            element={document.elements.container as UIElement}
+            document={document}
+            surface={document.surfaces[0]!}
+            hostAdapter={{ host: "app", editorStateService: editorStateService as never }}
+        >
+            <span data-child-marker="true">Child</span>
+        </ContainerRenderer>,
+    );
+}
+
+/** Stand-in for the singleton `UIEditorStateService`: only the members the chrome touches. */
+function cropStateService(elementId: string | null) {
+    return {
+        getInteractionOverride: () =>
+            elementId ? { kind: "imageCrop", surfaceId: "surface", elementId, source: "test" } : null,
+        on: () => () => undefined,
+    };
+}
+
+describe("RectangleChromeRenderer image fill stacking", () => {
+    it("paints an image fill below the widget's own content", () => {
+        const markup = renderStack(createStackDocument({}));
+
+        // A positioned `<img>` paints above in-flow content whatever the DOM order, so only a
+        // negative z-index puts the fill where a background belongs.
+        expect(inlineStyleOf(markup, IMAGE_TAG)).toContain("z-index:-1");
+        // ...and a negative z-index escapes any ancestor that is not a stacking context, which is
+        // what `isolation` on the chrome root prevents.
+        expect(inlineStyleOf(markup, "data-ui-image-crop-active")).toContain("isolation:isolate");
+        expect(markup).toContain("data-child-marker=\"true\"");
+    });
+
+    it("leaves tile mode painting on the root rather than through an image", () => {
+        const markup = renderStack(createStackDocument({ imageFill: { mode: "tile", assetId: null } }));
+
+        expect(markup).not.toContain(IMAGE_TAG);
+        expect(inlineStyleOf(markup, "data-ui-image-crop-active")).toContain(`url(${IMAGE_FILL_URL})`);
+    });
+
+    it("hands crop editing an interactive image the mask still paints over", () => {
+        const markup = renderStack(
+            createStackDocument({ imageFill: { mode: "crop", assetId: null } }),
+            cropStateService("container"),
+        );
+        const imageStyle = inlineStyleOf(markup, IMAGE_TAG);
+
+        expect(markup).toContain("data-ui-image-crop-active=\"true\"");
+        expect(imageStyle).toContain("pointer-events:auto");
+        // The author drags this image over the widget's content, so it keeps `z-index: auto`. Any
+        // explicit value - `0` included - would lift it over the mask that dims what falls outside
+        // the box, because the mask is a later sibling at `auto` and nothing else orders the two.
+        expect(imageStyle).not.toContain("z-index");
+        expect(markup.indexOf(CROP_MASK)).toBeGreaterThan(markup.indexOf(IMAGE_TAG));
+    });
+
+    it("keeps the fill behind the content while another element is being cropped", () => {
+        const markup = renderStack(createStackDocument({}), cropStateService("elsewhere"));
+
+        expect(inlineStyleOf(markup, IMAGE_TAG)).toContain("z-index:-1");
+        expect(markup).not.toContain(CROP_MASK);
+    });
+});

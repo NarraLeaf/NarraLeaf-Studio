@@ -121,6 +121,16 @@ export function RectangleChromeRenderer({
         boxSizing: "border-box",
         position: "relative",
         ...extraRootStyle,
+        /*
+         * The image fill paints at `z-index: -1` (see `imageFillZIndex`), and a negative z-index
+         * escapes every ancestor that is not a stacking context - it would then paint behind the
+         * whole surface instead of behind this widget's own content. The root's `transform` cannot be
+         * relied on to form one: Motion writes `transform: none` as soon as every transform value
+         * sits at its default, so the stacking context would come and go with the widget's offset.
+         * `isolation` states it unconditionally, and comes after `extraRootStyle` because no caller
+         * may opt out of it.
+         */
+        isolation: "isolate",
     };
 
     const tx = Number.isFinite(props.transformOffsetX) ? props.transformOffsetX : 0;
@@ -362,6 +372,20 @@ export function RectangleChromeRenderer({
             return null;
         }
         const imagePointerEvents = activeMode === "crop" || isCropEditing ? "auto" : "none";
+        /*
+         * A fill belongs between the chrome's own background and the widget's content. CSS paints a
+         * positioned descendant above in-flow, non-positioned content whatever the DOM order, so an
+         * `<img>` at `z-index: auto` covers a button's label or a text widget's text; only a negative
+         * z-index paints in the step right after the root's own background, which is where a fill
+         * goes. The root is `isolation: isolate` so this cannot escape the widget.
+         *
+         * Crop editing is the deliberate exception: the author drags this very image, so it stays in
+         * the ordinary positioned order. That keeps it hit-testable above the content it is being
+         * dragged over, and keeps `ui-image-crop-mask` - its next sibling, also `z-index: auto` -
+         * painting above it, which is the only reason the area outside the box looks dimmed. Any
+         * explicit z-index here, even `0`, would lift the image over that mask.
+         */
+        const imageFillZIndex = isCropEditing ? undefined : -1;
         if (activeMode === "crop") {
             const placement = ensureCropPlacement(activeFill);
             const cropMotionAnimate = {
@@ -379,6 +403,7 @@ export function RectangleChromeRenderer({
                 transform: imageFillTransform,
                 transformOrigin: "center center",
                 pointerEvents: imagePointerEvents,
+                zIndex: imageFillZIndex,
                 left: cropMotionAnimate.left,
                 top: cropMotionAnimate.top,
                 width: cropMotionAnimate.width,
@@ -409,6 +434,7 @@ export function RectangleChromeRenderer({
                             transform: imageFillTransform,
                             transformOrigin: "center center",
                             pointerEvents: imagePointerEvents,
+                            zIndex: imageFillZIndex,
                         }}
                     />
                 );
@@ -436,6 +462,7 @@ export function RectangleChromeRenderer({
             transform: imageFillTransform,
             transformOrigin: "center center",
             pointerEvents: imagePointerEvents,
+            zIndex: imageFillZIndex,
             opacity: imageAnimate.opacity,
             borderTopLeftRadius: imageAnimate.borderTopLeftRadius,
             borderTopRightRadius: imageAnimate.borderTopRightRadius,
@@ -463,6 +490,7 @@ export function RectangleChromeRenderer({
                         transform: imageFillTransform,
                         transformOrigin: "center center",
                         pointerEvents: imagePointerEvents,
+                        zIndex: imageFillZIndex,
                     }}
                 />
             );
