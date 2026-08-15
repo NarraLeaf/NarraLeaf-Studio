@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
@@ -29,6 +29,10 @@ export function DownloadSourcesPanel() {
     const { t } = useTranslation();
     const [rules, setRules] = useState<DownloadRewriteRule[]>([]);
     const [probes, setProbes] = useState<Record<number, ProbeState>>({});
+    // What this panel last handed the store, normalized. A write is broadcast back to the window
+    // that made it, so without this the echo of our own write is indistinguishable from another
+    // window's - and adopting it would wipe the half-typed row the author is standing in.
+    const storedSignature = useRef<string>("[]");
 
     // Seed, then follow cross-window writes: a second Settings window may be open, and an import
     // (Data settings) writes this key from elsewhere.
@@ -38,14 +42,23 @@ export function DownloadSourcesPanel() {
             .app.state.getGlobalState(DOWNLOAD_REWRITES_KEY)
             .then(result => {
                 if (mounted && result.success) {
-                    setRules(normalizeRewriteRules(result.data.value));
+                    const seeded = normalizeRewriteRules(result.data.value);
+                    storedSignature.current = JSON.stringify(seeded);
+                    setRules(seeded);
                 }
             })
             .catch(() => undefined);
         const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (change.key === DOWNLOAD_REWRITES_KEY) {
-                setRules(normalizeRewriteRules(change.value));
+            if (change.key !== DOWNLOAD_REWRITES_KEY) {
+                return;
             }
+            const incoming = normalizeRewriteRules(change.value);
+            const signature = JSON.stringify(incoming);
+            if (signature === storedSignature.current) {
+                return;
+            }
+            storedSignature.current = signature;
+            setRules(incoming);
         });
         return () => {
             mounted = false;
@@ -54,12 +67,24 @@ export function DownloadSourcesPanel() {
     }, []);
 
     const persist = useCallback(async (next: DownloadRewriteRule[]) => {
-        // Optimistic, like the keybindings panel: the broadcast comes back with the same value, so
-        // a failed write is corrected by the next change event rather than leaving a row lying.
+        // The list on screen and the list in the store are deliberately not the same list. A rule
+        // being written needs a row before it has an address to write, but a rule with a blank half
+        // is not a rule - `normalizeRewriteRules` drops it on read, so storing it verbatim would
+        // make the new row vanish the moment the broadcast came back. Rows live here; only finished
+        // rules go to the store.
         setRules(next);
+
+        const storable = normalizeRewriteRules(next);
+        const signature = JSON.stringify(storable);
+        if (signature === storedSignature.current) {
+            // Typing inside a draft row changes nothing the store can hold. Skipping the write also
+            // spares every reader of this key a side effect per keystroke.
+            return;
+        }
+        storedSignature.current = signature;
         await getInterface().app.state.setGlobalState(
             DOWNLOAD_REWRITES_KEY as GlobalStateKeys,
-            next as unknown as GlobalStateValue<GlobalStateKeys>,
+            storable as unknown as GlobalStateValue<GlobalStateKeys>,
         );
     }, []);
 
