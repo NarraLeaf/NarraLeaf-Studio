@@ -8,6 +8,12 @@ import { UIDocumentService } from "./UIDocumentService";
 import { UIService } from "../core/UIService";
 import { UIStore, SelectionState } from "../ui/UIStore";
 import type { ViewportTransform } from "../../../ui-editor/geometry/types";
+import {
+    SURFACE_ZOOM_MAX_SCALE,
+    SURFACE_ZOOM_MIN_SCALE,
+    areViewportTransformsEqual,
+    type SurfaceViewportFit,
+} from "../../../ui-editor/geometry/fitViewport";
 import type { UITool } from "../../../ui-editor/editor/types";
 import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../../ui-editor/snapping/types";
 import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "../../../ui-editor/snapping/types";
@@ -54,6 +60,17 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private selection: SelectionState = { type: null, data: null };
     private tool: UITool = { kind: "select" };
     private viewport: ViewportTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+    /** Which interface {@link viewport} currently describes - it is one transform shared by every tab. */
+    private viewportSurfaceId: string | null = null;
+    /**
+     * Set while {@link viewport} is a computed zoom - a fit mode rather than somewhere the author
+     * zoomed or panned to by hand. `null` means the transform is theirs and nothing may revise it.
+     */
+    private viewportFit: SurfaceViewportFit | null = null;
+    /** Hand-set transforms, so switching back to an interface returns to the view it was left at. */
+    private readonly viewportBySurfaceId = new Map<string, ViewportTransform>();
+    /** Fit modes, so switching back to an interface resumes the mode it was left following. */
+    private readonly viewportFitBySurfaceId = new Map<string, SurfaceViewportFit>();
     private interactionOverride: InteractionOverride | null = null;
     private selectionUnsubscribe?: () => void;
     private readonly appearanceInspectorVariantByElementId = new Map<string, string>();
@@ -187,18 +204,102 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         return this.viewport;
     }
 
+    /**
+     * A hand gesture: a wheel zoom, a pan, or a zoom the author typed. It ends whatever fit mode
+     * was running, because from here on the author has said where they want to be looking and a
+     * pane resize must not overrule that.
+     */
     public updateViewport(transform: Partial<ViewportTransform>): ViewportTransform {
         this.viewport = this.normalizeViewport({ ...this.viewport, ...transform });
+        this.viewportFit = null;
+        if (this.viewportSurfaceId) {
+            this.viewportBySurfaceId.set(this.viewportSurfaceId, this.viewport);
+            this.viewportFitBySurfaceId.delete(this.viewportSurfaceId);
+        }
         this.persistViewport();
         this.events.emit("viewportChanged", this.viewport);
         return this.viewport;
     }
 
-    public resetViewport(): ViewportTransform {
-        this.viewport = { scale: 1, offsetX: 0, offsetY: 0 };
+    /** Which interface the current transform describes; `null` before any editor tab claimed it. */
+    public getViewportSurfaceId(): string | null {
+        return this.viewportSurfaceId;
+    }
+
+    /**
+     * The fit mode the viewport is currently following, or `null` once the author has zoomed or
+     * panned by hand. Only while it is set may the editor recompute the transform on its own, when
+     * the pane resizes or the design size changes.
+     */
+    public getViewportFit(): SurfaceViewportFit | null {
+        return this.viewportFit;
+    }
+
+    /**
+     * Installs a computed zoom as the viewport for `surfaceId`.
+     *
+     * Separate from {@link updateViewport} because the two carry opposite intent: this one is a
+     * mode being applied, and it stays live across resizes; that one is a place the author chose,
+     * and nothing may move it.
+     */
+    public applyFittedViewport(
+        surfaceId: string,
+        transform: ViewportTransform,
+        fit: SurfaceViewportFit,
+    ): ViewportTransform {
+        const next = this.normalizeViewport(transform);
+        // A recompute that changes nothing must not emit: the editor recomputes on every document
+        // revision, and an event per revision is a re-render per revision, which is a recompute per
+        // re-render. Compared before assigning, so the identity the canvas holds stays stable too.
+        if (
+            this.viewportSurfaceId === surfaceId &&
+            this.viewportFit?.mode === fit.mode &&
+            this.viewportFit.chosen === fit.chosen &&
+            areViewportTransformsEqual(this.viewport, next)
+        ) {
+            return this.viewport;
+        }
+        this.viewport = next;
+        this.viewportSurfaceId = surfaceId;
+        this.viewportFit = fit;
+        this.viewportFitBySurfaceId.set(surfaceId, fit);
+        // A mode supersedes whatever hand-set transform this interface was remembered at, so
+        // switching back to it later does not restore a view the author has since replaced.
+        this.viewportBySurfaceId.delete(surfaceId);
         this.persistViewport();
         this.events.emit("viewportChanged", this.viewport);
         return this.viewport;
+    }
+
+    /**
+     * Hands the shared viewport to `surfaceId` when opening or re-showing its tab.
+     *
+     * One transform serves every surface editor tab, so switching tabs would otherwise show the
+     * next interface through the last one's zoom.
+     *
+     * Returns `null` when this interface was left at a hand-set transform - it has been restored
+     * and the caller has nothing to do. Otherwise returns the mode the caller must recompute for
+     * the space it has now, which for an interface being opened for the first time is the plain
+     * fit nobody asked for.
+     */
+    public adoptSurfaceViewport(surfaceId: string): SurfaceViewportFit | null {
+        const remembered = this.viewportBySurfaceId.get(surfaceId);
+        if (remembered) {
+            this.viewportSurfaceId = surfaceId;
+            this.viewportFit = null;
+            if (!areViewportTransformsEqual(this.viewport, remembered)) {
+                this.viewport = remembered;
+                this.persistViewport();
+                this.events.emit("viewportChanged", this.viewport);
+            }
+            return null;
+        }
+        const fit = this.viewportFitBySurfaceId.get(surfaceId) ?? { mode: "contain" as const, chosen: false };
+        // Claimed before the recompute lands, so a second pass of the same effect does not read the
+        // previous interface's id and adopt all over again.
+        this.viewportSurfaceId = surfaceId;
+        this.viewportFit = fit;
+        return fit;
     }
 
     public getSelection(): SelectionState {
@@ -420,7 +521,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     }
 
     private normalizeViewport(transform: ViewportTransform): ViewportTransform {
-        const scale = Math.max(0.1, Math.min(10, transform.scale));
+        const scale = Math.max(SURFACE_ZOOM_MIN_SCALE, Math.min(SURFACE_ZOOM_MAX_SCALE, transform.scale));
         const offsetX = Number.isFinite(transform.offsetX) ? transform.offsetX : 0;
         const offsetY = Number.isFinite(transform.offsetY) ? transform.offsetY : 0;
         return { scale, offsetX, offsetY };

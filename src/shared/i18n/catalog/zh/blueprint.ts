@@ -377,9 +377,15 @@ export const blueprint = {
         sourceLabel: "TypeScript 蓝图源代码",
     },
     zoom: {
+        label: "缩放",
         in: "放大",
         out: "缩小",
         fit: "适应视图",
+        actualSize: "实际尺寸",
+        fitArea: "适应编辑区",
+        fillArea: "充满编辑区",
+        fitWidth: "适配宽度",
+        custom: "自定义",
     },
     category: {
         app: "应用",

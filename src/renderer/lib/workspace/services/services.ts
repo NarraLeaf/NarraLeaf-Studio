@@ -111,6 +111,7 @@ import type { ReactElement } from "react";
 import type { ElementRendererDefinition } from "../../ui-editor/runtime/ElementRendererRegistry";
 import type { RenderComponentOptions, RenderDocumentSurfaceOptions, RenderSurfaceOptions } from "../../ui-editor/runtime/types";
 import type { ViewportTransform } from "../../ui-editor/geometry/types";
+import type { SurfaceViewportFit } from "../../ui-editor/geometry/fitViewport";
 import type { UITool } from "../../ui-editor/editor/types";
 import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/snapping/types";
 import type { SelectionState } from "./ui/UIStore";
@@ -944,8 +945,16 @@ interface IUIEditorStateService extends IService {
     getTool(): UITool;
     setTool(tool: UITool): void;
     getViewportTransform(): ViewportTransform;
+    /** A hand gesture (zoom, pan, or a typed zoom); ends the fit mode the interface was following. */
     updateViewport(transform: Partial<ViewportTransform>): ViewportTransform;
-    resetViewport(): ViewportTransform;
+    /** Which interface the current transform describes; `null` before any editor tab claimed it. */
+    getViewportSurfaceId(): string | null;
+    /** The fit mode in force, or `null` once the author moved the view by hand. */
+    getViewportFit(): SurfaceViewportFit | null;
+    /** Installs a computed zoom for an interface (stays live across resizes, unlike a hand gesture). */
+    applyFittedViewport(surfaceId: string, transform: ViewportTransform, fit: SurfaceViewportFit): ViewportTransform;
+    /** Restores a hand-set view (`null`), or returns the mode the caller must recompute. */
+    adoptSurfaceViewport(surfaceId: string): SurfaceViewportFit | null;
     getSelection(): SelectionState;
     setSelection(selection: SelectionState): void;
     setUIElementSelection(selection: UIElementSelection): void;

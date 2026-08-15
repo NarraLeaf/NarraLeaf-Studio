@@ -378,9 +378,15 @@ export const blueprint = {
         sourceLabel: "TypeScript blueprint source",
     },
     zoom: {
+        label: "Zoom",
         in: "Zoom in",
         out: "Zoom out",
         fit: "Fit view",
+        actualSize: "Actual size",
+        fitArea: "Fit the editing area",
+        fillArea: "Fill the editing area",
+        fitWidth: "Fit the width",
+        custom: "Custom",
     },
     category: {
         app: "App",

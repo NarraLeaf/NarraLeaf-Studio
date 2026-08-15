@@ -43,6 +43,8 @@ import {
     usePreviewAspectId,
     usePreviewSafeAreaId,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
+import { useSurfaceViewportZoom } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceViewportZoom";
+import { SurfaceZoomMenu } from "@/apps/workspace/modules/ui-editor/editors/SurfaceZoomMenu";
 import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
 import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceImageDrop";
 import { useSurfaceDoubleClick } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceDoubleClick";
@@ -353,6 +355,19 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         () => ({ active: freeze.frozen, reason: freeze.reason }),
         [freeze.frozen, freeze.reason],
     );
+
+    // Opening an interface shows all of it: the canvas is fitted to the free part of the editing
+    // area and centred there, and keeps answering whichever mode is in force while that area
+    // changes size - until the author zooms, pans or types a number, after which the view is theirs
+    // and only the zoom menu in the tool bar below puts it back on a mode.
+    const zoom = useSurfaceViewportZoom({
+        stateService,
+        surfaceId,
+        designSize: surface?.designSize,
+        viewportRef,
+        active,
+        enabled: Boolean(surface && stateService),
+    });
 
     const { createElementAtClientPoint, surfaceImageDropTargetProps, surfaceImageDropOverlayClass } =
         useSurfaceImageDrop({
@@ -725,6 +740,13 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         >
                             <Move className="w-4 h-4" />
                         </button>
+                        <SurfaceZoomMenu
+                            scale={viewport.scale}
+                            fit={zoom.fit}
+                            applyFitMode={zoom.applyFitMode}
+                            setZoomScale={zoom.setZoomScale}
+                            enabled={Boolean(stateService)}
+                        />
                         <SurfaceEditorToolbarButtonGroup aria-label={t("uiEditor.snap.label")}>
                             <SurfaceEditorToolbarSegButton
                                 type="button"
