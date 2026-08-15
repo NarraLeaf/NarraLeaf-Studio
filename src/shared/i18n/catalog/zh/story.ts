@@ -111,6 +111,14 @@ export const story = {
             unresolvedRef: "该行指向的对象已不存在",
             unknownPayload: "脚本尚未覆盖此类行",
         },
+        view: {
+            open: "以脚本形式阅读",
+            close: "回到行视图",
+            readOnly: "脚本视图只读，不写回场景",
+            gate: {
+                other: "有 {count} 行没有对应的脚本写法，此场景今后也无法在这里编辑",
+            },
+        },
     },
     paste: {
         title: "粘贴为行",

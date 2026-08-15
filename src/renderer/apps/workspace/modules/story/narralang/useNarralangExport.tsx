@@ -8,18 +8,14 @@ import {
     type NarralangLookups,
     type NarralangSceneResult,
 } from "@/lib/story/narralang/narralangPrinter";
-import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
-import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
-import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { Services } from "@/lib/workspace/services/services";
-import { characterRowLookup, projectVariableNameLookup } from "../scene-editor/storySceneBlockUtils";
 import { useWorkspace } from "../../../context";
 import { NarralangExportReportModal } from "./NarralangExportReportModal";
-import { narralangAppearanceNames, narralangFileName, narralangIssueRows, type NarralangIssueRow } from "./narralangIo";
+import { narralangFileName, narralangIssueRows, type NarralangIssueRow } from "./narralangIo";
+import { narralangLookups } from "./narralangLookups";
 
 /** What an export was asked to write: one scene, or the whole story when `sceneId` is null. */
 export type NarralangExportTarget = {
@@ -67,42 +63,11 @@ export function useNarralangExport(): NarralangExport {
         setBusy(true);
         try {
             const storyService = context.services.get<StoryService>(Services.Story);
-            const characterService = context.services.get<CharacterService>(Services.Character);
-            const blueprintService = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
-            const assetsService = context.services.get<AssetsService>(Services.Assets);
-            const appTagService = context.services.get<AppTagService>(Services.AppTags);
             const document: StoryDocument = await storyService.loadStory(target.storyId);
-            const characters = characterService.listCharacter();
-            const motions = new Map(storyService.listAnimationAssets().map(entry => [entry.id, entry.name]));
-            const appTags = new Map(appTagService.listTags().map(tag => [tag.id, tag.name]));
-
-            const lookups: NarralangLookups = {
-                character: characterRowLookup(characters),
-                // `assetId → name`, across every asset type: a background row stores an id and reads
-                // as one, and an id the printer cannot name is a row it refuses to spell.
-                assetName: assetId => {
-                    const table = assetsService.getAssets();
-                    for (const byId of Object.values(table)) {
-                        const asset = (byId as Record<string, { name?: string }> | undefined)?.[assetId];
-                        if (asset?.name) {
-                            return asset.name;
-                        }
-                    }
-                    return null;
-                },
-                motionName: animationId => motions.get(animationId) ?? null,
-                appearanceName: narralangAppearanceNames(characters),
-                // Read at export time rather than held in state: an export is a one-shot command, so
-                // the freshest registry is the one on disk when the author asked. Both project scopes,
-                // because since the declaration migration the registry is the only place either lives.
-                projectVariableName: projectVariableNameLookup([
-                    ...blueprintService.listSavedVariables(),
-                    ...blueprintService.listPersistentVariables(),
-                ]),
-                appTagName: appTagId => appTags.get(appTagId) ?? null,
-                scenes: document.scenes,
-                document,
-            };
+            // Read at export time rather than held in state: an export is a one-shot command, so the
+            // freshest registry is the one on disk when the author asked. The assembly itself is
+            // shared with the in-Studio script view - see `narralangLookups`.
+            const lookups: NarralangLookups = narralangLookups(context.services, document);
 
             const scene: StoryScene | undefined = target.sceneId ? document.scenes[target.sceneId] : undefined;
             if (target.sceneId && !scene) {
