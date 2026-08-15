@@ -17,6 +17,23 @@ import type {
 } from "@shared/types/blueprint/externalLink";
 import type { BehaviorNodeExecuteResult } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { ElementRendererProps } from "../ElementRendererRegistry";
+import type { StoryCompilePass } from "../game/storyCompilePass";
+
+/**
+ * The compile-pass vocabulary, re-exported so a plugin author can NAME these types rather than
+ * digging them out of `Parameters<StoryCompilePass["scene"]>[0]`. This module is the public
+ * `narraleaf-studio/runtime` surface (the plugin-types build reads its exports), so a type that is
+ * only reachable through inference is, for an author, a type that does not exist.
+ */
+export type {
+    BlockInjection,
+    CompileBlockView,
+    EngineAction,
+    RuntimeFlag,
+    SceneCompileContext,
+    StageImage,
+    StoryCompilePass,
+} from "../game/storyCompilePass";
 
 export type RuntimePluginLogLevel = "info" | "warning" | "error";
 
@@ -256,6 +273,21 @@ export type RuntimePluginSidecars = {
 };
 
 /**
+ * `story` - take part in compiling the project's stories.
+ *
+ * The one namespace here that acts *before* the game runs rather than during it: a pass is called
+ * while each scene is compiled, and what it returns is part of the story the player then plays. See
+ * `storyCompilePass.ts` for the context a pass is handed and for why it is as small as it is.
+ */
+export type RuntimePluginStory = {
+    /**
+     * Register a pass. Idempotent by pass id, so a host that runs setup twice does not double every
+     * action the pass injects.
+     */
+    registerCompilePass(pass: StoryCompilePass): void;
+};
+
+/**
  * The game-side plugin surface.
  *
  * Everything below the always-present five is **capability-gated**: a domain the
@@ -318,6 +350,8 @@ export type RuntimePluginGame = {
     assets?: RuntimePluginAssets;
     /** Present with `"locale"`. */
     locale?: RuntimePluginLocale;
+    /** Present with `"story.compile"`. */
+    story?: RuntimePluginStory;
     /** Present when `contributes.sidecars` is non-empty. */
     sidecar?: RuntimePluginSidecars;
     /** Present when `contributes.externalLinks` is non-empty. */

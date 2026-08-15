@@ -93,6 +93,16 @@ export type StoryRowLookups = {
      * only other thing the payload holds is an id.
      */
     appearanceName?: (characterId: string, refId: string) => string | null;
+    /**
+     * The label a plugin gave the story action behind a `{action:"plugin"}` row, or `null` when the
+     * plugin that owns it is not loaded.
+     *
+     * Same split as the three above, and for a sharper reason: the label lives in a *registration*
+     * rather than in the document, so it exists only while the plugin is installed and enabled. Omit
+     * the lookup - as the Dev Mode timeline does, having no plugin host to ask - and the row names
+     * itself generically rather than printing `pluginId`, which is an identifier and not a name.
+     */
+    pluginActionLabel?: (pluginId: string, actionId: string) => string | null;
     /** The scene the block belongs to — variable, layer and displayable refs resolve against it. */
     scene?: StoryScene;
     /** Every scene in the document: jump targets and cross-scene variable names. */
@@ -385,7 +395,7 @@ export type StoryBlockBadgeId =
     | "narration" | "dialogue" | "choice" | "choiceOption"
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
-    | "blueprint" | "camera" | "effect"
+    | "blueprint" | "camera" | "effect" | "plugin"
     | "label" | "goto" | "break" | "cut" | "control" | "jump" | "invalid" | "declaration" | "note";
 
 export type StoryBlockBadge = {
@@ -436,6 +446,10 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
         // Its own badge, not "Effect": `/camera darken` dims the whole stage and outlives the scene,
         // while `/vignette` is a mask layer inside it. The row has to say which one it is at a glance.
         if (block.payload.action === "camera") return badge("camera", "story.badge.camera", "camera");
+        // Its own badge, in the same "utils" unit a blueprint call wears: both are rows that hand the
+        // line to something outside the scene's own vocabulary. It needs to be tellable apart at a
+        // glance precisely because it is the one row whose behaviour is not in the document.
+        if (block.payload.action === "plugin") return badge("plugin", "story.badge.plugin", "utils");
         // A screen effect is a property of the scene it happens in (§4.1), so it wears the scene hue;
         // the Sparkles badge is what still tells a `/blink` row apart from a `/bg` row at a glance.
         return badge("effect", "story.badge.effect", "scene");
@@ -774,6 +788,10 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
         if (payload.action === "camera") return describeCamera(payload, lookups.motionName);
+        if (payload.action === "plugin") {
+            return lookups.pluginActionLabel?.(payload.pluginId, payload.actionId)
+                ?? translate("story.describe.pluginAction");
+        }
         return translate("story.describe.effect", { effect: payload.effect });
     }
     if (block.kind === "control") {
