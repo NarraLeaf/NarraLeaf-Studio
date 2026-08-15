@@ -101,6 +101,32 @@ export const story = {
             speakerUnresolved: "This line binds no character, so the original speaker name was kept. Its text still changed.",
         },
     },
+    // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
+    // script cannot say is reported rather than refused and the file is written either way. `reason`
+    // is keyed by the printer's own codes (see `narralangPrinter`), so a new code fails the parity
+    // test rather than reaching an author as a raw identifier.
+    narralang: {
+        exportScene: "Export as NarraLang…",
+        exportStory: "Export Story as NarraLang…",
+        sceneMissing: "This scene is no longer in the story.",
+        reportTitle: "Rows without a script form",
+        reportSummary: {
+            one: "{count} row has no script form. The file does not carry it in full.",
+            other: "{count} rows have no script form. The file does not carry them in full.",
+        },
+        reason: {
+            blueprintAction: "A blueprint runs this row, and a blueprint has no script form.",
+            blueprintCondition: "A blueprint decides this condition.",
+            blueprintInterpolation: "A blueprint computes a value inside this text.",
+            inlineEvent: "The text carries an event that fires while it is being typed out.",
+            invalidRow: "This row's command could not be read, so it is written as it stands.",
+            customTransform: "This movement is set frame by frame, or carries properties the script does not name.",
+            customTransition: "This transition carries properties the script does not name.",
+            effectProps: "This effect carries properties the script does not name.",
+            unresolvedRef: "This row points at something that no longer exists.",
+            unknownPayload: "This row is of a kind the script does not cover.",
+        },
+    },
     // Pasting a wall of prose into a scene. The wizard asks one question — who is speaking — and
     // remembers the answer per project, so chapter two opens with chapter one's decisions filled in.
     paste: {
