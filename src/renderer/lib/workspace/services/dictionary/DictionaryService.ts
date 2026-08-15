@@ -24,6 +24,7 @@ import { EventEmitter } from "../ui/EventEmitter";
 type DictionaryServiceEvents = {
     wordsChanged: string[];
     dirtyChanged: boolean;
+    statusChanged: SpellcheckStatus | null;
 };
 
 /**
@@ -58,6 +59,7 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
     private status: SpellcheckStatus | null = null;
     private unsubscribeSourceLocale: (() => void) | null = null;
     private unsubscribeSetting: (() => void) | null = null;
+    private unsubscribeFocus: (() => void) | null = null;
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
@@ -86,6 +88,23 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
             }
         });
         this.unsubscribeSetting = () => token.cancel();
+
+        // The third input is the one this window cannot be told about: which dictionaries are
+        // installed on the machine. They are files in a main-process cache, downloaded from the
+        // Settings window, and there is no broadcast for them - so a language that resolved to
+        // nothing at project open would stay resolved to nothing for the life of the window, however
+        // many dictionaries the author fetched in the meantime. Re-published when this window comes
+        // back to the front, which is the gesture that follows a download; the push is a set
+        // replacement and a directory listing, so paying it per focus is cheaper than being wrong.
+        //
+        // Guarded, because this service is also exercised outside a document: the whole point of the
+        // rest of it is a JSON file and an IPC push, neither of which needs a window.
+        const host = globalThis.window;
+        if (host) {
+            const onFocus = () => void this.publish();
+            host.addEventListener("focus", onFocus);
+            this.unsubscribeFocus = () => host.removeEventListener("focus", onFocus);
+        }
     }
 
     public async load(): Promise<string[]> {
@@ -201,6 +220,18 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
         return this.events.on("wordsChanged", handler);
     }
 
+    /**
+     * The language settled on, whenever it changes.
+     *
+     * The story field draws its own underlines now, so it has to know which language it is asking
+     * about - and it is the one surface that cannot go and look: the answer changes when the author
+     * edits a setting in another window, and a row that only read it on mount would keep checking in
+     * whatever language the project was opened with.
+     */
+    public onStatusChanged(handler: (status: SpellcheckStatus | null) => void): () => void {
+        return this.events.on("statusChanged", handler);
+    }
+
     public onDirtyChanged(handler: (dirty: boolean) => void): () => void {
         return this.events.on("dirtyChanged", handler);
     }
@@ -230,6 +261,8 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
         this.unsubscribeSourceLocale = null;
         this.unsubscribeSetting?.();
         this.unsubscribeSetting = null;
+        this.unsubscribeFocus?.();
+        this.unsubscribeFocus = null;
         this.status = null;
         void getInterface().app.spellcheck.clear();
     }
@@ -256,7 +289,15 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
         const localizationService = this.getContext().services.get<LocalizationService>(Services.Localization);
         const sourceLocale = localizationService.getConfiguration().sourceLocale;
         const result = await getInterface().app.spellcheck.configure(sourceLocale, this.listWords());
-        this.status = result.success ? result.data : null;
+        const next = result.success ? result.data : null;
+        // Only when it actually moved. This runs on every window focus, and an event per focus would
+        // bump the binding's revision and re-check every open row for nothing.
+        if (this.status?.language === next?.language && this.status?.sourceLocale === next?.sourceLocale) {
+            this.status = next;
+            return;
+        }
+        this.status = next;
+        this.events.emit("statusChanged", this.status);
     }
 
     private setDirty(value: boolean): void {

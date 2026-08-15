@@ -505,10 +505,6 @@ export const workspace = {
         },
         // 冻结工作区：项目数据停止写入，编辑器状态照常。命名按作者能感知的效果（「停止保存」）来，
         // 而不是按机制来。
-        spellcheck: {
-            addToDictionary: "加入工程词典",
-            noSuggestions: "没有候选词",
-        },
         freeze: {
             command: "冻结项目（停止保存改动）",
             release: "解除冻结（恢复保存改动）",

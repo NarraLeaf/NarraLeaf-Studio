@@ -1,201 +1,265 @@
-import { describe, expect, it } from "vitest";
-import {
-    SPELLCHECK_FOLLOW_PROJECT,
-    SPELLCHECK_OFF,
-} from "@shared/types/spellcheck";
-import { SpellcheckManager, type SpellcheckSession } from "./spellcheckManager";
+import { createHash } from "crypto";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+import { gzipSync } from "zlib";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SPELLCHECK_OFF } from "@shared/types/spellcheck";
+import { DictionaryCache } from "./dictionaryCache";
+import { fetchDictionaryIndex, normalizeDictionaryEntry } from "./dictionaryRegistryClient";
+import { SpellcheckManager } from "./spellcheckManager";
 
-/**
- * The session end of the project dictionary.
- *
- * The case that matters is the project switch. Chromium's custom dictionary is a file in the
- * Electron profile, so a word added for one project stays there until something takes it back out -
- * and nothing else would. Left alone, every cast of every project ever opened on this computer would
- * pile up in one list, and the symptom is the absence of a symptom: names that should be flagged
- * simply never are, in projects that never heard of them.
- *
- * Nothing here runs Electron. `SpellcheckSession` is the five members the manager touches, which is
- * also why it is injected.
- */
+const INDEX_URL = "https://registry.example.com/index.json";
+const DOWNLOAD_URL = "https://cdn.example.com/en-GB.txt.gz";
 
-/** The languages Electron reports. Real ones, including the pairs that make matching interesting. */
-const AVAILABLE = ["cs", "de", "en-AU", "en-CA", "en-GB", "en-GB-oxendict", "en-US", "es", "fr", "ru"];
+const WORDS = ["the", "quick", "brown", "fox", "met", "receive", "colour", "Elysia"].join("\n") + "\n";
+const PACKED = gzipSync(Buffer.from(WORDS, "utf-8"));
+const DIGEST = createHash("sha256").update(PACKED).digest("hex");
 
-type Harness = {
-    manager: SpellcheckManager;
-    session: SpellcheckSession;
-    /** Exactly what the session holds now, in the order it was added. */
-    words: () => string[];
-    languages: () => string[];
-    enabled: () => boolean;
-};
-
-function createHarness(setting: string = SPELLCHECK_FOLLOW_PROJECT, available: string[] = AVAILABLE): Harness {
-    const words = new Set<string>();
-    let languages: string[] = [];
-    let enabled = false;
-
-    const session: SpellcheckSession = {
-        availableSpellCheckerLanguages: available,
-        setSpellCheckerEnabled: value => {
-            enabled = value;
-        },
-        setSpellCheckerLanguages: value => {
-            languages = [...value];
-        },
-        addWordToSpellCheckerDictionary: word => {
-            words.add(word);
-            return true;
-        },
-        removeWordFromSpellCheckerDictionary: word => words.delete(word),
-    };
-
+function entry(overrides: Record<string, unknown> = {}) {
     return {
-        manager: new SpellcheckManager(() => session, () => setting),
-        session,
-        words: () => [...words],
-        languages: () => languages,
-        enabled: () => enabled,
+        code: "en-GB",
+        name: "English (United Kingdom)",
+        bytes: PACKED.byteLength,
+        license: "MIT",
+        sha256: DIGEST,
+        download: DOWNLOAD_URL,
+        ...overrides,
     };
 }
 
-describe("the words a project puts in the session", () => {
-    it("loads this project's words", () => {
-        const harness = createHarness();
+function indexJson(entries: unknown[]): string {
+    return JSON.stringify({ formatVersion: 1, repository: "https://example.com", dictionaries: entries });
+}
 
-        harness.manager.configure({ sourceLocale: "en-GB", words: ["Anyo", "Kamurocho"] });
-
-        expect(harness.words()).toEqual(["Anyo", "Kamurocho"]);
-    });
-
-    it("takes the previous project's words out when the next one arrives", () => {
-        const harness = createHarness();
-
-        harness.manager.configure({ sourceLocale: "en-GB", words: ["Anyo", "Kamurocho"] });
-        harness.manager.configure({ sourceLocale: "en-GB", words: ["Wilhelmina"] });
-
-        // Not merged. A name from the closed project would be accepted here, in a project that has
-        // never heard of it, and nothing anywhere would say why it stopped being flagged.
-        expect(harness.words()).toEqual(["Wilhelmina"]);
-    });
-
-    it("keeps a word both projects share without removing and re-adding it", () => {
-        const harness = createHarness();
-        let removals = 0;
-        const session = harness.session as { removeWordFromSpellCheckerDictionary: (word: string) => boolean };
-        const original = session.removeWordFromSpellCheckerDictionary;
-        session.removeWordFromSpellCheckerDictionary = word => {
-            removals += 1;
-            return original(word);
-        };
-
-        harness.manager.configure({ sourceLocale: "en-GB", words: ["Anyo", "shared"] });
-        harness.manager.configure({ sourceLocale: "en-GB", words: ["shared", "Wilhelmina"] });
-
-        expect(harness.words()).toEqual(["shared", "Wilhelmina"]);
-        expect(removals).toBe(1);
-    });
-
-    it("empties the session when the project closes", () => {
-        const harness = createHarness();
-
-        harness.manager.configure({ sourceLocale: "en-GB", words: ["Anyo", "Kamurocho"] });
-        harness.manager.clear();
-
-        expect(harness.words()).toEqual([]);
-        expect(harness.enabled()).toBe(false);
-        expect(harness.manager.getStatus().language).toBeNull();
-    });
-
-    it("re-clearing is not an error and takes nothing else out", () => {
-        const harness = createHarness();
-
-        harness.manager.configure({ sourceLocale: "en-GB", words: ["Anyo"] });
-        harness.manager.clear();
-        harness.manager.clear();
-
-        expect(harness.words()).toEqual([]);
-    });
-});
-
-describe("the language the session is told to check", () => {
-    it("takes the project's language when the author follows it", () => {
-        const harness = createHarness();
-
-        const status = harness.manager.configure({ sourceLocale: "en-GB", words: [] });
-
-        expect(status.language).toBe("en-GB");
-        expect(harness.languages()).toEqual(["en-GB"]);
-        expect(harness.enabled()).toBe(true);
-    });
-
-    it("takes a regional dictionary for a language named without a region", () => {
-        const harness = createHarness();
-
-        // There is no bare `en` dictionary; the settings row is where an author who wants a
-        // different regional English says so.
-        expect(harness.manager.configure({ sourceLocale: "en", words: [] }).language).toBe("en-AU");
-        // And a language that does have a bare entry gets it rather than a regional one.
-        expect(harness.manager.configure({ sourceLocale: "de-AT", words: [] }).language).toBe("de");
-    });
-
-    it("checks nothing for a language Chromium has no dictionary for", () => {
-        const harness = createHarness();
-
-        // Chinese and Japanese have no spelling in the hunspell sense. This is the correct
-        // behaviour, and the settings row states it rather than showing a live-looking control.
-        const status = harness.manager.configure({ sourceLocale: "ja", words: ["主人公"] });
-
-        expect(status.language).toBeNull();
-        expect(harness.enabled()).toBe(false);
-        // The words still go in. The dictionary is the project's term list first and a spellchecker
-        // input second, and it is not gated on the language being checkable.
-        expect(harness.words()).toEqual(["主人公"]);
-    });
-
-    it("checks nothing for a project that has not chosen a language", () => {
-        const harness = createHarness();
-
-        expect(harness.manager.configure({ sourceLocale: "", words: [] }).language).toBeNull();
-    });
-
-    it("honours a language the author named outright, whatever the project is written in", () => {
-        const harness = createHarness("en-US");
-
-        expect(harness.manager.configure({ sourceLocale: "ja", words: [] }).language).toBe("en-US");
-    });
-
-    it("checks nothing when the author turned it off", () => {
-        const harness = createHarness(SPELLCHECK_OFF);
-
-        const status = harness.manager.configure({ sourceLocale: "en-GB", words: ["Anyo"] });
-
-        expect(status.language).toBeNull();
-        expect(harness.enabled()).toBe(false);
-        expect(harness.words()).toEqual(["Anyo"]);
-    });
-});
-
-describe("what the Settings window is told", () => {
-    it("lists the session's languages before any project has configured one", () => {
-        const harness = createHarness();
-
-        const status = harness.manager.getStatus();
-
-        expect(status.available).toEqual(AVAILABLE);
-        expect(status.sourceLocale).toBe("");
-    });
-
-    it("reports the project's language and the setting behind it", () => {
-        const harness = createHarness();
-
-        harness.manager.configure({ sourceLocale: "ja", words: [] });
-
-        expect(harness.manager.getStatus()).toStrictEqual({
-            sourceLocale: "ja",
-            setting: SPELLCHECK_FOLLOW_PROJECT,
-            language: null,
-            available: AVAILABLE,
+describe("dictionary index validation", () => {
+    it("keeps a well-formed entry", () => {
+        expect(normalizeDictionaryEntry(entry())).toMatchObject({
+            code: "en-GB",
+            license: "MIT",
+            sha256: DIGEST,
+            download: DOWNLOAD_URL,
         });
+    });
+
+    it("refuses a download that is not https", () => {
+        // The whole point of the check: a hostile index must not be able to make Studio "download"
+        // something off the author's own disk, or carry the bytes itself in a data: URL.
+        expect(normalizeDictionaryEntry(entry({ download: "file:///C:/Windows/win.ini" }))).toBeNull();
+        expect(normalizeDictionaryEntry(entry({ download: "http://cdn.example.com/en-GB.txt.gz" }))).toBeNull();
+        expect(normalizeDictionaryEntry(entry({ download: "data:text/plain,the" }))).toBeNull();
+    });
+
+    it("refuses an entry whose checksum is not a sha256", () => {
+        expect(normalizeDictionaryEntry(entry({ sha256: "nope" }))).toBeNull();
+        expect(normalizeDictionaryEntry(entry({ sha256: DIGEST.slice(0, 63) }))).toBeNull();
+        expect(normalizeDictionaryEntry(entry({ sha256: undefined }))).toBeNull();
+    });
+
+    it("refuses an entry with no licence, and one whose code could be a path", () => {
+        expect(normalizeDictionaryEntry(entry({ license: "" }))).toBeNull();
+        expect(normalizeDictionaryEntry(entry({ code: "../../evil" }))).toBeNull();
+        expect(normalizeDictionaryEntry(entry({ code: "en/GB" }))).toBeNull();
+    });
+
+    it("drops one bad record without blanking the registry", async () => {
+        vi.stubGlobal("fetch", vi.fn(async () => new Response(
+            indexJson([entry({ code: "en-GB" }), entry({ code: "de", download: "http://x/de.gz" })]),
+            { status: 200 },
+        )));
+        const index = await fetchDictionaryIndex(INDEX_URL);
+        expect(index.dictionaries.map(record => record.code)).toEqual(["en-GB"]);
+        vi.unstubAllGlobals();
+    });
+
+    it("refuses an index of a format version it does not know", async () => {
+        vi.stubGlobal("fetch", vi.fn(async () => new Response(
+            JSON.stringify({ formatVersion: 99, dictionaries: [entry()] }),
+            { status: 200 },
+        )));
+        await expect(fetchDictionaryIndex(INDEX_URL)).rejects.toThrow(/format version/);
+        vi.unstubAllGlobals();
+    });
+});
+
+describe("SpellcheckManager", () => {
+    let userDataDir: string;
+    let setting: string | undefined;
+    let indexBody: string;
+    let payload: Buffer;
+
+    /** A stand-in for the window a request came from - the manager only uses it as a key. */
+    const windowA = {};
+    const windowB = {};
+
+    function manager(): SpellcheckManager {
+        return new SpellcheckManager({
+            userDataDir: () => userDataDir,
+            readSetting: () => setting,
+            readRegistryUrl: () => INDEX_URL,
+        });
+    }
+
+    beforeEach(async () => {
+        userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-spellcheck-"));
+        setting = undefined;
+        indexBody = indexJson([entry()]);
+        payload = PACKED;
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => (
+            url === DOWNLOAD_URL
+                ? new Response(new Uint8Array(payload), { status: 200 })
+                : new Response(indexBody, { status: 200 })
+        )));
+    });
+
+    afterEach(async () => {
+        vi.unstubAllGlobals();
+        await fs.rm(userDataDir, { recursive: true, force: true });
+    });
+
+    function cacheDir(): string {
+        return path.join(userDataDir, "cache", "spellcheck-dictionaries");
+    }
+
+    it("downloads into the cache, then checks and suggests from it", async () => {
+        const spellcheck = manager();
+
+        expect(await spellcheck.listInstalled()).toEqual({ languages: [] });
+        expect(await spellcheck.download("en-GB")).toEqual({ ok: true });
+
+        // The whole round trip: what went to disk is what comes back off it.
+        expect(await fs.readdir(cacheDir())).toEqual(expect.arrayContaining(["en-GB.json", "en-GB.txt.gz"]));
+        const installed = await spellcheck.listInstalled();
+        expect(installed.languages).toEqual([
+            { code: "en-GB", name: "English (United Kingdom)", bytes: PACKED.byteLength },
+        ]);
+
+        const { ranges } = await spellcheck.check(windowA, "the quick brwn fox", "en-GB");
+        expect(ranges).toEqual([{ start: 10, end: 14, word: "brwn" }]);
+        expect((await spellcheck.suggest("brwn", "en-GB")).suggestions).toContain("brown");
+    });
+
+    it("keeps nothing when the bytes do not match the published checksum", async () => {
+        payload = gzipSync(Buffer.from("something else entirely\n", "utf-8"));
+        const spellcheck = manager();
+
+        await expect(spellcheck.download("en-GB")).rejects.toThrow(/checksum/);
+        // Nothing lands: a file that failed its digest must not be readable as an installed
+        // dictionary on the next run.
+        expect(await fs.readdir(cacheDir()).catch(() => [])).toEqual([]);
+        expect((await spellcheck.listInstalled()).languages).toEqual([]);
+    });
+
+    it("refuses to download a code the registry does not offer", async () => {
+        await expect(manager().download("xx")).rejects.toThrow(/no entry/);
+    });
+
+    it("removes a dictionary, and stops checking against it", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("en-GB");
+        expect((await spellcheck.check(windowA, "brwn", "en-GB")).ranges).toHaveLength(1);
+
+        expect(await spellcheck.remove("en-GB")).toEqual({ ok: true });
+        expect((await spellcheck.listInstalled()).languages).toEqual([]);
+        // No dictionary means nothing is marked, rather than everything.
+        expect((await spellcheck.check(windowA, "brwn", "en-GB")).ranges).toEqual([]);
+        expect(await spellcheck.remove("en-GB")).toEqual({ ok: false });
+    });
+
+    it("does not mark a word the project dictionary holds", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("en-GB");
+
+        const text = "Aleth met Brannoc";
+        expect((await spellcheck.check(windowA, text, "en-GB")).ranges.map(range => range.word))
+            .toEqual(["Aleth", "Brannoc"]);
+
+        await spellcheck.configure(windowA, { sourceLocale: "en-GB", words: ["Aleth", "Brannoc"] });
+        expect((await spellcheck.check(windowA, text, "en-GB")).ranges).toEqual([]);
+
+        // Case-insensitively, because a name at the start of a sentence is the same name.
+        expect((await spellcheck.check(windowA, "aleth", "en-GB")).ranges).toEqual([]);
+    });
+
+    it("holds one project's words against one window only", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("en-GB");
+        await spellcheck.configure(windowA, { sourceLocale: "en-GB", words: ["Brannoc"] });
+
+        // Two projects open at once. The previous implementation pushed both into one shared
+        // Electron session, so this second window would have silently accepted the first's cast.
+        expect((await spellcheck.check(windowB, "Brannoc", "en-GB")).ranges).toHaveLength(1);
+        expect((await spellcheck.check(windowA, "Brannoc", "en-GB")).ranges).toEqual([]);
+
+        spellcheck.clear(windowA);
+        expect((await spellcheck.check(windowA, "Brannoc", "en-GB")).ranges).toHaveLength(1);
+    });
+
+    it("reports the language it settled on, and none when the author turned it off", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("en-GB");
+
+        const following = await spellcheck.configure(windowA, { sourceLocale: "en", words: [] });
+        // `en` is not installed exactly; the regional English is, and is what a bare tag resolves to.
+        expect(following).toMatchObject({ language: "en-GB", available: ["en-GB"], setting: "project" });
+
+        setting = SPELLCHECK_OFF;
+        expect((await spellcheck.getStatus()).language).toBeNull();
+    });
+
+    it("sees a dictionary that arrived after the last configure", async () => {
+        const spellcheck = manager();
+        expect((await spellcheck.configure(windowA, { sourceLocale: "en-GB", words: [] })).language).toBeNull();
+
+        await spellcheck.download("en-GB");
+        // The Settings window is exactly where a download happens, so a status answered from a
+        // stored snapshot would still say "no dictionary" straight after installing one.
+        expect((await spellcheck.getStatus()).language).toBe("en-GB");
+    });
+});
+
+describe("DictionaryCache", () => {
+    let userDataDir: string;
+
+    beforeEach(async () => {
+        userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-dict-cache-"));
+    });
+
+    afterEach(async () => {
+        await fs.rm(userDataDir, { recursive: true, force: true });
+    });
+
+    it("round-trips the words it was given", async () => {
+        const cache = new DictionaryCache(userDataDir);
+        await cache.write(entry(), PACKED);
+
+        expect(await cache.readWords("en-GB")).toBe(WORDS);
+        expect(await cache.readManifest("en-GB")).toMatchObject({
+            code: "en-GB",
+            license: "MIT",
+            sha256: DIGEST,
+            source: DOWNLOAD_URL,
+        });
+    });
+
+    it("answers nothing for a language it does not have", async () => {
+        const cache = new DictionaryCache(userDataDir);
+        expect(await cache.readWords("de")).toBeNull();
+        expect(await cache.listInstalled()).toEqual([]);
+    });
+
+    it("will not let a code escape its own directory", async () => {
+        const cache = new DictionaryCache(userDataDir);
+        await expect(cache.write(entry({ code: "../escape" }), PACKED)).rejects.toThrow(/filename/);
+        expect(await cache.readWords("../escape")).toBeNull();
+    });
+
+    it("does not offer a language whose word list never arrived", async () => {
+        const cache = new DictionaryCache(userDataDir);
+        await cache.write(entry(), PACKED);
+        // What an interrupted download leaves behind. A manifest alone describes nothing that can
+        // be checked against.
+        await fs.rm(path.join(cache.directory(), "en-GB.txt.gz"));
+        expect(await cache.listInstalled()).toEqual([]);
     });
 });

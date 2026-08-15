@@ -21,13 +21,14 @@ import { useTranslation } from "@/lib/i18n";
 import { getLocaleMeta, getRegisteredLocales, type TranslationKey } from "@shared/i18n";
 import { localeAutonym } from "@shared/types/localization";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
+import { onDictionariesChanged } from "./panels/dictionaryChanges";
 
 /**
- * What a Chromium dictionary is called, in itself, with its code kept.
+ * What an installed dictionary is called, in itself, with its code kept.
  *
- * The autonym alone is not enough here, unlike the interface-language picker: the list holds several
- * dictionaries per language (`en-GB` beside `en-GB-oxendict`) and `Intl.DisplayNames` gives both of
- * those the same name. The code is what tells them apart, so it stays.
+ * The autonym alone is not enough here, unlike the interface-language picker: the list can hold
+ * several dictionaries per language (`en-GB` beside `en-US`) and `Intl.DisplayNames` gives regional
+ * variants names that read alike. The code is what tells them apart, so it stays.
  */
 function spellcheckLanguageLabel(code: string): string {
     const autonym = localeAutonym(code);
@@ -146,20 +147,30 @@ export function SettingsApp() {
         };
     }, []);
 
-    // The languages this build of Chromium has a dictionary for. Read once, from the session, which
-    // is the only thing that knows: the list is not a constant this app can carry, and one written
-    // down here would keep offering a dictionary Chromium had dropped.
+    // The languages a dictionary is INSTALLED for. Read from the main process, which is the only
+    // thing that knows: the list is whatever the author has downloaded, so it can be short or empty,
+    // and one written down here would offer a language with nothing behind it. Dictionaries are
+    // added and removed in the panel below this row (`DictionariesPanel`), which is why this is read
+    // whenever the window regains focus rather than once on mount.
     const [spellcheckLanguages, setSpellcheckLanguages] = useState<string[] | null>(null);
     useEffect(() => {
         let mounted = true;
-        void (async () => {
+        const read = async () => {
             const result = await getInterface().app.spellcheck.getStatus();
             if (mounted && result.success) {
                 setSpellcheckLanguages(result.data.available);
             }
-        })();
+        };
+        void read();
+        // Two ways the list changes under this row: the panel below it downloaded or removed one,
+        // and another window did. The first is announced directly; the second arrives with focus.
+        const offDictionaries = onDictionariesChanged(() => void read());
+        const onFocus = () => void read();
+        window.addEventListener("focus", onFocus);
         return () => {
             mounted = false;
+            offDictionaries();
+            window.removeEventListener("focus", onFocus);
         };
     }, []);
 

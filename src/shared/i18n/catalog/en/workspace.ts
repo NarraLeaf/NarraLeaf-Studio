@@ -532,11 +532,6 @@ export const workspace = {
         },
         // Freezing the workspace: project data stops being written, editor state carries on. Named
         // for what the author gets ("stop saving"), not for the mechanism.
-        /** The menu a right click on a misspelled word opens. See `SpellcheckContextMenu`. */
-        spellcheck: {
-            addToDictionary: "Add to project dictionary",
-            noSuggestions: "No suggestions",
-        },
         freeze: {
             command: "Freeze Project (Stop Saving Changes)",
             release: "Unfreeze Project (Resume Saving Changes)",

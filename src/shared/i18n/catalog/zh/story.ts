@@ -280,6 +280,16 @@ export const story = {
         placeholder: "读音",
         remove: "移除注音",
     },
+    /**
+     * 右键点击被标记的词时弹出的面板。
+     *
+     * `addToDictionary` 指的是工程词典，不是本机的：词随仓库一起走，所以写同一份剧本的人拼写一致。
+     */
+    spellcheck: {
+        checking: "正在找替换建议…",
+        noSuggestions: "没有建议",
+        addToDictionary: "加入工程词典",
+    },
     interpolation: {
         title: "插入值",
         kindVariable: "变量",

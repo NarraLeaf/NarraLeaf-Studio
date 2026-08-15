@@ -267,4 +267,43 @@ describe("the session the words are pushed into", () => {
 
         expect(service.getSpellcheckStatus()?.language).toBe("en-GB");
     });
+
+    /**
+     * The one input nothing can broadcast: which dictionaries are on the machine.
+     *
+     * They are files in a main-process cache and they are downloaded from the Settings window, so a
+     * project window that resolved its language before the download has a stale answer and no event
+     * that would tell it. Without this, an author who downloads the dictionary for the language they
+     * are writing in sees no underline until they reopen the project - and the feature reads as
+     * simply not working.
+     */
+    it("re-pushes when the window comes back to the front, in case a dictionary was downloaded", async () => {
+        const listeners = new Map<string, Set<() => void>>();
+        vi.stubGlobal("window", {
+            addEventListener: (type: string, handler: () => void) => {
+                const set = listeners.get(type) ?? new Set();
+                set.add(handler);
+                listeners.set(type, set);
+            },
+            removeEventListener: (type: string, handler: () => void) => {
+                listeners.get(type)?.delete(handler);
+            },
+        });
+        try {
+            const { service, ctx } = await createHarness();
+            expect(configures()).toHaveLength(1);
+
+            for (const handler of listeners.get("focus") ?? []) {
+                handler();
+            }
+            await Promise.resolve();
+            expect(configures()).toHaveLength(2);
+
+            // And the listener goes with the project, or a closed workspace keeps pushing.
+            await service.teardown(ctx);
+            expect(listeners.get("focus")?.size ?? 0).toBe(0);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
 });

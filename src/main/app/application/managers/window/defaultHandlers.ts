@@ -3,10 +3,15 @@ import { IPCHandler } from "./handlers/IPCHandler";
 import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
+    SpellcheckCheckHandler,
     SpellcheckClearHandler,
     SpellcheckConfigureHandler,
-    SpellcheckReplaceMisspellingHandler,
+    SpellcheckDownloadHandler,
+    SpellcheckListAvailableHandler,
+    SpellcheckListInstalledHandler,
+    SpellcheckRemoveHandler,
     SpellcheckStatusHandler,
+    SpellcheckSuggestHandler,
 } from "./handlers/spellcheckAction";
 import { AppUpdateCheckHandler, AppUpdateDownloadHandler, AppUpdateGetStateHandler, AppUpdateInstallHandler } from "./handlers/updateAction";
 import {
@@ -195,7 +200,12 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new SpellcheckConfigureHandler(),
         new SpellcheckClearHandler(),
         new SpellcheckStatusHandler(),
-        new SpellcheckReplaceMisspellingHandler(),
+        new SpellcheckCheckHandler(),
+        new SpellcheckSuggestHandler(),
+        new SpellcheckListInstalledHandler(),
+        new SpellcheckListAvailableHandler(),
+        new SpellcheckDownloadHandler(),
+        new SpellcheckRemoveHandler(),
 
         // Project wizard handlers
         new ProjectWizardLaunchHandler(),

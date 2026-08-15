@@ -170,15 +170,18 @@ export const settings = {
                 command: "Highlight commands",
             },
         },
+        dictionaries: {
+            label: "Spelling dictionaries",
+        },
         spellcheckLanguage: {
             label: "Spellcheck language",
             description: "Marks misspellings in the story script. Translations are never checked.",
             /**
-             * Shown in place of the description while the project's own language has no dictionary.
-             * A statement of what is true, not an error: Chinese and Japanese have no spelling in
-             * the hunspell sense, so there is nothing for Chromium to check and never will be.
+             * Shown in place of the description while no dictionary covers the project's own
+             * language. A statement of what is true, not an error - and for Chinese and Japanese a
+             * permanent one, since neither has spelling in the word-list sense.
              */
-            noDictionary: "There is no spelling dictionary for this project's language, so nothing in the script is marked. The project dictionary still holds the project's own terms.",
+            noDictionary: "No spelling dictionary is installed for this project's language, so nothing in the script is marked. The project dictionary still holds the project's own terms.",
             options: {
                 followProject: "Follow the project's language",
                 off: "Do not check spelling",
@@ -313,6 +316,37 @@ export const settings = {
      * details": what is pasted is a token somebody issued, and the panel says so once
      * rather than explaining it beside every field.
      */
+    /**
+     * The dictionary cache panel. Nothing here reaches the network until it is asked to: the index
+     * is remote, so browsing it is a press, and each download is a second press against a size and
+     * a licence the author has been shown.
+     */
+    dictionaries: {
+        loading: "Reading the cache…",
+        remove: "Remove",
+        browse: "Browse dictionaries",
+        refresh: "Check again",
+        browsing: "Reading the list…",
+        download: "Download",
+        downloading: "Downloading…",
+        failed: "The dictionary list could not be read. Check the network policy in Settings, then try again.",
+        /**
+         * Stated outright, because an empty list reads as a download that has not happened yet.
+         * Neither language separates words, so there is nothing a word list could be checked
+         * against and no dictionary will ever appear for them.
+         */
+        noDictionaryLanguages: "Chinese and Japanese have no spelling dictionary, and will not get one: neither language separates words, so there is nothing for a word list to check. A project written in either is never marked.",
+        installed: {
+            title: "On this machine",
+            emptyTitle: "No dictionaries yet",
+            emptyDescription: "Nothing is marked in any project until one is downloaded.",
+        },
+        available: {
+            title: "Available to download",
+            prompt: "The list of dictionaries lives online. Fetch it when you want it.",
+            none: "Everything on offer is already here.",
+        },
+    },
     servers: {
         empty: "No servers have been added.",
         openAdd: "Add a server",
@@ -385,6 +419,10 @@ export const settings = {
                 uiTemplatePosters: {
                     label: "Template store posters",
                     description: "Downloaded again the next time you open the store.",
+                },
+                spellcheckDictionaries: {
+                    label: "Spelling dictionaries",
+                    description: "Word lists downloaded for spellchecking. Your project's own terms are not here.",
                 },
                 psdImports: {
                     label: "PSD import leftovers",

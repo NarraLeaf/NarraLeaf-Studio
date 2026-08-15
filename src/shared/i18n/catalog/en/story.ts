@@ -325,6 +325,17 @@ export const story = {
         placeholder: "Reading",
         remove: "Remove ruby text",
     },
+    /**
+     * The popover a right click on a marked word opens.
+     *
+     * `addToDictionary` names the project's dictionary, not the machine's: the word travels with the
+     * repository, so everyone working on this script spells the cast the same way.
+     */
+    spellcheck: {
+        checking: "Looking for suggestions…",
+        noSuggestions: "No suggestions",
+        addToDictionary: "Add to project dictionary",
+    },
     interpolation: {
         title: "Insert value",
         kindVariable: "Variable",

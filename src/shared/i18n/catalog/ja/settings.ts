@@ -172,10 +172,13 @@ export const settings = {
                 command: "コマンドを強調",
             },
         },
+        dictionaries: {
+            label: "スペル辞書",
+        },
         spellcheckLanguage: {
             label: "スペルチェックの言語",
             description: "ストーリー本文のつづりの誤りに印を付ける。訳文は対象外",
-            noDictionary: "このプロジェクトの言語にはスペル辞書がないため、本文に印は付かない。プロジェクト辞書はこのプロジェクトの用語を保持し続ける",
+            noDictionary: "このプロジェクトの言語のスペル辞書が入っていないため、本文に印は付かない。プロジェクト辞書はこのプロジェクトの用語を保持し続ける",
             options: {
                 followProject: "プロジェクトの言語に従う",
                 off: "スペルチェックを行わない",
@@ -300,6 +303,27 @@ export const settings = {
         },
     },
     // データのパネル自身の文言。
+    dictionaries: {
+        loading: "キャッシュを読んでいる…",
+        remove: "取り除く",
+        browse: "辞書を見る",
+        refresh: "取り直す",
+        browsing: "一覧を取得している…",
+        download: "ダウンロード",
+        downloading: "ダウンロード中…",
+        failed: "辞書の一覧を読めなかった。設定のネットワーク方針を確かめてからもう一度",
+        noDictionaryLanguages: "中国語と日本語にはスペル辞書がなく、今後も出ない：どちらも語を分けて書かないので、単語リストと照らし合わせるものがない。この二つで書かれたプロジェクトに印は付かない",
+        installed: {
+            title: "この機体にあるもの",
+            emptyTitle: "辞書はまだない",
+            emptyDescription: "一つダウンロードするまで、どのプロジェクトにも印は付かない",
+        },
+        available: {
+            title: "ダウンロードできるもの",
+            prompt: "辞書の一覧は網の向こうにある。必要なときに取りに行く",
+            none: "提供されているものはすべて入っている",
+        },
+    },
     servers: {
         empty: "サーバーはまだ追加されていない",
         openAdd: "サーバーを追加",
@@ -362,6 +386,10 @@ export const settings = {
                 uiTemplatePosters: {
                     label: "テンプレートストアのポスター",
                     description: "次にストアを開いたときに取り直される",
+                },
+                spellcheckDictionaries: {
+                    label: "スペル辞書",
+                    description: "スペルチェック用にダウンロードした単語リスト。プロジェクト自身の用語はここにはない",
                 },
                 psdImports: {
                     label: "PSD 読み込みの残り物",

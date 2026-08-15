@@ -49,7 +49,9 @@ import { resolveCommandLine, type StoryCommandContext } from "./storyCommandReso
 import type { StoryCommandValue } from "./storyCommandValues";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { StoryCandidateSpeakerMark } from "./storyCandidateMark";
-import { RichTextInput, type ActiveMarks, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
+import { RichTextInput, type ActiveMarks, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle, type SpellingClickInfo } from "./RichTextInput";
+import { SpellSuggestionPopover } from "./SpellSuggestionPopover";
+import { useStorySpellcheck } from "./useStorySpellcheck";
 import { RichTextToolbar } from "./RichTextToolbar";
 import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
@@ -155,7 +157,16 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
      */
     const on = {
         onSelect: (event: MouseEvent) => actions.select(blockId, event),
-        onContextMenu: (event: MouseEvent) => actions.contextMenu(blockId, event),
+        onContextMenu: (event: MouseEvent) => {
+            // A right click inside the open text field belongs to the words, not to the row: the
+            // field answers for a misspelling and otherwise leaves the click to the workspace's
+            // editable-text menu. The field used to stop the event itself, which also stopped that
+            // menu from ever seeing it.
+            if ((event.target as HTMLElement | null)?.closest?.("[contenteditable='true']")) {
+                return;
+            }
+            actions.contextMenu(blockId, event);
+        },
         onMouseDown: (event: MouseEvent) => actions.mouseDown(blockId, event),
         onMouseEnter: () => actions.mouseEnter(blockId),
         onToggleCollapsed: () => actions.toggleCollapsed(blockId),
@@ -783,8 +794,10 @@ function TextEditBox(props: {
     // falls to <body>.
     const lastToolbarInteractRef = useRef(0);
     const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
+    const [spellEdit, setSpellEdit] = useState<SpellingClickInfo | null>(null);
     const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false, canRuby: false });
     const textStyle = useStoryEditorTextStyle();
+    const spellcheck = useStorySpellcheck();
 
     useEffect(() => {
         const onPointerDown = (event: PointerEvent) => {
@@ -813,6 +826,18 @@ function TextEditBox(props: {
     const closeInterp = () => {
         commitGuardRef.current = false;
         setInterpEdit(null);
+        props.editorRef.current?.focus();
+    };
+
+    const openSpelling = (info: SpellingClickInfo) => {
+        // Guarded like every other popover opened from inside the field: the panel takes focus off
+        // the contentEditable, and an unguarded blur commits the row and closes the editor under it.
+        commitGuardRef.current = true;
+        setSpellEdit(info);
+    };
+    const closeSpelling = () => {
+        commitGuardRef.current = false;
+        setSpellEdit(null);
         props.editorRef.current?.focus();
     };
 
@@ -916,6 +941,8 @@ function TextEditBox(props: {
                 onPauseClick={openPause}
                 onInterpolationClick={openInterp}
                 onEventClick={openEvent}
+                spellcheck={spellcheck}
+                onSpellingClick={openSpelling}
                 resolveInterpolationLabel={resolveInterpolationLabel}
                 resolveAppearanceLabel={resolveAppearanceLabel}
                 onActiveMarksChange={setActiveMarks}
@@ -933,6 +960,17 @@ function TextEditBox(props: {
                         closePause();
                     }}
                     onClose={closePause}
+                />
+            ) : null}
+            {spellEdit && spellcheck.language ? (
+                <SpellSuggestionPopover
+                    target={spellEdit}
+                    language={spellcheck.language}
+                    onApply={replacement => {
+                        props.editorRef.current?.replaceSpelling(spellEdit.unitStart, spellEdit.unitEnd, replacement);
+                        closeSpelling();
+                    }}
+                    onClose={closeSpelling}
                 />
             ) : null}
             {interpEdit ? (

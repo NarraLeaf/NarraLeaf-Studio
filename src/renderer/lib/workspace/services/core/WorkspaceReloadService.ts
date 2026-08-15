@@ -25,6 +25,7 @@ import type { HistoryService } from "../history/HistoryService";
 import type { VariableRegistryService } from "../variables/VariableRegistryService";
 import type { AudioTrackService } from "../audio/AudioTrackService";
 import type { AppTagService } from "../appTag/AppTagService";
+import type { DictionaryService } from "../dictionary/DictionaryService";
 import { EventEmitter } from "../ui/EventEmitter";
 
 /**
@@ -93,7 +94,9 @@ export type ExternalReloadParticipant = {
  *  - the project manifest first, because the localization and voice locale lists come out of it;
  *  - assets before characters and stories, because both of those re-take asset locks as they load;
  *  - the interface blueprints before the variable registry, which seeds itself from them on a project
- *    that predates the registry.
+ *    that predates the registry;
+ *  - the dictionary last, because publishing it to the spellchecker states the project's source
+ *    locale, which localization has to have re-read first.
  *
  * Absent on purpose: `PanelStateService`, `RecentColorsService`, the console and the notification
  * history. They live under `.nlstudio/`, are excluded from the repository by `isVersioned`, and are
@@ -180,6 +183,20 @@ const RELOAD_PARTICIPANTS: readonly ReloadParticipant[] = [
         id: "voice",
         labelKey: "workspace.shell.save.stores.voice",
         reload: ctx => ctx.services.get<VoiceService>(Services.Voice).reloadFromDisk(),
+    },
+    {
+        id: "dictionary",
+        labelKey: "workspace.shell.save.stores.dictionary",
+        // Last, and after `localization` specifically. `load()` re-publishes the project to the
+        // spellchecker, and what it publishes is the source locale localization has just re-read -
+        // reloaded any earlier and the checker would be told the version being replaced.
+        //
+        // Same shape as its siblings otherwise: `load()` clears the corrupt latch at its start, so a
+        // word list that is unreadable at reload time lands in the same "not loaded, refuses to
+        // save" state as at project open rather than throwing through the reload.
+        reload: async ctx => {
+            await ctx.services.get<DictionaryService>(Services.Dictionary).load();
+        },
     },
 ];
 

@@ -142,6 +142,7 @@ Phase 2 新增(用来替换各处手写模式):
 | `SectionCard` | 带边框的区块卡片 |
 | `PanelHeader` | 面板 / 编辑器头部行(size sm/md/lg) |
 | `Tooltip` | 给取不到属性的目标用的包裹式提示（首选属性写法,见 §7.1） |
+| `AnchoredPanel` | 手写的「portal 到 body + fixed 定位 + 躲开视口边缘」浮层（`HintPopover` 与拼写建议面板共用它;对话框仍走 `Modal` / overlay host） |
 
 ## 7.1 提示（tooltip）
 
