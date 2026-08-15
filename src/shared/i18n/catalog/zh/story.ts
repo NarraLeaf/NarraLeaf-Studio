@@ -91,6 +91,27 @@ export const story = {
             speakerUnresolved: "这一行没有绑定角色，说话人名字保持原样，正文的修改仍然生效",
         },
     },
+    narralang: {
+        exportScene: "导出为 NarraLang…",
+        exportStory: "将故事导出为 NarraLang…",
+        sceneMissing: "该场景已不在此故事中",
+        reportTitle: "无法写成脚本的行",
+        reportSummary: {
+            other: "有 {count} 行没有对应的脚本写法，文件中不含它们的完整内容",
+        },
+        reason: {
+            blueprintAction: "该行由蓝图执行，蓝图没有对应的脚本写法",
+            blueprintCondition: "该条件由蓝图判定",
+            blueprintInterpolation: "正文中有一处取值由蓝图计算",
+            inlineEvent: "正文中带有逐字显示过程中触发的事件",
+            invalidRow: "该行的命令无法解析，按原样写出",
+            customTransform: "该动作逐帧设定，或带有脚本未命名的属性",
+            customTransition: "该转场带有脚本未命名的属性",
+            effectProps: "该效果带有脚本未命名的属性",
+            unresolvedRef: "该行指向的对象已不存在",
+            unknownPayload: "脚本尚未覆盖此类行",
+        },
+    },
     paste: {
         title: "粘贴为行",
         action: "粘贴",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    isPhysicallyHorizontalAxis,
     isVerticalWritingMode,
     needsTateChuYokoSegments,
     normalizeVerticalTypography,
@@ -97,5 +98,20 @@ describe("tate-chu-yoko segmentation", () => {
         expect(needsTateChuYokoSegments("第12話", { ...vertical, tateChuYoko: false })).toBe(false);
         expect(needsTateChuYokoSegments("第12話", { ...vertical, textOrientation: "sideways" })).toBe(false);
         expect(needsTateChuYokoSegments("第12話", { ...vertical, writingMode: "horizontal-tb" })).toBe(false);
+    });
+});
+
+describe("flex axis against the writing mode", () => {
+    /**
+     * The rule the list depends on: `flex-direction: column` means "along the block axis", and the
+     * block axis is horizontal once the text is vertical. A full-screen dialogue that stacks its
+     * lines "vertically" therefore stacks them across the screen, right to left.
+     */
+    it("reports where an axis lands on screen", () => {
+        expect(isPhysicallyHorizontalAxis("vertical", "horizontal-tb")).toBe(false);
+        expect(isPhysicallyHorizontalAxis("horizontal", "horizontal-tb")).toBe(true);
+        expect(isPhysicallyHorizontalAxis("vertical", "vertical-rl")).toBe(true);
+        expect(isPhysicallyHorizontalAxis("horizontal", "vertical-rl")).toBe(false);
+        expect(isPhysicallyHorizontalAxis("vertical", "vertical-lr")).toBe(true);
     });
 });
