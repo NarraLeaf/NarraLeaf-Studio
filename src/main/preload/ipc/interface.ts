@@ -3,7 +3,7 @@ import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
-import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
 import type {
@@ -152,6 +152,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     getAppInfo: () => ipcClient.invoke(IPCEventType.appInfo, {}),
     getWindowProps: <T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>> => ipcClient.invoke(IPCEventType.appWindowProps, {}) as Promise<RequestStatus<WindowProps[T]>>,
     terminate: async (err?: string) => ipcClient.send(IPCEventType.appTerminate, { err: err ?? null }),
+    reportError: (report: RendererErrorReport) => ipcClient.send(IPCEventType.appReportRendererError, report),
     window: {
         ready: () => ipcClient.send(IPCEventType.appWindowReady, {}),
         close: () => ipcClient.send(IPCEventType.appWindowClose, {}),

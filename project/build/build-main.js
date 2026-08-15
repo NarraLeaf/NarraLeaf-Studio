@@ -40,6 +40,7 @@ const { rootDir, isDev } = require('./utils');
         external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi', 'electron-updater'],
         sourcemap: isDev(),
         minify: !isDev(),
+        keepNames: true,
         target: ['node18'],
         tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
     });
@@ -61,6 +62,7 @@ const { rootDir, isDev } = require('./utils');
         external: ['electron', 'electron-builder', '7zip-bin', '@narraleaf/encryption'],
         sourcemap: isDev(),
         minify: !isDev(),
+        keepNames: true,
         target: ['node18'],
         tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
     });
@@ -76,6 +78,7 @@ const { rootDir, isDev } = require('./utils');
         external: ['electron'],
         sourcemap: isDev(),
         minify: !isDev(),
+        keepNames: true,
         target: ['node18'],
         tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
     });
@@ -93,6 +96,7 @@ const { rootDir, isDev } = require('./utils');
         external: ['electron', '@narraleaf/encryption', 'koffi'],
         sourcemap: isDev(),
         minify: !isDev(),
+        keepNames: true,
         target: ['node18'],
         tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
     });
@@ -129,6 +133,7 @@ const { rootDir, isDev } = require('./utils');
             external: ['electron', 'esbuild'],
             sourcemap: isDev(),
             minify: !isDev(),
+            keepNames: true,
             target: ['node18'],
             tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
         });

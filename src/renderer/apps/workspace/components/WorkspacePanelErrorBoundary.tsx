@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { ErrorBoundary } from "@/lib/app/errorHandling/ErrorBoundary";
+import { reportRendererError } from "@/lib/app/errorHandling/crashRecovery";
 import type { ErrorFallbackProps } from "@/lib/app/errorHandling/errorHandling";
 import { useTranslation } from "@/lib/i18n";
 
@@ -39,8 +40,12 @@ function createPanelErrorFallback(
 }
 
 /**
- * Isolates workspace panel/editor render errors so they do not reach CriticalErrorBoundary
- * (which terminates the renderer). Supports retry via remount.
+ * Isolates workspace panel/editor render errors so one failing region does not replace the whole
+ * window with the crash screen. Supports retry via remount.
+ *
+ * The failure is reported before the fallback draws. Without that it was recorded nowhere at all:
+ * the panel showed its message, the author retried, and the only trace of what actually broke was
+ * a component that had already been unmounted.
  */
 export function WorkspacePanelErrorBoundary({
     children,
@@ -54,13 +59,22 @@ export function WorkspacePanelErrorBoundary({
         setRetryNonce(n => n + 1);
     }, []);
 
+    const handleError = useCallback((error: Error, info: { componentStack: string }) => {
+        reportRendererError({
+            source: "panel",
+            label: regionLabel,
+            error,
+            componentStack: info.componentStack,
+        });
+    }, [regionLabel]);
+
     const Fallback = useMemo(
         () => createPanelErrorFallback(regionLabel, handleRetry),
         [regionLabel, handleRetry]
     );
 
     return (
-        <ErrorBoundary key={remountKey} fallback={Fallback}>
+        <ErrorBoundary key={remountKey} fallback={Fallback} onError={handleError}>
             {children}
         </ErrorBoundary>
     );

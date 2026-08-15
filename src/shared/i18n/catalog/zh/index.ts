@@ -49,6 +49,7 @@ import { help } from "./help";
 import { update } from "./update";
 import { brand } from "./brand";
 import { game } from "./game";
+import { crash } from "./crash";
 import type { LocaleMessages } from "../types";
 
 export const zh = {
@@ -97,4 +98,5 @@ export const zh = {
     update,
     brand,
     game,
+    crash,
 } satisfies LocaleMessages;

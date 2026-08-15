@@ -53,6 +53,7 @@ import { help } from "./help";
 import { update } from "./update";
 import { brand } from "./brand";
 import { game } from "./game";
+import { crash } from "./crash";
 
 export const en = {
     common,
@@ -100,4 +101,5 @@ export const en = {
     update,
     brand,
     game,
+    crash,
 } as const;
