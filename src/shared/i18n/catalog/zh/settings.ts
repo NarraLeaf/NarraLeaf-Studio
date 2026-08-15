@@ -15,6 +15,7 @@ export const settings = {
         official: "官方源",
         noMirror: "不使用镜像",
         chinaMirror: "国内加速镜像",
+        customPlaceholder: "自定义地址",
     },
     fontPicker: {
         searchPlaceholder: "搜索字体…",

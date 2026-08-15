@@ -18,6 +18,7 @@ export const settings = {
         official: "公式の配布元",
         noMirror: "ミラーを使わない",
         chinaMirror: "中国のミラー",
+        customPlaceholder: "自分で指定するアドレス",
     },
     // フォントの選択（SettingFontPicker）。プリセットと、この端末に入っているフォント。
     fontPicker: {

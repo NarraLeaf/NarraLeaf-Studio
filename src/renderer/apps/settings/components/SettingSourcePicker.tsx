@@ -21,7 +21,7 @@ import { matchedSourcePreset } from "@/lib/settings/sourceSelection";
  * official one stores `""` (see `OFFICIAL_SOURCE_VALUE`), and a typed address stores itself.
  */
 
-const PANEL_MIN_WIDTH_PX = 320;
+const PANEL_MIN_WIDTH_PX = 240;
 const PANEL_GAP_PX = 4;
 const VIEWPORT_MARGIN_PX = 8;
 
@@ -140,8 +140,9 @@ export function SettingSourcePicker({
     }, [close, open]);
 
     // Fixed-position portal rather than an absolute child: this row lives in a scrolling pane inside
-    // a window that hides its overflow, so a panel anchored in the flow is clipped - and this one
-    // has to be wider than the trigger, because an address is longer than a name.
+    // a window that hides its overflow, so a panel anchored in the flow is clipped. It takes the
+    // trigger's width, so the two read as one control; the minimum is only a floor for a narrow
+    // pane, where a panel the width of the trigger would leave no room for an address.
     useLayoutEffect(() => {
         if (!open) {
             setPanelStyle({});
@@ -213,11 +214,11 @@ export function SettingSourcePicker({
                             }}
                             className="flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-fill-subtle"
                         >
+                            <span className="min-w-0 flex-1 truncate text-sm text-fg">{presetLabel(preset)}</span>
                             <Check
                                 className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-primary" : "opacity-0")}
                                 aria-hidden
                             />
-                            <span className="min-w-0 flex-1 truncate text-sm text-fg">{presetLabel(preset)}</span>
                         </div>
                     );
                 })}
@@ -225,10 +226,6 @@ export function SettingSourcePicker({
             {/* The last row is the field itself. The tick beside it says the address in it is the
                 one in use, which is the only thing the list above cannot show for a typed one. */}
             <div className="mt-1 flex items-center gap-2 border-t border-edge-subtle px-3 pb-0.5 pt-2">
-                <Check
-                    className={cn("h-3.5 w-3.5 shrink-0", selectedPreset === null ? "text-primary" : "opacity-0")}
-                    aria-hidden
-                />
                 <input
                     ref={inputRef}
                     type="text"
@@ -248,9 +245,13 @@ export function SettingSourcePicker({
                             abandon();
                         }
                     }}
-                    placeholder="https://"
+                    placeholder={t("settings.source.customPlaceholder")}
                     aria-label={ariaLabel}
                     className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-subtle"
+                />
+                <Check
+                    className={cn("h-3.5 w-3.5 shrink-0", selectedPreset === null ? "text-primary" : "opacity-0")}
+                    aria-hidden
                 />
             </div>
         </div>
