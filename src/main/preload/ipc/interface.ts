@@ -230,6 +230,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
         openRecent: (projectPath: string, replaceCurrentWindow?: boolean) =>
             ipcClient.invoke(IPCEventType.workspaceOpenRecent, { projectPath, replaceCurrentWindow }),
+        isProjectOpen: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.workspaceIsProjectOpen, { projectPath }),
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
         exportProjectPackage: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportProjectPackage, { projectPath }),
