@@ -1,3 +1,5 @@
+import { resolveByWidgetType } from "./widgetInheritance";
+
 export type WidgetLogicEventDispatchKind = "lifecycle" | "interaction";
 
 export type WidgetLogicEventDef = {
@@ -820,11 +822,16 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     },
 };
 
+/**
+ * The logic API for a widget type, falling back to the type it specialises.
+ *
+ * Every built-in specialisation declares its own entry, because the blueprint label is what an
+ * author reads on the graph header and "Text logic" over a Dialog Sentence would be wrong. The
+ * fallback is for the next one: a specialisation that adds no capability of its own is now
+ * scriptable the day it is registered rather than the day someone remembers this table.
+ */
 export function getWidgetLogicApi(elementType: string | undefined | null): WidgetLogicApi | undefined {
-    if (!elementType) {
-        return undefined;
-    }
-    return BUILTIN_WIDGET_LOGIC_APIS[elementType];
+    return resolveByWidgetType(BUILTIN_WIDGET_LOGIC_APIS, elementType);
 }
 
 export function getWidgetLogicEvent(

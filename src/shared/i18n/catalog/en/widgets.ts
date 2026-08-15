@@ -163,6 +163,7 @@ export const widgets = {
     text: {
         title: "Text",
         localizeText: "Localize text",
+        runtimeTextHelp: "The story supplies this line while the game runs.",
     },
     frame: {
         title: "Page",

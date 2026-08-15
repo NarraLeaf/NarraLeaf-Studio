@@ -165,6 +165,7 @@ export const widgets = {
     text: {
         title: "テキスト",
         localizeText: "テキストをローカライズ",
+        runtimeTextHelp: "ゲーム実行中はストーリーがこの行を差し替えます。",
     },
     frame: {
         title: "ページ",
