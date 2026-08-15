@@ -60,8 +60,8 @@ export type { SwitchProps, SwitchSize, SwitchVariant } from "./Switch";
 // Tooltip / hint components
 export { Tooltip } from "./Tooltip";
 export type { TooltipProps } from "./Tooltip";
-export { HintPopover } from "./HintPopover";
-export type { HintPopoverProps } from "./HintPopover";
+export { HintPopover, AnchoredPanel } from "./HintPopover";
+export type { HintPopoverProps, AnchoredPanelProps, PanelAnchor } from "./HintPopover";
 
 // Slider components
 export { Slider } from "./Slider";
@@ -82,6 +82,12 @@ export type { EmptyStateProps } from "./EmptyState";
 // FieldLabel component (the eyebrow label; see docs/design-system.md §7)
 export { FieldLabel } from "./FieldLabel";
 export type { FieldLabelProps } from "./FieldLabel";
+
+// SectionCard / PanelHeader (docs/design-system.md §7). Both are listed there as shared components
+// and were reachable only by deep import until now, which is how a panel ends up hand-rolling one.
+export { SectionCard } from "./SectionCard";
+export type { SectionCardProps } from "./SectionCard";
+export { PanelHeader } from "./PanelHeader";
 
 // Inspection-only control (survives a read-only `<fieldset disabled>` clamp)
 export { InspectOnlyButton } from "./InspectOnlyButton";

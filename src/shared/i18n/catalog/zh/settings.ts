@@ -162,10 +162,13 @@ export const settings = {
                 command: "高亮指令行",
             },
         },
+        dictionaries: {
+            label: "拼写词典",
+        },
         spellcheckLanguage: {
             label: "拼写检查语言",
             description: "在故事正文中标出拼写错误。译文一律不检查",
-            noDictionary: "本工程所用语言没有拼写词典，正文中不会标出任何内容。工程词典仍然保存着本工程自己的词条",
+            noDictionary: "尚未安装本工程所用语言的拼写词典，正文中不会标出任何内容。工程词典仍然保存着本工程自己的词条",
             options: {
                 followProject: "跟随工程语言",
                 off: "不检查拼写",
@@ -284,6 +287,27 @@ export const settings = {
             confirm: "全部还原",
         },
     },
+    dictionaries: {
+        loading: "正在读取缓存…",
+        remove: "移除",
+        browse: "查看可用词典",
+        refresh: "重新获取",
+        browsing: "正在获取列表…",
+        download: "下载",
+        downloading: "正在下载…",
+        failed: "无法获取词典列表。请先检查设置里的网络策略，再试一次",
+        noDictionaryLanguages: "中文和日语没有拼写词典，以后也不会有：这两种语言词与词之间不分开写，词表无从比对。用它们写的工程不会被标出任何内容",
+        installed: {
+            title: "本机已有",
+            emptyTitle: "还没有词典",
+            emptyDescription: "在下载一份之前，任何工程都不会被标出内容",
+        },
+        available: {
+            title: "可下载",
+            prompt: "词典列表在网上。需要时再去取",
+            none: "列表里的词典都已经在本机了",
+        },
+    },
     servers: {
         empty: "尚未添加服务器",
         openAdd: "添加服务器",
@@ -346,6 +370,10 @@ export const settings = {
                 uiTemplatePosters: {
                     label: "模板商店封面",
                     description: "下次打开商店时会重新下载",
+                },
+                spellcheckDictionaries: {
+                    label: "拼写词典",
+                    description: "为拼写检查下载的词表。工程自己的词条不在这里",
                 },
                 psdImports: {
                     label: "PSD 导入残留",

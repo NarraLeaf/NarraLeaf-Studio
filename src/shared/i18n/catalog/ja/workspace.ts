@@ -530,10 +530,6 @@ export const workspace = {
         },
         // ワークスペースの凍結。プロジェクトのデータは書かれなくなり、エディタの状態はそのまま。
         // 仕組みではなく、作者に何が起きるかで名付ける。
-        spellcheck: {
-            addToDictionary: "プロジェクト辞書に追加",
-            noSuggestions: "候補なし",
-        },
         freeze: {
             command: "プロジェクトを凍結（保存を止める）",
             release: "凍結を解除（保存を再開）",

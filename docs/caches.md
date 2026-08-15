@@ -25,6 +25,7 @@
 |---|---|---|
 | `cache/build-deps/` | 游戏构建拉的依赖 | ✅ `buildDependencies` |
 | `cache/ui-template-posters/` | 模板商店的主题海报，键 `<themeId>@<version>` | ✅ `uiTemplatePosters` |
+| `cache/spellcheck-dictionaries/` | 拼写词表，每种语言一对 `<code>.txt.gz` + `<code>.json`（含 sha256） | ✅ `spellcheckDictionaries` |
 | `plugin-icons/` | 插件商店缩略图，键 `<pluginId>@<version>` | ✅ `pluginIcons` |
 | `logs/` | 日志 | ✅ `logs` |
 | Chromium 自己的 `Cache` / `Code Cache` / `GPUCache` … | 界面缓存 | ✅ `browser` |
@@ -94,7 +95,7 @@
    工程 → 放 `editor/cache/` 下。
 3. 键上带版本或输入指纹，让「上游变了」自然表现为未命中，而不是需要一次迁移。
 4. 写新版本时顺手扫掉同一实体的旧版本，目录就自然有界，不用单独的驱逐流程。
-5. 全局缓存要进 `CACHE_BUCKET_IDS` 与 `cacheInventory.ts`，并在两份 i18n 目录里加标签，
+5. 全局缓存要进 `CACHE_BUCKET_IDS` 与 `cacheInventory.ts`，并在**三份** i18n 目录（`en`/`ja`/`zh`）里加标签，
    否则作者看不见它、也清不掉它。
 6. 远程字节一律经主进程取，渲染层拿 `data:` URL——渲染进程不许直连网络
    （见 `renderer-never-touches-network`），而且这样恶意 index 也没法把 `<img>` 指向别处。

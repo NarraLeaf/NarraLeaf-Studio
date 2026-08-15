@@ -307,6 +307,16 @@ export const story = {
         placeholder: "読み",
         remove: "ルビを取り除く",
     },
+    /**
+     * 印の付いた語を右クリックしたときに開くパネル。
+     *
+     * `addToDictionary` はプロジェクトの辞書であって、この機体のものではない：語はリポジトリと一緒に旅をするので、同じ台本を書く全員が同じ綴りになる。
+     */
+    spellcheck: {
+        checking: "候補を探している…",
+        noSuggestions: "候補なし",
+        addToDictionary: "プロジェクトの辞書に追加",
+    },
     interpolation: {
         title: "値を差し込む",
         kindVariable: "変数",

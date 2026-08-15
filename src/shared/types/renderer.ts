@@ -54,7 +54,12 @@ import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThem
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
-import type { SpellcheckContextMenuPayload, SpellcheckStatus } from "./spellcheck";
+import type {
+    AvailableSpellcheckDictionary,
+    InstalledSpellcheckDictionary,
+    SpellcheckRange,
+    SpellcheckStatus,
+} from "./spellcheck";
 import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
@@ -316,22 +321,40 @@ export interface RendererPreloadedInterface {
         /** Open an http(s) URL in the system browser (other schemes are refused). */
         openExternal(url: string): Promise<RequestStatus<void>>;
         /**
-         * Chromium's spellchecker, which lives in the session and is therefore out of a renderer's
-         * reach entirely - the language, the custom dictionary and the verdict on a word are all
-         * only knowable here. The project dictionary itself is a document the workspace owns; this
-         * is only how its words get into the checker and how a misspelling gets back out.
+         * Studio's own spellchecker, which runs in the main process.
+         *
+         * It is here rather than in the renderer for two reasons that both hold whatever the
+         * renderer does about them. The dictionaries are downloaded, and every remote byte in this
+         * app goes through main. And the checking itself needs a thread the renderer does not have:
+         * the window document is `file://` while its scripts are `app://`, so no Web Worker can be
+         * started, and a scene checked on every keystroke on the renderer's own thread is a stutter
+         * the author feels.
+         *
+         * The project dictionary is a document the workspace owns; {@link configure} is only how its
+         * words reach the checker.
          */
         spellcheck: {
-            /** Hand the session this project: the language of its script, and the words it keeps. */
+            /** Tell the checker about this project: the language of its script, and the words it keeps. */
             configure(sourceLocale: string, words: string[]): Promise<RequestStatus<SpellcheckStatus>>;
-            /** Take this project's words back out, so the next project does not inherit them. */
+            /** Forget this window's project words, so the next project does not inherit them. */
             clear(): Promise<RequestStatus<void>>;
-            /** What spellchecking is doing now, including every language a dictionary exists for. */
+            /** What spellchecking is doing now, including every language a dictionary is installed for. */
             getStatus(): Promise<RequestStatus<SpellcheckStatus>>;
-            /** Put `text` in place of the misspelling the context menu was opened on. */
-            replaceMisspelling(text: string): Promise<RequestStatus<void>>;
-            /** A right click landed on editable text; the payload carries the spelling verdict. */
-            onContextMenu(handler: (payload: SpellcheckContextMenuPayload) => void): AppEventToken;
+            /**
+             * The misspellings in one run of plain text. `start`/`end` are offsets into `text`; the
+             * caller maps them back onto whatever it built the string from.
+             */
+            check(text: string, language: string): Promise<RequestStatus<{ ranges: SpellcheckRange[] }>>;
+            /** Replacements for one misspelling, nearest first, at most five. */
+            suggest(word: string, language: string): Promise<RequestStatus<{ suggestions: string[] }>>;
+            /** The dictionaries on this machine. No network. */
+            listInstalled(): Promise<RequestStatus<{ languages: InstalledSpellcheckDictionary[] }>>;
+            /** The dictionaries the registry offers, with their licences. Goes to the network. */
+            listAvailable(): Promise<RequestStatus<{ entries: AvailableSpellcheckDictionary[] }>>;
+            /** Fetch one dictionary into the cache. Author-initiated, and sha256-verified. */
+            download(code: string): Promise<RequestStatus<{ ok: boolean }>>;
+            /** Delete one dictionary from the cache. */
+            remove(code: string): Promise<RequestStatus<{ ok: boolean }>>;
         };
         /** Pick + store a custom background image; returns the stored filename (null = cancelled). */
         pickBackgroundImage(): Promise<RequestStatus<{ file: string | null }>>;

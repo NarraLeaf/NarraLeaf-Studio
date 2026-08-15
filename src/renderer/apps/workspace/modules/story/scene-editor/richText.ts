@@ -576,6 +576,25 @@ export function rubyRunAt(runs: StoryRichRun[], unit: number): { start: number; 
 }
 
 /**
+ * The marks carried by the unit at `unit`, or `undefined` where it carries none.
+ *
+ * What an accepted spelling suggestion is written with. A misspelled word can be bold, coloured or
+ * annotated like any other, and a replacement spliced in bare would strip that styling off the one
+ * word the author fixed - the correction would be visible as a hole in the sentence.
+ */
+export function marksAtUnit(runs: StoryRichRun[], unit: number): StoryTextMarks | undefined {
+    let pos = 0;
+    for (const run of runs) {
+        const len = runLength(run);
+        if (unit < pos + len) {
+            return isTextRun(run) || isInterpolationRun(run) ? cleanMarks(run.marks) : undefined;
+        }
+        pos += len;
+    }
+    return undefined;
+}
+
+/**
  * Apply a marks patch to the text units in [start, end), splitting runs at the boundaries.
  *
  * `textOnly` leaves inline value chips in the range untouched. Ruby is the mark that needs it: a
@@ -756,12 +775,24 @@ export function markSelectedChips(root: HTMLElement, range: { start: number; end
     });
 }
 
-export function setSelectionUnitRange(root: HTMLElement, start: number, end: number): void {
+/**
+ * A DOM range over units `[start, end)`, without touching the selection.
+ *
+ * The measuring half of {@link setSelectionUnitRange}, split out because the spellcheck overlay needs
+ * the geometry of a word and must on no account select it: the author is typing in this field, and
+ * moving the caret to measure something would be the field taking their place in the sentence away.
+ */
+export function createUnitRange(root: HTMLElement, start: number, end: number): Range {
     const startPoint = pointAt(root, start);
     const endPoint = pointAt(root, end);
     const range = globalThis.document.createRange();
     range.setStart(startPoint.node, startPoint.offset);
     range.setEnd(endPoint.node, endPoint.offset);
+    return range;
+}
+
+export function setSelectionUnitRange(root: HTMLElement, start: number, end: number): void {
+    const range = createUnitRange(root, start, end);
     const selection = globalThis.window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);

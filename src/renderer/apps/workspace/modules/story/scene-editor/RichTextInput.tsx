@@ -6,8 +6,10 @@ import { parseColorValue } from "@/apps/workspace/modules/properties/framework/u
 import { useTranslation } from "@/lib/i18n";
 import {
     applyMarkToRange,
+    createUnitRange,
     domToRuns,
     getSelectionUnitRange,
+    marksAtUnit,
     markSelectedChips,
     normalizeRuns,
     rangeHasMark,
@@ -26,6 +28,16 @@ import {
     type RichRenderOptions,
 } from "./richText";
 import { editKindForInputType, RichTextHistory, type RichTextSnapshot } from "./richTextHistory";
+import { getInterface } from "@/lib/app/bridge";
+import {
+    markAtUnit,
+    SpellcheckRunner,
+    underlineBoxes,
+    UNDERLINE_HEIGHT_PX,
+    type SpellMark,
+    type UnderlineBox,
+} from "./storySpellcheck";
+import type { StorySpellcheckBinding } from "./useStorySpellcheck";
 
 export type ActiveMarks = {
     bold: boolean;
@@ -68,6 +80,14 @@ export type EventClickInfo = {
     anchor: { top: number; left: number; bottom: number };
 };
 
+/** A right click that landed on a marked misspelling: which units it covers, and where it is drawn. */
+export type SpellingClickInfo = {
+    unitStart: number;
+    unitEnd: number;
+    word: string;
+    anchor: { top: number; left: number; bottom: number };
+};
+
 export type RichTextInputHandle = {
     focus: () => void;
     toggleMark: (mark: "bold" | "italic") => void;
@@ -95,6 +115,15 @@ export type RichTextInputHandle = {
     insertEvent: (event: StoryInlineEvent) => EventClickInfo | null;
     updateEventAt: (unit: number, event: StoryInlineEvent) => void;
     removeEventAt: (unit: number) => void;
+    /**
+     * Write `replacement` over units `[start, end)` — an accepted spelling suggestion.
+     *
+     * Goes through the same splice every other structural edit uses, so the correction is one entry
+     * on the row's own undo stack: `Mod+Z` once puts the author's spelling back, which is the point.
+     * Focus and the caret come back to the field afterwards, because accepting a suggestion is the
+     * end of the detour and the author is mid-sentence.
+     */
+    replaceSpelling: (start: number, end: number, replacement: string) => void;
     /**
      * Current rich runs read straight from the live editor DOM (bypasses any not-yet-flushed draft).
      * Returns `null` when the editor is not mounted so callers fall back to their own state instead of
@@ -170,6 +199,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     onPauseClick?: (info: PauseClickInfo) => void;
     onInterpolationClick?: (info: InterpolationClickInfo) => void;
     onEventClick?: (info: EventClickInfo) => void;
+    /**
+     * Spellchecking for this field. Omitted (or carrying no language), nothing is checked and the
+     * overlay draws nothing.
+     */
+    spellcheck?: StorySpellcheckBinding;
+    /** A right click landed on a marked word; the parent opens the suggestion popover over it. */
+    onSpellingClick?: (info: SpellingClickInfo) => void;
     resolveInterpolationLabel?: ResolveInterpolationLabel;
     /**
      * Names the look an inline expression chip switches to. Omitted, the chip is icon-only — never an
@@ -243,6 +279,16 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    /**
+     * The spellchecker's reaction to an edit, held in a ref so `emitChange` can stay dependency-free.
+     *
+     * It is called from `emitChange` rather than from the `input` handler because the runs are
+     * already in hand there. `domToRuns` walks and normalizes the whole row, it is the most
+     * expensive thing on the typing path, and asking for it twice per keystroke to answer two
+     * questions about the same text would double that for nothing.
+     */
+    const onSpellRunsRef = useRef<((runs: StoryRichRun[]) => void) | null>(null);
+
     const emitChange = useCallback(() => {
         const el = editorRef.current;
         if (!el) {
@@ -250,7 +296,147 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         }
         const runs = domToRuns(el);
         onChangeRef.current(richRunsToPlain(runs), runs);
+        onSpellRunsRef.current?.(runs);
     }, []);
+
+    // ---------------------------------------------------------------------------
+    // Spellcheck: the marks, when they are asked for, and where they are drawn.
+    // ---------------------------------------------------------------------------
+
+    const spellLanguage = readOnly ? null : props.spellcheck?.language ?? null;
+    const spellRevision = props.spellcheck?.revision ?? 0;
+    /** Answering the runner's questions without pinning it to one render's closure. */
+    const spellcheckRef = useRef(props.spellcheck);
+    spellcheckRef.current = props.spellcheck;
+    /** The misspellings currently believed true, in unit offsets. */
+    const spellMarksRef = useRef<readonly SpellMark[]>([]);
+    /** Where they are drawn. The only part of this field React renders. */
+    const [spellBoxes, setSpellBoxes] = useState<UnderlineBox[]>([]);
+    /** What the sync effect below last handed the runner. Reset whenever a new runner is built. */
+    const spellSyncRef = useRef<{ language: string | null; revision: number } | null>(null);
+
+    /**
+     * Put the current marks back under their words.
+     *
+     * Absolute coordinates resolve against the padding box of the nearest positioned ancestor, which
+     * is exactly what `offsetParent` names — so the overlay layer and this measurement agree by
+     * construction rather than by assumption, whatever the row is nested in. Expressing the boxes in
+     * that space is also why scrolling costs nothing: the underlines sit inside the same scrolled
+     * content as the words, and move with them without a listener.
+     */
+    const measureSpellMarks = useCallback(() => {
+        const el = editorRef.current;
+        const marks = spellMarksRef.current;
+        if (!el || marks.length === 0) {
+            setSpellBoxes(current => (current.length === 0 ? current : []));
+            return;
+        }
+        const parent = el.offsetParent as HTMLElement | null;
+        const parentRect = parent?.getBoundingClientRect();
+        const origin = parent && parentRect
+            ? { left: parentRect.left + parent.clientLeft, top: parentRect.top + parent.clientTop }
+            : { left: 0, top: 0 };
+        const scroll = parent
+            ? { left: parent.scrollLeft, top: parent.scrollTop }
+            : { left: globalThis.window.scrollX, top: globalThis.window.scrollY };
+        const boxes: UnderlineBox[] = [];
+        for (const mark of marks) {
+            const rects = createUnitRange(el, mark.unitStart, mark.unitEnd).getClientRects();
+            boxes.push(...underlineBoxes(Array.from(rects), origin, scroll));
+        }
+        setSpellBoxes(current => (sameBoxes(current, boxes) ? current : boxes));
+    }, []);
+
+    /**
+     * The checking loop. It owns the timing and the two staleness guards; see {@link SpellcheckRunner}.
+     *
+     * Built in an effect and torn down with it, one runner per mount. It used to be built once into
+     * the ref and disposed by an unmount cleanup, which is broken in exactly the environment the app
+     * runs in: `React.StrictMode` is on whenever Studio is not packaged, so every field mounts,
+     * unmounts and mounts again - and React keeps the ref across that. The throwaway unmount latched
+     * `disposed` on the instance the second mount then reused, so every answer was discarded and no
+     * underline was ever drawn in development. Measured in the running app, not deduced.
+     *
+     * Everything that varies is read through refs at the moment it is needed, so the runner never
+     * closes over one render.
+     */
+    const spellRunnerRef = useRef<SpellcheckRunner | null>(null);
+    useEffect(() => {
+        const runner = new SpellcheckRunner({
+            check: async (text, language) => {
+                const result = await getInterface().app.spellcheck.check(text, language).catch(() => null);
+                return result?.success ? result.data.ranges : null;
+            },
+            readRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
+            // Filtered here as well as in the checker, so a word the author has just taught the
+            // project stops being marked on the next check rather than on whichever round trip
+            // happens to carry the new list.
+            isKnownWord: word => spellcheckRef.current?.isKnownWord(word) ?? false,
+            onMarks: marks => {
+                spellMarksRef.current = marks;
+                measureSpellMarks();
+            },
+        });
+        spellRunnerRef.current = runner;
+        // Forget what the effect below last synced. This runner has never been told a language, and
+        // on a remount the props have not changed - so without this it would be told nothing.
+        spellSyncRef.current = null;
+        return () => {
+            runner.dispose();
+            if (spellRunnerRef.current === runner) {
+                spellRunnerRef.current = null;
+            }
+            spellMarksRef.current = [];
+        };
+    }, [measureSpellMarks]);
+
+    const onSpellRuns = useCallback((runs: StoryRichRun[]) => {
+        spellRunnerRef.current?.edited(runs);
+    }, []);
+    onSpellRunsRef.current = onSpellRuns;
+
+    /**
+     * The language, and every reason to ask again that the field does not cause itself: the author
+     * changed the setting in another window, or taught the project a word from another row.
+     *
+     * One effect for both, comparing against what it last saw, because the two arrive together far
+     * more often than not - the service publishes a language and bumps its revision in the same
+     * breath - and two effects would put two checks in flight for one event.
+     */
+    useEffect(() => {
+        const runner = spellRunnerRef.current;
+        if (!runner) {
+            return;
+        }
+        const previous = spellSyncRef.current;
+        spellSyncRef.current = { language: spellLanguage, revision: spellRevision };
+        if (!previous || previous.language !== spellLanguage) {
+            runner.setLanguage(spellLanguage);
+            return;
+        }
+        if (previous.revision !== spellRevision && spellLanguage) {
+            runner.refresh();
+        }
+    }, [spellLanguage, spellRevision]);
+
+    // Re-layout the field does not announce: the pane was resized, the window was, the row rewrapped
+    // because something beside it grew. Scrolling is deliberately absent — see `measureSpellMarks`.
+    useEffect(() => {
+        const el = editorRef.current;
+        if (!el) {
+            return;
+        }
+        const remeasure = () => measureSpellMarks();
+        const observer = typeof ResizeObserver === "function" ? new ResizeObserver(remeasure) : null;
+        observer?.observe(el);
+        globalThis.window.addEventListener("resize", remeasure);
+        return () => {
+            observer?.disconnect();
+            globalThis.window.removeEventListener("resize", remeasure);
+        };
+    }, [measureSpellMarks]);
+
+
 
     /**
      * The marks last published to the toolbar. `onActiveMarksChange` is a `setState` on the row's edit
@@ -787,6 +973,35 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         return { unit, value: event, anchor: { top: rect.top, left: rect.left, bottom: rect.bottom } };
     }, [insertRun]);
 
+    /**
+     * Write an accepted suggestion over the word it corrects.
+     *
+     * The replacement inherits the marks of the run it replaces: a misspelled word can be bold,
+     * coloured or annotated like any other, and a bare splice would leave the one word the author
+     * fixed as a hole in the styling of the sentence.
+     *
+     * Unlike the ruby and pause popovers, this one takes focus back. Accepting a suggestion ends the
+     * detour — there is nothing else to say about the word — so the caret returns to just after the
+     * correction, where the author would have put it themselves.
+     */
+    const replaceSpelling = useCallback((start: number, end: number, replacement: string) => {
+        const el = editorRef.current;
+        if (!el || readOnly || end <= start || !replacement) {
+            return;
+        }
+        recordStructural();
+        const runs = domToRuns(el);
+        const marks = marksAtUnit(runs, start);
+        const next = spliceRuns(runs, start, end, [marks ? { text: replacement, marks } : { text: replacement }]);
+        renderRunsToElement(el, next, renderOptionsRef.current);
+        const caret = start + replacement.length;
+        savedRange.current = { start: caret, end: caret };
+        el.focus();
+        setSelectionUnitRange(el, caret, caret);
+        scheduleReportActive(true);
+        emitChange();
+    }, [emitChange, readOnly, recordStructural, scheduleReportActive]);
+
     useImperativeHandle(ref, () => ({
         focus: () => {
             const el = editorRef.current;
@@ -818,32 +1033,52 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         insertEvent,
         updateEventAt: (unit, event) => spliceUnits(unit, 1, [{ event }], true),
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
+        replaceSpelling,
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, resolveRubyTarget, setRuby, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, setRuby, spliceUnits]);
 
     return (
+        <>
         <div
             ref={editorRef}
             className={props.className}
             style={{ ...props.style, caretColor: caretColor ?? undefined }}
             contentEditable={!readOnly}
             suppressContentEditableWarning
-            // The one field in Studio that is checked. It holds the source script - the prose the
-            // author writes - and Chromium checks whatever is editable and asks for it. Off while
-            // read-only, where an underline marks something that cannot be corrected, and off
-            // everywhere else in the app on purpose: the localization editor holds translations,
-            // which are not this project's language and are not the author's to respell.
-            spellCheck={!readOnly}
+            // No `spellCheck` attribute, deliberately. Chromium's own checker is switched off across
+            // the app (`@shared/types/spellcheck`), so asking it to check would draw nothing; the
+            // squiggles below are Studio's, over text Studio checked.
             onContextMenu={event => {
                 if (readOnly) {
                     return;
                 }
-                // Stopped, so the row's own menu does not claim this click - and deliberately NOT
-                // prevented. Blink only asks the browser process for a context menu when the page
-                // leaves the default alone, and that request is the only thing that carries the
-                // spellchecker's verdict on the word under the pointer. `preventDefault` anywhere on
-                // the way up would silently cost the suggestions and "Add to dictionary".
+                // A right click on a marked word asks about that word, and that is the only claim
+                // this field makes on the gesture. Everything else is left to bubble: the row skips
+                // a right click that landed inside the open field (see `StoryBlockRow`), so what
+                // reaches the workspace is the editable-text menu — cut, copy, paste — as before.
+                //
+                // Blink's own menu request no longer matters either way. It used to be the one
+                // channel carrying the spellchecker's verdict, which is why this handler was once
+                // careful never to prevent the default; there is now no checker under the page to
+                // have a verdict, and the suggestions come from the main process on request.
+                const el = editorRef.current;
+                if (!el || !props.onSpellingClick || spellMarksRef.current.length === 0) {
+                    return;
+                }
+                const unit = unitOffsetFromPoint(el, event.clientX, event.clientY);
+                const mark = unit === null ? null : markAtUnit(spellMarksRef.current, unit);
+                if (!mark) {
+                    return;
+                }
+                event.preventDefault();
                 event.stopPropagation();
+                const rect = createUnitRange(el, mark.unitStart, mark.unitEnd).getBoundingClientRect();
+                props.onSpellingClick({
+                    unitStart: mark.unitStart,
+                    unitEnd: mark.unitEnd,
+                    word: mark.word,
+                    anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
+                });
             }}
             role="textbox"
             aria-multiline="false"
@@ -925,8 +1160,39 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             onBlur={() => { saveSelection(); props.onBlur(); }}
             onKeyDown={handleKeyDown}
         />
+        {spellBoxes.length > 0 ? (
+            /*
+             * The underlines, as a sibling of the field rather than as spans inside it.
+             *
+             * Inside is not an option: the document is runs and marks, so a span added to carry a
+             * decoration would round-trip to disk, split runs the author never split, and stand in
+             * the caret's way. A sibling shares the field's containing block, which is what lets the
+             * boxes be laid out in the same coordinate space the words are.
+             *
+             * Inert, and aria-hidden. The squiggle is three pixels tall and sits exactly where a
+             * click lands when the author aims at the bottom of a line; a strip that took the
+             * pointer would refuse the caret to the one word they most want to edit. The suggestions
+             * are reached by right-clicking the word, which hit-tests the text underneath.
+             */
+            <div className="story-rt-spell-layer" aria-hidden="true">
+                {spellBoxes.map((box, index) => (
+                    <span
+                        key={`${box.top}:${box.left}:${index}`}
+                        className="story-rt-spell"
+                        style={{ left: box.left, top: box.top, width: box.width, height: UNDERLINE_HEIGHT_PX }}
+                    />
+                ))}
+            </div>
+        ) : null}
+        </>
     );
 });
+
+/** Whether two measured sets of underlines are the same, so an unchanged layout costs no render. */
+function sameBoxes(a: readonly UnderlineBox[], b: readonly UnderlineBox[]): boolean {
+    return a.length === b.length
+        && a.every((box, index) => box.left === b[index].left && box.top === b[index].top && box.width === b[index].width);
+}
 
 /**
  * The unit range the caret opens at.

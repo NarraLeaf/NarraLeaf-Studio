@@ -33,7 +33,7 @@ import type { ServerTrustPromptProps } from "@shared/types/serverTrust";
 import type { PrivilegedActor } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
 import type { AssetExportEntry } from "@shared/types/assetExport";
-import type { SpellcheckContextMenuPayload } from "@shared/types/spellcheck";
+
 import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
 import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
@@ -276,10 +276,14 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
                 ipcClient.invoke(IPCEventType.spellcheckConfigure, { sourceLocale, words }),
             clear: () => ipcClient.invoke(IPCEventType.spellcheckClear, {}),
             getStatus: () => ipcClient.invoke(IPCEventType.spellcheckStatus, {}),
-            replaceMisspelling: (text: string) =>
-                ipcClient.invoke(IPCEventType.spellcheckReplaceMisspelling, { text }),
-            onContextMenu: (handler: (payload: SpellcheckContextMenuPayload) => void) =>
-                ipcClient.onMessage(IPCEventType.spellcheckContextMenu, handler),
+            check: (text: string, language: string) =>
+                ipcClient.invoke(IPCEventType.spellcheckCheck, { text, language }),
+            suggest: (word: string, language: string) =>
+                ipcClient.invoke(IPCEventType.spellcheckSuggest, { word, language }),
+            listInstalled: () => ipcClient.invoke(IPCEventType.spellcheckListInstalled, {}),
+            listAvailable: () => ipcClient.invoke(IPCEventType.spellcheckListAvailable, {}),
+            download: (code: string) => ipcClient.invoke(IPCEventType.spellcheckDownload, { code }),
+            remove: (code: string) => ipcClient.invoke(IPCEventType.spellcheckRemove, { code }),
         },
         pickBackgroundImage: () => ipcClient.invoke(IPCEventType.appPickBackgroundImage, {}),
         readBackgroundImage: (file: string) => ipcClient.invoke(IPCEventType.appReadBackgroundImage, { file }),

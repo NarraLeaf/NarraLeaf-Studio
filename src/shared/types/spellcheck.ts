@@ -1,14 +1,22 @@
 /**
- * Which language the script is spellchecked in, and how that is decided.
+ * Spellchecking: which language the script is checked in, what a dictionary is, and what the
+ * checker answers.
  *
- * The checking itself is Chromium's: `session.setSpellCheckerLanguages` picks the language, and
- * Chromium fetches the hunspell pack for it on demand and caches it in the Electron profile. So
- * there is no downloader, no dictionary format and no cache here - only the decision of which
- * language to name, which is the one part Chromium cannot make.
+ * The checking is Studio's own and runs in the main process. That is a deliberate replacement for
+ * Chromium's built-in spellchecker, which fetched its `.bdic` packs from Google's servers by itself
+ * - a remote read that never passed through the main process, beside a codebase whose rule is that
+ * every remote byte does (see `renderer-never-touches-network` and the project's network policy).
+ * Studio now names the index it reads, verifies what comes back, and keeps it in a cache the author
+ * can see and clear.
  *
- * **Chromium ships no dictionary for Chinese or Japanese.** Neither language has spelling in the
- * hunspell sense, so for a project written in either, {@link resolveSpellcheckLanguage} answers
- * `null` and nothing is ever underlined. That is the correct outcome, not a failure, and the
+ * A dictionary here is a **pre-expanded word list**: plain text, one word per line, gzipped. Not
+ * hunspell - an affix engine would be a new runtime dependency, and the trade it would buy (smaller
+ * files, morphological coverage) is not worth adding one for. Checking is therefore a set lookup and
+ * suggesting is a bounded edit distance.
+ *
+ * **Languages that do not put spaces between words have no dictionary and never will.** Chinese and
+ * Japanese have no spelling in the word-list sense, so {@link resolveSpellcheckLanguage} answers
+ * `null` for them and nothing is ever marked. That is the correct outcome, not a failure, and the
  * settings row says so rather than showing a control that quietly does nothing.
  *
  * Comments in English per project convention.
@@ -31,7 +39,59 @@ export const SPELLCHECK_OFF = "off";
 
 export const SPELLCHECK_LANGUAGE_DEFAULT = SPELLCHECK_FOLLOW_PROJECT;
 
-/** What spellchecking is currently doing, as the main process last applied it. */
+/** At most this many replacements are offered for one misspelling. Past this it is a word list. */
+export const SPELLCHECK_MAX_SUGGESTIONS = 5;
+
+/**
+ * How far {@link SPELLCHECK_MAX_SUGGESTIONS} may reach: two edits, counting a transposition as one.
+ *
+ * Three would make the search an order of magnitude wider and start answering with words that share
+ * nothing an author would recognise as their mistake.
+ */
+export const SPELLCHECK_MAX_EDIT_DISTANCE = 2;
+
+/**
+ * One misspelling, as offsets into the text that was checked.
+ *
+ * Plain-text offsets and not DOM positions: the checker never sees the document, only a string, and
+ * the caller that produced the string is the only thing that can map a range back onto whatever it
+ * came from.
+ */
+export type SpellcheckRange = {
+    /** Index of the first character of the word. */
+    start: number;
+    /** Index one past its last character. */
+    end: number;
+    /** The word itself, so a caller can act on it without slicing the text again. */
+    word: string;
+};
+
+/** A dictionary Studio has on disk and can check against right now. */
+export type InstalledSpellcheckDictionary = {
+    /** Language tag, e.g. `en-GB`. The name of the file in the cache, so it is path-safe. */
+    code: string;
+    /** Display name as the index gave it, e.g. `English (United Kingdom)`. */
+    name: string;
+    /** Bytes on disk, compressed. What the cache list shows and what removing it frees. */
+    bytes: number;
+};
+
+/**
+ * A dictionary the index offers.
+ *
+ * {@link license} travels with it and is not optional: only permissively licensed word lists are
+ * hosted, and "permissive" is a claim that has to be displayable next to the thing it describes.
+ */
+export type AvailableSpellcheckDictionary = {
+    code: string;
+    name: string;
+    /** Compressed size, so the download can be described before it starts. */
+    bytes: number;
+    /** SPDX-style identifier, shown beside the entry. */
+    license: string;
+};
+
+/** What spellchecking is currently doing, as the main process last worked it out. */
 export type SpellcheckStatus = {
     /**
      * The project's source language, or `""` when the project has not chosen one - and also when no
@@ -40,31 +100,10 @@ export type SpellcheckStatus = {
     sourceLocale: string;
     /** The stored setting: {@link SPELLCHECK_FOLLOW_PROJECT}, {@link SPELLCHECK_OFF}, or a language. */
     setting: string;
-    /** The language handed to Chromium, or `null` when nothing is being checked. */
+    /** The language being checked, or `null` when nothing is. */
     language: string | null;
-    /** Every language this build of Chromium has a dictionary for. */
+    /** Every language a dictionary is installed for. Empty until the author downloads one. */
     available: string[];
-};
-
-/**
- * A right click on editable text, as Chromium saw it.
- *
- * The whole reason this crosses a process boundary is {@link misspelledWord}: the spellchecker runs
- * below the page, and the renderer cannot ask it anything. Everything else travels with it because
- * it arrives in the same event and the menu drawn from it needs the lot.
- */
-export type SpellcheckContextMenuPayload = {
-    /** Viewport coordinates of the click, for placing the menu. */
-    x: number;
-    y: number;
-    /** The word under the pointer if it is misspelled, `""` if it is not (or is not a word). */
-    misspelledWord: string;
-    /** Chromium's replacements for {@link misspelledWord}. Often empty, which is a real answer. */
-    suggestions: string[];
-    /** What the standard editing rows may offer here, as Chromium reported it. */
-    canCut: boolean;
-    canCopy: boolean;
-    canPaste: boolean;
 };
 
 /** The primary subtag of a language tag: `en-GB` -> `en`. Lower-cased, so comparisons are stable. */
@@ -74,16 +113,16 @@ function primarySubtag(code: string): string {
 }
 
 /**
- * The language Chromium should be told to check in, or `null` for "check nothing".
+ * The language to check in, or `null` for "check nothing".
  *
  * Three ways to answer `null`, and they are all ordinary rather than exceptional: the author turned
- * it off, the project has no source language yet, or the language has no hunspell dictionary at all
- * (Chinese and Japanese, among others).
+ * it off, the project has no source language yet, or no dictionary is installed for the language
+ * this project is written in.
  *
  * The match runs from exact to loose, because a locale code and a dictionary name agree less often
- * than they look. `en-GB` is named exactly; `de` is named exactly; a bare `en` is not, because the
- * list carries only the regional Englishes - so the last step takes the first of them, and the
- * settings row is where an author who wants a different one says which.
+ * than they look. `en-GB` is named exactly; `de` is named exactly; a bare `en` is not, if only the
+ * regional Englishes are installed - so the last step takes the first of them, and the settings row
+ * is where an author who wants a different one says which.
  */
 export function resolveSpellcheckLanguage(
     setting: string | undefined,
@@ -113,7 +152,7 @@ export function resolveSpellcheckLanguage(
 }
 
 /**
- * Whether the author is following the project's language and that language has no dictionary.
+ * Whether the author is following the project's language and no dictionary covers it.
  *
  * The one case the settings row has to state outright: the control is set to the answer that is
  * normally right, the project has a language, and no amount of the feature working would produce a

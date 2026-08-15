@@ -62,6 +62,7 @@ type Harness = {
         appTagsLoad: ReturnType<typeof vi.fn>;
         localizationReload: ReturnType<typeof vi.fn>;
         voiceReload: ReturnType<typeof vi.fn>;
+        dictionaryLoad: ReturnType<typeof vi.fn>;
         historyClearAll: ReturnType<typeof vi.fn>;
         showSticky: ReturnType<typeof vi.fn>;
     };
@@ -91,6 +92,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         appTagsLoad: vi.fn(async () => undefined),
         localizationReload: vi.fn(async () => undefined),
         voiceReload: vi.fn(async () => undefined),
+        dictionaryLoad: vi.fn(async () => []),
         historyClearAll: vi.fn(),
         showSticky: vi.fn(() => "toast-1"),
     };
@@ -134,6 +136,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         [Services.AppTags]: { load: stubs.appTagsLoad },
         [Services.Localization]: { reloadFromDisk: stubs.localizationReload },
         [Services.Voice]: { reloadFromDisk: stubs.voiceReload },
+        [Services.Dictionary]: { load: stubs.dictionaryLoad },
         [Services.History]: { clearAll: stubs.historyClearAll },
         [Services.VariableRegistry]: variables,
         [Services.SaveStatus]: saveStatus,
@@ -263,9 +266,37 @@ describe("WorkspaceReloadService", () => {
         expect(result.reloaded).toEqual([
             "project", "assets", "characters", "story",
             "uiDocument", "uiGraph", "variables", "audioTracks", "appTags", "localization", "voice",
+            "dictionary",
         ]);
         expect(harness.stubs.assetsReload).toHaveBeenCalledTimes(1);
         expect(harness.stubs.voiceReload).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The project dictionary is a document like any other, and it was missing from the table above.
+     *
+     * Worth its own case rather than only the list assertion, because what breaks when it is absent
+     * is not the dictionary but the spellchecker: `load()` is the only thing that re-publishes the
+     * project's words and its source locale, so a restored working tree left the checker marking
+     * against the version that was replaced - and the author sees a wrong underline, not a missing
+     * document.
+     */
+    it("re-reads the project dictionary, and does it after localization", async () => {
+        const harness = await createHarness();
+        const order: string[] = [];
+        harness.stubs.localizationReload.mockImplementation(async () => {
+            order.push("localization");
+        });
+        harness.stubs.dictionaryLoad.mockImplementation(async () => {
+            order.push("dictionary");
+            return [];
+        });
+
+        await harness.reload.reload("restore");
+
+        expect(harness.stubs.dictionaryLoad).toHaveBeenCalledTimes(1);
+        // The publish states the source locale, so it has to be the one localization just read.
+        expect(order).toEqual(["localization", "dictionary"]);
     });
 
     /**

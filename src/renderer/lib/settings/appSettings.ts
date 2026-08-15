@@ -595,15 +595,15 @@ export const AppSettings: AppSettingDefinition[] = [
     },
     {
         /**
-         * Applied by `DictionaryService`, which pushes the project's source language and its own
-         * words into the session; the main process turns the pair into a Chromium spellchecker
-         * language (`@shared/types/spellcheck`). Only the story script is checked - translations are
-         * somebody else's language and not the author's to respell.
+         * Applied by `DictionaryService`, which sends the project's source language and its own
+         * words to the main process; main turns the pair into the language it checks in
+         * (`@shared/types/spellcheck`). Only the story script is checked - translations are somebody
+         * else's language and not the author's to respell.
          *
-         * The option list is finished at render time from the languages this build of Chromium
-         * actually has a dictionary for. It has to be, because that list is not a fact this module
-         * can know: it comes from the session, and hard-coding it here would drift the first time
-         * Chromium's own list changed, silently offering a dictionary that no longer exists.
+         * The option list is finished at render time from the dictionaries actually installed on
+         * this machine. It has to be, because that list is not a fact this module can know: it is
+         * whatever the author has downloaded, and hard-coding it here would offer a language
+         * nothing can be checked against.
          */
         key: SPELLCHECK_LANGUAGE_KEY,
         category: "editor",
@@ -622,12 +622,12 @@ export const AppSettings: AppSettingDefinition[] = [
         /**
          * Enabled, and carrying a reason anyway.
          *
-         * Chromium has no hunspell dictionary for Chinese or Japanese - neither language has
-         * spelling in that sense - so for a project written in one, following the project's language
-         * checks nothing and always will. The row says so instead of leaving a control that looks
-         * live and produces not one underline. It stays usable because naming a language outright is
-         * still a real choice, and a control closed for the length of a project is worse than a
-         * control that explains itself.
+         * No dictionary covers the project's own language: either the author has not downloaded
+         * one, or - for Chinese and Japanese - none exists, since neither language has spelling in
+         * the word-list sense. Either way, following the project's language checks nothing. The row
+         * says so instead of leaving a control that looks live and produces not one underline. It
+         * stays usable because naming a language outright is still a real choice, and a control
+         * closed for the length of a project is worse than a control that explains itself.
          */
         availability: async () => {
             const { getInterface } = await import("@/lib/app/bridge");
@@ -637,6 +637,25 @@ export const AppSettings: AppSettingDefinition[] = [
                 ? { enabled: true, reasonKey: "settings.items.spellcheckLanguage.noDictionary" as const }
                 : { enabled: true };
         },
+    },
+    {
+        // Rendered by `SETTING_PANELS.dictionaries`. Nothing is stored under this key: the
+        // dictionaries are files in a cache the main process owns, and the panel lists them,
+        // fetches them and deletes them over IPC.
+        //
+        // Beneath the language row rather than folded into it, because the two answer different
+        // questions. The row above asks which language THIS PROJECT is checked in; this asks which
+        // languages the machine can check at all - a fact every project on it shares, and the reason
+        // the row above can have nothing to offer.
+        key: "editor.dictionaries",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "dictionaries",
+        label: "Spelling dictionaries",
+        labelKey: "settings.items.dictionaries.label",
+        description: "",
+        defaultValue: null,
     },
     {
         // Read by the workspace's detached-editor host when a popped-out window goes away. An

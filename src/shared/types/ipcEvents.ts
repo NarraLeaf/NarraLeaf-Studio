@@ -37,7 +37,12 @@ import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
-import type { SpellcheckContextMenuPayload, SpellcheckStatus } from "./spellcheck";
+import type {
+    AvailableSpellcheckDictionary,
+    InstalledSpellcheckDictionary,
+    SpellcheckRange,
+    SpellcheckStatus,
+} from "./spellcheck";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
@@ -115,8 +120,12 @@ export enum IPCEventType {
     spellcheckConfigure = "app.spellcheck.configure",
     spellcheckClear = "app.spellcheck.clear",
     spellcheckStatus = "app.spellcheck.status",
-    spellcheckReplaceMisspelling = "app.spellcheck.replaceMisspelling",
-    spellcheckContextMenu = "app.spellcheck.contextMenu",
+    spellcheckCheck = "app.spellcheck.check",
+    spellcheckSuggest = "app.spellcheck.suggest",
+    spellcheckListInstalled = "app.spellcheck.listInstalled",
+    spellcheckListAvailable = "app.spellcheck.listAvailable",
+    spellcheckDownload = "app.spellcheck.download",
+    spellcheckRemove = "app.spellcheck.remove",
     appPickBackgroundImage = "app.pickBackgroundImage",
     appReadBackgroundImage = "app.readBackgroundImage",
     appGlobalStateGet = "app.globalState.get",
@@ -554,9 +563,14 @@ export type IPCEvents = {
         response: void;
     };
     /**
-     * Hand the session this window's project: the language its script is written in, and the words
-     * that project spells on purpose. Answers what spellchecking ended up doing, which is more than
-     * the caller asked for - the language may have no dictionary at all.
+     * Tell the checker about this window's project: the language its script is written in, and the
+     * words that project spells on purpose.
+     *
+     * This is how the main process learns the project dictionary. The document itself stays in the
+     * renderer, which owns it; `DictionaryService` re-sends the list on load and after every edit,
+     * and the words are held against this window - so two projects open at once do not see each
+     * other's cast. Answers what spellchecking ended up doing, which is more than the caller asked
+     * for: no dictionary may be installed for the language at all.
      */
     [IPCEventType.spellcheckConfigure]: {
         type: IPCMessageType.request,
@@ -567,7 +581,7 @@ export type IPCEvents = {
         },
         response: SpellcheckStatus;
     };
-    /** Take this project's words back out of the session, so the next project does not inherit them. */
+    /** Forget this window's project words. Sent when a workspace closes or switches project. */
     [IPCEventType.spellcheckClear]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -581,25 +595,70 @@ export type IPCEvents = {
         data: Record<string, never>,
         response: SpellcheckStatus;
     };
-    /** Put `text` in place of the misspelling the context menu was opened on. */
-    [IPCEventType.spellcheckReplaceMisspelling]: {
+    /**
+     * Check one run of plain text, answering the misspellings in it.
+     *
+     * In main rather than the renderer because the renderer has no thread to spare: this window's
+     * document is `file://` and its scripts are `app://`, so a Web Worker cannot be started at all
+     * (the same reason the Monaco integration is worker-free), and checking a scene on every
+     * keystroke on the renderer's own thread is not acceptable.
+     *
+     * `start`/`end` are offsets into `text`, not DOM positions - the caller built the string and is
+     * the only thing that can map a range back onto what it came from.
+     */
+    [IPCEventType.spellcheckCheck]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {
             text: string;
+            language: string;
         },
-        response: void;
+        response: { ranges: SpellcheckRange[] };
+    };
+    /** Replacements for one misspelling, nearest first. At most {@link SPELLCHECK_MAX_SUGGESTIONS}. */
+    [IPCEventType.spellcheckSuggest]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            word: string;
+            language: string;
+        },
+        response: { suggestions: string[] };
+    };
+    /** The dictionaries on this machine. Read from the cache, so it needs no network. */
+    [IPCEventType.spellcheckListInstalled]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: { languages: InstalledSpellcheckDictionary[] };
+    };
+    /** The dictionaries the registry offers, with their licences. Goes to the network. */
+    [IPCEventType.spellcheckListAvailable]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: { entries: AvailableSpellcheckDictionary[] };
     };
     /**
-     * A right click landed on editable text, with whatever the spellchecker knows about the word
-     * under it. Pushed because that verdict exists only in the main process: the renderer can see
-     * the word but has no way to ask whether it is spelled correctly.
+     * Fetch one dictionary into the cache. Author-initiated only, and the bytes are refused unless
+     * their sha256 is the one the index named.
      */
-    [IPCEventType.spellcheckContextMenu]: {
-        type: IPCMessageType.message,
-        consumer: IPCType.Client,
-        data: SpellcheckContextMenuPayload,
-        response: never;
+    [IPCEventType.spellcheckDownload]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            code: string;
+        },
+        response: { ok: boolean };
+    };
+    /** Delete one dictionary from the cache. `ok: false` means there was nothing there. */
+    [IPCEventType.spellcheckRemove]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            code: string;
+        },
+        response: { ok: boolean };
     };
     [IPCEventType.appPickBackgroundImage]: {
         type: IPCMessageType.request,

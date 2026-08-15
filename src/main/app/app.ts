@@ -87,12 +87,12 @@ export class App extends BaseApp {
 
         this.updateManager = new UpdateManager(this);
         this.confirmQuitManager = new ConfirmQuitManager(this);
-        // The session is resolved through a function rather than captured: `defaultSession` only
-        // exists once Electron is ready, and this constructor runs before that.
-        this.spellcheckManager = new SpellcheckManager(
-            () => session.defaultSession,
-            () => this.globalState.get(SPELLCHECK_LANGUAGE_KEY),
-        );
+        // Everything is read through a function rather than captured: this constructor runs before
+        // Electron is ready, and `getUserDataDir` has no answer until it is.
+        this.spellcheckManager = new SpellcheckManager({
+            userDataDir: () => this.getUserDataDir(),
+            readSetting: () => this.globalState.get(SPELLCHECK_LANGUAGE_KEY),
+        });
 
         // Built as soon as there is an Electron app to attach it to, because from here on it is
         // the only handle a windowless Studio has - see handleLastWindowClosed, which reads
@@ -128,7 +128,7 @@ export class App extends BaseApp {
     private readonly confirmQuitManager: ConfirmQuitManager;
     private readonly spellcheckManager: SpellcheckManager;
 
-    /** Chromium's spellchecker, and the project words currently loaded into it. */
+    /** Studio's own spellchecker: the downloaded dictionaries, and each window's project words. */
     public getSpellcheckManager(): SpellcheckManager {
         return this.spellcheckManager;
     }

@@ -653,6 +653,8 @@ interface IDictionaryService extends IService {
     replaceDocument(document: ProjectDictionaryDocument): void;
     /** What the spellchecker settled on at the last push; `null` before the first one. */
     getSpellcheckStatus(): SpellcheckStatus | null;
+    /** The language settled on, whenever it changes - so an open story row can re-check. */
+    onStatusChanged(handler: (status: SpellcheckStatus | null) => void): () => void;
     onWordsChanged(handler: (words: string[]) => void): () => void;
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
