@@ -94,6 +94,14 @@ export const uiEditor = {
         openComponent: "Open component",
         unlinkComponent: "Unlink component",
     },
+    zoom: {
+        label: "Zoom",
+        actualSize: "Actual size",
+        fitArea: "Fit the editing area",
+        fillArea: "Fill the editing area",
+        fitWidth: "Fit the width",
+        custom: "Custom",
+    },
     snap: {
         label: "Smart snap",
         tip: "Smart snap to guides and neighbors (hold Alt to temporarily disable)",

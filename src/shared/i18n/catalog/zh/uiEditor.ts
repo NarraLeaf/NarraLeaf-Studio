@@ -93,6 +93,14 @@ export const uiEditor = {
         openComponent: "打开组件",
         unlinkComponent: "解除组件关联",
     },
+    zoom: {
+        label: "缩放",
+        actualSize: "实际尺寸",
+        fitArea: "适应编辑区",
+        fillArea: "充满编辑区",
+        fitWidth: "适配宽度",
+        custom: "自定义",
+    },
     snap: {
         label: "智能吸附",
         tip: "智能吸附至参考线与相邻元素（按住 Alt 可临时禁用）",
