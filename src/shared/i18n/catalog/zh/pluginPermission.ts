@@ -78,6 +78,7 @@ export const pluginPermission = {
             uiOverlay: "在游戏画面上叠加显示内容",
             assets: "解析游戏内置资源的地址",
             locale: "读取并跟随游戏语言",
+            storyCompile: "参与剧情的编译，并在它没有写过的台词上追加动作",
         },
     },
     button: {

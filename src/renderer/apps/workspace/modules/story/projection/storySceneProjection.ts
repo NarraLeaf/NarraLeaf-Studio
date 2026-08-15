@@ -347,6 +347,12 @@ function formatAction(
                     : undefined;
         return `/camera ${payload.operation}${amount === undefined ? "" : ` ${amount}`}`;
     }
+    if (payload.action === "plugin") {
+        // The action id, not the plugin's label: this projection is the exported script, which has to
+        // round-trip through `#data` and be readable by whoever installs the plugin next - and the id
+        // is the only half of the pair the document actually holds.
+        return `/${payload.actionId}`;
+    }
     return `/effect ${payload.effect}`;
 }
 

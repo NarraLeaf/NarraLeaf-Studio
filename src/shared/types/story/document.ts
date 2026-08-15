@@ -106,7 +106,19 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // older Studio reads it as an ordinary group with no children and compiles nothing, which is not a
 // wrong answer, only an incomplete one. It rides along because the two shipped together and one
 // stamp cannot describe half a document.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 16 as const;
+// v17 brings back the `{action:"plugin"}` marker block - the row a plugin's story action inserts and
+// its own compile pass reads back. This is the second time the shape exists: v11 added it, the
+// feature was withdrawn, and the number stayed spent (see above). What is different now is the only
+// thing that was wrong then - there is a consumer. The shape is unchanged from v11's, deliberately,
+// so a project written during that window migrates by the stamp alone.
+// No migration step: no document written before this can contain the block, and a v11 one already
+// carries it in exactly this shape.
+// The bump is not optional, and the failure it prevents is the silent kind. A v16 Studio meets an
+// `action` it has never heard of, falls through `compileStoryAction`'s chain to the `/effect`
+// fallback, and emits an effect with an `undefined` name: the marker vanishes and every darken its
+// pass would have injected vanishes with it, in a scene that otherwise compiles and plays. Refusing
+// the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 17 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -770,7 +782,47 @@ export type StoryActionPayload =
           action: "blueprint";
           /** Owner blueprint id of the implicit Story Action Blueprint bound 1:1 to this action. */
           blueprintId: string;
+      }
+    | {
+          /**
+           * A marker a plugin's story action left behind, for that same plugin's compile pass to read.
+           *
+           * This is the one block kind whose meaning lives outside the document, and the exception is
+           * deliberate. Everything else a plugin contributes through `story.actions` is a standard
+           * block: the action is a *shortcut for typing*, and once typed the document owes the plugin
+           * nothing - uninstall it and the scene still plays. A marker cannot work that way, because
+           * what it asks for is not a thing that happens at one point in the scene but a rule about
+           * every line after it, and no fixed set of rows expresses that while the author keeps
+           * editing. So the row records the *request* and the plugin's pass answers it at compile
+           * time.
+           *
+           * The consequence is a real dependency, and it is declared rather than discovered:
+           * `ProjectDependencyService` scans these blocks and reports the plugin as required, so a
+           * project that would compile differently without it says so before the build, not after.
+           * A marker whose plugin is absent compiles to nothing and lints as a missing dependency -
+           * never to a guess about what it meant.
+           */
+          action: "plugin";
+          /** The plugin that owns this marker. The document hard-depends on it; see above. */
+          pluginId: string;
+          /** The plugin's story-action id, itself namespaced by `pluginId`. */
+          actionId: string;
+          /**
+           * What the author filled in on the row, for the owning pass to interpret. Studio never
+           * reads inside it - the keys are the plugin's vocabulary - so it is only constrained to be
+           * JSON, which is what makes the row survive a round trip through the project file.
+           */
+          params: Record<string, StoryPluginActionParamValue>;
       };
+
+/** A JSON-serializable parameter value carried by a `{action:"plugin"}` block. */
+export type StoryPluginActionParamValue =
+    | string
+    | number
+    | boolean
+    | null
+    | StoryPluginActionParamValue[]
+    | { [key: string]: StoryPluginActionParamValue };
 
 /** Mirrors NLR's `VfxBlendMode`; the compiler passes it straight through to the overlay's CSS. */
 export type StoryVfxBlendMode = "normal" | "screen" | "multiply" | "lighten" | "color-dodge" | "overlay";
