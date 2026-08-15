@@ -304,8 +304,6 @@ export function RectangleChromeRenderer({
         boxSizing: "border-box",
         position: "relative",
         ...extraRootStyle,
-        // A stacking context, so the layer's negative z-index stays inside this widget.
-        ...(fillLayerActive ? FILL_LAYER_ROOT_STYLE : {}),
     };
 
     const tx = Number.isFinite(props.transformOffsetX) ? props.transformOffsetX : 0;
@@ -466,6 +464,33 @@ export function RectangleChromeRenderer({
         interactionOverride?.kind === "imageCrop" &&
         interactionOverride.elementId === element.id;
 
+    /**
+     * Whether anything inside this chrome paints at a negative z-index - the fill layer, or an image
+     * fill (see `imageFillZIndex`). Both use one to sit between the root's own background and the
+     * widget's in-flow content, which is the only step of the painting order a fill belongs in.
+     *
+     * A negative z-index escapes every ancestor that is not a stacking context, and would then paint
+     * behind the whole surface rather than behind this widget's content, so the root has to be one.
+     * The root's `transform` cannot be relied on to form it: Motion writes `transform: none` as soon
+     * as every transform value sits at its default, so the stacking context would come and go with
+     * the widget's offset. `isolation` says it outright, and costs no compositing layer.
+     *
+     * **Stated only while something is actually down there.** Making the root a stacking context
+     * unconditionally would confine a descendant's `mix-blend-mode` to this widget's own contents for
+     * every rectangle in the editor, including the many that paint a flat colour and have nothing at
+     * a negative z-index at all. Crop editing is excluded for the same reason it keeps `z-index:
+     * auto` on the image: there, the image is above the content on purpose.
+     *
+     * It is assigned here rather than in the `style` literal because `isCropEditing` is not known
+     * that early, and after `extraRootStyle` so that no caller can opt out of it.
+     */
+    const paintsBelowContent =
+        fillLayerActive ||
+        (shouldRenderImage && Boolean(displayUrl) && Boolean(activeMode) && activeMode !== "tile" && !isCropEditing);
+    if (paintsBelowContent) {
+        Object.assign(style, FILL_LAYER_ROOT_STYLE);
+    }
+
     // `overflow: hidden` on the same node clips `box-shadow` and can trim `filter` / `backdrop-filter` output.
     const hasChromeVisualOverflowEffects =
         Boolean(composedEffects.rootBoxShadow && composedEffects.rootBoxShadow !== "none") ||
@@ -556,6 +581,20 @@ export function RectangleChromeRenderer({
             return null;
         }
         const imagePointerEvents = activeMode === "crop" || isCropEditing ? "auto" : "none";
+        /*
+         * A fill belongs between the chrome's own background and the widget's content. CSS paints a
+         * positioned descendant above in-flow, non-positioned content whatever the DOM order, so an
+         * `<img>` at `z-index: auto` covers a button's label or a text widget's text; only a negative
+         * z-index paints in the step right after the root's own background, which is where a fill
+         * goes. The root is `isolation: isolate` so this cannot escape the widget.
+         *
+         * Crop editing is the deliberate exception: the author drags this very image, so it stays in
+         * the ordinary positioned order. That keeps it hit-testable above the content it is being
+         * dragged over, and keeps `ui-image-crop-mask` - its next sibling, also `z-index: auto` -
+         * painting above it, which is the only reason the area outside the box looks dimmed. Any
+         * explicit z-index here, even `0`, would lift the image over that mask.
+         */
+        const imageFillZIndex = isCropEditing ? undefined : -1;
         if (activeMode === "crop") {
             const placement = ensureCropPlacement(activeFill);
             const cropMotionAnimate = {
@@ -573,6 +612,7 @@ export function RectangleChromeRenderer({
                 transform: imageFillTransform,
                 transformOrigin: "center center",
                 pointerEvents: imagePointerEvents,
+                zIndex: imageFillZIndex,
                 left: cropMotionAnimate.left,
                 top: cropMotionAnimate.top,
                 width: cropMotionAnimate.width,
@@ -603,6 +643,7 @@ export function RectangleChromeRenderer({
                             transform: imageFillTransform,
                             transformOrigin: "center center",
                             pointerEvents: imagePointerEvents,
+                            zIndex: imageFillZIndex,
                         }}
                     />
                 );
@@ -630,6 +671,7 @@ export function RectangleChromeRenderer({
             transform: imageFillTransform,
             transformOrigin: "center center",
             pointerEvents: imagePointerEvents,
+            zIndex: imageFillZIndex,
             opacity: imageAnimate.opacity,
             borderTopLeftRadius: imageAnimate.borderTopLeftRadius,
             borderTopRightRadius: imageAnimate.borderTopRightRadius,
@@ -657,6 +699,7 @@ export function RectangleChromeRenderer({
                         transform: imageFillTransform,
                         transformOrigin: "center center",
                         pointerEvents: imagePointerEvents,
+                        zIndex: imageFillZIndex,
                     }}
                 />
             );
