@@ -1,5 +1,5 @@
 import type { StoryBlockId, StoryScene } from "@shared/types/story";
-import type { NarralangIssue, NarralangIssueReason, NarralangLookups } from "@/lib/story/narralang/narralangPrinter";
+import type { NarralangIssue, NarralangIssueDetail, NarralangIssueReason, NarralangLookups } from "@/lib/story/narralang/narralangPrinter";
 import { describeStoryBlock, type StoryRowLookups } from "@/lib/story/storyRowProjection";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { exportFileName } from "../script/storyScriptIo";
@@ -60,8 +60,13 @@ export type NarralangIssueRow = {
     sceneName: string;
     /** The row as a sentence - `describeStoryBlock`, the same one the editor's row list shows. */
     description: string;
-    /** Every reason this row hit, first occurrence first. A row can fail more than one way. */
-    reasons: NarralangIssueReason[];
+    /**
+     * Every reason this row hit, first occurrence first. A row can fail more than one way, and the
+     * same reason twice for different things - a row naming a missing asset AND a missing character
+     * is two entries, because "points at something that no longer exists" twice would read as a
+     * repeat rather than as two separate dangling references.
+     */
+    reasons: { reason: NarralangIssueReason; detail?: NarralangIssueDetail }[];
 };
 
 /**
@@ -85,8 +90,8 @@ export function narralangIssueRows(
     for (const issue of issues) {
         const existing = byBlockId.get(issue.blockId);
         if (existing) {
-            if (!existing.reasons.includes(issue.reason)) {
-                existing.reasons.push(issue.reason);
+            if (!existing.reasons.some(held => held.reason === issue.reason && held.detail === issue.detail)) {
+                existing.reasons.push({ reason: issue.reason, detail: issue.detail });
             }
             continue;
         }
@@ -101,7 +106,7 @@ export function narralangIssueRows(
             // The row's own sentence, resolved through the same lookups the printer ran on, so the
             // report names a background by its asset name rather than by what the payload stores.
             description: describeStoryBlock(block, { ...lookups, scene }),
-            reasons: [issue.reason],
+            reasons: [{ reason: issue.reason, detail: issue.detail }],
         };
         byBlockId.set(issue.blockId, row);
         rows.push(row);

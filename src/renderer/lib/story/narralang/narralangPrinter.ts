@@ -49,7 +49,7 @@ import {
 import { narralangName } from "./narralangSyntax";
 import { renderNarralangShape } from "./narralangRender";
 
-export type { NarralangIssue, NarralangIssueReason, NarralangLookups } from "./narralangExtract";
+export type { NarralangIssue, NarralangIssueDetail, NarralangIssueReason, NarralangLookups } from "./narralangExtract";
 
 export type NarralangSceneResult = {
     /** The script. Always produced, even for a scene with issues - export is one-way and best effort. */

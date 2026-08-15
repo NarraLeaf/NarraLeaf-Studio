@@ -97,11 +97,30 @@ export type NarralangIssueReason =
     /** A payload shape this extractor does not know. Defensive: a new action kind lands here first. */
     | "unknownPayload";
 
+/**
+ * What kind of thing an issue is about.
+ *
+ * Closed, so a surface can turn it into a sentence in the author's language. It was a free `string`
+ * first, which meant the export report could only say "this row points at something that no longer
+ * exists" - true, and useless when the author has to guess whether the something is an asset or a
+ * character. A union makes the report specific and makes a new value a compile error at every
+ * consumer rather than a key that quietly falls back to itself.
+ */
+export type NarralangIssueDetail =
+    | "asset"
+    | "character"
+    | "appearance"
+    | "motion"
+    | "scene"
+    | "variable"
+    | "variant"
+    | "camera";
+
 export type NarralangIssue = {
     blockId: StoryBlockId;
     reason: NarralangIssueReason;
-    /** A short, already-resolved noun for the thing at fault. Never an id. */
-    detail?: string;
+    /** What the issue is about, when the reason alone does not say. Never an id. */
+    detail?: NarralangIssueDetail;
 };
 
 /**
@@ -121,7 +140,7 @@ export type NarralangLookups = StoryRowLookups & {
 export type NarralangExtractContext = {
     scene: StoryScene;
     lookups: NarralangLookups;
-    report: (blockId: StoryBlockId, reason: NarralangIssueReason, detail?: string) => void;
+    report: (blockId: StoryBlockId, reason: NarralangIssueReason, detail?: NarralangIssueDetail) => void;
 };
 
 // --- Value constructors ----------------------------------------------------------------------------

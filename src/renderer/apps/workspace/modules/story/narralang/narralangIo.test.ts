@@ -89,7 +89,14 @@ describe("narralang issue rows", () => {
 
         // Two rows, not four issues: the heading counts rows the author has to go and find.
         expect(rows.map(row => row.blockId)).toEqual(["b1", "b2"]);
-        expect(rows[0].reasons).toEqual(["unresolvedRef", "inlineEvent"]);
+        // Three entries from two distinct reasons: a row naming both a missing asset and a missing
+        // character is two dangling references, and collapsing them would read as one repeated
+        // complaint rather than two things to go and fix.
+        expect(rows[0].reasons).toEqual([
+            { reason: "unresolvedRef", detail: "asset" },
+            { reason: "unresolvedRef", detail: "character" },
+            { reason: "inlineEvent", detail: undefined },
+        ]);
         expect(rows[0].description).toBe("The corridor is orange.");
     });
 

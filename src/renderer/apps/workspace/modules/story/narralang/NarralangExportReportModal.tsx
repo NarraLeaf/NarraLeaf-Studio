@@ -53,11 +53,19 @@ export function NarralangExportReportModal(props: {
                                     )}
                                     <span className="min-w-0 flex-1 truncate">{row.description}</span>
                                 </div>
-                                {row.reasons.map(reason => (
-                                    <div key={reason} className={NOTE}>
+                                {row.reasons.map(({ reason, detail }) => (
+                                    <div key={`${reason}:${detail ?? ""}`} className={NOTE}>
                                         <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
                                         <span className="min-w-0 flex-1">
-                                            {t(`story.narralang.reason.${reason}` as TranslationKey)}
+                                            {/* A dangling reference is the reason an author meets most, and the
+                                                generic sentence leaves them guessing whether the missing thing is
+                                                an asset or a character. Only this reason carries a detail worth
+                                                naming; the rest say all they can from the reason alone. */}
+                                            {reason === "unresolvedRef" && detail
+                                                ? t("story.narralang.unresolvedRefNamed", {
+                                                    what: t(`story.narralang.detail.${detail}` as TranslationKey),
+                                                })
+                                                : t(`story.narralang.reason.${reason}` as TranslationKey)}
                                         </span>
                                     </div>
                                 ))}
