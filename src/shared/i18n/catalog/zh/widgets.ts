@@ -175,7 +175,6 @@ export const widgets = {
     text: {
         title: "文本",
         localizeText: "本地化文本",
-        runtimeTextHelp: "游戏运行时由剧情提供这行文本。",
     },
     frame: {
         title: "页面",

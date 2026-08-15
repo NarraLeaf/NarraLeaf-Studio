@@ -115,6 +115,15 @@ export class StoryService extends Service<StoryService> implements IStoryService
     });
     private readonly storyAssetLocks = new Map<StoryId, Map<string, StoryAssetLockEntry>>();
     private readonly pluginActions = new Map<string, StoryPluginActionRegistration>();
+    /**
+     * actionId -> the plugin that registered it.
+     *
+     * Kept beside the registration rather than inside it because the registration is the plugin
+     * author's object, and this is the host's own bookkeeping: the dependency scanner needs to say
+     * which plugin a `{action:"plugin"}` row belongs to even for an action whose registration has
+     * since gone away with an uninstall.
+     */
+    private readonly pluginActionOwners = new Map<string, string>();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -678,7 +687,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.events.on("animationsChanged", handler);
     }
 
-    public registerPluginAction(registration: StoryPluginActionRegistration): () => void {
+    public registerPluginAction(registration: StoryPluginActionRegistration, ownerPluginId?: string): () => void {
         const actionId = registration.id.trim();
         if (!actionId) {
             throw new RendererError("Plugin action id is required");
@@ -686,8 +695,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
         if (this.pluginActions.has(actionId)) {
             throw new RendererError(`Plugin action already registered: ${actionId}`);
         }
+        if (typeof registration.createBlock !== "function") {
+            // Refuse at registration rather than at insert. Without this the action reaches the
+            // palette and fails only when an author picks it - an error in their hands, about a
+            // plugin they did not write, at the one moment they were trying to write a line.
+            throw new RendererError(`Plugin action must supply createBlock: ${actionId}`);
+        }
         const normalized = { ...registration, id: actionId };
         this.pluginActions.set(actionId, normalized);
+        if (ownerPluginId) {
+            this.pluginActionOwners.set(actionId, ownerPluginId);
+        }
         this.emitPluginActionsChanged();
         return () => {
             this.unregisterPluginAction(actionId);
@@ -695,11 +713,18 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public unregisterPluginAction(actionId: string): boolean {
-        const removed = this.pluginActions.delete(actionId.trim());
+        const id = actionId.trim();
+        const removed = this.pluginActions.delete(id);
+        this.pluginActionOwners.delete(id);
         if (removed) {
             this.emitPluginActionsChanged();
         }
         return removed;
+    }
+
+    /** Plugin ids currently contributing at least one story action, for the dependency scanner. */
+    public getContributingPluginIds(): string[] {
+        return [...new Set(this.pluginActionOwners.values())];
     }
 
     public getPluginAction(actionId: string): StoryPluginActionRegistration | undefined {

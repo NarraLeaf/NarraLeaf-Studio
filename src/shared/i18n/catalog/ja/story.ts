@@ -100,6 +100,50 @@ export const story = {
             speakerUnresolved: "この行はキャラクターと結びついていないので、元の話者名を残した。文のほうは変わっている",
         },
     },
+    // NarraLang の書き出し。ストーリーをスクリプトとして読み、差分を取るためのもの。一方向なので、
+    // スクリプトで言えない行は拒まずに報告し、ファイルはどちらにせよ書く。`reason` は印刷側の
+    // コードをキーにしているので、新しいコードは、生の識別子として作者に届く前に突き合わせの
+    // テストで落ちる。
+    narralang: {
+        exportScene: "NarraLang として書き出す…",
+        exportStory: "ストーリーを NarraLang として書き出す…",
+        sceneMissing: "このシーンはもうストーリーに無い",
+        reportTitle: "スクリプトの書き方が無い行",
+        reportSummary: {
+            other: "{count} 行にスクリプトの書き方が無い。ファイルはその内容をすべては持っていない",
+        },
+        unresolvedRefNamed: "この行が指している{what}はもう無い",
+        detail: {
+            asset: "アセット",
+            character: "キャラクター",
+            appearance: "外見",
+            motion: "ストーリーモーション",
+            scene: "シーン",
+            variable: "変数",
+            variant: "ビルドバリアント",
+            camera: "カメラ位置",
+        },
+        reason: {
+            blueprintAction: "この行はブループリントが実行する。ブループリントにスクリプトの書き方は無い",
+            blueprintCondition: "この条件はブループリントが決める",
+            blueprintInterpolation: "文の中の値をブループリントが計算する",
+            inlineEvent: "文が、表示していく途中で発生するイベントを持っている",
+            invalidRow: "この行のコマンドを読めなかったので、そのまま書き出した",
+            customTransform: "この動きはコマ単位で作られているか、スクリプトが名前を持たないプロパティを含む",
+            customTransition: "この切り替えは、スクリプトが名前を持たないプロパティを含む",
+            effectProps: "この効果は、スクリプトが名前を持たないプロパティを含む",
+            unresolvedRef: "この行が指しているものはもう無い",
+            unknownPayload: "この種類の行はスクリプトがまだ扱わない",
+        },
+        view: {
+            open: "スクリプトとして読む",
+            close: "行に戻る",
+            readOnly: "スクリプト表示は読むだけで、シーンには書き戻さない",
+            gate: {
+                other: "{count} 行にスクリプトの書き方が無いので、このシーンは今後もここでは編集できない",
+            },
+        },
+    },
     // 文のかたまりをシーンに貼り付ける。ウィザードが尋ねるのは誰が話しているかの 1 点だけで、
     // 答えはプロジェクトごとに覚えるので、第 2 章は第 1 章の判断が入った状態で開く。
     paste: {
@@ -904,6 +948,7 @@ export const story = {
         vfx: "環境演出",
         nvl: "NVL",
         blueprint: "ブループリント",
+        plugin: "プラグイン",
         effect: "エフェクト",
         camera: "カメラ",
         control: "制御",
@@ -960,6 +1005,7 @@ export const story = {
         vfx: "環境演出 {name} を{operation}",
         nvl: "NVL ブロック",
         blueprint: "ブループリント",
+        pluginAction: "プラグインアクション",
         effect: "{effect} の画面演出",
         cameraOp: {
             pan: "パン",
