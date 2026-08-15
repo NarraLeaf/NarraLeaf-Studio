@@ -99,6 +99,17 @@ export const story = {
         reportSummary: {
             other: "有 {count} 行没有对应的脚本写法，文件中不含它们的完整内容",
         },
+        unresolvedRefNamed: "该行指向的{what}已不存在",
+        detail: {
+            asset: "资产",
+            character: "角色",
+            appearance: "外观",
+            motion: "故事动效",
+            scene: "场景",
+            variable: "变量",
+            variant: "构建变体",
+            camera: "镜头位置",
+        },
         reason: {
             blueprintAction: "该行由蓝图执行，蓝图没有对应的脚本写法",
             blueprintCondition: "该条件由蓝图判定",

@@ -497,6 +497,25 @@ export function buildNarralangBlock(
     return isFail(built) ? built : { ok: true, draft: built, warnings };
 }
 
+/**
+ * A `json` declaration's default, read back from the string the script carries it in.
+ *
+ * Kept deliberately total: a default that does not parse is left as the string it was written as
+ * rather than dropped or turned into a diagnostic. The value is authoring data with no runtime
+ * meaning until the variable is read, and refusing the whole declaration over a malformed default
+ * would lose the variable itself - which is the thing the rest of the scene refers to.
+ */
+function jsonDefaultOf(value: StoryLiteralValue | undefined): StoryLiteralValue | undefined {
+    if (typeof value !== "string") {
+        return value;
+    }
+    try {
+        return JSON.parse(value) as StoryLiteralValue;
+    } catch {
+        return value;
+    }
+}
+
 function buildDraft(
     ctx: NarralangBuildContext,
     verb: NarralangVerb,
@@ -706,7 +725,14 @@ function buildDraft(
                     scope,
                     name,
                     valueType,
-                    defaultValue: literalOf(slots, "value")?.value,
+                    // A `json` default is a whole value, and a script has one place to put one: a
+                    // quoted string. The printer writes `JSON.stringify(value)` there, so this is the
+                    // only slot whose declared type decides how its literal is read. A default that
+                    // does not parse stays the string it was written as, which is what the inspector's
+                    // own editor would hold for a malformed one.
+                    defaultValue: valueType === "json"
+                        ? jsonDefaultOf(literalOf(slots, "value")?.value)
+                        : literalOf(slots, "value")?.value,
                     description: stringOf(slots, "description"),
                     // The row IS the variable, so its own id is the stable key - the default the
                     // declaration model documents.

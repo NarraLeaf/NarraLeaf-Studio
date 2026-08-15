@@ -114,6 +114,17 @@ export const story = {
             one: "{count} row has no script form. The file does not carry it in full.",
             other: "{count} rows have no script form. The file does not carry them in full.",
         },
+        unresolvedRefNamed: "This row points at {what} that no longer exists.",
+        detail: {
+            asset: "an asset",
+            character: "a character",
+            appearance: "an appearance",
+            motion: "a motion",
+            scene: "a scene",
+            variable: "a variable",
+            variant: "a build variant",
+            camera: "a camera position",
+        },
         reason: {
             blueprintAction: "A blueprint runs this row, and a blueprint has no script form.",
             blueprintCondition: "A blueprint decides this condition.",

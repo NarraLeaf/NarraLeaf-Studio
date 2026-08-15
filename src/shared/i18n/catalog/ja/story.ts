@@ -112,6 +112,17 @@ export const story = {
         reportSummary: {
             other: "{count} 行にスクリプトの書き方が無い。ファイルはその内容をすべては持っていない",
         },
+        unresolvedRefNamed: "この行が指している{what}はもう無い",
+        detail: {
+            asset: "アセット",
+            character: "キャラクター",
+            appearance: "外見",
+            motion: "ストーリーモーション",
+            scene: "シーン",
+            variable: "変数",
+            variant: "ビルドバリアント",
+            camera: "カメラ位置",
+        },
         reason: {
             blueprintAction: "この行はブループリントが実行する。ブループリントにスクリプトの書き方は無い",
             blueprintCondition: "この条件はブループリントが決める",

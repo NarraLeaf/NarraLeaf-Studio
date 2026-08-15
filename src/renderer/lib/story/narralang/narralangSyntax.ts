@@ -90,6 +90,15 @@ export function escapeNarralangProse(
         out = replaceAll(out, separator, `${mark}${separator}`);
     }
 
+    // The pass above matches the separator FOLLOWED BY A SPACE, so a line that merely ends in one
+    // slips through - and `他说:` then reads back as a speaker with nothing to say. Narration only:
+    // an option ending in the separator is handled by the block-marker rule at the foot of this
+    // function (they are the same character in the default dialect, and escaping twice would leave a
+    // stray mark), and a note is already claimed by its own prefix.
+    if (context === "narration" && out.endsWith(dialect.speakerSeparator)) {
+        out = `${out.slice(0, -dialect.speakerSeparator.length)}${mark}${dialect.speakerSeparator}`;
+    }
+
     // An option's text is a line of its own, so it can be misread exactly as narration can - and the
     // rule was missing here, which made an option beginning with a keyword print unescaped and read
     // back as that statement. A note needs none of this: its own prefix already says what the line is.
@@ -214,6 +223,13 @@ export function narralangLiteral(value: StoryLiteralValue, dialect: NarralangDia
     }
     if (value === null || value === undefined) {
         return "null";
+    }
+    // An array or an object - what a `json` variable holds. `String(value)` turned these into
+    // `[object Object]`, which is not a value, not reversible, and not even readable; the command
+    // line already spells a json default as quoted JSON (`/local inv "[1, 2]" type=json`), so this
+    // is the spelling an author has already met.
+    if (typeof value === "object") {
+        return narralangString(JSON.stringify(value), dialect);
     }
     return narralangString(String(value), dialect);
 }

@@ -456,6 +456,18 @@ const corpus: Record<string, StoryScene> = {
         { id: "h11", kind: "nodeAction", payload: { action: "choiceOption", text: text("show me the money", "choiceText") } },
     ] as never),
 
+    // Two escaping/printing gaps found on a real project, both of the same family: a value the
+    // printer wrote verbatim that the reader could not take back.
+    "prose ending in the speaker separator, and a json default": scene([
+        // `他说:` printed bare and read back as a speaker with nothing to say - the separator escape
+        // matched "separator + space" and a line merely ENDING in one slipped through.
+        { id: "j1", kind: "nodeAction", payload: { action: "narration", text: text("他说:", "narration") } },
+        { id: "j2", kind: "nodeAction", payload: { action: "narration", text: text("他说: 你好，她说: 再见", "narration") } },
+        // `String(value)` on an object is `[object Object]` - not a value, not reversible, not readable.
+        { id: "j3", kind: "declaration", payload: { scope: "scene", name: "inv", valueType: "json", defaultValue: [1, 2], storageKey: "j3" } },
+        { id: "j4", kind: "declaration", payload: { scope: "scene", name: "flags", valueType: "json", defaultValue: { a: true }, storageKey: "j4" } },
+    ] as never),
+
     "disabled rows and an invalid one": scene([
         { id: "i1", kind: "action", payload: { action: "wait", mode: "duration", durationMs: 1500 }, disabled: true },
         { id: "i2", kind: "nodeAction", payload: { action: "narration", text: text("这一行被关掉了", "narration") }, disabled: true },
