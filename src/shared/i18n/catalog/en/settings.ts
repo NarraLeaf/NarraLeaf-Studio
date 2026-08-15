@@ -10,6 +10,15 @@ export const settings = {
     persistFailed: "Failed to persist setting",
     resetToDefault: "Reset to default",
     customColor: "Custom color…",
+    // The download-source chooser (SettingValueType.Source): the sources Studio knows the address
+    // of, then the field for one it does not.
+    source: {
+        official: "Official source",
+        // The same empty stored value as `official`, worded for a build mirror: nothing is being
+        // chosen there, the download just goes to where the tool publishes.
+        noMirror: "No mirror",
+        chinaMirror: "Mirror in China",
+    },
     // The font chooser (SettingFontPicker): presets plus whatever is installed on this computer.
     fontPicker: {
         searchPlaceholder: "Search fonts…",
@@ -209,23 +218,23 @@ export const settings = {
         },
         electronMirror: {
             label: "Electron download mirror",
-            description: "Mirror for downloading Electron. Leave empty to use the official source.",
+            description: "Mirror for downloading Electron.",
         },
         electronBuilderBinariesMirror: {
             label: "Build tooling mirror",
             description:
-                "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers). Leave empty to use the official source.",
+                "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers).",
         },
         downloadRewrites: {
             label: "Download address rewrites",
         },
         pluginRegistryUrl: {
             label: "Plugin registry URL",
-            description: "Where the plugin store looks. Leave empty to use the official NarraLeaf registry.",
+            description: "Where the plugin store looks for its index.",
         },
         uiTemplateRegistryUrl: {
             label: "UI template registry URL",
-            description: "Where the template store looks. Leave empty to use the official NarraLeaf registry.",
+            description: "Where the template store looks for its index.",
         },
         checkpointInterval: {
             label: "Automatic checkpoint interval",
