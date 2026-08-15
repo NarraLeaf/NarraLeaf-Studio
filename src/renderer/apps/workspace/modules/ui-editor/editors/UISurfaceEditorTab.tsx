@@ -43,6 +43,8 @@ import {
     usePreviewAspectId,
     usePreviewSafeAreaId,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
+import { useSurfaceViewportZoom } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceViewportZoom";
+import { SurfaceZoomMenu } from "@/apps/workspace/modules/ui-editor/editors/SurfaceZoomMenu";
 import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
 import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceImageDrop";
 import { useSurfaceDoubleClick } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceDoubleClick";
@@ -55,7 +57,11 @@ import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/e
 import { SurfaceAlignTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceAlignMenu";
 import { SurfacePreviewFramesTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
 import { SurfacePreviewFramesReadout } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesReadout";
-import { readProjectMobileOrientation } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
+import {
+    readProjectMobileOrientation,
+    readProjectStageFit,
+    readProjectViewportConfig,
+} from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
 import { SurfacePreviewFramesOverlay } from "@/lib/ui-editor/preview/SurfacePreviewFramesOverlay";
 import { listInsertPaletteModules } from "@/lib/ui-editor/widget-modules/insertPalette";
 import { MOVEABLE_DOUBLE_CLICK_TARGET_SELECTOR } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
@@ -158,6 +164,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const previewSafeAreaId = usePreviewSafeAreaId(stateService);
     // What the shells lock to, which is what decides which edge a device inset lands on.
     const mobileOrientation = readProjectMobileOrientation(context);
+    // Whether the build letterboxes or crops; both frames read differently under `cover`.
+    const stageFit = readProjectStageFit(context);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
     /**
      * A palette edit repaints the canvas for the same reason a document edit does, and is invisible
@@ -348,6 +356,19 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         [freeze.frozen, freeze.reason],
     );
 
+    // Opening an interface shows all of it: the canvas is fitted to the free part of the editing
+    // area and centred there, and keeps answering whichever mode is in force while that area
+    // changes size - until the author zooms, pans or types a number, after which the view is theirs
+    // and only the zoom menu in the tool bar below puts it back on a mode.
+    const zoom = useSurfaceViewportZoom({
+        stateService,
+        surfaceId,
+        designSize: surface?.designSize,
+        viewportRef,
+        active,
+        enabled: Boolean(surface && stateService),
+    });
+
     const { createElementAtClientPoint, surfaceImageDropTargetProps, surfaceImageDropOverlayClass } =
         useSurfaceImageDrop({
             viewportRef,
@@ -485,9 +506,10 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                 surfaceId,
                 safeAreaId: previewSafeAreaId,
                 mobileOrientation,
+                viewport: readProjectViewportConfig(context),
             });
         })();
-    }, [devModeService, isComponentEdit, mobileOrientation, previewSafeAreaId, surfaceId, workspace]);
+    }, [context, devModeService, isComponentEdit, mobileOrientation, previewSafeAreaId, surfaceId, workspace]);
 
     const handleOpenSurfaceEditor = useCallback(
         (targetSurfaceId: string) => {
@@ -706,7 +728,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             type="button"
                             className={toolButtonClass(tool.kind === "select")}
                             onClick={handleSelectTool}
-                            title={t("uiEditor.editor.selectTool")}
+                            data-tip={t("uiEditor.editor.selectTool")} aria-label={t("uiEditor.editor.selectTool")}
                         >
                             <MousePointer2 className="w-4 h-4" />
                         </button>
@@ -714,16 +736,23 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             type="button"
                             className={toolButtonClass(tool.kind === "pan")}
                             onClick={handlePanTool}
-                            title={t("uiEditor.editor.panTool")}
+                            data-tip={t("uiEditor.editor.panTool")} aria-label={t("uiEditor.editor.panTool")}
                         >
                             <Move className="w-4 h-4" />
                         </button>
+                        <SurfaceZoomMenu
+                            scale={viewport.scale}
+                            fit={zoom.fit}
+                            applyFitMode={zoom.applyFitMode}
+                            setZoomScale={zoom.setZoomScale}
+                            enabled={Boolean(stateService)}
+                        />
                         <SurfaceEditorToolbarButtonGroup aria-label={t("uiEditor.snap.label")}>
                             <SurfaceEditorToolbarSegButton
                                 type="button"
                                 active={smartSnapEnabled}
                                 onClick={handleToggleSmartSnap}
-                                title={t("uiEditor.snap.tip")}
+                                data-tip={t("uiEditor.snap.tip")}
                                 aria-pressed={smartSnapEnabled}
                             >
                                 <Magnet className="h-4 w-4" />
@@ -748,7 +777,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             type="button"
                             className={toolButtonClass(false)}
                             onClick={handleStartCurrentSurface}
-                            title={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
+                            data-tip={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")} aria-label={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
                             disabled={!surfaceId || isComponentEdit}
                         >
                             <Play className="w-4 h-4" />
@@ -804,6 +833,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 aspectId={previewAspectId}
                                 safeAreaId={previewSafeAreaId}
                                 mobileOrientation={mobileOrientation}
+                                stageFit={stageFit}
                                 viewportScale={viewport.scale}
                             />
                             {documentService ? (
@@ -819,6 +849,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             aspectId={previewAspectId}
                             safeAreaId={previewSafeAreaId}
                             mobileOrientation={mobileOrientation}
+                            stageFit={stageFit}
                         />
                     </div>
 

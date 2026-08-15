@@ -387,7 +387,7 @@ export function ComponentLibraryPanel({
                                             />
                                             <div
                                                 className="min-w-0 flex-1 truncate text-left text-xs font-medium text-fg"
-                                                title={component.name}
+                                                data-tip={component.name}
                                             >
                                                 {component.name}
                                             </div>
@@ -413,7 +413,7 @@ export function ComponentLibraryPanel({
                                                 type="button"
                                                 className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-fill hover:text-fg"
                                                 onClick={event => openContextMenu(event, component, { selectComponent: false })}
-                                                title={t("uiEditor.componentLibrary.componentActions")}
+                                                data-tip={t("uiEditor.componentLibrary.componentActions")}
                                                 aria-label={t("uiEditor.componentLibrary.componentActions")}
                                             >
                                                 <MoreVertical className="h-3.5 w-3.5" />

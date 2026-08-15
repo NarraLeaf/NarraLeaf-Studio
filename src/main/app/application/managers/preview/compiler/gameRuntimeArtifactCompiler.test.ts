@@ -2,6 +2,7 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import { fileURLToPath } from "url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePackKey, runtimeSupportPath } from "@narraleaf/encryption";
 import {
@@ -15,7 +16,12 @@ import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph"
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY } from "@shared/types/blueprint/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
-import type { NormalizedPluginManifestV2, PluginBuildDependencyContribution } from "@shared/types/plugins";
+import type {
+    NormalizedPluginManifestV2,
+    PluginBuildConfigFieldContribution,
+    PluginBuildDependencyContribution,
+} from "@shared/types/plugins";
+import { validatePluginManifest } from "@shared/utils/pluginManifest";
 import { buildDependencySourcePath } from "../../../../../buildWorker/pluginBuildDependencies";
 import {
     compileGameRuntimeArtifact,
@@ -29,6 +35,10 @@ const SIDECAR_PLUGIN_ID = "acme.sidecar-plugin";
 const SIDECAR_ID = `${SIDECAR_PLUGIN_ID}.bridge`;
 const SIDECAR_DEPENDENCY_ID = `${SIDECAR_PLUGIN_ID}.redist`;
 const SIDECAR_PLATFORM_KEY = "windows-x64";
+/** The fixture package that declares one public field and one credential. */
+const BUILD_CONFIG_FIXTURE_ID = "narraleaf.steam-appid-fixture";
+/** A second declarer, so "a plugin reads its own values" is a claim with something to be wrong about. */
+const OTHER_CONFIG_PLUGIN_ID = "acme.other-config-plugin";
 const DISPLAYABLE_ANIMATION_FROM_EXPLICIT_PARAM = "__displayableAnimationFromExplicit";
 const CURRENT_ICON_PLATFORM = process.platform === "darwin"
     ? "macos"
@@ -143,6 +153,36 @@ describe("game runtime artifact compiler", () => {
         });
     });
 
+    it("puts the project's crash policy on the pack, which is how it reaches the game", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, { app: { crash: { policy: "log" } } });
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47321));
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.crash).toEqual({ policy: "log" });
+    });
+
+    it("falls back to showing the error for a project that never chose", async () => {
+        // Every build made before this setting existed behaved this way, so a project that has
+        // never opened the control must keep shipping what it already shipped.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47321));
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.crash).toEqual({ policy: "details" });
+    });
+
     it("copies plugin runtime entries into the pack", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
@@ -163,7 +203,9 @@ describe("game runtime artifact compiler", () => {
             contributes: {
                 blueprintNodes: ["acme.sample-plugin.node"],
                 widgets: [], tests: [], runtimeData: [], locales: [],
-                runtimeCapabilities: [], sidecars: [], buildDependencies: [],
+                runtimeCapabilities: [], sidecars: [], buildDependencies: [], buildConfig: [],
+                externalLinks: [],
+                network: [],
             },
             permissions: [],
         };
@@ -381,6 +423,98 @@ describe("game runtime artifact compiler", () => {
         await expect(fs.access(path.join(result.appDir, "sidecars"))).rejects.toThrow();
     });
 
+    /**
+     * What the author typed into the build dialog used to stop there: the values were checked
+     * before a build and then left behind in the project, so a plugin's own runtime could not learn
+     * the storefront id its build was configured with.
+     */
+    it("gives each plugin its own build config, resolved for the variant, with no secret in it", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const steam = await writeRuntimeOnlyPlugin(
+            path.join(tempDir, "plugins", BUILD_CONFIG_FIXTURE_ID),
+            await readFixtureManifest(),
+        );
+        const other = await writeRuntimeOnlyPlugin(
+            path.join(tempDir, "plugins", OTHER_CONFIG_PLUGIN_ID),
+            buildConfigManifest(OTHER_CONFIG_PLUGIN_ID, [
+                { key: "appId", label: "App id", type: "text", scope: "global" },
+                { key: "channel", label: "Channel", type: "text", scope: "variant" },
+            ]),
+        );
+        await fs.writeFile(
+            path.join(projectPath, "editor", "app-tags.json"),
+            JSON.stringify({
+                schemaVersion: 1,
+                pluginConfig: {
+                    [BUILD_CONFIG_FIXTURE_ID]: { appId: "480", buildToken: "handle-the-project-holds" },
+                    [OTHER_CONFIG_PLUGIN_ID]: { appId: "not-the-steam-one", channel: "stable" },
+                },
+                tags: [{
+                    id: "demo",
+                    name: "Demo",
+                    overrides: {},
+                    pluginConfig: { [OTHER_CONFIG_PLUGIN_ID]: { channel: "beta" } },
+                }],
+            }),
+            "utf-8",
+        );
+
+        const compile = async (appTag?: { id: string; name: string }) => (await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            runtimePlugins: [
+                pluginSource(steam, path.join(tempDir, "plugins", BUILD_CONFIG_FIXTURE_ID)),
+                pluginSource(other, path.join(tempDir, "plugins", OTHER_CONFIG_PLUGIN_ID)),
+            ],
+            ...(appTag ? { appTag } : {}),
+        })).pack;
+
+        const demo = await compile({ id: "demo", name: "Demo" });
+        // Two plugins both call a field `appId`, and each entry answers with its own author's value.
+        // A plugin reads the entry it was loaded from, so there is no route from one to the other.
+        expect(demo.plugins[0].buildConfig).toEqual({ appId: "480" });
+        expect(demo.plugins[1].buildConfig).toEqual({ appId: "not-the-steam-one", channel: "beta" });
+        // The handle for the secret is in the project record right beside the app id, and it is in
+        // neither entry - nor anywhere else in the pack a player can read.
+        expect(JSON.stringify(demo)).not.toContain("handle-the-project-holds");
+
+        // The demo's channel is the demo's; the release build reads the project's own.
+        const release = await compile();
+        expect(release.plugins[1].buildConfig).toEqual({ appId: "not-the-steam-one", channel: "stable" });
+    });
+
+    it("carries no build config for a plugin whose fields nobody filled in", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        const steam = await writeRuntimeOnlyPlugin(
+            path.join(tempDir, "plugins", BUILD_CONFIG_FIXTURE_ID),
+            await readFixtureManifest(),
+        );
+
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47344),
+            runtimePlugins: [pluginSource(steam, path.join(tempDir, "plugins", BUILD_CONFIG_FIXTURE_ID))],
+        });
+
+        // Absent rather than empty: never declared, never filled in and never built are one fact to
+        // the plugin, which is that it was told nothing.
+        expect(result.pack.plugins[0].buildConfig).toBeUndefined();
+    });
+
     it("produces an empty plugin list when no runtime plugins are supplied", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
@@ -545,7 +679,9 @@ describe("game runtime artifact compiler", () => {
             contributes: {
                 blueprintNodes: ["acme.sample-plugin.node"],
                 widgets: [], tests: [], runtimeData: [], locales: [],
-                runtimeCapabilities: [], sidecars: [], buildDependencies: [],
+                runtimeCapabilities: [], sidecars: [], buildDependencies: [], buildConfig: [],
+                externalLinks: [],
+                network: [],
             },
             permissions: [],
         };
@@ -642,8 +778,86 @@ describe("game runtime artifact compiler", () => {
             version: "1.2.3",
             author: "NarraLeaf",
             main: "main.js",
-            narraleaf: { mode: "production" },
+            // The shipped game reads userDataDir before it can open the pack, and
+            // names the player's directory after it rather than after productName,
+            // which a rename would move. See shared/utils/userDataLocation.ts.
+            narraleaf: { mode: "production", userDataDir: "fixture.project" },
         });
+    });
+
+    it("names the player's directory after the app id the build resolved", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            // What the build packages under; the manifest must agree with it
+            // rather than derive a second answer from the project fields.
+            appId: "com.studio.other",
+        });
+
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest.narraleaf.userDataDir).toBe("com.studio.other");
+    });
+
+    it("carries no ending page for a project that picks none", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47331));
+
+        // Absent is the behaviour every build had before the field existed, which is the story
+        // stopping with its last frame on screen.
+        expect(result.pack.endingSurfaceId).toBeUndefined();
+    });
+
+    it("carries the page the compiled variant ends on, and only that one", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await fs.writeFile(
+            path.join(projectPath, "editor", "app-tags.json"),
+            JSON.stringify({
+                schemaVersion: 1,
+                endingSurfaceId: "surface-credits",
+                tags: [
+                    { id: "demo", name: "Demo", overrides: {}, endingSurfaceId: "surface-thanks" },
+                    { id: "quiet", name: "Quiet", overrides: {}, endingSurfaceId: "" },
+                ],
+            }),
+            "utf-8",
+        );
+
+        const compile = async (appTag?: { id: string; name: string }) => (await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            ...(appTag ? { appTag } : {}),
+        })).pack;
+
+        expect((await compile({ id: "demo", name: "Demo" })).endingSurfaceId).toBe("surface-thanks");
+        expect((await compile()).endingSurfaceId).toBe("surface-credits");
+        // A variant that states it shows nothing carries no page, not the project's.
+        expect((await compile({ id: "quiet", name: "Quiet" })).endingSurfaceId).toBeUndefined();
     });
 
     it("marks preview app manifests with the preview mode", async () => {
@@ -661,6 +875,9 @@ describe("game runtime artifact compiler", () => {
             name: "narraleaf-preview-runtime",
             narraleaf: { mode: "preview" },
         });
+        // Preview keeps its userData beside the compiled app, so there is no
+        // per-user directory to name; the runtime falls back to that sibling.
+        expect(manifest.narraleaf.userDataDir).toBeUndefined();
     });
 
     it("rejects a runtime dist without a build manifest", async () => {
@@ -772,9 +989,67 @@ async function writeSidecarPlugin(input: {
                 },
             }],
             buildDependencies: input.buildDependencies ?? [],
+            buildConfig: [],
+            externalLinks: [],
+            network: [],
         },
         permissions: [],
     };
+}
+
+/**
+ * The fixture package's manifest, read off disk and put through the validator the installer uses.
+ * The declarations a build resolves are then the ones a real package would carry, rather than a
+ * literal that could drift from what the validator actually accepts.
+ */
+async function readFixtureManifest(): Promise<NormalizedPluginManifestV2> {
+    const manifestPath = path.join(
+        // Six levels up is src/; the fixture is shared with the manifest validator's own tests.
+        fileURLToPath(new URL("../../../../../../", import.meta.url)),
+        "shared", "utils", "__fixtures__", "plugins", BUILD_CONFIG_FIXTURE_ID, "manifest.json",
+    );
+    const result = validatePluginManifest(JSON.parse(await fs.readFile(manifestPath, "utf-8")));
+    if (!result.ok) {
+        throw new Error(`fixture manifest is not valid: ${result.error}`);
+    }
+    return result.manifest;
+}
+
+function buildConfigManifest(
+    id: string,
+    buildConfig: PluginBuildConfigFieldContribution[],
+): NormalizedPluginManifestV2 {
+    return {
+        manifestVersion: 2,
+        id,
+        name: id,
+        version: "1.0.0",
+        entries: { runtime: "runtime.js" },
+        contributes: {
+            blueprintNodes: [],
+            widgets: [],
+            tests: [],
+            runtimeData: [],
+            locales: [],
+            runtimeCapabilities: [],
+            sidecars: [],
+            buildDependencies: [],
+            buildConfig,
+            externalLinks: [],
+            network: [],
+        },
+        permissions: [],
+    };
+}
+
+/** A plugin package that is nothing but a runtime entry - enough for the compiler to copy. */
+async function writeRuntimeOnlyPlugin(
+    installDir: string,
+    manifest: NormalizedPluginManifestV2,
+): Promise<NormalizedPluginManifestV2> {
+    await fs.mkdir(installDir, { recursive: true });
+    await fs.writeFile(path.join(installDir, "runtime.js"), "export default {};", "utf-8");
+    return manifest;
 }
 
 function previewCompileInput(
@@ -822,6 +1097,7 @@ async function createMinimalProject(
     options: {
         assets?: Record<string, unknown>;
         blueprintDocument?: Record<string, unknown>;
+        app?: Record<string, unknown>;
     } = {},
 ): Promise<void> {
     await fs.mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
@@ -831,6 +1107,7 @@ async function createMinimalProject(
         JSON.stringify({
             name: "Fixture Project",
             identifier: "fixture.project",
+            ...(options.app ? { app: options.app } : {}),
             metadata: {
                 version: "1.2.3",
                 custom: true,

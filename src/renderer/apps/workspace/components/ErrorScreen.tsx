@@ -4,7 +4,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { Button, TitleBar } from "@/lib/components";
 import { useTranslation } from "@/lib/i18n";
 import { WindowAppType } from "@shared/types/window";
-import { copyTextToClipboard } from "@/lib/app/diagnostics/copyText";
+import { copyTextToClipboard } from "@shared/utils/copyText";
 import { buildDiagnosticsFileName, buildDiagnosticsReport } from "@/lib/app/diagnostics/diagnosticsReport";
 
 interface ErrorScreenProps {
@@ -211,7 +211,7 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                             type="button"
                             onClick={() => void handleCopy()}
                             className="absolute right-2 top-2 rounded-md p-1.5 text-danger/70 opacity-0 transition-opacity hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 group-hover:opacity-100 cursor-default"
-                            title={t("workspace.shell.errorCopyDetails")}
+                            data-tip={t("workspace.shell.errorCopyDetails")}
                             aria-label={t("workspace.shell.errorCopyDetails")}
                         >
                             {copied ? <ClipboardCheck className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}

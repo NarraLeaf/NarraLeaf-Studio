@@ -61,7 +61,7 @@ export function SettingColorPicker(props: {
                     : "conic-gradient(rgb(var(--nl-danger)), rgb(var(--nl-warning)), rgb(var(--nl-success)),"
                       + " rgb(var(--nl-primary)), rgb(var(--nl-binding)), rgb(var(--nl-danger)))",
             }}
-            title={label}
+            data-tip={label}
         >
             <ColorPickerTrigger
                 value={{ hex, alpha: 1 }}

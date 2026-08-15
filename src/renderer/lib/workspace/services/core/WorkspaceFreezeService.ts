@@ -2,6 +2,7 @@ import {
     freezeProjectWrites,
     getProjectWriteFreeze,
     observeProjectWriteFreeze,
+    thawForeignProjectWrites,
     thawProjectWrites,
     type WorkspaceFreezeReason,
 } from "@/lib/app/writeFreeze";
@@ -81,8 +82,15 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
         // A project switch re-runs init on the same singleton, and the latch is module-level: a
         // freeze armed for the project that just closed would otherwise refuse writes for the one
         // that just opened, on a path comparison that no longer matches anything.
+        //
+        // **Only another project's, though.** A project opened mid-merge is frozen by
+        // `workspaceProjectPreflight`, which runs before `Service.initializeAll` because it has to
+        // be in place before the first document is parsed. Clearing the latch unconditionally here
+        // threw that freeze away every time - the workspace came up writable over a conflicted tree,
+        // which is the one state this whole mechanism exists to prevent (see
+        // `thawForeignProjectWrites`).
         this.unobserve?.();
-        thawProjectWrites();
+        thawForeignProjectWrites(ctx.project.getConfig().projectPath);
         // Same argument for the read side: a source installed for the project that just closed would
         // answer this one's reads out of a repository it has nothing to do with.
         this.dropSource();

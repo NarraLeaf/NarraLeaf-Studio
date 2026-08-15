@@ -2,7 +2,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import { isValidLocaleCode, localeAutonym } from "@shared/types/localization";
 import { parseStageSize, stageOrientation } from "@shared/types/stageSize";
-import { DEFAULT_NETWORK_CONFIGURATION } from "@/lib/workspace/project/configuration";
+import { DEFAULT_MOBILE_CONFIGURATION, DEFAULT_NETWORK_CONFIGURATION } from "@/lib/workspace/project/configuration";
 import type { ProjectAppConfiguration } from "@/lib/workspace/project/configuration";
 import { ProjectData } from "../types";
 import { encodeProjectConfig, getProjectConfigFileName } from "@shared/utils/nlproj";
@@ -10,6 +10,7 @@ import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { BaseFileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { BaseProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { join } from "@shared/utils/path";
+import { VCS_PROJECT_CREATED_MESSAGE } from "@shared/vcs/systemRevisionMessage";
 import { WindowAppType } from "@shared/types/window";
 import { throwException } from "@shared/utils/error";
 import { EMPTY_ASSET_ORDER_TEXT } from "@/lib/workspace/services/assets/assetOrder";
@@ -183,7 +184,12 @@ export class ProjectService {
             // the start. This is the last row of the history forever, so it should say what
             // happened. Not localized: a revision message is repository DATA, read by other
             // clients and by this project's collaborators, not this window's chrome.
-            const result = await getInterface().vcs.initRepository(projectPath, { message: "Create project" });
+            // Imported rather than written here: the rail recognises Studio's own sentences to read
+            // them back in the author's language, and this one being a literal in the wizard is how
+            // every project created through it got an English line at the bottom of its history.
+            const result = await getInterface().vcs.initRepository(projectPath, {
+                message: VCS_PROJECT_CREATED_MESSAGE,
+            });
             if (!result.success) {
                 console.warn("[Wizard] Project created, but version control could not be enabled:", result.error);
             }
@@ -273,7 +279,10 @@ function buildAppConfiguration(
         // a second control that agrees with the stage size in every case but the one where somebody
         // set them apart by accident is not a choice, it is a way to be inconsistent. The project
         // panel still offers `auto` for anyone who wants it.
-        mobile: { orientation: stageOrientation(designSize) },
+        // Fit and crop anchor come from the defaults: a new project letterboxes, same as every
+        // project that predates the setting, and cropping is a decision about the art that nobody
+        // has made yet at wizard time.
+        mobile: { ...DEFAULT_MOBILE_CONFIGURATION, orientation: stageOrientation(designSize) },
         // The source language only; targets are the localization panel's business. Absent when
         // there is none, which is what `sourceLocale: ""` means to every reader of this field.
         ...(isValidLocaleCode(sourceLocale)

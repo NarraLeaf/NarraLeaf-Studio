@@ -1,4 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { TooltipGroup } from "@/lib/tooltip";
 
 export type SurfaceEditorToolbarButtonGroupProps = {
     children: React.ReactNode;
@@ -19,9 +20,9 @@ export function SurfaceEditorToolbarButtonGroup({
     className = "",
 }: SurfaceEditorToolbarButtonGroupProps) {
     return (
-        <div role="group" aria-label={ariaLabel} className={`${GROUP_SHELL} ${className}`.trim()}>
+        <TooltipGroup role="group" aria-label={ariaLabel} className={`${GROUP_SHELL} ${className}`.trim()}>
             {children}
-        </div>
+        </TooltipGroup>
     );
 }
 

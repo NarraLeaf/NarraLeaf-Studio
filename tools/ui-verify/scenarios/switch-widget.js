@@ -285,7 +285,7 @@ async function main() {
         // what this check did on its first run, and the product was right both times.
         const palette = await A.call(d, function () {
             return Array.from(document.querySelectorAll('button'))
-                .map((el) => (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim())
+                .map((el) => (el.getAttribute('aria-label') || el.getAttribute('data-tip') || el.getAttribute('title') || '').trim())
                 .filter((name) => /switch|开关/i.test(name));
         });
         run.check('S8', 'the insert palette offers a Switch', palette.length > 0, palette);

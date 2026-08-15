@@ -80,6 +80,7 @@ import type { PastePlan, PasteSeparatorChoice, SpeakerMappingTarget } from "@/li
 import { forgetStoryPasteSeparator, getStoryPasteMemory, rememberStoryPasteSpeakers, saveStoryPasteSeparator } from "./storyPasteMemory";
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
+import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
 import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
 import { projectStoryCommandLine } from "./storyCommandLine";
 import { noStoryRowCharacters } from "@/lib/story/storyRowProjection";
@@ -256,6 +257,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [puppetRevision, setPuppetRevision] = useState(0);
     /** The project's audio tracks, so `/bgm theme track=Ambience` completes and resolves by name. */
     const audioTracks = useProjectAudioTracks();
+    const appTags = useProjectAppTags();
 
     /**
      * Re-seed the row draft whenever the open row changes, so it always describes the row that is
@@ -481,8 +483,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             blueprintDocument: blueprintService?.getBlueprintDocument() ?? null,
             puppetByCharacterId,
             audioTracks,
+            appTags,
         }),
-        [assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
+        [appTags, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
     // Each dialogue speaker's accumulated appearance, so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.

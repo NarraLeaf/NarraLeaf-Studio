@@ -38,6 +38,7 @@ import { CharacterService } from "@/lib/workspace/services/core/CharacterService
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { SaveSchemaService } from "@/lib/workspace/services/saves/SaveSchemaService";
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
 
@@ -165,6 +166,7 @@ export function useStoryPreviewGameUi(input: {
                 sharedBlueprints: [],
                 persistentVariables: buildPersistentRuntimeTable(registry),
                 savedVariables: buildSavedRuntimeTable(registry),
+                saveSchema: context.services.get<SaveSchemaService>(Services.SaveSchema).listFields(),
             },
         };
     }, [context, enabled]);
@@ -247,7 +249,7 @@ export function useStoryPreviewGameUi(input: {
             // Navigation, application, and save APIs do not exist inside the editor preview;
             // blueprint calls reach these stubs and surface as execution.error debug events.
             openSurfaceWithTransition: async () => undefined,
-            closeLayerWithTransition: async () => undefined,
+            goBackWithTransition: async () => undefined,
             quitApplication: async () => undefined,
             // The preview renders into a Studio panel, not an application window.
             resolveAvatarAssetId: gameInput.resolveAvatarAssetId,
@@ -259,6 +261,8 @@ export function useStoryPreviewGameUi(input: {
             deleteSaveInGame: notAvailable("Delete Save"),
             listSaveIds: async () => [],
             getSaveMetadata: async () => null,
+            getSaveTimes: async () => null,
+            getSaveLine: async () => null,
             getSavePreview: async () => null,
             writeAutoSaveInGame: notAvailable("Auto Save"),
             listAutoSaves: async () => [],

@@ -13,12 +13,19 @@ import type {
     VcsRepositoryInfo,
     VcsRestoreResult,
     VcsRevisionDiffResult,
+    VcsAddServerOutcome,
+    VcsServerProbe,
+    VcsServerSession,
+    VcsSignInOutcome,
+    VcsSignInProblem,
     VcsStatus,
     VcsSyncResult,
     VcsSyncState,
     VcsThreeWayResult,
+    VcsWorkingFileRead,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
+import { WorkingFileRefusedError } from "../../vcs/workingFile";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -230,6 +237,37 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
     }
 }
 
+/**
+ * The working tree's side of a comparison.
+ *
+ * Two shapes of answer, and the split is the contract rather than convenience. A file that is too
+ * large to draw comes back as `refusal`, because a project holding one is ordinary and the surface
+ * has a sentence for it. A path that escapes the project or sits outside version control comes
+ * back as a FAILURE, because no comparison can name one - asking for it means a caller built a
+ * path it should not have, and turning that into a tidy "not shown" would hide it forever.
+ */
+export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWorkingFile> {
+    readonly name = IPCEventType.vcsReadWorkingFile;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        request: IPCEvents[IPCEventType.vcsReadWorkingFile]["data"],
+    ): Promise<RequestStatus<VcsWorkingFileRead>> {
+        return this.tryUse(async () => {
+            try {
+                const bytes = await window.app.getVcsManager().readWorkingFile(request);
+                return { contentBase64: bytes.toString("base64") };
+            } catch (error) {
+                if (error instanceof WorkingFileRefusedError && error.refusal === "tooLarge") {
+                    return { contentBase64: null, refusal: "tooLarge" as const };
+                }
+                throw error;
+            }
+        });
+    }
+}
+
 export class VcsReadRevisionDocumentsHandler extends IPCHandler<IPCEventType.vcsReadRevisionDocuments> {
     readonly name = IPCEventType.vcsReadRevisionDocuments;
     readonly type = IPCMessageType.request;
@@ -382,6 +420,179 @@ export class VcsGetSyncStateHandler extends IPCHandler<IPCEventType.vcsGetSyncSt
         { projectPath }: IPCEvents[IPCEventType.vcsGetSyncState]["data"],
     ): Promise<RequestStatus<VcsSyncState>> {
         return this.tryUse(() => window.app.getVcsManager().getSyncState(projectPath));
+    }
+}
+
+/**
+ * Who this installation is signed in to this project's server as.
+ *
+ * A LOCAL read, and one that asks two stores rather than one: Studio's record of the
+ * account, and the backend's own store of the token behind it. A record with nothing
+ * behind it answers null, because "signed in as Ada" over a connection that will be
+ * refused is worse than saying nobody is.
+ */
+export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetServerSession> {
+    readonly name = IPCEventType.vcsGetServerSession;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsGetServerSession]["data"],
+    ): Promise<RequestStatus<{ session: VcsServerSession | null }>> {
+        return this.tryUse(async () => ({
+            session: await window.app.getVcsManager().getServerSession(projectPath),
+        }));
+    }
+}
+
+/**
+ * Present a token to this project's server.
+ *
+ * **The token crosses this boundary once, inbound.** It is handed to the backend's own
+ * per-user store and is not written to Studio's state, not logged and not returned - so
+ * nothing that reads a log or an exported profile later has it.
+ *
+ * Failures carry a coded problem alongside the message: the backend answers an untrusted
+ * certificate, a silent port, an unresolvable name and an endpoint speaking plain HTTP
+ * with one identical sentence, and the interface has to tell an author which of those
+ * four they are looking at.
+ */
+export class VcsSignInHandler extends IPCHandler<IPCEventType.vcsSignIn> {
+    readonly name = IPCEventType.vcsSignIn;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, authUrl, token }: IPCEvents[IPCEventType.vcsSignIn]["data"],
+    ): Promise<RequestStatus<VcsSignInOutcome>> {
+        return this.tryUse(async () => {
+            try {
+                const result = await window.app.getVcsManager().signIn(projectPath, { authUrl, token });
+                return { ok: true as const, ...result };
+            } catch (error) {
+                // A refused sign-in travels as a successful call carrying a refusal, not as a
+                // failed one: the message is thrown away by the layers between here and the
+                // panel, and the CODE is the only thing that lets the panel say which of four
+                // identical-looking transport failures this was.
+                const problem = (error as { problem?: unknown }).problem;
+                if (!problem) throw error;
+                return { ok: false as const, problem: problem as VcsSignInProblem };
+            }
+        });
+    }
+}
+
+/**
+ * Put a server's certificate authority into this account's trust store.
+ *
+ * The only handler here that changes anything outside a project, and the manager checks
+ * the path against Studio's own directory before running anything - see
+ * `VcsManager.trustAuthority`. A refusal by the operating system comes back as
+ * `installed: false` with whatever it printed, because those refusals say something
+ * specific and a bare failure would leave the author with "it did not work".
+ */
+export class VcsTrustAuthorityHandler extends IPCHandler<IPCEventType.vcsTrustAuthority> {
+    readonly name = IPCEventType.vcsTrustAuthority;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { certificatePath }: IPCEvents[IPCEventType.vcsTrustAuthority]["data"],
+    ): Promise<RequestStatus<{ installed: boolean; output: string }>> {
+        return this.tryUse(() => window.app.getVcsManager().trustAuthority(certificatePath));
+    }
+}
+
+/** Clear the stored token and Studio's record of whose it was. Local; contacts nothing. */
+export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
+    readonly name = IPCEventType.vcsSignOut;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.vcsSignOut]["data"],
+    ): Promise<RequestStatus<{ session: null }>> {
+        return this.tryUse(async () => {
+            await window.app.getVcsManager().signOut(projectPath);
+            return { session: null };
+        });
+    }
+}
+
+/**
+ * Ask an address what is behind it, before anything has been added.
+ *
+ * Goes to the network, and is where adding a server starts: an author is given one address
+ * and everything else is read off the server. Takes no project, and nothing is stored - what
+ * comes back is what they are then shown and, in one of the four cases, asked about.
+ *
+ * A server that cannot be reached is a successful call carrying that, not a failed one. All
+ * four answers are things the wizard draws, and a rejection would leave it with a sentence
+ * where it needs to know which of the four it is looking at.
+ */
+export class VcsProbeServerHandler extends IPCHandler<IPCEventType.vcsProbeServer> {
+    readonly name = IPCEventType.vcsProbeServer;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { address }: IPCEvents[IPCEventType.vcsProbeServer]["data"],
+    ): Promise<RequestStatus<VcsServerProbe>> {
+        return this.tryUse(() => window.app.getVcsManager().probeServer(address));
+    }
+}
+
+/**
+ * Every server this installation is signed in to.
+ *
+ * Takes no project, which is the point: Settings manages servers with nothing open, and
+ * a session was never a property of a repository in the first place.
+ */
+export class VcsListServersHandler extends IPCHandler<IPCEventType.vcsListServers> {
+    readonly name = IPCEventType.vcsListServers;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
+        return this.tryUse(async () => ({ servers: window.app.getVcsManager().listServers() }));
+    }
+}
+
+/** Sign in to the server a token names. */
+export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
+    readonly name = IPCEventType.vcsAddServer;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { authUrl, remoteUrl, token }: IPCEvents[IPCEventType.vcsAddServer]["data"],
+    ): Promise<RequestStatus<VcsAddServerOutcome>> {
+        return this.tryUse(async () => {
+            try {
+                const result = await window.app.getVcsManager().addServer({ authUrl, remoteUrl, token });
+                return { ok: true as const, ...result };
+            } catch (error) {
+                // Same bargain as signing in from a project: a refusal is an answer the
+                // panel puts a sentence to, and only the code survives the trip.
+                const problem = (error as { problem?: unknown }).problem;
+                if (!problem) throw error;
+                return { ok: false as const, problem: problem as VcsSignInProblem };
+            }
+        });
+    }
+}
+
+/** Take a server off this machine. */
+export class VcsForgetServerHandler extends IPCHandler<IPCEventType.vcsForgetServer> {
+    readonly name = IPCEventType.vcsForgetServer;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin }: IPCEvents[IPCEventType.vcsForgetServer]["data"],
+    ): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
+        return this.tryUse(async () => ({
+            servers: await window.app.getVcsManager().forgetServer(remoteOrigin),
+        }));
     }
 }
 

@@ -87,7 +87,7 @@ const READ_TOGGLE = function (dockedRe, floatingRe) {
     const panel = document.querySelector('[role="complementary"]');
     if (!panel) return { panelPresent: false };
     const controls = Array.from(panel.querySelectorAll('button, [role="button"], [role="switch"]'));
-    const nameOf = (b) => (b.getAttribute('aria-label') || b.getAttribute('title')
+    const nameOf = (b) => (b.getAttribute('aria-label') || b.getAttribute('data-tip') || b.getAttribute('title')
         || (b.textContent || '').trim().replace(/\s+/g, ' '));
     const docked = new RegExp(dockedRe);
     const floating = new RegExp(floatingRe);
@@ -99,7 +99,7 @@ const READ_TOGGLE = function (dockedRe, floatingRe) {
         if (r.width <= 0 || r.height <= 0) return false;
         const role = b.getAttribute('role');
         if (b.closest('label') && (role === 'switch' || role === 'checkbox')) return false;
-        return !(b.getAttribute('aria-label') || b.getAttribute('title')
+        return !(b.getAttribute('aria-label') || b.getAttribute('data-tip') || b.getAttribute('title')
             || b.getAttribute('aria-labelledby') || (b.textContent || '').trim());
     }).map((b) => String(b.className).slice(0, 60));
     if (!hit) {

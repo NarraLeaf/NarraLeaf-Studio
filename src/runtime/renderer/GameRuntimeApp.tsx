@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -14,7 +15,10 @@ import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/u
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
+import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
+import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
+import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
 import { readRuntimeTestSignalReporter } from "../gameTestSignal";
 import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
 import {
@@ -73,7 +77,13 @@ function useRuntimePack(): {
                  * live in an effect; the difference is that nothing it does is visible in that first
                  * frame, so a commit's delay costs nothing there.
                  */
+                // Before `setPack`, with the palette and for a related reason: anything that
+                // throws while this pack is being applied has to find the policy already in place.
+                // On the desktop shell this only confirms what the process argument said; on the
+                // web export, which has no such channel, it is the first answer there is.
+                setRuntimeCrashPolicy(nextPack.crash?.policy);
                 setActiveBrandPalette(nextPack.bundle.brand ?? BUILTIN_BRAND_COLORS);
+                setActiveSaveSchemaFields(nextPack.bundle.ui.saveSchema ?? []);
                 setPack(nextPack);
                 setError(null);
             })
@@ -90,14 +100,15 @@ function useRuntimePack(): {
     return { pack, error };
 }
 
+/**
+ * A game that could not read its own pack.
+ *
+ * The same screen a render failure gets, because they are the same event to a player: the game
+ * does not come up. It used to be a full-width stack trace on a red panel, which told the player
+ * nothing they could use and did not even say the game was not coming back.
+ */
 function RuntimeErrorScreen(props: { message: string }): ReactNode {
-    return (
-        <div className="flex h-screen w-screen items-center justify-center bg-neutral-950 p-8 text-neutral-100">
-            <pre className="max-h-full max-w-full overflow-auto whitespace-pre-wrap rounded border border-red-800/70 bg-red-950/50 p-4 text-xs leading-relaxed text-red-100">
-                {props.message}
-            </pre>
-        </div>
-    );
+    return <RuntimeCrashScreen details={props.message} />;
 }
 
 function RuntimeLoadingScreen(): ReactNode {
@@ -223,6 +234,9 @@ function useRuntimePlugins(
             entryUrl: bridge?.pluginEntryUrl(entry.entryRelativePath)
                 ?? `nlgame://runtime/${entry.entryRelativePath}`,
             ...(entry.data ? { data: entry.data } : {}),
+            // One entry per plugin, so a descriptor carries the values of the plugin it is for and
+            // no other's.
+            ...(entry.buildConfig ? { buildConfig: entry.buildConfig } : {}),
         }));
         void loadRuntimePlugins(descriptors, {
             log,
@@ -300,6 +314,13 @@ function createRuntimePluginHost(
         // Present on desktop, absent on the web export - see web.ts. The loader
         // turns that absence into "no app.game.sidecar here".
         ...(sidecar ? { sidecar } : {}),
+        // Forwarded, never decided: the shell behind this bridge re-reads the pack and checks the
+        // named plugin's own declared patterns. Present on both shells, because both can open an
+        // address - the desktop one through the platform opener, the web one through the browser.
+        navigation: {
+            openExternal: (ownerPluginId, request) =>
+                bridge.externalLink.openForPlugin(ownerPluginId, request),
+        },
         log: (level, message) => bridge.log(level, message),
     });
 }
@@ -394,6 +415,37 @@ export function GameRuntimeApp() {
             return { outcome: "networkError", status: 0, body: null, error: "Runtime bridge unavailable" };
         }
         return bridge.network.fetch(request);
+    }, [bridge]);
+
+    /**
+     * The Open Link node's request. Handed to the shell, which decides it: the desktop bridge
+     * forwards it to the main process, the web bridge checks it in the page. Neither reads anything
+     * this side supplied except the address.
+     */
+    const openExternal = useCallback<NonNullable<GameAppHost["openExternal"]>>(async request => {
+        if (!bridge) {
+            return { outcome: "failed", error: "Runtime bridge unavailable" };
+        }
+        return bridge.externalLink.open(request);
+    }, [bridge]);
+
+    /**
+     * The two Progress nodes' requests. Handed to the shell for the reason Open Link is: the
+     * process that performs the act is the one that decides which file it is, from the pack's own
+     * progress key. Nothing this side supplies names a path.
+     */
+    const exportProgress = useCallback<NonNullable<GameAppHost["exportProgress"]>>(async request => {
+        if (!bridge) {
+            return { outcome: "failed", error: "Runtime bridge unavailable" };
+        }
+        return bridge.progress.write(request);
+    }, [bridge]);
+
+    const importProgress = useCallback<NonNullable<GameAppHost["importProgress"]>>(async () => {
+        if (!bridge) {
+            return { outcome: "failed", document: null, error: "Runtime bridge unavailable" };
+        }
+        return bridge.progress.read();
     }, [bridge]);
 
     /**
@@ -495,6 +547,10 @@ export function GameRuntimeApp() {
             bundle: pack.bundle,
             sessionKey: `${pack.bundle.bundleId}:${pack.bundle.revision}:${entrySurfaceId ?? ""}`,
             entrySurfaceId,
+            // As the pack states it, resolved for the variant this build was produced as. Absent is
+            // a build that shows nothing when its story ends, which is what every pack made before
+            // this field carries and what every pack whose project picked no page carries.
+            endingSurfaceId: pack.endingSurfaceId,
             ready: runtimeReady,
             bootAction: pack.entry.kind === "story"
                 ? { kind: "story", storyId: pack.entry.storyId, sceneId: pack.entry.sceneId }
@@ -512,10 +568,16 @@ export function GameRuntimeApp() {
             subscribeCloseRequested,
             listPuppetBackendModules,
             networkFetch,
+            openExternal,
+            exportProgress,
+            importProgress,
         };
     }, [
         entrySurfaceId,
         networkFetch,
+        openExternal,
+        exportProgress,
+        importProgress,
         getFullscreen,
         listPuppetBackendModules,
         log,
@@ -531,13 +593,35 @@ export function GameRuntimeApp() {
         saveStore,
     ]);
 
+    // The game is up: whatever automatic restarts it took to get here are spent, and the next
+    // failure is a new incident rather than the same one continuing. Without this, a game that
+    // crashed on Monday would refuse to restart itself on Tuesday.
+    useEffect(() => {
+        if (runtimeReady && host) {
+            clearAutomaticRestarts();
+        }
+    }, [runtimeReady, host]);
+
     const getScale = useCallback(() => renderScale, [renderScale]);
+
+    // Read once: the document cannot become a phone halfway through a session, and re-querying it
+    // on every frame render would be a DOM lookup per surface change for an answer that never moves.
+    const stageViewport = useMemo(
+        () => resolveStageViewport({
+            viewport: pack?.viewport,
+            mode: pack?.mode ?? "production",
+            isMobileShell: isMobileShellDocument(),
+        }),
+        [pack?.viewport, pack?.mode],
+    );
 
     const renderFrame = useCallback(
         (ctx: GameAppFrameContext) => (
             <StageViewportFrame
                 designSize={ctx.activeSurface.designSize}
                 onRenderScaleChange={setRenderScale}
+                fit={stageViewport.fit}
+                cropAnchor={stageViewport.cropAnchor}
                 outerClassName="bg-black text-white"
                 // Viewport units, not 100%: the runtime's #root has no fixed height, so height:100%
                 // would collapse to content height and shrink the stage (breaking downsampling).
@@ -547,7 +631,7 @@ export function GameRuntimeApp() {
                 {ctx.children}
             </StageViewportFrame>
         ),
-        [],
+        [stageViewport],
     );
 
     const renderPlaceholder = useCallback(() => <RuntimeLoadingScreen />, []);

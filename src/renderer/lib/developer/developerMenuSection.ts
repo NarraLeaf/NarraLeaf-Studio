@@ -1,6 +1,6 @@
 import type { ContextMenuDef, ContextMenuItemDef } from "@/lib/components/elements/ContextMenu";
 import type { TranslationKey } from "@shared/i18n";
-import { copyTextToClipboard } from "@/lib/app/diagnostics/copyText";
+import { copyTextToClipboard } from "@shared/utils/copyText";
 import { translate } from "@/lib/i18n";
 import { isDeveloperModeEnabled } from "./developerMode";
 

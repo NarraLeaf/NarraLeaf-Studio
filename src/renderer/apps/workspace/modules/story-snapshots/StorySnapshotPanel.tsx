@@ -84,7 +84,7 @@ function SnapshotValueRow(props: {
     const shown = overridden ? formatValue(value, entry.valueType) : "";
     return (
         <div className="flex items-center gap-1.5">
-            <span className="min-w-0 flex-1 truncate text-xs text-fg" title={entry.name}>{entry.name}</span>
+            <span className="min-w-0 flex-1 truncate text-xs text-fg" data-tip={entry.name}>{entry.name}</span>
             {entry.valueType === "boolean" ? (
                 // `readOnly` rather than `disabled`: which way a boolean was pinned, and that true and
                 // false are the only choices, is what the reader came for, so the list still opens.
@@ -107,7 +107,7 @@ function SnapshotValueRow(props: {
                     inputMode={entry.valueType === "number" ? "decimal" : undefined}
                     onChange={event => props.onChange(event.target.value)}
                     readOnly={freeze.frozen}
-                    title={freeze.frozen ? freeze.reason : undefined}
+                    data-tip={freeze.frozen ? freeze.reason : undefined} aria-label={freeze.frozen ? freeze.reason : undefined}
                 />
             )}
             {/* Dropping an override rewrites the snapshot as much as setting one does. */}
@@ -332,7 +332,7 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
                             value={selected.name}
                             onChange={event => storyService?.renameSceneSnapshot(storyId, sceneId, selected.id, event.target.value)}
                             readOnly={freeze.frozen}
-                            title={freeze.frozen ? freeze.reason : undefined}
+                            data-tip={freeze.frozen ? freeze.reason : undefined}
                             aria-label={t("storySnapshot.nameAria")}
                         />
                     ) : null}

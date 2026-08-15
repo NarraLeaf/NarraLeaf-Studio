@@ -35,9 +35,11 @@ import { Input, Select, Switch, type SelectOption } from "@/lib/components/eleme
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
+import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
+import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { choiceOptionRefs, valueBlueprintRefs } from "./storyCommandContext";
 import {
     collectStoryVariableOptions,
@@ -175,6 +177,10 @@ export function ConditionEditor(props: {
         { value: "notEquals", label: t("story.condition.opNotEquals") },
         { value: "exists", label: t("story.condition.opExists") },
     ], [t]);
+    const appTagService = useMemo(
+        () => (context && isInitialized ? context.services.get<AppTagService>(Services.AppTags) : null),
+        [context, isInitialized],
+    );
     const blueprintService = useMemo(
         () => (context && isInitialized ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null),
         [context, isInitialized],
@@ -212,9 +218,13 @@ export function ConditionEditor(props: {
                 scenes: Object.values(props.document.scenes ?? {}).map(scene => ({ id: scene.id, name: scene.name })),
                 options: choiceOptionRefs(props.document),
                 blueprints: valueBlueprintRefs(blueprintService?.getBlueprintDocument()),
+                // Stored names, release included and untranslated: `AppTag == "…"` is compared as a
+                // string inside the shipped game, which has no catalogue. Omitted rather than empty
+                // when no project is open - see `hasAppTagName` on the scope for why the two differ.
+                ...(appTagService ? { appTags: appTagService.listTags() } : {}),
             },
         ),
-        [allVariables, blueprintService, props.document],
+        [allVariables, appTagService, blueprintService, props.document],
     );
 
     const currentValueType: StoryVariableValueType =
@@ -259,7 +269,7 @@ export function ConditionEditor(props: {
         props.onChange({ ...variableValue, target: makeVariableRef(option.scope, option.id) });
     };
 
-    const openEditor = () => {
+    const openEditor = (options?: BlueprintOpenOptions) => {
         let id = blueprintId;
         if (!id) {
             id = blueprintService?.ensureStoryActionBlueprint({ mode: "condition" }) ?? "";
@@ -269,7 +279,7 @@ export function ConditionEditor(props: {
             return;
         }
         props.onBeforeOpenBlueprint?.();
-        openBlueprint({ blueprintId: id, ownerKind: "storyAction", title: t("story.condition.title") });
+        openBlueprint({ blueprintId: id, ownerKind: "storyAction", title: t("story.condition.title") }, options);
     };
 
     const variableSelectOptions: SelectOption[] = allVariables.length

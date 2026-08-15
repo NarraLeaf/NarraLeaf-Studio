@@ -430,9 +430,32 @@ export type NlrActionIdBinding = {
 };
 
 type NlrAction = Parameters<typeof DevTools.setActionId>[0];
+type NlrElement = Parameters<typeof DevTools.setElementId>[0];
 type DevToolsWithStaticId = typeof DevTools & {
     setStaticId?: (action: NlrAction, id: string | null) => NlrAction;
+    setElementStaticId?: (element: NlrElement, id: string | null) => void;
 };
+
+/**
+ * Name an element from the document it came from.
+ *
+ * Without this the engine names elements by where they sit in a walk of the action tree, so writing
+ * one line ahead of an element hands its name to a different one - and a save restoring by that name
+ * then puts one element's state on another. Nothing reports it, because the name it asks for still
+ * exists. Every name here is built from what the element *is* (its scene and the name the author
+ * gave it, or a library id), so a row written elsewhere cannot reach it.
+ *
+ * Feature-detected for the same reason the action-id twin is: an engine without it still produces a
+ * playable game, and refusing to compile against one would make the two repositories lock-step.
+ */
+function setStableElementId(element: unknown, staticId: string): void {
+    (DevTools as DevToolsWithStaticId).setElementStaticId?.(element as NlrElement, staticId);
+}
+
+/** Whether the engine in use keeps the names above. */
+function engineKeepsElementNames(): boolean {
+    return typeof (DevTools as DevToolsWithStaticId).setElementStaticId === "function";
+}
 type NlrStatement = unknown;
 type NlrChainLike = {
     getActions: () => NlrAction[];
@@ -658,7 +681,7 @@ type SceneCompileContext = {
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
     actionIdBindings: NlrActionIdBinding[];
-    nextActionIndex: () => number;
+    nextActionIndex: (blockId: string) => number;
 };
 
 type CompileInput = {
@@ -762,6 +785,17 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
 
     const nlrStory = new Story(input.document.name || input.document.id);
     const diagnostics: NlrStoryCompileDiagnostic[] = [];
+    if (!engineKeepsElementNames()) {
+        // Said out loud rather than shrugged off. Without the engine's half, elements fall back to
+        // being named by their position, and the failure that produces is a save quietly restoring
+        // one element's state onto another - the one shape of breakage nothing else reports.
+        pushDiagnostic(
+            diagnostics,
+            "warning",
+            undefined,
+            "This engine names elements by position, so saves will not survive edits to the script.",
+        );
+    }
     const actionIdBindings: NlrActionIdBinding[] = [];
     const sceneElements: Record<string, CompiledSceneElements> = {};
     const characters = new Map<string, Character>();
@@ -771,7 +805,21 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
     const assetUrlCache = new Map<string, string | null>();
-    let actionIndex = 0;
+    /**
+     * How many actions a row has already produced.
+     *
+     * Per row, deliberately, and this is the whole of what makes a save survive an edit. The count
+     * is part of every action's id, and a single counter for the compile put every later row's id
+     * downstream of every earlier row: adding one line at the top of chapter one renamed every
+     * action after it, and every save taken past that point stopped resolving. Counted per row, a
+     * row's ids depend on that row alone.
+     */
+    const actionIndexByBlock = new Map<string, number>();
+    const nextActionIndex = (blockId: string): number => {
+        const next = actionIndexByBlock.get(blockId) ?? 0;
+        actionIndexByBlock.set(blockId, next + 1);
+        return next;
+    };
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
     const voiceUrlsByLocale = input.voice
         ? await buildVoiceMapsByLocale({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
@@ -866,7 +914,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             assetUrlCache,
             diagnostics,
             actionIdBindings,
-            nextActionIndex: () => actionIndex++,
+            nextActionIndex,
         };
         // Seed declared scene-local defaults at the head of the scene's statement list. They must be
         // statements (not build-time sets): `Scene.local.init` resets the namespace on every scene
@@ -916,7 +964,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             assetUrlCache,
             localization,
             voicedUnitIds,
-            nextActionIndex: () => actionIndex++,
+            nextActionIndex,
         })
         : allScenes[input.sceneId];
     nlrStory.entry(nlrEntryScene);
@@ -985,7 +1033,7 @@ async function buildLaunchEntryScene(params: {
     assetUrlCache: Map<string, string | null>;
     localization?: SceneLocalizationResolver;
     voicedUnitIds?: ReadonlySet<string>;
-    nextActionIndex: () => number;
+    nextActionIndex: (blockId: string) => number;
 }): Promise<Scene> {
     const { input, launch, nlrStory, allScenes, diagnostics, resolveAssetUrl, assetUrlCache } = params;
     const snapshot = launch.snapshot;
@@ -1204,7 +1252,21 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     const animations = new Map(Object.entries(input.animations ?? {}));
     const assetUrlCache = new Map<string, string | null>();
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
-    let actionIndex = 0;
+    /**
+     * How many actions a row has already produced.
+     *
+     * Per row, deliberately, and this is the whole of what makes a save survive an edit. The count
+     * is part of every action's id, and a single counter for the compile put every later row's id
+     * downstream of every earlier row: adding one line at the top of chapter one renamed every
+     * action after it, and every save taken past that point stopped resolving. Counted per row, a
+     * row's ids depend on that row alone.
+     */
+    const actionIndexByBlock = new Map<string, number>();
+    const nextActionIndex = (blockId: string): number => {
+        const next = actionIndexByBlock.get(blockId) ?? 0;
+        actionIndexByBlock.set(blockId, next + 1);
+        return next;
+    };
 
     const nlrStory = new Story(`${input.document.name || input.document.id} (preview)`);
     // Same merged saved table as a full compile - the preview must agree with the game about which
@@ -1279,7 +1341,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         assetUrlCache,
         diagnostics,
         actionIdBindings,
-        nextActionIndex: () => actionIndex++,
+        nextActionIndex,
     };
 
     // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
@@ -1673,6 +1735,7 @@ async function createNlrScenes(input: {
             runtimeName,
             Object.keys(config).length > 0 ? config : undefined,
         );
+        setStableSceneElementIds(built, scene.id);
         scenes[scene.id] = built;
         // The scene's OWN table, which is a copy of the one just handed in - see the note above.
         const live = (built as unknown as { config?: { voices?: unknown } }).config?.voices;
@@ -1872,6 +1935,14 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
         if (block.payload.control === "break") {
             return compileBreak(ctx, block);
         }
+        if (block.payload.control === "cut") {
+            // Nothing to emit. This compiler serves the editor's preview and Dev Mode, both of which
+            // play the story as the author sees it - the release edition, which no cut point ends.
+            // Where a variant's package is assembled is where the rows after this one are dropped;
+            // here the row is a marker and the scene carries on. Answered explicitly so it cannot
+            // fall into the group arm below and compile as an empty container.
+            return [];
+        }
         return compileControlGroup(ctx, block);
     }
 
@@ -1950,6 +2021,10 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
             // The preview compiles this row on its own, without the loop it belongs to. Emitting
             // `breakLoop()` there is an engine error at play time, so the preview holds instead.
             diagnostic(ctx, "warning", block.id, "Preview holds at the break; it needs its loop to do anything.");
+            return [];
+        }
+        if (block.payload.control === "cut") {
+            // A marker, not an action: no statement here and none in the walk above.
             return [];
         }
         return compileControlGroup(ctx, block);
@@ -2690,6 +2765,7 @@ async function getPuppetElement(
         ...(appearance.defaultState?.expression ? { expression: appearance.defaultState.expression } : {}),
         ...(appearance.defaultState?.skin ? { skin: appearance.defaultState.skin } : {}),
     });
+    setStableElementId(puppet, `nl:puppet:${ctx.scene.id}:${key}`);
     ctx.puppets.set(key, puppet);
     return puppet;
 }
@@ -3127,6 +3203,7 @@ async function getVfx(
         // since the engine does not persist a runtime `setPlaybackRate`.
         ...(payload.rate !== undefined ? { playbackRate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
     });
+    setStableElementId(vfx, `nl:vfx:${ctx.scene.id}:${name}`);
     ctx.vfx.set(name, vfx);
     return vfx;
 }
@@ -3394,6 +3471,7 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
             return cached;
         }
         const created = new Character(tempName);
+        setStableElementId(created, `nl:character:${key}`);
         ctx.characters.set(key, created);
         return created;
     }
@@ -3410,6 +3488,7 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
     const summary = ctx.characterSummaries.get(normalizedId);
     const displayName = summary?.name?.trim() || UNKNOWN_CHARACTER_NAME;
     const character = new Character(displayName, characterNametagConfig(summary));
+    setStableElementId(character, `nl:character:${normalizedId}`);
     ctx.characters.set(normalizedId, character);
     return character;
 }
@@ -3469,6 +3548,7 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
         // Initial transform-state pose baked into the constructor config (survives reset()).
         ...(options?.initialProps ?? {}),
     } as any);
+    setStableElementId(image, `nl:image:${ctx.scene.id}:${name}`);
     ctx.images.set(name, image);
     return image;
 }
@@ -3488,6 +3568,7 @@ function getText(ctx: SceneCompileContext, objectName: string, options: { text?:
         layer: options.layer,
         ...(options.initialProps ?? {}),
     } as any);
+    setStableElementId(text, `nl:text:${ctx.scene.id}:${name}`);
     ctx.texts.set(name, text);
     return text;
 }
@@ -3499,6 +3580,7 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, init
         return existing;
     }
     const layer = new Layer(name, { zIndex, ...(initialProps ?? {}) } as any);
+    setStableElementId(layer, `nl:layer:${ctx.scene.id}:${name}`);
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
     ctx.layers.set(name, layer);
     return layer;
@@ -3543,6 +3625,7 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
         return null;
     }
     const video = new Video({ src: url, muted: muted ?? false });
+    setStableElementId(video, `nl:video:${ctx.scene.id}:${name}`);
     ctx.videos.set(name, video);
     return video;
 }
@@ -4588,7 +4671,7 @@ async function resolveAssetUrlCached(input: {
 
 function recordStatement(ctx: SceneCompileContext, statement: NlrStatement, block: StoryBlock, textId?: string): NlrStatement {
     for (const action of statementToActions(statement)) {
-        const staticId = stableActionId(ctx.document.id, ctx.scene.id, block.id, textId, ctx.nextActionIndex());
+        const staticId = stableActionId(ctx.document.id, ctx.scene.id, block.id, textId, ctx.nextActionIndex(block.id));
         setStableActionId(action, staticId);
         ctx.actionIdBindings.push({
             action,
@@ -4632,6 +4715,21 @@ function isActionLike(value: unknown): value is NlrAction {
 
 function stableActionId(storyId: string, sceneId: string, blockId: string, textId: string | undefined, index: number): string {
     return `studio:${storyId}:${sceneId}:${blockId}:${textId ?? "action"}:${index}`;
+}
+
+/**
+ * A scene, plus the three elements the engine gives every scene: its two default layers and its
+ * background image.
+ *
+ * They are elements like any other and a save carries their state the same way, but nothing outside
+ * the engine constructs them - so left alone they would keep positional names while everything
+ * around them stopped moving, and a save would still put a layer's pose onto a background.
+ */
+function setStableSceneElementIds(scene: Scene, sceneId: string): void {
+    setStableElementId(scene, `nl:scene:${sceneId}`);
+    setStableElementId(scene.backgroundLayer, `nl:scene:${sceneId}:layer:background`);
+    setStableElementId(scene.displayableLayer, `nl:scene:${sceneId}:layer:displayable`);
+    setStableElementId(scene.background, `nl:scene:${sceneId}:background`);
 }
 
 function setStableActionId(action: NlrAction, staticId: string): void {

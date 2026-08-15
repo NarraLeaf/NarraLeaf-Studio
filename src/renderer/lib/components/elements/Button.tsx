@@ -10,6 +10,12 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     size?: ButtonSize;
     children: React.ReactNode;
     fullWidth?: boolean;
+    /**
+     * Declared rather than inherited: `ButtonHTMLAttributes` carries no `ref`, so without this a
+     * caller that needs to measure the button - anchoring a popover to it, say - is turned away by
+     * the type even though React 19 passes the ref straight through to the element below.
+     */
+    ref?: React.Ref<HTMLButtonElement>;
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
@@ -59,11 +65,9 @@ export function IconButton({
     size = "md",
     className = "",
     "aria-label": ariaLabel,
-    title,
     ...props
 }: Omit<ButtonProps, "children"> & {
     "aria-label": string;
-    title?: string;
     /**
      * The icon to render. Optional (unlike Button, which requires children),
      * but not omitted: the icon reaches the <button> through the {...props}
@@ -84,7 +88,6 @@ export function IconButton({
                 className,
             )}
             aria-label={ariaLabel}
-            title={title}
             {...props}
         />
     );

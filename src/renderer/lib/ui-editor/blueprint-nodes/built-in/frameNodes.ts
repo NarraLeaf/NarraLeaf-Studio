@@ -5,7 +5,9 @@
  */
 
 import {
+    BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
@@ -86,12 +88,12 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         // The way back out of a page. Pages are a stack, so the alternative an author reaches for -
-        // Go Page, back to where they came from - pushes another layer instead of removing one: the
+        // Go Page, back to where they came from - pushes another page instead of removing one: the
         // config screen opened over a running story stays over it forever, and a second Go Page
-        // leaves three layers deep. `navigation.closeLayer` has always existed on the host; this is
+        // leaves three pages deep. `navigation.pageBack` has always existed on the host; this is
         // the node that lets a blueprint call it.
         //
-        // Closing the last remaining layer is a no-op rather than an error: a page reached from the
+        // Closing the last remaining page is a no-op rather than an error: a page reached from the
         // title screen is the bottom of the stack, and a Back button that throws there would make
         // the same button unusable on the same screen depending on how the player got to it.
         type: BLUEPRINT_NODE_TYPE_PAGE_BACK,
@@ -103,7 +105,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, execNext],
         async execute(ctx) {
-            await requireHostApi(ctx).navigation.closeLayer();
+            await requireHostApi(ctx).navigation.pageBack();
             return { nextPort: "next" };
         },
     },
@@ -244,6 +246,60 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             const fullscreen = mode === "toggle" ? !(await api.navigation.getFullscreen()) : mode === "enter";
             await api.navigation.setFullscreen(fullscreen);
             return { nextPort: "next" };
+        },
+    },
+    {
+        /**
+         * A link out of the game: a store page, a patch note, a support form.
+         *
+         * The address is written here or wired in, and there is nothing to declare anywhere else:
+         * the author wrote the graph, so an address in it is the author's decision. What the shell
+         * checks - in the process that would open the page, never in the renderer - is the scheme,
+         * because `shell.openExternal` hands the address to whatever the platform registered for it.
+         * See `@shared/types/blueprint/externalLink`.
+         *
+         * `Failed` covers both a scheme this node does not open and a browser that would not open
+         * the page, with `Error` saying which. They share a pin because the author's answer to both
+         * is the same - the player did not get the page, so show them something else - and a graph
+         * that has to branch on a refusal it cannot fix is a branch that never runs in a build.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+        displayName: "Open Link",
+        category: "App",
+        keywords: ["link", "url", "browser", "external", "open", "web", "store", "page", "site"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            {
+                id: BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "URL",
+            },
+            execNext,
+            { id: "failed", kind: "output", semantic: "exec", label: "Failed" },
+            { id: "error", kind: "output", semantic: "data", valueType: "string", label: "Error" },
+        ],
+        inspectorParams: [
+            {
+                key: BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
+                label: "URL",
+                kind: "string",
+            },
+        ],
+        async execute(ctx) {
+            const url = String(readPin(ctx, BLUEPRINT_EXTERNAL_LINK_PARAM_URL) ?? "").trim();
+            if (!url) {
+                throw new BlueprintGraphExecutionError("Open Link: pick or wire an address", ctx.node.id);
+            }
+            const result = await requireHostApi(ctx).navigation.openExternal({ url });
+            return {
+                nextPort: result.outcome === "opened" ? "next" : "failed",
+                outputValues: { error: result.error },
+            };
         },
     },
     {

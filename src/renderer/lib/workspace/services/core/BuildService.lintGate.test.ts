@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { GameBuildRequest } from "@shared/types/gameBuild";
 import type { StoryDocument } from "@shared/types/story";
+import type { ReferenceIndexGap } from "../references/referenceModel";
 import type { LintReport, LintReportEntry, LintRuleId, LintSeverity } from "@/lib/lint/types";
 import type { LintingConfiguration } from "../../project/configuration";
+import {
+    BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
+    BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
+} from "@shared/types/blueprint/graph";
 import { Services, type WorkspaceContext } from "../services";
 import {
     BUILD_CONSOLE_CHANNEL,
@@ -35,7 +43,10 @@ const gameBuild = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({ gameBuild }),
+    // `plugins.list` is here because the release-content gate asks which plugins ship inside the
+    // game; without it that gate degrades to "the check failed to run" and every gate behind it
+    // would be tested against a project the check never actually looked at.
+    getInterface: () => ({ gameBuild, plugins: { list: async () => ({ success: true, data: { plugins: [] } }) } }),
 }));
 
 /**
@@ -114,6 +125,14 @@ function mount(options: {
     /** Defaults to allowing HTTP, so the network gate stays out of the way of this file's subject. */
     allowHttp?: boolean;
     blueprintDocument?: unknown;
+    /** The variant being built. Release by default, which removes nothing and reaches no trim gate. */
+    appTag?: { id: string; name: string };
+    /** The one story the library holds. Defaults to a story with nothing wrong with it. */
+    storyDocument?: StoryDocument;
+    /** What the reference index says it could not read. Empty by default. */
+    referenceGaps?: readonly ReferenceIndexGap[];
+    /** The project's shared blueprint assets. None by default. */
+    sharedBlueprints?: unknown[];
 } = {}) {
     const lines: ConsoleLine[] = [];
     const run = vi.fn(options.run ?? (async () => report([])));
@@ -134,7 +153,8 @@ function mount(options: {
     const story = {
         ...clean,
         getLibraryIndex: () => ({ stories: [{ id: "s1", name: "Main" }] }),
-        loadStory: async () => (options.storyHasInvalidBlock ? STORY_WITH_INVALID_BLOCK : CLEAN_STORY),
+        loadStory: async () => options.storyDocument
+            ?? (options.storyHasInvalidBlock ? STORY_WITH_INVALID_BLOCK : CLEAN_STORY),
     };
     const consoleService = {
         log: (channel: string, level: string, message: string) => {
@@ -169,6 +189,23 @@ function mount(options: {
                         return consoleService;
                     case Services.Story:
                         return story;
+                    // Every project has the release variant, so the AppTag gate always resolves a name.
+                    // The variant gate reads the project's shared blueprint assets too.
+                    case Services.Assets:
+                        return { listSharedBlueprints: async () => options.sharedBlueprints ?? [] };
+                    case Services.AppTags:
+                        return {
+                            resolveTag: () => options.appTag ?? RELEASE_APP_TAG,
+                            getTag: () => options.appTag ?? RELEASE_APP_TAG,
+                            getDocument: () => ({ tags: [], reachableScenes: {} }),
+                        };
+                    case Services.Reference:
+                        return {
+                            // The gate asks the index to finish building before it reads it: a build
+                            // started from a freshly opened project is the caller that gets there first.
+                            ensureReady: async () => {},
+                            getIndexResult: () => ({ complete: (options.referenceGaps ?? []).length === 0, gaps: options.referenceGaps ?? [] }),
+                        };
                     case Services.MediaSupport:
                         return media;
                     case Services.UIGraph:
@@ -630,5 +667,151 @@ describe("shouldBlockBuild", () => {
 
     it("does not block on an empty report", () => {
         expect(shouldBlockBuild(report([]), config({ failBuildOn: "warning" }))).toBe(false);
+    });
+});
+
+/**
+ * A story whose demo edition really does stop early: two scenes, a cut point before the jump.
+ *
+ * The trim gate below only runs for a build that removes something, so the fixture has to remove
+ * something - a test that used a story with no cut point would pass whatever the gate did.
+ */
+const STORY_WITH_A_CUT: StoryDocument = {
+    id: "s1",
+    name: "Main",
+    scenes: {
+        sc1: {
+            id: "sc1",
+            name: "Prologue",
+            rootBlockIds: ["n1", "c1", "j1"],
+            blocks: {
+                n1: { id: "n1", kind: "nodeAction", childrenIds: [], payload: { action: "narration", text: { textId: "t1", value: "line", role: "narration" } } },
+                c1: { id: "c1", kind: "control", childrenIds: [], payload: { control: "cut", appTagId: "tag-demo" } },
+                j1: { id: "j1", kind: "jump", childrenIds: [], payload: { targetSceneId: "sc2" } },
+            },
+        },
+        sc2: { id: "sc2", name: "Chapter 1", rootBlockIds: [], blocks: {} },
+    },
+} as unknown as StoryDocument;
+
+const DEMO_TAG = { id: "tag-demo", name: "Demo" };
+
+describe("BuildService trim coverage gate", () => {
+    it("refuses a build that removes scenes while a story document could not be read", async () => {
+        const { service, lines } = mount({
+            appTag: DEMO_TAG,
+            storyDocument: STORY_WITH_A_CUT,
+            referenceGaps: [{ reason: "documentUnreadable", slice: "story", location: "Side Story" }],
+        });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(state.status).toBe("error");
+        expect(state.error).toContain("build.contentCoverageSummary");
+        expect(lines.some(entry => entry.message.includes("build.contentCoverageGap"))).toBe(true);
+    });
+
+    it("lets the same build through when the gap is in a widget", async () => {
+        // The whole point of the narrow question: an `app://fs` URL nobody can resolve says nothing
+        // about which scenes a story reaches, and refusing over one would put every variant build in
+        // that project behind a token that can never resolve.
+        const { service } = mount({
+            appTag: DEMO_TAG,
+            storyDocument: STORY_WITH_A_CUT,
+            referenceGaps: [{ reason: "hashUrlUnresolved", slice: "ui", location: "Title.backgroundImage", affects: ["image"] }],
+        });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).toHaveBeenCalledTimes(1);
+        expect(state.status).toBe("done");
+    });
+
+    it("says nothing about a gap when the build removes nothing", async () => {
+        // A release build keeps every scene, so no gap can make its content boundary wrong.
+        const { service } = mount({
+            storyDocument: STORY_WITH_A_CUT,
+            referenceGaps: [{ reason: "indexNotBuilt" }],
+        });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).toHaveBeenCalledTimes(1);
+        expect(state.status).toBe("done");
+    });
+});
+
+/**
+ * A graph whose `Get App Tag` reaches a comparison the fold cannot decide, so the edition question
+ * would be answered on the player's machine. Refused under every variant, release included.
+ */
+function unfoldableGraph() {
+    return {
+        nodes: {
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+            tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
+            eq: { id: "eq", type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL },
+            label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
+        },
+        edges: [
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
+            { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "eq", port: "a" } },
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "eq", port: "b" } },
+            { from: { nodeId: "eq", port: "result" }, to: { nodeId: "label", port: "text" } },
+        ],
+    };
+}
+
+function sharedBlueprintAsset(assetName: string) {
+    return {
+        assetId: "asset-1",
+        name: assetName,
+        frontend: "visual",
+        blueprint: {
+            id: "bp-shared",
+            // Deliberately different from the asset's name: the console must show the name the
+            // author sees in the asset browser.
+            name: "inner name nobody sees",
+            owner: { kind: "sharedAsset", assetId: "asset-1" },
+            frontend: "visual",
+            programKind: "graph",
+            program: {
+                kind: "graph",
+                graphs: { events: { onCall: { id: "onCall", name: "On Call", graph: unfoldableGraph() } } },
+            },
+        },
+    };
+}
+
+/**
+ * The shared-asset half of the variant gate.
+ *
+ * These graphs live in `.nlbp` asset files rather than in the blueprint document, so until
+ * `AssetsService.listSharedBlueprints` existed nothing on this side could see them: the build went
+ * to the main process, assembled, and threw there. What is asserted is the same thing every gate in
+ * this file asserts - the refused build never reaches `gameBuild.start`.
+ */
+describe("BuildService variant gate over shared blueprints", () => {
+    it("refuses a shared blueprint that still asks which edition it is", async () => {
+        const { service, lines } = mount({ sharedBlueprints: [sharedBlueprintAsset("Continue")] });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(state.status).toBe("error");
+        expect(state.error).toContain("build.appTagGraphSummary");
+        expect(lines.some(line => line.level === "error"
+            && line.message.includes("build.appTagGraphUnresolved")
+            && line.message.includes("Continue"))).toBe(true);
+    });
+
+    it("builds when the shared blueprints all fold", async () => {
+        const { service } = mount({ sharedBlueprints: [] });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).toHaveBeenCalledTimes(1);
+        expect(state.status).toBe("done");
     });
 });

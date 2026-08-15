@@ -67,4 +67,14 @@ export enum CacheNamespace {
      * Bytes fetched by main on the renderer's behalf, as with plugin icons.
      */
     UITemplatePosters = "ui-template-posters",
+    /**
+     * Spellchecker word lists, one gzipped `<code>.txt.gz` per language beside a
+     * `<code>.json` naming its source, licence and sha256.
+     *
+     * A cache in the strict sense: deleting it costs one re-download per language
+     * the author checks in, and never a word of their own - the project's own
+     * terms live in `editor/dictionary.json`, which is the project's and is
+     * version controlled. A dictionary is never written into a project.
+     */
+    SpellcheckDictionaries = "spellcheck-dictionaries",
 }

@@ -348,11 +348,40 @@ export class RuntimePersistenceStore {
     }
 }
 
-async function atomicWriteJson(filePath: string, value: unknown): Promise<void> {
+/**
+ * Write JSON where a half-written file would be worse than an old one.
+ *
+ * `rename` is a parameter because the refusal below is what the fallback exists for and no
+ * temp directory reproduces it: it comes from whatever else on the player's machine has an
+ * opinion about the destination.
+ */
+export async function atomicWriteJson(
+    filePath: string,
+    value: unknown,
+    rename: (from: string, to: string) => Promise<void> = fs.rename,
+): Promise<void> {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-    await fs.writeFile(tempPath, JSON.stringify(value), "utf-8");
-    await fs.rename(tempPath, filePath);
+    const contents = JSON.stringify(value);
+    await fs.writeFile(tempPath, contents, "utf-8");
+    try {
+        await rename(tempPath, filePath);
+    } catch (error) {
+        // Renaming one sibling onto another is atomic on every filesystem a game ships to, and a
+        // player's machine can still refuse it: a sync client or a scanner holding the destination
+        // answers EPERM, and a redirected profile answers EXDEV for two paths that look like
+        // siblings. Writing the file directly gives up atomicity for that one write. Letting the
+        // error through gives up the player's persistent variables, unlocked content and
+        // preferences for every write after it, and the failure surfaces as an unhandled rejection
+        // rather than as anything they can act on.
+        if (!isNodeErrorCode(error, "EXDEV")
+            && !isNodeErrorCode(error, "EPERM")
+            && !isNodeErrorCode(error, "EACCES")) {
+            throw error;
+        }
+        await fs.writeFile(filePath, contents, "utf-8");
+        await unlinkIgnoringMissing(tempPath);
+    }
 }
 
 async function unlinkIgnoringMissing(filePath: string): Promise<void> {

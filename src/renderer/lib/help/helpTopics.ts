@@ -73,9 +73,13 @@ export const HELP_TOPIC_IDS = [
     "versionServer",
     "freeze",
     "build",
+    "buildVariant",
+    "appTags",
+    "variantContent",
     "icons",
     "signing",
     "assetProtection",
+    "networkAllowlist",
     "webOptimization",
     "plugins",
 ] as const;
@@ -271,7 +275,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "networkNodes",
         section: "interface",
-        related: ["blueprints", "assetProtection", "lint"],
+        related: ["blueprints", "networkAllowlist", "assetProtection", "lint"],
     },
 
     // --- Checks ---------------------------------------------------------------
@@ -340,6 +344,25 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["icons", "signing", "assetProtection", "lint"],
         learnMore: DOCS_URL,
     },
+    // The build dialog's first page. Separate from `appTags`, which answers what a variant is and
+    // how one is edited: this one answers what picking it here does to the build.
+    {
+        id: "buildVariant",
+        section: "ship",
+        related: ["appTags", "variantContent", "build"],
+    },
+    {
+        id: "appTags",
+        section: "ship",
+        related: ["build", "buildVariant", "variantContent", "lint"],
+    },
+    // The content half of a variant: which rows and scenes a build of it carries. Separate from
+    // `appTags`, which answers what a variant states about the application itself.
+    {
+        id: "variantContent",
+        section: "ship",
+        related: ["appTags", "buildVariant", "storyExpressions", "lint"],
+    },
     {
         id: "icons",
         section: "ship",
@@ -355,6 +378,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "assetProtection",
         section: "ship",
         related: ["build", "webOptimization", "plugins", "networkNodes"],
+    },
+    {
+        id: "networkAllowlist",
+        section: "ship",
+        related: ["networkNodes", "assetProtection", "plugins", "lint"],
     },
     {
         id: "webOptimization",

@@ -103,6 +103,13 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
+    BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
+    BLUEPRINT_NODE_TYPE_LAYER_SHOW,
+    BLUEPRINT_NODE_TYPE_LAYER_WAIT,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
+    BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS,
     BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
     BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
@@ -133,6 +140,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
     BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
@@ -140,6 +148,8 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
@@ -254,8 +264,44 @@ import {
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_VERTICAL_ALIGN,
     BLUEPRINT_NODE_TYPE_TEXT_GET_WRAP_MODE,
+    BLUEPRINT_NODE_TYPE_TIME_ADD,
+    BLUEPRINT_NODE_TYPE_TIME_DIFFERENCE,
+    BLUEPRINT_NODE_TYPE_TIME_DURATION_PARTS,
+    BLUEPRINT_NODE_TYPE_TIME_FORMAT,
+    BLUEPRINT_NODE_TYPE_TIME_FORMAT_DURATION,
+    BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED,
+    BLUEPRINT_NODE_TYPE_TIME_FORMAT_RELATIVE,
+    BLUEPRINT_NODE_TYPE_TIME_IS_SAME_DAY,
+    BLUEPRINT_NODE_TYPE_TIME_MAKE,
+    BLUEPRINT_NODE_TYPE_TIME_NOW,
+    BLUEPRINT_NODE_TYPE_TIME_PARSE,
+    BLUEPRINT_NODE_TYPE_TIME_PARTS,
+    BLUEPRINT_NODE_TYPE_TIME_START_OF_DAY,
+    BLUEPRINT_NODE_TYPE_TIME_TO_ISO_STRING,
+    BLUEPRINT_NODE_TYPE_TIME_ZONE_OFFSET,
+    BLUEPRINT_TIME_PARAM_DATE_STYLE,
+    BLUEPRINT_TIME_PARAM_TIME_STYLE,
     isBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
+import {
+    addBlueprintTime,
+    blueprintDurationParts,
+    blueprintTimeDifference,
+    blueprintTimeNow,
+    blueprintTimeParts,
+    blueprintTimeToIsoString,
+    blueprintTimeZoneName,
+    blueprintTimeZoneOffsetMinutes,
+    formatBlueprintDuration,
+    formatBlueprintRelativeTime,
+    formatBlueprintTime,
+    formatBlueprintTimeLocalized,
+    isSameBlueprintDay,
+    makeBlueprintTime,
+    parseBlueprintTime,
+    startOfBlueprintDay,
+    toBlueprintTimestamp,
+} from "@shared/blueprint/blueprintTime";
 import {
     type BlueprintElementRef,
     normalizeBlueprintImageAssetValue,
@@ -263,6 +309,8 @@ import {
     normalizeBlueprintVector2D,
 } from "@shared/types/blueprint/valueTypes";
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { BLUEPRINT_APP_TAG_OUTPUT_PIN_ID } from "./appTagNodes";
 import type { BehaviorGraphValueExecution } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -271,6 +319,7 @@ import {
     readDynamicInputPinIds,
     readDynamicInputPinLabels,
     resolveEffectiveBlueprintNodePins,
+    saveSchemaFieldIdFromPin,
 } from "../effectivePins";
 import { readBlueprintNodeOutputValue } from "../nodeOutputValues";
 import { readBlueprintMemoValue } from "../memoValues";
@@ -279,6 +328,12 @@ import {
     readBlueprintElementRefParams,
 } from "./elementRefUtils";
 import { readBlueprintAudioTrackParam } from "./audioTrackParams";
+import {
+    readBlueprintDurationStyle,
+    readBlueprintRelativeStyle,
+    readBlueprintTimeDisplayStyle,
+    readBlueprintTimeUnit,
+} from "./timeNodes";
 import {
     BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID,
     createDelayTimerToken,
@@ -1570,6 +1625,59 @@ function resolveVisitedNodeOutput(
 }
 
 /**
+ * `Is Layer Mounted` - the layer family's one pure reader.
+ *
+ * Its own resolver because a pure node's `execute()` is never run: the executor only walks exec flow,
+ * so the value exists here or nowhere, and a pure node nobody registered resolves to `undefined`
+ * downstream with no error and no diagnostic. The handle arrives on a data pin rather than in
+ * `params`, so this recurses through {@link resolveDataPinValue} to read whatever `Show Layer` put
+ * there.
+ *
+ * No handle, or no host, reads as false rather than `undefined`: the pin is a non-nullable boolean,
+ * and "no such layer" is the honest answer for one that was never shown.
+ */
+function resolveLayerMountedNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    nodeType: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (nodeType !== BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED || portId !== "mounted") {
+        return undefined;
+    }
+    const handle = String(
+        resolveDataPinValue(graph, nodeId, "layer", params, blueprintLocals, depth + 1, runtime) ?? "",
+    ).trim();
+    if (!handle) {
+        return false;
+    }
+    return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.layers?.isMounted(handle) === true;
+}
+
+/**
+ * `Get App Tag` - the build variant's name.
+ *
+ * Constant by construction, and the constant is the release name. The fold
+ * (`@shared/blueprint/appTagGraphFold`) substitutes the variant being packaged and deletes this node
+ * on the way into every bundle, and a graph it cannot reduce is refused at the build gate - so a
+ * node that survives to be read here belongs to a graph only Dev Mode or the preview is running,
+ * and neither of those ever assembles a bundle as anything but the release edition.
+ *
+ * Registered rather than left out because a pure node nobody registers here resolves to `undefined`
+ * downstream with no error and no diagnostic, which would read on screen as an empty variant name.
+ */
+function resolveAppTagNodeOutput(nodeType: string, portId: string): unknown {
+    if (nodeType !== BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG || portId !== BLUEPRINT_APP_TAG_OUTPUT_PIN_ID) {
+        return undefined;
+    }
+    return RELEASE_APP_TAG.name;
+}
+
+/**
  * `Get Character` - the addressable one. Kept out of {@link resolveGameNodeOutput} and dispatched
  * ahead of it because that function matches on bare port ids across the whole game family, and this
  * node's outputs would otherwise be captured by the speaker-scoped branches.
@@ -2322,6 +2430,134 @@ function resolveWidgetPropertyNodeOutput(
     return undefined;
 }
 
+/** The pattern `Format Time` uses when its Pattern pin is left blank. */
+const DEFAULT_TIME_FORMAT_PATTERN = "YYYY-MM-DD HH:mm";
+
+/**
+ * The Time family, all pure.
+ *
+ * Every branch reads its inputs through {@link resolveInput} and answers from
+ * `@shared/blueprint/blueprintTime`, so the calendar rules have one implementation and the nodes
+ * have none of their own. Returning `undefined` for an unknown type is what lets the dispatch chain
+ * fall through to the next family.
+ */
+function resolveTimeNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    type: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const ts = (pin: string) =>
+        toBlueprintTimestamp(resolveInput(graph, nodeId, pin, params, blueprintLocals, depth, runtime));
+    const num = (pin: string) => {
+        const value = toFiniteNumber(resolveInput(graph, nodeId, pin, params, blueprintLocals, depth, runtime));
+        return Number.isNaN(value) ? 0 : value;
+    };
+    const str = (pin: string) =>
+        toBlueprintString(resolveInput(graph, nodeId, pin, params, blueprintLocals, depth, runtime));
+
+    if (type === BLUEPRINT_NODE_TYPE_TIME_NOW) {
+        return portId === "timestamp" ? blueprintTimeNow() : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_MAKE) {
+        return portId === "timestamp"
+            ? makeBlueprintTime({
+                year: num("year"),
+                month: num("month"),
+                day: num("day"),
+                hour: num("hour"),
+                minute: num("minute"),
+                second: num("second"),
+                millisecond: num("millisecond"),
+            })
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_PARTS) {
+        const parts = blueprintTimeParts(ts("timestamp"));
+        return portId in parts ? parts[portId as keyof typeof parts] : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_FORMAT) {
+        if (portId !== "result") {
+            return undefined;
+        }
+        const pattern = str("pattern");
+        return formatBlueprintTime(ts("timestamp"), pattern.length > 0 ? pattern : DEFAULT_TIME_FORMAT_PATTERN);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED) {
+        return portId === "result"
+            ? formatBlueprintTimeLocalized({
+                timestamp: ts("timestamp"),
+                locale: str("locale"),
+                dateStyle: readBlueprintTimeDisplayStyle(params, BLUEPRINT_TIME_PARAM_DATE_STYLE, "medium"),
+                // Defaults to a date with no clock: the common label is a day, and an author who
+                // wants the time can say so in one click.
+                timeStyle: readBlueprintTimeDisplayStyle(params, BLUEPRINT_TIME_PARAM_TIME_STYLE, "none"),
+            })
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_FORMAT_RELATIVE) {
+        return portId === "result"
+            ? formatBlueprintRelativeTime({
+                from: ts("from"),
+                to: ts("to"),
+                locale: str("locale"),
+                numeric: readBlueprintRelativeStyle(params),
+            })
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_FORMAT_DURATION) {
+        return portId === "result"
+            ? formatBlueprintDuration(num("milliseconds"), readBlueprintDurationStyle(params))
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_DURATION_PARTS) {
+        const parts = blueprintDurationParts(num("milliseconds"));
+        // The pin is `remainingMilliseconds` because `milliseconds` is already this node's input, and
+        // a pin id has to be unique across kinds within a node.
+        if (portId === "remainingMilliseconds") {
+            return parts.milliseconds;
+        }
+        return portId in parts ? parts[portId as keyof typeof parts] : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_ADD) {
+        return portId === "result"
+            ? addBlueprintTime(ts("timestamp"), num("amount"), readBlueprintTimeUnit(params))
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_DIFFERENCE) {
+        return portId === "difference"
+            ? blueprintTimeDifference(ts("from"), ts("to"), readBlueprintTimeUnit(params))
+            : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_PARSE) {
+        if (portId !== "timestamp" && portId !== "ok") {
+            return undefined;
+        }
+        const parsed = parseBlueprintTime(str("value"));
+        return portId === "timestamp" ? parsed.timestamp : parsed.ok;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_TO_ISO_STRING) {
+        return portId === "result" ? blueprintTimeToIsoString(ts("timestamp")) : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_IS_SAME_DAY) {
+        return portId === "result" ? isSameBlueprintDay(ts("a"), ts("b")) : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_START_OF_DAY) {
+        return portId === "result" ? startOfBlueprintDay(ts("timestamp")) : undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_TIME_ZONE_OFFSET) {
+        if (portId === "offsetMinutes") {
+            return blueprintTimeZoneOffsetMinutes(ts("timestamp"));
+        }
+        return portId === "name" ? blueprintTimeZoneName() : undefined;
+    }
+    return undefined;
+}
+
 function resolveDataNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -2654,9 +2890,51 @@ function resolveSelfOutput(
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
+    // Get Save Time, kept out of the cross-product list above because none of its port names appear
+    // there and joining it would hand `savedAt` / `exists` to every save node in it.
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME &&
+        (portId === "savedAt" || portId === "createdAt" || portId === "exists")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // The project's declared save fields, published by Get Save Metadata onto one pin each. Matched
+    // by prefix rather than by name because the names are the author's: the set changes whenever a
+    // field is declared, and a fixed list here would go stale the moment one is.
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA &&
+        saveSchemaFieldIdFromPin(portId) !== null
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // Get Save Line, separate for the same reason as Get Save Time: `speaker` is a port name several
+    // nodes in the cross-product list carry, and joining it would hand this node's outputs to them.
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE &&
+        (portId === "line" || portId === "speaker" || portId === "exists")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
     // Play Sound hands its handle to the transport nodes that follow, so the handle has to survive
     // the hop through the node output store the same way an animation token does.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY && portId === "handle") {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // Open Link publishes why it failed. Kept out of the cross-product list for the reason the
+    // network family below is: `error` is not a port name that list carries, and joining it would
+    // hand `error` to every node type in it.
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL && portId === "error") {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // The progress pair, kept out of the cross-product list for the reason Open Link is: `error` is
+    // not a port name that list carries, and `sceneId` is the whole point of Import Progress - it
+    // hands the scene out as data for a later `Start Game`, so unregistered it would read as
+    // `undefined` there with nothing said about it.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS && portId === "error") ||
+        (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS
+            && (portId === "sceneId" || portId === "error"))
+    ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     // The network family, kept out of the cross-product list above on purpose: `response`, `text`
@@ -2667,6 +2945,19 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT ||
             selfNode.type === BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON) &&
         (portId === "response" || portId === "status" || portId === "error" || portId === "text" || portId === "value")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // The layer family, kept out of the cross-product list above for the same reason the network one
+    // is: `layer` is an INPUT pin name on three of these nodes and an output on exactly one, and
+    // joining that list would hand the name to every node type in it. `Show Layer` publishes the
+    // handle every other layer node takes, `Wait For Layer` publishes what the layer closed with, and
+    // `Show Confirm` publishes which button was pressed and what it read; unregistered, all of them
+    // would read as `undefined` downstream with nothing said about it.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_SHOW && portId === "layer") ||
+        (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_WAIT && portId === "result") ||
+        (selfNode.type === BLUEPRINT_NODE_TYPE_LAYER_CONFIRM && (portId === "index" || portId === "label"))
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
@@ -2751,6 +3042,23 @@ function resolveSelfOutput(
     );
     if (visitedOutput !== undefined) {
         return visitedOutput;
+    }
+    const layerMountedOutput = resolveLayerMountedNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    if (layerMountedOutput !== undefined) {
+        return layerMountedOutput;
+    }
+    const appTagOutput = resolveAppTagNodeOutput(selfNode.type, portId);
+    if (appTagOutput !== undefined) {
+        return appTagOutput;
     }
     const getCharacterOutput = resolveGetCharacterNodeOutput(
         selfNode.type,
@@ -2882,6 +3190,19 @@ function resolveSelfOutput(
     );
     if (widgetPropertyOutput !== undefined) {
         return widgetPropertyOutput;
+    }
+    const timeOutput = resolveTimeNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    if (timeOutput !== undefined) {
+        return timeOutput;
     }
     const dataOutput = resolveDataNodeOutput(
         graph,

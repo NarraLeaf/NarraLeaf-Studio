@@ -248,7 +248,7 @@ function StorySceneOverviewBlock(props: {
                 type="button"
                 onClick={toggleCollapsed}
                 aria-expanded={!collapsed}
-                title={collapsed ? t("common.expand") : t("common.collapse")}
+                data-tip={collapsed ? t("common.expand") : t("common.collapse")}
                 className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors hover:bg-fill focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/60"
             >
                 {collapsed ? (
@@ -295,7 +295,7 @@ function StorySceneOverviewBlock(props: {
                     type="button"
                     className="group relative aspect-[16/9] min-h-40 overflow-hidden rounded-md border border-edge bg-surface text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
                     onClick={() => setSelectorOpen(true)}
-                    title={backgroundAssetId ? t("story.sceneEditor.changeBackgroundTitle") : t("story.sceneEditor.selectBackgroundTitle")}
+                    data-tip={backgroundAssetId ? t("story.sceneEditor.changeBackgroundTitle") : t("story.sceneEditor.selectBackgroundTitle")}
                 >
                     {url ? (
                         <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
@@ -378,7 +378,7 @@ function StorySceneOverviewBlock(props: {
                                 type="button"
                                 className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                                 disabled={!backgroundAssetId}
-                                title={t("story.sceneEditor.clearBackground")}
+                                data-tip={t("story.sceneEditor.clearBackground")} aria-label={t("story.sceneEditor.clearBackground")}
                                 onClick={clearBackground}
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1941,7 +1941,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         ref={filterButtonRef}
                         type="button"
                         onClick={toggleFilterMenu}
-                        title={t("story.view.filter.title")}
+                        data-tip={t("story.view.filter.title")}
                         aria-label={t("story.view.filter.title")}
                         aria-haspopup="menu"
                         aria-expanded={filterMenuAnchor !== null}
@@ -1959,7 +1959,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <button
                         type="button"
                         onClick={event => densityMenu.showMenu(event)}
-                        title={t("story.view.density")}
+                        data-tip={t("story.view.density")}
                         aria-label={t("story.view.density")}
                         aria-haspopup="menu"
                         aria-pressed={editor.density !== "compact"}
@@ -1973,7 +1973,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <button
                         type="button"
                         onClick={openCommandManual}
-                        title={t("story.commandManual.open")}
+                        data-tip={t("story.commandManual.open")}
                         aria-label={t("story.commandManual.open")}
                         className="rounded-md p-1.5 text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                     >
@@ -1988,7 +1988,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <button
                         type="button"
                         onClick={togglePreview}
-                        title={previewOpen ? t("story.preview.closePreview") : t("story.preview.openPreview")}
+                        data-tip={previewOpen ? t("story.preview.closePreview") : t("story.preview.openPreview")}
                         aria-pressed={previewOpen}
                         className={["flex min-h-7 cursor-default items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors", previewOpen ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
                     >

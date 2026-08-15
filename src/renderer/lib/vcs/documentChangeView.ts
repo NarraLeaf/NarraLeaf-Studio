@@ -1,29 +1,23 @@
-import type { DocumentChange, DocumentDiff, DocumentDiffTier } from "@shared/documents/diff";
+import type { DocumentChange, DocumentChangeKind, DocumentDiff, DocumentDiffTier } from "@shared/documents/diff";
 import type { TranslationKey, Translator } from "@shared/i18n";
 
 /**
  * Turning a {@link DocumentDiff} into rows a surface can draw, without any surface in the picture.
  *
- * Two surfaces render the same list - the version rail's in-place summary and the `vcs-changes`
- * editor tab - and everything that can be WRONG about that list is here rather than in either of
- * them: how many rows fit, which ones survive the cap, how many were left out, and how a label
- * made of a translation key plus parameters becomes text. There are no component-render tests in
- * this codebase, so anything that decides behaviour has to be reachable without mounting a rail.
+ * Everything that can be WRONG about that list is here rather than in the component drawing it:
+ * how many rows fit, which ones survive the cap, how many were left out, and how a label made of a
+ * translation key plus parameters becomes text. There are no component-render tests for most of
+ * this codebase, so anything that decides behaviour has to be reachable without mounting anything.
+ *
+ * The list has one home now - the comparison tab's detail pane, through `presenters` - where it
+ * used to have two. The version rail drew a second, denser copy under any file row an author
+ * expanded; the rail lists files only as of this milestone, so the cap that rendering needed is
+ * gone with it.
  *
  * Nothing here reads project data, so nothing here is gated on the freeze. A comparison is a read
  * by construction - it cannot write anything even in principle - and a frozen workspace is exactly
  * the state an author is in while they are trying to find out what a past version says.
  */
-
-/**
- * Rows the version rail's in-place summary draws before it defers to the tab.
- *
- * Eight, because the rail is 320px and its change list lives inside a bounded box that the commit
- * form and the history share a scroller with (see `ChangesSection`): an expansion tall enough to
- * push the way to another version out of view would cost more than it gives. Past eight the honest
- * move is not a taller box, it is a wider surface, and "view all N" is the way to one.
- */
-export const RAIL_CHANGE_SUMMARY_ROWS = 8;
 
 /** One line of a change list: a top-level change, or one of its children. */
 export interface DocumentChangeRow {
@@ -194,6 +188,31 @@ function translateCountName(name: string, translator: LabelTranslator): string {
     return translator.has(key) ? translator.t(key as TranslationKey) : name;
 }
 
+/**
+ * Whether what happened is a fact about the whole file rather than a comparison of its insides.
+ *
+ * **Three kinds, and the third one was the miss.** A tier is a caveat about HOW two versions were
+ * compared, so it only means anything where two versions were compared. A file that was added has
+ * no other side; one that was removed has no other side; and one that MOVED has two sides holding
+ * the same bytes - so there was nothing to look inside for, and its row is a fact rather than a
+ * summary. Added and removed were spelled out at the two places that care; `moved` was in neither,
+ * so a renamed note read "Not read" in the real app - false twice over, because a working-tree
+ * rename is confirmed by reading both copies IN FULL (`vcs/diff/workingTreeDiff.ts`, `pairRenames`).
+ *
+ * The two places have to agree or the surface contradicts itself: the detail pane suppresses the
+ * caption, and {@link import("./changeIndex").buildChangeIndex} leaves the same files out of the
+ * count its group headings show. Spelling the kinds twice is what let them disagree, so they are
+ * spelled here and nowhere else.
+ *
+ * Takes a kind rather than a whole entry, and the diff model's kind at that: a working-tree status
+ * says `deleted` where this says `removed`, and passing that spelling has to be a compile error
+ * rather than a quiet "not whole". `DocumentChangeList`'s own prop stays a boolean for the same
+ * reason, one layer further out.
+ */
+export function isWholeDocumentChange(kind: DocumentChangeKind): boolean {
+    return kind === "added" || kind === "removed" || kind === "moved";
+}
+
 /** The caption above a change list, or null for the one tier that needs no caveat. */
 export interface DocumentDiffTierCaption {
     readonly key: TranslationKey;
@@ -223,6 +242,11 @@ export function documentDiffTierCaption(tier: DocumentDiffTier): DocumentDiffTie
                 key: "documentDiff.tier.structural" as TranslationKey,
                 hintKey: "documentDiff.tier.structuralHint" as TranslationKey,
             };
+        case "content":
+            return {
+                key: "documentDiff.tier.content" as TranslationKey,
+                hintKey: "documentDiff.tier.contentHint" as TranslationKey,
+            };
         case "opaque":
             return {
                 key: "documentDiff.tier.opaque" as TranslationKey,
@@ -250,8 +274,8 @@ export function documentDiffTierCaption(tier: DocumentDiffTier): DocumentDiffTie
  *    here would be a specific claim the spec has not earned.
  *  - `summary` compared counts. Equal counts are not an equal document, and saying so is
  *    the whole point of the tier being named.
- *  - `opaque` never produces an empty list, but the fallback stays honest rather than
- *    unreachable-by-assumption.
+ *  - `content` and `opaque` never produce an empty list, but the fallback stays honest
+ *    rather than unreachable-by-assumption.
  */
 export function documentDiffEmptyKey(tier: DocumentDiffTier): TranslationKey {
     switch (tier) {
@@ -261,6 +285,7 @@ export function documentDiffEmptyKey(tier: DocumentDiffTier): TranslationKey {
             return "documentDiff.rows.emptyUntracked" as TranslationKey;
         case "summary":
             return "documentDiff.rows.emptyCounts" as TranslationKey;
+        case "content":
         case "opaque":
             return "documentDiff.rows.empty" as TranslationKey;
     }

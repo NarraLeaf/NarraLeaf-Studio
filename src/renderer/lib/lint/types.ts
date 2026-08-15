@@ -30,6 +30,8 @@ export type LintCategory =
     | "portability"
     | "network"
     | "story"
+    | "blueprint"
+    | "ui"
     | "variables"
     | "text"
     | "localization"
@@ -42,6 +44,13 @@ export const LINT_CATEGORY_ORDER: readonly LintCategory[] = [
     "portability",
     "network",
     "story",
+    // Beside `story` rather than after `network`: the two answer the same question about the two
+    // halves of a project - does every route this names still lead somewhere.
+    "blueprint",
+    // Beside `blueprint` for the same reason `blueprint` sits beside `story`: a page nothing opens
+    // and a graph that navigates nowhere are one subject seen from its two ends, and an author who
+    // has just read one wants the other in the next few rows rather than at the bottom of the list.
+    "ui",
     "variables",
     "text",
     "localization",
@@ -66,10 +75,12 @@ export type LintRuleId =
     | "assets/unused"
     | "assets/missing"
     | "assets/unreadable"
+    | "assets/oversized"
     | "portability/asset-name"
     | "portability/case-collision"
     | "portability/media-format"
     | "network/fetch-disallowed"
+    | "network/fetch-not-allowlisted"
     | "story/invalid-command"
     | "story/goto-missing"
     | "story/label-duplicate"
@@ -79,6 +90,16 @@ export type LintRuleId =
     | "story/dead-end"
     | "story/unreachable-scene"
     | "story/empty-scene"
+    | "story/app-tag-unknown"
+    | "story/cut-point-orphan"
+    | "story/cut-point-unreachable"
+    | "blueprint/reference-missing"
+    | "blueprint/unreachable-node"
+    | "blueprint/empty-event"
+    | "ui/unlocalized-text"
+    | "ui/page-unreachable"
+    | "ui/empty-behavior"
+    | "blueprint/save-field-empty"
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"
@@ -130,6 +151,21 @@ export type LintLocation =
           excerpt?: string;
       }
     | { kind: "blueprint"; blueprintId: string; blueprintName?: string; graphId?: string; nodeId?: string }
+    | {
+          kind: "surface";
+          surfaceId: string;
+          /** The page's own name, as the surface list shows it - never a translated kind word. */
+          surfaceName: string;
+          elementId?: string;
+          /**
+           * The widget's author-given name, when it has one.
+           *
+           * What tells two findings of one rule on one page apart, the way `excerpt` does inside a
+           * scene. Absent rather than filled with the raw element type: `nl.button` is an internal
+           * id, and printing it in the locator column would say less than an empty cell.
+           */
+          elementName?: string;
+      }
     | { kind: "character"; characterId: string; characterName: string };
 
 /** What a rule emits. Severity is resolved from config when the report is assembled. */

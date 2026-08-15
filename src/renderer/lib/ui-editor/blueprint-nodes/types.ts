@@ -9,6 +9,7 @@ import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
 } from "@shared/types/blueprint/valueTypes";
+import type { BlueprintAssetPinRef } from "@shared/types/blueprint/valueTypes";
 import type { BehaviorNodeDefinition, BehaviorNodeExecutionContext } from "../behavior-graph/BehaviorNodeRegistry";
 
 export type BlueprintPinSemantic = "exec" | "data";
@@ -52,6 +53,12 @@ export type BlueprintNodePinDef = {
      * string|integer|float|boolean.
      */
     allowInlineLiteral?: boolean;
+    /**
+     * Set when this pin carries a library asset id. Read by the asset reverse-lookup index, which
+     * walks the catalogue rather than a hard-coded list of param names - so a node added later is
+     * covered by declaring it here and nowhere else.
+     */
+    assetRef?: BlueprintAssetPinRef;
 };
 
 /**
@@ -80,6 +87,18 @@ export type BlueprintNodeDynamicInputPinsConfig = {
         optional?: boolean;
         allowInlineLiteral?: boolean;
     }[];
+    /**
+     * Number the labels of generated pins by the add that produced them: the first add reads
+     * `Button 1` / `Pressed 1`, the second `Button 2` / `Pressed 2`.
+     *
+     * Off by default, and deliberately so. A template label is otherwise rendered verbatim, which
+     * is right where the pin already carries its own meaning - `Switch String` puts the value it
+     * compares on the pin, so every generated `Case` is told apart by what is written in it. It is
+     * wrong where the pins are interchangeable and their ORDER is the meaning, which is the case
+     * for a row of buttons: unnumbered, the third button and its exec output are indistinguishable
+     * from the first, and an author cannot tell which branch they are wiring.
+     */
+    numberGeneratedPinLabels?: boolean;
     /** When dynamic output pins exist, insert them before this static output pin id. */
     outputInsertBeforePinId?: string;
     /** Optional display label prefix for generated pins. Defaults to "Input". */
@@ -231,6 +250,15 @@ export type BlueprintNodeDef = {
     pins: BlueprintNodePinDef[];
     /** When set, users may add/remove extra data input pins (persisted in params). */
     dynamicInputPins?: BlueprintNodeDynamicInputPinsConfig;
+    /**
+     * Grow one pin per field the project's save schema declares (see `@shared/types/saveSchema`).
+     *
+     * Unlike {@link dynamicInputPins}, these come from a project document rather than from this
+     * node's params - which is the point. `Save Game` and `Get Save Metadata` are a contract across
+     * time, so both read one list and grow the same pins in the same order; a per-node list would
+     * be as many copies as there are save nodes, drifting by hand.
+     */
+    saveSchemaPins?: { kind: "input" | "output" };
     inspectorParams?: BlueprintInspectorParamDef[];
     scope?: BlueprintNodeScope;
     role?: BlueprintNodeRole;
@@ -295,6 +323,8 @@ export type BlueprintNodeEditorCatalogEntry = {
         allowInlineLiteral?: boolean;
         /** True for user-added dynamic inputs; show remove control on the node card. */
         removable?: boolean;
+        /** Carried through from the definition; see {@link BlueprintNodePinDef.assetRef}. */
+        assetRef?: BlueprintAssetPinRef;
     }>;
     inspectorParams?: BlueprintInspectorParamDef[];
     graphKinds: BlueprintGraphKind[];
@@ -302,6 +332,10 @@ export type BlueprintNodeEditorCatalogEntry = {
     scope?: BlueprintNodeScope;
     /** When true, node card may offer add-input control (see dynamicInputPins on def). */
     supportsDynamicInputPins?: boolean;
+    /** True on the save nodes: the card offers the editor for the project's save fields. */
+    supportsSaveSchemaPins?: boolean;
+    /** Which column those pins land in, so the card puts the button beside them. */
+    saveSchemaPinKind?: "input" | "output";
     /** Label for the node-card add-input control. */
     dynamicInputPinAddLabel?: string;
     /** Param key storing user-visible labels for dynamic input pins, if editable. */

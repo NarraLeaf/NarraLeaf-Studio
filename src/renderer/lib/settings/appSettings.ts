@@ -27,6 +27,17 @@ import {
     STORY_ROW_HIGHLIGHT_OPTIONS,
 } from "@/lib/settings/storyRowHighlightOptions";
 import {
+    SPELLCHECK_FOLLOW_PROJECT,
+    SPELLCHECK_LANGUAGE_DEFAULT,
+    SPELLCHECK_LANGUAGE_KEY,
+    SPELLCHECK_OFF,
+} from "@shared/types/spellcheck";
+import {
+    DETACHED_EDITOR_ON_CLOSE_DEFAULT,
+    DETACHED_EDITOR_ON_CLOSE_KEY,
+    DETACHED_EDITOR_ON_CLOSE_OPTIONS,
+} from "@/lib/settings/detachedEditorCloseOptions";
+import {
     ACCENT_COLOR_DEFAULT,
     ACCENT_PRESETS,
     ACCENT_SWATCHES,
@@ -36,11 +47,13 @@ import {
     ZOOM_PERCENT_MAX,
     ZOOM_PERCENT_MIN,
 } from "@shared/constants/zoom";
+import { CONFIRM_QUIT_DEFAULT, CONFIRM_QUIT_KEY } from "@shared/constants/quit";
 import { LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
 import { resetAllPreferences, resetWorkspaceLayout } from "@/lib/settings/resetSettings";
 import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
+import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { UPDATE_AUTO_CHECK_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
@@ -56,6 +69,13 @@ import {
     RECENT_PROJECTS_LIMIT_MIN,
 } from "@shared/constants/recentProjects";
 import { DEVELOPER_MODE_DEFAULT, DEVELOPER_MODE_KEY } from "@/lib/developer";
+import {
+    TOOLTIP_DELAY_DEFAULT_MS,
+    TOOLTIP_DELAY_KEY,
+    TOOLTIP_DELAY_MAX_MS,
+    TOOLTIP_DELAY_MIN_MS,
+    TOOLTIP_DELAY_STEP_MS,
+} from "@/lib/settings/tooltipOptions";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -115,6 +135,17 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 5,
     },
     {
+        // Its own category rather than a panel under Version control: a server is signed in to
+        // once and then serves every project pointed at it, so it outlives any of them. Filing
+        // it under version control would say the opposite - that it is a property of a project.
+        key: "servers",
+        label: "Servers",
+        labelKey: "settings.categories.servers.label",
+        description: "Servers this installation is signed in to, and the accounts it uses.",
+        descriptionKey: "settings.categories.servers.description",
+        order: 6,
+    },
+    {
         // Absorbed the former "Plugins" and "Advanced" categories, which between them held four
         // mirror URLs kept apart by which feature happened to need them. Where Studio downloads
         // from is one question, so it is one place.
@@ -123,7 +154,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.network.label",
         description: "Where Studio downloads plugins, templates and build tooling from.",
         descriptionKey: "settings.categories.network.description",
-        order: 6,
+        order: 7,
     },
     {
         key: "data",
@@ -131,7 +162,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.data.label",
         description: "Cached files, resetting preferences, and moving them between machines.",
         descriptionKey: "settings.categories.data.description",
-        order: 7,
+        order: 8,
     },
 ];
 
@@ -179,6 +210,33 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Right-click menus gain a section for copying the ID of what you clicked.",
         descriptionKey: "settings.items.developerMode.description",
         defaultValue: DEVELOPER_MODE_DEFAULT,
+    },
+    {
+        // Applied by the main process (`ConfirmQuitManager`), which is the only place the keystroke
+        // can be seen at all: ⌘Q reaches Studio as the App menu's key equivalent, and swallowing it
+        // has to happen before the menu acts on it.
+        //
+        // macOS only, and the platform check is the whole of the availability rule - there is no
+        // state anywhere else that could make it true, so unlike the background-image row this one
+        // never changes answer for the lifetime of the window.
+        key: CONFIRM_QUIT_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Confirm before quitting with ⌘Q",
+        labelKey: "settings.items.confirmQuit.label",
+        description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
+        descriptionKey: "settings.items.confirmQuit.description",
+        defaultValue: CONFIRM_QUIT_DEFAULT,
+        availability: async () => {
+            // Dynamic, like the background-image row below: `platform` reaches the window bootstrap
+            // for its cached answer, and this module is also loaded by the settings export/import
+            // scope walker, which runs where no window has booted.
+            const { isMacPlatform } = await import("@/lib/app/platform");
+            return isMacPlatform()
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.confirmQuit.unsupportedPlatform" };
+        },
     },
     {
         // Read by the main process's UpdateManager when it decides whether to schedule the launch
@@ -265,6 +323,24 @@ export const AppSettings: AppSettingDefinition[] = [
         onPreview: (value) => {
             void import("@/lib/appearance").then(({ previewAccentColor }) => previewAccentColor(value));
         },
+    },
+    {
+        // Handed to the tooltip controller by `lib/appearance`, which is also where the accent and
+        // the motion preference are applied: a value JS has to read, with no media query or CSS
+        // custom property that could carry it instead.
+        key: TOOLTIP_DELAY_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Tooltip delay",
+        labelKey: "settings.items.tooltipDelay.label",
+        description: "How long the pointer rests on a control before its tooltip appears. Within a toolbar the wait applies to the first tooltip only.",
+        descriptionKey: "settings.items.tooltipDelay.description",
+        defaultValue: TOOLTIP_DELAY_DEFAULT_MS,
+        min: TOOLTIP_DELAY_MIN_MS,
+        max: TOOLTIP_DELAY_MAX_MS,
+        step: TOOLTIP_DELAY_STEP_MS,
+        unit: "ms",
     },
     {
         // Applied by the renderer in two halves, because one cannot reach the other: the
@@ -518,6 +594,90 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
+        /**
+         * Applied by `DictionaryService`, which sends the project's source language and its own
+         * words to the main process; main turns the pair into the language it checks in
+         * (`@shared/types/spellcheck`). Only the story script is checked - translations are somebody
+         * else's language and not the author's to respell.
+         *
+         * The option list is finished at render time from the dictionaries actually installed on
+         * this machine. It has to be, because that list is not a fact this module can know: it is
+         * whatever the author has downloaded, and hard-coding it here would offer a language
+         * nothing can be checked against.
+         */
+        key: SPELLCHECK_LANGUAGE_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Spellcheck language",
+        labelKey: "settings.items.spellcheckLanguage.label",
+        description: "Marks misspellings in the story script. Translations are never checked.",
+        descriptionKey: "settings.items.spellcheckLanguage.description",
+        defaultValue: SPELLCHECK_LANGUAGE_DEFAULT,
+        options: [SPELLCHECK_FOLLOW_PROJECT, SPELLCHECK_OFF],
+        optionLabelKeys: {
+            [SPELLCHECK_FOLLOW_PROJECT]: "settings.items.spellcheckLanguage.options.followProject",
+            [SPELLCHECK_OFF]: "settings.items.spellcheckLanguage.options.off",
+        },
+        /**
+         * Enabled, and carrying a reason anyway.
+         *
+         * No dictionary covers the project's own language: either the author has not downloaded
+         * one, or - for Chinese and Japanese - none exists, since neither language has spelling in
+         * the word-list sense. Either way, following the project's language checks nothing. The row
+         * says so instead of leaving a control that looks live and produces not one underline. It
+         * stays usable because naming a language outright is still a real choice, and a control
+         * closed for the length of a project is worse than a control that explains itself.
+         */
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const { projectLanguageHasNoDictionary } = await import("@shared/types/spellcheck");
+            const result = await getInterface().app.spellcheck.getStatus();
+            return result.success && projectLanguageHasNoDictionary(result.data)
+                ? { enabled: true, reasonKey: "settings.items.spellcheckLanguage.noDictionary" as const }
+                : { enabled: true };
+        },
+    },
+    {
+        // Rendered by `SETTING_PANELS.dictionaries`. Nothing is stored under this key: the
+        // dictionaries are files in a cache the main process owns, and the panel lists them,
+        // fetches them and deletes them over IPC.
+        //
+        // Beneath the language row rather than folded into it, because the two answer different
+        // questions. The row above asks which language THIS PROJECT is checked in; this asks which
+        // languages the machine can check at all - a fact every project on it shares, and the reason
+        // the row above can have nothing to offer.
+        key: "editor.dictionaries",
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "dictionaries",
+        label: "Spelling dictionaries",
+        labelKey: "settings.items.dictionaries.label",
+        description: "",
+        defaultValue: null,
+    },
+    {
+        // Read by the workspace's detached-editor host when a popped-out window goes away. An
+        // editor can be popped out of its tab into a window of its own (the blueprint editor's
+        // title row offers it, and a middle click there does the same); this decides whether
+        // closing that window hands the editor back to the workspace or ends it.
+        key: DETACHED_EDITOR_ON_CLOSE_KEY,
+        category: "editor",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "When a detached editor window closes",
+        labelKey: "settings.items.detachedEditorOnClose.label",
+        description: "An editor opened in its own window either returns to the workspace or closes with the window.",
+        descriptionKey: "settings.items.detachedEditorOnClose.description",
+        defaultValue: DETACHED_EDITOR_ON_CLOSE_DEFAULT,
+        options: [...DETACHED_EDITOR_ON_CLOSE_OPTIONS],
+        optionLabelKeys: {
+            restoreTab: "settings.items.detachedEditorOnClose.options.restoreTab",
+            close: "settings.items.detachedEditorOnClose.options.close",
+        },
+    },
+    {
         // Applied by the main process in `App.handleWorkspaceCloseRequest`: the workspace
         // window's close guard shows a native confirmation sheet before letting the close through.
         key: "workspace.confirmBeforeClose",
@@ -574,6 +734,24 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Applies to projects you haven't decided about. Each project can override it.",
         descriptionKey: "settings.items.dashboardOnOpen.description",
         defaultValue: true,
+    },
+    {
+        // Rendered by `SETTING_PANELS.servers`. Nothing is stored under this key: the servers
+        // themselves are in `versionControl.serverSessions`, written by the main process when a
+        // sign-in succeeds, and the panel reads them over IPC rather than out of the store so
+        // that a session the backend has since dropped is not drawn as one that is in force.
+        //
+        // This key is also the `highlight` that opens Settings here, which is what the version
+        // rail's server dialog sends (`SERVERS_PANEL_SETTING_KEY`).
+        key: SERVERS_PANEL_SETTING_KEY,
+        category: "servers",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "servers",
+        label: "Servers",
+        labelKey: "settings.items.servers.label",
+        description: "",
+        defaultValue: null,
     },
     {
         // Rendered by `SETTING_PANELS.cacheInventory`. Nothing is stored under this key; the panel
@@ -861,6 +1039,27 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
         descriptionKey: "settings.items.versionControlAuthor.description",
         defaultValue: "",
+        /**
+         * Read-only while this installation is signed in to a server.
+         *
+         * The point of signing in is that a team's history says who actually made each
+         * revision rather than what each person typed here, so while a session is in force
+         * the name on a revision comes from the token and this field is not what is
+         * recorded. Left editable it would be a box that accepts a name and changes
+         * nothing - which is worse than one that says why it is closed.
+         *
+         * The setting itself stays, and so does everything that reads it: a project with no
+         * server has no token to take a name from, and that is the case this exists for.
+         */
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const result = await getInterface().app.state.getGlobalState("versionControl.serverSessions");
+            const sessions = result.success && Array.isArray(result.data.value) ? result.data.value : [];
+            return sessions.length === 0
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.versionControlAuthor.fromServer" as const };
+        },
+
     },
     {
         // Folded into the name by `composeVcsIdentity` before it reaches Lore, which stores ONE
@@ -877,5 +1076,26 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Recorded next to the author name, as \"Name <email>\". Leave empty to record no address.",
         descriptionKey: "settings.items.versionControlAuthorEmail.description",
         defaultValue: "",
+        /**
+         * Read-only while this installation is signed in to a server.
+         *
+         * The point of signing in is that a team's history says who actually made each
+         * revision rather than what each person typed here, so while a session is in force
+         * the name on a revision comes from the token and this field is not what is
+         * recorded. Left editable it would be a box that accepts a name and changes
+         * nothing - which is worse than one that says why it is closed.
+         *
+         * The setting itself stays, and so does everything that reads it: a project with no
+         * server has no token to take a name from, and that is the case this exists for.
+         */
+        availability: async () => {
+            const { getInterface } = await import("@/lib/app/bridge");
+            const result = await getInterface().app.state.getGlobalState("versionControl.serverSessions");
+            const sessions = result.success && Array.isArray(result.data.value) ? result.data.value : [];
+            return sessions.length === 0
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.versionControlAuthor.fromServer" as const };
+        },
+
     },
 ];

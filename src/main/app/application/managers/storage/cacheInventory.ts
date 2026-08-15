@@ -43,6 +43,12 @@ const BUILD_DEPS_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.Bu
 /** Theme posters from the UI template store. */
 const UI_TEMPLATE_POSTERS_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.UITemplatePosters);
 
+/** Downloaded spellchecker word lists; must agree with `DictionaryCache`. */
+const SPELLCHECK_DICTIONARIES_RELATIVE = path.join(
+    UserDataNamespace.Cache,
+    CacheNamespace.SpellcheckDictionaries,
+);
+
 export function psdTempRoot(tempDir: string = os.tmpdir()): string {
     return path.join(tempDir, PSD_TEMP_DIR_NAME);
 }
@@ -98,6 +104,11 @@ function bucketDefinitions(userDataDir: string): BucketDefinition[] {
             id: "uiTemplatePosters",
             dirs: [path.join(userDataDir, UI_TEMPLATE_POSTERS_RELATIVE)],
             displayPath: path.join(userDataDir, UI_TEMPLATE_POSTERS_RELATIVE),
+        },
+        {
+            id: "spellcheckDictionaries",
+            dirs: [path.join(userDataDir, SPELLCHECK_DICTIONARIES_RELATIVE)],
+            displayPath: path.join(userDataDir, SPELLCHECK_DICTIONARIES_RELATIVE),
         },
         {
             id: "buildDependencies",

@@ -59,7 +59,14 @@
   <link href="<%= style %>" rel="stylesheet">
 </head>
 
-<body>
+<!--
+  Chromium checks the spelling of every editable field it is given by default, and `spellcheck`
+  inherits. Off at the root, and now permanently so: Studio does its own spellchecking in the main
+  process, and Chromium's checker is unused because it fetched its dictionaries from Google's
+  servers by itself, without passing through main. Nothing should turn this back on for a field -
+  a field with both checkers running would draw two sets of underlines from two sets of words.
+-->
+<body spellcheck="false">
   <div id="root"></div>
 </body>
 

@@ -2,6 +2,12 @@ import type { ReactNode } from "react";
 import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "@shared/types/gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
@@ -9,6 +15,7 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
+import type { SaveLoadOutcome } from "./saveLoad";
 
 export type GameAppLogLevel = "info" | "warning" | "error";
 
@@ -21,8 +28,11 @@ export type GameAppLogLevel = "info" | "warning" | "error";
  *    that throws while a row is running, and a near miss for anything asynchronous — the row named
  *    is where playback WAS, which is a real place to start looking and not a claim about the cause.
  *  - `session`: nothing was running that could be blamed (a boot failure, a reload failure). No row.
+ *  - `interface`: a Game UI blueprint threw. It has no story row at all — the author was not writing
+ *    a story when they wrote it — so the place it names is a SURFACE (see
+ *    {@link GameAppRuntimeIssue.surfaceId}) and the row fields stay empty.
  */
-export type GameAppIssueOrigin = "compile" | "playHead" | "session";
+export type GameAppIssueOrigin = "compile" | "playHead" | "session" | "interface";
 
 /**
  * A runtime failure with its authored origin attached. See {@link GameAppHost.reportIssue}.
@@ -38,6 +48,12 @@ export type GameAppRuntimeIssue = {
     origin: GameAppIssueOrigin;
     /** Studio story block this came from; absent when nothing could be attributed. */
     blockId?: string;
+    /**
+     * UI surface this came from — the other kind of place a failure can have, and the only one an
+     * `interface` issue has. Carried as an id for the same reason `blockId` is: the runtime knows
+     * which surface it was running and nothing about what the author named it.
+     */
+    surfaceId?: string;
     /** The underlying stack, when there was one. Kept for the cases a location cannot explain. */
     stack?: string;
 };
@@ -93,6 +109,16 @@ export type GameAppHost = {
     sessionKey: string;
     /** Surface the navigation stack starts on; null falls back to the default app surface. */
     entrySurfaceId: string | null | undefined;
+    /**
+     * Surface to show when the running story falls off the end, resolved for the variant this build
+     * was produced as. Blank or absent keeps the behaviour every build had before it existed: the
+     * story stops and the stage stays where it is.
+     *
+     * A host supplies it from what it was given, never from a default. There is no page to fall back
+     * on - a screen nobody authored is worse than no screen - and a demo whose cut point IS its
+     * ending may legitimately want the stage left alone.
+     */
+    endingSurfaceId?: string | null;
     /** Gate for boot side effects (appBoot, NLR boot preload, keyboard). Preview: pack+assets ready. */
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */
@@ -160,6 +186,33 @@ export type GameAppHost = {
      * no running game to play through.
      */
     networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    /**
+     * Open one web address in the player's browser, for the Open Link node.
+     *
+     * Where the check happens is the host's business, and every shell puts it in the process that
+     * performs the act: Dev Mode and the packaged desktop game hand the request to their main
+     * process, the web export decides in the page because there is nothing else. What none of them
+     * do is trust this side — the renderer says which address, never whether.
+     *
+     * Omitted by hosts with nowhere to send it (the workspace story preview). The node then reports
+     * a failure saying so, the same degradation {@link networkFetch} takes.
+     */
+    openExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+    /**
+     * Write this playthrough into the title's progress document, for the Export Progress node.
+     *
+     * Where the file is, and whether there is one at all, is the host's business - and every shell
+     * decides it in the process that performs the act: the packaged desktop game and Dev Mode hand
+     * it to their main process, the web export refuses because a page has no shared file to write.
+     * What none of them take from this side is the path: the renderer states what the playthrough
+     * holds, and the shell resolves which title's document that is.
+     *
+     * Omitted by hosts with nowhere to write (the workspace story preview). The node then reports a
+     * failure saying so, the same degradation {@link openExternal} takes.
+     */
+    exportProgress?: (request: GameProgressExportRequest) => Promise<GameProgressExportResult>;
+    /** Read it back, for the Import Progress node. Omitted for the reason above. */
+    importProgress?: () => Promise<GameProgressImportResult>;
 };
 
 /** A read-only view of the current execution stacks (root + in-flight async branches). */
@@ -246,12 +299,73 @@ export type GameAppSaveBridge = {
     /**
      * Load a save into the RUNNING game.
      *
-     * Throws whatever `LiveGame.deserialize` throws - and it throws AFTER `reset()` and
-     * `forceRemount()`, so by the time a caller catches anything the stage is already empty. A
-     * caller that means to survive a failure has to put the session back itself (`relaunch`).
+     * Resolves whether or not the save was applied: a save the running story cannot take is refused
+     * with the run left where it was, and {@link SaveLoadOutcome} says which happened. Nothing has
+     * to be put back after a refusal, and relaunching after one would throw away the very run that
+     * was preserved.
      */
-    load: (id: string) => Promise<void>;
+    load: (id: string) => Promise<SaveLoadOutcome>;
     remove: (id: string) => Promise<void>;
+};
+
+/** What every row of the composite stack answers, page lane and layers alike. */
+export type GameAppCompositeSlot = {
+    /** The navigation key - a page entry's, or the layer's, which is also its runtime scope. */
+    key: string;
+    surfaceId: string;
+    /** The surface's authored name. Null when the running bundle has no surface with that id. */
+    surfaceName: string | null;
+    /** Whether this slot takes pointer input this frame. */
+    interactive: boolean;
+    /** True for the one slot the keys belong to, and for no other. */
+    keyboardOwner: boolean;
+};
+
+/** A layer of the composite stack, with the facts only a layer has. */
+export type GameAppCompositeLayer = GameAppCompositeSlot & {
+    modal: boolean;
+    dismissible: boolean;
+    /** Mutual-exclusion group, or null when the layer is in none. */
+    group: string | null;
+    /** The runtime scope that showed it; the layer closes when that scope does. */
+    ownerScopeId: string;
+    /**
+     * Whether it is actually on screen.
+     *
+     * False for a layer the render dropped, which happens when the running bundle has no surface
+     * with its id. The stack still holds it, so it still occupies its group and still answers
+     * `isPresent`, while nothing about it is visible or clickable.
+     */
+    onScreen: boolean;
+};
+
+/** A layer waiting for its group to be given back. */
+export type GameAppCompositeQueuedLayer = {
+    key: string;
+    surfaceId: string;
+    surfaceName: string | null;
+    modal: boolean;
+    group: string | null;
+    ownerScopeId: string;
+};
+
+/**
+ * The whole composite, as the debug panel reads it.
+ *
+ * Assembled where the composite is assembled, and never recomputed by a reader: input ownership has
+ * exactly one arbiter (`resolveCompositeInput`), and a panel that worked out for itself who holds
+ * the keyboard would be reporting its own second opinion at precisely the moment the author is
+ * trying to find out why the first one is not what they expected.
+ */
+export type GameAppCompositeView = {
+    /** The entry the page lane is settling on, or null while it has none. */
+    page: GameAppCompositeSlot | null;
+    /** Layers bottom to top. */
+    layers: readonly GameAppCompositeLayer[];
+    /** Queued layers in arrival order. */
+    queued: readonly GameAppCompositeQueuedLayer[];
+    /** True while a removed layer is still animating out. */
+    exitPending: boolean;
 };
 
 /** Context handed to host-rendered overlays (e.g. the Dev Mode debug panel). */
@@ -268,6 +382,8 @@ export type GameAppOverlayContext = {
     storyRuntime: GameAppStoryRuntimeBridge;
     /** Save-slot access for the Saves panel, on the game's own paths. */
     saves: GameAppSaveBridge;
+    /** Everything on screen at once and who owns input, for the Layers panel. */
+    composite: GameAppCompositeView;
 };
 
 /** Context handed to the host frame around the game content. */

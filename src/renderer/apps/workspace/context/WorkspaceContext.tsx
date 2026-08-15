@@ -3,6 +3,7 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
 import { throwException } from "@shared/utils/error";
 import { getInterface } from "@/lib/app/bridge";
+import { setCrashRecoveryFlush } from "@/lib/app/errorHandling/crashRecovery";
 import { freezeProjectWrites } from "@/lib/app/writeFreeze";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { startRecoveryShell } from "@/lib/workspace/recovery/recoveryShell";
@@ -349,6 +350,14 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             flushToken.cancel();
         };
     }, []);
+
+    // The same flush, for the one caller that arrives after this provider has been torn down: the
+    // crash screen. A render error replaces the whole tree, taking the handlers above with it,
+    // while the debounced saves it was holding are still only in memory. Registered without a
+    // cleanup on purpose - see `setCrashRecoveryFlush`.
+    useEffect(() => {
+        setCrashRecoveryFlush(context ? () => flushPendingSaves(context) : null);
+    }, [context]);
 
     return (
         <WorkspaceContext.Provider value={{ workspace, context, isInitialized, error, startupStage, retry, recovery, recoveryReason }}>

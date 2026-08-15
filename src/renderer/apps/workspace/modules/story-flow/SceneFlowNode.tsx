@@ -119,7 +119,7 @@ export function SceneFlowNode({ data, selected, isConnectable }: NodeProps) {
                 // two opacities would make an unreachable scene invisible rather than quiet.
                 scene.dimmed ? "opacity-30" : !scene.reachable && "opacity-70",
             )}
-            title={scene.name}
+            data-tip={scene.name}
         >
             {/* Pinned to the title row rather than the box's centre, so expanding a scene does not
                 drag every line that arrives at it downwards. At the collapsed height this is 50%. */}
@@ -157,7 +157,7 @@ export function SceneFlowNode({ data, selected, isConnectable }: NodeProps) {
                             )}
                             aria-expanded={expanded}
                             aria-label={t(expanded ? "story.flow.branch.collapse" : "story.flow.branch.expand")}
-                            title={tn("story.flow.branch.forkCount", armCount)}
+                            data-tip={tn("story.flow.branch.forkCount", armCount)}
                             onClick={handleToggle}
                             onDoubleClick={swallow}
                         >
@@ -174,7 +174,7 @@ export function SceneFlowNode({ data, selected, isConnectable }: NodeProps) {
                     {scene.selfJumpCount > 0 && (
                         <span
                             className="flex items-center gap-0.5"
-                            title={tn("story.flow.badge.selfJump", scene.selfJumpCount)}
+                            data-tip={tn("story.flow.badge.selfJump", scene.selfJumpCount)}
                         >
                             <RotateCcw className="h-3 w-3" />
                             <span className="tabular-nums">{scene.selfJumpCount}</span>
@@ -183,7 +183,7 @@ export function SceneFlowNode({ data, selected, isConnectable }: NodeProps) {
                     {scene.danglingJumpCount > 0 && (
                         <span
                             className="flex items-center gap-0.5 text-warning"
-                            title={tn("story.flow.badge.dangling", scene.danglingJumpCount)}
+                            data-tip={tn("story.flow.badge.dangling", scene.danglingJumpCount)}
                         >
                             <AlertTriangle className="h-3 w-3" />
                             <span className="tabular-nums">{scene.danglingJumpCount}</span>

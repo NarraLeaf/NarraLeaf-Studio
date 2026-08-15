@@ -1,4 +1,6 @@
 import { isLocalizationEnabled, type LocalizationDocument } from "@shared/types/localization";
+import type { NetworkPluginAllowlistEntry } from "@shared/types/networkAllowlist";
+import { getInterface } from "@/lib/app/bridge";
 import { isVoiceEnabled, type VoiceDocument } from "@shared/types/voice";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { runLintRules, type LintRunOptions } from "@/lib/lint/engine";
@@ -21,6 +23,7 @@ import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { Services, type ILintService, type WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
+import { AppTagService } from "../appTag/AppTagService";
 import { AssetsService } from "./AssetsService";
 import { CharacterService } from "./CharacterService";
 import { ConsoleService } from "./ConsoleService";
@@ -128,7 +131,7 @@ export class LintService extends Service<LintService> implements ILintService {
 
         this.contextFindings = [];
 
-        const stories = await this.loadStories(storyService);
+        const { stories, complete: storiesComplete } = await this.loadStories(storyService);
         const assets = this.collectAssets(assetsService);
 
         await referenceService.ensureReady().catch(error => {
@@ -172,17 +175,35 @@ export class LintService extends Service<LintService> implements ILintService {
         return {
             config: projectService.getLintingConfiguration(),
             network: projectService.getNetworkConfiguration(),
+            pluginNetworkDeclarations: await this.readPluginNetworkDeclarations(),
             stories,
+            storiesComplete,
             blueprintDocument: safely(() => uiGraphService.getDocument().blueprintDocument, null),
             uiDocument: safely(() => uiDocumentService.getDocument(), null),
             assets,
             referencedAssetIds,
             assetReferences: referenceService.getReferencesForAll([...referencedAssetIds]),
+            // Read here rather than inside the rule: the two sets above and this answer have to
+            // describe the same pass, and `ensureReady` above swallows its own failure - which is
+            // exactly the case this reports.
+            assetIndex: referenceService.getIndexResult(),
             characters,
+            // `listTags()`, which synthesizes the release variant, so the list is never empty and
+            // `AppTag == "main"` resolves in a project that has authored no variants at all.
+            appTags: services.get<AppTagService>(Services.AppTags).listTags(),
+            // The union across the project and its variants: which of them opens which address is
+            // decided when a build is compiled, and a graph belongs to all of them.
             variableRegistry,
             persistentNameCollisions,
             savedNameCollisions,
             localization,
+            // Loaded in the background from the service's own init, so it can genuinely be absent
+            // here on a sweep run seconds after a project opens - which is why the field is
+            // nullable rather than an empty set.
+            localizationKeyNames: safely(() => {
+                const keys = localizationService.getKeysIfLoaded()?.keys;
+                return keys ? new Set(Object.keys(keys)) : null;
+            }, null),
             voice,
             buildPlatforms: normalizeBuildConfiguration(projectService.getProjectConfig().app?.build)?.platforms ?? [],
             io: this.createIo(assetsService),
@@ -259,23 +280,30 @@ export class LintService extends Service<LintService> implements ILintService {
     }
 
     /**
-     * Every story in the library, loaded. A story that will not open becomes a context finding
-     * rather than being dropped: silently linting the remaining eight of nine stories and reporting
-     * "no problems" is the worst answer available.
+     * Every story in the library, loaded, and whether that is all of them. A story that will not
+     * open becomes a context finding rather than being dropped: silently linting the remaining
+     * eight of nine stories and reporting "no problems" is the worst answer available.
+     *
+     * The flag is not cosmetic either: a rule that resolves an id against this list reads a story
+     * missing from it as a story that was deleted, so one unreadable document would produce a
+     * finding per reference into it, on top of the finding the failure already reports. See
+     * `LintContext.storiesComplete`.
      */
-    private async loadStories(storyService: StoryService): Promise<LintStoryEntry[]> {
+    private async loadStories(storyService: StoryService): Promise<{ stories: LintStoryEntry[]; complete: boolean }> {
         const stories: LintStoryEntry[] = [];
         let index: StoryLibraryIndex;
         try {
             index = storyService.getLibraryIndex();
         } catch (error) {
             console.warn("[LintService] story library unavailable", error);
-            return stories;
+            return { stories, complete: false };
         }
+        let complete = true;
         for (const entry of index.stories) {
             try {
                 stories.push({ id: entry.id, name: entry.name, document: await storyService.loadStory(entry.id) });
             } catch (error) {
+                complete = false;
                 console.warn(`[LintService] story ${entry.id} failed to load`, error);
                 this.contextFindings.push({
                     ruleId: "story/invalid-command",
@@ -286,7 +314,7 @@ export class LintService extends Service<LintService> implements ILintService {
                 });
             }
         }
-        return stories;
+        return { stories, complete };
     }
 
     private collectAssets(assetsService: AssetsService): LintAssetEntry[] {
@@ -345,6 +373,37 @@ export class LintService extends Service<LintService> implements ILintService {
             console.warn("[LintService] failed to read characters", error);
             return [];
         }
+    }
+
+    /**
+     * What every installed plugin declares in `contributes.network`, attributed.
+     *
+     * Every installed plugin rather than only the enabled ones: a disabled plugin is one click from
+     * being enabled again, and a finding that appeared and vanished with a toggle in another panel
+     * would read as a bug in the sweep. A build resolves the ones it actually ships.
+     *
+     * An unreadable list is an empty one. Every rule that reads this treats an absent declaration as
+     * "this plugin declares nothing", so the worst a failed read produces is a finding the author can
+     * act on, never a request quietly waved through.
+     */
+    private async readPluginNetworkDeclarations(): Promise<NetworkPluginAllowlistEntry[]> {
+        let result: Awaited<ReturnType<ReturnType<typeof getInterface>["plugins"]["list"]>>;
+        try {
+            result = await getInterface().plugins.list();
+        } catch {
+            // No bridge at all, which is a harness rather than a project. Reading it as "no
+            // plugin declares anything" is the same answer a failed list gives.
+            return [];
+        }
+        if (!result.success) {
+            return [];
+        }
+        return result.data.plugins
+            .filter(plugin => (plugin.manifest.contributes?.network ?? []).length > 0)
+            .map(plugin => ({
+                pluginId: plugin.manifest.id,
+                patterns: [...(plugin.manifest.contributes?.network ?? [])],
+            }));
     }
 
     private async buildLocalizationContext(service: LocalizationService): Promise<LintContext["localization"]> {

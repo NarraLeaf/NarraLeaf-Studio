@@ -94,8 +94,14 @@ app.whenReady().then(async () => {
         // open, and a second process blocks (does not fail) trying to acquire it.
         // Holding it past the project's lifetime would leave the `lore` CLI and any
         // other tool hanging on a project the user already closed.
+        //
+        // Not while quitting, though. Windows close as part of the quit, AFTER the drain below
+        // has already released every session - so this would find nothing to do in the good case,
+        // and in the bad one (a session reopened in between) it would start Lore calls that
+        // nothing waits for, moments before Node destroys the environment they must report back
+        // into. That is not a leak, it is an abort: see VcsShuttingDownError.
         const projectPath = window.getProps()?.projectPath;
-        if (typeof projectPath === "string" && projectPath.length > 0) {
+        if (typeof projectPath === "string" && projectPath.length > 0 && !app.isQuitting()) {
             void app.getVcsManager().closeProject(projectPath).catch((error) => {
                 app.logger.warn("[Vcs] Failed to release session on window close", error);
             });
@@ -108,7 +114,14 @@ app.whenReady().then(async () => {
     // where the renderers' debounced auto-saves would otherwise be thrown away: by the time the
     // webContents are torn down there is no `app://fs` handler left for a PUT to land on.
     //
-    // preventDefault() is what buys the time to write. It is only safe because every path out of
+    // It is also the one exit that has to put version control down deliberately. Every Lore call
+    // is a koffi `async` call whose result is delivered by calling back into JS; one still in
+    // flight when Node destroys the main process's environment aborts the process
+    // (`napi_fatal_error`), which is how a clean-looking quit produced a macOS crash report.
+    // Draining the sessions here is what makes the callback land while there is still somewhere
+    // for it to land.
+    //
+    // preventDefault() is what buys the time to do both. It is only safe because every path out of
     // the block below calls quit() again - including the hard deadline, which exists so a renderer
     // that has stopped answering turns into "lost the last few seconds" rather than "Cmd+Q does
     // nothing".
@@ -143,13 +156,32 @@ app.whenReady().then(async () => {
         }
         quitFlush = 'running';
 
+        // Saves first, sessions second, and neither allowed to skip the other: a failed flush is
+        // still a quit that has to close its stores, and a failed close is still a quit.
+        const teardown = (async () => {
+            await app.flushAllWorkspacesPendingSaves().catch(error => {
+                app.logger.warn('Failed to flush pending saves before quit:', error);
+            });
+            await app.getVcsManager().dispose().catch(error => {
+                app.logger.warn('Failed to close version control before quit:', error);
+            });
+        })();
+
         const HARD_DEADLINE_MS = 20 * 1000;
         const deadline = new Promise<void>(resolve => setTimeout(resolve, HARD_DEADLINE_MS));
-        void Promise.race([app.flushAllWorkspacesPendingSaves(), deadline])
-            .catch(error => {
-                app.logger.warn('Failed to flush pending saves before quit:', error);
-            })
+        void Promise.race([teardown, deadline])
             .finally(() => {
+                // The deadline is a bounded quit, not a safe one: expiring here means quitting
+                // with Lore work still running, which is exactly the abort the drain exists to
+                // avoid. Nothing better is available - the alternative is a Cmd+Q that hangs on a
+                // network fetch - but it must not go unrecorded, because the crash report it
+                // produces names koffi and says nothing about why the call was still open.
+                if (app.getVcsManager().busy) {
+                    app.logger.warn(
+                        `Quitting with version control still busy after ${HARD_DEADLINE_MS}ms;`
+                        + ' a call that outlives this may take the process down on the way out.',
+                    );
+                }
                 quitFlush = 'done';
                 app.quit();
             });

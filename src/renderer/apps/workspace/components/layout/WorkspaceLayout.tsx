@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
+import { PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { TitleBar, windowRootProps } from "@/lib/components/layout";
+import { TooltipHost } from "@/lib/tooltip";
 import { LeftSidebarSelector } from "./LeftSidebarSelector";
 import { BottomPanelSelector } from "./BottomPanelSelector";
 import { RightSidebarSelector } from "./RightSidebarSelector";
@@ -534,18 +536,23 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             {
                 id: WorkspaceMenuAction.ToggleLeftSidebar,
                 labelKey: "menu.window.leftSidebar" as const,
+                // The same three glyphs the ControlBar buttons wear, so the palette row and the
+                // button that does the same thing are recognisably one control.
+                icon: <PanelLeft className="w-4 h-4" />,
                 checked: leftSidebarVisible,
                 run: () => panelTogglesRef.current.toggleLeftSidebar(),
             },
             {
                 id: WorkspaceMenuAction.ToggleBottomPanel,
                 labelKey: "menu.window.bottomPanel" as const,
+                icon: <PanelBottom className="w-4 h-4" />,
                 checked: bottomPanelVisible,
                 run: () => panelTogglesRef.current.toggleBottomPanel(),
             },
             {
                 id: WorkspaceMenuAction.ToggleRightSidebar,
                 labelKey: "menu.window.rightSidebar" as const,
+                icon: <PanelRight className="w-4 h-4" />,
                 checked: rightSidebarVisible,
                 run: () => panelTogglesRef.current.toggleRightSidebar(),
             },
@@ -557,6 +564,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 id: def.id,
                 titleKey: def.labelKey,
                 categoryKey: "workspace.shell.commandPalette.categoryView" as const,
+                icon: def.icon,
                 run: () => def.run(),
             })),
         );
@@ -571,6 +579,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 items: toggleDefs.map((def, order) => ({
                     id: def.id,
                     label: t(def.labelKey),
+                    // Carried through even though the native menu bar cannot draw it: these ids also
+                    // exist as registered commands above, and if that pass ever stops claiming them
+                    // first the palette falls back to this copy - which would then be the blank one.
+                    icon: def.icon,
                     checked: def.checked,
                     onClick: def.run,
                     order,
@@ -738,6 +750,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             {...windowRootProps}
             className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
         >
+            <TooltipHost />
             {backgroundUrl && (
                 <div
                     aria-hidden

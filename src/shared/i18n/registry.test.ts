@@ -3,7 +3,7 @@ import { createTranslator } from "./translator";
 import { getLocaleMeta, getRegisteredLocales, isRegisteredLocale, normalizeLocale } from "./locales";
 import { setLocaleContributions } from "./registry";
 
-// A key the en catalog defines (built-in-satisfied for en and zh).
+// A key the en catalog defines (built-in-satisfied in every built-in locale).
 const BUILTIN_KEY = "settings.categories.general.label";
 // A key zh omits (English-only `.one` plural form), so zh can be filled.
 const ZH_GAP_KEY = "launcher.recentCount.one";
@@ -21,20 +21,20 @@ describe("locale registry", () => {
     it("adds a brand-new locale that the translator can resolve", () => {
         setLocaleContributions([
             {
-                pluginId: "acme.ja-pack",
-                code: "ja",
-                meta: { nativeName: "日本語", intl: "ja-JP" },
-                messages: { [BUILTIN_KEY]: "一般" },
+                pluginId: "acme.ko-pack",
+                code: "ko",
+                meta: { nativeName: "한국어", intl: "ko-KR" },
+                messages: { [BUILTIN_KEY]: "일반" },
             },
         ]);
 
-        expect(isRegisteredLocale("ja")).toBe(true);
-        expect(getRegisteredLocales()).toContain("ja");
-        expect(getLocaleMeta("ja").nativeName).toBe("日本語");
-        expect(getLocaleMeta("ja").intl).toBe("ja-JP");
+        expect(isRegisteredLocale("ko")).toBe(true);
+        expect(getRegisteredLocales()).toContain("ko");
+        expect(getLocaleMeta("ko").nativeName).toBe("한국어");
+        expect(getLocaleMeta("ko").intl).toBe("ko-KR");
 
-        const { t } = createTranslator("ja");
-        expect(t(BUILTIN_KEY)).toBe("一般");
+        const { t } = createTranslator("ko");
+        expect(t(BUILTIN_KEY)).toBe("일반");
         // Keys the pack lacks fall back to the source locale (en).
         expect(t("common.ok")).toBe(createTranslator("en").t("common.ok"));
     });
@@ -68,44 +68,44 @@ describe("locale registry", () => {
 
     it("invalidates the translator cache when contributions change", () => {
         setLocaleContributions([
-            { pluginId: "acme.ja-pack", code: "ja", meta: { nativeName: "日本語" }, messages: { [BUILTIN_KEY]: "一般" } },
+            { pluginId: "acme.ko-pack", code: "ko", meta: { nativeName: "한국어" }, messages: { [BUILTIN_KEY]: "일반" } },
         ]);
-        expect(createTranslator("ja").t(BUILTIN_KEY)).toBe("一般");
+        expect(createTranslator("ko").t(BUILTIN_KEY)).toBe("일반");
 
         // Re-register with a different value; the cached flat map must be rebuilt.
         setLocaleContributions([
-            { pluginId: "acme.ja-pack", code: "ja", meta: { nativeName: "日本語" }, messages: { [BUILTIN_KEY]: "設定" } },
+            { pluginId: "acme.ko-pack", code: "ko", meta: { nativeName: "한국어" }, messages: { [BUILTIN_KEY]: "설정" } },
         ]);
-        expect(createTranslator("ja").t(BUILTIN_KEY)).toBe("設定");
+        expect(createTranslator("ko").t(BUILTIN_KEY)).toBe("설정");
 
-        // Removing the pack reverts: ja is no longer registered.
+        // Removing the pack reverts: ko is no longer registered.
         reset();
-        expect(isRegisteredLocale("ja")).toBe(false);
-        expect(getRegisteredLocales()).not.toContain("ja");
+        expect(isRegisteredLocale("ko")).toBe(false);
+        expect(getRegisteredLocales()).not.toContain("ko");
     });
 
     it("resolves plugin-vs-plugin collisions last-wins with a warning", () => {
         const onWarn = vi.fn();
         setLocaleContributions(
             [
-                { pluginId: "acme.first", code: "ja", meta: { nativeName: "日本語" }, messages: { [BUILTIN_KEY]: "First" } },
-                { pluginId: "acme.second", code: "ja", messages: { [BUILTIN_KEY]: "Second" } },
+                { pluginId: "acme.first", code: "ko", meta: { nativeName: "한국어" }, messages: { [BUILTIN_KEY]: "First" } },
+                { pluginId: "acme.second", code: "ko", messages: { [BUILTIN_KEY]: "Second" } },
             ],
             { onWarn },
         );
 
-        expect(createTranslator("ja").t(BUILTIN_KEY)).toBe("Second");
+        expect(createTranslator("ko").t(BUILTIN_KEY)).toBe("Second");
         expect(onWarn).toHaveBeenCalledTimes(1);
     });
 
     it("normalizeLocale preserves a registered locale and degrades when it is gone", () => {
         setLocaleContributions([
-            { pluginId: "acme.ja-pack", code: "ja", meta: { nativeName: "日本語" }, messages: { [BUILTIN_KEY]: "一般" } },
+            { pluginId: "acme.ko-pack", code: "ko", meta: { nativeName: "한국어" }, messages: { [BUILTIN_KEY]: "일반" } },
         ]);
-        expect(normalizeLocale("ja")).toBe("ja");
+        expect(normalizeLocale("ko")).toBe("ko");
 
         reset();
         // Provider removed: the persisted value degrades to the fallback.
-        expect(normalizeLocale("ja")).toBe("en");
+        expect(normalizeLocale("ko")).toBe("en");
     });
 });

@@ -5,10 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import type {
     NormalizedPluginManifestV2,
+    PluginBuildConfigFieldContribution,
     PluginSidecarContribution,
     PluginSidecarTargetContribution,
 } from "@shared/types/plugins";
-import type { BuildPreflightFinding, GameBuildTarget } from "@shared/types/gameBuild";
+import { RELEASE_APP_TAG, type AppTagPluginConfig, type ProjectAppTag } from "@shared/types/appTag";
+import type { BuildPreflightFinding, GameBuildPlatform, GameBuildTarget } from "@shared/types/gameBuild";
 import type { SigningCredential, SigningCredentialKind } from "@shared/types/signing";
 import { GameBuildManager } from "./GameBuildManager";
 import {
@@ -76,6 +78,9 @@ describe("sidecar preflight", () => {
                 locales: [],
                 runtimeCapabilities: [],
                 buildDependencies: [],
+                buildConfig: [],
+                externalLinks: [],
+                network: [],
                 sidecars: sidecars.map(sidecar => ({
                     kind: "executable",
                     transport: "stdio-jsonl",
@@ -523,5 +528,164 @@ describe("findGpgBinary", () => {
         const bin = path.join(root, "bin");
         await fs.mkdir(path.join(bin, "gpg"), { recursive: true });
         expect(await findGpgBinary({ env: { PATH: bin }, platform: "linux" })).toBeNull();
+    });
+});
+
+/**
+ * What the plugins in a build asked the author for, held against the variant being built.
+ *
+ * The check is a private method for the reason `signingPreflight` is: it is the only place the rule
+ * lives, and it takes exactly the four things it judges, so `preflight` composing it is the only
+ * other thing that could go wrong.
+ */
+describe("plugin build config preflight", () => {
+    let vaultRoot: string;
+
+    beforeEach(async () => {
+        vaultRoot = await fs.mkdtemp(path.join(os.tmpdir(), "nls-preflight-plugin-config-"));
+    });
+
+    afterEach(async () => {
+        await fs.rm(vaultRoot, { recursive: true, force: true });
+    });
+
+    function manifestDeclaring(
+        pluginId: string,
+        name: string,
+        buildConfig: PluginBuildConfigFieldContribution[],
+    ): NormalizedPluginManifestV2 {
+        return {
+            manifestVersion: 2,
+            id: pluginId,
+            name,
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: {
+                blueprintNodes: [],
+                widgets: [],
+                tests: [],
+                runtimeData: [],
+                locales: [],
+                runtimeCapabilities: [],
+                buildDependencies: [],
+                sidecars: [],
+                buildConfig,
+                externalLinks: [],
+                network: [],
+            },
+            permissions: [],
+        };
+    }
+
+    async function findingsFor(input: {
+        buildConfig: PluginBuildConfigFieldContribution[];
+        platforms: GameBuildPlatform[];
+        variant?: ProjectAppTag;
+        projectConfig?: AppTagPluginConfig;
+    }): Promise<BuildPreflightFinding[]> {
+        const manager = new GameBuildManager({
+            storageManager: { getNamespacePath: () => vaultRoot },
+        } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
+        const check = (manager as unknown as {
+            pluginConfigPreflight(
+                manifests: readonly NormalizedPluginManifestV2[],
+                platforms: readonly GameBuildPlatform[],
+                variant: ProjectAppTag,
+                projectPluginConfig: AppTagPluginConfig,
+            ): Promise<BuildPreflightFinding[]>;
+        }).pluginConfigPreflight;
+        return check.call(
+            manager,
+            [manifestDeclaring("acme.storefront", "Acme Storefront", input.buildConfig)],
+            input.platforms,
+            input.variant ?? RELEASE_APP_TAG,
+            input.projectConfig ?? {},
+        );
+    }
+
+    const required: PluginBuildConfigFieldContribution = {
+        key: "appId",
+        label: "Storefront app id",
+        type: "text",
+        scope: "global",
+        required: true,
+    };
+
+    it("blocks a build that is missing a required value, naming the plugin and the field", async () => {
+        const findings = await findingsFor({ buildConfig: [required], platforms: ["windows", "macos"] });
+
+        expect(findings).toEqual([{
+            code: "plugin-config-missing",
+            severity: "error",
+            section: "plugins",
+            // One value covers the whole build, so it is missing for every platform of it.
+            detail: { plugin: "Acme Storefront", field: "Storefront app id", platforms: "windows, macos" },
+        }]);
+    });
+
+    it("says nothing about a value that is filled in", async () => {
+        const findings = await findingsFor({
+            buildConfig: [required],
+            platforms: ["windows"],
+            projectConfig: { "acme.storefront": { appId: "480" } },
+        });
+
+        expect(findings).toEqual([]);
+    });
+
+    it("asks nothing of a field the plugin did not mark required", async () => {
+        const findings = await findingsFor({
+            buildConfig: [{ ...required, required: false }],
+            platforms: ["windows"],
+        });
+
+        expect(findings).toEqual([]);
+    });
+
+    it("names the platform a per-platform value is missing for, and only that one", async () => {
+        const findings = await findingsFor({
+            buildConfig: [{ ...required, scope: "platform" }],
+            platforms: ["windows", "macos"],
+            projectConfig: { "acme.storefront": { "appId@windows": "480" } },
+        });
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].detail?.platforms).toBe("macos");
+    });
+
+    it("reads the value the selected variant states rather than the project's", async () => {
+        const demo: ProjectAppTag = {
+            id: "tag-demo",
+            name: "Demo",
+            overrides: {},
+            pluginConfig: { "acme.storefront": { appId: "481" } },
+        };
+        // The project states nothing; the variant does, and that is what this build ships with.
+        expect(await findingsFor({
+            buildConfig: [{ ...required, scope: "variant" }],
+            platforms: ["windows"],
+            variant: demo,
+        })).toEqual([]);
+    });
+
+    it("refuses a secret whose value is not on this machine, without calling it corrupt", async () => {
+        // The project carries a handle the vault here has never heard of - the ordinary state of a
+        // project a collaborator configured. It is set, so it is not reported as missing.
+        const findings = await findingsFor({
+            buildConfig: [{ ...required, type: "secret" }],
+            platforms: ["windows"],
+            projectConfig: { "acme.storefront": { appId: "handle-from-another-machine" } },
+        });
+
+        expect(findings).toEqual([{
+            code: "plugin-secret-unavailable",
+            severity: "error",
+            section: "plugins",
+            detail: { plugin: "Acme Storefront", field: "Storefront app id", platforms: "windows" },
+        }]);
+    });
+
+    it("asks nothing for a build with no targets, which declares no fields at all", async () => {
+        expect(await findingsFor({ buildConfig: [required], platforms: [] })).toEqual([]);
     });
 });

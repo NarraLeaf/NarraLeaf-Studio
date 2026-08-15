@@ -66,13 +66,84 @@ describe("assets/unused", () => {
         expect(await runRule("assets/unused", ctx)).toEqual([]);
     });
 
-    it("indicts nothing when the reference index is empty but the library is not", async () => {
+    it("reports every asset when a complete index found no references at all", async () => {
+        // A tidy project with nothing wired up yet is a real state, and the old stand-in for
+        // "the index is broken" - an empty key set - hid its findings forever.
         const ctx = createTestLintContext({
             assets: [asset("a"), asset("b"), asset("c")],
             referencedAssetIds: new Set<string>(),
         });
 
-        expect(await runRule("assets/unused", ctx)).toEqual([]);
+        expect(await runRule("assets/unused", ctx)).toHaveLength(3);
+    });
+
+    it("lists nothing and names the site when the index does not cover the project", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("a"), asset("b")],
+            referencedAssetIds: new Set<string>(),
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "hashUrlUnresolved", slice: "ui", location: "Title Screen.backgroundImage" }],
+            },
+        });
+
+        const findings = await runRule("assets/unused", ctx);
+
+        // Not one unused row among them: a partial answer here is indistinguishable from a complete
+        // one, and every reference the index missed is an asset this rule would tell them to delete.
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.assetsUnused.messageIndexUnresolved");
+        expect(findings[0].messageParams).toEqual({ location: "Title Screen.backgroundImage" });
+    });
+
+    it("still reports the kinds a picture-shaped gap cannot be hiding", async () => {
+        // Withholding everything was the first shape and it was too blunt: one widget with an
+        // unreadable picture silenced the report for the sounds too, which are not in doubt.
+        const ctx = createTestLintContext({
+            assets: [asset("pic"), asset("tune", { type: AssetType.Audio, name: "tune.mp3", ext: "mp3" })],
+            referencedAssetIds: new Set<string>(),
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "hashUrlUnresolved", slice: "ui", location: "Title Screen.backgroundImage", affects: ["image"] }],
+            },
+        });
+
+        const findings = await runRule("assets/unused", ctx);
+
+        expect(findings.map(finding => finding.messageKey)).toEqual([
+            "lint.rule.assetsUnused.messageIndexUnresolved",
+            "lint.rule.assetsUnused.message",
+        ]);
+        // The audio row, and only the audio row.
+        expect(findings[1].messageParams).toEqual({ asset: "tune.mp3" });
+    });
+
+    it("says the project could not be scanned when the index never built", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("a")],
+            assetIndex: { complete: false, gaps: [{ reason: "indexNotBuilt" }] },
+        });
+
+        const findings = await runRule("assets/unused", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.assetsUnused.messageIndexNotBuilt");
+        expect(findings[0].messageParams).toBeUndefined();
+    });
+
+    it("names the document when a slice could not be read", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("a")],
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "documentUnreadable", slice: "story", location: "Main Story" }],
+            },
+        });
+
+        const findings = await runRule("assets/unused", ctx);
+
+        expect(findings[0].messageKey).toBe("lint.rule.assetsUnused.messageIndexUnreadable");
+        expect(findings[0].messageParams).toEqual({ location: "Main Story" });
     });
 });
 
@@ -298,5 +369,63 @@ describe("assets/unreadable", () => {
         });
 
         expect(await runRule("assets/unreadable", ctx)).toEqual([]);
+    });
+});
+
+describe("assets/oversized", () => {
+    function runOversized(ctx: LintContext, maxMegabytes = 1): Promise<LintFinding[]> {
+        const rule = ASSETS_LINT_RULES.find(entry => entry.id === "assets/oversized")!;
+        return Promise.resolve(rule.run(ctx, { maxMegabytes }));
+    }
+
+    /** One reference outside the stories, which is what makes the solver call an asset carried. */
+    function widgetReference(assetId: string): AssetReference {
+        return {
+            id: `ui:w1:${assetId}`,
+            assetId,
+            kind: "uiElement",
+            label: "Title art",
+            field: "imageFill",
+        };
+    }
+
+    const big = 4 * 1024 * 1024;
+
+    it("reports a carried file over the declared size", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("cover", { meta: { size: big } })],
+            assetReferences: new Map([["cover", [widgetReference("cover")]]]),
+        });
+
+        const findings = await runOversized(ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.assetsOversized.message");
+        expect(findings[0].messageParams).toEqual({ asset: "cover.png", size: "4.0 MB", limit: "1.0 MB" });
+        expect(findings[0].target).toEqual({ kind: "asset", assetId: "cover", assetType: AssetType.Image });
+    });
+
+    it("says nothing about a file under the declared size", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("cover", { meta: { size: 1024 } })],
+            assetReferences: new Map([["cover", [widgetReference("cover")]]]),
+        });
+
+        expect(await runOversized(ctx)).toEqual([]);
+    });
+
+    it("leaves an asset no build carries to assets/unused", async () => {
+        const ctx = createTestLintContext({ assets: [asset("cover", { meta: { size: big } })] });
+
+        expect(await runOversized(ctx)).toEqual([]);
+    });
+
+    it("says nothing about a record that has never been measured", async () => {
+        const ctx = createTestLintContext({
+            assets: [asset("cover", { meta: {} })],
+            assetReferences: new Map([["cover", [widgetReference("cover")]]]),
+        });
+
+        expect(await runOversized(ctx)).toEqual([]);
     });
 });

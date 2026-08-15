@@ -60,7 +60,7 @@ export function RunStatusEntry() {
     };
 
     return (
-        <StatusEntry emphasis onClick={openConsole} title={t("workspace.shell.statusBar.openConsole")}>
+        <StatusEntry emphasis onClick={openConsole} tooltip={t("workspace.shell.statusBar.openConsole")}>
             {active.busy && <Loader2 className="h-3 w-3 animate-spin" />}
             <span className="font-medium">{t(active.labelKey)}</span>
             <span aria-hidden className="opacity-50">|</span>
@@ -97,7 +97,7 @@ export function SaveStatusEntry() {
     return (
         <StatusEntry
             emphasis={failed}
-            title={t(failed ? "workspace.shell.statusBar.retrySave" : "workspace.shell.statusBar.saveNow")}
+            tooltip={t(failed ? "workspace.shell.statusBar.retrySave" : "workspace.shell.statusBar.saveNow")}
             onClick={() => {
                 void saveStatus?.retryNow();
             }}
@@ -243,14 +243,14 @@ export function WordCountEntry() {
 
     if (!stats) {
         return (
-            <StatusEntry title={t("workspace.shell.statusBar.openDashboard")} onClick={openDashboard}>
+            <StatusEntry tooltip={t("workspace.shell.statusBar.openDashboard")} onClick={openDashboard}>
                 <BookText className="h-3 w-3" />
                 <span>{t("workspace.shell.statusBar.noStoryOpen")}</span>
             </StatusEntry>
         );
     }
     return (
-        <StatusEntry title={t("workspace.shell.statusBar.openCurrentScene")} onClick={openCurrentScene}>
+        <StatusEntry tooltip={t("workspace.shell.statusBar.openCurrentScene")} onClick={openCurrentScene}>
             <BookText className="h-3 w-3 shrink-0" />
             <span className="max-w-[16ch] truncate">{stats.name}</span>
             <span className="tabular-nums">
@@ -288,7 +288,7 @@ export function ZoomEntry() {
     }
     return (
         <StatusEntry
-            title={t("workspace.shell.statusBar.resetZoom")}
+            tooltip={t("workspace.shell.statusBar.resetZoom")}
             onClick={() => {
                 void getInterface().app.state.setGlobalState(ZOOM_SETTINGS_KEY, 100);
             }}
@@ -319,7 +319,7 @@ export function ThemeEntry() {
 
     return (
         <StatusEntry
-            title={t(THEME_META[themeMode].labelKey)}
+            tooltip={t(THEME_META[themeMode].labelKey)}
             onClick={() => {
                 const next = THEME_CYCLE[(THEME_CYCLE.indexOf(themeMode) + 1) % THEME_CYCLE.length];
                 void getInterface().app.state.setGlobalState(THEME_SETTINGS_KEY, next);
@@ -341,7 +341,7 @@ export function NotificationsEntry() {
 
     return (
         <StatusEntry
-            title={t("workspace.shell.notifications.title")}
+            tooltip={t("workspace.shell.notifications.title")}
             onClick={() => {
                 uiService?.getStore().setPanelVisibility(NOTIFICATIONS_PANEL_ID, true);
             }}
@@ -392,7 +392,7 @@ export function VersionEntry() {
     return (
         <StatusEntry
             emphasis={onRevision}
-            title={onRevision
+            tooltip={onRevision
                 // The UNCUT line, so a branch name this cell had to shorten is still readable.
                 ? t("workspace.shell.versionControl.viewingVersion", { version: face.full })
                 : face.full !== face.text ? face.full : t("workspace.shell.versionControl.open")}
@@ -407,7 +407,7 @@ export function VersionEntry() {
 export function ShortcutsEntry() {
     const { t } = useTranslation();
     return (
-        <StatusEntry title={t("workspace.shell.statusBar.shortcuts")} onClick={openKeybindingCheatSheet}>
+        <StatusEntry tooltip={t("workspace.shell.statusBar.shortcuts")} onClick={openKeybindingCheatSheet}>
             <Keyboard className="h-3 w-3" />
         </StatusEntry>
     );

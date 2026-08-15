@@ -90,6 +90,7 @@ function broadcastReload(target = 'all') {
     /** Restart electron process */
     let electronProcess = null;
     let appStarted = false; // whether Electron has been started at least once
+    let restartingElectron = false; // whether the next exit is one we asked for
     let initialMainBuilt = false;
     let initialStylesBuilt = false;
     let initialRenderersBuilt = false;
@@ -127,6 +128,7 @@ function broadcastReload(target = 'all') {
         restartTimer = setTimeout(() => {
             if (electronProcess) {
                 console.log('[dev] killing existing electron process...');
+                restartingElectron = true;
                 electronProcess.kill('SIGTERM');
                 // Give it a moment to fully shut down
                 setTimeout(() => {
@@ -155,6 +157,7 @@ function broadcastReload(target = 'all') {
         ], {
             stdio: 'inherit',
         });
+        restartingElectron = false;
 
         // Handle process events
         electronProcess.on('error', (err) => {
@@ -162,11 +165,25 @@ function broadcastReload(target = 'all') {
         });
 
         electronProcess.on('exit', (code, signal) => {
-            if (signal === 'SIGTERM') {
+            if (restartingElectron) {
                 console.log('[dev] electron process terminated by dev server');
-            } else {
-                console.log(`[dev] electron process exited with code ${code}`);
+                return;
             }
+            electronProcess = null;
+            if (code === 0) {
+                // Quitting Studio ends the session that launched it. Otherwise this process stays
+                // up holding DEV_RELOAD_PORT with no Electron behind it - the same state the
+                // startup-failure path at the bottom of this file already refuses to sit in - and
+                // the next `yarn dev` dies on EADDRINUSE against a session the author believes
+                // they closed. Nothing here can bring the app back on its own anyway: a restart
+                // only ever happens on a rebuild.
+                console.log('[dev] Studio quit; shutting down the dev session and releasing the reload port.');
+                wss.close();
+                process.exit(0);
+            }
+            // A crash is the opposite case: the fix is an edit away, and the watchers are what
+            // turn that edit back into a running app. Stay up.
+            console.log(`[dev] electron process exited with code ${code}${signal ? ` (${signal})` : ''}; waiting for the next change.`);
         });
     }
 

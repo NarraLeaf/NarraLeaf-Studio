@@ -18,6 +18,7 @@ const CONTEXT: StoryCommandContext = {
     valueBlueprints: [{ id: "bp1", name: "Bonus" }, { id: "bp2", name: "Story Value" }],
     audioTracks: [{ id: "bgm", name: "Music" }, { id: "sound", name: "SFX" }, { id: "t_amb", name: "Ambience" }],
     labels: ["intro", "retry"],
+    appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
     variables: [{ name: "gold", ref: { scope: "scene", variableId: "v1" }, valueType: "number" }],
     appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }, { id: "t2", name: "angry" }] },
     puppetCharacterIds: ["c3", "c4"],

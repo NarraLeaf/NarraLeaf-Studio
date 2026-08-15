@@ -1,11 +1,7 @@
 import type { UIStageSlotId, UIStageSurfaceMount, UISurfaceKind } from "@shared/types/ui-editor/document";
-import {
-    DEFAULT_UI_STAGE_SLOT_ID,
-    UI_STAGE_SLOT_DESCRIPTIONS,
-    UI_STAGE_SLOT_IDS,
-    UI_STAGE_SLOT_LABELS,
-} from "@shared/types/ui-editor/stageSlots";
+import { DEFAULT_UI_STAGE_SLOT_ID, UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import { translate } from "@/lib/i18n";
+import { getStageSlotLabel, type TranslateFn } from "@/lib/ui-editor/stageSlotLabel";
 
 export type SurfaceKindOption = {
     kind: UISurfaceKind;
@@ -38,17 +34,11 @@ export const SURFACE_KIND_OPTIONS: SurfaceKindOption[] = [
     },
 ];
 
-export const GAME_UI_SLOT_OPTIONS: { value: UIStageSlotId; label: string; description: string }[] =
-    UI_STAGE_SLOT_IDS.map(value => ({
-        value,
-        label: UI_STAGE_SLOT_LABELS[value],
-        description: UI_STAGE_SLOT_DESCRIPTIONS[value],
-    }));
-
-export const STAGE_SLOT_LABELS: Record<UIStageSlotId, string> = UI_STAGE_SLOT_LABELS;
+/** Slot ids in stage order. Their author-facing names come from `getStageSlotOptions`. */
+export const GAME_UI_SLOT_IDS: readonly UIStageSlotId[] = UI_STAGE_SLOT_IDS;
 
 export const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 
-export const formatStageMountLabel = (mount: UIStageSurfaceMount): string => {
-    return STAGE_SLOT_LABELS[mount.slotId] ?? mount.slotId;
+export const formatStageMountLabel = (mount: UIStageSurfaceMount, t: TranslateFn): string => {
+    return getStageSlotLabel(mount.slotId, t);
 };

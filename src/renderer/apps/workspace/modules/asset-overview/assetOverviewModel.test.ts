@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
+import type { ReferenceIndexResult } from "@/lib/workspace/services/references/referenceModel";
 import { buildAssetOverview, byteShare, formatByteSize } from "./assetOverviewModel";
 
 function asset(id: string, name: string, type: AssetType = AssetType.Image): Asset {
@@ -23,9 +24,11 @@ function overview(options: {
     directoryBytes?: number;
     directoryFileCount?: number;
     topCount?: number;
+    indexResult?: ReferenceIndexResult;
 }) {
     return buildAssetOverview({
         assets: options.assets,
+        indexResult: options.indexResult ?? { complete: true, gaps: [] },
         bytesByAssetId: new Map(Object.entries(options.bytes ?? {})),
         referenceCountByAssetId: new Map(Object.entries(options.references ?? {})),
         directoryBytes: options.directoryBytes ?? 0,

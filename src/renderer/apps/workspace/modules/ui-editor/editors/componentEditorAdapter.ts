@@ -5,6 +5,7 @@ import type {
     UILayout,
     UISurface,
 } from "@shared/types/ui-editor/document";
+import type { UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { MoveUiElementsResult } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
@@ -167,6 +168,13 @@ export class ComponentDocumentServiceAdapter {
             return;
         }
         this.base.updateComponentElementExtra(this.componentId, elementId, extraPatch);
+    }
+
+    public updateElementAnimation(elementId: string, animation: UIPageAnimationSettings | null): void {
+        if (this.isVirtualRoot(elementId)) {
+            return;
+        }
+        this.base.updateComponentElementAnimation(this.componentId, elementId, animation);
     }
 
     public renameElement(elementId: string, name: string): void {

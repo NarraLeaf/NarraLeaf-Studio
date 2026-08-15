@@ -597,7 +597,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         <button
             key="grid"
             className={grid ? ICON_BTN_ON : ICON_BTN}
-            title={t("characters.editor.combinations.title")}
+            data-tip={t("characters.editor.combinations.title")} aria-label={t("characters.editor.combinations.title")}
             onClick={() => setGrid(current => !current)}
         >
             <Grid3x3 className="w-3.5 h-3.5" />
@@ -803,7 +803,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                 >
                                     <InlineName
                                         value={pose.name}
-                                        title={renameHint}
+                                        tooltip={renameHint}
                                         disabled={freeze.frozen}
                                         onCommit={next => appearance.rename(pose, next)}
                                     />
@@ -855,7 +855,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                             <InlineName
                                                 value={axis.name}
                                                 className="text-xs"
-                                                title={renameHint}
+                                                tooltip={renameHint}
                                                 disabled={freeze.frozen}
                                                 onCommit={next => appearance.rename(axis, next)}
                                             />
@@ -911,7 +911,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                     <InlineName
                                                         value={tag.name}
                                                         grow={false}
-                                                        title={renameHint}
+                                                        tooltip={renameHint}
                                                         disabled={freeze.frozen}
                                                         onCommit={next => appearance.rename(tag, next)}
                                                     />
@@ -1000,21 +1000,21 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                                 <InlineName
                                                     value={layer.name}
                                                     className="text-xs"
-                                                    title={renameHint}
+                                                    tooltip={renameHint}
                                                     disabled={freeze.frozen}
                                                     onEditingChange={editing => setRenamingId(editing ? layer.id : null)}
                                                     onCommit={next => appearance.rename(layer, next)}
                                                 />
                                                 <button
                                                     className={ICON_BTN}
-                                                    title={t(hidden[layer.id] ? "characters.editor.showLayer" : "characters.editor.hideLayer")}
+                                                    data-tip={t(hidden[layer.id] ? "characters.editor.showLayer" : "characters.editor.hideLayer")} aria-label={t(hidden[layer.id] ? "characters.editor.showLayer" : "characters.editor.hideLayer")}
                                                     onClick={() => setHidden(current => ({ ...current, [layer.id]: !current[layer.id] }))}
                                                 >
                                                     {hidden[layer.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                                                 </button>
                                                 <button
                                                     className={ICON_BTN}
-                                                    title={t(locked[layer.id] ? "characters.editor.unlockLayer" : "characters.editor.lockLayer")}
+                                                    data-tip={t(locked[layer.id] ? "characters.editor.unlockLayer" : "characters.editor.lockLayer")} aria-label={t(locked[layer.id] ? "characters.editor.unlockLayer" : "characters.editor.lockLayer")}
                                                     onClick={() => setLocked(current => ({ ...current, [layer.id]: !current[layer.id] }))}
                                                 >
                                                     {locked[layer.id] ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
@@ -1112,7 +1112,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                                         <Bookmark className="w-3.5 h-3.5 shrink-0 text-fg-subtle" />
                                         <InlineName
                                             value={snapshot.name}
-                                            title={renameHint}
+                                            tooltip={renameHint}
                                             disabled={freeze.frozen}
                                             onCommit={next => appearance.rename(snapshot, next)}
                                         />

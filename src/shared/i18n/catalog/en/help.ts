@@ -397,8 +397,8 @@ export const help = {
                 + "- Fetch produces a Response. Read Response Text or Read Response JSON turns it into a value.\n"
                 + "- A Response is only readable during the run that fetched it. To keep the data, read it and "
                 + "store it in a variable.\n"
-                + "- Allow HTTP in project settings decides whether these nodes work at all. With it off, the "
-                + "project reports an error and the build is refused.\n"
+                + "- The network policy in project settings decides whether these nodes work at all. With no "
+                + "network access, the project reports an error and the build is refused.\n"
                 + "- Only http and https addresses can be fetched.",
         },
         lint: {
@@ -527,6 +527,53 @@ export const help = {
                 + "- Icons come from the project's icon page. A platform whose icon has not been generated builds "
                 + "with the NarraLeaf icon.",
         },
+        // `main` is the release variant's name, and it is the same word in every language: a story
+        // expression compares it as a string inside the shipped game, where no catalog is reached.
+        // Written out here rather than interpolated because a topic body is one static string.
+        buildVariant: {
+            title: "Which variant a build produces",
+            body:
+                "A build produces one variant of the project. The variant named main carries the "
+                + "project's own application name, identifier and version; another variant carries "
+                + "what it states instead.\n"
+                + "\n"
+                + "- The pages after this one describe the selected variant.\n"
+                + "- File names carry the variant, so two variants built into one folder do not replace "
+                + "each other.\n"
+                + "- This page appears once the project has a variant beside main.",
+        },
+        appTags: {
+            title: "Build variants",
+            body:
+                "A variant is one edition of the project, such as a demo. Every project has the variant "
+                + "named main, and each variant added beside it starts out identical to main. The name "
+                + "main is the same in every language, so an expression comparing against it means the "
+                + "same thing in the built game.\n"
+                + "\n"
+                + "- A variant stores only what it says differently. A field left empty shows the main "
+                + "value and follows it.\n"
+                + "- Restore removes what the variant said, so the field follows main again.\n"
+                + "- A variant lists the links the game can open. A build opens the addresses its "
+                + "variant lists and no others, matched exactly, so a page one address away needs a "
+                + "line of its own.\n"
+                + "- Deleting a variant does not rewrite what pointed at it. Those places read main "
+                + "from then on, and the count beside Delete says how many there are.",
+        },
+        variantContent: {
+            title: "What a variant build contains",
+            body:
+                "A cut point row ends one variant's story at that row. A build of that variant carries "
+                + "nothing written after it, and a scene left unreachable is dropped from the package. "
+                + "Builds of every other variant carry the row as written.\n"
+                + "\n"
+                + "- A cut point sits at the top level of a scene. One inside a condition or a group "
+                + "stops the build.\n"
+                + "- A comparison against AppTag is settled before the build, so only the branch that "
+                + "runs is packaged. A comparison that cannot be settled stops the build and names the row.\n"
+                + "- Text, voice and images used only by the removed rows are left out with them.\n"
+                + "- A variant can name the page shown after its story ends. With no page named, the "
+                + "last frame stays on screen.",
+        },
         icons: {
             title: "Icons",
             body:
@@ -551,6 +598,18 @@ export const help = {
                 + "and what is missing if it cannot.\n"
                 + "- Android with no key chosen is signed with a local debug identity, which is only good for "
                 + "installing by hand.",
+        },
+        networkAllowlist: {
+            title: "Network request allowlist",
+            body:
+                "The network policy in project settings has three positions: no network access, allowlisted addresses only, and any address. The middle one narrows the project to the addresses it lists; every other request is refused, in the editor preview and in the built game.\n"
+                + "\n"
+                + "- A host on its own covers every path under it. Write https://api.example.com/v1/* to cover one part of a host.\n"
+                + "- * can replace the first host label, as in https://*.example.com/*.\n"
+                + "- The scheme, the host and the port must match exactly. https://example.com does not cover http://example.com.\n"
+                + "- Addresses a plugin declared are listed under the allowlist and are also reachable. They come from what was approved when the plugin was installed.\n"
+                + "- A Fetch node whose address is written out and not covered is reported by project checks, and the build is refused. An address a blueprint computes is refused while the game runs.\n"
+                + "- A program a plugin ships runs outside the game process. The allowlist does not cover it.",
         },
         assetProtection: {
             title: "Protecting what you ship",

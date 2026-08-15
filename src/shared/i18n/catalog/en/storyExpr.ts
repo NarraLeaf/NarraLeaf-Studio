@@ -23,6 +23,8 @@ export const storyExpr = {
         blueprintTakesNoArguments: "\"{name}\" is a blueprint, and a blueprint call takes no arguments.",
         ambiguousReference: "More than one thing is called \"{name}\". Rename one of them.",
         blueprintShadowsFunction: "\"{name}\" is a built-in function, so it cannot also name a blueprint. Rename the blueprint, or write '{name}'() to call it.",
+        // Advisory: the line is fine and commits. What it says is that this content is in no build.
+        unknownAppTagName: "No build variant is named \"{name}\", so this is never true.",
     },
     /** Checks the *command line* adds on top of parsing, where the slot expects a particular shape. */
     check: {
@@ -51,6 +53,7 @@ export const storyExpr = {
         unknownScene: "No scene named \"{value}\".",
         unknownAudioTrack: "No audio track named \"{value}\".",
         unknownLabel: "No label named \"{value}\" in this scene.",
+        unknownAppTag: "No build variant named \"{value}\".",
         unknownVariable: "No variable named \"{value}\".",
         unknownForm: "{characterName} has no \"{value}\" expression.",
         notPuppetCharacter: "{value} is not drawn by a runtime, so it has no motion or skin to set.",
@@ -65,6 +68,7 @@ export const storyExpr = {
         // expression infers `unknown`, and neither reaches this message), so the articles always read.
         expressionTypeMismatch: "\"{variable}\" holds a {expected}, so it cannot take a {received}.",
         duplicateVariable: "\"{value}\" already exists. Choose another name, or use /set to change its value.",
+        reservedVariableName: "\"{value}\" is the build variant in an expression. Choose another name.",
         unknownTarget: "Nothing on stage is named \"{value}\".",
         unsupportedOption: "\"{value}\" does not apply here. Allowed values: {allowed}.",
         missingCore: "/{token} still needs its {slot}.",

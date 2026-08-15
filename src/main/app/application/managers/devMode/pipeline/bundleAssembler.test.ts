@@ -6,14 +6,25 @@ import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
 import { DEFAULT_PLAYER_PREFERENCES } from "@shared/types/preference";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
+import { APP_TAG_ID_RELEASE, appTagMechanismKey } from "@shared/types/appTag";
+import type { Blueprint, BlueprintGraphIr, SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
+    BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
+} from "@shared/types/blueprint/graph";
 import {
     loadAutoSaveConfiguration,
     loadGameAudio,
     loadGameLocalization,
     loadPlayerPreferences,
     loadProjectBrand,
+    foldSharedBlueprints,
+    planSceneDrop,
     resolveStoryDocumentPathForIndexEntry,
 } from "./bundleAssembler";
+import type { DevModeBundleLoadContext } from "./types";
 
 const STORY_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -437,5 +448,349 @@ describe("bundleAssembler brand palette", () => {
     it("falls back to the seeds when the project cannot be read at all", async () => {
         expect(await loadProjectBrand(path.join(os.tmpdir(), "nls-missing-project")))
             .toEqual([...BUILTIN_BRAND_COLORS]);
+    });
+});
+
+/**
+ * Shared blueprint assets are the one set of graphs the renderer's build gate cannot see, so the
+ * assembler is where a refusal in one has to stop the build. These cover the three outcomes:
+ * a build refuses, a build folds, and Dev Mode is left alone.
+ */
+describe("bundleAssembler shared blueprint variant fold", () => {
+    function sharedAsset(graph: BlueprintGraphIr): SharedBlueprintAsset {
+        return {
+            assetId: "asset-1",
+            name: "Shared Menu Logic",
+            frontend: "visual",
+            blueprint: {
+                id: "bp-shared",
+                name: "Shared",
+                owner: { kind: "sharedAsset", assetId: "asset-1" },
+                frontend: "visual",
+                programKind: "graph",
+                program: {
+                    kind: "graph",
+                    graphs: { events: { "e-1": { id: "e-1", name: "On Init", graph } }, functions: {} },
+                },
+            },
+        } as unknown as SharedBlueprintAsset;
+    }
+
+    /** `Get App Tag` held against a value only the running game answers. */
+    const refusingGraph: BlueprintGraphIr = {
+        nodes: {
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+            tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
+            eq: { id: "eq", type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL },
+            label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
+        },
+        edges: [
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
+            { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "eq", port: "a" } },
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "eq", port: "b" } },
+            { from: { nodeId: "eq", port: "result" }, to: { nodeId: "label", port: "text" } },
+        ],
+    };
+
+    /** `Get App Tag` straight into a label: a constant the package can simply carry. */
+    const foldingGraph: BlueprintGraphIr = {
+        nodes: {
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+            tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
+            label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
+        },
+        edges: [
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
+            { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "label", port: "text" } },
+        ],
+    };
+
+    /**
+     * A build's context. `packaging` is what separates a build from every other host: only a build
+     * produces something a player receives, so only a build plans a drop or refuses a graph.
+     */
+    function context(extra?: Partial<DevModeBundleLoadContext>): DevModeBundleLoadContext {
+        return { projectPath: "/project", bundleId: "b", revision: 1, packaging: true, ...extra };
+    }
+
+    it("stops a build whose shared blueprint does not reduce to a fixed value", () => {
+        expect(() => foldSharedBlueprints(
+            [sharedAsset(refusingGraph)],
+            context({ appTag: { id: "tag-demo", name: "Demo" } }),
+            { tagName: "Demo" },
+        )).toThrow(/Shared Menu Logic \/ On Init/);
+    });
+
+    it("names the asset in the author's language", () => {
+        expect(() => foldSharedBlueprints(
+            [sharedAsset(refusingGraph)],
+            context({ appTag: { id: "tag-demo", name: "Demo" }, locale: "zh" }),
+            { tagName: "Demo" },
+        )).toThrow(/变体/);
+    });
+
+    it("substitutes the variant name into a shared blueprint a build can fold", () => {
+        const [folded] = foldSharedBlueprints(
+            [sharedAsset(foldingGraph)],
+            context({ appTag: { id: "tag-demo", name: "Demo" } }),
+            { tagName: "Demo" },
+        );
+        const program = folded.blueprint.program;
+
+        expect(program.kind).toBe("graph");
+        if (program.kind === "graph") {
+            const nodes = program.graphs.events["e-1"].graph?.nodes ?? {};
+            expect(Object.keys(nodes).sort()).toEqual(["head", "label", "tag__appTag"]);
+            expect(nodes.tag__appTag.params).toEqual({ value: "Demo" });
+        }
+    });
+
+    it("leaves a refusing shared blueprint alone outside a build", () => {
+        // Dev Mode and the preview supply no variant, so they assemble as release and the runtime's
+        // own answer for `Get App Tag` is right. A refusal here would stop an author mid-edit.
+        const assets = [sharedAsset(refusingGraph)];
+
+        expect(() => foldSharedBlueprints(assets, context(), { tagName: "main" })).not.toThrow();
+        expect(foldSharedBlueprints(assets, context(), { tagName: "main" })[0]).toBe(assets[0]);
+    });
+});
+
+describe("bundleAssembler scene drop plan", () => {
+    function graphBlueprint(nodes: Record<string, unknown>, wiredPins: string[] = []): Blueprint {
+        return {
+            id: "bp-1",
+            name: "Menu",
+            owner: { kind: "surface", surfaceId: "s1" },
+            frontend: "visual",
+            programKind: "graph",
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        "e-1": {
+                            id: "e-1",
+                            graph: {
+                                nodes,
+                                edges: wiredPins.map(port => ({
+                                    from: { nodeId: "n-source", port: "value" },
+                                    to: { nodeId: "n-1", port },
+                                })),
+                            },
+                        },
+                    },
+                },
+            },
+        } as unknown as Blueprint;
+    }
+
+    function scriptBlueprint(): Blueprint {
+        return {
+            id: "bp-2",
+            name: "Script",
+            owner: { kind: "surface", surfaceId: "s1" },
+            frontend: "typescript",
+            programKind: "scriptModule",
+            program: { kind: "scriptModule", source: { entry: "index.ts", files: {} } },
+        } as unknown as Blueprint;
+    }
+
+    /**
+     * A build's context. `packaging` is what separates a build from every other host: only a build
+     * produces something a player receives, so only a build plans a drop or refuses a graph.
+     */
+    function context(extra?: Partial<DevModeBundleLoadContext>): DevModeBundleLoadContext {
+        return { projectPath: "/project", bundleId: "b", revision: 1, packaging: true, ...extra };
+    }
+
+    const startGame = (params: Record<string, string>) => ({
+        "n-1": { id: "n-1", type: "blueprint.game.startStory", params },
+    });
+
+    it("keeps every scene in the release build", () => {
+        // Release cuts nothing, and Dev Mode, the preview and "play from this row" all enter a scene
+        // the author picked rather than one the story reaches.
+        expect(planSceneDrop(context(), APP_TAG_ID_RELEASE, [])).toBeNull();
+    });
+
+    it("collects the scenes a Start Game node names, per story", () => {
+        const plan = planSceneDrop(context(), "tag-demo", [
+            graphBlueprint(startGame({ storyId: "story-1", sceneId: "scene-7" })),
+        ]);
+
+        expect(plan?.get("story-1")).toEqual({ entrySceneIds: ["scene-7"] });
+        expect(plan?.get("story-2")).toBeUndefined();
+    });
+
+    it("ships every story whole when a Start Game node picks its scene while the game runs", () => {
+        const notices: string[] = [];
+        const plan = planSceneDrop(context({ onNotice: message => notices.push(message) }), "tag-demo", [
+            graphBlueprint(startGame({ storyId: "story-1", sceneId: "" })),
+        ]);
+
+        expect(plan).toBeNull();
+        expect(notices).toHaveLength(1);
+    });
+
+    it("ships every story whole when a Start Game node wires its scene, picked value and all", () => {
+        // The wire is what the running game reads, so the picked scene is not the scene this node
+        // starts. Sweeping on it would drop the chapters the launcher actually reaches.
+        const notices: string[] = [];
+        const plan = planSceneDrop(context({ onNotice: message => notices.push(message) }), "tag-demo", [
+            graphBlueprint(startGame({ storyId: "story-1", sceneId: "scene-7" }), ["sceneId"]),
+        ]);
+
+        expect(plan).toBeNull();
+        expect(notices).toHaveLength(1);
+    });
+
+    it("ships every story whole when a blueprint is written in TypeScript", () => {
+        const notices: string[] = [];
+        const plan = planSceneDrop(
+            context({ onNotice: message => notices.push(message) }),
+            "tag-demo",
+            [scriptBlueprint()],
+        );
+
+        expect(plan).toBeNull();
+        expect(notices).toHaveLength(1);
+    });
+
+    it("still drops scenes when the pack carries the built-in plugins", () => {
+        // This was "the pack carries a plugin, so ship everything", and the built-in Gallery is in
+        // every package - so no project could ever drop a scene. None of the nine declared
+        // capabilities can name one.
+        const notices: string[] = [];
+        const plan = planSceneDrop(
+            context({
+                runtimePlugins: [
+                    { id: "narraleaf.gallery", name: "Gallery", runtimeCapabilities: ["store", "events"] },
+                    { id: "narraleaf.quick-save", name: "Quick Save", runtimeCapabilities: ["saves.read", "saves.write"] },
+                ],
+                onNotice: message => notices.push(message),
+            }),
+            "tag-demo",
+            [],
+        );
+
+        expect(plan).toEqual(new Map());
+        expect(notices).toEqual([]);
+    });
+
+    it("takes the author's declaration for a Start Game node instead of shipping whole", () => {
+        const notices: string[] = [];
+        const mechanismKey = appTagMechanismKey({
+            kind: "startStoryNode",
+            blueprintId: "bp-1",
+            graphKind: "event",
+            graphId: "e-1",
+            nodeId: "n-1",
+        });
+        const plan = planSceneDrop(
+            context({
+                onNotice: message => notices.push(message),
+                declaredScenes: { [mechanismKey]: [{ storyId: "story-1", sceneId: "chapter-3" }] },
+            }),
+            "tag-demo",
+            [graphBlueprint(startGame({ storyId: "story-1", sceneId: "" }))],
+        );
+
+        expect(notices).toEqual([]);
+        expect(plan?.get("story-1")).toEqual({ entrySceneIds: ["chapter-3"] });
+    });
+
+    it("takes a declaration for a TypeScript blueprint too", () => {
+        const mechanismKey = appTagMechanismKey({ kind: "scriptBlueprint", blueprintId: "bp-2" });
+        const plan = planSceneDrop(
+            context({ declaredScenes: { [mechanismKey]: [{ storyId: "story-1", sceneId: "chapter-1" }] } }),
+            "tag-demo",
+            [scriptBlueprint()],
+        );
+
+        expect(plan?.get("story-1")).toEqual({ entrySceneIds: ["chapter-1"] });
+    });
+
+    it("names the plugin it is shipping whole for", () => {
+        const notices: string[] = [];
+        const plan = planSceneDrop(
+            context({
+                runtimePlugins: [{ id: "acme.launcher", name: "Launcher", runtimeCapabilities: ["store"] }],
+                onNotice: message => notices.push(message),
+            }),
+            "tag-demo",
+            [],
+        );
+
+        // No capability can start a story today, so nothing here blocks. The name is carried anyway,
+        // because the first capability that can will be reported against a plugin the author owns.
+        expect(plan).toEqual(new Map());
+        expect(notices).toEqual([]);
+    });
+});
+
+/**
+ * Running as a variant in a host that packages nothing.
+ *
+ * Dev Mode, the preview and a test run all fold the variant - that is what an author asking to "run
+ * as the demo" wants to see - but none of them produces a package, so none of them has anybody to
+ * keep a scene from. Planning a drop there would decide nothing while its refusals, which stop an
+ * assembly dead and are worded for a build, would decide everything.
+ */
+describe("assembling as a variant without packaging", () => {
+    function context(extra?: Partial<DevModeBundleLoadContext>): DevModeBundleLoadContext {
+        return { projectPath: "/project", bundleId: "b", revision: 1, ...extra };
+    }
+
+    it("plans no scene drop, so nothing goes missing from a run", () => {
+        expect(planSceneDrop(context({ appTag: { id: "tag-demo", name: "Demo" } }), "tag-demo", [])).toBeNull();
+    });
+
+    /** `Get App Tag` into a comparison the fold cannot decide - what a build refuses outright. */
+    const unfoldable = {
+        assetId: "asset-1",
+        name: "Shared Menu Logic",
+        frontend: "visual",
+        blueprint: {
+            id: "bp-shared",
+            name: "Shared",
+            owner: { kind: "sharedAsset", assetId: "asset-1" },
+            frontend: "visual",
+            programKind: "graph",
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        "e-1": {
+                            id: "e-1",
+                            name: "On Init",
+                            graph: {
+                                nodes: {
+                                    head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+                                    tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
+                                    eq: { id: "eq", type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL },
+                                    label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
+                                },
+                                edges: [
+                                    { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
+                                    { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "eq", port: "a" } },
+                                    { from: { nodeId: "head", port: "then" }, to: { nodeId: "eq", port: "b" } },
+                                    { from: { nodeId: "eq", port: "result" }, to: { nodeId: "label", port: "text" } },
+                                ],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        },
+    } as unknown as SharedBlueprintAsset;
+
+    it("does not refuse a shared blueprint it cannot fold", () => {
+        // A build refuses this graph, twice. Refusing it here would take Dev Mode away from the
+        // author over a graph they are still editing.
+        expect(() => foldSharedBlueprints(
+            [unfoldable],
+            context({ appTag: { id: "tag-demo", name: "Demo" } }),
+            { tagName: "Demo" },
+        )).not.toThrow();
     });
 });

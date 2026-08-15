@@ -176,7 +176,7 @@ export function AssetsIconView({
                     <button
                         onClick={handleBack}
                         className="p-1 rounded-md hover:bg-fill"
-                        title={t("assets.backToParent")}
+                        data-tip={t("assets.backToParent")} aria-label={t("assets.backToParent")}
                     >
                         <ChevronLeft className="w-4 h-4" />
                     </button>
@@ -411,7 +411,7 @@ function GroupIconTile({
                     // Holds nothing. Offer the one thing that changes that, rather than say so.
                     <button
                         type="button"
-                        title={t("common.import")}
+                        data-tip={t("common.import")} aria-label={t("common.import")}
                         onClick={(e) => {
                             e.stopPropagation();
                             handleImportToGroup(category, group.id);
@@ -425,7 +425,7 @@ function GroupIconTile({
             <div className="flex min-w-0 items-center gap-1.5">
                 <Folder className="w-3.5 h-3.5 shrink-0 text-primary" />
                 <span className="truncate text-xs font-medium">{group.name}</span>
-                <span className="ml-auto shrink-0 text-2xs tabular-nums text-fg-subtle" title={tn("assets.itemCount", childCount)}>
+                <span className="ml-auto shrink-0 text-2xs tabular-nums text-fg-subtle" data-tip={tn("assets.itemCount", childCount)}>
                     {childCount}
                 </span>
             </div>
@@ -494,7 +494,7 @@ function AssetIconTile({ asset, category }: { asset: Asset; category: AssetCateg
                 )}
             </div>
             <div className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate text-xs font-medium" title={asset.name}>{asset.name}</span>
+                <span className="truncate text-xs font-medium" data-tip={asset.name}>{asset.name}</span>
                 {asset.tags.length > 0 && (
                     <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{tn("assets.iconView.tagCount", asset.tags.length)}</span>
                 )}

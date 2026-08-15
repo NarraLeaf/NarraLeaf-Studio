@@ -48,6 +48,10 @@ export const settings = {
             label: "版本控制",
             description: "提交版本的记录频率，以及记在上面的身份",
         },
+        servers: {
+            label: "服务器",
+            description: "本安装已登录的服务器，以及登录所用的账号",
+        },
         network: {
             label: "网络",
             description: "Studio 从哪里下载插件、模板与构建工具",
@@ -65,6 +69,11 @@ export const settings = {
         developerMode: {
             label: "开发者选项",
             description: "右键菜单中增加一组操作，用于复制所选对象的 ID",
+        },
+        confirmQuit: {
+            label: "在使用 ⌘Q 退出时二次确认",
+            description: "连按两次 ⌘Q 才会退出，按一次不退出",
+            unsupportedPlatform: "此选项不适用于此操作系统",
         },
         themeMode: {
             label: "主题",
@@ -85,6 +94,10 @@ export const settings = {
                 rose: "玫瑰",
                 slate: "石板",
             },
+        },
+        tooltipDelay: {
+            label: "提示延迟",
+            description: "指针停在控件上多久后出现提示。在同一个工具栏内，只有第一条提示需要等待",
         },
         reduceMotion: {
             label: "减少动效",
@@ -149,6 +162,26 @@ export const settings = {
                 command: "高亮指令行",
             },
         },
+        dictionaries: {
+            label: "拼写词典",
+        },
+        spellcheckLanguage: {
+            label: "拼写检查语言",
+            description: "在故事正文中标出拼写错误。译文一律不检查",
+            noDictionary: "尚未安装本工程所用语言的拼写词典，正文中不会标出任何内容。工程词典仍然保存着本工程自己的词条",
+            options: {
+                followProject: "跟随工程语言",
+                off: "不检查拼写",
+            },
+        },
+        detachedEditorOnClose: {
+            label: "独立编辑器关闭窗口后的行为",
+            description: "在独立窗口中打开的编辑器，关窗后回到工作区或随窗口一同关闭",
+            options: {
+                restoreTab: "回到工作区",
+                close: "关闭编辑器",
+            },
+        },
         editorLineNumbers: {
             label: "显示行号",
             description: "用于从资产库打开文件的内建文本编辑器",
@@ -191,6 +224,7 @@ export const settings = {
         versionControlAuthor: {
             label: "作者名",
             description: "记录为提交与检查点的作者，留空则记为 NarraLeaf Studio",
+            fromServer: "来自本安装已登录的服务器。退出登录后可重新记录你自己的名字。",
         },
         versionControlAuthorEmail: {
             label: "作者邮箱",
@@ -231,6 +265,9 @@ export const settings = {
         keybindings: {
             label: "快捷键",
         },
+        servers: {
+            label: "服务器",
+        },
         cacheInventory: {
             label: "缓存文件",
         },
@@ -248,6 +285,61 @@ export const settings = {
             description: "把所有设置恢复为默认值；工程、工程历史和统计数据不受影响",
             action: "还原",
             confirm: "全部还原",
+        },
+    },
+    dictionaries: {
+        loading: "正在读取缓存…",
+        remove: "移除",
+        browse: "查看可用词典",
+        refresh: "重新获取",
+        browsing: "正在获取列表…",
+        download: "下载",
+        downloading: "正在下载…",
+        failed: "无法获取词典列表。请先检查设置里的网络策略，再试一次",
+        noDictionaryLanguages: "中文和日语没有拼写词典，以后也不会有：这两种语言词与词之间不分开写，词表无从比对。用它们写的工程不会被标出任何内容",
+        installed: {
+            title: "本机已有",
+            emptyTitle: "还没有词典",
+            emptyDescription: "在下载一份之前，任何工程都不会被标出内容",
+        },
+        available: {
+            title: "可下载",
+            prompt: "词典列表在网上。需要时再去取",
+            none: "列表里的词典都已经在本机了",
+        },
+    },
+    servers: {
+        empty: "尚未添加服务器",
+        openAdd: "添加服务器",
+        add: "添加",
+        adding: "正在添加…",
+        cancel: "取消",
+        continue: "继续",
+        checking: "正在检查…",
+        done: "完成",
+        signOut: "退出登录",
+        addressLabel: "服务器地址",
+        addressPlaceholder: "nlteam://studio.example.lan:41402",
+        reached: "{address} 响应的服务器为 {name}",
+        tokenLabel: "访问令牌",
+        tokenPlaceholder: "粘贴访问令牌",
+        hint: "访问令牌由服务器管理员签发",
+        noAccount: "{name} 不要求身份验证，无需添加",
+        probe: {
+            unreachable: "该地址没有响应",
+            notAServer: "该地址有响应，但它不是 NarraLeaf Team 服务器",
+            untrusted: "该地址的服务器未被信任",
+            failed: "无法检查该地址",
+        },
+        problems: {
+            scheme: "登录地址必须以 https:// 或 ucs-auth:// 开头",
+            token: "该文本不是此服务器签发的令牌",
+            address: "该令牌未写明登录地址",
+            server: "该令牌未写明对应的服务器",
+            certificate: "本机不信任该地址出示的证书",
+            unreachable: "该地址没有响应",
+            refused: "服务器拒绝了该令牌，可能已过期或已被作废",
+            unknown: "无法添加该服务器",
         },
     },
     data: {
@@ -278,6 +370,10 @@ export const settings = {
                 uiTemplatePosters: {
                     label: "模板商店封面",
                     description: "下次打开商店时会重新下载",
+                },
+                spellcheckDictionaries: {
+                    label: "拼写词典",
+                    description: "为拼写检查下载的词表。工程自己的词条不在这里",
                 },
                 psdImports: {
                     label: "PSD 导入残留",

@@ -5,10 +5,12 @@ import {
     EDITOR_SURFACE_OPACITY_VAR,
     editorSurfaceAlpha,
 } from "@/lib/settings/editorSurfaceOptions";
+import { TOOLTIP_DELAY_KEY } from "@/lib/settings/tooltipOptions";
+import { setTooltipDelay } from "@/lib/tooltip";
 
 /**
  * Apply the appearance preferences CSS cannot resolve on its own: `ui.accentColor`,
- * `ui.reduceMotion` and `editor.surfaceOpacity`.
+ * `ui.reduceMotion`, `editor.surfaceOpacity` and `ui.tooltipDelay`.
  *
  * Unlike the theme — which is pure CSS, because Electron's nativeTheme drives
  * `prefers-color-scheme` in every renderer — neither of these has a media query
@@ -46,6 +48,19 @@ function applyAccentColor(value: unknown): void {
  */
 function applyEditorSurfaceOpacity(value: unknown): void {
     document.documentElement.style.setProperty(EDITOR_SURFACE_OPACITY_VAR, editorSurfaceAlpha(value));
+}
+
+/**
+ * Hand the tooltip delay to the controller, which is where the timer runs.
+ *
+ * A number rather than a class or a custom property, because the value is read in JS when a pointer
+ * settles on a control - there is no rule CSS could apply on its own.
+ */
+function applyTooltipDelay(value: unknown): void {
+    const numeric = typeof value === "number" ? value : Number(value);
+    if (Number.isFinite(numeric)) {
+        setTooltipDelay(numeric);
+    }
 }
 
 function applyReduceMotion(value: unknown): void {
@@ -91,10 +106,11 @@ export async function initAppearance(): Promise<void> {
     const state = getInterface().app.state;
 
     try {
-        const [accent, motion, surfaceOpacity] = await Promise.all([
+        const [accent, motion, surfaceOpacity, tooltipDelay] = await Promise.all([
             state.getGlobalState("ui.accentColor"),
             state.getGlobalState("ui.reduceMotion"),
             state.getGlobalState(EDITOR_SURFACE_OPACITY_KEY),
+            state.getGlobalState(TOOLTIP_DELAY_KEY),
         ]);
         if (accent.success) {
             applyAccentColor(accent.data.value);
@@ -104,6 +120,9 @@ export async function initAppearance(): Promise<void> {
         }
         if (surfaceOpacity.success) {
             applyEditorSurfaceOpacity(surfaceOpacity.data.value);
+        }
+        if (tooltipDelay.success) {
+            applyTooltipDelay(tooltipDelay.data.value);
         }
     } catch (error) {
         console.warn("[appearance] Failed to load appearance preferences; using defaults.", error);
@@ -118,6 +137,8 @@ export async function initAppearance(): Promise<void> {
                 applyReduceMotion(change.value);
             } else if (change.key === EDITOR_SURFACE_OPACITY_KEY) {
                 applyEditorSurfaceOpacity(change.value);
+            } else if (change.key === TOOLTIP_DELAY_KEY) {
+                applyTooltipDelay(change.value);
             }
         });
     }

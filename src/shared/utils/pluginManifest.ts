@@ -3,10 +3,21 @@ import {
     type PluginInstallPermission,
     type PluginRuntimeCapability,
 } from "../types/pluginPermissions";
-import { pluginIconExtension, pluginIconExtensionList } from "./pluginIcon";
 import {
+    EXTERNAL_LINK_PATTERN_DENIED_SCHEMES,
+    externalLinkPatternKey,
+} from "../types/externalLinkPattern";
+import { NETWORK_ALLOWLIST_SCHEMES } from "../types/networkAllowlist";
+import { pluginIconExtension, pluginIconExtensionList } from "./pluginIcon";
+import { GAME_BUILD_FORMATS_BY_PLATFORM, type GameBuildPlatform } from "../types/gameBuild";
+import {
+    PLUGIN_BUILD_CONFIG_SCOPES,
+    PLUGIN_BUILD_CONFIG_TYPES,
     PluginManifestVersion,
     type NormalizedPluginManifestV2,
+    type PluginBuildConfigFieldContribution,
+    type PluginBuildConfigScope,
+    type PluginBuildConfigType,
     type PluginBuildDependencyContribution,
     type PluginBuildDependencyTargetContribution,
     type PluginContributes,
@@ -70,6 +81,12 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
         }
         if (contributes.sidecars.length > 0) {
             return invalid("Plugin contributes.sidecars requires a runtime entry");
+        }
+        if (contributes.externalLinks.length > 0) {
+            return invalid("Plugin contributes.externalLinks requires a runtime entry");
+        }
+        if (contributes.network.length > 0) {
+            return invalid("Plugin contributes.network requires a runtime entry");
         }
     }
 
@@ -147,6 +164,10 @@ function validateIcon(value: unknown): string | undefined | { error: string } {
  * a test may reach while running is gated separately by its own `requires`
  * (see `src/renderer/lib/testing/types.ts`). Adding a permission here would ask
  * the author to approve something that cannot happen without them asking for it.
+ *
+ * `contributes.buildConfig` is absent for the same reason and a simpler one: a
+ * declared field is a blank the author fills in, and filling it in gives the
+ * plugin no reach it did not already have.
  */
 function derivePermissionsFromContributes(
     contributes: Required<PluginContributes>,
@@ -156,9 +177,14 @@ function derivePermissionsFromContributes(
         derived.push({ kind: "runtime", capability });
     }
     for (const sidecar of contributes.sidecars) {
+        // `sidecarKind` travels with the id because it changes what is being approved: an
+        // `executable` is a separate process, while a `node` sidecar is the plugin's own code
+        // running with the reach of the game itself. A permission that said only "ships a helper
+        // program" would describe both and distinguish neither.
         derived.push({
             kind: "sidecar",
             id: sidecar.id,
+            sidecarKind: sidecar.kind,
             platforms: Object.keys(sidecar.targets).sort(),
         });
     }
@@ -171,6 +197,17 @@ function derivePermissionsFromContributes(
             }
         }
         derived.push({ kind: "buildDependency", id: dependency.id, hosts: hosts.sort() });
+    }
+    // One permission carrying every pattern - the author is answering one question about where this
+    // plugin may send the player. Absent entirely when nothing was declared, which is what keeps a
+    // plugin that opens nothing byte-identical to one written before this existed.
+    if (contributes.externalLinks.length > 0) {
+        derived.push({ kind: "externalLink", patterns: [...contributes.externalLinks] });
+    }
+    // The same shape and the same reason as the line above, kept as its own permission because it
+    // is its own question: these hosts send bytes back into the game.
+    if (contributes.network.length > 0) {
+        derived.push({ kind: "network", patterns: [...contributes.network] });
     }
     return derived;
 }
@@ -193,7 +230,17 @@ const CONTRIBUTES_KEYS = [
     "runtimeCapabilities",
     "sidecars",
     "buildDependencies",
+    "buildConfig",
+    "externalLinks",
+    "network",
 ] as const;
+
+/**
+ * Every platform a build can target, read off the format table so the two cannot disagree: the table
+ * is a `Record<GameBuildPlatform, ...>`, so a platform added to the union without a row there fails
+ * to compile long before it could reach a manifest.
+ */
+const BUILD_CONFIG_PLATFORMS = Object.keys(GAME_BUILD_FORMATS_BY_PLATFORM) as GameBuildPlatform[];
 
 /**
  * Desktop platforms only. Web has no process to spawn and the mobile shells are
@@ -255,6 +302,9 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         runtimeCapabilities: [],
         sidecars: [],
         buildDependencies: [],
+        buildConfig: [],
+        externalLinks: [],
+        network: [],
     };
     if (value === undefined) {
         return empty;
@@ -330,7 +380,240 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         result.sidecars = sidecars;
     }
 
+    if (value.buildConfig !== undefined) {
+        const fields = validateBuildConfig(value.buildConfig, pluginId);
+        if (typeof fields === "string") {
+            return fields;
+        }
+        result.buildConfig = fields;
+    }
+
+    if (value.externalLinks !== undefined) {
+        const patterns = validateExternalLinks(value.externalLinks, pluginId);
+        if (typeof patterns === "string") {
+            return patterns;
+        }
+        result.externalLinks = patterns;
+    }
+
+    if (value.network !== undefined) {
+        const patterns = validateNetworkPatterns(value.network, pluginId);
+        if (typeof patterns === "string") {
+            return patterns;
+        }
+        result.network = patterns;
+    }
+
     return result;
+}
+
+/**
+ * Address patterns the plugin may open.
+ *
+ * Refused here rather than at the point of use, because this is the only moment before the author
+ * is asked to approve them - a pattern that cannot match anything would appear in the prompt as a
+ * permission being granted and then never grant it, and a pattern naming a script scheme would
+ * appear as an address and not be one.
+ *
+ * Four things are rejected, and the fourth is the security-bearing one:
+ *
+ *  - a blank entry, which declares nothing while looking like it declares something;
+ *  - anything that does not parse into a scheme, which is every relative or bare-host string
+ *    somebody hoped would work (`store.example.com/*`);
+ *  - a duplicate, compared on the canonical form so `HTTPS://X.com/` and `https://x.com/` count as
+ *    the one declaration they are;
+ *  - a denied scheme. `javascript:`, `data:` and `vbscript:` are not addresses at all - handing one
+ *    to the platform opener is how "open a link" becomes "run this" - and `file:` is an address
+ *    whose opener runs the file's registered handler, which for an executable is the same thing.
+ *    Refused whatever the manifest says and whatever the author would have approved, because the
+ *    prompt cannot phrase those honestly as "open a page".
+ *
+ * Unlike the contributed identifier lists, patterns carry no plugin-id prefix: they name places in
+ * the world rather than things the plugin owns.
+ */
+function validateExternalLinks(value: unknown, pluginId: string): string[] | string {
+    if (!Array.isArray(value)) {
+        return "Plugin contributes.externalLinks must be an array of address patterns";
+    }
+    const seen = new Set<string>();
+    const patterns: string[] = [];
+    for (const item of value) {
+        const pattern = typeof item === "string" ? item.trim() : "";
+        if (!pattern) {
+            return `Plugin contributes.externalLinks entries must be non-empty strings (plugin "${pluginId}")`;
+        }
+        const key = externalLinkPatternKey(pattern);
+        if (!key) {
+            return `Plugin contributes.externalLinks entry is not an address pattern: ${pattern}. `
+                + "It must be absolute and name a scheme, must not carry credentials, may use `*` "
+                + "only as a whole leading host label or as the entire host, and must not name "
+                + `any of: ${EXTERNAL_LINK_PATTERN_DENIED_SCHEMES.join(", ")}`;
+        }
+        if (seen.has(key)) {
+            return `Plugin contributes.externalLinks declares "${pattern}" more than once`;
+        }
+        seen.add(key);
+        // The author's own spelling is kept: it is what the install prompt shows, and the person
+        // approving it should read the string the manifest holds rather than a rewrite of it.
+        patterns.push(pattern);
+    }
+    return patterns;
+}
+
+/**
+ * Address patterns the plugin fetches from.
+ *
+ * The external-link rules apply and two more sit on top, both because what comes back from a fetch
+ * runs inside the game while an opened page does not:
+ *
+ *  - `http(s)` only. There is no storefront-scheme case here.
+ *  - The path has to be written. `https://api.example.com` is a pattern whose path is exactly `/`,
+ *    which is almost certainly not what a plugin author fetching from an API meant - so it is
+ *    refused with the spelling that does mean it, rather than rewritten into it. The manifest text
+ *    and the approved text have to be the same string.
+ */
+function validateNetworkPatterns(value: unknown, pluginId: string): string[] | string {
+    if (!Array.isArray(value)) {
+        return "Plugin contributes.network must be an array of address patterns";
+    }
+    const seen = new Set<string>();
+    const patterns: string[] = [];
+    for (const item of value) {
+        const pattern = typeof item === "string" ? item.trim() : "";
+        if (!pattern) {
+            return `Plugin contributes.network entries must be non-empty strings (plugin "${pluginId}")`;
+        }
+        const key = externalLinkPatternKey(pattern);
+        if (!key) {
+            return `Plugin contributes.network entry is not an address pattern: ${pattern}. `
+                + "It must be absolute, must not carry credentials, and may use `*` only as a "
+                + "whole leading host label";
+        }
+        let parsed: URL;
+        try {
+            parsed = new URL(pattern);
+        } catch {
+            return `Plugin contributes.network entry is not an address pattern: ${pattern}`;
+        }
+        if (!NETWORK_ALLOWLIST_SCHEMES.includes(parsed.protocol.toLowerCase())) {
+            return `Plugin contributes.network entry must be http or https: ${pattern}`;
+        }
+        if (!parsed.hostname || parsed.hostname === "*") {
+            return `Plugin contributes.network entry must name a host: ${pattern}`;
+        }
+        if (parsed.pathname === "/" && !parsed.search && !parsed.hash) {
+            return `Plugin contributes.network entry "${pattern}" names only the path "/". `
+                + `Write "${parsed.protocol}//${parsed.host}/*" for the whole host.`;
+        }
+        if (seen.has(key)) {
+            return `Plugin contributes.network declares "${pattern}" more than once`;
+        }
+        seen.add(key);
+        patterns.push(pattern);
+    }
+    return patterns;
+}
+
+/**
+ * Build config field declarations.
+ *
+ * Unlike the other contributed identifiers these keys are *not* prefixed with the plugin id: the
+ * store is already per plugin, so a prefix would only repeat the plugin id inside every key. They
+ * must be unique within the plugin, which is the whole of what keys a value.
+ *
+ * Nothing here is validated against the project - a field is a question, and whether the author has
+ * answered it is decided where the build is described, not here.
+ */
+function validateBuildConfig(
+    value: unknown,
+    pluginId: string,
+): PluginBuildConfigFieldContribution[] | string {
+    if (!Array.isArray(value)) {
+        return "Plugin contributes.buildConfig must be an array of field objects";
+    }
+    const seen = new Set<string>();
+    const fields: PluginBuildConfigFieldContribution[] = [];
+    for (const item of value) {
+        if (!isRecord(item)) {
+            return "Plugin contributes.buildConfig entries must be objects";
+        }
+        const key = typeof item.key === "string" ? item.key.trim() : "";
+        if (!key) {
+            return `Plugin contributes.buildConfig entries must declare a key (plugin "${pluginId}")`;
+        }
+        if (seen.has(key)) {
+            return `Plugin contributes.buildConfig declares "${key}" more than once`;
+        }
+        seen.add(key);
+
+        // The label is what the author sees; a blank one produces a field nothing on screen
+        // identifies, which is worse than a manifest that fails to install.
+        const label = typeof item.label === "string" ? item.label.trim() : "";
+        if (!label) {
+            return `Plugin contributes.buildConfig["${key}"] must declare a label`;
+        }
+
+        const type = item.type;
+        if (!PLUGIN_BUILD_CONFIG_TYPES.includes(type as PluginBuildConfigType)) {
+            return `Plugin contributes.buildConfig["${key}"] type must be one of: `
+                + PLUGIN_BUILD_CONFIG_TYPES.join(", ");
+        }
+        const scope = item.scope;
+        if (!PLUGIN_BUILD_CONFIG_SCOPES.includes(scope as PluginBuildConfigScope)) {
+            return `Plugin contributes.buildConfig["${key}"] scope must be one of: `
+                + PLUGIN_BUILD_CONFIG_SCOPES.join(", ");
+        }
+
+        const platforms = validateBuildConfigPlatforms(item.platforms, key);
+        if (typeof platforms === "string") {
+            return platforms;
+        }
+
+        const description = typeof item.description === "string" && item.description.trim()
+            ? item.description.trim()
+            : undefined;
+        fields.push({
+            key,
+            label,
+            type: type as PluginBuildConfigType,
+            scope: scope as PluginBuildConfigScope,
+            ...(description ? { description } : {}),
+            ...(platforms ? { platforms } : {}),
+            ...(item.required === true ? { required: true } : {}),
+        });
+    }
+    return fields;
+}
+
+/**
+ * The platforms a field applies to, or `undefined` for "every platform".
+ *
+ * An empty list is refused rather than read as "every platform": it is a field that applies nowhere,
+ * so nothing would ever ask for it, and the author would never learn why the value they were told to
+ * supply has no place to be typed.
+ */
+function validateBuildConfigPlatforms(
+    value: unknown,
+    key: string,
+): GameBuildPlatform[] | undefined | string {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (!Array.isArray(value) || value.length === 0) {
+        return `Plugin contributes.buildConfig["${key}"] platforms must be a non-empty array, or absent for every platform`;
+    }
+    const platforms: GameBuildPlatform[] = [];
+    for (const item of value) {
+        const platform = typeof item === "string" ? item.trim() : "";
+        if (!BUILD_CONFIG_PLATFORMS.includes(platform as GameBuildPlatform)) {
+            return `Plugin contributes.buildConfig["${key}"] names an unknown platform: ${String(item)} `
+                + `(known: ${BUILD_CONFIG_PLATFORMS.join(", ")})`;
+        }
+        if (!platforms.includes(platform as GameBuildPlatform)) {
+            platforms.push(platform as GameBuildPlatform);
+        }
+    }
+    return platforms;
 }
 
 function validateRuntimeCapabilities(value: unknown): PluginRuntimeCapability[] | string {
@@ -779,7 +1062,7 @@ function validatePermissions(value: unknown): PluginInstallPermission[] | string
 }
 
 /** Permission kinds produced by {@link derivePermissionsFromContributes}, never authored. */
-const DERIVED_PERMISSION_KINDS = ["runtime", "sidecar", "buildDependency"];
+const DERIVED_PERMISSION_KINDS = ["runtime", "sidecar", "buildDependency", "externalLink"];
 
 function readString(record: Record<string, unknown>, key: string): string | null {
     const value = record[key as string];

@@ -177,6 +177,7 @@ const PROBE = function (selector, nameRe, flags, nth) {
     const matches = [];
     document.querySelectorAll(selector).forEach((el) => {
         const name = el.getAttribute('aria-label')
+            || el.getAttribute('data-tip')
             || el.getAttribute('title')
             || (el.textContent || '').trim().replace(/\s+/g, ' ');
         if (re.test(name)) matches.push(el);
@@ -375,7 +376,7 @@ const NAMELESS_CONTROLS = function () {
             if (r.width <= 0 || r.height <= 0) return false;
             const role = b.getAttribute('role');
             if (b.closest('label') && (role === 'switch' || role === 'checkbox')) return false;
-            return !(b.getAttribute('aria-label') || b.getAttribute('title')
+            return !(b.getAttribute('aria-label') || b.getAttribute('data-tip') || b.getAttribute('title')
                 || b.getAttribute('aria-labelledby') || (b.textContent || '').trim());
         })
         .map((b) => {

@@ -512,7 +512,10 @@ export const workspace = {
                 voice: "voice library",
                 variables: "variable registry",
                 audioTracks: "audio tracks",
+                appTags: "build variants",
                 brand: "brand palette",
+                dictionary: "project dictionary",
+                saveSchema: "save fields",
                 characters: "characters",
                 project: "project settings",
                 assets: "asset library",
@@ -665,17 +668,32 @@ export const workspace = {
             // message is a valid revision, and one with no message names itself in the list above.
             commitPlaceholder: "What changed? (optional)",
             commitMessage: "Version message",
+            // Asked in the panel, once, while the setting is empty. Says what the name is FOR
+            // rather than naming the field: "Author name" is what Settings calls it, and there it
+            // sits under a heading that supplies the context this line has to carry on its own.
+            authorLabel: "Author recorded on versions",
+            authorPlaceholder: "Author name",
+            authorSave: "Save",
             // Never instant: the pipeline settles this window's unsaved work, stages the whole
             // project, and waits for the backend to put its stores on disk.
             committing: "Submitting this version…",
+            // What pressing Submit says on a tree nobody has changed. The backend refuses - it will
+            // not record an empty revision - but this is an answer rather than a failure, and the
+            // panel draws it as a note. Its own line rather than reusing "No changes" above: that
+            // one describes the tree, this one answers a press.
+            nothingToCommit: "Nothing has changed since the last version.",
+            // Refused because the app is closing. Rare, and worth its own sentence: the alternative
+            // wording an author would otherwise see names koffi and a worker thread.
+            closingWithApp: "Studio is closing. Try again after it restarts.",
             // "Nobody has looked yet", which is not the same as "clean" - and the difference matters,
             // because looking is a scan and this surface never does it on its own.
             changesUnknown: "Not checked",
             noChanges: "No changes",
             changesCount: "{count} changed",
-            // The per-file list. Every row is display-only: reading what changed INSIDE a file is a
-            // later milestone, and a row that opened onto nothing would be exactly the promise this
-            // panel has been careful not to make.
+            // The per-file list. Every row is display-only, and stays that way now that reading what
+            // changed INSIDE a file has landed: that lives in the comparison tab, which opens on a
+            // comparison rather than on a file, so a row that looked pressable would land the author
+            // on some other file's detail.
             //
             // What the marker on each row means. The backend has no "modified" action of its own -
             // an edited file is reported as KEEP (docs §4.18) and translated on the way out - so
@@ -696,9 +714,64 @@ export const workspace = {
             // be read as "that is everything", and the author would submit a version believing they
             // had seen all of what they were submitting.
             changesMore: "{count} more not shown",
+            // The palette's entries. Title Case like every other command, and named after the act
+            // rather than after the surface: an author searching here knows what they want to do,
+            // not which column of the window it happens in.
+            command: {
+                openRail: "Open Version Control",
+                commit: "Submit a Version",
+                refreshChanges: "Check for Changes",
+                compareChanges: "Compare Changes with the Last Version",
+            },
+            // Narrowing the list. Says what can be typed rather than "Filter", because the useful
+            // thing about it is that a version NUMBER works - that is the one handle an author is
+            // sure of, and the rail prints it on every row.
+            filterPlaceholder: "Find a version by name or number",
+            // Nothing matched. Says how many were searched, because the history is paged and the
+            // answer is only ever about what has been read - "Show older versions" below reaches
+            // further, and this line is what tells the author that is still worth pressing.
+            filterNoMatch: "No match in the {count} versions read so far.",
+            today: "Today",
+            yesterday: "Yesterday",
+            // Comparing against a version the author picked, rather than against the row below.
+            // "Base" rather than "reference" or "anchor": it is the older side of the comparison,
+            // which is the one thing about it worth knowing, and every comparison in the tab is
+            // already drawn as base → later.
+            compareBase: {
+                set: "Compare other versions with this one",
+                clear: "Stop comparing with this version",
+                current: "Comparing with {version}",
+                compare: "Compare with {version}",
+            },
             // Checkpoints are the ones Studio recorded on a timer; there are dozens on a writing day.
             showCheckpoints: "Show {count} checkpoints",
             hideCheckpoints: "Hide checkpoints",
+            // What a version Studio recorded on its own says, when it is read back rather than
+            // written. The bytes in the repository stay English - they travel to collaborators and
+            // outlive whichever language was selected the day they were written - so these are the
+            // READING of a closed set of sentences Studio wrote itself
+            // (`@shared/vcs/systemRevisionMessage`). Anything else in a message is the author's own
+            // words and is drawn verbatim.
+            //
+            // Two of them do not simply echo the stored bytes, and both are deliberate. `Commit` is
+            // a word this interface does not use anywhere else - every other line speaks of
+            // versions - so the row says what actually happened: a version was submitted without a
+            // name. And `Enable version control` is the imperative on the button that caused it,
+            // which reads as an offer in a list of things that already happened.
+            systemMessage: {
+                unnamed: "Unnamed version",
+                enabled: "Version control enabled",
+                // The first version of a project the wizard made, as opposed to one an author
+                // turned version control on for later.
+                created: "Project created",
+                merge: "Merge",
+                checkpoint: "Checkpoint",
+                checkpointClose: "Checkpoint before closing the project",
+                checkpointBuild: "Checkpoint before build",
+                checkpointRestore: "Checkpoint before restore",
+                // `{version}` is a revision number or a hash. Not language, so it is not translated.
+                restored: "Restored version {version}",
+            },
             // Version control is OPTIONAL - Epic ships no native backend for macOS Intel or Windows
             // ARM64 - so these two say different things because the author can only act on one of
             // them. Neither is rendered as a disabled control: on those machines the feature was never
@@ -716,6 +789,27 @@ export const workspace = {
                 // One line and one button, because connecting is a decision rather than a default.
                 none: "Not connected to a server",
                 connect: "Connect to a server",
+                /**
+                 * Choosing which server a project synchronises with.
+                 *
+                 * The list is what this installation is signed in to, which is managed in
+                 * Settings - the last row of the list opens it there. The address field is
+                 * for a server that asks nobody who they are: there is no account to add for
+                 * one, so it can be in no list.
+                 */
+                picker: {
+                    title: "Connect to a server",
+                    // The path on the end of the address, which is what the repository is
+                    // called on the server and what a collaborator clones by. Filled in from
+                    // the project's folder, because that is the answer nearly every time.
+                    nameLabel: "Name on the server",
+                    namePlaceholder: "my-game",
+                    empty: "No servers have been added.",
+                    // The last row of the list. The ellipsis is the convention for a control
+                    // that opens somewhere else: this one opens Settings and closes the dialog.
+                    add: "Add a server…",
+                    manual: "Another address",
+                },
                 // The one field. Measured: the backend keeps only the ORIGIN of whatever URL it is
                 // given and identifies the repository by its own id, so there is genuinely nothing
                 // else to type - which is why there is no "repository name" box beside it.
@@ -750,6 +844,110 @@ export const workspace = {
                 sync: "Get from server",
                 syncing: "Getting versions from the server…",
                 syncedNothing: "Already up to date",
+                /**
+                 * Signing this installation in to the server, and saying who is signed in.
+                 *
+                 * The `signedInAs` line is the point of the whole thing: while a session is in
+                 * force, the name on a version is the one the server knows this account by,
+                 * rather than whatever was typed into a preference on this machine.
+                 */
+                signIn: {
+                    required: "This server requires you to sign in before a project can be pointed at it.",
+                    // A quiet line, not a button: most servers ask nobody who they are, and
+                    // this is a control they can ignore rather than one they must answer.
+                    open: "Sign in to this server",
+                    signedInAs: "Signed in as {name}",
+                    signOut: "Sign out",
+                    // Deliberately not "auth endpoint": the author is being asked where to sign
+                    // in, and the word for the machinery behind it is not theirs to learn.
+                    addressLabel: "Sign-in address",
+                    addressPlaceholder: "https://studio.example.lan:41402",
+                    // "Access token" rather than "password", because it is not one and cannot
+                    // be chosen, remembered or reset by the person pasting it.
+                    tokenLabel: "Access token",
+                    tokenPlaceholder: "Paste the token you were given",
+                    // Where a token comes from, in one line, because there is nowhere else to
+                    // learn it: nothing in Studio can issue one.
+                    hint: "Whoever runs this server issues the token and hands it to you.",
+                    /**
+                     * Trusting the authority a server's certificate is issued from.
+                     *
+                     * Two readers, and the words have to work for both. Where the token names
+                     * this authority, the comparison is already made and this is a decision.
+                     * Where it names none, the fingerprint is here to be checked against what
+                     * somebody was told - which is what everybody did before, and still works.
+                     *
+                     * Nothing here calls it a "root CA" or a "trust store": what the author is
+                     * agreeing to is said in the sentence, and the name for the machinery is
+                     * not theirs to learn.
+                     */
+                    trust: {
+                        open: "Trust this server on this computer",
+                        title: "Trust this server?",
+                        vouched: "The token you pasted names this authority, and this is the authority answering at that address.",
+                        compare: "Check this fingerprint against the one whoever runs the server gives you, over something other than this connection.",
+                        authorityLabel: "Issued by",
+                        fingerprintLabel: "Fingerprint",
+                        // The cost of being wrong, in one sentence, without softening it. The
+                        // account rather than the computer is not a detail: it is what bounds
+                        // the damage, and it is the reason the per-user store is used.
+                        meaning: "Anything holding this authority's key can then issue a certificate for any address, and this account will believe it. Only this account on this computer is affected.",
+                        manual: "This system has no per-account trust store, so Studio cannot do it. Run this, then sign in again:",
+                        copy: "Copy the command",
+                        confirm: "Trust it",
+                        cancel: "Cancel",
+                    },
+                    submit: "Sign in",
+                    cancel: "Cancel",
+                    /**
+                     * How signing in ended, said once and in words.
+                     *
+                     * Not a pair of version numbers: Studio pins its half and the server runs
+                     * whatever its operator installed, and asking an author which pairs work
+                     * asks them for knowledge they have no way to have.
+                     */
+                    reach: {
+                        ready: "This server and this copy of Studio can work together.",
+                        // Signed in, and the server will not hand over this project. A different
+                        // failure from a refused token, and the remedy is a different person's.
+                        notPermitted: "Signed in, but this account has not been given this project. Ask whoever runs the server for access.",
+                        // The sign-in address answered and the server itself did not, which is
+                        // two ports and usually two firewall rules.
+                        dataPortSilent: "Signed in, but the server itself did not answer.",
+                    },
+                    /**
+                     * Why a sign-in did not happen.
+                     *
+                     * Four of these arrive from the backend as one identical sentence, so each
+                     * is written here from the reason Studio worked out for itself. The
+                     * certificate one is the only failure in this product whose remedy is a
+                     * command a person runs outside Studio, and it says so plainly rather than
+                     * offering a button that cannot exist.
+                     */
+                    problem: {
+                        scheme: "A sign-in address has to start with https:// or ucs-auth://.",
+                        token: "That is not a token this server issued. Paste the whole token you were given.",
+                        // Answered only after a token has been read and found to name no
+                        // endpoint, which is what reveals the address field. Most tokens name
+                        // one and nobody sees this.
+                        address: "This token does not say where to sign in, so the address is needed too.",
+                        // The token named no authority, so there is a comparison left to make
+                        // and it is a person's. Shown above the offer, not instead of it.
+                        certificate:
+                            "This computer has not been told to trust the authority this server signs with. "
+                            + "Its fingerprint is {fingerprint}.",
+                        // The token named one authority and a different one answered. Not a
+                        // step that was missed: this is what standing in the way looks like,
+                        // and nothing here offers to trust it.
+                        mismatch:
+                            "The server at that address is not the one this token is for. The token names "
+                            + "{expected}, and {found} answered. Do not trust it; ask whoever runs the "
+                            + "server what happened.",
+                        unreachable: "Nothing answered at that address ({detail}).",
+                        refused: "The server would not accept that token ({detail}).",
+                        unknown: "The sign-in did not finish ({detail}).",
+                    },
+                },
             },
             // A sync whose merge could not settle. Sticky rather than inline, because the sync
             // leaves the version view on its way out and the rail re-reads on that change, which
@@ -903,8 +1101,8 @@ export const workspace = {
             occurrences: "×{count}",
         },
         // The PyCharm-style project switcher in the title bar: current project name plus a
-        // dropdown of recent workspaces. A project picked here opens in a window of its own and
-        // this window stays, which is why the label says "open" rather than "switch".
+        // dropdown of recent workspaces. The label says "open" rather than "switch" because a
+        // project picked here can do either; `openTarget` is where that is decided.
         projectSwitcher: {
             openAnother: "Open another project",
             recentProjects: "Recent Projects",
@@ -913,6 +1111,15 @@ export const workspace = {
             newProject: "New Project…",
             noRecent: "No recent workspaces",
             untitled: "Untitled Project",
+            // Asked once a project has been picked, before anything opens. The dialog names the
+            // picked project; this line names what happens to the one on screen, which is the
+            // part the buttons cannot say. {current} is the project this window is showing.
+            openTarget: {
+                title: "Open project",
+                detail: "Opening in this window closes {current}. Unsaved changes are saved automatically.",
+                thisWindow: "Open in this window",
+                newWindow: "Open in a new window",
+            },
         },
         // In-app confirmation shown before a workspace closes, when `workspace.confirmBeforeClose`
         // is on. The main process drives it over IPC; the dialog supplies its own title/buttons.

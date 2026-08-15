@@ -95,7 +95,7 @@ describe("network/fetch-disallowed", () => {
     it("reports every network node when the project does not allow HTTP", async () => {
         const findings = await RULE.run(
             createTestLintContext({
-                network: { allowHttp: false, allowRemoteResource: false, allowRemoteScript: false },
+                network: { allowHttp: false, allowRemoteResource: false, allowRemoteScript: false, policy: "any", allowlist: [] },
                 blueprintDocument: documentWithNetworkNodes(),
             }),
             {},
@@ -112,7 +112,7 @@ describe("network/fetch-disallowed", () => {
     it("says nothing when the project allows HTTP", async () => {
         const findings = await RULE.run(
             createTestLintContext({
-                network: { allowHttp: true, allowRemoteResource: false, allowRemoteScript: false },
+                network: { allowHttp: true, allowRemoteResource: false, allowRemoteScript: false, policy: "any", allowlist: [] },
                 blueprintDocument: documentWithNetworkNodes(),
             }),
             {},
@@ -123,7 +123,7 @@ describe("network/fetch-disallowed", () => {
     it("says nothing about a project with no network nodes", async () => {
         const findings = await RULE.run(
             createTestLintContext({
-                network: { allowHttp: false, allowRemoteResource: false, allowRemoteScript: false },
+                network: { allowHttp: false, allowRemoteResource: false, allowRemoteScript: false, policy: "any", allowlist: [] },
             }),
             {},
         );

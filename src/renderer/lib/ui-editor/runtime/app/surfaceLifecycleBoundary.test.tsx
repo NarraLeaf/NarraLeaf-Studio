@@ -22,6 +22,7 @@ import {
     type LifecycleEventLog,
 } from "@/lib/ui-editor/runtime/testing/lifecycleTestKit";
 import { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
+import { LayerStackController, mountSurfaceLayer } from "./layers/LayerStackController";
 
 const hoisted = vi.hoisted(() => ({ log: [] as string[] }));
 
@@ -167,5 +168,30 @@ describe("SurfaceLifecycleBoundary dispatch order", () => {
             "openScope:scope-1",
             "dispatch:surfaceInit:scope-1",
         ]);
+    });
+});
+
+/**
+ * The scene where "a layer dies with whatever showed it" is actually enforced: this boundary's
+ * unmount closes the scope, and the layer stack is listening to that one call. Tested through the
+ * real boundary rather than by calling `hideOwnedBy` directly, because the thing that can break is
+ * the connection, not the removal.
+ */
+describe("a surface leaving takes the layers it showed", () => {
+    it("drops the layers owned by the scope that just closed", async () => {
+        const stack = new LayerStackController();
+        const core = createRecordingCore(hoisted.log);
+        core.executionManager.subscribeScopeClosed(scopeId => {
+            stack.hideOwnedBy(scopeId);
+        });
+        mountSurfaceLayer(stack, { surfaceId: "confirm", ownerScopeId: "scope-1" });
+        mountSurfaceLayer(stack, { surfaceId: "hud", ownerScopeId: "scope-elsewhere" });
+        const { unmount } = mountBoundary({ log: hoisted.log, core });
+        await act(async () => {
+            await flushAnimationFrame();
+        });
+        expect(stack.getState()).toHaveLength(2);
+        unmount();
+        expect(stack.getState().map(layer => layer.ownerScopeId)).toEqual(["scope-elsewhere"]);
     });
 });

@@ -97,6 +97,34 @@ function emitExecutionCancelled(input: {
     });
 }
 
+/**
+ * Report a failed execution.
+ *
+ * Every dispatcher below ends in the same three-branch catch, and this is the branch that has to
+ * carry `surfaceId`: a host turns these into the list an author reads, and one emit site that
+ * forgets the surface is one failure that arrives with nowhere to look. Mirrors
+ * {@link emitExecutionCancelled} so the pair is written the same way.
+ */
+function emitExecutionError(input: {
+    debug: DebugBridge;
+    executionId: string;
+    message: string;
+    blueprintId?: string;
+    eventId?: string;
+    nodeId?: string;
+    surfaceId?: string;
+}): void {
+    input.debug.emit({
+        type: "execution.error",
+        executionId: input.executionId,
+        message: input.message,
+        blueprintId: input.blueprintId,
+        eventId: input.eventId,
+        nodeId: input.nodeId,
+        surfaceId: input.surfaceId,
+    });
+}
+
 function newExecutionId(): string {
     return typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
@@ -178,9 +206,9 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.return", functionId: "navigation.getPageProps" });
                     return {};
                 },
-                closeLayer: async () => {
-                    input.debug.emit({ type: "function.call", functionId: "navigation.closeLayer" });
-                    input.debug.emit({ type: "function.return", functionId: "navigation.closeLayer" });
+                pageBack: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.pageBack" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.pageBack" });
                 },
                 clearPages: async () => {
                     input.debug.emit({ type: "function.call", functionId: "navigation.clearPages" });
@@ -243,6 +271,16 @@ function createScriptExecutionContext(input: {
                 getSaveMetadata: async (_id: string) => {
                     input.debug.emit({ type: "function.call", functionId: "game.getSaveMetadata" });
                     input.debug.emit({ type: "function.return", functionId: "game.getSaveMetadata" });
+                    return null;
+                },
+                getSaveTimes: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getSaveTimes" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getSaveTimes" });
+                    return null;
+                },
+                getSaveLine: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getSaveLine" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getSaveLine" });
                     return null;
                 },
                 getSavePreview: async (_id: string) => {
@@ -340,6 +378,11 @@ function getMountedBlueprintModule(blueprintId: string): BlueprintModuleSink | u
 
 /**
  * Dispatch a UI element behavior event into a blueprint event graph or TypeScript module (M3-min + M5).
+ *
+ * Resolves to whether a listener actually ran. The caller bubbles an event nothing listened to, so
+ * this answer has to come from the dispatch itself rather than from a second reading of the document:
+ * two spellings of "is anything listening here" would eventually disagree, and the event would then
+ * be both handled and forwarded.
  */
 export async function dispatchBlueprintUiEvent(options: {
     document: UIDocument;
@@ -361,7 +404,7 @@ export async function dispatchBlueprintUiEvent(options: {
     /** Resolved params of the component instance this dispatch came from; see UIHostAdapterElementEventOptions. */
     componentParams?: Record<string, string>;
     maxSteps?: number;
-} & CancellableDispatchOptions): Promise<void> {
+} & CancellableDispatchOptions): Promise<boolean> {
     const {
         document,
         blueprintDocument,
@@ -382,7 +425,7 @@ export async function dispatchBlueprintUiEvent(options: {
     } = options;
     const el = readDispatchElement(document, elementId, componentId);
     if (!el || eventControl?.isPropagationStopped()) {
-        return;
+        return false;
     }
     const widgetLogicApi = getWidgetLogicApi(el.type);
     const widgetOwnerKey = widgetLogicApi?.supportsPrivateBlueprint
@@ -401,11 +444,11 @@ export async function dispatchBlueprintUiEvent(options: {
               ? legacyBinding.blueprintId
               : undefined;
     if (!blueprintId) {
-        return;
+        return false;
     }
     const bp = blueprintDocument.blueprints[blueprintId];
     if (!bp) {
-        return;
+        return false;
     }
     if (bp.program.kind === "scriptModule") {
         const mod = getMountedBlueprintModule(blueprintId);
@@ -413,7 +456,7 @@ export async function dispatchBlueprintUiEvent(options: {
             mod?.events?.[eventName] ??
             (legacyBinding?.kind === "blueprintEvent" ? mod?.events?.[legacyBinding.eventId] : undefined);
         if (typeof fn !== "function") {
-            return;
+            return false;
         }
         const executionId = newExecutionId();
         const execution = beginTrackedExecution({
@@ -448,24 +491,18 @@ export async function dispatchBlueprintUiEvent(options: {
                     eventId: eventName,
                     reason: err.message,
                 });
-                return;
+                return true;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({
-                type: "execution.error",
-                executionId,
-                message,
-                blueprintId,
-                eventId: eventName,
-            });
+            emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
         } finally {
             execution?.finish();
         }
-        return;
+        return true;
     }
 
     if (bp.program.kind !== "graph") {
-        return;
+        return false;
     }
 
     const widgetElementType = el?.type;
@@ -484,7 +521,7 @@ export async function dispatchBlueprintUiEvent(options: {
         .filter((entry): entry is { eventGraph: NonNullable<typeof candidateGraphs[number]>; ir: NonNullable<typeof candidateGraphs[number]["graph"]>; headIds: string[] } => Boolean(entry));
 
     if (matchingGraphs.length === 0) {
-        return;
+        return false;
     }
     const executionId = newExecutionId();
     const execution = beginTrackedExecution({
@@ -534,6 +571,7 @@ export async function dispatchBlueprintUiEvent(options: {
                         graphId: graph.id,
                         blueprintId,
                         eventId: eventName,
+                        surfaceId,
                         emit: e => debug.emit(e),
                     },
                 });
@@ -556,30 +594,28 @@ export async function dispatchBlueprintUiEvent(options: {
                 nodeId: err.nodeId,
                 reason: err.message,
             });
-            return;
+            return true;
         }
         if (err instanceof BlueprintGraphExecutionError) {
-            debug.emit({
-                type: "execution.error",
+            emitExecutionError({
+                debug,
                 executionId,
                 message: err.message,
                 blueprintId,
                 eventId: eventName,
                 nodeId: err.nodeId,
+                surfaceId,
             });
-            return;
+            return true;
         }
         const message = err instanceof Error ? err.message : String(err);
-        debug.emit({
-            type: "execution.error",
-            executionId,
-            message,
-            blueprintId,
-            eventId: eventName,
-        });
+        emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
     } finally {
         execution?.finish();
     }
+    // A listener that threw still listened: bubbling on error would turn one author's broken
+    // handler into the parent's problem.
+    return true;
 }
 
 function collectSurfaceElementIds(document: UIDocument, surfaceId: string): string[] {
@@ -708,7 +744,7 @@ type ElementEventDispatchOptions = {
     graphIdPrefix: BlueprintRunGraphKind;
 };
 
-async function dispatchBlueprintElementEvent(options: ElementEventDispatchOptions & CancellableDispatchOptions): Promise<void> {
+async function dispatchBlueprintElementEvent(options: ElementEventDispatchOptions & CancellableDispatchOptions): Promise<boolean> {
     const {
         document,
         blueprintDocument,
@@ -724,6 +760,7 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
     } = options;
     const payload = { ...(eventPayload ?? {}), element: target };
     const targets = collectElementEventTargets({ document, blueprintDocument, surfaceId, target, nodeType });
+    const handled = targets.length > 0;
 
     for (const listener of targets) {
         const executionId = newExecutionId();
@@ -769,6 +806,7 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
                         graphId: graph.id,
                         blueprintId: listener.blueprintId,
                         eventId,
+                        surfaceId,
                         emit: e => debug.emit(e),
                     },
                 });
@@ -787,22 +825,24 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
                 continue;
             }
             if (err instanceof BlueprintGraphExecutionError) {
-                debug.emit({
-                    type: "execution.error",
+                emitExecutionError({
+                    debug,
                     executionId,
                     message: err.message,
                     blueprintId: listener.blueprintId,
                     eventId,
                     nodeId: err.nodeId,
+                    surfaceId,
                 });
                 continue;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({ type: "execution.error", executionId, message, blueprintId: listener.blueprintId, eventId });
+            emitExecutionError({ debug, executionId, message, blueprintId: listener.blueprintId, eventId, surfaceId });
         } finally {
             execution?.finish();
         }
     }
+    return handled;
 }
 
 export async function dispatchBlueprintElementFlushEvent(options: {
@@ -840,8 +880,8 @@ export async function dispatchBlueprintElementClickEvent(options: {
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
     maxSteps?: number;
-} & CancellableDispatchOptions): Promise<void> {
-    await dispatchBlueprintElementEvent({
+} & CancellableDispatchOptions): Promise<boolean> {
+    return dispatchBlueprintElementEvent({
         ...options,
         nodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
         eventId: "elementClick",
@@ -1040,6 +1080,7 @@ export async function dispatchWidgetsBlueprintEvent(options: {
                             graphId: graph.id,
                             blueprintId,
                             eventId: eventName,
+                            surfaceId,
                             emit: e => debug.emit(e),
                         },
                     });
@@ -1058,18 +1099,19 @@ export async function dispatchWidgetsBlueprintEvent(options: {
                     continue;
                 }
                 if (err instanceof BlueprintGraphExecutionError) {
-                    debug.emit({
-                        type: "execution.error",
+                    emitExecutionError({
+                        debug,
                         executionId,
                         message: err.message,
                         blueprintId,
                         eventId: eventName,
                         nodeId: err.nodeId,
+                        surfaceId,
                     });
                     continue;
                 }
                 const message = err instanceof Error ? err.message : String(err);
-                debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+                emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
             } finally {
                 execution?.finish();
             }
@@ -1152,6 +1194,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
                         graphId: graph.id,
                         blueprintId: target.blueprintId,
                         eventId: eventName,
+                        surfaceId,
                         emit: e => debug.emit(e),
                     },
                 });
@@ -1170,18 +1213,26 @@ export async function dispatchBlueprintBroadcastEvent(options: {
                 continue;
             }
             if (err instanceof BlueprintGraphExecutionError) {
-                debug.emit({
-                    type: "execution.error",
+                emitExecutionError({
+                    debug,
                     executionId,
                     message: err.message,
                     blueprintId: target.blueprintId,
                     eventId: eventName,
                     nodeId: err.nodeId,
+                    surfaceId,
                 });
                 continue;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({ type: "execution.error", executionId, message, blueprintId: target.blueprintId, eventId: eventName });
+            emitExecutionError({
+                debug,
+                executionId,
+                message,
+                blueprintId: target.blueprintId,
+                eventId: eventName,
+                surfaceId,
+            });
         } finally {
             execution?.finish();
         }
@@ -1275,6 +1326,7 @@ export async function invokeBlueprintFnCall(options: {
                   executionId: options.callerExecutionId,
                   graphId: graph.id,
                   blueprintId: decl.blueprintId,
+                  surfaceId,
                   emit: e => debug.emit(e),
               }
             : undefined,
@@ -1379,7 +1431,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                 return;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+            emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
         } finally {
             execution?.finish();
         }
@@ -1454,6 +1506,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                         graphId: graph.id,
                         blueprintId,
                         eventId: eventName,
+                        surfaceId,
                         emit: e => debug.emit(e),
                     },
                 });
@@ -1479,18 +1532,19 @@ export async function dispatchSurfaceBlueprintEvent(options: {
             return;
         }
         if (err instanceof BlueprintGraphExecutionError) {
-            debug.emit({
-                type: "execution.error",
+            emitExecutionError({
+                debug,
                 executionId,
                 message: err.message,
                 blueprintId,
                 eventId: eventName,
                 nodeId: err.nodeId,
+                surfaceId,
             });
             return;
         }
         const message = err instanceof Error ? err.message : String(err);
-        debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+        emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
     } finally {
         execution?.finish();
     }
@@ -1582,7 +1636,8 @@ export async function dispatchGlobalBlueprintEvent(options: {
                 return;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+            // The global blueprint belongs to no surface, so this one reports without a place.
+            emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName });
         } finally {
             execution?.finish();
         }
@@ -1679,8 +1734,8 @@ export async function dispatchGlobalBlueprintEvent(options: {
             return;
         }
         if (err instanceof BlueprintGraphExecutionError) {
-            debug.emit({
-                type: "execution.error",
+            emitExecutionError({
+                debug,
                 executionId,
                 message: err.message,
                 blueprintId,
@@ -1690,7 +1745,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
             return;
         }
         const message = err instanceof Error ? err.message : String(err);
-        debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+        emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName });
     } finally {
         execution?.finish();
     }

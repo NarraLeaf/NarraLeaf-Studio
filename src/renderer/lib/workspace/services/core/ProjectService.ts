@@ -7,6 +7,7 @@ import { normalizeProjectIconSet, type ProjectIconSet, type ProjectIconSource } 
 import {
     AutoSaveConfiguration,
     BuildConfiguration,
+    CrashConfiguration,
     LintingConfiguration,
     LocalizationConfiguration,
     MobileConfiguration,
@@ -19,6 +20,7 @@ import {
     WebOptimizationConfiguration,
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
+    normalizeCrashConfiguration,
     normalizeLintingConfiguration,
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
@@ -177,10 +179,14 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      */
     public async updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig> {
         return this.updateProjectConfig(config => {
-            const network: NetworkConfiguration = {
+            // Normalized *after* the merge, not only before it. The patch is caller-supplied, so
+            // normalizing the stored value and then spreading raw fields over it would write
+            // whatever was typed - which for an allowlist entry means the stored string and the
+            // string the matcher compares stop being the same document.
+            const network: NetworkConfiguration = normalizeNetworkConfiguration({
                 ...normalizeNetworkConfiguration(config.app?.network),
                 ...patch,
-            };
+            });
             const app: ProjectAppConfiguration = {
                 ...config.app,
                 network,
@@ -196,6 +202,32 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * Read the effective asset-protection policy, falling back to the secure
      * default (off) for projects that predate the `app.security` config.
      */
+    public getCrashConfiguration(): CrashConfiguration {
+        return normalizeCrashConfiguration(this.getProjectConfig().app?.crash);
+    }
+
+    /**
+     * Merge a partial patch into what the shipped game does when it stops working. Written by the
+     * project settings UI and read by the packaging pipeline, which puts it on the pack.
+     */
+    public async updateCrashConfiguration(patch: Partial<CrashConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const crash: CrashConfiguration = {
+                ...normalizeCrashConfiguration(config.app?.crash),
+                ...patch,
+            };
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                crash,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
     public getSecurityConfiguration(): SecurityConfiguration {
         return normalizeSecurityConfiguration(this.getProjectConfig().app?.security);
     }

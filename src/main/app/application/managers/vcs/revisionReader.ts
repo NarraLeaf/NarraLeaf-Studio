@@ -143,6 +143,28 @@ export async function listFilesAt(
     }
 }
 
+/**
+ * {@link listFilesAt}, keyed by path.
+ *
+ * The input side of the diff engine's cheapest step, and the reason it is worth its own name:
+ * **this costs one tree walk and not one byte**. Every child event the walk already receives
+ * carries the file's size and its content address, so "how big is it" and "is it the same bytes
+ * as that other one" are both answerable before anything is fetched. Everything the comparison
+ * then does - deciding which paths deserve a read, pairing a rename with the deletion it came
+ * from, describing an asset that will never be read at all - is built on this call.
+ *
+ * The paths are the walk's own spelling: repository-relative with forward slashes.
+ */
+export async function entriesAt(
+    globals: LoreGlobals,
+    store: StoreHandle,
+    repository: LoreHex,
+    revision: LoreHex,
+): Promise<Map<string, RevisionFileEntry>> {
+    const entries = await listFilesAt(globals, store, repository, revision);
+    return new Map(entries.map((entry) => [entry.path, entry]));
+}
+
 async function walkTree(globals: LoreGlobals, tree: TreeHandle): Promise<RevisionFileEntry[]> {
     const files: RevisionFileEntry[] = [];
     const seen = new Set<number>([ROOT_NODE_ID]);

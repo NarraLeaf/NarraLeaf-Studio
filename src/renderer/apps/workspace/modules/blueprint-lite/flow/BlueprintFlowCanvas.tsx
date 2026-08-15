@@ -73,6 +73,7 @@ import {
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
 import { BlueprintAddNodeMenu } from "../components/BlueprintAddNodeMenu";
+import { SaveSchemaFieldsModal } from "../components/SaveSchemaFieldsModal";
 import {
     generateNextDynamicInputPinIds,
     getDynamicInputPinRemovalIds,
@@ -156,6 +157,14 @@ export function removeBlueprintNodeFromIr(ir: BlueprintGraphIr, nodeId: string):
 
 type BlueprintFlowCanvasInnerProps = {
     nodeCatalog: IBlueprintNodeCatalogService;
+    /**
+     * Whether the editor's member panel is out of the way.
+     *
+     * The panel is an overlay - `absolute inset-y-0 left-0 w-56` over this canvas, not a column
+     * beside it - so the canvas's own bottom-left corner is underneath it, and anything parked
+     * there is drawn but unreachable. The zoom control needs to know which corner is actually free.
+     */
+    memberPanelCollapsed?: boolean;
     graphKey: string;
     ir: BlueprintGraphIr;
     revision: number;
@@ -310,6 +319,7 @@ function syncSameGraphFnCallSnapshots(ir: BlueprintGraphIr, currentBlueprintId: 
 
 function BlueprintFlowCanvasInner({
     nodeCatalog,
+    memberPanelCollapsed = false,
     graphKey,
     ir,
     revision,
@@ -596,6 +606,18 @@ function BlueprintFlowCanvasInner({
 
     const addDynamicInputPinRef = useRef(addDynamicInputPin);
     addDynamicInputPinRef.current = addDynamicInputPin;
+    /**
+     * The project save-field editor, opened from a save node's card.
+     *
+     * Owned here rather than by the card: the card is rendered inside the flow surface, which is
+     * scaled and translated by the viewport transform, and a dialog mounted inside it would inherit
+     * both. The canvas is outside that transform, and the modal itself lands in the window overlay
+     * host from there.
+     */
+    const [saveSchemaEditorOpen, setSaveSchemaEditorOpen] = useState(false);
+    const openSaveSchemaEditor = useCallback(() => setSaveSchemaEditorOpen(true), []);
+    const closeSaveSchemaEditor = useCallback(() => setSaveSchemaEditorOpen(false), []);
+
     const stableAddDynamicInputPin = useCallback((nodeId: string) => {
         addDynamicInputPinRef.current(nodeId);
     }, []);
@@ -826,6 +848,7 @@ function BlueprintFlowCanvasInner({
                     elementPreviews,
                     displayableTargetVariantsByNodeId,
                     onBindElementLiteral,
+                    openSaveSchemaEditor,
                 );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
                 let out = withSel;
@@ -902,6 +925,7 @@ function BlueprintFlowCanvasInner({
         displayableTargetVariantsByNodeId,
         displayableTargetVariantsSig,
         onBindElementLiteral,
+        openSaveSchemaEditor,
         setEdges,
         setNodes,
     ]);
@@ -1339,7 +1363,7 @@ function BlueprintFlowCanvasInner({
                 zIndexMode="manual"
             >
                 <Background color="rgb(var(--nl-fg-subtle))" gap={20} size={1} />
-                <BlueprintFlowZoomControls />
+                <BlueprintFlowZoomControls memberPanelCollapsed={memberPanelCollapsed} />
                 <MiniMap
                     // Dragging the minimap pans the viewport — the quickest way to
                     // move across a large graph. xyflow ships no cursor affordance
@@ -1391,6 +1415,7 @@ function BlueprintFlowCanvasInner({
                     }}
                 />
             ) : null}
+            <SaveSchemaFieldsModal isOpen={saveSchemaEditorOpen} onClose={closeSaveSchemaEditor} />
             {nodeMenu ? (
                 <ContextMenu
                     items={nodeMenuItems}

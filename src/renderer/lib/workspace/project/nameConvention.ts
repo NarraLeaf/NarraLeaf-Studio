@@ -147,6 +147,17 @@ export const ProjectNameConvention = {
     // The project's brand palette (the colours widgets, scenes and characters link to instead of
     // storing a hex literal). Cross-cutting like the two above, so it sits at editor root too.
     EditorBrand: ["editor", "brand.json"],
+    // The build variants the project can be shipped as, and what each one says differently from the
+    // project itself. Cross-cutting like the three above, so it sits at editor root too.
+    EditorAppTags: ["editor", "app-tags.json"],
+    // The words this project spells on purpose (character names, place names, invented terms), which
+    // the spellchecker is told about while the project is open. Cross-cutting like the three above,
+    // so it sits at editor root too.
+    EditorDictionary: ["editor", "dictionary.json"],
+    // What one save slot carries besides the engine's own record: the fields an author declares
+    // once and wires by name on the save nodes. Cross-cutting like the four above, so it sits at
+    // editor root too.
+    EditorSaveSchema: ["editor", "save-schema.json"],
     EditorStory: ["editor", "story/"],
     EditorStoryStories: ["editor", "story", "stories/"],
     EditorStoryIndex: ["editor", "story", "index.json"],

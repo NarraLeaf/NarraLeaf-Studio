@@ -133,6 +133,36 @@ export function thawProjectWrites(): void {
     announceFreeze();
 }
 
+/**
+ * Drop a freeze that belongs to some OTHER project, and leave this one's alone.
+ *
+ * The distinction is not a nicety. This latch is module-level while `WorkspaceFreezeService` is a
+ * singleton re-initialised per project, so the service clears the latch on startup - otherwise a
+ * freeze armed for the project that just closed would refuse writes for the one that just opened, on
+ * a path comparison that no longer matches anything.
+ *
+ * But one freeze is armed BEFORE that service exists: a project opened mid-merge is frozen by
+ * `workspaceProjectPreflight`, which has to run before the first document is parsed
+ * (docs §4.33). An unconditional clear therefore threw it away on every open - measured on a real
+ * mid-merge project, where the workspace came up fully writable with the editors holding the
+ * author's own side of a conflicted file. The next auto-save would have written that over the
+ * merge's result, silently settling every conflict as "mine" with nobody having chosen.
+ *
+ * Compared through {@link canonical} and {@link fold} rather than by string equality, for the reason
+ * `isFrozenProjectData` uses them: the same project arrives here spelled two ways (the main
+ * process's `projectPath` uses the platform separator, the renderer's comes out of the project
+ * config) and a raw comparison would answer "different project" for both of them.
+ */
+export function thawForeignProjectWrites(projectPath: string): void {
+    if (!frozen) {
+        return;
+    }
+    if (fold(canonical(frozen.projectPath)) === fold(canonical(projectPath))) {
+        return;
+    }
+    thawProjectWrites();
+}
+
 /** The active freeze, or null when project data is writable. */
 export function getProjectWriteFreeze(): WorkspaceFreeze | null {
     return frozen;

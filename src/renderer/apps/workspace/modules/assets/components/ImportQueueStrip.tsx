@@ -34,7 +34,7 @@ export function ImportQueueStrip({
         return (
             <div className="px-3 py-2 border-b border-edge space-y-1">
                 <div className="flex items-center justify-between gap-2 text-xs text-fg-muted">
-                    <span className="truncate" title={state.current}>
+                    <span className="truncate" data-tip={state.current}>
                         {state.current ? basename(state.current) : ""}
                     </span>
                     <span className="shrink-0 tabular-nums">{state.completed} / {total}</span>
@@ -62,7 +62,7 @@ export function ImportQueueStrip({
                         <li
                             key={failure.path}
                             className="text-xs text-fg-subtle truncate"
-                            title={failure.error ? `${failure.path}\n${failure.error}` : failure.path}
+                            data-tip={failure.error ? `${failure.path}\n${failure.error}` : failure.path}
                         >
                             {basename(failure.path)}
                         </li>
@@ -73,7 +73,7 @@ export function ImportQueueStrip({
                 <button
                     type="button"
                     onClick={onRetry}
-                    title={t("assets.import.retry")}
+                    data-tip={t("assets.import.retry")}
                     className="h-7 px-2 flex items-center gap-1 rounded-md border border-edge-strong bg-fill-subtle text-xs text-fg-muted hover:bg-fill transition-colors"
                 >
                     <RotateCcw className="w-3 h-3" />
@@ -82,7 +82,7 @@ export function ImportQueueStrip({
                 <button
                     type="button"
                     onClick={onDismiss}
-                    title={t("common.close")}
+                    data-tip={t("common.close")} aria-label={t("common.close")}
                     className="h-7 w-7 flex items-center justify-center rounded-md text-fg-muted hover:bg-fill transition-colors"
                 >
                     <X className="w-3.5 h-3.5" />

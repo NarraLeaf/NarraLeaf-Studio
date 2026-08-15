@@ -1,3 +1,4 @@
+import type {ContentClass} from "../vcs/contentClass";
 import type {DocumentKind} from "./types";
 
 /**
@@ -17,7 +18,7 @@ import type {DocumentKind} from "./types";
 export type DocumentChangeKind = "added" | "removed" | "changed" | "moved";
 
 /**
- * Which of the four tiers produced a diff. See `vcs/diff/documentDiff.ts` for what
+ * Which of the five tiers produced a diff. See `vcs/diff/documentDiff.ts` for what
  * each one costs and when it is reached.
  *
  * **The least conspicuous field here and the most important one.** A structural diff
@@ -28,8 +29,17 @@ export type DocumentChangeKind = "added" | "removed" | "changed" | "moved";
  * whose values differ", which on a document full of generated ids is mostly noise
  * wearing the same clothes. A surface that draws them identically is lying, and the
  * author's only way to find out is to act on a change that was never a change.
+ *
+ * `content` is the same distinction one rung lower, and it was added because the pair
+ * below it had already produced the lie once: a file compared by its header reports
+ * "1920x1080 became 1280x720", which is a real resolution, while `opaque`'s caption
+ * reads "Not read. Too large, not text, or unreadable. Only its size is reported." Both
+ * were on screen at once. `content` claims what a header reader can support - the format
+ * was recognised and what the file says about itself was compared - and nothing about
+ * what is inside it. A provider that cannot read a header at all stays on `opaque`,
+ * because "only its size" is then the whole truth.
  */
-export type DocumentDiffTier = "semantic" | "summary" | "structural" | "opaque";
+export type DocumentDiffTier = "semantic" | "summary" | "structural" | "content" | "opaque";
 
 /**
  * How to read a change out loud: a translation KEY plus parameters, never a sentence.
@@ -228,6 +238,20 @@ export interface DocumentDiffEntry {
     readonly kind: DocumentChangeKind;
     /** The document format, when a spec claims this path. Absent is the ordinary answer. */
     readonly documentKind?: DocumentKind;
+    /**
+     * What kind of thing the file holds, as the comparison settled it.
+     *
+     * **Carried rather than re-derived, because the renderer cannot derive it.** A class is
+     * normally read off the extension (`shared/vcs/contentClass.ts`), and the files this matters
+     * most for have none: Studio stores an asset's contents under its id, sharded two levels deep
+     * - `assets/content/99/55/3d15abb…` - so every sprite and every background in a real project
+     * answers `unknown` to a name-only classifier. The producer has the bytes in hand and settles
+     * it from the header, which is a thing only it can do.
+     *
+     * Absent means nobody settled it: a path the comparison deliberately did not read, where the
+     * name is all there is and a consumer may classify by name itself.
+     */
+    readonly contentClass?: ContentClass;
     readonly diff: DocumentDiff;
 }
 

@@ -34,6 +34,7 @@ import {
     Move,
     MoveHorizontal,
     Music,
+    Package,
     PaintBucket,
     Palette,
     Moon,
@@ -218,6 +219,8 @@ function markGlyph(mark: StoryCandidateMark): typeof Hash {
             return MessageSquare;
         case "audioTrack":
             return AudioLines;
+        case "appTag":
+            return Package;
         case "variable":
             switch (mark.valueType) {
                 case "boolean":

@@ -1,7 +1,10 @@
 import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
+import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
+import { SPELLCHECK_LANGUAGE_DEFAULT } from "@shared/types/spellcheck";
 import { PersistentState } from "@shared/utils/persistentState";
+import type { VcsServerSession } from "@shared/types/vcs";
 import { RecentlyOpenedProject } from "./appStateTypes";
 
 export interface GlobalStateType extends Record<string, any> {
@@ -42,6 +45,15 @@ export interface GlobalStateType extends Record<string, any> {
      * the author's answer on the next launch. See `@shared/constants/update`.
      */
     "app.updateCheckOnLaunch": boolean;
+    /**
+     * Whether ⌘Q has to be pressed twice before it quits, instead of quitting on the first press.
+     *
+     * macOS only, and not because the key combination is: Windows and Linux quit with Alt+F4 or the
+     * window close box, neither of which is a key away from anything an author presses on purpose.
+     * The row is still shown on those platforms, disabled, rather than hidden - a preference that
+     * appears and disappears with the machine is one that gets reported as missing.
+     */
+    "app.confirmQuit": boolean;
     /**
      * Whether this profile has been told that Studio keeps running after its last window closes.
      *
@@ -160,6 +172,27 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "editor.storyRowHighlight": "none" | "script" | "command";
     /**
+     * Which language the story script is spellchecked in: `"project"` follows the project's source
+     * language, `"off"` checks nothing, anything else is a Chromium dictionary name (`"en-GB"`).
+     *
+     * Global rather than per-project even though its default is read off the project, because it
+     * describes the machine this author writes on - which dictionary is installed, which regional
+     * English they want - and a `.nlproj` is shared, where one teammate's answer would override
+     * everyone else's. See `@shared/types/spellcheck`.
+     */
+    "editor.spellcheckLanguage": string;
+    /**
+     * What becomes of an editor that was popped out into its own window when that window closes:
+     * `"restoreTab"` puts it back as a workspace tab, `"close"` lets it go.
+     *
+     * A setting rather than a fixed rule because the two answers come from two different habits.
+     * Popping a blueprint out to work on it beside the surface it drives is a detour, and the tab
+     * coming back is the way back; popping it out to read it once and closing the window is a
+     * dismissal, and a tab reappearing is the thing that was just dismissed. See
+     * lib/settings/detachedEditorCloseOptions.
+     */
+    "editor.detachedEditorOnClose": "restoreTab" | "close";
+    /**
      * Ask for confirmation before a workspace window closes.
      *
      * Replaces the legacy `workspace.confirmOnClose`, which shipped as an unread placeholder
@@ -262,6 +295,21 @@ export interface GlobalStateType extends Record<string, any> {
      * of thing that ends up in every revision of a repository.
      */
     "versionControl.authorEmail": string;
+    /**
+     * The servers this installation has signed in to, one entry per server origin.
+     *
+     * **Not a preference and not a credential.** No preference, because nobody chose it by
+     * typing into a field and it means nothing on another machine - which is why it has no
+     * settings row, is absent from the reset and export scopes, and stays out of an exported
+     * settings file for free. No credential, because the token is not here: it went into the
+     * backend's own per-user store, and all that is kept here is who the server said that
+     * token belongs to.
+     *
+     * The backend's store is still the authority on whether a session exists at all - the
+     * `lore` CLI writes and clears the same store - so this is read together with it rather
+     * than trusted on its own. See `VcsManager.getServerSession`.
+     */
+    "versionControl.serverSessions": VcsServerSession[];
 }
 
 export type GlobalStateKeys = string;
@@ -279,6 +327,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // languages to decide its own default.
     "app.developerMode": false,
     "app.updateCheckOnLaunch": true,
+    "app.confirmQuit": CONFIRM_QUIT_DEFAULT,
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
@@ -301,6 +350,8 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.localizedCommands": true,
     "editor.hideParamNames": false,
     "editor.storyRowHighlight": "none",
+    "editor.spellcheckLanguage": SPELLCHECK_LANGUAGE_DEFAULT,
+    "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,
     "workspace.returnToLauncherOnClose": true,
     "workspace.recentProjectsLimit": 10,
@@ -314,6 +365,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "versionControl.checkpointOnClose": true,
     "versionControl.authorName": "",
     "versionControl.authorEmail": "",
+    "versionControl.serverSessions": [],
 };
 
 /**

@@ -151,7 +151,7 @@ function PreferenceRow({
             label: t(`project.preferences.voiceEndMode.option.${option}`),
         }));
         return (
-            <SettingStack title={title} description={description} titleAttr={freeze.writes().title}>
+            <SettingStack title={title} description={description} tooltip={freeze.writes()["data-tip"]}>
                 <Select
                     size="sm"
                     fullWidth
@@ -178,7 +178,7 @@ function PreferenceRow({
                 min={toPercent(spec.min)}
                 max={toPercent(spec.max)}
                 disabled={freeze.writes(saving).disabled}
-                titleAttr={freeze.writes().title}
+                tooltip={freeze.writes()["data-tip"]}
                 onCommit={percent => onCommit(fromPercent(percent))}
             />
         );
@@ -186,7 +186,7 @@ function PreferenceRow({
 
     const percentEdited = spec.display.unit === "percent";
     return (
-        <SettingShell title={title} description={description} titleAttr={freeze.writes().title}>
+        <SettingShell title={title} description={description} tooltip={freeze.writes()["data-tip"]}>
             <NumberField
                 value={percentEdited ? toPercent(stored) : Math.round(stored)}
                 min={percentEdited ? toPercent(spec.min) : spec.min}
@@ -214,7 +214,7 @@ function PercentSlider({
     min,
     max,
     disabled,
-    titleAttr,
+    tooltip,
     onCommit,
 }: {
     title: string;
@@ -223,7 +223,7 @@ function PercentSlider({
     min: number;
     max: number;
     disabled: boolean;
-    titleAttr?: string;
+    tooltip?: string;
     onCommit: (percent: number) => void;
 }) {
     const { t } = useTranslation();
@@ -235,7 +235,7 @@ function PercentSlider({
     }, [storedPercent]);
 
     return (
-        <SettingStack title={title} description={description} titleAttr={titleAttr}>
+        <SettingStack title={title} description={description} tooltip={tooltip}>
             <div className="flex min-w-0 items-center gap-2">
                 <Slider
                     className="min-w-0 flex-1"
@@ -244,7 +244,7 @@ function PercentSlider({
                     max={max}
                     step={1}
                     disabled={disabled}
-                    title={titleAttr}
+                    data-tip={tooltip}
                     aria-label={title}
                     onValueChange={setDraft}
                     onValueCommit={onCommit}

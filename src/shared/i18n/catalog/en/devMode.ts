@@ -14,6 +14,9 @@ export const devMode = {
         sessionFailure: "Session failed to start",
         atLine: "Line {line} · {scene}",
         inScene: "In {scene}",
+        // A Game UI blueprint failed. It has no story row - the author was drawing an interface, not
+        // writing a scene - so the place it names is the surface they drew.
+        onSurface: "On {surface}",
         noLocation: "Could not be traced to a line",
         viaPlayHead: "where playback was",
         openInStudio: "Open in Studio",
@@ -131,11 +134,40 @@ export const devMode = {
         droppedBacklog: "Backlog lines dropped: {count} of {total}. Their rows no longer exist.",
         unclaimedOnLoad: "Keys with no declared variable: {count}",
         missingElement: "This save poses an element the story no longer has: {id}",
-        sessionRestored: "The previous run was restarted.",
-        sessionLost: "The run could not be restarted.",
+        unresolvedIds: "Compiled ids: {ids}",
+        gameUnchanged: "The running game is unchanged.",
+        gameRestored: "The running game was put back.",
+        gameLost: "The running game could not be put back.",
         persistent: "Persistent",
         noPersistent: "No persistent variables declared",
         otherKeys: "Other keys",
+    },
+    /**
+     * The Layers panel: everything on screen at once, bottom to top, and who owns input.
+     *
+     * Each row states what it takes rather than what it is, because that is the question the panel
+     * is opened with: a modal layer leaves everything under it taking no clicks, and exactly one row
+     * anywhere on the stack takes the keys.
+     */
+    layers: {
+        // One word, like every other panel in the drawer.
+        title: "Layers",
+        empty: "Nothing is on screen",
+        stack: "Stack, bottom to top",
+        page: "Page",
+        onScreenCount: "{onScreen} of {total} on screen",
+        offScreen: "Not on screen",
+        offScreenNote: "A layer stays off screen while this project has no surface with its id.",
+        exitPending: "A layer is still leaving the screen",
+        queued: "Waiting for a group",
+        takesClicks: "Takes clicks",
+        takesNoClicks: "Takes no clicks",
+        keyboard: "Keyboard",
+        modal: "Modal",
+        dismissible: "Go back closes it",
+        notDismissible: "Go back does not close it",
+        group: "Group: {group}",
+        owner: "Shown by {owner}",
     },
     panel: {
         float: "Float panel",

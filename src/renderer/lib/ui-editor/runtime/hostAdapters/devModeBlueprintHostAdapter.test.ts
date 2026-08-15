@@ -175,6 +175,8 @@ describe("createDevModeBlueprintHostAdapter", () => {
                 sharedBlueprints: [],
                 persistentVariables: {},
                 savedVariables: {},
+
+                saveSchema: [],
             },
         };
         const debug = new DebugBridge();
@@ -185,7 +187,7 @@ describe("createDevModeBlueprintHostAdapter", () => {
             activeSurfaceId: "surface",
             emit: event => debug.emit(event),
             onOpenSurface: () => undefined,
-            onCloseLayer: () => undefined,
+            onPageBack: () => undefined,
             onWidgetPatch: () => undefined,
             widgetRuntimeStore: new WidgetRuntimeStateStore(),
         });
@@ -209,5 +211,178 @@ describe("createDevModeBlueprintHostAdapter", () => {
 
         releaseBlueprintWidgetLocals("surface", "child", childBlueprintId);
         releaseBlueprintWidgetLocals("surface", "parent", parentBlueprintId);
+    });
+
+    /**
+     * A child with no listener at all - no blueprint, no owner record - which is the shape of every
+     * decorative element an author drops onto a clickable panel.
+     */
+    function createUnlistenedChildFixture(childType: string) {
+        const parentBlueprintId = "bp-parent-auto";
+        releaseBlueprintWidgetLocals("surface", "parent", parentBlueprintId);
+
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: {
+                [parentBlueprintId]: {
+                    id: parentBlueprintId,
+                    name: "Parent Logic",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "parent" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: {
+                        variables: {
+                            bubbled: { id: "bubbled", name: "bubbled", valueType: "string", defaultValue: "no" },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                mouseClick: {
+                                    id: "mouseClick",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                                            literal: {
+                                                id: "literal",
+                                                type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                                                params: { value: "yes" },
+                                            },
+                                            set: {
+                                                id: "set",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "bubbled" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "set", port: "in" } },
+                                            { from: { nodeId: "literal", port: "value" }, to: { nodeId: "set", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                "widgetMain:surface:parent": {
+                    activeBlueprintId: parentBlueprintId,
+                    privateBlueprintIds: [parentBlueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["parent"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                parent: {
+                    id: "parent",
+                    type: "nl.container",
+                    parentId: "root",
+                    childrenIds: ["child"],
+                    layout: { x: 0, y: 0, width: 120, height: 80 },
+                },
+                child: {
+                    id: "child",
+                    type: childType,
+                    parentId: "parent",
+                    childrenIds: [],
+                    layout: { x: 8, y: 8, width: 80, height: 32 },
+                },
+            },
+        };
+        const bundle: DevModeBundle = {
+            bundleId: "bundle",
+            revision: 1,
+            timestamp: "2026-07-02T00:00:00.000Z",
+            ui: {
+                uidoc: document,
+                uigraphs: {
+                    schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
+                    graphs: {},
+                    blueprintDocument,
+                },
+                localBlueprints: blueprintDocument,
+                sharedBlueprints: [],
+                persistentVariables: {},
+                savedVariables: {},
+
+                saveSchema: [],
+            },
+        };
+        const debug = new DebugBridge();
+        const scope = new ScopeStoreBridge();
+        const hostApi = createDevModeBlueprintHostApi({
+            document,
+            scope,
+            activeSurfaceId: "surface",
+            emit: event => debug.emit(event),
+            onOpenSurface: () => undefined,
+            onPageBack: () => undefined,
+            onWidgetPatch: () => undefined,
+            widgetRuntimeStore: new WidgetRuntimeStateStore(),
+        });
+        const adapter = createDevModeBlueprintHostAdapter({
+            bundle,
+            surface: document.surfaces[0] as UISurface,
+            scopeBridge: scope,
+            debug,
+            hostApi,
+        });
+        const readParentLocal = () =>
+            acquireBlueprintWidgetLocals(
+                "surface",
+                "parent",
+                parentBlueprintId,
+                blueprintDocument.blueprints[parentBlueprintId]!,
+            ).bubbled;
+
+        return { adapter, readParentLocal, cleanup: () => releaseBlueprintWidgetLocals("surface", "parent", parentBlueprintId) };
+    }
+
+    it("hands a click nothing listened to up to the parent", async () => {
+        const { adapter, readParentLocal, cleanup } = createUnlistenedChildFixture("nl.text");
+
+        await adapter.blueprintRuntime?.dispatchElementBlueprintEvent("child", "mouseClick", { x: 4, y: 5, button: 0 });
+
+        expect(readParentLocal()).toBe("yes");
+        cleanup();
+    });
+
+    it("keeps hover to the element it happened on", async () => {
+        // Forwarding this one would report the whole ancestry as hovered at once, so the bubble is
+        // deliberately narrower than "any interaction event".
+        const { adapter, readParentLocal, cleanup } = createUnlistenedChildFixture("nl.text");
+
+        await adapter.blueprintRuntime?.dispatchElementBlueprintEvent("child", "mouseEnter", {});
+
+        expect(readParentLocal()).toBe("no");
+        cleanup();
     });
 });

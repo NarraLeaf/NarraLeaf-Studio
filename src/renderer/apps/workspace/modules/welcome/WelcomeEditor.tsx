@@ -170,7 +170,7 @@ function QuickAction({ icon: Icon, label, description, onClick, disabled = false
             type="button"
             onClick={onClick}
             disabled={disabled}
-            title={title}
+            data-tip={title}
             className={cn(
                 "flex flex-col items-start gap-1 rounded-md p-3 text-left",
                 "border border-edge bg-fill-subtle",

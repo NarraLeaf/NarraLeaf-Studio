@@ -524,7 +524,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                             }}
                             className="flex cursor-default items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
                             aria-label={t("workspace.shell.newTab")}
-                            title={t("workspace.shell.newTab")}
+                            data-tip={t("workspace.shell.newTab")}
                         >
                             <Plus className="w-4 h-4" />
                         </button>

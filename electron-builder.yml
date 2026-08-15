@@ -1,5 +1,18 @@
 appId: com.narraleaf.studio
 productName: NarraLeaf Studio
+# Every artifact name must survive three renamings unchanged, which is what forces the spaces out
+# of it. electron-builder writes the installer to disk under this name and records the same name in
+# `latest.yml` after replacing spaces with hyphens; GitHub then stores the uploaded asset under the
+# name with spaces replaced by dots. Left to the defaults the three disagree - v0.5.0 shipped
+# `NarraLeaf Studio Setup 0.5.0.exe` on disk, `NarraLeaf-Studio-Setup-0.5.0.exe` in the feed and
+# `NarraLeaf.Studio.Setup.0.5.0.exe` on the release - so every installed copy resolved the feed's
+# name against a URL that 404s, and said so only in its log. A name with no spaces in it is the
+# same name in all three places.
+#
+# Written out rather than built from `${productName}`, which contains the space this is avoiding.
+# Keep the `.exe` and `-arm64.dmg` endings: narraleaf.com claims the download for each platform by
+# matching them (src/components/studio-downloads.tsx).
+artifactName: NarraLeaf-Studio-${version}-${arch}.${ext}
 directories:
   output: build
   # Must be set explicitly. It defaults to `build`, which is also `output` above and is
@@ -33,12 +46,23 @@ files:
   - '!node_modules/monaco-editor{,/**/*}'
   # app-builder-bin (207 MB) and 7zip-bin (12 MB) each ship one build per platform
   # and arch they could ever run on, and each picks exactly one from
-  # process.platform + process.arch (see their index.js). They are in the closure
-  # because electron-builder is a runtime dependency for the in-app game build; an
-  # installer is only ever one host, so the rest never executes. The `/*` is
-  # load-bearing: both keep loose files (index.js, LICENSE, package.json) beside
-  # their platform dirs, and a bare `!(${os})` matches those too. It leaves the
-  # foreign platform dirs behind as empty shells, which is the cheaper mistake.
+  # process.platform + process.arch (see their index.js). 7zip-bin is in the
+  # closure because the build worker imports `path7za` directly (web export,
+  # winCodeSign cache); app-builder-bin arrived through electron-builder and no
+  # longer does as of 26.9 — its two patterns below are kept as a no-op rather
+  # than deleted, since nothing here breaks if it comes back.
+  #
+  # 7zip-bin is a `dependencies` entry and must stay out of `devDependencies`,
+  # however tempting the tests that import it make it look. electron-builder
+  # resolves the production closure with `npm list --omit dev` (via the Yarn
+  # Berry collector's npm fallback), and npm classifies a package declared in
+  # both as dev — so a duplicate declaration silently drops it from the package
+  # entirely, not merely its foreign platform dirs.
+  #
+  # The `/*` is load-bearing: both keep loose files (index.js, LICENSE,
+  # package.json) beside their platform dirs, and a bare `!(${os})` matches those
+  # too. It leaves the foreign platform dirs behind as empty shells, which is the
+  # cheaper mistake.
   - '!node_modules/app-builder-bin/!(${os})/*{,/**/*}'
   - '!node_modules/7zip-bin/!(${os})/*{,/**/*}'
   # Arch-level pruning, Windows only. `win/<arch>/` matches `${arch}` exactly
@@ -70,8 +94,18 @@ asar: true
 # inside the asar. Unpack node_modules wholesale: enumerating the ~250-package
 # closure is unmaintainable, and Studio's own main-process requires resolve from
 # app.asar.unpacked transparently.
+#
+# The worker's own bundle is unpacked for a second reason, and unpacking its
+# dependencies without it is the trap that hid this for a release: a process
+# forked from a path *inside* the archive resolves nothing once the patch is
+# off, because the upward walk for `node_modules` ends at `app.asar/node_modules`
+# — a path inside a file. So GameBuildManager.resolveWorkerPath forks the
+# unpacked copy, and this line is what puts one there. Drop either half and the
+# in-app game build dies with MODULE_NOT_FOUND in packaged Studio only, with
+# packaging itself reporting success.
 asarUnpack:
   - node_modules/**/*
+  - dist/main/buildWorker.js
 # Application hardening for the shipped Studio binary. runAsNode:false is the
 # load-bearing one: it closes the ELECTRON_RUN_AS_NODE path that would let the
 # binary be re-run as a plain Node process. Preview spawns a *separate* Electron
@@ -281,6 +315,9 @@ dmg:
 # above; it is worth re-reading builder-debug.yml's firstOrDefaultFilePatterns after any change
 # here, because that failure is silent.
 nsis:
+  # Overrides the global name above only to keep the word the Windows convention expects; the
+  # no-spaces rule is the same and the reason for it is written there.
+  artifactName: NarraLeaf-Studio-Setup-${version}-${arch}.${ext}
   # The wizard. `allowToChangeInstallationDirectory` has no effect without it.
   oneClick: false
   allowToChangeInstallationDirectory: true

@@ -102,7 +102,7 @@ export function SceneFlowBranchNode({ data, isConnectable }: NodeProps) {
             <div
                 style={{ height: SCENE_FLOW_BRANCH_ROW_HEIGHT, ...BRANCH_ROW_STYLE }}
                 className="flex min-w-0 items-center gap-1.5 overflow-hidden px-3 text-fg-muted"
-                title={label}
+                data-tip={label}
             >
                 <span className="min-w-0 flex-1 truncate">{label}</span>
                 {arm.chip && (
@@ -113,7 +113,7 @@ export function SceneFlowBranchNode({ data, isConnectable }: NodeProps) {
                 {arm.danglingJumpCount > 0 && (
                     <span
                         className="flex shrink-0 items-center gap-0.5 text-warning"
-                        title={tn("story.flow.badge.dangling", arm.danglingJumpCount)}
+                        data-tip={tn("story.flow.badge.dangling", arm.danglingJumpCount)}
                     >
                         <AlertTriangle className="h-3 w-3" />
                         <span className="tabular-nums">{arm.danglingJumpCount}</span>
@@ -122,7 +122,7 @@ export function SceneFlowBranchNode({ data, isConnectable }: NodeProps) {
                 {arm.fallsThrough && (
                     <span
                         className="shrink-0 text-fg-subtle"
-                        title={t("story.flow.branch.fallsThroughTitle")}
+                        data-tip={t("story.flow.branch.fallsThroughTitle")}
                     >
                         {t("story.flow.branch.fallsThrough")}
                     </span>

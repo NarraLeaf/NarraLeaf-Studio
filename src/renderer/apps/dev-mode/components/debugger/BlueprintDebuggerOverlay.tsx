@@ -121,7 +121,7 @@ export function BlueprintDebuggerOverlay(): ReactNode {
                 <ToolbarButton
                     size="sm"
                     aria-label={t("common.close")}
-                    title={t("common.close")}
+                    data-tip={t("common.close")}
                     onClick={ctx.closeGraphBrowser}
                     disabled={paused}
                 >

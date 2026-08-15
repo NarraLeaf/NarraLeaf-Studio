@@ -7,7 +7,7 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { Sound, type LiveGame, type SavedGame } from "narraleaf-react";
+import { Sound, type LiveGame, type Scene } from "narraleaf-react";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
@@ -21,6 +21,8 @@ import {
     normalizeAutoSaveConfiguration,
     parseAutoSaveSlotIndex,
     type AutoSaveEntry,
+    type SaveRecordLine,
+    type SaveRecordTimes,
 } from "@shared/types/saves";
 import {
     GameLocalizationContext,
@@ -51,6 +53,7 @@ import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/p
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
     createDevModeBlueprintHostApi,
+    type BlueprintLayerShowRequest,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
@@ -79,17 +82,30 @@ import {
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import {
     isStoryVisited,
+    readStoryVisitedIds,
     STORY_VISITED_OPTIONS_KEY,
     STORY_VISITED_SCENES_KEY,
     type StoryVisitedKey,
 } from "@/lib/ui-editor/runtime/game/storyVisited";
+import {
+    applyGameProgressVariables,
+    collectGameProgressVariables,
+    mergeVisitedSceneIds,
+    toImportOutcome,
+    type GameProgressVariableDef,
+} from "@/lib/ui-editor/runtime/app/gameProgress";
+import type {
+    GameProgressAnchor,
+    GameProgressDocumentV1,
+    GameProgressImportOutcome,
+} from "@shared/types/gameProgress";
 import {
     collectSavedVariableView,
     computeStoryStageSnapshot,
     savedVariableDefsFromView,
 } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
-import { sceneVariableDefs } from "@shared/types/story";
+import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
@@ -118,7 +134,9 @@ import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
+import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import { createSkipRunController } from "./skipRunController";
+import { createSessionGate } from "./sessionGate";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -133,6 +151,10 @@ import {
 import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
+import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from "./layers/LayerStackController";
+import { useLayerStack } from "./layers/useLayerStack";
+import { resolveCompositeInput } from "./layers/compositeInput";
+import { buildCompositeView } from "./layers/compositeView";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -154,6 +176,18 @@ const NLR_BOOT_PRELOAD_TIMEOUT_MS = 45_000;
 // alternative is the player paying for it on a button they just pressed. Bounded only so a broken
 // asset degrades to "start pays for it" instead of never starting.
 const STAGE_WARMUP_TIMEOUT_MS = 30_000;
+
+/**
+ * Where the layer stack starts counting, in the surface layer's own index space.
+ *
+ * Not simply one past however many page entries happen to be mounted. A page entry on its way out is
+ * drawn at `30 + layerIndex` so it can pass over the page arriving underneath it, and a layer sitting
+ * immediately above the page lane would be crossed by that exit - a modal would disappear behind the
+ * screen it was covering, for the length of one transition. Starting the layers clear of the page
+ * lane's exit band keeps a layer above the pages whatever the pages are doing, and keeps each layer's
+ * own z fixed instead of shifting as a transition opens and closes.
+ */
+const LAYER_STACK_INDEX_BASE = 32;
 
 /**
  * A pending mount or game entry that was abandoned because something took over: a newer bundle
@@ -221,6 +255,12 @@ export type GameAppProps = {
      * workspace story preview).
      */
     pluginHost?: RuntimePluginHostController;
+    /**
+     * The layer stack composited over the page lane. Supplied by a caller that needs to reach it -
+     * `mountSurfaceLayer` takes the controller - and otherwise created here and left empty, which is
+     * every host today.
+     */
+    layerStack?: LayerStackController;
 };
 
 /**
@@ -231,7 +271,16 @@ export type GameAppProps = {
  * differ only in the injected GameAppHost.
  */
 export function GameApp(props: GameAppProps): ReactNode {
-    const { host, rendererRegistry, getScale, renderFrame, renderPlaceholder, renderOverlays, pluginHost } = props;
+    const {
+        host,
+        rendererRegistry,
+        getScale,
+        renderFrame,
+        renderPlaceholder,
+        renderOverlays,
+        pluginHost,
+        layerStack: providedLayerStack,
+    } = props;
     const bundle = host.bundle;
     const core = useBlueprintRuntimeCore(bundle, {
         persistenceAdapter: host.persistenceAdapter,
@@ -359,11 +408,33 @@ export function GameApp(props: GameAppProps): ReactNode {
     const navigation = useMemo(() => new NavigationController(), []);
     const navState = useSurfaceNavigation(navigation);
     const { navStack, visibleEntries, presenceMode: surfacePresenceMode } = navState;
+    // Beside the page lane, never inside it: the navigation machine's rules are about replacing one
+    // screen with another, and a layer replaces nothing. An empty stack is what makes paging behave
+    // exactly as it did before layers existed.
+    const layerStack = useMemo(() => providedLayerStack ?? new LayerStackController(), [providedLayerStack]);
+    const layerState = useLayerStack(layerStack);
+    const layers = layerState.layers;
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
     const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
-    const [nlrSession, setNlrSession] = useState<NlrStageSession | null>(null);
+    const [nlrSession, setNlrSessionState] = useState<NlrStageSession | null>(null);
     const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
-    const [gameStageVisible, setGameStageVisible] = useState(false);
+    const [gameStageVisible, setGameStageVisibleState] = useState(false);
+    /**
+     * Ref mirrors of the two pieces of session state a Game UI slot surface has to be able to ask
+     * about at *call* time rather than at build time — see `createSessionGate` for why. Both states
+     * stay: the stage re-renders on them. They are written through these two setters so a mirror can
+     * never drift from the state it mirrors.
+     */
+    const nlrSessionIdRef = useRef<string | null>(null);
+    const gameStageVisibleRef = useRef(false);
+    const setNlrSession = useCallback((session: NlrStageSession | null): void => {
+        nlrSessionIdRef.current = session?.id ?? null;
+        setNlrSessionState(session);
+    }, []);
+    const setGameStageVisible = useCallback((visible: boolean): void => {
+        gameStageVisibleRef.current = visible;
+        setGameStageVisibleState(visible);
+    }, []);
     const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
     const [gameHiddenNavKeys, setGameHiddenNavKeys] = useState<Set<string>>(() => new Set());
     const navEntrySeqRef = useRef(0);
@@ -405,6 +476,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
+    // Built once and never rebuilt, because a Game UI slot surface holds whichever copy it was given
+    // when its session was mounted. Both members read the refs above at call time.
+    const { isInGame, requireLiveGame: requireActiveLiveGame } = useMemo(() => createSessionGate<LiveGame>({
+        sessionId: nlrSessionIdRef,
+        liveGameSessionId: nlrLiveGameSessionIdRef,
+        liveGame: nlrLiveGameRef,
+        stageVisible: gameStageVisibleRef,
+    }), []);
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
@@ -416,6 +495,37 @@ export function GameApp(props: GameAppProps): ReactNode {
     const currentActionIdRef = useRef<string | null>(null);
     const currentActionListenersRef = useRef<Set<(actionId: string | null) => void>>(new Set());
     const nlrCompiledRef = useRef<CompiledNlrStory | null>(null);
+    /**
+     * The Studio scene the player is in right now, as opposed to the one the story was launched at.
+     *
+     * `activeStoryRequestRef` holds the launch request and never moves, so a player three scenes
+     * into a demo would be handed back to scene one. The engine's own mount/unmount events are the
+     * only live source (the same pair the runtime plugin host listens to), and the Scene->id map is
+     * the inverse of the compile's own table. Re-bound per session in `onLiveGameReady`.
+     */
+    const currentSceneIdRef = useRef<string | null>(null);
+    const nlrSceneTokensRef = useRef<Array<{ cancel(): void }>>([]);
+    /** Drop the scene subscriptions of a session that is going away, and forget where it was. */
+    const cancelSceneTracking = useCallback((): void => {
+        for (const token of nlrSceneTokensRef.current.splice(0)) {
+            try {
+                token.cancel();
+            } catch {
+                // A session the engine already tore down; nothing to undo.
+            }
+        }
+        currentSceneIdRef.current = null;
+    }, []);
+    /**
+     * A progress document that arrived before the story it belongs to was started.
+     *
+     * `Import Progress` is wired ahead of `Start Game` - that is the whole shape of the feature, the
+     * scene id comes out of one and goes into the other - and `Start Game` calls `liveGame.newGame()`,
+     * which clears every namespace and rebuilds it from its defaults. Saved values written before
+     * that would be wiped by it, so they wait here and are applied in `enterMountedGame` the moment
+     * after `newGame()`. Persistent values do not wait: they live outside the engine and survive.
+     */
+    const pendingImportedProgressRef = useRef<GameProgressDocumentV1 | null>(null);
     /**
      * The story row the engine was last executing, or undefined when nothing was.
      *
@@ -512,6 +622,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         setPrepaintReadyKeys(new Set());
         setInteractionReadyKeys(new Set());
         navigation.reset(surface ? createNavEntry(surface.id, "forward", false) : null);
+        layerStack.clear();
         widgetPatchesByScopeRef.current = {};
         setWidgetPatchesByScope({});
         gameHiddenNavKeysRef.current = new Set();
@@ -555,6 +666,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
+        cancelSceneTracking();
         nlrCompiledRef.current = null;
         gameEnteredRef.current = false;
         setNlrPreloadDone(false);
@@ -593,6 +705,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         navigation.markAllExited();
     }, [navigation]);
 
+    /**
+     * Every layer that was leaving has left.
+     *
+     * This is what releases a queued layer of a mutually exclusive group, and what settles a
+     * `Hide Layer`. Taken from the presence group rather than from a duration because the exit is
+     * authored per page: a timer here would be wrong for every page whose animation someone retimes,
+     * and wrong in the direction that shows two layers of one group at once. The layer itself is
+     * what makes that safe to depend on - it bounds how long it waits for its own contents, so this
+     * arrives whatever the page turns out to be holding (see `SurfaceAnimationLayer`).
+     */
+    const handleLayerExitComplete = useCallback(() => {
+        layerStack.notifyExitComplete();
+    }, [layerStack]);
+
     const handleSurfaceInteractionReadyChange = useCallback((entryKey: string, ready: boolean) => {
         setInteractionReadyKeys(prev => {
             const alreadyReady = prev.has(entryKey);
@@ -625,7 +751,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         setStudioPageHiddenForGame(true);
         resetSurfaceInteractionReadiness();
         navigation.hideAllForGame();
-    }, [navigation, resetSurfaceInteractionReadiness]);
+        // Layers are not serialised, so nothing about them survives a load, and the two callers of
+        // this are exactly the moments the game takes the screen: starting a story and applying a
+        // save. A layer left standing across either would belong to a run that no longer exists.
+        layerStack.clear();
+    }, [layerStack, navigation, resetSurfaceInteractionReadiness]);
 
     const clearGameHiddenStudioPages = useCallback(() => {
         const emptyKeys = new Set<string>();
@@ -655,6 +785,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             targetSurface: target,
             currentHiddenForGame,
             reducedMotion: prefersReducedMotion,
+            elements: bundle.ui.uidoc.elements,
             createNextEntry: waitForExit => createNavEntry(target.id, "forward", waitForExit, props, presentation),
         });
     }, [
@@ -667,7 +798,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     ]);
 
     /**
-     * Close down to `targetIndex` in one transition. `closeLayer` is this with the default index;
+     * Close down to `targetIndex` in one transition. `goBack` is this with the default index;
      * `clearPages` and `clearGameOverlay` name a lower one.
      */
     const closeToIndex = useCallback((targetIndex: number): Promise<void> => {
@@ -686,6 +817,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             targetSurface: target,
             targetHiddenForGame,
             reducedMotion: prefersReducedMotion,
+            elements: bundle.ui.uidoc.elements,
             targetIndex,
         });
     }, [
@@ -726,7 +858,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return closeToIndex(lastHidden);
     }, [closeToIndex, navigation]);
 
-    const closeLayer = useCallback((): Promise<void> => {
+    const goBackPage = useCallback((): Promise<void> => {
         const currentStack = navigation.getState().navStack;
         if (currentStack.length <= 1) {
             return Promise.resolve();
@@ -742,6 +874,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             targetSurface: target,
             targetHiddenForGame,
             reducedMotion: prefersReducedMotion,
+            elements: bundle.ui.uidoc.elements,
         });
     }, [
         bundle,
@@ -750,6 +883,77 @@ export function GameApp(props: GameAppProps): ReactNode {
         prefersReducedMotion,
         resetSurfaceInteractionReadiness,
     ]);
+
+    /**
+     * Back, over the whole composite: close the top layer when that layer allows it, and otherwise do
+     * exactly what Back has always done to the page stack.
+     *
+     * Only the top layer is consulted. One that refuses dismissal reports so and Back falls through
+     * to the page lane, which is the behaviour with no layers at all.
+     */
+    const goBack = useCallback((): Promise<void> => {
+        if (layerStack.dismissTop()) {
+            return Promise.resolve();
+        }
+        return goBackPage();
+    }, [goBackPage, layerStack]);
+
+    /**
+     * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
+     */
+    const showLayer = useCallback((request: BlueprintLayerShowRequest): string => {
+        return mountSurfaceLayer(layerStack, {
+            surfaceId: request.surfaceId,
+            props: request.props,
+            modal: request.modal,
+            dismissible: request.dismissible,
+            group: request.group,
+            ownerScopeId: request.ownerScopeId,
+        });
+    }, [layerStack]);
+
+    const hideLayer = useCallback(async (handle: string): Promise<void> => {
+        await layerStack.hideAndWaitForExit(handle);
+    }, [layerStack]);
+
+    const hideLayerGroup = useCallback(async (group: string): Promise<void> => {
+        await layerStack.hideGroupAndWaitForExit(group);
+    }, [layerStack]);
+
+    const waitLayer = useCallback((handle: string): Promise<unknown> => {
+        return layerStack.waitForClose(handle);
+    }, [layerStack]);
+
+    /**
+     * `Close This Layer`. A layer's key IS its runtime scope id, so the graph's own scope is the
+     * handle - which is why the page inside a layer never has to be told one.
+     */
+    const closeOwnLayer = useCallback((runtimeScopeId: string, result: unknown): boolean => {
+        return layerStack.closeWithResult(runtimeScopeId, result);
+    }, [layerStack]);
+
+    const isLayerMounted = useCallback((handle: string): boolean => {
+        return layerStack.isPresent(handle);
+    }, [layerStack]);
+
+    /**
+     * A closing scope takes its layers with it.
+     *
+     * Subscribed to the execution manager rather than to a React unmount, because that one call is
+     * where every surface's scope ends - a page navigated away from, a layer closed, a nested surface
+     * inside a frame - and a layer left standing after the screen that showed it is exactly the
+     * orphan this system is not allowed to produce. Cascades by itself: the layers dropped here
+     * unmount, closing their own scopes, which brings this listener round again for anything they
+     * showed in turn.
+     */
+    useEffect(() => {
+        if (!core) {
+            return;
+        }
+        return core.executionManager.subscribeScopeClosed(scopeId => {
+            layerStack.hideOwnedBy(scopeId);
+        });
+    }, [core, layerStack]);
 
     const makeStateAccessors = useCallback(
         (runtimeScopeId: string): SurfaceStateAccessors | null => {
@@ -788,10 +992,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     const setChoiceRuntime = useCallback((runtime: ChoiceSlotRuntime | null): void => {
         choiceRuntimeRef.current = runtime;
     }, []);
-
-    const isInGame = useCallback((): boolean => {
-        return Boolean(gameStageVisible && nlrSession?.id);
-    }, [gameStageVisible, nlrSession?.id]);
 
     const detachTextReadTracker = useCallback(() => {
         textReadTrackerRef.current?.detach();
@@ -882,6 +1082,182 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, []);
 
     /**
+     * Carrying a playthrough between two editions of one title - the Export/Import Progress nodes.
+     *
+     * A demo and the full game are separate packages with separate app ids, so they keep separate
+     * save directories and cannot read each other's files. What crosses is one plain JSON document,
+     * written and read by whichever shell is running (see `@shared/types/gameProgress`); this side
+     * only decides WHAT the playthrough holds and what an arriving document does to it.
+     */
+
+    /** Which story document is running, resolved the way `compileStoryRequest` resolves it. */
+    const resolveRunningStoryDocument = useCallback(() => {
+        const storyId = activeStoryRequestRef.current?.storyId;
+        if (!storyId) {
+            return undefined;
+        }
+        return bundle.storyLibrary?.documents[storyId]
+            ?? Object.values(bundle.storyLibrary?.documents ?? {}).find(document => document.id === storyId);
+    }, [bundle]);
+
+    /**
+     * Every project-level variable this build declares, merged exactly as the editors merge them:
+     * the registry baked into the bundle plus the running story's own `/save` and `/persis` rows.
+     * Reading either surface alone would silently drop half an author's variables.
+     */
+    const progressVariableDefs = useCallback((): {
+        saved: GameProgressVariableDef[];
+        persistent: GameProgressVariableDef[];
+    } => {
+        const storyDocument = resolveRunningStoryDocument();
+        return {
+            saved: Object.values({
+                ...(storyDocument ? savedVariableDefs(storyDocument) : {}),
+                ...bundle.ui.savedVariables,
+            }),
+            persistent: Object.values({
+                ...(storyDocument ? storyPersistentDefs(storyDocument) : {}),
+                ...bundle.ui.persistentVariables,
+            }),
+        };
+    }, [bundle, resolveRunningStoryDocument]);
+
+    /** One saved value off the live store, or `undefined` when the playthrough never wrote it. */
+    const readSavedProgressValue = useCallback((storageKey: string): unknown => {
+        const liveGame = nlrLiveGameRef.current;
+        const namespaceName = nlrCompiledRef.current?.savedNamespaceName;
+        if (!liveGame || !namespaceName) {
+            return undefined;
+        }
+        const storable = liveGame.getStorable();
+        if (!storable.hasNamespace(namespaceName)) {
+            return undefined;
+        }
+        const namespace = storable.getNamespace(namespaceName);
+        return namespace.has(storageKey) ? namespace.get(storageKey) : undefined;
+    }, []);
+
+    /**
+     * The saved half of an arriving document, written into the live store.
+     *
+     * Separate from the import call because of when it has to run: an import made before `Start
+     * Game` has to wait for the `newGame()` that would otherwise wipe it. Same code, two moments.
+     */
+    const applyImportedSavedProgress = useCallback((document: GameProgressDocumentV1): void => {
+        const liveGame = nlrLiveGameRef.current;
+        const compiled = nlrCompiledRef.current;
+        if (!liveGame || !compiled) {
+            return;
+        }
+        const storable = liveGame.getStorable();
+        const savedNamespaceName = compiled.savedNamespaceName;
+        if (savedNamespaceName && storable.hasNamespace(savedNamespaceName)) {
+            const namespace = storable.getNamespace(savedNamespaceName);
+            applyGameProgressVariables(
+                progressVariableDefs().saved,
+                document.savedVariables,
+                (storageKey, value) => namespace.set(storageKey, value as never),
+            );
+        }
+        const visitedNamespaceName = compiled.visitedNamespaceName;
+        if (visitedNamespaceName && document.visitedSceneIds.length > 0 && storable.hasNamespace(visitedNamespaceName)) {
+            const merged = mergeVisitedSceneIds(
+                readStoryVisitedIds(storable, visitedNamespaceName, STORY_VISITED_SCENES_KEY),
+                document.visitedSceneIds,
+            );
+            // A new array, never a push: `Namespace.set` compares what it is handed against what it
+            // holds, and mutating the stored array in place would make both sides the same object.
+            storable.getNamespace(visitedNamespaceName).set(STORY_VISITED_SCENES_KEY, merged);
+        }
+    }, [progressVariableDefs]);
+
+    const exportProgressInGame = useCallback(async (): Promise<{ outcome: "written" | "failed"; error: string }> => {
+        if (!host.exportProgress) {
+            return {
+                outcome: "failed",
+                error: "Progress cannot be written here. Run the project in Dev Mode to carry it.",
+            };
+        }
+        const defs = progressVariableDefs();
+        const storyDocument = resolveRunningStoryDocument();
+        const liveGame = nlrLiveGameRef.current;
+        const compiled = nlrCompiledRef.current;
+        // No running story is a legitimate export rather than an error: a player may have
+        // persistent variables worth carrying and no playthrough in progress. That exports the
+        // persistent half and anchors nowhere.
+        const savedVariables = liveGame && compiled?.savedNamespaceName
+            ? await collectGameProgressVariables(defs.saved, readSavedProgressValue)
+            : {};
+        const persistentVariables = core
+            ? await collectGameProgressVariables(defs.persistent, key => core.scopeBridge.persistenceGetAsync(key))
+            : {};
+        const anchorSceneId = currentSceneIdRef.current
+            ?? (gameEnteredRef.current ? activeStoryRequestRef.current?.sceneId ?? null : null);
+        const anchor: GameProgressAnchor | null = anchorSceneId
+            ? {
+                sceneId: anchorSceneId,
+                // The same expression the compiler names the engine scene with, read off the story
+                // document rather than off the `Scene`: the engine exposes no name accessor, and
+                // nothing resolves a scene by this - it is here so the file reads.
+                sceneRuntimeName: storyDocument?.scenes[anchorSceneId]?.runtimeName
+                    || storyDocument?.scenes[anchorSceneId]?.name
+                    || anchorSceneId,
+            }
+            : null;
+        const visitedSceneIds = liveGame && compiled?.visitedNamespaceName
+            ? readStoryVisitedIds(liveGame.getStorable(), compiled.visitedNamespaceName, STORY_VISITED_SCENES_KEY)
+            : [];
+        const result = await host.exportProgress({
+            storyId: activeStoryRequestRef.current?.storyId ?? "",
+            savedVariables,
+            persistentVariables,
+            anchor,
+            visitedSceneIds,
+        });
+        return result.outcome === "written"
+            ? { outcome: "written", error: "" }
+            : { outcome: "failed", error: result.error };
+    }, [core, host, progressVariableDefs, readSavedProgressValue, resolveRunningStoryDocument]);
+
+    const importProgressInGame = useCallback(async (): Promise<GameProgressImportOutcome> => {
+        if (!host.importProgress) {
+            return {
+                outcome: "failed",
+                sceneId: "",
+                error: "Progress cannot be read here. Run the project in Dev Mode to carry it.",
+            };
+        }
+        const result = await host.importProgress();
+        if (result.outcome !== "found") {
+            return { outcome: result.outcome, sceneId: "", error: result.error ?? "" };
+        }
+        const imported = result.document;
+        // Persistent first and unconditionally: those values live outside the engine, so they are
+        // already correct whether or not a story ever starts, and `newGame()` does not touch them.
+        if (core) {
+            applyGameProgressVariables(
+                progressVariableDefs().persistent,
+                imported.persistentVariables,
+                (storageKey, value) => {
+                    // Both halves of the write, as the story compiler's own persistence bridge does
+                    // it: the in-memory map so the very next read sees it, and the host store so it
+                    // survives the session.
+                    core.scopeBridge.persistenceSet(storageKey, value);
+                    void core.scopeBridge.persistenceSetAsync(storageKey, value);
+                },
+            );
+        }
+        if (gameEnteredRef.current && nlrLiveGameRef.current) {
+            applyImportedSavedProgress(imported);
+        } else {
+            // See `pendingImportedProgressRef`: the `Start Game` this node's scene id feeds calls
+            // `newGame()`, which would clear anything written now.
+            pendingImportedProgressRef.current = imported;
+        }
+        return toImportOutcome(imported);
+    }, [applyImportedSavedProgress, core, host, progressVariableDefs]);
+
+    /**
      * Surface a failed save screenshot to the Blueprint console. Capture is best-effort — the save
      * still succeeds without a preview — but staying silent made a requested capture look like the
      * Save Game node was ignoring its Capture pin.
@@ -895,13 +1271,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
         nlrDialogVirtualClickTargetRef.current = target;
     }, []);
-
-    const requireActiveLiveGame = useCallback((operation: string): LiveGame => {
-        if (!nlrSession?.id || nlrLiveGameSessionIdRef.current !== nlrSession.id || !nlrLiveGameRef.current) {
-            throw new Error(`${operation}: game runtime is not available`);
-        }
-        return nlrLiveGameRef.current;
-    }, [nlrSession?.id]);
 
     // Read through the *mounted* session's compile, never a captured one: a recompile mints new
     // avatar URLs, and an inverse from the previous compile would answer with a stale asset id.
@@ -1190,6 +1559,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
+        cancelSceneTracking();
         nlrCompiledRef.current = null;
         clearCharacterAvatarAssets();
         detachTextReadTracker();
@@ -1206,6 +1576,31 @@ export function GameApp(props: GameAppProps): ReactNode {
         setNlrSession(null);
         clearGameHiddenStudioPages();
     }, [clearCurrentDialogNametag, clearGameHiddenStudioPages, detachTextReadTracker, openSurface, rejectPendingGameStarts]);
+
+    /**
+     * The story ran out of rows, and this build declares a page to land on.
+     *
+     * Routed through `quitGame` rather than through a navigation of its own, because ending a story
+     * and quitting one are the same act as far as everything downstream is concerned: the session
+     * has to be torn down, the tokens cancelled, the stage hidden and the surface stack put back on
+     * an app page. A second path would be a second place for one of those to be forgotten.
+     *
+     * Nothing at all happens when the host declares no page. That is deliberate and is exactly the
+     * behaviour every build had before the ending page existed: the last frame stays on screen. A
+     * default screen here would be one nobody authored, shown to players of projects that never
+     * asked for it.
+     */
+    const endingSurfaceId = host.endingSurfaceId?.trim() ?? "";
+    const handleStoryEnd = useCallback(() => {
+        if (!endingSurfaceId) {
+            return;
+        }
+        void quitGame(endingSurfaceId).catch(error => {
+            // Reported rather than thrown: the story is over either way, and a page that will not
+            // open must not take the window down with it.
+            host.log("error", `[${host.id}] the ending page could not be opened: ${normalizeError(error)}`);
+        });
+    }, [endingSurfaceId, host, quitGame]);
 
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
@@ -1228,19 +1623,100 @@ export function GameApp(props: GameAppProps): ReactNode {
         pluginHost?.emitSaveWritten(id);
     }, [host.saveStore, pluginHost, reportSaveCaptureFailure, requireActiveLiveGame]);
 
-    const loadSave = useCallback(async (id: string) => {
+    /**
+     * Load a save, or leave the run that is going exactly where it is.
+     *
+     * Resolves either way and says which happened. Reaching for the outcome rather than a throw is
+     * what lets the Saves panel report a refusal precisely; `loadSaveAction` turns the same outcome
+     * back into a rejection for the two surfaces whose callers are written against one. It still
+     * throws outright when there is no game runtime, which is a caller mistake rather than an
+     * outcome of loading.
+     */
+    const loadSave = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
         const liveGame = requireActiveLiveGame("Load Save");
-        const record = await host.saveStore.read(id);
-        if (!record?.savedGame) {
-            throw new Error(`Load Save: save not found: ${id}`);
+        const outcome = await loadSaveIntoGame({
+            id,
+            readRecord: () => host.saveStore.read(id),
+            game: {
+                // `constructMaps` is the engine's own lookup table for a load and caches on the
+                // live game, so checking against it is checking against exactly what `deserialize`
+                // is about to read. It carries no type in the published surface, so what comes
+                // back is checked rather than assumed: the name surviving says nothing about the
+                // shape, and a table read as empty would answer "not in this story" for every id
+                // and refuse every save. Anything unexpected leaves the snapshot as the only
+                // protection instead.
+                resolveStoryMaps: () => {
+                    const construct = (liveGame as unknown as {
+                        constructMaps?: () => unknown;
+                    }).constructMaps;
+                    if (typeof construct !== "function") {
+                        return null;
+                    }
+                    const tables = construct.call(liveGame);
+                    if (!Array.isArray(tables) || tables.length < 2) {
+                        return null;
+                    }
+                    const [actions, elements] = tables as unknown[];
+                    if (!(actions instanceof Map) || !(elements instanceof Map)) {
+                        return null;
+                    }
+                    return {
+                        hasAction: actionId => actions.has(actionId),
+                        hasElement: elementId => elements.has(elementId),
+                    };
+                },
+                readStoryHash: () => liveGame.story?.hash() ?? null,
+                snapshot: () => liveGame.serialize(),
+                apply: savedGame => {
+                    liveGame.game.router.clear().cleanHistory();
+                    liveGame.newGame().deserialize(savedGame);
+                },
+                restore: snapshot => liveGame.deserialize(snapshot),
+                // `deserialize` takes this lock on the way in and gives it back from a render it
+                // schedules on the way out, so a throw in between keeps it. It is a flag, not a
+                // count, which is why one balanced load afterwards cannot clear it and every later
+                // load in the session would sit there locked.
+                releaseLoadLock: () => liveGame.getGameState()?.rollLock.unlock(),
+            },
+            // The engine's notification channel, which draws through the project's Notifications
+            // surface when it has one and the engine's own component when it does not.
+            //
+            // It draws inside the Player, and `NlrStageLayer` puts the whole Player behind
+            // `visibility: hidden` until the host reveals the stage. A refusal raised while the
+            // stage is hidden is therefore queued into a hidden layer and times out unseen. That is
+            // every load that fails before the stage has ever been shown; a load from an in-game
+            // menu drawn over a visible stage is seen.
+            notifyPlayer: message => liveGame.notify(message, SAVE_LOAD_NOTICE_DURATION_MS),
+            report: (level, message) => {
+                host.log(level, message);
+                host.reportIssue?.({ level, message, origin: "session" });
+            },
+        });
+        if (outcome.status !== "loaded") {
+            return outcome;
         }
-        liveGame.game.router.clear().cleanHistory();
-        liveGame.newGame().deserialize(record.savedGame as SavedGame);
         gameEnteredRef.current = true;
         await liveGame.waitForRouterExit().promise;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
-    }, [hideCurrentStudioPagesForGame, host.saveStore, requireActiveLiveGame]);
+        return outcome;
+    }, [hideCurrentStudioPagesForGame, host.log, host.reportIssue, host.saveStore, requireActiveLiveGame]);
+
+    /**
+     * The same load for the surfaces declared as `Promise<void>`: the blueprint host API and the
+     * plugin save API.
+     *
+     * It rejects on a refusal, which is what those two have always done and what any caller with a
+     * `catch` around them is written against. Nothing is at stake by the time it throws - the
+     * player has been told, the author has been told, and the run is where it was - so the throw
+     * carries information and no longer carries a destroyed game with it.
+     */
+    const loadSaveAction = useCallback(async (id: string): Promise<void> => {
+        const outcome = await loadSave(id);
+        if (outcome.status === "refused") {
+            throw new Error(`Load Save: "${id}" was not applied. ${outcome.detail}`);
+        }
+    }, [loadSave]);
 
     const deleteSave = useCallback(async (id: string) => {
         await host.saveStore.remove(id);
@@ -1256,9 +1732,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         return pluginHost.attachSaveActions({
             write: (id, metadata) => writeSave(id, metadata),
-            load: id => loadSave(id),
+            load: loadSaveAction,
         });
-    }, [loadSave, pluginHost, writeSave]);
+    }, [loadSaveAction, pluginHost, writeSave]);
 
     // Player slots only. Autosaves live in the same store under reserved ids and
     // are listed by List Auto Saves instead, so an authored Save/Load screen
@@ -1349,6 +1825,56 @@ export function GameApp(props: GameAppProps): ReactNode {
         } catch {
             return null;
         }
+    }, [host.saveStore]);
+
+    /**
+     * One slot's stamps, read from the record the store already keeps.
+     *
+     * The store writes ISO strings; a graph wants numbers, and the conversion happens here so every
+     * consumer sees the same epoch milliseconds `listAutoSaves` publishes. A record whose stamp is
+     * missing or unparseable answers 0 for that field rather than dropping the whole slot - the
+     * slot exists, and a save screen still has a row to draw for it.
+     */
+    const getSaveTimes = useCallback(async (id: string): Promise<SaveRecordTimes | null> => {
+        const record = await host.saveStore.read(id);
+        if (!record) {
+            return null;
+        }
+        const toMs = (iso: string | undefined): number => {
+            const parsed = Date.parse(iso ?? "");
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+        return {
+            savedAt: toMs(record.metadata.updatedAt),
+            createdAt: toMs(record.metadata.createdAt),
+        };
+    }, [host.saveStore]);
+
+    /**
+     * Where one slot stopped, read from the engine metadata inside the record.
+     *
+     * `savedGame` is `unknown` on the record by design - the store keeps whatever the engine
+     * serialized and does not model it - so the two fields are picked out defensively here rather
+     * than cast. A save from an older engine that never wrote them, or a record whose blob is not
+     * an object at all, still answers as a slot that exists with nothing to quote; refusing to
+     * report the slot would take a row off the player's save screen over a missing caption.
+     */
+    const getSaveLine = useCallback(async (id: string): Promise<SaveRecordLine | null> => {
+        const record = await host.saveStore.read(id);
+        if (!record) {
+            return null;
+        }
+        const savedGame = record.savedGame;
+        const meta =
+            savedGame && typeof savedGame === "object"
+                ? (savedGame as { meta?: unknown }).meta
+                : undefined;
+        const fields = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
+        const toText = (raw: unknown): string => (typeof raw === "string" ? raw : "");
+        return {
+            line: toText(fields.lastSentence),
+            speaker: toText(fields.lastSpeaker),
+        };
     }, [host.saveStore]);
 
     const getSavePreview = useCallback(async (id: string): Promise<BlueprintImageAsset | null> => {
@@ -1527,7 +2053,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             lifecycleRef,
             makeStateAccessors,
             openSurfaceWithTransition: openSurface,
-            closeLayerWithTransition: closeLayer,
+            goBackWithTransition: goBack,
             quitApplication: host.quitApplication,
             getFullscreen: host.getFullscreen,
             setFullscreen: host.setFullscreen,
@@ -1535,15 +2061,19 @@ export function GameApp(props: GameAppProps): ReactNode {
                 startStoryInGameRef.current?.(request) ??
                 Promise.reject(new Error("Start Game: runtime is not ready")),
             writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
-            loadSaveInGame: id => loadSave(id),
+            loadSaveInGame: loadSaveAction,
             deleteSaveInGame: id => deleteSave(id),
             listSaveIds,
             getSaveMetadata,
+            getSaveTimes,
+            getSaveLine,
             getSavePreview,
             writeAutoSaveInGame: autoSave.writeNow,
             listAutoSaves,
             getHistoryInGame,
             restoreHistoryInGame,
+            exportProgressInGame,
+            importProgressInGame,
             getCurrentNametag,
             resolveAvatarAssetId,
             getNotificationsInGame,
@@ -1571,6 +2101,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
             widgetRuntimeStore,
+            reducedMotion: prefersReducedMotion === true,
         };
         const slots = createGameUiSlotComponents({
             uidoc: bundle.ui.uidoc,
@@ -1664,6 +2195,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
+        cancelSceneTracking();
         nlrCompiledRef.current = compiled;
         registerCharacterAvatarAssets(compiled.avatarAssetIdByUrl);
         choiceRuntimeRef.current = null;
@@ -1685,9 +2217,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         activeSurface,
         bundle,
         clearGameHiddenStudioPages,
-        closeLayer,
+        goBack,
         core,
         deleteSave,
+        exportProgressInGame,
+        importProgressInGame,
         getChoiceCountInGame,
         getCurrentNametag,
         resolveAvatarAssetId,
@@ -1695,6 +2229,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
+        getSaveTimes,
+        getSaveLine,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -1710,7 +2246,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isInGame,
         isNvlModeInGame,
         listSaveIds,
-        loadSave,
+        loadSaveAction,
         makeStateAccessors,
         nextInGame,
         openSurface,
@@ -1749,12 +2285,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
         liveGame.newGame();
         gameEnteredRef.current = true;
+        // A document imported before this point has been waiting for exactly this moment:
+        // `newGame()` clears every namespace and rebuilds it from its defaults, so anything written
+        // earlier is gone and anything written now stands. See `pendingImportedProgressRef`.
+        const importedProgress = pendingImportedProgressRef.current;
+        if (importedProgress) {
+            pendingImportedProgressRef.current = null;
+            applyImportedSavedProgress(importedProgress);
+        }
         // `onFirstSceneReady` already ends on a painted frame (see waitForStageVisualReadyWithTimeout),
         // so there is nothing left to wait for here: an extra frame only delays the UI's exit.
         await sceneReady;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
-    }, [hideCurrentStudioPagesForGame]);
+    }, [applyImportedSavedProgress, hideCurrentStudioPagesForGame]);
 
     const startStoryInGame = useCallback(async (
         request: DevModeStartStoryRequest,
@@ -1819,21 +2363,29 @@ export function GameApp(props: GameAppProps): ReactNode {
             pageProps: entry.props,
             emit: event => core.debug.emit(event),
             onOpenSurface: openSurface,
-            onCloseLayer: closeLayer,
+            onPageBack: goBack,
             onClearPages: clearPages,
             onClearGameOverlay: clearGameOverlay,
             onQuitApplication: host.quitApplication,
             onGetFullscreen: host.getFullscreen,
             onSetFullscreen: host.setFullscreen,
+            onShowLayer: showLayer,
+            onHideLayer: hideLayer,
+            onHideLayerGroup: hideLayerGroup,
+            onWaitLayer: waitLayer,
+            onCloseOwnLayer: closeOwnLayer,
+            onIsLayerMounted: isLayerMounted,
             onStartStory: startStoryInGame,
             onIsInGame: isInGame,
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
             onQuitGame: quitGame,
             onWriteSave: writeSave,
-            onLoadSave: loadSave,
+            onLoadSave: loadSaveAction,
             onDeleteSave: deleteSave,
             onListSaveIds: listSaveIds,
             onGetSaveMetadata: getSaveMetadata,
+            onGetSaveTimes: getSaveTimes,
+            onGetSaveLine: getSaveLine,
             onGetSavePreview: getSavePreview,
             onWriteAutoSave: autoSave.writeNow,
             onListAutoSaves: listAutoSaves,
@@ -1868,6 +2420,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetTrackVolume: soundTransport.getTrackVolume,
             onSetTrackVolume: soundTransport.setTrackVolume,
             onNetworkFetch: host.networkFetch,
+            onOpenExternal: host.openExternal,
+            onExportProgress: exportProgressInGame,
+            onImportProgress: importProgressInGame,
             audioTracks: bundle.audio?.tracks,
             onSubscribeGamePreferences: subscribeGamePreferences,
             onWidgetPatch: (elementId, patch) => {
@@ -1910,6 +2465,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 get: key => core.scopeBridge.globalGet(key),
                 subscribe: listener => core.scopeBridge.subscribeGlobals(listener),
             },
+            pageProps: entry.props,
         };
         return {
             hostAdapter,
@@ -1918,7 +2474,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         } satisfies HostAdapterBundle;
     }, [
         bundle,
-        closeLayer,
+        goBack,
         core,
         deleteSave,
         getChoiceCountInGame,
@@ -1927,6 +2483,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
+        getSaveTimes,
+        getSaveLine,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -1934,12 +2492,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
+        showLayer,
+        hideLayer,
+        hideLayerGroup,
+        waitLayer,
+        closeOwnLayer,
+        isLayerMounted,
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
-        loadSave,
+        loadSaveAction,
         nextInGame,
         openSurface,
         quitGame,
@@ -1954,6 +2518,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         toggleDialogDisplayInGame,
         widgetPatchesByScopeRef,
         widgetRuntimeStore,
+        exportProgressInGame,
+        importProgressInGame,
         writeSave,
     ]);
 
@@ -2052,10 +2618,64 @@ export function GameApp(props: GameAppProps): ReactNode {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bootReady, bundle.bundleId]);
 
+    const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
+        ? visibleEntries
+            .filter(entry => entry.sessionKey === host.sessionKey)
+            .filter(entry => !studioPageHiddenForGame || !gameHiddenNavKeys.has(entry.key))
+            .map(entry => {
+                const visibleSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === entry.surfaceId);
+                return visibleSurface ? { entry, surface: visibleSurface } : null;
+            })
+            .filter((item): item is { entry: GameAppNavEntry; surface: UISurface } => Boolean(item))
+        : [];
+
+    const visibleLayers = layers
+        .map(layer => {
+            const layerSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === layer.surfaceId);
+            return layerSurface ? { layer, surface: layerSurface } : null;
+        })
+        .filter((item): item is { layer: SurfaceLayerEntry; surface: UISurface } => Boolean(item));
+
+    /**
+     * Who takes pointer input and who takes the keys, across the page lane and the layers at once.
+     *
+     * The single place either question is answered. With an empty layer stack it reduces to the
+     * comparison the surface layers used to make for themselves - the entry the page stack is
+     * settling on, and nothing else.
+     */
+    const compositeInput = resolveCompositeInput({
+        pageEntries: visibleSurfaceEntries.map(item => item.entry),
+        activePageKey: activeEntry?.key ?? null,
+        layers: visibleLayers.map(item => item.layer),
+    });
+
+    /**
+     * Which layers this render left off the screen, told to the stack that holds them.
+     *
+     * A layer naming a surface the running bundle does not have is filtered out above, so the stack
+     * says it is present while nothing of it is drawn. Removing one starts no exit animation, and
+     * the presence group therefore never reports one finished: `Hide Layer` waited for a frame that
+     * was never coming, and a mutually exclusive group stayed occupied by something invisible. The
+     * stack settles those waits itself once it knows which of its layers have no frame to lose.
+     */
+    const renderedLayerKeys = new Set(nlrPreloadDone ? visibleLayers.map(item => item.layer.key) : []);
+    const unrenderedLayerKeys = layers
+        .filter(layer => !renderedLayerKeys.has(layer.key))
+        .map(layer => layer.key);
+    const unrenderedLayerKeysRef = useRef<readonly string[]>(unrenderedLayerKeys);
+    unrenderedLayerKeysRef.current = unrenderedLayerKeys;
+    const unrenderedLayerKeysToken = unrenderedLayerKeys.join(" ");
+    useEffect(() => {
+        layerStack.setUnrenderedLayers(unrenderedLayerKeysRef.current);
+    }, [layerStack, unrenderedLayerKeysToken]);
+
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
         prepaintReadyKeys.has(activeEntry.key) &&
-        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)),
+        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)) &&
+        // The app-level keyDown/keyUp dispatch belongs to the page lane, so it stops the moment a
+        // layer takes the keyboard - otherwise Escape would reach the page under an open modal.
+        compositeInput.keyboardOwnerKey === activeEntry.key,
     );
 
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
@@ -2086,22 +2706,30 @@ export function GameApp(props: GameAppProps): ReactNode {
                     },
                     emit: event => core.debug.emit(event),
                     onOpenSurface: openSurface,
-                    onCloseLayer: closeLayer,
+                    onPageBack: goBack,
                     onClearPages: clearPages,
                     onClearGameOverlay: clearGameOverlay,
                     onQuitApplication: host.quitApplication,
                     onGetFullscreen: host.getFullscreen,
                     onSetFullscreen: host.setFullscreen,
+                    onShowLayer: showLayer,
+                    onHideLayer: hideLayer,
+                    onHideLayerGroup: hideLayerGroup,
+                    onWaitLayer: waitLayer,
+                    onCloseOwnLayer: closeOwnLayer,
+                    onIsLayerMounted: isLayerMounted,
                     onStartStory: startStoryInGame,
                     onIsInGame: isInGame,
                     onIsGameOverlay: () =>
                         input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
                     onQuitGame: quitGame,
                     onWriteSave: writeSave,
-                    onLoadSave: loadSave,
+                    onLoadSave: loadSaveAction,
                     onDeleteSave: deleteSave,
                     onListSaveIds: listSaveIds,
                     onGetSaveMetadata: getSaveMetadata,
+                    onGetSaveTimes: getSaveTimes,
+                    onGetSaveLine: getSaveLine,
                     onGetSavePreview: getSavePreview,
                     onWriteAutoSave: autoSave.writeNow,
                     onListAutoSaves: listAutoSaves,
@@ -2136,6 +2764,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetTrackVolume: soundTransport.getTrackVolume,
                     onSetTrackVolume: soundTransport.setTrackVolume,
                     onNetworkFetch: host.networkFetch,
+                    onOpenExternal: host.openExternal,
+                    onExportProgress: exportProgressInGame,
+                    onImportProgress: importProgressInGame,
                     audioTracks: bundle.audio?.tracks,
                     onSubscribeGamePreferences: subscribeGamePreferences,
                     onWidgetPatch: (elementId, patch) => {
@@ -2177,6 +2808,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 debug: core.debug,
                 coalescer: core.bindingDebugCoalescer,
                 globalState,
+                pageProps: input.params,
             }),
             mountSurface: input => {
                 const surfaceStore = core.scopeBridge.getSurfaceStore(input.runtimeScopeId);
@@ -2217,7 +2849,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, [
         bundle,
-        closeLayer,
+        goBack,
         core,
         deleteSave,
         getChoiceCountInGame,
@@ -2226,6 +2858,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
+        getSaveTimes,
+        getSaveLine,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -2233,12 +2867,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
+        showLayer,
+        hideLayer,
+        hideLayerGroup,
+        waitLayer,
+        closeOwnLayer,
+        isLayerMounted,
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
-        loadSave,
+        loadSaveAction,
         nextInGame,
         openSurface,
         quitGame,
@@ -2251,6 +2891,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         startStoryInGame,
         toggleDialogDisplayInGame,
         widgetRuntimeStore,
+        exportProgressInGame,
+        importProgressInGame,
         writeSave,
     ]);
 
@@ -2316,6 +2958,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
+        cancelSceneTracking();
         nlrCompiledRef.current = null;
         clearCharacterAvatarAssets();
         detachTextReadTracker();
@@ -2350,6 +2993,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         currentActionIdRef.current = null;
+        cancelSceneTracking();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
@@ -2648,6 +3292,31 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const gameViewport = nlrSession ? { width: nlrSession.width, height: nlrSession.height } : null;
 
+    /**
+     * What a host overlay is handed, built only if there is one asking.
+     *
+     * A function rather than a value so the composite is described for a reader that exists: a
+     * packaged game renders no overlays at all, and it should not pay a walk of the stack per frame
+     * to tell nobody what is on it.
+     */
+    const overlayContext = (): GameAppOverlayContext => ({
+        core,
+        activeSurface,
+        widgetRuntimeStore,
+        fastForwardToNextChoice: fastForwardToNextChoiceInGame,
+        storyRuntime,
+        saves: savesBridge,
+        composite: buildCompositeView({
+            activePageEntry: activeEntry,
+            layers,
+            queued: layerState.queued,
+            renderedLayerKeys,
+            resolution: compositeInput,
+            exitPending: layerState.exitPending,
+            surfaceName: surfaceId => findSurface(bundle, surfaceId)?.name ?? null,
+        }),
+    });
+
     if (!host.ready || !core || !hostAdapterBundle) {
         // Keep the same root element shape as the ready branch below: switching the root type
         // (Fragment → Provider) when the host becomes ready would make React unmount and
@@ -2655,7 +3324,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return (
             <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
                 {renderFrame({ activeSurface, gameViewport, children: null })}
-                {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime, saves: savesBridge })}
+                {renderOverlays?.(overlayContext())}
             </GameLocalizationContext.Provider>
         );
     }
@@ -2679,6 +3348,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 pendingGameStartsRef.current.delete(sessionId);
                 pending.resolve();
             }}
+            onEnd={() => handleStoryEnd()}
             onEnvironmentReady={sessionId => {
                 host.log("info", `[${host.id}] NLR environment assets preheated: ${sessionId}`);
                 const pending = pendingAssetsReadyRef.current.get(sessionId);
@@ -2745,6 +3415,28 @@ export function GameApp(props: GameAppProps): ReactNode {
                 if (nlrSession?.compiled) {
                     pluginHost?.attachSession({ liveGame, compiled: nlrSession.compiled });
                 }
+                // Which scene the player is in, for the Export Progress anchor. The engine's own
+                // mount/unmount pair is the only live source - the launch request never moves - and
+                // the Scene->Studio id map is the inverse of this compile's own table, so a story
+                // compiled with two copies of one scene still resolves by identity. Re-bound per
+                // session, exactly like the play-head stream below.
+                cancelSceneTracking();
+                const sceneGameState = liveGame.getGameState();
+                if (sceneGameState && nlrSession?.compiled) {
+                    const sceneIdByScene = new Map(
+                        Object.entries(nlrSession.compiled.scenes).map(([id, scene]) => [scene, id] as const),
+                    );
+                    nlrSceneTokensRef.current.push(
+                        sceneGameState.events.on("event:state.scene.mount", (scene: Scene) => {
+                            currentSceneIdRef.current = sceneIdByScene.get(scene) ?? null;
+                        }),
+                        sceneGameState.events.on("event:state.scene.unmount", (scene: Scene) => {
+                            if (currentSceneIdRef.current === (sceneIdByScene.get(scene) ?? null)) {
+                                currentSceneIdRef.current = null;
+                            }
+                        }),
+                    );
+                }
                 // Play-head stream for the Dev Mode story-runtime panel: mirror the current action id
                 // and fan it out to panel subscribers. Re-bound per session; the fan-out set is stable.
                 nlrCurrentActionTokenRef.current?.cancel();
@@ -2801,17 +3493,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         />
     );
 
-    const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
-        ? visibleEntries
-            .filter(entry => entry.sessionKey === host.sessionKey)
-            .filter(entry => !studioPageHiddenForGame || !gameHiddenNavKeys.has(entry.key))
-            .map(entry => {
-                const visibleSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === entry.surfaceId);
-                return visibleSurface ? { entry, surface: visibleSurface } : null;
-            })
-            .filter((item): item is { entry: GameAppNavEntry; surface: UISurface } => Boolean(item))
-        : [];
-
     // `nl-motion-keep` + `reducedMotion="never"` hold the game's own motion outside the Studio
     // reduced-motion preference (styles.css and the MotionConfig in lib/renderApp): what plays
     // in here is the author's work, and it has to move the way it will move for a player. The
@@ -2860,7 +3541,55 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     nestedSurfaceRuntime={nestedSurfaceRuntime}
                                     blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
                                     reducedMotion={prefersReducedMotion === true}
-                                    active={entry.key === activeEntry.key}
+                                    active={compositeInput.interactiveKeys.has(entry.key)}
+                                    keyboardOwner={compositeInput.keyboardOwnerKey === entry.key}
+                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
+                                    onPrepaintReady={handleSurfaceLayerPrepaintReady}
+                                    onEnterComplete={markActiveEnterComplete}
+                                />
+                            ))
+                            : null}
+                    </AnimatePresence>
+                    {/* The layers get their own presence group. Both groups are children of the box
+                        above, so they share its stacking context and z order runs straight through
+                        both - and, equally, every z below is measured inside that box rather than
+                        against the page. Two reasons it is not one group:
+                        the page lane switches to `mode="wait"` for transitions that have to empty the
+                        screen first, which is a rule about replacing a screen and not about a layer
+                        that is merely present through it; and `onExitComplete` fires for the whole
+                        group, so a layer closing would settle a page transition that is still
+                        running. Both would only misfire once a layer exists — which is exactly the
+                        kind of thing that has to be impossible rather than untested. */}
+                    <AnimatePresence
+                        custom="forward"
+                        initial={false}
+                        mode="sync"
+                        onExitComplete={handleLayerExitComplete}
+                    >
+                        {nlrPreloadDone
+                            ? visibleLayers.map(({ layer, surface }, index) => (
+                                <AppSurfaceLayerWithAdapter
+                                    key={layer.key}
+                                    uidoc={bundle.ui.uidoc}
+                                    blueprintDocument={bundle.ui.localBlueprints}
+                                    persistentVariables={bundle.ui.persistentVariables}
+                                    core={core}
+                                    entry={layer}
+                                    layerIndex={LAYER_STACK_INDEX_BASE + index}
+                                    surface={surface}
+                                    rendererRegistry={rendererRegistry}
+                                    scale={scale}
+                                    createHostAdapterBundle={createHostAdapterBundle}
+                                    widgetPatchesByScope={widgetPatchesByScope}
+                                    widgetPatchesByScopeRef={widgetPatchesByScopeRef}
+                                    widgetRuntimeStore={widgetRuntimeStore}
+                                    lifecycleRef={lifecycleRef}
+                                    nestedSurfaceRuntime={nestedSurfaceRuntime}
+                                    blueprintLifecycleReady={prepaintReadyKeys.has(layer.key)}
+                                    reducedMotion={prefersReducedMotion === true}
+                                    active={compositeInput.interactiveKeys.has(layer.key)}
+                                    keyboardOwner={compositeInput.keyboardOwnerKey === layer.key}
+                                    scrim={layer.scrim}
                                     onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                     onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                     onEnterComplete={markActiveEnterComplete}
@@ -2876,7 +3605,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
             {renderFrame({ activeSurface, gameViewport, children: content })}
-            {renderOverlays?.({ core, activeSurface, widgetRuntimeStore, fastForwardToNextChoice: fastForwardToNextChoiceInGame, storyRuntime, saves: savesBridge })}
+            {renderOverlays?.(overlayContext())}
         </GameLocalizationContext.Provider>
     );
 }

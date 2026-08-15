@@ -1,13 +1,14 @@
-import type { CSSProperties, KeyboardEvent, ReactNode, Ref } from "react";
+import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode, Ref } from "react";
 
 export interface InspectOnlyButtonProps {
     onClick: () => void;
+    /** A second, non-primary way in - a blueprint entry opens its own window on a right click. */
+    onContextMenu?: (event: MouseEvent<HTMLSpanElement>) => void;
     children: ReactNode;
     /** The control's own reason to be off. A frozen workspace is never one of them. */
     disabled?: boolean;
     className?: string;
     style?: CSSProperties;
-    title?: string;
     "aria-label"?: string;
     "aria-expanded"?: boolean;
     ref?: Ref<HTMLSpanElement>;
@@ -42,7 +43,7 @@ export function InspectOnlyButton({
     disabled = false,
     className,
     style,
-    title,
+    onContextMenu,
     ref,
     ...aria
 }: InspectOnlyButtonProps) {
@@ -70,10 +71,10 @@ export function InspectOnlyButton({
             role="button"
             tabIndex={disabled ? -1 : 0}
             aria-disabled={disabled || undefined}
-            title={title}
             className={className}
             style={style}
             onClick={activate}
+            onContextMenu={disabled ? undefined : onContextMenu}
             onKeyDown={handleKeyDown}
             {...aria}
         >

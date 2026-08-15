@@ -12,7 +12,8 @@ import {
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
-import type { AutoSaveEntry } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
+import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { GameSurfaceRenderer } from "@/lib/ui-editor/runtime/surface/GameSurfaceRenderer";
@@ -43,6 +44,8 @@ import { staticSurfaceHostAdapter, type OpenSurfaceOptions, type PageProps, type
  */
 export type GameUiSlotHostOptions = {
     sessionId: string;
+    /** The player asked for less motion: the widgets on a slot surface stay put. */
+    reducedMotion?: boolean;
     core: BlueprintRuntimeCore | null;
     bundle: DevModeBundle;
     rendererRegistry: ElementRendererRegistry;
@@ -53,7 +56,7 @@ export type GameUiSlotHostOptions = {
         props?: PageProps,
         options?: OpenSurfaceOptions,
     ) => Promise<void>;
-    closeLayerWithTransition: () => Promise<void>;
+    goBackWithTransition: () => Promise<void>;
     quitApplication: () => Promise<void>;
     /** Hosts without a real application window (story preview) leave these unset. */
     getFullscreen?: () => Promise<boolean>;
@@ -64,11 +67,24 @@ export type GameUiSlotHostOptions = {
     deleteSaveInGame: (id: string) => Promise<void>;
     listSaveIds: () => Promise<string[]>;
     getSaveMetadata: (id: string) => Promise<unknown>;
+    getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
+    getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
     writeAutoSaveInGame: () => Promise<void>;
     listAutoSaves: () => Promise<AutoSaveEntry[]>;
     getHistoryInGame: () => BlueprintGameHistoryEntry[];
     restoreHistoryInGame: (id?: string) => Promise<void>;
+    /**
+     * Carrying a playthrough between two editions of one title, for the Export/Import Progress
+     * nodes. Optional on the same terms as {@link soundTransport}: a host with no shell behind it
+     * (the in-editor story preview) genuinely cannot write the document, and the bridge answers the
+     * node with a refusal the author's graph can hear. It is not optional for a real session - a
+     * title screen is exactly the kind of surface an author builds out of Game UI slots, and
+     * without these both nodes reported "progress cannot be written here" inside a dialogue,
+     * choice or NVL slot while working perfectly one surface above.
+     */
+    exportProgressInGame?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
+    importProgressInGame?: () => Promise<GameProgressImportOutcome>;
     getCurrentNametag: () => string | null;
     /**
      * Invert a dialog-avatar URL back to the asset id it was compiled from. The engine resolves
@@ -188,7 +204,7 @@ export function useStageSlotSurfaceRuntime(input: {
             pageProps: {},
             emit: event => core.debug.emit(event),
             onOpenSurface: options.openSurfaceWithTransition,
-            onCloseLayer: options.closeLayerWithTransition,
+            onPageBack: options.goBackWithTransition,
             onQuitApplication: options.quitApplication,
             onGetFullscreen: options.getFullscreen,
             onSetFullscreen: options.setFullscreen,
@@ -198,11 +214,15 @@ export function useStageSlotSurfaceRuntime(input: {
             onDeleteSave: options.deleteSaveInGame,
             onListSaveIds: options.listSaveIds,
             onGetSaveMetadata: options.getSaveMetadata,
+            onGetSaveTimes: options.getSaveTimes,
+            onGetSaveLine: options.getSaveLine,
             onGetSavePreview: options.getSavePreview,
             onWriteAutoSave: options.writeAutoSaveInGame,
             onListAutoSaves: options.listAutoSaves,
             onGetHistory: options.getHistoryInGame,
             onRestoreHistory: options.restoreHistoryInGame,
+            onExportProgress: options.exportProgressInGame,
+            onImportProgress: options.importProgressInGame,
             onGetNametag: options.getCurrentNametag,
             onGetNotifications: options.getNotificationsInGame,
             onGetChoiceCount: options.getChoiceCountInGame,
@@ -404,6 +424,10 @@ export function StageSlotSurfaceBody(props: {
                     onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     surfacePointerEvents={surfacePointerEvents}
                     passive={passive}
+                    // A Game UI slot has no page animation of its own - it appears when the scene
+                    // says so - but the widgets on it can still arrive and leave on their own terms.
+                    elementAnimations
+                    reducedMotion={options.reducedMotion === true}
                     // The uidoc here is the compiled bundle's; nothing edits it in place.
                     staticDocument
                 />

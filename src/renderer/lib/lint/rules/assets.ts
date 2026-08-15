@@ -1,5 +1,9 @@
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { formatBytes } from "@shared/utils/formatBytes";
+import { solveReleaseContent } from "../../build/releaseContent";
 import { AssetType, isBundleAssetType } from "../../workspace/services/assets/assetTypes";
-import type { AssetReference } from "../../workspace/services/references/referenceModel";
+import type { AssetReference, ReferenceGapReason } from "../../workspace/services/references/referenceModel";
+import { referenceCoverageGapsFor } from "../../workspace/services/assets/assetDeleteGuard";
 import type { LintAssetEntry, LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 
@@ -11,6 +15,29 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
  * "missing" and "unreadable" are read off the library and the filesystem, where a negative answer is
  * a fact rather than an inference. That is why the first is a warning and the other two are errors.
  */
+
+/**
+ * Which sentence a coverage gap earns.
+ *
+ * Split by reason because the two families are different news: a document that would not open is a
+ * failure the author can retry, while a picture the index cannot identify is a thing they authored
+ * and can change. Exhaustive, so a reason added later has to be given words rather than inheriting
+ * whichever of these happened to be the fallback.
+ */
+function incompleteIndexMessageKey(reason: ReferenceGapReason): LintFinding["messageKey"] {
+    switch (reason) {
+        case "indexNotBuilt":
+            return "lint.rule.assetsUnused.messageIndexNotBuilt";
+        case "sliceFailed":
+        case "documentUnreadable":
+        case "blueprintProgramNotWalked":
+            return "lint.rule.assetsUnused.messageIndexUnreadable";
+        case "hashUrlUnresolved":
+        case "computedAssetPin":
+        case "unknownNodeType":
+            return "lint.rule.assetsUnused.messageIndexUnresolved";
+    }
+}
 
 /** What `{asset}` renders as. `name` already carries the extension (renaming re-derives `ext` from
  * it), so it is the file name an author recognises; the id is only a fallback for a nameless row. */
@@ -116,29 +143,38 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
         /**
          * Library rows absent from the reference index.
          *
-         * **This rule is exactly as complete as the index is, and the index has documented blind
-         * spots** (see the header of `referenceModel.ts`). Neither is recoverable from an asset id,
-         * so both can produce a false "unused" on an asset that is genuinely in use:
+         * **This rule is exactly as complete as the index is, and it withholds the answers the
+         * index cannot support.** An incomplete index under-reports references, and every reference
+         * it misses turns into an asset this rule calls unused - the one wrong answer that costs an
+         * author their work.
          *
-         *  - `app://fs/{hash}` URLs are keyed by content hash, not by asset id - the id is not
-         *    reachable from them.
-         *  - `blueprint.data.jsonLiteral` params are arbitrary author-supplied JSON; covering them
-         *    would need a heuristic UUID scan, which reports phantoms in the other direction.
+         * So each gap produces a finding naming where coverage stopped, and the unused rows are
+         * filtered to the assets no gap could be hiding a use of. Withholding *everything* was the
+         * first shape and it was too blunt: one widget with an unreadable picture would silence the
+         * report for the sounds and the typefaces too, which are not in doubt at all.
          *
-         * That is why this rule is a warning and why nothing in Studio deletes on its word.
-         *
-         * The empty-index guard is the other half of the same caution: an index that failed to build
-         * (`ReferenceService.ensureReady()` swallows its error) reports zero referenced ids, and
-         * without the guard a project with 900 assets would report 900 unused ones - a wall of noise
-         * that says nothing except that the index is broken.
+         * This also replaces the old "no referenced ids at all" heuristic, which stood in for the
+         * same signal and got it wrong in both directions - it hid the findings of a genuinely tidy
+         * project, and it passed an index that failed on one story out of thirty.
          */
         run(ctx) {
-            if (ctx.referencedAssetIds.size === 0 && ctx.assets.length > 0) {
-                return [];
-            }
-            return ctx.assets
-                .filter(asset => !ctx.referencedAssetIds.has(asset.id))
-                .map(asset => assetFinding("assets/unused", "lint.rule.assetsUnused.message", asset));
+            const findings: LintFinding[] = ctx.assetIndex.gaps.map(gap => ({
+                ruleId: "assets/unused" as const,
+                messageKey: incompleteIndexMessageKey(gap.reason),
+                ...(gap.location ? { messageParams: { location: gap.location } } : {}),
+                location: { kind: "project" } as const,
+                ...(gap.target ? { target: gap.target } : {}),
+            }));
+            // Per asset rather than all-or-nothing: a gap that can only be hiding a picture must not
+            // cost the author the answer about their sounds. `referenceCoverageGapsFor` is the same
+            // judgement the delete guard makes, so the report and the guard cannot disagree.
+            findings.push(
+                ...ctx.assets
+                    .filter(asset => !ctx.referencedAssetIds.has(asset.id))
+                    .filter(asset => referenceCoverageGapsFor(ctx.assetIndex, [asset.type]).length === 0)
+                    .map(asset => assetFinding("assets/unused", "lint.rule.assetsUnused.message", asset)),
+            );
+            return findings;
         },
     },
     {
@@ -249,4 +285,102 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
             return findings;
         },
     },
+    {
+        /**
+         * A file every build carries that is larger than this project says a build should carry.
+         *
+         * ## Why the solver decides which assets count
+         *
+         * `solveReleaseContent` answers which assets the retained content of a package references,
+         * and that is the set worth reporting: an asset nothing points at is `assets/unused`'s
+         * business, and saying it twice in two vocabularies would make the bigger list the one an
+         * author stops reading.
+         *
+         * ## Why one solve answers for every variant
+         *
+         * **Nothing trims assets.** A variant drops scenes; the asset copy walks the library, so an
+         * oversized file ships in every edition whichever one references it. The release variant's
+         * set is also the superset by construction - it sweeps no scene - so solving it once names
+         * every asset any variant could carry. Solving per variant would cost a fold of every story
+         * per variant to produce a subset of this answer.
+         *
+         * ## Why the threshold is declared rather than chosen here
+         *
+         * There is no number that is right for a phone build and for a desktop release, so this
+         * follows `text/overlong`: a declared option the settings panel renders an editor for, with
+         * a default that only reports files large enough that nobody meant them.
+         */
+        id: "assets/oversized",
+        category: "assets",
+        defaultSeverity: "info",
+        slug: "assetsOversized",
+        options: {
+            maxMegabytes: { kind: "number", default: 64, min: 1, max: 4096 },
+        },
+        run(ctx, options) {
+            const megabytes = Number(options.maxMegabytes);
+            if (!Number.isFinite(megabytes) || megabytes <= 0) {
+                return [];
+            }
+            const limit = megabytes * 1024 * 1024;
+            const carried = shippedAssetIds(ctx);
+            const findings: LintFinding[] = [];
+            for (const asset of ctx.assets) {
+                const size = assetByteSize(asset);
+                // A record with no size has never been measured - a remote asset that has not been
+                // fetched is the case - and a rule that read that as zero would say nothing while a
+                // rule that read it as huge would report a file it has never seen.
+                if (size === null || size <= limit || !carried.has(asset.id)) {
+                    continue;
+                }
+                findings.push({
+                    ruleId: "assets/oversized",
+                    messageKey: "lint.rule.assetsOversized.message",
+                    messageParams: { asset: assetLabel(asset), size: formatBytes(size), limit: formatBytes(limit) },
+                    location: { kind: "asset", assetId: asset.id, assetName: assetLabel(asset) },
+                    target: { kind: "asset", assetId: asset.id, assetType: asset.type },
+                });
+            }
+            return findings;
+        },
+    },
 ];
+
+/** The bytes a record was measured at, or null when it has never been measured. */
+function assetByteSize(asset: LintAssetEntry): number | null {
+    const meta = asset.meta;
+    if (!meta || typeof meta !== "object") {
+        return null;
+    }
+    const size = (meta as { size?: unknown }).size;
+    return typeof size === "number" && Number.isFinite(size) && size >= 0 ? size : null;
+}
+
+/**
+ * Every asset a package's retained content references, from the solver.
+ *
+ * Asked of the release variant, which is the superset; see the rule's own note. Answers an empty set
+ * on any failure, which withholds the rule rather than reporting the whole library - the same
+ * bargain `assets/unused` makes with an index it cannot trust.
+ */
+function shippedAssetIds(ctx: LintContext): ReadonlySet<string> {
+    try {
+        const answer = solveReleaseContent({
+            appTag: RELEASE_APP_TAG,
+            // The release variant sweeps nothing, so no declaration and no plugin can change which
+            // scenes are retained - and therefore none can change this answer.
+            projectDeclaredScenes: {},
+            plugins: [],
+            stories: ctx.stories.map(entry => ({ id: entry.id, name: entry.name, document: entry.document })),
+            blueprints: Object.values(ctx.blueprintDocument?.blueprints ?? {}),
+            surfaces: [],
+            localizationKeys: [],
+            assets: ctx.assets.map(asset => ({ id: asset.id, name: asset.name })),
+            assetReferences: ctx.assetReferences,
+        });
+        return new Set(answer.members.filter(member => member.kind === "asset").map(member => member.id));
+    } catch (error) {
+        console.warn("[lint] the release content solver failed, so no asset size is reported", error);
+        return new Set<string>();
+    }
+}

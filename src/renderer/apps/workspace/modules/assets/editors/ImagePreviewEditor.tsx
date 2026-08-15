@@ -99,7 +99,7 @@ function PreviewToolbar({
                 <button
                     onClick={controls.zoomOut}
                     className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
-                    title={t("assets.image.zoomOut")}
+                    data-tip={t("assets.image.zoomOut")} aria-label={t("assets.image.zoomOut")}
                 >
                     <ZoomOut className="w-4 h-4" />
                 </button>
@@ -109,14 +109,14 @@ function PreviewToolbar({
                 <button
                     onClick={controls.zoomIn}
                     className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default"
-                    title={t("assets.image.zoomIn")}
+                    data-tip={t("assets.image.zoomIn")} aria-label={t("assets.image.zoomIn")}
                 >
                     <ZoomIn className="w-4 h-4" />
                 </button>
                 <button
                     onClick={controls.resetView}
                     className="p-1 rounded-md hover:bg-fill text-fg-muted hover:text-fg transition-colors cursor-default ml-2"
-                    title={t("assets.image.resetView")}
+                    data-tip={t("assets.image.resetView")} aria-label={t("assets.image.resetView")}
                 >
                     <RefreshCw className="w-4 h-4" />
                 </button>

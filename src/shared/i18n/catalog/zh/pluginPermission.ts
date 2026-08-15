@@ -52,13 +52,21 @@ export const pluginPermission = {
     },
     permissions: {
         section: {
-            sidecar: "原生程序",
-            sidecarNote: "此插件会在你构建的游戏中附带并运行一个原生程序",
+            sidecar: "在玩家设备上运行的程序",
+            sidecarNote: "此插件会在你构建的游戏中附带一个程序",
             buildDependency: "构建时下载",
             runtime: "游戏内能力",
+            externalLink: "从游戏跳转出去",
+            externalLinkNote: "此插件可以把玩家带到这些地址，它们会在游戏之外打开",
+            network: "游戏会请求的数据",
+            networkNote: "游戏运行时，此插件会从这些地址请求数据",
             studio: "Studio 权限",
         },
         sidecarPlatforms: "运行平台：{platforms}",
+        sidecarKind: {
+            executable: "作为独立的程序运行",
+            node: "插件自身的代码作为游戏的一部分运行",
+        },
         buildDependencyHosts: "下载来源：{hosts}",
         runtimeCapability: {
             store: "在玩家的存档旁保存自己的数据",

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Keyboard } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useKeybinding } from "../../hooks";
 import { useTranslation } from "@/lib/i18n";
@@ -73,6 +74,7 @@ export function KeybindingCheatSheet() {
             id: "workspace:open-keybindings",
             titleKey: "workspace.shell.keybindings.openSettings",
             categoryKey: "workspace.shell.commandPalette.categoryPreferences",
+            icon: <Keyboard className="w-4 h-4" />,
             run: () => openKeybindingSettings(),
         });
     }, [context]);

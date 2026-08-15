@@ -141,7 +141,7 @@ function VariableRowEditor(props: {
                 value={props.row.name}
                 onChange={event => props.onRename(event.target.value)}
                 readOnly={freeze.frozen}
-                title={freeze.frozen ? freeze.reason : undefined}
+                data-tip={freeze.frozen ? freeze.reason : undefined}
                 aria-label={t("storyVars.row.nameAria")}
             />
             <Select
@@ -159,7 +159,7 @@ function VariableRowEditor(props: {
                 placeholder={t("storyVars.row.defaultPlaceholder")}
                 onChange={event => props.onDefault(parseDefault(event.target.value, props.row.valueType))}
                 readOnly={freeze.frozen}
-                title={freeze.frozen ? freeze.reason : undefined}
+                data-tip={freeze.frozen ? freeze.reason : undefined}
                 aria-label={t("storyVars.row.defaultAria")}
             />
             <button

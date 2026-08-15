@@ -29,6 +29,7 @@ describe("UI page animation settings", () => {
                 exitBlocking: true,
             }),
         ).toEqual({
+            ...DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
             enter: "slide",
             exit: "blur",
             enterDirection: "angle",
@@ -62,6 +63,7 @@ describe("UI page animation settings", () => {
                 speed: "slow",
             }),
         ).toEqual({
+            ...DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
             enter: "slide",
             exit: "blur",
             enterDirection: "left",
@@ -84,6 +86,24 @@ describe("UI page animation settings", () => {
             enterDurationSeconds: 0.8,
             exitDurationSeconds: 0.16,
         });
+    });
+
+    it("normalizes the child-timing fields and holds the wait-for-children default", () => {
+        expect(
+            normalizeUIPageAnimationSettings({
+                enterDelaySeconds: 0.123,
+                exitDelaySeconds: -4,
+                childStaggerSeconds: 99,
+                exitWaitsForChildren: false,
+            }),
+        ).toEqual({
+            ...DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
+            enterDelaySeconds: 0.12,
+            exitDelaySeconds: 0,
+            childStaggerSeconds: 10,
+            exitWaitsForChildren: false,
+        });
+        expect(normalizeUIPageAnimationSettings({}).exitWaitsForChildren).toBe(true);
     });
 
     it("keeps optional settings undefined for inherited Page component animation", () => {

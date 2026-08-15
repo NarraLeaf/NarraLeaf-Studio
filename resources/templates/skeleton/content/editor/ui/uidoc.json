@@ -224,6 +224,31 @@
         "kind": "slot",
         "slotId": "onStage"
       }
+    },
+    {
+      "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+      "name": "Confirm",
+      "host": "app",
+      "kind": "appSurface",
+      "designSize": {
+        "width": 1920,
+        "height": 1080
+      },
+      "rootElementId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e71",
+      "settings": {
+        "backgroundColor": "transparent",
+        "pageAnimation": {
+          "enter": "fade",
+          "exit": "fade",
+          "enterDirection": "auto",
+          "exitDirection": "auto",
+          "enterAngleDegrees": 0,
+          "exitAngleDegrees": 180,
+          "enterDurationSeconds": 0.22,
+          "exitDurationSeconds": 0.22,
+          "exitBlocking": false
+        }
+      }
     }
   ],
   "components": [
@@ -43853,7 +43878,88 @@
         "paddingX": 0,
         "paddingY": 0,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:surface.sunken"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "selected",
+              "name": "Selected",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:surface.active"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     },
     "c41534aa-eaa4-4a37-a1ca-81ebecbabb14": {
@@ -63646,6 +63752,1244 @@
               ]
             }
           ]
+        }
+      }
+    },
+    "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e71": {
+      "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e71",
+      "type": "nl.root",
+      "name": "Root",
+      "parentId": null,
+      "childrenIds": [
+        "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72"
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080,
+        "visible": true,
+        "opacity": 1
+      }
+    },
+    "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72": {
+      "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72",
+      "type": "nl.container",
+      "name": "Panel",
+      "parentId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e71",
+      "childrenIds": [
+        "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e73",
+        "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74"
+      ],
+      "layout": {
+        "x": 580,
+        "y": 400,
+        "width": 760,
+        "height": 280,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "layoutKind": "free",
+        "stackDirection": "vertical",
+        "stackGap": 8,
+        "stackPaddingTop": 0,
+        "stackPaddingRight": 0,
+        "stackPaddingBottom": 0,
+        "stackPaddingLeft": 0,
+        "stackAlignItems": "stretch",
+        "stackJustifyContent": "start",
+        "scrollAxis": "y",
+        "backgroundColor": "nlbrand:surface.raised",
+        "borderRadius": 4,
+        "borderRadiusTL": 4,
+        "borderRadiusTR": 4,
+        "borderRadiusBL": 4,
+        "borderRadiusBR": 4,
+        "borderRadiusLinked": true,
+        "borderColor": "nlbrand:container.border",
+        "borderWidth": 1,
+        "borderStyle": "solid",
+        "backgroundImage": "",
+        "backgroundFit": "cover",
+        "fillType": "color",
+        "fillVisible": true,
+        "fillOpacity": 1,
+        "strokeVisible": true,
+        "strokeOpacity": 1,
+        "strokeAlign": "center",
+        "strokeSide": "all",
+        "borderJoin": "miter",
+        "cornerAdvanced": false,
+        "clipContent": false,
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:surface.raised"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadius",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusTL",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusTR",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusBL",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusBR",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusLinked",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "solid"
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundImage",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundFit",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "cover"
+                    }
+                  ]
+                },
+                {
+                  "key": "imageFill",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fillType",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "color"
+                    }
+                  ]
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeAlign",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "center"
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeSide",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "all"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderJoin",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "miter"
+                    }
+                  ]
+                },
+                {
+                  "key": "cornerAdvanced",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBackgroundBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectInnerShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectGlow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e73": {
+      "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e73",
+      "type": "nl.text",
+      "name": "Message",
+      "parentId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72",
+      "childrenIds": [],
+      "layout": {
+        "x": 48,
+        "y": 48,
+        "width": 664,
+        "height": 88,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "text": "",
+        "fontSize": 28,
+        "color": "nlbrand:text.primary",
+        "fontWeight": "normal",
+        "fontStyle": "normal",
+        "textAlign": "center",
+        "textVerticalAlign": "center",
+        "lineHeight": 1.4,
+        "fontAssetId": null,
+        "textWrapMode": "word",
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "effects": {
+          "effectBlur": 0,
+          "effectBackgroundBlur": 0,
+          "effectShadow": null,
+          "effectTextShadow": null,
+          "effectInnerShadow": null,
+          "effectBlend": "",
+          "effectGlow": null,
+          "effectFilter": null
+        },
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "fontAssetId",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fontSize",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 28
+                    }
+                  ]
+                },
+                {
+                  "key": "fontWeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "fontStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "color",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:text.primary"
+                    }
+                  ]
+                },
+                {
+                  "key": "lineHeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1.4
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectTextShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "blueprintValue",
+          "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78",
+          "valueType": "string"
+        }
+      }
+    },
+    "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74": {
+      "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74",
+      "type": "nl.list",
+      "name": "Buttons",
+      "parentId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72",
+      "childrenIds": [
+        "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e75"
+      ],
+      "layout": {
+        "x": 150,
+        "y": 180,
+        "width": 460,
+        "height": 52,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "itemsBinding": {
+          "kind": "pageProp",
+          "key": "buttons"
+        },
+        "previewItems": [
+          {
+            "text": "Return to title",
+            "index": 0,
+            "disabled": false
+          },
+          {
+            "text": "Cancel",
+            "index": 1,
+            "disabled": false
+          }
+        ],
+        "itemKeyPath": "index",
+        "previewCount": 2,
+        "selectedIndex": -1,
+        "itemGap": 20,
+        "repeatDirection": "horizontal",
+        "contentPaddingTop": 0,
+        "contentPaddingRight": 0,
+        "contentPaddingBottom": 0,
+        "contentPaddingLeft": 0,
+        "templateDirection": "vertical",
+        "templateGap": 4,
+        "dragContentScroll": false,
+        "scrollbar": {
+          "enabled": false,
+          "side": "right",
+          "visibility": "hidden",
+          "thickness": 8,
+          "contentInset": 4,
+          "minThumbLength": 24,
+          "trackStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.08,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "thumbStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.34,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "trackElementId": null,
+          "thumbElementId": null
+        }
+      }
+    },
+    "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e75": {
+      "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e75",
+      "type": "nl.container",
+      "name": "Button",
+      "parentId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74",
+      "childrenIds": [
+        "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e76"
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 220,
+        "height": 52,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "layoutKind": "free",
+        "stackDirection": "vertical",
+        "stackGap": 8,
+        "stackPaddingTop": 0,
+        "stackPaddingRight": 0,
+        "stackPaddingBottom": 0,
+        "stackPaddingLeft": 0,
+        "stackAlignItems": "stretch",
+        "stackJustifyContent": "start",
+        "scrollAxis": "y",
+        "backgroundColor": "nlbrand:surface.overlay",
+        "borderRadius": 4,
+        "borderRadiusTL": 4,
+        "borderRadiusTR": 4,
+        "borderRadiusBL": 4,
+        "borderRadiusBR": 4,
+        "borderRadiusLinked": true,
+        "borderColor": "nlbrand:container.border",
+        "borderWidth": 1,
+        "borderStyle": "solid",
+        "backgroundImage": "",
+        "backgroundFit": "cover",
+        "fillType": "color",
+        "fillVisible": true,
+        "fillOpacity": 1,
+        "strokeVisible": true,
+        "strokeOpacity": 1,
+        "strokeAlign": "center",
+        "strokeSide": "all",
+        "borderJoin": "miter",
+        "cornerAdvanced": false,
+        "clipContent": true,
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:surface.overlay"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadius",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusTL",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusTR",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusBL",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusBR",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusLinked",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "solid"
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundImage",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundFit",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "cover"
+                    }
+                  ]
+                },
+                {
+                  "key": "imageFill",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fillType",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "color"
+                    }
+                  ]
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeAlign",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "center"
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeSide",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "all"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderJoin",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "miter"
+                    }
+                  ]
+                },
+                {
+                  "key": "cornerAdvanced",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBackgroundBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectInnerShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectGlow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "extra": {
+        "listSlot": "itemTemplate"
+      }
+    },
+    "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e76": {
+      "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e76",
+      "type": "nl.text",
+      "name": "Button text",
+      "parentId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e75",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 220,
+        "height": 52,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "text": "",
+        "fontSize": 23,
+        "color": "nlbrand:text.primary",
+        "fontWeight": "normal",
+        "fontStyle": "normal",
+        "textAlign": "center",
+        "textVerticalAlign": "center",
+        "lineHeight": 1.2,
+        "fontAssetId": null,
+        "textWrapMode": "nowrap",
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "effects": {
+          "effectBlur": 0,
+          "effectBackgroundBlur": 0,
+          "effectShadow": null,
+          "effectTextShadow": null,
+          "effectInnerShadow": null,
+          "effectBlend": "",
+          "effectGlow": null,
+          "effectFilter": null
+        },
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "fontAssetId",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fontSize",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 23
+                    }
+                  ]
+                },
+                {
+                  "key": "fontWeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "fontStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "color",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:text.primary"
+                    }
+                  ]
+                },
+                {
+                  "key": "lineHeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1.2
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectTextShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "blueprintValue",
+          "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79",
+          "valueType": "string"
         }
       }
     }

@@ -1,6 +1,13 @@
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type { NetworkAccessPolicy, NetworkPluginAllowlistEntry } from "./networkAllowlist";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
 import type { DevModeSaveRecord } from "./devModeSave";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "./gameProgress";
 import type { NormalizedPluginManifestV2 } from "./plugins";
 import type { StoryId } from "./story";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -137,6 +144,22 @@ export type GameRuntimePackPluginEntry = {
      * has no sidecar for that id", and the plugin degrades rather than assumes.
      */
     sidecars?: GameRuntimePackSidecarEntry[];
+    /**
+     * What the author filled in for this plugin's `contributes.buildConfig` fields, resolved for
+     * the variant this pack was compiled as and keyed by field key. It is how a plugin's runtime
+     * learns the storefront id or account name its build was configured with; without it the
+     * declarations reach the build dialog and stop there.
+     *
+     * A `secret` field is never here. The project holds a handle for one, not the value, and this
+     * record ships to every player - see `resolveShippedPluginBuildConfig`, which is the only thing
+     * that fills it in. Neither is a platform-scoped field yet: one pack serves several platforms,
+     * and those values are keyed per platform.
+     *
+     * Absent on packs built before this channel existed, on plugins that declare no fields, and
+     * when nothing was filled in - all three mean the same thing to the plugin, which is that it
+     * was told nothing and must degrade.
+     */
+    buildConfig?: Record<string, string>;
 };
 
 /**
@@ -194,10 +217,150 @@ export type GameRuntimePackV1 = {
      * secure default ({@link GameRuntimeNetworkConfig} all disabled).
      */
     network?: GameRuntimeNetworkConfig;
+    /**
+     * What this build does when it stops working. Absent on packs produced before this field
+     * existed, which the runtime reads as {@link DEFAULT_GAME_CRASH_POLICY} - the behaviour those
+     * packs shipped with.
+     *
+     * Carried on every pack, web included, unlike {@link network}: a crash is not a shell
+     * mechanism, and a policy that applied to the desktop build but not the web one would be a
+     * setting that means different things depending on where the author looks.
+     */
+    crash?: GameRuntimeCrashConfig;
+    /**
+     * The page this build shows when its story falls off the end, resolved for the variant it was
+     * compiled as.
+     *
+     * Absent on packs produced before this field existed, on projects that picked none, and on a
+     * variant that states it shows nothing. All three mean the same thing to the runtime and it is
+     * the behaviour every build had before this field: the story stops and the stage stays where it
+     * is. There is deliberately no default page - a screen nobody authored is worse than no screen.
+     */
+    endingSurfaceId?: string;
+    /**
+     * The one string every edition of this title shares, naming the file progress is carried in.
+     *
+     * Resolved from the identity the RELEASE tag carries whatever variant this pack is - see
+     * `@shared/types/gameProgress`. That is the whole point: a demo overrides `identifier` and
+     * therefore writes its saves somewhere the full game cannot read, and this key is what the two
+     * agree on regardless.
+     *
+     * Absent on packs produced before this field existed. The shells read that as "this build
+     * cannot carry progress" and both nodes fail with a reason, rather than inventing a key - a
+     * guessed one would be a second answer to a question whose only value is that there is one.
+     */
+    progressKey?: string;
+    /**
+     * Stage fit + crop anchor. Absent on packs produced before this field existed, which the runtime
+     * reads as `contain` — the behaviour every one of those packs shipped with.
+     */
+    viewport?: GameRuntimeViewportConfig;
     preview?: {
         controlPort: number;
         controlToken: string;
     };
+};
+
+/**
+ * How the stage meets a screen of a different aspect ratio, from `app.mobile`.
+ *
+ * Carried on every pack rather than only mobile ones: the pack is built once and the mobile shells
+ * serve the very same site (see `webShell.ts`), so there is no mobile-specific pack to put it on.
+ * WHERE it applies is decided at run time — the mobile entry document identifies itself, and a
+ * preview run is a preview run — not by baking two different sites.
+ */
+export type GameRuntimeViewportConfig = {
+    /** `contain` letterboxes (the default and the historical behaviour); `cover` fills and crops. */
+    fit: GameRuntimeViewportFit;
+    /** Which part survives the crop. Only meaningful under `cover`. */
+    cropAnchorX: GameRuntimeCropAnchorX;
+    cropAnchorY: GameRuntimeCropAnchorY;
+};
+
+/**
+ * The one place this vocabulary is spelled out. The renderer's project-config layer and the pack
+ * compiler both validate against these, so a value can never be legal in the editor and unknown to
+ * the runtime.
+ */
+export const GAME_RUNTIME_VIEWPORT_FITS = ["contain", "cover"] as const;
+export const GAME_RUNTIME_CROP_ANCHORS_X = ["left", "center", "right"] as const;
+export const GAME_RUNTIME_CROP_ANCHORS_Y = ["top", "center", "bottom"] as const;
+
+export type GameRuntimeViewportFit = typeof GAME_RUNTIME_VIEWPORT_FITS[number];
+export type GameRuntimeCropAnchorX = typeof GAME_RUNTIME_CROP_ANCHORS_X[number];
+export type GameRuntimeCropAnchorY = typeof GAME_RUNTIME_CROP_ANCHORS_Y[number];
+
+/**
+ * Meta name the mobile entry document uses to identify its shell to the runtime bundle.
+ *
+ * Lives here, next to the config it gates, so the producer (`buildWebIndexHtml`) and the consumer
+ * (`isMobileShellDocument`) cannot drift — a rename on one side alone would silently turn the stage
+ * crop off on every phone, with nothing to fail.
+ */
+export const WEB_SHELL_VARIANT_META = "nl-shell";
+
+export const DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG: GameRuntimeViewportConfig = {
+    fit: "contain",
+    cropAnchorX: "center",
+    cropAnchorY: "center",
+};
+
+/**
+ * Read a project's `app.mobile` blob into a complete viewport config.
+ *
+ * Anything unrecognized falls back to `contain`/centre rather than throwing: this runs while
+ * compiling a pack, and a project with a hand-edited config should letterbox, not fail to build.
+ */
+export function normalizeGameRuntimeViewportConfig(value: unknown): GameRuntimeViewportConfig {
+    const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+    const pick = <T extends string>(candidate: unknown, allowed: readonly T[], fallback: T): T =>
+        allowed.includes(candidate as T) ? candidate as T : fallback;
+    return {
+        fit: pick(record.fit, GAME_RUNTIME_VIEWPORT_FITS, DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG.fit),
+        cropAnchorX: pick(record.cropAnchorX, GAME_RUNTIME_CROP_ANCHORS_X, DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG.cropAnchorX),
+        cropAnchorY: pick(record.cropAnchorY, GAME_RUNTIME_CROP_ANCHORS_Y, DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG.cropAnchorY),
+    };
+}
+
+/**
+ * What a shipped game does when it stops working, chosen per project.
+ *
+ * The three answers are not about how much the player is told, they are about who the build is
+ * for. A build the author is testing wants the failure on screen. A build in a player's hands
+ * usually wants the message without the stack, since a stack trace is not something they can act
+ * on and the log keeps it for whoever they report it to. A build running unattended - a demo on a
+ * stand, a kiosk - wants to be playable again without anybody pressing anything.
+ *
+ * The failure reaches the log under all three. That is not a policy, it is the floor.
+ */
+/**
+ * How the main process tells a freshly loaded page that it is replacing one that died.
+ *
+ * A query parameter because nothing else survives: there is no renderer left to send a message to,
+ * and the window is about to be thrown away and rebuilt. The value is the description to show; the
+ * page decides whether to show it, having learned the policy from its own process argument.
+ */
+export const GAME_RUNTIME_CRASH_QUERY_PARAM = "nlcrash";
+
+export const GAME_CRASH_POLICIES = ["details", "log", "restart"] as const;
+
+export type GameCrashPolicy = typeof GAME_CRASH_POLICIES[number];
+
+/**
+ * What a project that has never chosen gets, and what every build made before this field existed
+ * behaved as: the failure on screen, behind a disclosure.
+ */
+export const DEFAULT_GAME_CRASH_POLICY: GameCrashPolicy = "details";
+
+/** Coerce an unknown (persisted, or from an older pack) value into a policy. */
+export function normalizeGameCrashPolicy(value: unknown): GameCrashPolicy {
+    return GAME_CRASH_POLICIES.includes(value as GameCrashPolicy)
+        ? value as GameCrashPolicy
+        : DEFAULT_GAME_CRASH_POLICY;
+}
+
+export type GameRuntimeCrashConfig = {
+    policy: GameCrashPolicy;
 };
 
 export type GameRuntimeNetworkConfig = {
@@ -207,6 +370,22 @@ export type GameRuntimeNetworkConfig = {
      * webRequest). When true, remote resources over HTTP/HTTPS are permitted.
      */
     allowHttp: boolean;
+    /**
+     * How much of the network the build may reach once {@link allowHttp} is on.
+     *
+     * Absent is `"any"`, which is what every pack written before this field
+     * existed carries and what those builds shipped with. See
+     * `@shared/types/networkAllowlist` for why the wide state is the default.
+     */
+    policy?: NetworkAccessPolicy;
+    /** The author's own entries. Only consulted when {@link policy} is `"allowlist"`. */
+    allowlist?: string[];
+    /**
+     * Hosts the plugins in this build declared and the author approved at
+     * install, kept attributed rather than merged into {@link allowlist}: the
+     * two are removed by different acts, and a merged list could not say which.
+     */
+    pluginAllowlist?: NetworkPluginAllowlistEntry[];
 };
 
 export type GameRuntimeSaveBridge = {
@@ -293,6 +472,41 @@ export type GameRuntimeNetworkBridge = {
     fetch(request: BlueprintNetworkFetchRequest): Promise<BlueprintNetworkFetchResult>;
 };
 
+export type GameRuntimeExternalLinkBridge = {
+    open(request: BlueprintOpenExternalRequest): Promise<BlueprintOpenExternalResult>;
+    /**
+     * The same act on a plugin's behalf, decided against a different declaration.
+     *
+     * A separate method rather than an optional field on the request, because the two are separate
+     * regimes and a single entry point taking "who is asking" would make the caller's word part of
+     * how the project's own declaration is read. Here the plugin id selects *which* declaration
+     * applies and can only ever select one that shipped: the far side looks the id up in
+     * `pack.plugins[].manifest.contributes.externalLinks`, so an id naming nothing in the pack
+     * declares nothing and an id naming another plugin reaches that plugin's approved patterns and
+     * no further.
+     */
+    openForPlugin(
+        pluginId: string,
+        request: BlueprintOpenExternalRequest,
+    ): Promise<BlueprintOpenExternalResult>;
+};
+
+/**
+ * Carrying a playthrough between two editions of one title, for the Export/Import Progress nodes.
+ *
+ * Present on every shell, and satisfied differently by each: the desktop shells hand the act to
+ * their main process, which owns the filesystem; the web export refuses, because a page has none
+ * and pretending to have written would be the one answer worse than saying no.
+ *
+ * The renderer states what the playthrough holds and never where it goes. Which file is written is
+ * decided by the process that writes it, from `pack.progressKey` - a caller that could name the
+ * file could name another title's.
+ */
+export type GameRuntimeProgressBridge = {
+    write(request: GameProgressExportRequest): Promise<GameProgressExportResult>;
+    read(): Promise<GameProgressImportResult>;
+};
+
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
@@ -327,6 +541,24 @@ export type GameRuntimePreloadBridge = {
         /** Whether {@link onCloseRequested} can ever fire. False on the web export. */
         closeRequested: boolean;
     };
+    /**
+     * What this build does when it stops working, if the shell knows before the pack is read.
+     *
+     * The desktop shell does: main reads the pack and passes the policy as a process argument, so
+     * the crash screen is correct from the first frame - which matters, because the crash it is
+     * most likely to draw is one that happened while the pack was still being read. The web export
+     * has no such channel and answers `null` until {@link readPack} lands, which the renderer
+     * treats as "not known yet" rather than as a policy.
+     */
+    crashPolicy: GameCrashPolicy | null;
+    /**
+     * Where this shell writes its log, so the crash screen can say where the report is.
+     *
+     * The one thing a player can do about a crash is hand the file to whoever can read it, and
+     * they cannot do that without being told where it is. `null` on the web export, which has no
+     * log file at all - its shell prints to the browser console, and there is no path to name.
+     */
+    logPath: string | null;
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
     /**
@@ -339,6 +571,23 @@ export type GameRuntimePreloadBridge = {
      * do.
      */
     network: GameRuntimeNetworkBridge;
+    /**
+     * One Open Link node request.
+     *
+     * Present on every shell, and decided differently by each - the desktop shell hands it to the
+     * main process, which re-reads the pack and calls the platform opener; the web export decides
+     * in the page, because a page is all there is. What every shell shares is the decision itself:
+     * only an address the pack declares is opened, and the check is made where the act happens.
+     */
+    externalLink: GameRuntimeExternalLinkBridge;
+    /**
+     * One Export/Import Progress node request.
+     *
+     * Present on every shell, unlike {@link sidecar}: a web export genuinely cannot do this, but it
+     * has to SAY so on the node's failure branch rather than have the field disappear - an author
+     * whose page silently lost the node would ship a button that does nothing.
+     */
+    progress: GameRuntimeProgressBridge;
     /**
      * Absent on shells with no child processes (the web export). Absence is the
      * whole signal - the runtime plugin host passes no sidecar backend when this

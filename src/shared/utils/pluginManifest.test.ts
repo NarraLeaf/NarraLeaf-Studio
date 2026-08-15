@@ -1,3 +1,6 @@
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { validatePluginManifest } from "./pluginManifest";
 
@@ -476,9 +479,56 @@ describe("validatePluginManifest — capability/permission alignment", () => {
         expect(result.manifest.permissions).toEqual([
             { kind: "runtime", capability: "store" },
             { kind: "runtime", capability: "events" },
-            { kind: "sidecar", id: "acme.steam.bridge", platforms: ["windows-x64"] },
+            {
+                kind: "sidecar",
+                id: "acme.steam.bridge",
+                sidecarKind: "executable",
+                platforms: ["windows-x64"],
+            },
             { kind: "buildDependency", id: "acme.steam.sdk", hosts: ["partner.example.com"] },
         ]);
+    });
+
+    it("carries the sidecar kind, so a node sidecar cannot pass for an executable one", () => {
+        // Same id, same platform, same files: the only thing that differs is what starts, which is
+        // the whole of what the author is being asked to approve.
+        const onlySidecar = (kind: "executable" | "node") => ({
+            sidecars: [{
+                id: "acme.steam.bridge",
+                kind,
+                targets: {
+                    "windows-x64": {
+                        entry: "bin/bridge",
+                        include: ["bin/bridge"],
+                        sha256: { "bin/bridge": SIDECAR_DIGEST },
+                    },
+                },
+            }],
+        });
+
+        const executable = validatePluginManifest(fullManifest({ contributes: onlySidecar("executable") }));
+        const node = validatePluginManifest(fullManifest({ contributes: onlySidecar("node") }));
+
+        expect(executable.ok).toBe(true);
+        expect(node.ok).toBe(true);
+        if (!executable.ok || !node.ok) return;
+        expect(executable.manifest.permissions).toEqual([
+            {
+                kind: "sidecar",
+                id: "acme.steam.bridge",
+                sidecarKind: "executable",
+                platforms: ["windows-x64"],
+            },
+        ]);
+        expect(node.manifest.permissions).toEqual([
+            {
+                kind: "sidecar",
+                id: "acme.steam.bridge",
+                sidecarKind: "node",
+                platforms: ["windows-x64"],
+            },
+        ]);
+        expect(node.manifest.permissions).not.toEqual(executable.manifest.permissions);
     });
 
     it("refuses a hand-written derived permission — contributes is the only source", () => {
@@ -673,5 +723,225 @@ describe("validatePluginManifest — capability/permission alignment", () => {
             ok: false,
             error: expect.stringContaining("unsupported platform key"),
         });
+    });
+});
+
+/**
+ * Build config: the values a plugin needs the author to supply before a build can ship.
+ *
+ * The one behavioural difference from every other code-backed contribution is what it does *not* do
+ * - it derives no install permission - so that is asserted rather than left implied.
+ */
+describe("validatePluginManifest contributes.buildConfig", () => {
+    const buildConfigManifest = (buildConfig: unknown) => ({
+        manifestVersion: 2,
+        id: "acme.steam",
+        name: "Steam",
+        version: "1.0.0",
+        entries: { runtime: "runtime.js" },
+        contributes: { buildConfig },
+    });
+
+    it("normalizes a declared field and defaults the optional halves away", () => {
+        const result = validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "text", scope: "global" },
+        ]));
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: { contributes: { buildConfig: [{ key: "appId", label: "Steam App ID" }] } },
+        });
+        const [field] = (result as { manifest: { contributes: { buildConfig: Record<string, unknown>[] } } })
+            .manifest.contributes.buildConfig;
+        expect(field.description).toBeUndefined();
+        expect(field.platforms).toBeUndefined();
+        expect(field.required).toBeUndefined();
+    });
+
+    it("defaults to an empty list, like every other contribution kind", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.steam",
+            name: "Steam",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+        });
+
+        expect(result).toMatchObject({ ok: true, manifest: { contributes: { buildConfig: [] } } });
+    });
+
+    it("grants nothing: a declared field derives no install permission", () => {
+        const result = validatePluginManifest(buildConfigManifest([
+            { key: "token", label: "Upload token", type: "secret", scope: "variant", required: true },
+        ]));
+
+        expect(result).toMatchObject({ ok: true, manifest: { permissions: [] } });
+    });
+
+    it("refuses two fields under one key", () => {
+        const result = validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "text", scope: "global" },
+            { key: "appId", label: "Steam App ID again", type: "text", scope: "variant" },
+        ]));
+
+        expect(result).toMatchObject({ ok: false, error: expect.stringContaining("more than once") });
+    });
+
+    it("refuses a field nothing on screen would identify", () => {
+        const result = validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "   ", type: "text", scope: "global" },
+        ]));
+
+        expect(result).toMatchObject({ ok: false, error: expect.stringContaining("must declare a label") });
+    });
+
+    it("refuses an unknown type and an unknown scope", () => {
+        expect(validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "password", scope: "global" },
+        ]))).toMatchObject({ ok: false, error: expect.stringContaining("type must be one of") });
+
+        expect(validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "text", scope: "per-build" },
+        ]))).toMatchObject({ ok: false, error: expect.stringContaining("scope must be one of") });
+    });
+
+    it("refuses a platform no build can target, and an empty platform list", () => {
+        expect(validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "text", scope: "platform", platforms: ["switch"] },
+        ]))).toMatchObject({ ok: false, error: expect.stringContaining("unknown platform") });
+
+        expect(validatePluginManifest(buildConfigManifest([
+            { key: "appId", label: "Steam App ID", type: "text", scope: "platform", platforms: [] },
+        ]))).toMatchObject({ ok: false, error: expect.stringContaining("non-empty array") });
+    });
+
+    it("accepts the fixture package's manifest as it sits on disk", async () => {
+        const manifestPath = path.join(
+            fileURLToPath(new URL("./__fixtures__/plugins/narraleaf.steam-appid-fixture/", import.meta.url)),
+            "manifest.json",
+        );
+        const result = validatePluginManifest(JSON.parse(await fs.readFile(manifestPath, "utf8")));
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                id: "narraleaf.steam-appid-fixture",
+                // The whole point of the fixture: two fields, and no permission from either.
+                permissions: [],
+                contributes: {
+                    buildConfig: [
+                        { key: "appId", type: "text", scope: "global", required: true },
+                        { key: "buildToken", type: "secret", scope: "variant" },
+                    ],
+                },
+            },
+        });
+    });
+});
+
+/**
+ * `contributes.externalLinks` — the declaration, the permission it derives, and the four things a
+ * manifest cannot say. The matching itself is tested next to the matcher; what is checked here is
+ * that nothing unmatchable, unreadable or unsayable gets as far as the author's install prompt.
+ */
+describe("validatePluginManifest contributes.externalLinks", () => {
+    const linksManifest = (externalLinks: unknown, entries: unknown = { runtime: "runtime.js" }) => ({
+        manifestVersion: 2,
+        id: "acme.steam",
+        name: "Steam",
+        version: "1.0.0",
+        entries,
+        contributes: { externalLinks },
+    });
+
+    it("keeps the author's own spelling, in order, and derives one permission carrying all of it", () => {
+        const result = validatePluginManifest(linksManifest([
+            "steam://*",
+            "https://store.steampowered.com/app/*",
+        ]));
+
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: {
+                contributes: {
+                    externalLinks: ["steam://*", "https://store.steampowered.com/app/*"],
+                },
+                // One permission, every pattern, unrewritten: this list is what the prompt shows.
+                permissions: [{
+                    kind: "externalLink",
+                    patterns: ["steam://*", "https://store.steampowered.com/app/*"],
+                }],
+            },
+        });
+    });
+
+    it("derives nothing when nothing is declared", () => {
+        const result = validatePluginManifest(linksManifest([]));
+        expect(result).toMatchObject({ ok: true, manifest: { permissions: [] } });
+
+        const absent = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.steam",
+            name: "Steam",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+        });
+        expect(absent).toMatchObject({ ok: true, manifest: { contributes: { externalLinks: [] } } });
+    });
+
+    it("rejects a blank entry", () => {
+        expect(validatePluginManifest(linksManifest(["https://x.example.com/", "   "])))
+            .toMatchObject({ ok: false });
+        expect(validatePluginManifest(linksManifest([""]))).toMatchObject({ ok: false });
+        expect(validatePluginManifest(linksManifest([42]))).toMatchObject({ ok: false });
+        expect(validatePluginManifest(linksManifest("https://x.example.com/"))).toMatchObject({ ok: false });
+    });
+
+    it("rejects a pattern that does not parse into a scheme", () => {
+        for (const pattern of ["store.example.com/*", "/app/*", "*", "*://example.com/"]) {
+            expect(validatePluginManifest(linksManifest([pattern]))).toMatchObject({ ok: false });
+        }
+    });
+
+    it("rejects a duplicate, on the canonical form rather than the raw string", () => {
+        expect(validatePluginManifest(linksManifest([
+            "https://x.example.com/a",
+            "https://x.example.com/a",
+        ]))).toMatchObject({ ok: false });
+        expect(validatePluginManifest(linksManifest([
+            "https://x.example.com/a",
+            "HTTPS://X.EXAMPLE.COM/a",
+        ]))).toMatchObject({ ok: false });
+    });
+
+    it("rejects a script or file scheme whatever the manifest says", () => {
+        for (const pattern of [
+            "javascript:alert(1)",
+            "javascript://*",
+            "data:text/html,<script>x</script>",
+            "vbscript:msgbox",
+            "file:///C:/Windows/System32/cmd.exe",
+            "file://*",
+        ]) {
+            expect(validatePluginManifest(linksManifest([pattern]))).toMatchObject({ ok: false });
+        }
+    });
+
+    it("rejects the permission being hand-written, the way every derived kind is", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.steam",
+            name: "Steam",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            permissions: [{ kind: "externalLink", patterns: ["https://anything.example.com/*"] }],
+        });
+        expect(result).toMatchObject({ ok: false });
+        expect((result as { error: string }).error).toContain("derived from contributes");
+    });
+
+    it("rejects a declaration with no runtime entry to use it", () => {
+        expect(validatePluginManifest(linksManifest(["steam://*"], { studio: "main.js" })))
+            .toMatchObject({ ok: false });
     });
 });

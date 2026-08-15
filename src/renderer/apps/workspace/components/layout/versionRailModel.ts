@@ -5,8 +5,9 @@ import type {
     VcsHistoryEntry,
     VcsUnavailableReason,
 } from "@shared/types/vcs";
-import { VCS_DEFAULT_BRANCH } from "@shared/types/vcs";
+import { VCS_DEFAULT_BRANCH, parseVcsRemoteUrl } from "@shared/types/vcs";
 import type { TranslationKey, Translator } from "@shared/i18n";
+import { recogniseSystemRevisionMessage } from "@shared/vcs/systemRevisionMessage";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
 
 /**
@@ -208,6 +209,14 @@ export interface CommitFormInputs {
     frozen: boolean;
     /** A long operation is in flight. */
     busy: boolean;
+    /**
+     * How many files the last scan found, or null when nobody has scanned in this window.
+     *
+     * Null is the ordinary state and is NOT "clean": a scan is not a pure read (docs §4.17), so it
+     * only ever happens because someone asked - opening the rail, or pressing the refresh beside the
+     * change list. See {@link canCommit} for why the difference decides whether the button is live.
+     */
+    changedFiles?: number | null;
 }
 
 /**
@@ -240,9 +249,24 @@ export function isCommitFormPresent(inputs: Pick<CommitFormInputs, "state" | "fr
  * Presence plus "nothing else is running": a commit settles this window's save debt, stages the whole
  * project and waits for the backend's stores to reach disk (docs §4.22), so a second one started on
  * top of the first would be a second full pipeline over the same tree.
+ *
+ * **And plus "there is something to record, as far as anyone has looked".** The qualifier is the
+ * whole subtlety and it is not a hedge: `changedFiles` is null until someone scans, scanning writes
+ * staged state, and a button that scanned in order to decide whether to be enabled would be exactly
+ * the implicit scan docs §4.17 forbids. So this stays live while nobody has looked - the backend
+ * answers "nothing has changed" and the panel says so - and goes inert only once a scan has actually
+ * reported an unchanged tree, which is the state the panel is already showing above the button.
+ *
+ * Getting this backwards is what shipped: on a clean tree the one button in the panel was live, and
+ * pressing it produced a red line. Whoever changes this next should notice that "we have not looked"
+ * and "we looked and it was clean" are different answers here, as they are everywhere else in this
+ * feature.
  */
 export function canCommit(inputs: CommitFormInputs): boolean {
-    return isCommitFormPresent(inputs) && !inputs.busy;
+    if (!isCommitFormPresent(inputs) || inputs.busy) {
+        return false;
+    }
+    return inputs.changedFiles === undefined || inputs.changedFiles === null || inputs.changedFiles > 0;
 }
 
 /**
@@ -621,27 +645,155 @@ export function revisionLabel(number: number): string {
     return `#${number}`;
 }
 
+export interface RevisionHeadline {
+    /** What the surface draws. */
+    text: string;
+    /**
+     * True when {@link text} is a hash standing in for a message nobody wrote, which the caller
+     * draws in a monospace face rather than as prose.
+     */
+    isIdentity: boolean;
+    /**
+     * The message as it is stored, when that is not what is drawn - i.e. one of Studio's own
+     * sentences, read back in the author's language.
+     *
+     * Belongs in the `title`, and is not optional politeness: those bytes are what a collaborator's
+     * client shows and what the author's own `lore` CLI prints, so a surface that only ever showed
+     * the translation would leave them unable to match the two.
+     */
+    original: string | null;
+}
+
 /**
- * What a history row's first line says.
+ * What a revision's first line says - in a history row, and in the panel's focused block.
  *
  * The message when there is one, which is the whole point of the row: a list of hashes is a list an
  * author cannot use, and every revision Studio records carries a message (an explicit one, or the
- * checkpoint's own sentence). `isMessage: false` is the honest remainder - the repository's first
- * commit is written by `initRepository` and carries none, and nothing obliges another client to
- * write one - and the caller renders that case as the hash it is, rather than borrowing a sentence
- * the revision never had.
+ * checkpoint's own sentence). `isIdentity` is the honest remainder - the repository's first commit
+ * is written by `initRepository` and carries none, and nothing obliges another client to write one -
+ * and the caller renders that case as the hash it is, rather than borrowing a sentence the revision
+ * never had.
+ *
+ * **Studio's own sentences are translated here and nowhere else.** They are stored in English on
+ * purpose (`@shared/vcs/systemRevisionMessage` says why), which used to mean a Chinese author read
+ * `Checkpoint before closing the project` at the top of a column titled 「版本」. Recognition is by
+ * content, so it reaches histories recorded before this existed; anything unrecognised is the
+ * author's own wording and is drawn exactly as they typed it.
  *
  * A message that is only whitespace counts as none: it is present in the metadata and says nothing,
  * and a row of blank space reads as a rendering fault.
  */
 export function historyRowHeadline(
     row: Pick<FlatHistoryEntry, "message" | "revision">,
-): { text: string; isMessage: boolean } {
-    const message = row.message?.trim();
-    if (message) {
-        return { text: message, isMessage: true };
+    t: Translator["t"],
+): RevisionHeadline {
+    const line = revisionMessageLine(row.message, t);
+    if (!line) {
+        return { text: shortRevision(row.revision), isIdentity: true, original: null };
     }
-    return { text: shortRevision(row.revision), isMessage: false };
+    return { ...line, isIdentity: false };
+}
+
+/**
+ * The rows a filter leaves standing.
+ *
+ * **Filters what has been READ, and says so nowhere else.** The history is paged and the backend has
+ * no cursor verb, so "search my history" cannot be answered here without re-reading the whole graph -
+ * and on a project with a server that read goes to the network. So this narrows the rows already in
+ * hand and the list keeps offering "Show older versions", which is the honest shape: the author
+ * decides how far back to look, exactly as they do without a filter.
+ *
+ * Matched against what the row SHOWS as well as what it stores. A reader whose Studio is in Chinese
+ * sees 「检查点」 and would type that; the bytes say `Checkpoint`. Both match, and so does the author
+ * on the row and its number - `#25`, `25` and `2` all find it, because a number is the one thing in
+ * this list an author can be sure of.
+ */
+export function filterHistoryRows(
+    rows: readonly FlatHistoryEntry[],
+    query: string,
+    t: Translator["t"],
+): FlatHistoryEntry[] {
+    const needle = query.trim().toLowerCase();
+    if (!needle) {
+        return [...rows];
+    }
+    return rows.filter(row => {
+        const headline = historyRowHeadline(row, t);
+        return [
+            headline.text,
+            headline.original,
+            row.author,
+            revisionLabel(row.number),
+        ].some(field => field?.toLowerCase().includes(needle));
+    });
+}
+
+/**
+ * Which day a revision belongs to, as a value two revisions can be compared by.
+ *
+ * Local rather than UTC, because the separator it drives says "Today" - and an author working at
+ * eleven at night would otherwise watch their evening's versions file themselves under tomorrow.
+ */
+export function historyDayKey(timestamp: number): string {
+    const date = new Date(timestamp);
+    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+/**
+ * What a day separator says.
+ *
+ * `now` is a parameter rather than read here: "today" is the whole point of the function and a
+ * clock read inside it would make it untestable, which for a boundary case that only misbehaves
+ * around midnight is the difference between a rule and a hope.
+ *
+ * Only the two nearest days get a word. Past that the date is what an author is actually looking
+ * for - "3 days ago" is arithmetic they then have to do themselves.
+ */
+export function historyDayLabel(
+    timestamp: number,
+    locale: string,
+    t: Translator["t"],
+    now: number,
+): string {
+    const today = historyDayKey(now);
+    if (historyDayKey(timestamp) === today) {
+        return t("workspace.shell.versionControl.today");
+    }
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    if (historyDayKey(timestamp) === historyDayKey(now - DAY_MS)) {
+        return t("workspace.shell.versionControl.yesterday");
+    }
+    // The year only once it stops being this one: a history spans years, and printing 2026 on every
+    // separator of a project written in 2026 is noise on every row that has one.
+    const sameYear = new Date(timestamp).getFullYear() === new Date(now).getFullYear();
+    return new Date(timestamp).toLocaleDateString(locale, {
+        year: sameYear ? undefined : "numeric",
+        month: "long",
+        day: "numeric",
+    });
+}
+
+/**
+ * One revision's message as a surface should read it, or null when it has none.
+ *
+ * Split out of {@link historyRowHeadline} because the panel's focused block needs the same reading
+ * and a different fallback: a row with no message names itself with its hash, while the block above
+ * it says which STATE the author is in ("Current version", "Empty history", "Not versioned"). One
+ * function answering both would have to know about states it has no business knowing about.
+ */
+export function revisionMessageLine(
+    message: string | undefined,
+    t: Translator["t"],
+): { text: string; original: string | null } | null {
+    const trimmed = message?.trim();
+    if (!trimmed) {
+        return null;
+    }
+    const system = recogniseSystemRevisionMessage(trimmed);
+    if (system) {
+        return { text: t(system.key, system.params), original: trimmed };
+    }
+    return { text: trimmed, original: null };
 }
 
 /**
@@ -771,4 +923,37 @@ function versionIdentity(inputs: VersionFaceInputs, t: Translator["t"]): string 
 
 function unnumbered(revision: RevisionId, inputs: VersionFaceInputs): string {
     return inputs.unnumbered === "omit" ? "" : shortRevision(revision);
+}
+
+/** The choice in the server dialog that is not one of the servers on this machine. */
+export const MANUAL_SERVER = "manual";
+
+/** The dialog with nothing chosen, which is how it opens for a project that uses no server. */
+export const NO_SERVER = "";
+
+/**
+ * Which row the server dialog opens on.
+ *
+ * The server this project already uses, so that changing one is a choice between named
+ * things rather than a retype. A project that uses none opens on nothing at all rather
+ * than on the first server in the list: connecting somewhere nobody asked for is the one
+ * outcome a dialog about where work is sent must not make easy.
+ *
+ * Matched on the ORIGIN, not on the whole address. A project's remote carries the name it
+ * has on the server (`lore://host:41337/my-game`) while a session records only the origin,
+ * so comparing the two strings never matched a project that was in fact connected - and it
+ * opened on the address field with the address already in it, which reads as a server this
+ * installation has never heard of.
+ *
+ * An address that no session accounts for is the remaining case: a server that asks nobody
+ * who they are has no account to add, so it is in no list and stays with the address field.
+ */
+export function initialServerChoice(
+    servers: ReadonlyArray<{ remoteOrigin: string }>,
+    remote: string | null,
+): string {
+    const address = remote?.trim() ?? "";
+    if (address === "") return NO_SERVER;
+    const origin = parseVcsRemoteUrl(address)?.origin ?? address;
+    return servers.some((server) => server.remoteOrigin === origin) ? origin : MANUAL_SERVER;
 }

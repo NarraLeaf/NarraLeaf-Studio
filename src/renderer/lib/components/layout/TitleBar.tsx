@@ -156,7 +156,7 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
                     onClick={minimize}
                     className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
                     aria-label={t("dialogs.window.minimize")}
-                    title={t("dialogs.window.minimize")}
+                    data-tip={t("dialogs.window.minimize")}
                 >
                     <Minus className="w-4 h-4" />
                 </button>
@@ -166,7 +166,7 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
                     onClick={toggleMaximize}
                     className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
                     aria-label={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
-                    title={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
+                    data-tip={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
                 >
                     <Square className="w-3 h-3" />
                 </button>
@@ -176,7 +176,7 @@ function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
                     onClick={close}
                     className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-danger/80 hover:text-white rounded-sm transition-colors cursor-default"
                     aria-label={t("common.close")}
-                    title={t("common.close")}
+                    data-tip={t("common.close")}
                 >
                     <X className="w-4 h-4" />
                 </button>

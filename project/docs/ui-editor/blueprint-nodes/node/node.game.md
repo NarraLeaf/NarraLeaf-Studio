@@ -211,6 +211,15 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 `id` 会 trim，不能为空，且不能包含路径分隔符或控制字符。文件名由安全 hash 派生，真实用户 id 只保存在存档 metadata 中。`metadata` 使用现有 Blueprint JSON pin 类型，可传入 object、array、string、number、boolean 或 `null`，不会创建专用 Save Metadata 数据类型。
 
+### 存档字段
+
+工程可以声明一份**存档字段**（`editor/save-schema.json`），声明之后这个节点会为每个字段长出一个具名输入引脚，不必再用 `Make JSON Object` 拼对象、也不用手写存储 key。字段在节点卡片上的按钮里编辑，改的是整个工程共用的那一份——写档节点和读档节点因此永远长出同一批引脚。
+
+- 引脚按**字段 id** 寻址，改字段名只换标签，不会断线。
+- 字段声明的类型**就是**引脚的类型，中间没有映射表。
+- 裸 `metadata` 引脚**永远保留**：先写它，再把声明字段盖上去，重叠时以声明字段为准。这样声明第一个字段不会让原本接着 `metadata` 的图静默断掉，插件写的、历史遗留的 key 也仍然有地方搭车。
+- 会执行到的 Save Game 上，声明过的字段**必须填**（接线或在卡片上填值都算，填空串也算）。空着会报 lint error `blueprint/save-field-empty`——因为读端承诺每个字段都有值，漏填的存档在运行时和"写在该字段存在之前"的老存档完全无法区分。
+
 ## Load Save
 
 `blueprint.game.save.load` - Load Save
@@ -258,6 +267,50 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 - `next` - 读取完成后的执行出口
 
 存档不存在或没有用户 metadata 时，`metadata` 输出 `null`。
+
+工程声明了存档字段之后，这个节点会为每个字段多长出一个具名输出引脚，`metadata` 输出则原样保留、仍然给出完整的存储对象。
+
+字段输出**永远有值**：存档里没有这个 key 时给的是该字段配置的默认值。这正是"给已发布的游戏加一个存档字段"安全的原因——老存档照常显示，不会变成一片空白。
+
+## Get Save Time
+
+`blueprint.game.save.getTime` - Get Save Time
+
+读取指定本地存档的写入时刻。存档库一直在给每条记录盖时间戳，这个节点是把它取出来给图使用的通路——否则作者要在 `Save Game` 时把时间自己写进 metadata，那是同一个事实的第二份、并且会漂移的副本。
+
+- `in` - 执行入口
+- `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖
+- `savedAt` - 最后写入时间，Unix 毫秒（传出引脚）
+- `createdAt` - 首次写入时间，Unix 毫秒（传出引脚）
+- `exists` - 该存档是否存在（传出引脚）
+- `next` - 读取完成后的执行出口
+
+单位与 `List Auto Saves` / `Get Latest Auto Save` 一致，可以直接接进 [Time 节点](node.time.md) 做格式化。
+
+存档不存在时 `savedAt` 与 `createdAt` 都是 `0`，**要靠 `exists` 而不是时间戳是否为 0 来判断**：后者与真正保存在 1970 年的存档没有区别。存档存在但记录缺少时间戳时，缺的那一项为 `0`，`exists` 仍为 `true`。
+
+与 `Get Save Metadata`、`Get Save Preview` 一样按 id 取值，因此对 `List Saves` 的玩家槽位和 `List Auto Saves` 的自动存档环同样适用。
+
+## Get Save Line
+
+`blueprint.game.save.getLine` - Get Save Line
+
+读取指定本地存档停在哪一句。引擎每次序列化都会把 `lastSentence` / `lastSpeaker` 写进存档，这个节点是把它们取出来给图使用的通路。
+
+- `in` - 执行入口
+- `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖
+- `line` - 存档停在的那句话（传出引脚）
+- `speaker` - 说这句话的人；旁白或尚无对话时为空串（传出引脚）
+- `exists` - 该存档是否存在（传出引脚）
+- `next` - 读取完成后的执行出口
+
+**不要再用 `Get History` 取 backlog 最后一条来重建这两个值。** 那是同一个事实的第二份副本，而且是不准的那份：backlog 最后一条是**最后显示过**的那一句，这个节点给的是存档**将从哪一句继续**。从叠层菜单里存档、say 之后还跟着非 say 动作、backlog 超出上限被截断，三种情况都会让两者错开。
+
+存档不存在时 `line` 与 `speaker` 都是空串，**要靠 `exists` 判断**：一个在任何对话播放之前就保存的存档同样两项为空。
+
+与 `Get Save Metadata`、`Get Save Preview`、`Get Save Time` 一样按 id 取值，因此对 `List Saves` 的玩家槽位和 `List Auto Saves` 的自动存档环同样适用。
+
+存档里的 `storyHash` **刻意没有开放给图**。它唯一的用途是拒绝加载存档，而按 hash 拒绝正是本项目否决过的做法——改一行正文它就会变，会拦下大量本来能正常读取的存档。
 
 ## Get Save Preview
 

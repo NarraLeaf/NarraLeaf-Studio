@@ -3,8 +3,14 @@ import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
-import type { BlueprintPersistenceProjectRef, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
+import type {
+    GameProgressExportRequest,
+    GameProgressExportResult,
+    GameProgressImportResult,
+} from "@shared/types/gameProgress";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
@@ -23,11 +29,14 @@ import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
+import type { ServerTrustPromptProps } from "@shared/types/serverTrust";
 import type { PrivilegedActor } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
 import type { AssetExportEntry } from "@shared/types/assetExport";
+
 import type { UpdateState } from "@shared/constants/update";
-import type { RevisionId, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { VcsServerProbe } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -143,6 +152,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     getAppInfo: () => ipcClient.invoke(IPCEventType.appInfo, {}),
     getWindowProps: <T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>> => ipcClient.invoke(IPCEventType.appWindowProps, {}) as Promise<RequestStatus<WindowProps[T]>>,
     terminate: async (err?: string) => ipcClient.send(IPCEventType.appTerminate, { err: err ?? null }),
+    reportError: (report: RendererErrorReport) => ipcClient.send(IPCEventType.appReportRendererError, report),
     window: {
         ready: () => ipcClient.send(IPCEventType.appWindowReady, {}),
         close: () => ipcClient.send(IPCEventType.appWindowClose, {}),
@@ -159,6 +169,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             onFullscreenChanged: (handler: (payload: { isFullscreen: boolean }) => void) =>
                 ipcClient.onMessage(IPCEventType.appWindowFullscreenChanged, handler),
         },
+        /**
+         * The same controls, for a window this one detached part of itself into. Named rather than
+         * implicit: a detached popup sends IPC through its opener, so `control.close()` from the
+         * buttons drawn in it would close this window instead.
+         */
+        detachedControl: (key: string, control: "status" | "minimize" | "toggleMaximize" | "close") =>
+            ipcClient.invoke(IPCEventType.appDetachedWindowControl, { key, control }),
     },
     fs: {
         stat: (path: string) => ipcClient.invoke(IPCEventType.fsStat, { path }),
@@ -255,9 +272,24 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         countWorkspaceWindows: () => ipcClient.invoke(IPCEventType.appCountWorkspaceWindows, {}),
         requestWorkspaceView: (view: WorkspaceViewRequest) => ipcClient.invoke(IPCEventType.appRequestWorkspaceView, { view }),
         openExternal: (url: string) => ipcClient.invoke(IPCEventType.appOpenExternal, { url }),
+        spellcheck: {
+            configure: (sourceLocale: string, words: string[]) =>
+                ipcClient.invoke(IPCEventType.spellcheckConfigure, { sourceLocale, words }),
+            clear: () => ipcClient.invoke(IPCEventType.spellcheckClear, {}),
+            getStatus: () => ipcClient.invoke(IPCEventType.spellcheckStatus, {}),
+            check: (text: string, language: string) =>
+                ipcClient.invoke(IPCEventType.spellcheckCheck, { text, language }),
+            suggest: (word: string, language: string) =>
+                ipcClient.invoke(IPCEventType.spellcheckSuggest, { word, language }),
+            listInstalled: () => ipcClient.invoke(IPCEventType.spellcheckListInstalled, {}),
+            listAvailable: () => ipcClient.invoke(IPCEventType.spellcheckListAvailable, {}),
+            download: (code: string) => ipcClient.invoke(IPCEventType.spellcheckDownload, { code }),
+            remove: (code: string) => ipcClient.invoke(IPCEventType.spellcheckRemove, { code }),
+        },
         pickBackgroundImage: () => ipcClient.invoke(IPCEventType.appPickBackgroundImage, {}),
         readBackgroundImage: (file: string) => ipcClient.invoke(IPCEventType.appReadBackgroundImage, { file }),
-        launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,    
+        launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,
+        promptServerTrust: (props: ServerTrustPromptProps) => ipcClient.invoke(IPCEventType.serverTrustPrompt, { props }),
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
             setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
@@ -445,6 +477,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsGetHistory, { projectPath, limit, includeDetails }) as Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>>,
         readBlob: (projectPath: string, revision: RevisionId, path: string) =>
             ipcClient.invoke(IPCEventType.vcsReadBlob, { projectPath, revision, path }) as Promise<RequestStatus<{ contentBase64: string }>>,
+        /** The same file on disk now. `refusal` = it is real and too large to hand over. */
+        readWorkingFile: (projectPath: string, path: string) =>
+            ipcClient.invoke(IPCEventType.vcsReadWorkingFile, { projectPath, path }) as Promise<RequestStatus<VcsWorkingFileRead>>,
         /** Every document at one revision in one round trip; `contentBase64: null` = absent there. */
         readRevisionDocuments: (projectPath: string, revision: RevisionId, paths?: string[]) =>
             ipcClient.invoke(IPCEventType.vcsReadRevisionDocuments, { projectPath, revision, paths }) as Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>>,
@@ -495,6 +530,28 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Goes to the network; ~2s when nothing answers. On demand only, never on a timer. */
         getSyncState: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetSyncState, { projectPath }) as Promise<RequestStatus<VcsSyncState>>,
+        /** Local read - no socket. Null means nobody has signed in to this project's server. */
+        getServerSession: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetServerSession, { projectPath }) as Promise<RequestStatus<{ session: VcsServerSession | null }>>,
+        /** Goes to the network. The token is not stored here and does not come back. */
+        signIn: (projectPath: string, authUrl: string, token: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignIn, { projectPath, authUrl, token }) as Promise<RequestStatus<VcsSignInOutcome>>,
+        /** Changes the machine's trust store. Only a certificate Studio wrote is eligible. */
+        trustAuthority: (projectPath: string, certificatePath: string) =>
+            ipcClient.invoke(IPCEventType.vcsTrustAuthority, { projectPath, certificatePath }) as Promise<RequestStatus<{ installed: boolean; output: string }>>,
+        signOut: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignOut, { projectPath }) as Promise<RequestStatus<{ session: null }>>,
+        /** Goes to the network. Reads one address and says what is behind it. */
+        probeServer: (address: string) =>
+            ipcClient.invoke(IPCEventType.vcsProbeServer, { address }) as Promise<RequestStatus<VcsServerProbe>>,
+        /** Local read, and no project: servers belong to the machine. */
+        listServers: () =>
+            ipcClient.invoke(IPCEventType.vcsListServers, {}) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
+        /** Goes to the network. Both addresses may be empty: the token usually carries them. */
+        addServer: (authUrl: string, remoteUrl: string, token: string) =>
+            ipcClient.invoke(IPCEventType.vcsAddServer, { authUrl, remoteUrl, token }) as Promise<RequestStatus<VcsAddServerOutcome>>,
+        forgetServer: (remoteOrigin: string) =>
+            ipcClient.invoke(IPCEventType.vcsForgetServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         push: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsPush, { projectPath }) as Promise<RequestStatus<VcsPushResult>>,
         /** Writes the working tree: re-read every document once this resolves. */
@@ -541,6 +598,23 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.signingMacIdentities, {}) as Promise<RequestStatus<{ identities: MacSigningIdentity[] }>>,
     },
 
+    /**
+     * Plugin build-config secrets, in the same machine vault. The value goes up
+     * once and a handle comes back; there is no way to read a value back out.
+     */
+    pluginBuildSecret: {
+        /** `value` is plain text. Do not log it or keep it after the call. */
+        set: (value: string, handle?: string) =>
+            ipcClient.invoke(IPCEventType.pluginBuildSecretSet, { value, handle }) as Promise<
+                RequestStatus<{ handle: string; available: boolean }>
+            >,
+        /** False means "set, but not on this machine" as well as "never set". */
+        available: (handle: string) =>
+            ipcClient.invoke(IPCEventType.pluginBuildSecretAvailable, { handle }) as Promise<
+                RequestStatus<{ available: boolean }>
+            >,
+    },
+
     blueprintPersistence: {
         getAll: (projectRef: BlueprintPersistenceProjectRef) =>
             ipcClient.invoke(IPCEventType.blueprintPersistenceGetAll, { projectRef }) as Promise<RequestStatus<{ values: Record<string, unknown> }>>,
@@ -556,6 +630,28 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         fetch: (projectPath: string, request: BlueprintNetworkFetchRequest) =>
             ipcClient.invoke(IPCEventType.blueprintNetworkFetch, { projectPath, request }) as Promise<
                 RequestStatus<{ result: BlueprintNetworkFetchResult }>
+            >,
+    },
+
+    blueprintExternalLink: {
+        open: (projectPath: string, request: BlueprintOpenExternalRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintExternalLinkOpen, { projectPath, request }) as Promise<
+                RequestStatus<{ result: BlueprintOpenExternalResult }>
+            >,
+        openForPlugin: (pluginId: string, request: BlueprintOpenExternalRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintExternalLinkOpenForPlugin, { pluginId, request }) as Promise<
+                RequestStatus<{ result: BlueprintOpenExternalResult }>
+            >,
+    },
+
+    blueprintProgress: {
+        write: (projectPath: string, request: GameProgressExportRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintProgressWrite, { projectPath, request }) as Promise<
+                RequestStatus<{ result: GameProgressExportResult }>
+            >,
+        read: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.blueprintProgressRead, { projectPath }) as Promise<
+                RequestStatus<{ result: GameProgressImportResult }>
             >,
     },
 

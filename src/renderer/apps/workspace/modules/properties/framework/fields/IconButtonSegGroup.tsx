@@ -61,7 +61,15 @@ export function IconButtonSegGroup({
     density = "default",
 }: IconButtonSegGroupProps) {
     const resolvedMode = mode;
-    const paddingClass = density === "compact" ? "px-2 py-1.5" : "px-3 py-2";
+    /*
+     * Compact segments are `px-1`, not `px-2`, because `flex-1` makes the padding the icon's
+     * allowance rather than its breathing room: the group divides its width evenly, and whatever
+     * the padding does not take is what the 16px icon has to sit in. Five `px-2` segments need
+     * 160px before the icons start eating into that allowance, and the page-animation direction
+     * row gets ~150px in a properties panel at its default width. In the roomy cases (the border
+     * side pickers) the segments still grow to fill, so nothing there moves.
+     */
+    const paddingClass = density === "compact" ? "px-1 py-1.5" : "px-3 py-2";
 
     const resolvedMultiSelection = useMemo((): string[] => {
         if (resolvedMode === "multipleExclusivePrimary") {
@@ -126,11 +134,19 @@ export function IconButtonSegGroup({
                     <button
                         key={option.id}
                         type="button"
-                        className={`flex-1 ${paddingClass} transition ${isActive ? groupColors.active : groupColors.idle}`}
+                        /*
+                         * `min-w-0` so a segment can be narrower than its own padding + icon.
+                         * Without it `flex-1` refuses to shrink past that intrinsic width, the
+                         * group overflows the column it was given, and the group's own
+                         * `overflow-hidden` cuts the last segment down the middle - one icon
+                         * sliced in half while the other four look fine. Shrinking is the better
+                         * failure: it crowds all five equally and every one stays recognisable.
+                         */
+                        className={`min-w-0 flex-1 ${paddingClass} transition ${isActive ? groupColors.active : groupColors.idle}`}
                         onClick={() => void handleOptionClick(option.id, option.disabled)}
                         disabled={disabled || option.disabled}
                         aria-pressed={isActive}
-                        title={option.label}
+                        data-tip={option.label} aria-label={option.label}
                     >
                         <div
                             className={`flex items-center justify-center ${

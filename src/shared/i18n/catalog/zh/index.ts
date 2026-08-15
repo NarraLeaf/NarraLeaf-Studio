@@ -18,6 +18,7 @@ import { blueprint } from "./blueprint";
 import { characters } from "./characters";
 import { properties } from "./properties";
 import { motion } from "./motion";
+import { saveSchema } from "./saveSchema";
 import { storyVars } from "./storyVars";
 import { storySnapshot } from "./storySnapshot";
 import { uiEditor } from "./uiEditor";
@@ -35,6 +36,7 @@ import { wizard } from "./wizard";
 import { devMode } from "./devMode";
 import { developer } from "./developer";
 import { pluginPermission } from "./pluginPermission";
+import { serverTrust } from "./serverTrust";
 import { plugins } from "./plugins";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
@@ -46,6 +48,8 @@ import { test } from "./test";
 import { help } from "./help";
 import { update } from "./update";
 import { brand } from "./brand";
+import { game } from "./game";
+import { crash } from "./crash";
 import type { LocaleMessages } from "../types";
 
 export const zh = {
@@ -62,6 +66,8 @@ export const zh = {
     characters,
     properties,
     motion,
+    saveSchema,
+
     storyVars,
     storySnapshot,
     uiEditor,
@@ -79,6 +85,7 @@ export const zh = {
     devMode,
     developer,
     pluginPermission,
+    serverTrust,
     plugins,
     dialogs,
     defaultDoc,
@@ -90,4 +97,6 @@ export const zh = {
     help,
     update,
     brand,
+    game,
+    crash,
 } satisfies LocaleMessages;

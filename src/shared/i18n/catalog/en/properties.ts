@@ -41,6 +41,7 @@ export const properties = {
         unlockAspect: "Unlock aspect ratio",
         resetRotation: "Reset rotation",
         toggleVisibility: "Toggle visibility",
+        animation: "Animation",
         uiElement: "UI Element",
         linkedComponent: "Linked Component",
     },
@@ -137,6 +138,10 @@ export const properties = {
         label: "References",
         building: "Scanning the project…",
         none: "Not referenced anywhere",
+        // Shown instead of `none` when the index found nothing AND could not read part of the
+        // project. The two look identical from here, and only one of them is safe to act on.
+        unknown: "Usage could not be determined",
+        unknownDetail: "{location} could not be read",
         count: {
             one: "{count} reference",
             other: "{count} references",

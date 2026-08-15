@@ -122,8 +122,8 @@ export function TitleBarSearchBox() {
                 <button
                     type="button"
                     onClick={() => openCommandPalette("")}
-                    title={placeholder}
-                    aria-label={placeholder}
+                    data-tip={placeholder}
+
                     className={`${PILL_CLASS} cursor-default justify-center text-fg-subtle transition-colors hover:bg-fill hover:text-fg-muted`}
                 >
                     <Search className="h-3 w-3 shrink-0" />

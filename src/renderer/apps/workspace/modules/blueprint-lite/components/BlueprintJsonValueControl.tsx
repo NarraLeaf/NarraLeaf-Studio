@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { useHostWindow } from "@/lib/components/layout";
 import {
     createContext,
     useCallback,
@@ -176,7 +177,7 @@ function JsonObjectKeyInput({
             }`}
             type="text"
             value={draft}
-            title={invalid ? t("blueprint.json.fieldNameInvalid") : t("blueprint.json.fieldName")}
+            data-tip={invalid ? t("blueprint.json.fieldNameInvalid") : t("blueprint.json.fieldName")}
             size="sm"
             onMouseDown={stopFlowNodePointerBubble}
             onPointerDown={stopFlowNodePointerBubble}
@@ -354,7 +355,7 @@ function JsonTreeRow({
                 {expandable ? (
                     <Button
                         type="button"
-                        title={isExpanded ? t("common.collapse") : t("common.expand")}
+                        data-tip={isExpanded ? t("common.collapse") : t("common.expand")}
                         aria-label={isExpanded ? t("common.collapse") : t("common.expand")}
                         variant="ghost"
                         size="sm"
@@ -373,14 +374,14 @@ function JsonTreeRow({
                 )}
                 <div className="flex min-w-0 flex-1 items-center gap-1">
                     {objectKeyEditor ?? (
-                        <span className="min-w-[4.5rem] truncate text-2xs text-fg-muted" title={String(label)}>
+                        <span className="min-w-[4.5rem] truncate text-2xs text-fg-muted" data-tip={String(label)}>
                             {label}
                         </span>
                     )}
                     {lockedKind ? (
                         <span
                             className="w-[6.25rem] shrink-0 rounded-md border border-edge bg-surface-sunken px-1.5 py-1 text-2xs capitalize tracking-wide text-fg-subtle"
-                            title={t("blueprint.json.schemaFieldType")}
+                            data-tip={t("blueprint.json.schemaFieldType")}
                         >
                             {lockedKind}
                         </span>
@@ -407,7 +408,7 @@ function JsonTreeRow({
                 {canAddChild ? (
                     <Button
                         type="button"
-                        title={t("blueprint.json.addItem")}
+                        data-tip={t("blueprint.json.addItem")}
                         aria-label={t("blueprint.json.addItem")}
                         variant="ghost"
                         size="sm"
@@ -425,7 +426,7 @@ function JsonTreeRow({
                 {onRemove ? (
                     <Button
                         type="button"
-                        title={t("common.remove")}
+                        data-tip={t("common.remove")}
                         aria-label={t("common.remove")}
                         variant="ghost"
                         size="sm"
@@ -537,6 +538,9 @@ function JsonTreeRow({
 }
 
 function usePortalPanelStyle(open: boolean, triggerRef: RefObject<HTMLElement | null>) {
+    // Measured against the window this control is drawn in - a detached editor's, when it is
+    // inside one - not the renderer's own.
+    const hostWindow = useHostWindow();
     const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
 
     useLayoutEffect(() => {
@@ -548,9 +552,9 @@ function usePortalPanelStyle(open: boolean, triggerRef: RefObject<HTMLElement | 
             if (!rect) {
                 return;
             }
-            const width = Math.min(520, Math.max(360, window.innerWidth - 24));
-            const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
-            const top = Math.min(rect.bottom + 8, window.innerHeight - 420);
+            const width = Math.min(520, Math.max(360, hostWindow.innerWidth - 24));
+            const left = Math.min(Math.max(12, rect.left), hostWindow.innerWidth - width - 12);
+            const top = Math.min(rect.bottom + 8, hostWindow.innerHeight - 420);
             setStyle({
                 position: "fixed",
                 left,
@@ -560,11 +564,11 @@ function usePortalPanelStyle(open: boolean, triggerRef: RefObject<HTMLElement | 
             });
         };
         update();
-        window.addEventListener("resize", update);
-        window.addEventListener("scroll", update, true);
+        hostWindow.addEventListener("resize", update);
+        hostWindow.addEventListener("scroll", update, true);
         return () => {
-            window.removeEventListener("resize", update);
-            window.removeEventListener("scroll", update, true);
+            hostWindow.removeEventListener("resize", update);
+            hostWindow.removeEventListener("scroll", update, true);
         };
     }, [open, triggerRef]);
 
@@ -614,6 +618,7 @@ function JsonEditorPortal({
     onClose: () => void;
 }) {
     const { t } = useTranslation();
+    const hostWindow = useHostWindow();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["$"]));
     const [mode, setMode] = useState<"tree" | "raw">("tree");
@@ -665,11 +670,11 @@ function JsonEditorPortal({
                 closeFromExternalInteraction();
             }
         };
-        window.addEventListener("keydown", onKeyDown);
-        window.addEventListener("pointerdown", onPointerDown);
+        hostWindow.addEventListener("keydown", onKeyDown);
+        hostWindow.addEventListener("pointerdown", onPointerDown);
         return () => {
-            window.removeEventListener("keydown", onKeyDown);
-            window.removeEventListener("pointerdown", onPointerDown);
+            hostWindow.removeEventListener("keydown", onKeyDown);
+            hostWindow.removeEventListener("pointerdown", onPointerDown);
         };
     }, [closeFromExternalInteraction, scopeId, triggerRef]);
 
@@ -706,7 +711,7 @@ function JsonEditorPortal({
                     </div>
                     <Button
                         type="button"
-                        title={mode === "raw" ? t("blueprint.json.treeEditor") : t("blueprint.json.rawJson")}
+                        data-tip={mode === "raw" ? t("blueprint.json.treeEditor") : t("blueprint.json.rawJson")}
                         aria-label={mode === "raw" ? t("blueprint.json.treeEditor") : t("blueprint.json.rawJson")}
                         variant="ghost"
                         size="sm"
@@ -759,7 +764,7 @@ function JsonEditorPortal({
                 )}
             </JsonEditorScopeContext.Provider>
         </div>,
-        document.body,
+        hostWindow.document.body,
     );
 }
 
@@ -779,13 +784,13 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
         >
             <div className="min-w-0 flex-1 rounded-md border border-edge bg-surface px-1.5 py-1">
                 <div className="text-2xs capitalize tracking-wide text-fg-subtle">{kind}</div>
-                <div className="truncate font-mono text-2xs text-fg-muted" title={summarizeJsonValue(root)}>
+                <div className="truncate font-mono text-2xs text-fg-muted" data-tip={summarizeJsonValue(root)}>
                     {summarizeJsonValue(root)}
                 </div>
             </div>
             <Button
                 type="button"
-                title={t("blueprint.json.edit")}
+                data-tip={t("blueprint.json.edit")}
                 aria-label={t("blueprint.json.edit")}
                 variant="ghost"
                 size="sm"

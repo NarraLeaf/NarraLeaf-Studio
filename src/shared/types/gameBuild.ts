@@ -72,6 +72,16 @@ export type GameBuildTarget = {
 export type GameBuildRequest = {
     targets: GameBuildTarget[];
     /**
+     * Which build variant this build is. Absent, or the release id, means the project's own values.
+     *
+     * A variant states its own application name, identifier and version and inherits the rest, so
+     * this is what decides the identity the artifacts carry. An id naming a variant the project does
+     * not have is refused rather than fallen back on: falling back would ship the release identity
+     * under the name of a variant the author selected, which is the one way this can be wrong
+     * without anyone noticing.
+     */
+    appTagId?: string;
+    /**
      * Absolute output directory for finished artifacts (chosen via the native
      * folder picker). When absent, defaults to "<project>/dist".
      */
@@ -82,8 +92,14 @@ export type GameBuildRequest = {
     openWhenDone?: boolean;
 };
 
-/** Which build-dialog section a preflight finding belongs to. */
-export type BuildPreflightSection = "targets" | "identity" | "content" | "signing" | "output";
+/**
+ * Which build-dialog section a preflight finding belongs to.
+ *
+ * `plugins` is the one section whose page is not always on screen: it exists only where an installed
+ * plugin declares a value for the platforms being built. That is safe because a finding in it can
+ * only come from a declared field, which is the same fact that puts the page there.
+ */
+export type BuildPreflightSection = "targets" | "identity" | "content" | "plugins" | "signing" | "output";
 
 /**
  * "error" blocks the build (the pipeline would throw); "warning" ships but
@@ -97,16 +113,57 @@ export type BuildPreflightCode =
     | "version-invalid"
     | "version-missing"
     | "identifier-missing"
+    /**
+     * The project's build variants are on disk but could not be read, so nothing here knows which
+     * identity this build would carry. The build itself refuses the same file, so this is an error
+     * rather than a note about a degraded reading.
+     */
+    | "variants-unreadable"
     | "icon-missing"
     | "icon-unusable"
     | "icon-low-resolution"
     | "icon-stale"
     | "plugins-invalid"
+    /**
+     * A plugin declared a value the build cannot ship without, and the variant being built has none.
+     * Reported once per value asked for, so a field taking one value per platform names the platform
+     * it is missing for.
+     */
+    | "plugin-config-missing"
+    /**
+     * A plugin secret the project names by handle whose value is not sealed on this machine. The
+     * ordinary state of a project a collaborator configured - key material never travels with a
+     * project - rather than a damaged one.
+     */
+    | "plugin-secret-unavailable"
+    /**
+     * A `/cut` row naming the variant being built that would take nothing with it - the last row of
+     * its scene, or one below an unconditional jump. It reads on the page as an ending and produces
+     * a package identical to the one without it, so the author believes their demo stops there while
+     * every line of the book ships.
+     */
+    | "cut-point-inert"
+    /**
+     * The variant shortens the story and nobody has said what the player sees when it ends. The
+     * story simply runs out of rows and the last frame stays on screen, which is what an author
+     * discovers by playing the build to the end. Picking "show nothing" on the variant answers it.
+     */
+    | "variant-ending-missing"
+    /**
+     * The story parts into routes and only some of them end for this variant. Not a mistake by
+     * itself - a demo may ship one route whole on purpose - so it ships, and says so.
+     */
+    | "variant-branch-uncut"
     | "build-dependency-unavailable"
     | "sidecar-target-missing"
     | "sidecar-crossbuild-exec-bit"
     | "encryption-key-unavailable"
     | "web-unprotected"
+    /**
+     * The project carries progress between editions, and this target's shell cannot: a page has no
+     * shared file to write, and the mobile shells serve that same page.
+     */
+    | "progress-carry-unsupported"
     | "web-lossy-images"
     | "mobile-template-missing"
     | "mobile-payload-too-large"
@@ -181,6 +238,33 @@ export type GameBuildStatus =
     | "done"
     | "error";
 
+/**
+ * What one produced artifact came to on disk.
+ *
+ * `bytes` is optional because measuring is best-effort: an artifact whose size cannot be read is
+ * still reported, without a number. That is deliberately a different fact from `0` - an artifact
+ * shown as "0 B" reads as an empty build output, and the whole point of this measurement is that a
+ * wrong size is worse than no size.
+ */
+export type GameBuildArtifactSize = {
+    /** Absolute path; matches the entry of `artifacts` this size belongs to. */
+    path: string;
+    /**
+     * Total bytes. For an artifact that is a directory (the web export, a macOS `.app`) this is the
+     * sum of the whole tree, not what `stat` reports for the directory entry itself.
+     */
+    bytes?: number;
+};
+
+/**
+ * Bytes over the artifacts whose size could be read. Unmeasured artifacts contribute nothing rather
+ * than zero, so the total never claims to cover something it could not see; pair it with the count
+ * of measured artifacts when showing it.
+ */
+export function totalGameBuildArtifactBytes(sizes: GameBuildArtifactSize[]): number {
+    return sizes.reduce((total, size) => total + (size.bytes ?? 0), 0);
+}
+
 /** Snapshot returned by build.getStatus; the renderer polls this. */
 export type GameBuildStateSnapshot = {
     status: GameBuildStatus;
@@ -196,6 +280,17 @@ export type GameBuildStateSnapshot = {
     platforms?: GameBuildPlatform[];
     /** Absolute paths of produced artifacts (installers/archives/app dirs). */
     artifacts?: string[];
+    /**
+     * What each of those artifacts came to on disk, in `artifacts` order.
+     *
+     * Carried on the snapshot rather than left in the console line that prints it, because the
+     * console line is not the only place an author meets a finished build - anything polling the
+     * status can show what was shipped without walking the output folder a second time.
+     *
+     * Absent on any snapshot that is not a finished build, and an individual entry may carry no
+     * size (see {@link GameBuildArtifactSize}).
+     */
+    artifactSizes?: GameBuildArtifactSize[];
     /** Absolute output directory of the finished build. */
     outputDir?: string;
     error?: string;
@@ -319,6 +414,24 @@ const BUILDER_EXT_TOKEN: Record<Exclude<GameBuildFormat, "dir">, string> = {
     aab: "aab",
     ipa: "ipa",
 };
+
+/**
+ * What every artifact of a build is named from.
+ *
+ * Derived from the project's own name and the variant's name, deliberately not from a variant's
+ * overridden `displayName`: the file names a project and an edition of it, while `displayName` names
+ * the application a player installs. Two variants that rename the application to the same thing
+ * still write different files, and - the reason this exists - a variant that overrides nothing no
+ * longer writes byte-identical file names to the release build, which silently overwrote it when
+ * both were built into one output folder.
+ *
+ * `null` is the release variant, whose artifacts are named from the project alone. Its names are
+ * therefore exactly what they were before variants existed.
+ */
+export function gameBuildArtifactBaseName(projectName: string, variantName: string | null): string {
+    const base = sanitizeProjectFileName(projectName);
+    return variantName === null ? base : `${base}-${sanitizeProjectFileName(variantName)}`;
+}
 
 /**
  * The artifactName pattern handed to electron-builder. Lives here (rather than

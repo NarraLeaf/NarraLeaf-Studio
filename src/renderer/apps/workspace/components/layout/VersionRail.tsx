@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
     ArchiveRestore,
+    Check,
     ChevronDown,
-    ChevronRight,
     Cloud,
     CloudDownload,
     CloudUpload,
@@ -18,47 +18,55 @@ import {
     GitCompare,
     GitMerge,
     History,
+    KeyRound,
     Loader2,
+    Pin,
+    PinOff,
     Plus,
     RefreshCw,
+    ShieldCheck,
     TriangleAlert,
     X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { VcsChangeKind, VcsFileChange, VcsSyncState } from "@shared/types/vcs";
+import type { VcsChangeKind, VcsFileChange, VcsServerAuthority, VcsServerReach, VcsServerSession, VcsSignInProblem, VcsSyncState } from "@shared/types/vcs";
+import { parseVcsRemoteUrl, vcsAuthorityIsVouchedFor } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { Input, TextArea } from "@/lib/components/elements/Input";
-import { DocumentChangeList } from "@/lib/vcs/DocumentChangeList";
-import { RAIL_CHANGE_SUMMARY_ROWS } from "@/lib/vcs/documentChangeView";
-import {
-    findDocumentDiffEntry,
-    useDocumentDiff,
-    type DocumentDiffRequest,
-    type DocumentDiffState,
-} from "@/lib/vcs/useDocumentDiff";
-import type { WorkspaceContext } from "@/lib/workspace/services/services";
+import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
+import { FieldLabel } from "@/lib/components/elements/FieldLabel";
+import { IconButton } from "@/lib/components/elements/Button";
+import { getInterface } from "@/lib/app/bridge";
+import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { useWorkspace } from "../../context";
 import { openVcsChangesTab } from "../../modules/vcs-changes/openVcsChangesTab";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import {
     VERSION_RAIL_COLLAPSED_WIDTH,
     VERSION_RAIL_EXPANDED_WIDTH,
+    MANUAL_SERVER,
+    NO_SERVER,
     buildChangeList,
     canCommit,
+    initialServerChoice,
+    filterHistoryRows,
+    historyDayKey,
+    historyDayLabel,
     historyRowHeadline,
     isCommitFormPresent,
     isVersionSurfaceVisible,
     revisionLabel,
+    revisionMessageLine,
     shortRevision,
     splitChangePath,
     versionFace,
     type FlatHistoryEntry,
     type VersionRailPresence,
 } from "./versionRailModel";
-import { registerVersionRailBridge } from "./versionRailController";
+import { registerVersionRailBridge, VERSION_COMMIT_MESSAGE_ATTRIBUTE } from "./versionRailController";
 
 interface VersionRailProps {
     surface: VersionSurface;
@@ -96,7 +104,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
     // Only for the strip's merge button; everything else here reads the surface. Null before the
     // workspace has a context, which is why that button is conditional on it.
     const { context } = useWorkspace();
-    const { state, busy, error, history } = surface;
+    const { state, busy, failure, history } = surface;
     const onRevision = state.kind === "revision";
     const visible = isVersionSurfaceVisible(state);
     const open = presence === "panel";
@@ -159,7 +167,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                 <button
                     type="button"
                     onClick={() => onExpandedChange(true)}
-                    title={onRevision
+                    data-tip={onRevision
                         ? t("workspace.shell.versionControl.viewingVersion", { version: shownName(state) })
                         : t("workspace.shell.freeze.enteredTitle")}
                     aria-label={t("workspace.shell.versionControl.open")}
@@ -182,7 +190,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                     <button
                         type="button"
                         onClick={() => openVcsChangesTab(context, { mode: "resolve" })}
-                        title={t("workspace.shell.versionControl.mergeResolve")}
+                        data-tip={t("workspace.shell.versionControl.mergeResolve")}
                         aria-label={t("workspace.shell.versionControl.mergeResolve")}
                         className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
                     >
@@ -193,7 +201,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                         type="button"
                         onClick={surface.returnToCurrent}
                         disabled={busy === "restore"}
-                        title={escapeLabel}
+                        data-tip={escapeLabel}
                         aria-label={escapeLabel}
                         className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                     >
@@ -260,7 +268,7 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                 <button
                     type="button"
                     onClick={() => onExpandedChange(false)}
-                    title={dismissLabel}
+                    data-tip={dismissLabel}
                     aria-label={dismissLabel}
                     className="flex h-6 w-6 items-center justify-center rounded-md text-fg-muted transition-colors cursor-default hover:bg-fill hover:text-fg"
                 >
@@ -327,7 +335,22 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                         {t(busyKey(busy))}
                     </p>
                 )}
-                {error && <p className="px-3 py-2 text-2xs text-danger">{error}</p>}
+                {/* Red is reserved for something having gone wrong. The most common line this panel
+                    ever draws is the answer to submitting a version of an unchanged tree, and in
+                    red it read as a broken feature rather than as "there was nothing to record".
+
+                    Withheld altogether when the server section is already saying, in a sentence
+                    somebody can act on, that this installation has to sign in first: the string
+                    underneath it would be the client library's own, in English, naming a verb no
+                    author has heard of. */}
+                {failure && !surface.remoteNeedsSignIn && (
+                    <p className={cn(
+                        "px-3 py-2 text-2xs",
+                        failure.tone === "failure" ? "text-danger" : "text-fg-muted",
+                    )}>
+                        {failure.text}
+                    </p>
+                )}
             </div>
         </div>
     );
@@ -353,10 +376,16 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
     const onRevision = state.kind === "revision";
     const time = focused?.timestamp !== undefined ? formatRevisionTime(focused.timestamp, locale) : null;
     const author = focused?.author?.trim() || null;
-    const face = versionFace(
-        { state, branch: surface.branch, rowNumber: focused?.number, unnumbered: "omit" },
-        t,
-    );
+    // Studio's own sentences read back in the author's language; the author's own words untouched.
+    // `original` is the stored English, and it goes in the title beside the message - what a
+    // collaborator's client shows has to stay reachable from here.
+    const headline = revisionMessageLine(focused?.message, t);
+    const face = versionFace({ state, branch: surface.branch, rowNumber: focused?.number }, t);
+    const hash = state.kind === "current"
+        ? shortRevision(state.head)
+        : state.kind === "revision"
+            ? shortRevision(state.revision)
+            : "";
 
     return (
         <div
@@ -367,10 +396,17 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
                 // One truncated line, so the whole of it has to be reachable somehow; a version
                 // message is often a sentence and this is the surface that names the version the
                 // author is looking at.
-                title={focused?.message?.trim() || undefined}
+                // `data-tip`, not `title`: Studio draws its own tooltips now and the native bubble is
+                // banned outright (`noNativeTooltips.test.ts`). It honours `whitespace-pre-line`, so
+                // the two lines below still arrive as two lines.
+                data-tip={[headline?.text, headline?.original]
+                    // Identical in English, where the reading and the stored bytes are the same
+                    // sentence - printing it twice would look like a fault.
+                    .filter((line, index, lines) => line && lines.indexOf(line) === index)
+                    .join("\n") || undefined}
                 className={cn("truncate text-sm font-medium", onRevision ? "text-primary" : "text-fg")}
             >
-                {focused?.message?.trim()
+                {headline?.text
                     // No message: the revision names itself, which is what this line said before the
                     // metadata was readable at all. "Current version" would be a lie in the two states
                     // where there is no version: a repository nobody has committed to, and a project
@@ -390,22 +426,30 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
                 </p>
             )}
 
-            {/* The identity, kept: it is what the switcher menu and the status cell show, and the hash is the
-                only thing that separates two revisions carrying the same message. Through the same
-                `versionFace` as those two, `unnumbered: "omit"` because the hash is already the span
-                beside it - this is the one surface that would otherwise print it twice. */}
-            {(state.kind === "current" || state.kind === "revision") && (
-                <div className="mt-0.5 flex items-baseline gap-2 text-2xs text-fg-subtle">
-                    {face.text && (
-                        <span
-                            className="truncate tabular-nums"
-                            title={face.full !== face.text ? face.full : undefined}
-                        >
-                            {face.text}
-                        </span>
-                    )}
-                    <span className="font-mono">
-                        {shortRevision(state.kind === "current" ? state.head : state.revision)}
+            {/* The identity, through the same `versionFace` as the switcher menu and the status
+                cell - three surfaces naming one version three ways is a contradiction an author
+                reads as a broken feature.
+
+                **The hash used to be drawn beside it and is now in the title.** It earned its place
+                as the only thing separating two revisions that carry the same message - except the
+                line directly above already carries the time, which separates them just as well and
+                means something to a person. What was left was seven characters of hex permanently on
+                screen in a product whose authors never write code, which is the one thing the copy
+                rules name outright. It is still HERE, because a hash is what the author's own `lore`
+                CLI and any collaborator's client identify a revision by; it is just no longer the
+                second thing they read.
+
+                `unnumbered` is left at its default for the same reason: a revision reached from
+                somewhere that never learned its number has nothing else to be called, and an empty
+                line is worse than a hash. */}
+            {(state.kind === "current" || state.kind === "revision") && face.text && (
+                <div className="mt-0.5 text-2xs text-fg-subtle">
+                    <span
+                        className="block truncate tabular-nums"
+                        // `data-tip` rather than `title` for the same reason as the line above.
+                        data-tip={[face.full, hash].filter((line, index, lines) => lines.indexOf(line) === index).join("\n")}
+                    >
+                        {face.text}
                     </span>
                 </div>
             )}
@@ -437,7 +481,7 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
                         type="button"
                         onClick={() => void surface.restoreRevision(state.revision, state.label)}
                         disabled={surface.busy !== null}
-                        title={t("workspace.shell.versionControl.restore")}
+                        data-tip={t("workspace.shell.versionControl.restore")}
                         aria-label={t("workspace.shell.versionControl.restore")}
                         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-primary/40 text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                     >
@@ -494,31 +538,19 @@ function formatRevisionTime(timestamp: number, locale: string): string | null {
  * performance - it is that the history lives further down the SAME scroller. Fifty rows is a
  * screenful, so without a ceiling here the way to another version would be below the fold whenever the
  * author had been working, which is exactly when they are most likely to want it.
+ *
+ * **It lists files and never a change inside one.** A row used to expand into that file's comparison,
+ * drawn in place; eight rows was the whole of what fitted, and the read behind it was a scan. The
+ * comparison is a two-pane tab now (`modules/vcs-changes`), which has the width for an index and a
+ * detail, so the rail keeps the half it can hold honestly - which files moved - and the button beside
+ * the refresh is the way to the other half. The rail therefore runs no document comparison at all,
+ * rather than running one whenever a row was opened.
  */
-function ChangesSection({ surface }: { surface: VersionSurface }) {
+export function ChangesSection({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const { status } = surface;
     const view = useMemo(() => (status ? buildChangeList(status.files) : null), [status]);
-    /**
-     * The one file whose changes are open, or null.
-     *
-     * One at a time. The list already lives in a bounded box that shares its scroller with the commit
-     * form and the whole history, so two open expansions would leave nothing of the list itself - and
-     * the way to another version would be below the fold exactly when the author has been working,
-     * which is the thing this section's own height ceiling exists to prevent.
-     */
-    const [expanded, setExpanded] = useState<string | null>(null);
-    // Read only once a row is open, so an author who never expands one never pays for the comparison -
-    // which is a scan, and a scan is never free (docs §4.17).
-    const diff = useDocumentDiff(WORKING_TREE_DIFF, { enabled: expanded !== null });
-
-    // A new scan describes a working tree that has moved, and the open comparison was read against
-    // the old one. Collapsing is what stops the file list and the expansion under it disagreeing;
-    // the next expand reads again.
-    useEffect(() => {
-        setExpanded(null);
-    }, [status]);
 
     return (
         <div data-vcs-seam="change-list" className="border-b border-edge px-3 py-2">
@@ -526,15 +558,40 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
                 <span className="text-2xs tracking-wide text-fg-subtle">
                     {t("workspace.shell.versionControl.changes")}
                 </span>
-                <button
-                    type="button"
-                    onClick={surface.refreshChanges}
-                    title={t("workspace.shell.versionControl.refreshChanges")}
-                    aria-label={t("workspace.shell.versionControl.refreshChanges")}
-                    className="flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
-                >
-                    <RefreshCw className="h-3 w-3" />
-                </button>
+                <div className="flex shrink-0 items-center gap-0.5">
+                    {/* The way to the comparison, and the only one this section offers: a row cannot
+                        be the way in, because the tab opens on a comparison rather than on a file,
+                        and a row that opened onto some other file's detail would be a promise
+                        broken on the first press. Same icon and same sentence as the history rows'
+                        own compare button, because it is the same act. */}
+                    {context && (
+                        <button
+                            type="button"
+                            onClick={() => openVcsChangesTab(context, {
+                                mode: "working-tree",
+                                // What this panel is calling the head right now, so the tab's
+                                // heading says the same `#36` the block above it does.
+                                headLabel: surface.state.kind === "current" && surface.state.number !== null
+                                    ? revisionLabel(surface.state.number)
+                                    : undefined,
+                            })}
+                            data-tip={t("documentDiff.rail.compareWithPrevious")}
+                            aria-label={t("documentDiff.rail.compareWithPrevious")}
+                            className="flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
+                        >
+                            <GitCompare className="h-3 w-3" />
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={surface.refreshChanges}
+                        data-tip={t("workspace.shell.versionControl.refreshChanges")}
+                        aria-label={t("workspace.shell.versionControl.refreshChanges")}
+                        className="flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
+                    >
+                        <RefreshCw className="h-3 w-3" />
+                    </button>
+                </div>
             </div>
             <p className="mt-1 text-2xs text-fg-muted">
                 {view === null
@@ -547,14 +604,7 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
             {view !== null && view.rows.length > 0 && (
                 <div className="-mx-1 mt-1 max-h-64 overflow-y-auto">
                     {view.rows.map(file => (
-                        <ChangeRow
-                            key={file.path}
-                            file={file}
-                            expanded={expanded === file.path}
-                            onToggle={() => setExpanded(current => (current === file.path ? null : file.path))}
-                            diff={diff}
-                            context={context}
-                        />
+                        <ChangeRow key={file.path} file={file} />
                     ))}
                     {view.hidden > 0 && (
                         <p className="px-1 pt-1 text-2xs text-fg-subtle">
@@ -568,30 +618,18 @@ function ChangesSection({ surface }: { surface: VersionSurface }) {
 }
 
 /**
- * The comparison the change list expands into. Module-level so its identity is stable across renders -
- * an inline literal would be a new request object every time, which is the one way `useDocumentDiff`
- * could become the poll its own header forbids.
- */
-const WORKING_TREE_DIFF: DocumentDiffRequest = { mode: "working-tree" };
-
-/**
- * One changed file, and what changed inside it.
+ * One changed file.
  *
- * **A button now, and this is the promise the panel had so far been careful not to make.** The row
- * used to be a plain `<div>` because highlighting something that opens onto nothing is worse than
- * not highlighting it; it opens onto something as of this milestone, so it is a control.
+ * **A plain `<div>`, because it opens onto nothing.** It was a button for one milestone, expanding
+ * into that file's changes in place; those changes are the comparison tab's now, and the tab opens on
+ * a comparison rather than on a file - so a row that looked pressable would land the author on some
+ * other file's detail. Highlighting something that opens onto nothing is worse than not highlighting
+ * it, which is the rule this row was written under before it briefly became a control.
  *
- * It expands **in place, in the list it is already in** - not a popover, not a second panel, not a
- * scroller of its own. The rail is 320px and everything below this section (the history, and the way
- * to another version) is in the same scroller, so anything that opened beside the row would either
- * cover the list or push the history off the bottom. Eight rows is the cap; past that the honest
- * move is a wider surface, and "view all N" is the way to one.
- *
- * The freeze is deliberately not consulted anywhere here. A comparison is a read by construction, and
- * a manual freeze leaves this section on screen (it is keyed on the surface state, not on `frozen`) -
- * so switching it off would take away the only way to see what is uncommitted precisely while the
- * author is unable to commit it. Same rule as `InspectOnlyButton`, reached from the other direction:
- * there is no `<fieldset>` clamp in this column, so a real `<button>` is safe.
+ * The freeze is deliberately not consulted anywhere here. Reading which files moved is a read by
+ * construction, and a manual freeze leaves this section on screen (it is keyed on the surface state,
+ * not on `frozen`) - so switching it off would take away the only way to see what is uncommitted
+ * precisely while the author is unable to commit it.
  *
  * The path is split so the FILE NAME survives a narrow column and the directory is what gets cut - and
  * cut at its head, not its tail, because the distinguishing end of a path here is the last thing on it
@@ -602,19 +640,7 @@ const WORKING_TREE_DIFF: DocumentDiffRequest = { mode: "working-tree" };
  * narraleaf-react injects a Tailwind v4 sheet over this app and betting on generated utilities here
  * has burned us before.
  */
-function ChangeRow({
-    file,
-    expanded,
-    onToggle,
-    diff,
-    context,
-}: {
-    file: VcsFileChange;
-    expanded: boolean;
-    onToggle: () => void;
-    diff: DocumentDiffState;
-    context: WorkspaceContext | null;
-}) {
+function ChangeRow({ file }: { file: VcsFileChange }) {
     const { t } = useTranslation();
     const { directory, name } = splitChangePath(file.path);
     const Icon = CHANGE_ICONS[file.kind];
@@ -623,101 +649,40 @@ function ChangeRow({
     const kindLabel = t(`workspace.shell.versionControl.changeKind.${file.kind}`);
     // The whole repository-relative path, plus where a move or copy came from - the row itself has no
     // room for an origin, and dropping it would make a move indistinguishable from an add.
-    const path = file.fromPath
+    const title = file.fromPath
         ? `${file.path}\n${t("workspace.shell.versionControl.changeFromPath", { path: file.fromPath })}`
         : file.path;
-    const title = `${path}\n${t(expanded ? "documentDiff.rail.collapse" : "documentDiff.rail.expand")}`;
-    // Null while the read is out, and null AFTERWARDS when the comparison does not carry this path -
-    // which happens when a budget cut the comparison short. The two are told apart below, because
-    // "not read yet" and "not inspected" are opposite things to tell someone waiting.
-    const entry = expanded ? findDocumentDiffEntry(diff.result, file.path) : null;
 
     return (
-        <div>
-            <button
-                type="button"
-                onClick={onToggle}
-                aria-expanded={expanded}
-                title={title}
-                className="group flex w-full items-center gap-1.5 overflow-hidden rounded-md px-1 py-0.5 text-left transition-colors cursor-default hover:bg-fill"
-            >
-                {/* `role="img"` beside the label: an <svg> carrying only aria-label is announced by nothing,
-                    and the kind is the one thing about this row that is not in the text. */}
-                <Icon
-                    role="img"
-                    className={cn("h-3 w-3 shrink-0", CHANGE_TINTS[file.kind])}
-                    aria-label={kindLabel}
-                />
-                {/* Shrinks first and by a wide margin, so the file name only starts to give way once the
-                    directory has nothing left to give. */}
-                {directory !== null && (
-                    <span
-                        className="overflow-hidden whitespace-nowrap text-2xs text-fg-subtle"
-                        style={{ direction: "rtl", textOverflow: "ellipsis", flexShrink: 999, minWidth: 0 }}
-                    >
-                        <span style={{ direction: "ltr", unicodeBidi: "embed" }}>{directory}/</span>
-                    </span>
-                )}
-                <span className="min-w-0 truncate text-2xs text-fg-muted">{name}</span>
-                {/* One `ml-auto`, on the group rather than on each of its members: two auto margins in
-                    a flex row SHARE the free space, which would leave the conflict marker floating in
-                    the middle of the row instead of at its end. */}
-                <span className="ml-auto flex shrink-0 items-center gap-1">
-                    {file.conflictUnresolved && (
-                        <TriangleAlert
-                            role="img"
-                            className="h-3 w-3 text-danger"
-                            aria-label={t("workspace.shell.versionControl.changeConflict")}
-                        />
-                    )}
-                    {/* Two icons rather than one rotated: narraleaf-react's Tailwind v4 sheet kills v3
-                        `transform` utilities over this app, and a chevron that silently never turns is
-                        exactly the kind of defect that survives a screenshot. Hidden until the row is
-                        hovered or open, because fifty always-visible chevrons in a 320px column are
-                        fifty pieces of chrome saying the same thing. */}
-                    <span className="text-fg-subtle">
-                        {expanded
-                            ? <ChevronDown className="h-3 w-3" />
-                            : <ChevronRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />}
-                    </span>
+        <div
+            data-tip={title}
+            data-vcs-change-row={file.path}
+            className="flex w-full items-center gap-1.5 overflow-hidden rounded-md px-1 py-0.5 text-left"
+        >
+            {/* `role="img"` beside the label: an <svg> carrying only aria-label is announced by nothing,
+                and the kind is the one thing about this row that is not in the text. */}
+            <Icon
+                role="img"
+                className={cn("h-3 w-3 shrink-0", CHANGE_TINTS[file.kind])}
+                aria-label={kindLabel}
+            />
+            {/* Shrinks first and by a wide margin, so the file name only starts to give way once the
+                directory has nothing left to give. */}
+            {directory !== null && (
+                <span
+                    className="overflow-hidden whitespace-nowrap text-2xs text-fg-subtle"
+                    style={{ direction: "rtl", textOverflow: "ellipsis", flexShrink: 999, minWidth: 0 }}
+                >
+                    <span style={{ direction: "ltr", unicodeBidi: "embed" }}>{directory}/</span>
                 </span>
-            </button>
-
-            {expanded && (
-                <div className="pb-1 pl-4 pr-1">
-                    {diff.loading && (
-                        <p className="flex items-center gap-1.5 text-2xs text-fg-subtle">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            {t("documentDiff.rows.loading")}
-                        </p>
-                    )}
-                    {!diff.loading && diff.error && (
-                        <p className="text-2xs text-danger">{diff.error}</p>
-                    )}
-                    {!diff.loading && !diff.error && entry === null && (
-                        // Either the comparison was cut short before this path, or the bytes could not
-                        // be fetched. Both have to read as "changed, not inspected" rather than as an
-                        // empty list, which is what "nothing changed" looks like.
-                        <p className="text-2xs text-fg-subtle">{t("documentDiff.rows.notInspected")}</p>
-                    )}
-                    {!diff.loading && entry && (
-                        <DocumentChangeList
-                            diff={entry.diff}
-                            limit={RAIL_CHANGE_SUMMARY_ROWS}
-                            dense
-                            wholeDocument={file.kind === "added" || file.kind === "deleted"}
-                            footer={context ? (
-                                <button
-                                    type="button"
-                                    onClick={() => openVcsChangesTab(context, { mode: "working-tree" })}
-                                    className="pt-0.5 text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg"
-                                >
-                                    {t("documentDiff.rows.viewAll", { count: String(entry.diff.total) })}
-                                </button>
-                            ) : undefined}
-                        />
-                    )}
-                </div>
+            )}
+            <span className="min-w-0 truncate text-2xs text-fg-muted">{name}</span>
+            {file.conflictUnresolved && (
+                <TriangleAlert
+                    role="img"
+                    className="ml-auto h-3 w-3 shrink-0 text-danger"
+                    aria-label={t("workspace.shell.versionControl.changeConflict")}
+                />
             )}
         </div>
     );
@@ -761,10 +726,12 @@ const CHANGE_TINTS: Record<VcsChangeKind, string> = {
  * a condition here is that a frozen workspace showing an inert Commit button is the exact thing
  * `freezeGuard` says never to offer.
  *
- * **The button does not read the change count.** `surface.status` is null until someone scans, and
- * scanning to decide whether to enable a button would be the implicit scan docs §4.17 forbids. An
- * empty tree comes back from the backend as an error and lands on the error line below, which for
- * someone who pressed Commit is the answer to what they asked.
+ * **The button reads the change count only once someone has looked.** `surface.status` is null until
+ * a scan happens, and scanning to decide whether to enable a button would be the implicit scan docs
+ * §4.17 forbids - so a null count leaves the button live and the backend answers "nothing has changed
+ * since the last version", which for someone who pressed Submit is the answer to what they asked. A
+ * count that a scan actually produced is different: the section right below is already saying "No
+ * changes", and a live button under that sentence only ever produced a refusal (`canCommit`).
  *
  * **An empty message is allowed** - `VcsCommitOptions.message` documents empty as "the default for
  * the kind", and a revision with no message already renders as itself in `FocusedVersion`. So there
@@ -780,7 +747,16 @@ function CommitForm({ surface }: { surface: VersionSurface }) {
     const [message, setMessage] = useState("");
     const frozen = surface.frozen !== null;
     const present = isCommitFormPresent({ state: surface.state, frozen });
-    const enabled = canCommit({ state: surface.state, frozen, busy: surface.busy !== null });
+    // The same count the section below draws, from the same builder - the two disagreeing about
+    // whether this project has changes would be the panel arguing with itself. Null while nobody has
+    // scanned, which is not "clean" and does not disable anything.
+    const changedFiles = surface.status ? buildChangeList(surface.status.files).total : null;
+    const enabled = canCommit({
+        state: surface.state,
+        frozen,
+        busy: surface.busy !== null,
+        changedFiles,
+    });
 
     const submit = () => {
         if (!enabled) {
@@ -797,6 +773,10 @@ function CommitForm({ surface }: { surface: VersionSurface }) {
 
     return (
         <div data-vcs-seam="commit-form" className="border-b border-edge px-3 py-2">
+            {/* Above the message box, because it is answered once and then never again - and because
+                the question it asks ("who is this version by") is about the version the author is
+                one press away from recording. */}
+            <AuthorIdentity surface={surface} />
             <TextArea
                 size="sm"
                 rows={2}
@@ -814,6 +794,9 @@ function CommitForm({ surface }: { surface: VersionSurface }) {
                 disabled={surface.busy === "commit"}
                 placeholder={t("workspace.shell.versionControl.commitPlaceholder")}
                 aria-label={t("workspace.shell.versionControl.commitMessage")}
+                // How the palette's "Submit a version" finds this box after opening the rail. An
+                // attribute rather than the aria-label, which is translated.
+                {...{ [VERSION_COMMIT_MESSAGE_ATTRIBUTE]: "" }}
                 className="text-2xs"
             />
             <button
@@ -832,6 +815,100 @@ function CommitForm({ surface }: { surface: VersionSurface }) {
 }
 
 /**
+ * Who to sign versions as, asked once and only while nobody has said.
+ *
+ * **The setting has always existed and nothing ever asked**, so every project in every install
+ * records `NarraLeaf Studio` as the author of every version. Alone that is merely uninformative;
+ * with a server configured it means a shared history in which nobody can tell who wrote what, which
+ * is most of what a shared history is for.
+ *
+ * Asked HERE rather than added to the first-run wizard, and not filled in from the OS account: it is
+ * the moment the name is about to be used, the author is already looking at a version they are
+ * about to record, and one line in the panel they are using costs nothing to ignore. Studio does not
+ * publish their login name on their behalf (`UNCONFIGURED_IDENTITY` explains why), so the only two
+ * honest options are to ask or to keep recording the tool.
+ *
+ * Absent the moment it is answered. Changing it afterwards is Settings → Version control, which is
+ * where a decision made once a year belongs - a permanent field in a 320px column would cost every
+ * author width for a question they have already answered.
+ */
+function AuthorIdentity({ surface }: { surface: VersionSurface }) {
+    const { t } = useTranslation();
+    const [draft, setDraft] = useState("");
+    const [saving, setSaving] = useState(false);
+
+    if (surface.authorName !== null) {
+        return null;
+    }
+
+    const submit = () => {
+        const name = draft.trim();
+        // Nothing to store, and the offer stays: an empty name is what is already recorded, so
+        // "saving" it would only make the row disappear without changing anything.
+        if (!name || saving) {
+            return;
+        }
+        setSaving(true);
+        void surface.setAuthorName(name).finally(() => setSaving(false));
+    };
+
+    return (
+        <div data-vcs-seam="author-identity" className="mb-2">
+            <label className="block text-2xs tracking-wide text-fg-subtle" htmlFor={AUTHOR_INPUT_ID}>
+                {t("workspace.shell.versionControl.authorLabel")}
+            </label>
+            <div className="mt-1 flex items-center gap-1.5">
+                <Input
+                    id={AUTHOR_INPUT_ID}
+                    size="sm"
+                    value={draft}
+                    onChange={event => setDraft(event.target.value)}
+                    onKeyDown={event => {
+                        if (event.key === "Enter") {
+                            event.preventDefault();
+                            submit();
+                        }
+                    }}
+                    disabled={saving}
+                    placeholder={t("workspace.shell.versionControl.authorPlaceholder")}
+                    className="min-w-0 flex-1 text-2xs"
+                />
+                {/* A button rather than saving on blur: this writes a Studio-wide setting, and a
+                    field that stored itself when the author clicked elsewhere would do it while
+                    they were still deciding. */}
+                <button
+                    type="button"
+                    onClick={submit}
+                    disabled={saving || draft.trim() === ""}
+                    data-tip={t("workspace.shell.versionControl.authorSave")}
+                    aria-label={t("workspace.shell.versionControl.authorSave")}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge text-fg-muted transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
+                >
+                    {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * How many versions a list has to hold before it offers to be narrowed.
+ *
+ * Below this, the filter would be a control that costs a row of height to save nothing: a dozen rows
+ * is a list an author reads. It counts what is DRAWN, so a project of fifty checkpoints and three
+ * commits does not get a filter until the checkpoints are shown - which is exactly when it needs one.
+ */
+const HISTORY_FILTER_THRESHOLD = 12;
+
+/**
+ * One id, because the row is drawn in two places and a `<label for>` needs one that matches.
+ *
+ * Both are never on screen at once - the commit form is absent while the server form is open - so a
+ * constant is safe here in a way it would not be for a repeated row.
+ */
+const AUTHOR_INPUT_ID = "vcs-author-name";
+
+/**
  * The server this project synchronises with: whether there is one, where it stands, and the two
  * buttons that move versions between here and there.
  *
@@ -841,108 +918,620 @@ function CommitForm({ surface }: { surface: VersionSurface }) {
  * thing that reaches out. A row that phoned home on mount would put those two seconds on the path
  * of opening the panel, and would do it again on every project.
  *
- * **The credential fields are absent until the server refuses us.** Lore's token login needs both a
- * token and an https auth endpoint, and a bare server on a LAN has neither and needs neither -
- * measured. Asking for them up front would put two mandatory-looking boxes in front of every author
- * for a case most will never hit; asking at the moment of refusal puts them exactly where the
- * question arises. That is also why the common setup is genuinely one field: the backend keeps only
- * the ORIGIN of the URL it is given and identifies the repository by its own id, so a per-project
- * address is not a thing that exists.
+ * **The credential fields are behind a press, never in front of one.** Signing in needs both a
+ * token and an https address, and a bare server on a LAN has neither and needs neither - measured.
+ * Two mandatory-looking boxes in front of every author, for a case most will never meet, is the
+ * thing to avoid; a single quiet line that opens them is not. It is a line rather than a state
+ * reached only by being refused, because a server that wants a token wants it before the first
+ * push, and finding that out by being turned away costs two seconds and teaches nothing.
+ *
+ * That is also why the common setup is genuinely one field: the backend keeps only the ORIGIN of
+ * the URL it is given and identifies the repository by its own id, so a per-project address is not
+ * a thing that exists.
  */
-function ServerSection({ surface }: { surface: VersionSurface }) {
+/**
+ * Signing in to the server this project is pointed at, and saying who is signed in.
+ *
+ * **The whole point of it is on the last line**: while a session is in force, what goes on a
+ * revision is the name the server knows this account by, not what somebody typed into their own
+ * settings - so the panel says that name, where it came from, and nothing else.
+ *
+ * The refusal sentences are not decoration either. The backend answers an untrusted certificate,
+ * a port nothing listens on, an unresolvable name and an endpoint speaking plain HTTP with one
+ * identical sentence, so the reason arrives here as a code and this is where it becomes something
+ * a person can act on. The certificate case is the one worth reading twice: nothing inside Studio
+ * can trust an authority on this machine's behalf, so it names the fingerprint to compare and
+ * sends them to the person who runs the server.
+ */
+function SignInSection({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
-    const { remote, syncState, busy } = surface;
-    const [editing, setEditing] = useState(false);
-    const [draft, setDraft] = useState("");
+    const { serverSession, signIn, busy } = surface;
+    const [open, setOpen] = useState(false);
+    const [address, setAddress] = useState("");
+    const [token, setToken] = useState("");
     const running = busy !== null;
+    // Both read off the last answer rather than held as state, so they cannot disagree
+    // with the sentence being shown underneath the fields.
+    const needsAddress = signIn !== null && !signIn.ok && signIn.problem.kind === "address";
+    const untrusted = signIn !== null && !signIn.ok && signIn.problem.kind === "certificate"
+        ? signIn.problem.authority
+        : null;
+    // A token that named a DIFFERENT authority than the one answering gets no button at
+    // all - not a quieter one. The sentence above says something is standing in the way,
+    // and a control underneath offering to trust it anyway argues with that sentence.
+    const offer = untrusted && (vcsAuthorityIsVouchedFor(untrusted) || untrusted.expected === "")
+        ? untrusted
+        : null;
 
-    const open = () => {
-        // Seeded with the current address so that CHANGING a server is an edit rather than a
-        // retype - the two differ by a port far more often than by the whole string.
-        setDraft(remote ?? "");
-        setEditing(true);
-    };
+    if (serverSession) {
+        return (
+            <div data-vcs-seam="server-identity" className="mt-1 flex items-baseline gap-1.5">
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-muted" data-tip={serverSession.account.identity}>
+                    {t("workspace.shell.versionControl.server.signIn.signedInAs", {
+                        name: serverSession.account.displayName,
+                    })}
+                </span>
+                <button
+                    type="button"
+                    onClick={() => void surface.signOutOfServer()}
+                    disabled={running}
+                    className="shrink-0 text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg disabled:opacity-50"
+                >
+                    {t("workspace.shell.versionControl.server.signIn.signOut")}
+                </button>
+            </div>
+        );
+    }
+
+    if (!open) {
+        return (
+            <button
+                type="button"
+                onClick={() => setOpen(true)}
+                disabled={running}
+                className="mt-1 flex items-center gap-1.5 text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg disabled:opacity-50"
+            >
+                <KeyRound className="h-3 w-3" />
+                {t("workspace.shell.versionControl.server.signIn.open")}
+            </button>
+        );
+    }
 
     const submit = () => {
-        const url = draft.trim();
-        if (!url) {
-            return;
-        }
-        void surface.setRemote(url).then(saved => {
-            if (saved) setEditing(false);
+        if (!token.trim()) return;
+        void surface.signInToServer(address.trim(), token.trim()).then(signedIn => {
+            if (!signedIn) return;
+            setOpen(false);
+            // The token is not kept for a moment longer than the call that used it. Nothing
+            // here needs it again, and a box still holding a credential is one a screenshot,
+            // a screen share or the next person at this desk can read.
+            setToken("");
         });
     };
 
-    if (editing) {
-        return (
-            <div data-vcs-seam="server-form" className="border-b border-edge px-3 py-2">
-                <label className="block text-2xs tracking-wide text-fg-subtle">
-                    {t("workspace.shell.versionControl.server.addressLabel")}
-                </label>
-                <Input
-                    size="sm"
-                    autoFocus
-                    value={draft}
-                    onChange={event => setDraft(event.target.value)}
-                    onKeyDown={event => {
-                        if (event.key === "Enter") {
-                            event.preventDefault();
-                            submit();
-                        }
-                        if (event.key === "Escape") {
-                            event.preventDefault();
-                            setEditing(false);
-                        }
-                    }}
-                    disabled={busy === "remote"}
-                    placeholder={t("workspace.shell.versionControl.server.addressPlaceholder")}
-                    className="mt-1 text-2xs"
+    return (
+        <div data-vcs-seam="sign-in-form" className="mt-2">
+            <label className="block text-2xs tracking-wide text-fg-subtle">
+                {t("workspace.shell.versionControl.server.signIn.tokenLabel")}
+            </label>
+            <Input
+                size="sm"
+                autoFocus
+                value={token}
+                onChange={event => setToken(event.target.value)}
+                onKeyDown={event => {
+                    if (event.key === "Enter") {
+                        event.preventDefault();
+                        submit();
+                    }
+                    if (event.key === "Escape") {
+                        event.preventDefault();
+                        setOpen(false);
+                    }
+                }}
+                disabled={running}
+                placeholder={t("workspace.shell.versionControl.server.signIn.tokenPlaceholder")}
+                className="mt-1 text-2xs"
+            />
+            {/* Only once a sign-in has come back saying the token names nowhere. A Team server's
+                token carries its own endpoint, so for most people this box never appears;
+                putting it above the token box, as this form used to, asked everybody for
+                an address most of them had no way to know. */}
+            {needsAddress && (
+                <>
+                    <label className="mt-2 block text-2xs tracking-wide text-fg-subtle">
+                        {t("workspace.shell.versionControl.server.signIn.addressLabel")}
+                    </label>
+                    <Input
+                        size="sm"
+                        autoFocus
+                        value={address}
+                        onChange={event => setAddress(event.target.value)}
+                        disabled={running}
+                        placeholder={t("workspace.shell.versionControl.server.signIn.addressPlaceholder")}
+                        className="mt-1 text-2xs"
+                    />
+                </>
+            )}
+            <p className="mt-1 text-2xs text-fg-subtle">
+                {t("workspace.shell.versionControl.server.signIn.hint")}
+            </p>
+            {/* `break-words` earns its place on exactly one of these sentences: the ones about
+                certificates end in a 95-character fingerprint with no spaces in it, and a rail
+                320px wide cuts it off two thirds of the way through - which leaves the author
+                comparing a fingerprint against half of one. Ordinary prose is unaffected; only a
+                word that cannot fit at all is broken. */}
+            {signIn && !signIn.ok && describeSignInProblem(signIn.problem, t) !== "" && (
+                <p data-vcs-seam="sign-in-problem" className="mt-1.5 break-words text-2xs text-danger">
+                    {describeSignInProblem(signIn.problem, t)}
+                </p>
+            )}
+            {offer && (
+                <AuthorityOffer
+                    authority={offer}
+                    surface={surface}
+                    onTrusted={() => { void surface.signInToServer(address.trim(), token.trim()); }}
                 />
-                <div className="mt-2 flex items-center gap-1.5">
+            )}
+            <div className="mt-2 flex items-center gap-1.5">
+                <button
+                    type="button"
+                    onClick={submit}
+                    disabled={running || !token.trim() || (needsAddress && !address.trim())}
+                    className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-2xs text-on-primary transition-opacity cursor-default hover:opacity-90 disabled:opacity-50"
+                >
+                    {busy === "remote"
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <KeyRound className="h-3 w-3" />}
+                    {t("workspace.shell.versionControl.server.signIn.submit")}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    disabled={running}
+                    className="flex h-7 items-center justify-center rounded-md border border-edge px-2 text-2xs text-fg-muted transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
+                >
+                    {t("workspace.shell.versionControl.server.signIn.cancel")}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * The offer to trust a server's certificate authority, and the dialog that decides it.
+ *
+ * **What this replaced.** The certificate refusal used to end in a paragraph telling the
+ * author to ask whoever runs the server for a command. That command names a certificate
+ * file living on the server's own disk, so on the author's machine it could not be run at
+ * all - and the people who reach this are, by construction, the ones who do not run the
+ * server. The certificate is now on this machine before the question is asked.
+ *
+ * **Two ways in, and they are not the same question.** Where the pasted token names this
+ * authority, the comparison has already been made and what is left is a decision. Where
+ * it names none - a plain loreserver, an older Team server - the fingerprint is shown and the
+ * author is asked to check it against what they were told, exactly as before. A token
+ * that names a DIFFERENT authority never reaches here: that is the shape an interception
+ * has, and the rail says so instead of offering a button.
+ */
+function AuthorityOffer({ authority, surface, onTrusted }: {
+    authority: VcsServerAuthority;
+    surface: VersionSurface;
+    onTrusted: () => void;
+}) {
+    const { t } = useTranslation();
+    const [asking, setAsking] = useState(false);
+    const vouched = vcsAuthorityIsVouchedFor(authority);
+    const key = "workspace.shell.versionControl.server.signIn.trust" as const;
+
+    const confirm = () => {
+        void surface.trustAuthority(authority.path).then(installed => {
+            setAsking(false);
+            // Only on success, and from the rail rather than from the surface: whether to
+            // try again is a question about what is still in the token box up there.
+            if (installed) onTrusted();
+        });
+    };
+
+    return (
+        <div data-vcs-seam="authority-offer" className="mt-1.5">
+            <button
+                type="button"
+                onClick={() => setAsking(true)}
+                disabled={surface.busy !== null}
+                className={cn(
+                    "flex h-7 w-full items-center justify-center gap-1.5 rounded-md px-2 text-2xs",
+                    "transition-colors cursor-default disabled:opacity-50",
+                    // Filled only where the token already vouched for this authority.
+                    // Where it did not, the author still has a comparison to make, and a
+                    // filled button in front of an unmade decision argues for pressing it.
+                    vouched
+                        ? "bg-primary text-on-primary hover:opacity-90"
+                        : "border border-edge text-fg-muted hover:bg-fill hover:text-fg",
+                )}
+            >
+                <ShieldCheck className="h-3 w-3" />
+                {t(`${key}.open`)}
+            </button>
+            <Modal
+                isOpen={asking}
+                onClose={() => setAsking(false)}
+                title={t(`${key}.title`)}
+                size="md"
+                footer={(
+                    <div className="flex items-center justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setAsking(false)}
+                            className={dialogFooterButtonClass({ variant: "secondary" })}
+                        >
+                            {t(`${key}.cancel`)}
+                        </button>
+                        {authority.canInstall && (
+                            <button
+                                type="button"
+                                onClick={confirm}
+                                disabled={surface.busy !== null}
+                                className={dialogFooterButtonClass({
+                                    variant: "primary",
+                                    disabled: surface.busy !== null,
+                                })}
+                            >
+                                {t(`${key}.confirm`)}
+                            </button>
+                        )}
+                    </div>
+                )}
+            >
+                <div className="space-y-3 text-sm text-fg-muted">
+                    <p>{t(vouched ? `${key}.vouched` : `${key}.compare`)}</p>
+                    <div className="rounded-md border border-edge bg-fill-subtle p-3">
+                        <FieldLabel>{t(`${key}.authorityLabel`)}</FieldLabel>
+                        <p className="mt-1 text-sm text-fg">{authority.subject}</p>
+                        <FieldLabel className="mt-2 block">{t(`${key}.fingerprintLabel`)}</FieldLabel>
+                        {/* Monospaced and broken across lines on purpose: this is the one
+                            string in the dialog somebody may read character by character
+                            against another screen, and proportional type makes that worse. */}
+                        <p className="mt-1 break-all font-mono text-xs text-fg">{authority.fingerprint}</p>
+                    </div>
+                    {/* Said plainly, and not softened. An authority is not one server's
+                        certificate: whatever holds its key can issue a certificate for any
+                        name and this account will believe it. */}
+                    <p>{t(`${key}.meaning`)}</p>
+                    {!authority.canInstall && (
+                        <div>
+                            <p>{t(`${key}.manual`)}</p>
+                            <div className="mt-2 flex items-start gap-2 rounded-md border border-edge bg-fill-subtle p-3">
+                                <code className="min-w-0 flex-1 break-all font-mono text-xs text-fg">
+                                    {authority.command}
+                                </code>
+                                <IconButton
+                                    size="sm"
+                                    aria-label={t(`${key}.copy`)}
+                                    onClick={() => void navigator.clipboard?.writeText(authority.command)}
+                                >
+                                    <Copy className="h-3.5 w-3.5" />
+                                </IconButton>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </Modal>
+        </div>
+    );
+}
+
+/**
+ * One sentence per way a sign-in can fail, in the reader's own language.
+ *
+ * Built here rather than passed through from the backend because the backend cannot tell four
+ * of these apart - see {@link SignInSection} - and because the one sentence that has to be acted
+ * on by a person, the certificate, names a command that is not Studio's to run.
+ */
+function describeSignInProblem(
+    problem: VcsSignInProblem,
+    t: (key: TranslationKey, params?: Record<string, string | number>) => string,
+): string {
+    const key = "workspace.shell.versionControl.server.signIn.problem" as const;
+    switch (problem.kind) {
+        case "scheme":
+            return t(`${key}.scheme`);
+        case "token":
+            return t(`${key}.token`);
+        case "address":
+            return t(`${key}.address`);
+        case "certificate":
+            // Vouched for: nothing is wrong that a sentence in red would describe. The
+            // offer below the form is the whole of the answer, and a warning above it
+            // would be arguing against the button it sits on top of.
+            if (vcsAuthorityIsVouchedFor(problem.authority)) return "";
+            // The token named an authority and something else answered. Not a variant of
+            // "you have not trusted this one yet": both fingerprints are named, and no
+            // button is offered anywhere on this path.
+            if (problem.authority.expected) {
+                return t(`${key}.mismatch`, {
+                    expected: problem.authority.expected,
+                    found: problem.authority.fingerprint,
+                });
+            }
+            return t(`${key}.certificate`, { fingerprint: problem.authority.fingerprint || "-" });
+        case "server":
+            // Only answered where a server is added on its own, which happens in Settings.
+            // Handled rather than defaulted so that adding a refusal kind keeps failing
+            // here loudly instead of reading `detail` off a shape that has none.
+            return t("settings.servers.problems.server");
+        case "unreachable":
+            return t(`${key}.unreachable`, { detail: problem.detail });
+        case "refused":
+            return t(`${key}.refused`, { detail: problem.detail });
+        default:
+            return t(`${key}.unknown`, { detail: problem.detail });
+    }
+}
+
+/** What reaching the server after signing in came to, said as a sentence rather than a number. */
+function describeReach(reach: VcsServerReach): TranslationKey {
+    return `workspace.shell.versionControl.server.signIn.reach.${reach}` as TranslationKey;
+}
+
+
+
+/**
+ * Choosing which server this project synchronises with.
+ *
+ * **A project chooses a server; it does not describe one.** The servers this installation
+ * is signed in to are managed in Settings, once, and every project since then picks from
+ * that list - which is why this is a dialog with names in it rather than a text field. A
+ * project pointed at a server nobody has signed in to would be pointed at a refusal.
+ *
+ * Adding one is therefore not offered here at all: the last row of the list opens Settings
+ * on the servers panel and closes this dialog. A token pasted into a side panel would put
+ * a machine-wide credential behind a per-project control, and there would then be two
+ * places that add a server and one of them would go stale.
+ *
+ * The address field stays for the case the list cannot cover: a `loreserver` with nothing
+ * in front of it asks nobody who they are, so there is no account to add and nothing to
+ * put in that list. It sits below the add row rather than beside the list, because a
+ * project that reaches one is the exception and typing an address is not the way in.
+ */
+export function ServerPickerDialog({ surface, isOpen, onClose }: {
+    surface: VersionSurface;
+    isOpen: boolean;
+    onClose: () => void;
+}) {
+    const { t } = useTranslation();
+    const { context } = useWorkspace();
+    const key = "workspace.shell.versionControl.server.picker";
+    const [servers, setServers] = useState<VcsServerSession[]>([]);
+    const [choice, setChoice] = useState<string>(NO_SERVER);
+    const [address, setAddress] = useState("");
+    const [name, setName] = useState("");
+    const running = surface.busy !== null;
+
+    useEffect(() => {
+        if (!isOpen) return;
+        let cancelled = false;
+        void getInterface().vcs.listServers().then(result => {
+            if (cancelled) return;
+            const list = result.success ? result.data.servers : [];
+            setServers(list);
+            // Seeded with the server this project already uses, so changing one is a choice
+            // between named things rather than a retype. Falling back to nothing chosen
+            // rather than to the first server: connecting somewhere nobody asked for is the
+            // one outcome a dialog about where work is sent must not make easy.
+            setChoice(initialServerChoice(list, surface.remote));
+            setAddress(surface.remote ?? "");
+            // The name this project answers to on the server. Its own name is the answer
+            // nearly every time, so it is filled in rather than asked for - but it is a
+            // field rather than a fact, because it is what a collaborator clones by and
+            // two projects in one folder tree can be called the same thing locally.
+            setName(vcsRemoteName(surface.remote) || projectFolderName(context) || "");
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, surface.remote]);
+
+    /** The server chosen out of the list, as opposed to the address field or nothing yet. */
+    const picked = choice === NO_SERVER || choice === MANUAL_SERVER ? null : choice;
+    const chosen = picked !== null
+        ? (name.trim() === "" ? "" : `${picked}/${name.trim()}`)
+        : choice === MANUAL_SERVER ? address.trim() : "";
+
+    const connect = () => {
+        if (!chosen) return;
+        void surface.setRemote(chosen).then(saved => {
+            if (saved) onClose();
+        });
+    };
+
+    // Adding one signs this installation in, which every project since then picks out of the
+    // list above, so it happens in Settings and this dialog steps out of the way. Left open,
+    // it would go on showing the list as it was read when it opened.
+    const addServer = () => {
+        void getInterface().app.launchSettings({ highlight: SERVERS_PANEL_SETTING_KEY });
+        onClose();
+    };
+
+    return (
+        <Modal
+            isOpen={isOpen}
+            onClose={onClose}
+            title={t(`${key}.title`)}
+            size="md"
+            footer={(
+                <div className="flex items-center justify-end gap-2">
                     <button
                         type="button"
-                        onClick={submit}
-                        disabled={running || draft.trim() === ""}
-                        className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-2xs text-on-primary transition-opacity cursor-default hover:opacity-90 disabled:opacity-50"
-                    >
-                        {busy === "remote"
-                            ? <Loader2 className="h-3 w-3 animate-spin" />
-                            : <Cloud className="h-3 w-3" />}
-                        {t("workspace.shell.versionControl.server.save")}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setEditing(false)}
-                        disabled={busy === "remote"}
-                        className="flex h-7 items-center justify-center rounded-md border border-edge px-2 text-2xs text-fg-muted transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
+                        onClick={onClose}
+                        className={dialogFooterButtonClass({ variant: "secondary" })}
                     >
                         {t("workspace.shell.versionControl.server.cancel")}
                     </button>
+                    <button
+                        type="button"
+                        onClick={connect}
+                        disabled={running || chosen === ""}
+                        className={dialogFooterButtonClass({
+                            variant: "primary",
+                            disabled: running || chosen === "",
+                        })}
+                    >
+                        {t("workspace.shell.versionControl.server.save")}
+                    </button>
                 </div>
-                {/* Only while a server is already configured: this is the way to undo the
-                    connection, and offering it during first setup would be a control for
-                    leaving a state the author has not entered. */}
-                {remote !== null && (
+            )}
+        >
+            <div data-vcs-seam="server-picker" className="space-y-3 text-sm text-fg-muted">
+                {/* Asked here as well, and this is where it matters most: connecting a server
+                    means the history is about to be shared, and one signed by the tool tells a
+                    collaborator nothing. Absent the moment it is answered. */}
+                <AuthorIdentity surface={surface} />
+                {servers.length === 0 && <p>{t(`${key}.empty`)}</p>}
+                <div className="flex flex-col gap-1">
+                    {servers.map(server => (
+                        <button
+                            key={server.remoteOrigin}
+                            type="button"
+                            aria-pressed={choice === server.remoteOrigin}
+                            onClick={() => setChoice(server.remoteOrigin)}
+                            data-server-choice={server.remoteOrigin}
+                            className={cn(
+                                "flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-left transition-colors cursor-default",
+                                choice === server.remoteOrigin
+                                    ? "border-primary bg-fill-subtle text-fg"
+                                    : "border-edge hover:bg-fill",
+                            )}
+                        >
+                            <span className="min-w-0 flex-1 truncate text-sm">
+                                {serverHost(server.remoteOrigin)}
+                            </span>
+                            <span className="shrink-0 text-xs text-fg-subtle">
+                                {server.account.displayName}
+                            </span>
+                        </button>
+                    ))}
+                    {/* The last row of the list, not a control beside it: adding a server and
+                        choosing one are the same question asked a moment apart, and an author
+                        looking at a list that does not hold their server looks at its end. */}
+                    <button
+                        type="button"
+                        onClick={addServer}
+                        data-vcs-seam="picker-add"
+                        className="flex min-h-9 items-center gap-2 rounded-md border border-dashed border-edge px-3 text-left text-sm transition-colors cursor-default hover:bg-fill hover:text-fg"
+                    >
+                        <Plus className="h-3.5 w-3.5 shrink-0" />
+                        {t(`${key}.add`)}
+                    </button>
+                </div>
+
+                {picked !== null && (
+                    <div>
+                        <FieldLabel>{t(`${key}.nameLabel`)}</FieldLabel>
+                        <Input
+                            size="sm"
+                            value={name}
+                            onChange={event => setName(event.target.value)}
+                            onKeyDown={event => {
+                                if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    connect();
+                                }
+                            }}
+                            disabled={running}
+                            placeholder={t(`${key}.namePlaceholder`)}
+                            className="mt-1"
+                        />
+                    </div>
+                )}
+
+                {/* Below the add row, because a server that can be signed in to is the case
+                    this dialog is for. Kept all the same: a `loreserver` with nothing in front
+                    of it issues no token, so Settings has nothing to add for it and this field
+                    is the only place a project can be pointed at one, or read the address of
+                    the one it already uses. */}
+                <div data-vcs-seam="picker-address">
+                    <button
+                        type="button"
+                        aria-pressed={choice === MANUAL_SERVER}
+                        onClick={() => setChoice(MANUAL_SERVER)}
+                        className={cn(
+                            "flex min-h-9 w-full items-center rounded-md border px-3 text-left text-sm transition-colors cursor-default",
+                            choice === MANUAL_SERVER
+                                ? "border-primary bg-fill-subtle text-fg"
+                                : "border-edge hover:bg-fill",
+                        )}
+                    >
+                        {t(`${key}.manual`)}
+                    </button>
+                    {choice === MANUAL_SERVER && (
+                        <Input
+                            size="sm"
+                            autoFocus
+                            value={address}
+                            onChange={event => setAddress(event.target.value)}
+                            onKeyDown={event => {
+                                if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    connect();
+                                }
+                            }}
+                            disabled={running}
+                            placeholder={t("workspace.shell.versionControl.server.addressPlaceholder")}
+                            className="mt-2"
+                        />
+                    )}
+                </div>
+
+                {/* A refusal used to be read off the rail, because the form asking the question
+                    was in it. This dialog covers the rail, so the answer has to arrive here or
+                    pressing Connect does nothing visible. The sign-in line is the one refusal
+                    with a remedy that is not on this screen, and the add row is the way to it. */}
+                {surface.failure !== null && (
+                    <div data-vcs-seam="picker-failure" className="space-y-1">
+                        <p className="break-words text-xs text-danger">{surface.failure.text}</p>
+                        {surface.remoteNeedsSignIn && (
+                            <p className="text-xs text-fg-subtle">
+                                {t("workspace.shell.versionControl.server.signIn.required")}
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                {/* Only while a server is already configured: this undoes the connection, and
+                    offering it during first setup would be a control for leaving a state the
+                    author has not entered. */}
+                {surface.remote !== null && (
                     <button
                         type="button"
                         onClick={() => {
                             void surface.setRemote(null).then(saved => {
-                                if (saved) setEditing(false);
+                                if (saved) onClose();
                             });
                         }}
                         disabled={running}
-                        className="mt-1.5 text-2xs text-fg-subtle transition-colors cursor-default hover:text-danger disabled:opacity-50"
+                        className="text-xs text-fg-subtle transition-colors cursor-default hover:text-danger disabled:opacity-50"
                     >
                         {t("workspace.shell.versionControl.server.disconnect")}
                     </button>
                 )}
             </div>
-        );
-    }
+        </Modal>
+    );
+}
+
+function ServerSection({ surface }: { surface: VersionSurface }) {
+    const { t } = useTranslation();
+    const { remote, syncState, busy } = surface;
+    const [picking, setPicking] = useState(false);
+    const running = busy !== null;
+
+    const open = () => setPicking(true);
 
     if (remote === null) {
         return (
             <div data-vcs-seam="server" className="border-b border-edge px-3 py-2">
+                <ServerPickerDialog surface={surface} isOpen={picking} onClose={() => setPicking(false)} />
                 <p className="text-2xs text-fg-subtle">
                     {t("workspace.shell.versionControl.server.none")}
                 </p>
@@ -955,6 +1544,19 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                     <Cloud className="h-3 w-3" />
                     {t("workspace.shell.versionControl.server.connect")}
                 </button>
+                {/* A server that demands a token refuses to be pointed at until this
+                    installation has one, so the address is never written and the row that
+                    normally offers a sign-in - the one beside a configured server - is
+                    never drawn. Offered here, the only place left, or there is no way in
+                    at all to exactly the servers signing in exists for. */}
+                {surface.remoteNeedsSignIn && (
+                    <>
+                        <p className="mt-2 text-2xs text-danger">
+                            {t("workspace.shell.versionControl.server.signIn.required")}
+                        </p>
+                        <SignInSection surface={surface} />
+                    </>
+                )}
             </div>
         );
     }
@@ -963,6 +1565,7 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
 
     return (
         <div data-vcs-seam="server" data-help-topic="versionServer" className="border-b border-edge px-3 py-2">
+            <ServerPickerDialog surface={surface} isOpen={picking} onClose={() => setPicking(false)} />
             <div className="group/help flex items-center justify-between gap-2">
                 <div className="flex shrink-0 items-center gap-0.5">
                     <span className="text-2xs tracking-wide text-fg-subtle">
@@ -979,7 +1582,7 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                     type="button"
                     onClick={open}
                     disabled={running}
-                    title={remote}
+                    data-tip={remote} aria-label={remote}
                     className="min-w-0 truncate text-2xs text-fg-muted transition-colors cursor-default hover:text-fg disabled:opacity-50"
                 >
                     {serverHost(remote)}
@@ -992,7 +1595,7 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                     type="button"
                     onClick={surface.checkRemote}
                     disabled={running}
-                    title={t("workspace.shell.versionControl.server.check")}
+                    data-tip={t("workspace.shell.versionControl.server.check")}
                     aria-label={t("workspace.shell.versionControl.server.check")}
                     className="ml-auto flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
                 >
@@ -1001,6 +1604,24 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                         : <RefreshCw className="h-3 w-3" />}
                 </button>
             </div>
+
+            <SignInSection surface={surface} />
+
+            {/* Said once, at the moment somebody connects, and as a sentence rather than two
+                version numbers to compare. Studio pins a client library and the server runs
+                whatever its operator installed; knowing which pairs work is not something to
+                ask an author for. */}
+            {surface.signIn?.ok && (
+                <p
+                    data-vcs-seam="server-reach"
+                    className={cn(
+                        "mt-1.5 text-2xs",
+                        surface.signIn.reach === "ready" ? "text-fg-subtle" : "text-warning",
+                    )}
+                >
+                    {t(describeReach(surface.signIn.reach))}
+                </p>
+            )}
 
             {/* Both buttons are always present once a server is configured, and neither is hidden
                 by what the last check happened to say. The check is optional - the author may
@@ -1126,6 +1747,28 @@ function serverFace(sync: VcsSyncState | null): { key: TranslationKey; tone: str
 }
 
 /**
+ * The name a project answers to on its server, read off the address it is pointed at.
+ *
+ * Empty for a project with no server, and for one whose address is only an origin - a
+ * session is stored per origin, so the servers offered in the dialog carry no name.
+ */
+function vcsRemoteName(remote: string | null): string {
+    return remote ? parseVcsRemoteUrl(remote)?.name ?? "" : "";
+}
+
+/**
+ * What this project is called on disk, as the suggested name on a server.
+ *
+ * The folder rather than the title: a title has spaces and punctuation in it, and this
+ * becomes a name in a URL that a collaborator types.
+ */
+function projectFolderName(context: { project: { getConfig(): { projectPath: string } } } | null): string {
+    const projectPath = context?.project.getConfig().projectPath ?? "";
+    const segments = projectPath.split(/[\\/]+/).filter(Boolean);
+    return segments.length > 0 ? segments[segments.length - 1] : "";
+}
+
+/**
  * The part of a server address worth showing in a 320px column.
  *
  * The scheme is always `lore://` and says nothing; the host is what tells two servers apart. Falls
@@ -1185,48 +1828,157 @@ function EnableVersionControl({ surface }: { surface: VersionSurface }) {
  * pushes "Hide checkpoints" off the top of the same scroller the rows are in, and that control is
  * the way to make the list short again.
  */
-function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHistoryEntry[] }) {
+function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows: FlatHistoryEntry[] }) {
     const { t, locale } = useTranslation();
     const { context } = useWorkspace();
-    const { state } = surface;
+    const { state, compareBase: base } = surface;
     const focused = state.kind === "revision" ? state.revision : state.kind === "current" ? state.head : null;
+    const [query, setQuery] = useState("");
+    const rows = useMemo(() => filterHistoryRows(allRows, query, t), [allRows, query, t]);
+    // Read once per render rather than per row, so a list drawn across midnight cannot label two
+    // adjacent days "Today". Not state: nothing here re-renders on the hour, and a list whose
+    // separators changed under a reader who had not touched anything would be worse than one that
+    // is stale until they do.
+    const now = Date.now();
+    // The filter is offered once the list is long enough to be worth narrowing, and stays while a
+    // query is in it - taking the box away because the query emptied the list is how a filter
+    // becomes a trap.
+    const filterable = allRows.length >= HISTORY_FILTER_THRESHOLD || query !== "";
 
     return (
         <div data-vcs-seam="history-list">
             {/* Opaque, not ruled: the rows slide under it because it carries the panel's own
                 background, and a line under a sticky header is a border that appears from nowhere
-                the moment the list is scrolled. */}
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-surface-sunken px-3 pb-1 pt-2">
-                <span className="text-2xs tracking-wide text-fg-subtle">
-                    {t("workspace.shell.versionControl.history")}
-                </span>
-                {(surface.hiddenCheckpoints > 0 || surface.showCheckpoints) && (
-                    <button
-                        type="button"
-                        onClick={() => surface.setShowCheckpoints(!surface.showCheckpoints)}
-                        className="text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg"
-                    >
-                        {surface.showCheckpoints
-                            ? t("workspace.shell.versionControl.hideCheckpoints")
-                            : t("workspace.shell.versionControl.showCheckpoints", {
-                                count: String(surface.hiddenCheckpoints),
-                            })}
-                    </button>
+                the moment the list is scrolled.
+
+                Everything that CHANGES the list lives in here rather than above it, and stays
+                reachable while the list is scrolled: the collapse, the filter, and the way to drop a
+                comparison base. Each of the three can leave the list looking empty, so each of them
+                has to be visible from wherever the author ended up. */}
+            <div className="sticky top-0 z-10 bg-surface-sunken px-3 pb-1 pt-2">
+                <div className="flex items-center justify-between gap-2">
+                    <span className="text-2xs tracking-wide text-fg-subtle">
+                        {t("workspace.shell.versionControl.history")}
+                    </span>
+                    {(surface.hiddenCheckpoints > 0 || surface.showCheckpoints) && (
+                        <button
+                            type="button"
+                            onClick={() => surface.setShowCheckpoints(!surface.showCheckpoints)}
+                            className="shrink-0 text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg"
+                        >
+                            {surface.showCheckpoints
+                                ? t("workspace.shell.versionControl.hideCheckpoints")
+                                : t("workspace.shell.versionControl.showCheckpoints", {
+                                    count: String(surface.hiddenCheckpoints),
+                                })}
+                        </button>
+                    )}
+                </div>
+
+                {filterable && (
+                    <Input
+                        size="sm"
+                        value={query}
+                        onChange={event => setQuery(event.target.value)}
+                        onKeyDown={event => {
+                            // Escape empties the box rather than closing anything, which is what it
+                            // does in every other filter in the workspace.
+                            if (event.key === "Escape" && query !== "") {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setQuery("");
+                            }
+                        }}
+                        placeholder={t("workspace.shell.versionControl.filterPlaceholder")}
+                        aria-label={t("workspace.shell.versionControl.filterPlaceholder")}
+                        className="mt-1 text-2xs"
+                    />
+                )}
+
+                {/* A line of its own rather than a third thing in the row above: the checkpoint
+                    control's label is a sentence with a number in it, and a 320px column has no
+                    room for both. Present only while a base is chosen, which is rarely. */}
+                {base && (
+                    <div className="mt-1 flex items-center gap-1.5">
+                        <span className="min-w-0 flex-1 truncate text-2xs text-primary">
+                            {t("workspace.shell.versionControl.compareBase.current", { version: base.label })}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => surface.setCompareBase(null)}
+                            data-tip={t("workspace.shell.versionControl.compareBase.clear")}
+                            aria-label={t("workspace.shell.versionControl.compareBase.clear")}
+                            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg"
+                        >
+                            <X className="h-3 w-3" />
+                        </button>
+                    </div>
                 )}
             </div>
+            {/* A filter that hides everything says so, rather than leaving a list that looks like a
+                project with no history. The two controls that would bring rows back - the filter
+                itself and the checkpoint collapse - are both directly above it, and "Show older
+                versions" below still reaches further back, which is the only thing this filter
+                cannot do on its own. */}
+            {rows.length === 0 && (
+                <p className="px-3 py-2 text-2xs text-fg-subtle">
+                    {t("workspace.shell.versionControl.filterNoMatch", { count: String(allRows.length) })}
+                </p>
+            )}
+
             {rows.map((row, index) => {
                 const isFocused = row.revision === focused;
-                const headline = historyRowHeadline(row);
+                const headline = historyRowHeadline(row, t);
                 const time = row.timestamp !== undefined ? formatRevisionTime(row.timestamp, locale) : null;
-                // The row BELOW this one, which is what "the previous version" means to someone
-                // reading this list: the rows are newest-first and already collapsed, so with
-                // checkpoints hidden the comparison is against the previous COMMIT, which is the
-                // question an author asks about a commit. Absent on the last row of the page - the
-                // version before it has not been read, and comparing against a revision nobody has
-                // shown would name a version the author cannot see.
-                const previous = rows[index + 1];
+                // The row BELOW this one in the UNFILTERED list, which is what "the previous
+                // version" means to someone reading this: the rows are newest-first and already
+                // collapsed, so with checkpoints hidden the comparison is against the previous
+                // COMMIT, which is the question an author asks about a commit. Taken from `allRows`
+                // rather than from what is on screen - a filter narrows what the author is LOOKING
+                // at, and a button that called some distant version "the previous one" because a
+                // filter had removed the rows in between would be a sentence that is simply false.
+                // Absent on the last row of the page: the version before it has not been read, and
+                // comparing against a revision nobody has shown would name one they cannot see.
+                const previous = allRows[allRows.indexOf(row) + 1];
+                const isBase = base?.revision === row.revision;
+                // What this row's compare button compares against. The chosen base wins, and the
+                // sentence changes with it: "compare with the previous version" would be a lie the
+                // moment the author picked something three weeks back.
+                const against = base && !isBase
+                    ? {
+                        ...base,
+                        title: t("workspace.shell.versionControl.compareBase.compare", { version: base.label }),
+                    }
+                    : !base && previous
+                        ? {
+                            revision: previous.revision,
+                            label: revisionLabel(previous.number),
+                            number: previous.number,
+                            title: t("documentDiff.rail.compareWithPrevious"),
+                        }
+                        : null;
+                // The first row of a day carries its date. Compared against the row ABOVE in the
+                // filtered list, because these separators describe what is on screen: a filtered
+                // list is a shorter list, not a list with holes claimed in it.
+                const above = rows[index - 1];
+                const day = row.timestamp !== undefined
+                    && (above?.timestamp === undefined
+                        || historyDayKey(above.timestamp) !== historyDayKey(row.timestamp))
+                    ? historyDayLabel(row.timestamp, locale, t, now)
+                    : null;
                 return (
-                    <div key={row.revision} className="group relative">
+                    <Fragment key={row.revision}>
+                    {/* Scanning a version history is scanning for a TIME - "the one before I broke
+                        it on Tuesday" - and every row already carried a full timestamp that had to
+                        be read one at a time to find the boundary. The separator makes the boundary
+                        the thing the eye lands on. Sticky under the header so the day the author is
+                        reading stays named while they scroll through it. */}
+                    {day && (
+                        <div className="sticky top-7 z-[5] bg-surface-sunken px-3 pb-0.5 pt-1.5 text-2xs text-fg-subtle">
+                            {day}
+                        </div>
+                    )}
+                    <div className="group relative">
                         <button
                             type="button"
                             onClick={() => surface.showRevision(row.revision, revisionLabel(row.number))}
@@ -1234,8 +1986,12 @@ function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHis
                             // The whole message plus the hash, because the row shows one truncated line of
                             // the first and none of the second. Without it a version whose message is
                             // longer than the column is a version the author cannot read at all.
-                            title={[
-                                headline.isMessage ? headline.text : null,
+                            // `original` is one of Studio's own sentences as it is STORED - absent
+                            // unless the row is showing a translation of it, and dropped when the two
+                            // are the same string, which they are in English.
+                            data-tip={[
+                                headline.isIdentity ? null : headline.text,
+                                headline.original === headline.text ? null : headline.original,
                                 shortRevision(row.revision),
                                 isFocused ? null : t("workspace.shell.versionControl.showVersion"),
                             ].filter(Boolean).join("\n")}
@@ -1259,7 +2015,7 @@ function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHis
                                     a sentence it does not have. */}
                                 <span className={cn(
                                     "block truncate text-xs",
-                                    headline.isMessage ? "" : "font-mono text-fg-subtle",
+                                    headline.isIdentity ? "font-mono text-fg-subtle" : "",
                                 )}>
                                     {headline.text}
                                 </span>
@@ -1274,43 +2030,116 @@ function HistoryList({ surface, rows }: { surface: VersionSurface; rows: FlatHis
                             )}
                         </button>
 
-                        {/* The row's SECOND action, and the reason it is revealed rather than drawn: a
-                            history row has had exactly one action since this panel existed, and adding a
-                            permanent control to fifty rows in a 320px column to serve the rarer of the
-                            two would cost width on every row for something pressed occasionally.
+                        {/* The row's other actions, and the reason they are revealed rather than
+                            drawn: a history row's job is to show a version, and two permanent
+                            controls on fifty rows in a 320px column would cost width on every one of
+                            them to serve presses that happen occasionally.
 
-                            Absolutely positioned rather than a flex sibling, so revealing it moves no
-                            text - a width that grows on hover is how the row content ends up drifting.
-                            `pointer-events-none` while hidden, because an invisible 20px target over the
-                            right edge of every row would silently steal the click that shows a version.
-                            Still reachable by keyboard: `pointer-events` does not affect tab order, and
-                            `focus-visible` brings it back into view. `.nl-focus-ring` because the app's
-                            global rule kills `focus:ring-*` on buttons with `!important`, silently. */}
-                        {previous && context && (
-                            <button
-                                type="button"
-                                onClick={() => openVcsChangesTab(context, {
-                                    mode: "between",
-                                    from: previous.revision,
-                                    to: row.revision,
-                                    fromLabel: revisionLabel(previous.number),
-                                    toLabel: revisionLabel(row.number),
-                                })}
-                                title={t("documentDiff.rail.compareWithPrevious")}
-                                aria-label={t("documentDiff.rail.compareWithPrevious")}
-                                className={cn(
-                                    "nl-focus-ring absolute right-2 top-1.5 z-10 flex h-5 w-5 items-center justify-center",
-                                    "rounded-md text-fg-subtle opacity-0 transition-opacity cursor-default",
-                                    "pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100",
-                                    "focus-visible:pointer-events-auto focus-visible:opacity-100",
-                                    "hover:text-fg",
-                                    isFocused ? "bg-fill-strong" : "bg-fill",
+                            Absolutely positioned rather than flex siblings, so revealing them moves
+                            no text - a width that grows on hover is how the row content ends up
+                            drifting. `pointer-events-none` while hidden, because invisible targets
+                            over the right edge of every row would silently steal the click that
+                            shows a version. Still reachable by keyboard: `pointer-events` does not
+                            affect tab order, and `focus-visible` brings them back into view.
+                            `.nl-focus-ring` because the app's global rule kills `focus:ring-*` on
+                            buttons with `!important`, silently. */}
+                        {context && (
+                            /* ONE chip behind both, not one each. The chip's job is to mask the row
+                               text it floats over, and two of them read as two identical grey boxes
+                               - which is what they were, because the two lucide git-compare glyphs
+                               differ by an arrowhead nobody can see at 14px. So: one surface, and
+                               two icons that are not from the same family. */
+                            <div className={cn(
+                                // OPAQUE, and that is the whole reason for the two nested elements.
+                                // `fill` is a translucent overlay, so a chip made of it alone let the
+                                // row's own message show through underneath the icons - two glyphs
+                                // sitting on top of the word "Merge". The panel's background goes
+                                // down first and the row's own tint over it, which composites to
+                                // exactly the colour of the row being hovered: the text disappears
+                                // and the chip itself does not appear. Same trick, same reason, as
+                                // the sticky header these rows scroll under.
+                                "absolute right-2 top-1 z-10 rounded-md bg-surface-sunken",
+                                "opacity-0 transition-opacity",
+                                "pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100",
+                                "focus-within:pointer-events-auto focus-within:opacity-100",
+                            )}>
+                            <div className={cn(
+                                "flex items-center gap-0.5 rounded-md p-0.5",
+                                isFocused ? "bg-fill-strong" : "bg-fill",
+                            )}>
+                                {/* Choosing a base is what makes "compare with anything" possible at
+                                    all, and it is on every row including the one already chosen -
+                                    where it becomes the way to drop it, so an author who set the
+                                    wrong one does not have to find the header to undo it.
+
+                                    A pin rather than a second pair of arrows: what this does is HOLD
+                                    one version still while the others are compared against it, and
+                                    the glyph beside it is already the comparison. `PinOff` on the
+                                    row that holds it, because there the only thing left to do is let
+                                    go. */}
+                                <button
+                                    type="button"
+                                    onClick={() => surface.setCompareBase(isBase ? null : {
+                                        revision: row.revision,
+                                        label: revisionLabel(row.number),
+                                        number: row.number,
+                                    })}
+                                    data-tip={isBase
+                                        ? t("workspace.shell.versionControl.compareBase.clear")
+                                        : t("workspace.shell.versionControl.compareBase.set")}
+                                    aria-label={isBase
+                                        ? t("workspace.shell.versionControl.compareBase.clear")
+                                        : t("workspace.shell.versionControl.compareBase.set")}
+                                    className={cn(
+                                        "nl-focus-ring flex h-5 w-5 items-center justify-center rounded-md",
+                                        "transition-colors cursor-default hover:bg-fill-strong hover:text-fg",
+                                        // `fg-muted`, not `fg-subtle`: subtle is the placeholder tone
+                                        // and a 14px stroke icon in it, sitting on a `fill` chip,
+                                        // came out as an outline with nothing readable inside it.
+                                        isBase ? "text-primary" : "text-fg-muted",
+                                    )}
+                                >
+                                    {isBase
+                                        ? <PinOff className="h-3.5 w-3.5" />
+                                        : <Pin className="h-3.5 w-3.5" />}
+                                </button>
+
+                                {/* The comparison itself. Against the chosen base when there is one
+                                    and this is not it, otherwise against the row below - and absent
+                                    on the last row of a page with no base, because the version
+                                    before it has not been read and naming a version the author
+                                    cannot see would be worse than offering nothing. */}
+                                {against && (
+                                    <button
+                                        type="button"
+                                        onClick={() => openVcsChangesTab(context, {
+                                            mode: "between",
+                                            // Ordered by revision number rather than by which was
+                                            // picked first: a comparison reads old → new whichever
+                                            // end the author started from, and a base chosen ABOVE
+                                            // the row would otherwise render every addition as a
+                                            // deletion.
+                                            from: against.number < row.number ? against.revision : row.revision,
+                                            to: against.number < row.number ? row.revision : against.revision,
+                                            fromLabel: against.number < row.number ? against.label : revisionLabel(row.number),
+                                            toLabel: against.number < row.number ? revisionLabel(row.number) : against.label,
+                                        })}
+                                        data-tip={against.title}
+                                        aria-label={against.title}
+                                        className={cn(
+                                            "nl-focus-ring flex h-5 w-5 items-center justify-center rounded-md",
+                                            "text-fg-muted transition-colors cursor-default",
+                                            "hover:bg-fill-strong hover:text-fg",
+                                        )}
+                                    >
+                                        <GitCompare className="h-3.5 w-3.5" />
+                                    </button>
                                 )}
-                            >
-                                <GitCompare className="h-3 w-3" />
-                            </button>
+                            </div>
+                            </div>
                         )}
                     </div>
+                    </Fragment>
                 );
             })}
 

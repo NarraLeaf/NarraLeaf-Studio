@@ -1,5 +1,9 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type {
+    BlueprintOpenExternalRequest,
+    BlueprintOpenExternalResult,
+} from "@shared/types/blueprint/externalLink";
+import type {
     BlueprintNetworkFetchRequest,
     BlueprintNetworkFetchResult,
 } from "@shared/types/blueprint/network";
@@ -55,7 +59,7 @@ import { finalDisplayableMotionValue } from "@/lib/ui-editor/runtime/displayable
 import { getElementSurfaceTopLeftEx } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 import { getSliderProps } from "@/lib/ui-editor/widget-modules/builtin/slider/helpers";
-import { getListProps } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
+import { getListProps, resolveListItemsBindingArray } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
 import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
@@ -76,7 +80,8 @@ import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/u
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
-import type { AutoSaveEntry } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
+import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import {
     isButtonCursorValue,
     type AppearanceFieldTransition,
@@ -246,16 +251,60 @@ export type BlueprintGamePreferenceVoiceEndMode = "fade" | "stop" | "none";
 
 export type BlueprintGamePreferenceValue = boolean | number | BlueprintGamePreferenceVoiceEndMode;
 
+/** One mount, as the host receives it: the options below, resolved, plus who is responsible for it. */
+export type BlueprintLayerShowRequest = {
+    surfaceId: string;
+    props: Record<string, unknown>;
+    modal: boolean;
+    dismissible: boolean;
+    group: string | null;
+    /** The runtime scope that asked for this layer; the layer closes when that scope does. */
+    ownerScopeId: string;
+};
+
+/** How a layer is put up. Everything but the page itself has a default. */
+export type BlueprintLayerShowOptions = {
+    /** Everything below goes inert and the keys belong to this layer. */
+    modal?: boolean;
+    /** Whether Go back closes it. Default true. */
+    dismissible?: boolean;
+    /** Mutual-exclusion group; a second layer of an occupied group queues behind the first. */
+    group?: string | null;
+};
+
 export type BlueprintHostApiRuntime = {
     navigation: {
         openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
         getPageProps: () => Record<string, unknown>;
-        closeLayer: () => Promise<void>;
+        pageBack: () => Promise<void>;
         clearPages: () => Promise<void>;
         clearGameOverlay: () => Promise<void>;
         quitApplication: () => Promise<void>;
         getFullscreen: () => Promise<boolean>;
         setFullscreen: (fullscreen: boolean) => Promise<void>;
+        /**
+         * Open one web address in the player's browser.
+         *
+         * The host does not decide: it hands the request to whatever the shell supplied, and the
+         * shell's own process checks it against the addresses the build declared. Nothing here
+         * consults the project's network setting, because no request is made - see
+         * `@shared/types/blueprint/externalLink`.
+         */
+        openExternal: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+    };
+    /** Surfaces stacked over the page lane. See the `layers` family in `@shared/types/blueprint/hostApi`. */
+    layers: {
+        /** Put a page up as a layer and return the handle that names it. */
+        show: (surfaceId: string, props?: unknown, options?: BlueprintLayerShowOptions) => Promise<string>;
+        /** Take that layer down, settling once it has finished animating out. */
+        hide: (handle: string) => Promise<void>;
+        /** Take a whole group down - what is on screen and what is queued behind it. */
+        hideGroup: (group: string) => Promise<void>;
+        /** Wait for that layer to close and read what it closed with. Null for a handle already gone. */
+        wait: (handle: string) => Promise<unknown>;
+        /** Close the layer the calling graph runs in. A no-op with a warning anywhere else. */
+        closeSelf: (result?: unknown) => Promise<void>;
+        isMounted: (handle: string) => boolean;
     };
     widget: {
         setVisible: (elementId: string, visible: boolean) => Promise<void>;
@@ -342,6 +391,10 @@ export type BlueprintHostApiRuntime = {
         deleteSave: (id: string) => Promise<void>;
         listSaveIds: () => Promise<string[]>;
         getSaveMetadata: (id: string) => Promise<unknown>;
+        /** When a slot was written, or null when there is no such slot. */
+        getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
+        /** Where a slot stopped, or null when there is no such slot. */
+        getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
         /** Write an autosave into the reserved ring now, regardless of the timer. */
         writeAutoSave: () => Promise<void>;
@@ -456,6 +509,22 @@ export type BlueprintHostApiRuntime = {
     network: {
         fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
     };
+    /**
+     * Carrying a playthrough between two editions of one title, for the Export/Import Progress
+     * nodes.
+     *
+     * The host does not decide where the document is: it hands the act to whatever the shell
+     * supplied, and the shell's own process resolves the file from the build's progress key. What
+     * this side states is what the playthrough holds, never where it goes.
+     *
+     * `import` answers with a scene id rather than going anywhere with it. The node deliberately
+     * does not jump - `Start Game` is what starts a story, and an author's graph usually has
+     * something to do first.
+     */
+    progress: {
+        export: () => Promise<{ outcome: "written" | "failed"; error: string }>;
+        import: () => Promise<GameProgressImportOutcome>;
+    };
     devtools: {
         log: (level: string, message: string) => void;
     };
@@ -557,6 +626,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onDeleteSave?: (id: string) => Promise<void> | void;
     onListSaveIds?: () => Promise<string[]> | string[];
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
+    onGetSaveTimes?: (id: string) => Promise<SaveRecordTimes | null> | SaveRecordTimes | null;
+    onGetSaveLine?: (id: string) => Promise<SaveRecordLine | null> | SaveRecordLine | null;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onWriteAutoSave?: () => Promise<void> | void;
     onListAutoSaves?: () => Promise<AutoSaveEntry[]> | AutoSaveEntry[];
@@ -628,7 +699,7 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onSubscribeGamePreferences?: (listener: () => void) => () => void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
-    onCloseLayer: () => void | Promise<void>;
+    onPageBack: () => void | Promise<void>;
     /** Empty the page stack down to its root. Hosts without a page stack leave it unset. */
     onClearPages?: () => void | Promise<void>;
     /** Dismiss pages opened over a running game; a no-op when no game is running. */
@@ -637,6 +708,25 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     /** Hosts without a real application window (story preview) leave these unset. */
     onGetFullscreen?: () => boolean | Promise<boolean>;
     onSetFullscreen?: (fullscreen: boolean) => void | Promise<void>;
+    /**
+     * The layer stack composited over the page lane.
+     *
+     * Absent in every host with nothing to stack onto - the editor preview and the workspace story
+     * preview both render one surface and no composite - where the whole family degrades to a warned
+     * no-op the way the sound family does, rather than throwing. `Show Layer` is the exception: it
+     * has to hand back a handle, so with no host it fails loudly instead of returning one that names
+     * nothing.
+     *
+     * `ownerScopeId` is filled in here rather than by the caller: it is this bundle's own
+     * `runtimeScopeId`, which is exactly the scope whose closing has to take the layer with it.
+     */
+    onShowLayer?: (request: BlueprintLayerShowRequest) => string;
+    onHideLayer?: (handle: string) => Promise<void> | void;
+    onHideLayerGroup?: (group: string) => Promise<void> | void;
+    onWaitLayer?: (handle: string) => Promise<unknown>;
+    /** Closes the layer whose runtime scope this is. False when this surface is not a layer. */
+    onCloseOwnLayer?: (runtimeScopeId: string, result: unknown) => boolean;
+    onIsLayerMounted?: (handle: string) => boolean;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -659,6 +749,23 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * there is no main process to reach and no project network policy to enforce.
      */
     onNetworkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    /**
+     * Opens one web address in the player's browser, in a process that can check it.
+     *
+     * Absent in every environment with nowhere to send it - the editor preview, and the story
+     * preview. There the node reports a `failed` result saying so rather than throwing, the same
+     * degradation the Fetch node takes: a Page previewed in Studio should still lay out.
+     */
+    onOpenExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+    /**
+     * Writes this playthrough into the title's progress document, in a process that owns a
+     * filesystem. Absent in every environment with nowhere to send it - the editor preview and the
+     * story preview - where the node reports a failure saying so rather than throwing, the same
+     * degradation the Fetch and Open Link nodes take.
+     */
+    onExportProgress?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
+    /** Reads it back, and applies what it holds to the running game. Absent for the same reasons. */
+    onImportProgress?: () => Promise<GameProgressImportOutcome>;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -955,19 +1062,18 @@ function readListItemsFallback(
     document: UIDocument,
     scope: ScopeStoreBridge,
     stateScopeId: string,
+    pageProps: Readonly<Record<string, unknown>>,
     elementId: string,
 ): unknown[] {
     const el = assertListElement(document, elementId);
     const props = getListProps(el);
-    const binding = props.itemsBinding;
-    if (binding) {
-        const source =
-            binding.kind === "globalState"
-                ? scope.globalGet(binding.key)
-                : scope.getSurfaceStore(stateScopeId).get(binding.key);
-        if (Array.isArray(source)) {
-            return cloneJson(source);
-        }
+    const bound = resolveListItemsBindingArray(props.itemsBinding, {
+        surfaceState: { get: key => scope.getSurfaceStore(stateScopeId).get(key) },
+        globalState: { get: key => scope.globalGet(key) },
+        pageProps,
+    });
+    if (bound) {
+        return cloneJson(bound);
     }
     if (props.previewItems.length > 0) {
         return cloneJson(props.previewItems);
@@ -982,11 +1088,13 @@ function readListProperties(
     runtimeScopeId: string | undefined,
     activeSurfaceId: string,
     stateScopeId: string,
+    pageProps: Readonly<Record<string, unknown>>,
     elementId: string,
 ): BlueprintListProperties {
     assertListElement(document, elementId);
     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
-    const items = widgetRuntimeStore.getListItems(scopedKey) ?? readListItemsFallback(document, scope, stateScopeId, elementId);
+    const items = widgetRuntimeStore.getListItems(scopedKey)
+        ?? readListItemsFallback(document, scope, stateScopeId, pageProps, elementId);
     const selectedIndex = widgetRuntimeStore.getListSelectedIndex(scopedKey) ??
         getListProps(requireDocumentElement(document, elementId, "list")).selectedIndex;
     return {
@@ -1438,6 +1546,44 @@ function normalizeAutoSaveEntries(value: unknown): AutoSaveEntry[] {
     return out.sort((a, b) => b.timestamp - a.timestamp);
 }
 
+/**
+ * A host's answer for one slot's stamps, or null when it says there is no such slot.
+ *
+ * Anything that is not an object is `null` - "no slot" - while a present record with unreadable
+ * numbers becomes 0s. That distinction is the node's `Exists` pin, so collapsing the two here would
+ * make a missing slot indistinguishable from one saved at the epoch.
+ */
+function normalizeSaveRecordTimes(value: unknown): SaveRecordTimes | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const toMs = (raw: unknown): number => (Number.isFinite(Number(raw)) ? Math.trunc(Number(raw)) : 0);
+    return {
+        savedAt: toMs(record.savedAt),
+        createdAt: toMs(record.createdAt),
+    };
+}
+
+/**
+ * A host's answer for where one slot stopped, or null when it says there is no such slot.
+ *
+ * Same split as {@link normalizeSaveRecordTimes}: a non-object is "no slot", while a present record
+ * with nothing quotable becomes empty strings. The engine writes `lastSpeaker` as null for
+ * narration, which is a real save with no speaker rather than a missing one.
+ */
+function normalizeSaveRecordLine(value: unknown): SaveRecordLine | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const toText = (raw: unknown): string => (typeof raw === "string" ? raw : "");
+    return {
+        line: toText(record.line),
+        speaker: toText(record.speaker),
+    };
+}
+
 function normalizeBlueprintChoiceCount(value: unknown): number {
     const count = Number(value);
     return Number.isInteger(count) && count > 0 ? count : 0;
@@ -1737,6 +1883,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onDeleteSave,
         onListSaveIds,
         onGetSaveMetadata,
+        onGetSaveTimes,
+        onGetSaveLine,
         onGetSavePreview,
         onWriteAutoSave,
         onListAutoSaves,
@@ -1774,16 +1922,25 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetTrackVolume,
         onSetTrackVolume,
         onNetworkFetch,
+        onOpenExternal,
+        onExportProgress,
+        onImportProgress,
         audioTracks,
         onSubscribeGamePreferences,
         emit,
         onOpenSurface,
-        onCloseLayer,
+        onPageBack,
         onClearPages,
         onClearGameOverlay,
         onQuitApplication,
         onGetFullscreen,
         onSetFullscreen,
+        onShowLayer,
+        onHideLayer,
+        onHideLayerGroup,
+        onWaitLayer,
+        onCloseOwnLayer,
+        onIsLayerMounted,
         onWidgetPatch,
         onElementFlush,
         widgetRuntimeStore,
@@ -1940,9 +2097,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const targetSurfaceId = String(surfaceId ?? "").trim();
                 if (!targetSurfaceId) {
                     // "None" in the page dropdown means no page, not one page fewer. This used to
-                    // alias Go back, so an author who picked None to dismiss an overlay two layers
-                    // deep landed on the layer underneath and had no way to say what they meant.
-                    await (onClearPages ?? onCloseLayer)();
+                    // alias Go back, so an author who picked None to dismiss an overlay two pages
+                    // deep landed on the page underneath and had no way to say what they meant.
+                    await (onClearPages ?? onPageBack)();
                     emitHostCall(emit, cap, "return");
                     return;
                 }
@@ -1961,16 +2118,16 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "return");
                 return props;
             },
-            closeLayer: async () => {
-                const cap = "navigation.closeLayer";
+            pageBack: async () => {
+                const cap = "navigation.pageBack";
                 emitHostCall(emit, cap, "call");
-                await onCloseLayer();
+                await onPageBack();
                 emitHostCall(emit, cap, "return");
             },
             clearPages: async () => {
                 const cap = "navigation.clearPages";
                 emitHostCall(emit, cap, "call");
-                await (onClearPages ?? onCloseLayer)();
+                await (onClearPages ?? onPageBack)();
                 emitHostCall(emit, cap, "return");
             },
             clearGameOverlay: async () => {
@@ -2016,6 +2173,111 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
+            },
+            openExternal: async (request: BlueprintOpenExternalRequest) => {
+                const cap = "navigation.openExternal";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onOpenExternal) {
+                        // No backend = nowhere to send it (editor preview, story preview). Reported
+                        // as a result rather than thrown, so a Page being previewed in Studio still
+                        // lays out and the author's own branch is what runs.
+                        return {
+                            outcome: "failed" as const,
+                            error: "Links cannot be opened here. Run the project in Dev Mode to open one.",
+                        };
+                    }
+                    return await onOpenExternal(request);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        layers: {
+            show: async (surfaceId: string, props?: unknown, showOptions?: BlueprintLayerShowOptions) => {
+                const cap = "layers.show";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const targetSurfaceId = String(surfaceId ?? "").trim();
+                    if (!targetSurfaceId) {
+                        throw new Error("Show Layer: no page selected");
+                    }
+                    // Named ahead of the host call and by id: an author picked a page that has since
+                    // been deleted or renamed, and the id is the only thing that ties the failure
+                    // back to the node they have to fix.
+                    if (!document.surfaces.some(surface => surface.id === targetSurfaceId)) {
+                        throw new Error(`Show Layer: page not found: ${targetSurfaceId}`);
+                    }
+                    if (!onShowLayer) {
+                        throw new Error("Show Layer: this preview has no layer stack");
+                    }
+                    const group = typeof showOptions?.group === "string" && showOptions.group.trim()
+                        ? showOptions.group.trim()
+                        : null;
+                    return onShowLayer({
+                        surfaceId: targetSurfaceId,
+                        props: normalizeJsonRecord(props),
+                        modal: showOptions?.modal === true,
+                        dismissible: showOptions?.dismissible !== false,
+                        group,
+                        ownerScopeId: stateScopeId,
+                    });
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            hide: async (handle: string) => {
+                const cap = "layers.hide";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onHideLayer?.(String(handle ?? ""));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            hideGroup: async (group: string) => {
+                const cap = "layers.hideGroup";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onHideLayerGroup?.(String(group ?? "").trim());
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            wait: async (handle: string) => {
+                const cap = "layers.wait";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // No host, or a handle naming nothing, both answer null rather than hanging. A
+                    // wait that never returns is the one failure an author cannot see the shape of.
+                    return (await onWaitLayer?.(String(handle ?? ""))) ?? null;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            closeSelf: async (result?: unknown) => {
+                const cap = "layers.closeSelf";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (onCloseOwnLayer?.(stateScopeId, result ?? null) !== true) {
+                        // Not an error: the same page can be opened as a page and shown as a layer,
+                        // and one wired to close itself has to survive being opened the other way.
+                        emit({
+                            type: "devtools.log",
+                            level: "warn",
+                            message: "Close This Layer: this page is not a layer, so nothing was closed",
+                        });
+                    }
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isMounted: (handle: string) => {
+                const cap = "layers.isMounted";
+                emitHostCall(emit, cap, "call");
+                const mounted = onIsLayerMounted?.(String(handle ?? "")) === true;
+                emitHostCall(emit, cap, "return");
+                return mounted;
             },
         },
         widget: {
@@ -2411,6 +2673,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         runtimeScopeId,
                         activeSurfaceId,
                         stateScopeId,
+                        currentPageProps,
                         elementId,
                     );
                 } finally {
@@ -2443,6 +2706,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         runtimeScopeId,
                         activeSurfaceId,
                         stateScopeId,
+                        currentPageProps,
                         elementId,
                     ).selectedIndex;
                     const next = Math.trunc(index);
@@ -3012,6 +3276,32 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            getSaveTimes: async (id: string) => {
+                const cap = "game.getSaveTimes";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("getSaveTimes", id);
+                    if (!onGetSaveTimes) {
+                        throw new Error("getSaveTimes: game save runtime is not available");
+                    }
+                    return normalizeSaveRecordTimes(await onGetSaveTimes(saveId));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSaveLine: async (id: string) => {
+                const cap = "game.getSaveLine";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("getSaveLine", id);
+                    if (!onGetSaveLine) {
+                        throw new Error("getSaveLine: game save runtime is not available");
+                    }
+                    return normalizeSaveRecordLine(await onGetSaveLine(saveId));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             getSavePreview: async (id: string) => {
                 const cap = "game.getSavePreview";
                 emitHostCall(emit, cap, "call");
@@ -3476,6 +3766,45 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                     }
                     return await onNetworkFetch(request);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        progress: {
+            export: async () => {
+                const cap = "progress.export";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onExportProgress) {
+                        // No backend = nowhere to write it (editor preview, story preview). Reported
+                        // as a result rather than thrown, for the reason Open Link does the same.
+                        return {
+                            outcome: "failed" as const,
+                            error: "Progress cannot be written here. Run the project in Dev Mode to carry it.",
+                        };
+                    }
+                    return await onExportProgress();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            import: async () => {
+                const cap = "progress.import";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onImportProgress) {
+                        // `failed`, deliberately not `missing`: missing is a fact about the player
+                        // (nobody has exported), this is a fact about where the graph is running,
+                        // and an author who wired `missing` to "start a new game" must not be sent
+                        // down it by an environment that simply cannot look.
+                        return {
+                            outcome: "failed" as const,
+                            sceneId: "",
+                            error: "Progress cannot be read here. Run the project in Dev Mode to carry it.",
+                        };
+                    }
+                    return await onImportProgress();
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

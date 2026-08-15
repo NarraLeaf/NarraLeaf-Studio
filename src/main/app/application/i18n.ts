@@ -1,6 +1,20 @@
-import { app as electronApp } from "electron/main";
 import { createTranslator, normalizeLocale, resolvePreferredLocale, Translator, type LocaleCode } from "@shared/i18n";
 import type { BaseApp } from "./baseApp";
+
+/**
+ * The machine's languages, as Electron reports them.
+ *
+ * Reached through a require rather than a top-level import, and that is load-bearing: this module is
+ * imported by `GameBuildManager`, which is unit-tested, and the test runner cannot resolve
+ * `electron/main`. A top-level import there makes those files stop *collecting* rather than fail, so
+ * a hundred passing tests vanish from the run without anything turning red. Main is bundled as CJS,
+ * so the require resolves normally at runtime; only the stored-language path is taken in tests.
+ */
+function systemLanguages(): string[] {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { app } = require("electron/main") as typeof import("electron/main");
+    return [...app.getPreferredSystemLanguages(), app.getLocale()];
+}
 
 /**
  * The language main-process text is produced in.
@@ -18,10 +32,7 @@ export function getMainLocale(app: BaseApp): LocaleCode {
     if (typeof stored === "string" && stored.length > 0) {
         return normalizeLocale(stored);
     }
-    return resolvePreferredLocale([
-        ...electronApp.getPreferredSystemLanguages(),
-        electronApp.getLocale(),
-    ]);
+    return resolvePreferredLocale(systemLanguages());
 }
 
 /**

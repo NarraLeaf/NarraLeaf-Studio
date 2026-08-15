@@ -42,7 +42,7 @@ export function DevModePanelModeToggle(props: { chrome?: DevModePanelChrome }): 
         <ToolbarButton
             size="xs"
             aria-label={label}
-            title={label}
+            data-tip={label}
             // Deliberately no `aria-pressed`: the name already changes with the mode, and a control
             // that announces both a changing name and a pressed state contradicts itself.
             className="shrink-0"

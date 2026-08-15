@@ -1,9 +1,11 @@
 import fsSync from "fs";
 import fs from "fs/promises";
+import os from "os";
 import path from "path";
 import { Readable } from "stream";
 import { nativeImage } from "electron";
-import { app, BrowserWindow, ipcMain, Menu, protocol, session } from "electron/main";
+import { shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session } from "electron/main";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { GameTestEvent } from "@shared/types/gameTest";
 import {
@@ -12,17 +14,31 @@ import {
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
+    DEFAULT_GAME_CRASH_POLICY,
+    normalizeGameCrashPolicy,
+    type GameCrashPolicy,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
-import { buildGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
+import {
+    buildGameRuntimeAssetVersionArg,
+    buildGameRuntimeCrashPolicyArg,
+    buildGameRuntimeLogPathArg,
+} from "@shared/utils/gameRuntimeAssetUrl";
 import {
     resolveGameRuntimeEntrySurface,
     resolveGameRuntimeInitialBackgroundColor,
 } from "@shared/utils/gameRuntimeEntrySurface";
 import { resolveSingleByteRange } from "@shared/utils/httpRange";
 import type { BlueprintNetworkFetchRequest } from "@shared/types/blueprint/network";
+import {
+    resolveCoreExternalLink,
+    resolvePluginExternalLinkAmong,
+    type BlueprintOpenExternalRequest,
+    type BlueprintOpenExternalResult,
+} from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
+import { packNetworkAllowlist, type NetworkAllowlist } from "@shared/types/networkAllowlist";
 import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
@@ -37,28 +53,42 @@ import {
     RuntimeSaveStore,
 } from "./runtimeStorage";
 import { collectPackSidecars, SidecarHost } from "./sidecarHost";
+import { resolveRuntimeUserDataDir } from "./userDataDir";
+import {
+    readGameProgressFile,
+    writeGameProgressFile,
+    type GameProgressEnvironment,
+} from "@shared/utils/gameProgressFile";
+import type { GameProgressExportRequest } from "@shared/types/gameProgress";
+import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
+import { installWindowCrashHandling } from "./windowCrashHandling";
 
 const appDir = __dirname;
 
 /**
- * Early mode marker from the loose app manifest, readable synchronously before
+ * Early facts from the loose app manifest, readable synchronously before
  * app-ready so path setup and the debugger guard run before Chromium does any
  * work. The pack's own `mode` (which may live in the consolidated store) stays
  * authoritative for everything decided after the pack is open; a stripped or
  * tampered manifest only ever downgrades to the stricter checks below.
  */
-function readShellMode(): "preview" | "production" {
+function readShellManifest(): { mode: "preview" | "production"; userDataDirName: string | null } {
     try {
         const manifest = JSON.parse(fsSync.readFileSync(path.join(appDir, "package.json"), "utf-8")) as {
-            narraleaf?: { mode?: unknown };
+            narraleaf?: { mode?: unknown; userDataDir?: unknown };
         };
-        return manifest.narraleaf?.mode === "production" ? "production" : "preview";
+        const userDataDir = manifest.narraleaf?.userDataDir;
+        return {
+            mode: manifest.narraleaf?.mode === "production" ? "production" : "preview",
+            userDataDirName: typeof userDataDir === "string" && userDataDir.trim() ? userDataDir.trim() : null,
+        };
     } catch {
-        return "preview";
+        return { mode: "preview", userDataDirName: null };
     }
 }
 
-const shellMode = readShellMode();
+const shellManifest = readShellManifest();
+const shellMode = shellManifest.mode;
 
 /**
  * A test asked for this game to run with no way out to the network.
@@ -69,11 +99,48 @@ const shellMode = readShellMode();
  */
 const testNetworkBlocked = process.env.NARRALEAF_TEST_NETWORK === "blocked";
 
-// Preview keeps saves next to the compiled app; a shipped game has no sibling
-// userData dir and uses the OS per-user location derived from the app name.
+// Preview keeps saves next to the compiled app; a shipped game names its
+// per-user directory explicitly (see resolvePlayerDataDir).
 const previewUserDataDir = path.resolve(appDir, "..", "userData");
 const useSiblingUserData = shellMode !== "production" && fsSync.existsSync(previewUserDataDir);
-const userDataDir = useSiblingUserData ? previewUserDataDir : app.getPath("userData");
+const userDataDir = useSiblingUserData
+    ? previewUserDataDir
+    : resolveRuntimeUserDataDir(shellManifest.userDataDirName, {
+        platform: process.platform,
+        appDataDir: app.getPath("appData"),
+        shellUserDataDir: app.getPath("userData"),
+        homeDir: os.homedir(),
+        xdgDataHome: process.env.XDG_DATA_HOME,
+        exists: target => fsSync.existsSync(target),
+        makeDirectory: target => { fsSync.mkdirSync(target, { recursive: true }); },
+        move: (from, to) => { fsSync.renameSync(from, to); },
+        warn: message => { console.warn(`[GameRuntime] ${message}`); },
+    });
+
+/**
+ * Where the progress document lives, which is deliberately not under {@link userDataDir}.
+ *
+ * That directory is named after this build's app id, and two editions of one title have different
+ * app ids on purpose - that is precisely why they cannot read each other's saves. The progress
+ * document sits beside both, in the per-user root the platform names. Resolved fresh per request
+ * because `XDG_DATA_HOME` is environmental and nothing here caches environmental facts.
+ */
+function progressEnvironment(): GameProgressEnvironment {
+    return {
+        platform: process.platform,
+        appDataDir: app.getPath("appData"),
+        homeDir: os.homedir(),
+        ...(process.env.XDG_DATA_HOME ? { xdgDataHome: process.env.XDG_DATA_HOME } : {}),
+    };
+}
+
+/**
+ * Everything this process and the game have to say, on disk.
+ *
+ * Installed here rather than at app-ready because the failures worth having a log for include the
+ * ones during startup, and because it is the first moment the profile directory is known.
+ */
+const logRuntime = installRuntimeLogSink(userDataDir);
 
 
 /** Node inspector / Chromium remote-debugging switches refused in production. */
@@ -87,6 +154,10 @@ const DEBUG_SWITCHES = [
 ];
 
 let packPromise: Promise<GameRuntimePackV1> | null = null;
+/** The game's own name, once the pack has been read. Titles the crash dialogs. */
+let loadedPackName: string | null = null;
+/** What this build does when it stops working, from the pack. */
+let crashPolicy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 let mainWindow: BrowserWindow | null = null;
 let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
@@ -151,7 +222,10 @@ protocol.registerSchemesAsPrivileged([
     },
 ]);
 
-if (useSiblingUserData) {
+// Both the sibling preview directory and a shipped game's named one differ from
+// what the shell resolved on its own, and everything Chromium keeps here (caches,
+// cookies, local storage) has to follow the same move as the player's files.
+if (userDataDir !== app.getPath("userData")) {
     app.setPath("userData", userDataDir);
 }
 
@@ -191,16 +265,21 @@ void app.whenReady().then(async () => {
         return;
     }
     const allowHttp = pack.network?.allowHttp === true;
+    const networkAllowlist = packNetworkAllowlist(pack);
     applyRuntimeAppIdentity(pack);
-    applyRuntimeMenu(pack);
-    registerRuntimeProtocol(allowHttp);
+    applyRuntimeMenu();
+    registerRuntimeProtocol(allowHttp, networkAllowlist);
     sidecarHost = createSidecarHost(pack);
     registerRuntimeIpc();
     startPreviewControlServer(pack);
     // Confine the renderer to the app protocol before it loads any document
     // unless the project opted into HTTP - and unconditionally when a test asked
     // for a network-less run, which overrides the project's own flag.
-    installRuntimeNetworkPolicy(session.defaultSession, { allowHttp, blockAll: testNetworkBlocked });
+    installRuntimeNetworkPolicy(session.defaultSession, {
+        allowHttp,
+        allowlist: networkAllowlist,
+        blockAll: testNetworkBlocked,
+    });
     mainWindow = createWindow(pack);
     // After the window exists so a sidecar's first event has somewhere to land,
     // and unawaited so a slow handshake never delays the game's first paint.
@@ -231,8 +310,7 @@ function createSidecarHost(pack: GameRuntimePackV1): SidecarHost {
         mode: pack.mode,
         game: { name: pack.project.name, version: pack.project.version ?? null },
         log: (level, message) => {
-            const sink = level === "error" ? "error" : level === "warning" ? "warn" : "log";
-            console[sink](`[GameRuntime] ${message}`);
+            logRuntime(level, message);
         },
         send: message => {
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -339,15 +417,46 @@ function describeRuntimeError(error: unknown): { message: string; stack?: string
  */
 process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
     const described = describeRuntimeError(error);
+    const headline = origin === "unhandledRejection"
+        ? `Unhandled rejection: ${described.message}`
+        : described.message;
     emitTestEvent({
         kind: "runtime-error",
         scope: "main",
-        message: origin === "unhandledRejection"
-            ? `Unhandled rejection: ${described.message}`
-            : described.message,
+        message: headline,
         ...(described.stack ? { stack: described.stack } : {}),
     });
+    // Written before the box below, so the record survives even if drawing it is what fails. Both
+    // are new: this used to report to a test nobody was running and then let the process disappear
+    // off the player's screen without a word.
+    logRuntime("error", `[Crash] ${headline}${described.stack ? `\n${described.stack}` : ""}`);
+    reportFatalRuntimeError(headline);
 });
+
+/**
+ * Tell the player the game is going down, on its way down.
+ *
+ * `showErrorBox` because it is synchronous and needs no window: by this point the process has
+ * milliseconds left, and the window is often the thing that died. The stack stays in the log - a
+ * player cannot act on it, and the author asking for it can be pointed at a file.
+ *
+ * Wrapped whole. A failure to report a fatal error must not become a second fatal error.
+ */
+function reportFatalRuntimeError(headline: string): void {
+    try {
+        dialog.showErrorBox(
+            gameDisplayName(),
+            `${headline}\n\nThe game has to close. Details were written to ${runtimeLogPath(userDataDir)}`,
+        );
+    } catch {
+        /* No window server, or a dialog that refused. The log line above is the report. */
+    }
+}
+
+/** The game's own name once the pack has been read, and something honest before that. */
+function gameDisplayName(): string {
+    return loadedPackName ?? app.getName();
+}
 
 function emitTestEvent(event: GameTestEvent): void {
     if (testSubscribers.size === 0) {
@@ -391,6 +500,10 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         minHeight: 320,
         center: true,
         frame: true,
+        // Windows and Linux lay the menu bar out inside the window, so it has to
+        // be gone before the first frame or the game's viewport is measured with
+        // a strip taken out of it. Ignored on macOS, where the menu is the OS's.
+        autoHideMenuBar: true,
         // Stay hidden until the renderer's first paint so launch never flashes
         // an empty window; the background matches the entry surface for the
         // brief gap between first paint and the surface rendering its content.
@@ -404,10 +517,34 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             // The preload derives versioned asset URLs from this marker; a
             // process argument is the only synchronous channel it can read
             // before the document loads.
-            additionalArguments: [buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack))],
+            additionalArguments: [
+                buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack)),
+                // So the crash screen is right from the first frame. The failure it is most likely
+                // to draw happens while the pack is still being read, and asking the pack for the
+                // policy then would mean falling back to "show the error" in exactly the build
+                // whose author asked for the opposite.
+                buildGameRuntimeCrashPolicyArg(normalizeGameCrashPolicy(pack.crash?.policy)),
+                // So the crash screen can say where the report is. The one thing a player can do
+                // about a crash is hand the file over, which needs them to be told where it is.
+                buildGameRuntimeLogPathArg(runtimeLogPath(userDataDir)),
+            ],
         },
     });
     win.setTitle(pack.project.name);
+    // Chromium raises the loaded document's <title> to the window, and the shell's index.html
+    // carries a generic one, so the name set above lasted until the first paint and every game
+    // was called NarraLeaf Game in the taskbar. The window is the project's, and a variant's is
+    // the variant's, so the document's answer is refused rather than followed. The web shell
+    // interpolates the same name into its document and needs nothing here.
+    win.on("page-title-updated", (event) => {
+        event.preventDefault();
+    });
+    if (process.platform !== "darwin") {
+        // The window carries a menu of its own, and `autoHideMenuBar` only hides
+        // it - Alt would still pull it back down over the game. Removing it is
+        // what makes the bar unreachable rather than merely out of sight.
+        win.removeMenu();
+    }
     // Show on first paint. The timer is a safety net: a renderer that never
     // reaches ready-to-show should still surface a window rather than leave
     // the process running invisibly.
@@ -463,6 +600,31 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     };
     win.on("enter-full-screen", emitFullscreen(true));
     win.on("leave-full-screen", emitFullscreen(false));
+    installWindowCrashHandling(win, {
+        log: logRuntime,
+        logPath: runtimeLogPath(userDataDir),
+        displayName: gameDisplayName,
+        // Read through rather than captured: the pack settles the policy as the window is being
+        // built, and a snapshot taken here could be one step behind it.
+        policy: () => crashPolicy,
+        isQuitting: () => isQuitting,
+        quit: () => {
+            isQuitting = true;
+            app.quit();
+        },
+        reportFatal: reportFatalRuntimeError,
+        ask: async request => (await dialog.showMessageBox(win, {
+            type: "warning",
+            title: request.title,
+            message: request.message,
+            detail: request.detail,
+            buttons: request.buttons,
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true,
+        })).response,
+        now: () => Date.now(),
+    });
     if (devToolsEnabled) {
         win.webContents.on("before-input-event", (_event, input) => {
             if (input.type === "keyUp" && input.key === "F12") {
@@ -505,16 +667,21 @@ function requestRendererCloseDecision(win: BrowserWindow): Promise<boolean> {
 }
 
 /**
- * Production ships without Electron's default menu: it carries Reload and
- * DevTools items (and their accelerators) that have no place in a shipped
- * game. macOS keeps a minimal menu so quit/copy/paste stay reachable; other
- * platforms drop the menu bar entirely. Preview keeps the default menu as a
- * developer affordance.
+ * No mode ships Electron's default menu: it carries Reload and DevTools items
+ * (and their accelerators) that have no place above a game, and a menu bar is
+ * chrome the author's surface layout never accounts for. Preview is held to the
+ * same rule deliberately - a playtest that grows a menu bar is not the window
+ * the player gets - and it loses nothing, because preview's DevTools is on F12
+ * and its reload comes from the Studio recompiling, neither of which was ever
+ * the menu's doing.
+ *
+ * macOS cannot simply drop the menu. It is the process's only route to Quit,
+ * and the Edit roles are what make Cmd+C/V work inside a text field at all
+ * (the OS routes those through the menu, so a game with no Edit menu has a save
+ * name box nothing can be pasted into). That platform therefore keeps the
+ * smallest set that leaves the OS's own operations intact, and nothing beyond it.
  */
-function applyRuntimeMenu(pack: GameRuntimePackV1): void {
-    if (pack.mode !== "production") {
-        return;
-    }
+function applyRuntimeMenu(): void {
     if (process.platform === "darwin") {
         Menu.setApplicationMenu(Menu.buildFromTemplate([
             { role: "appMenu" },
@@ -527,6 +694,10 @@ function applyRuntimeMenu(pack: GameRuntimePackV1): void {
 }
 
 function applyRuntimeAppIdentity(pack: GameRuntimePackV1): void {
+    crashPolicy = normalizeGameCrashPolicy(pack.crash?.policy);
+    // Also the title of any error box after this point. Before it there is no name to use, which
+    // is itself a fact worth keeping honest rather than papering over with the product's name.
+    loadedPackName = pack.project.name;
     app.setName(pack.project.name);
     app.setAboutPanelOptions({
         applicationName: pack.project.name,
@@ -575,14 +746,14 @@ function resolveAssetVersion(pack: GameRuntimePackV1): string {
     return bundleId || pack.generatedAt || String(Date.now());
 }
 
-function registerRuntimeProtocol(allowHttp: boolean): void {
+function registerRuntimeProtocol(allowHttp: boolean, allowlist: NetworkAllowlist): void {
     protocol.handle(GAME_RUNTIME_PROTOCOL, async request => {
         const url = new URL(request.url);
         try {
             if (url.hostname === "runtime") {
                 const pathname = decodeURIComponent(url.pathname);
                 if (isIndexDocument(pathname)) {
-                    return serveIndexDocument(resolveRuntimeStaticPath(appDir, pathname), allowHttp);
+                    return serveIndexDocument(resolveRuntimeStaticPath(appDir, pathname), allowHttp, allowlist);
                 }
                 // Bundled runtime files (e.g. plugin entries) come from the store;
                 // static runtime files fall back to a loose read from the app dir.
@@ -763,9 +934,13 @@ function isIndexDocument(pathname: string): boolean {
 }
 
 /** Serve the runtime document with the gated Content-Security-Policy injected. */
-async function serveIndexDocument(filePath: string, allowHttp: boolean): Promise<Response> {
+async function serveIndexDocument(
+    filePath: string,
+    allowHttp: boolean,
+    allowlist: NetworkAllowlist,
+): Promise<Response> {
     const html = await fs.readFile(filePath, "utf-8");
-    return new Response(injectRuntimeCsp(html, allowHttp), {
+    return new Response(injectRuntimeCsp(html, allowHttp, allowlist), {
         status: 200,
         headers: {
             "Content-Type": "text/html; charset=utf-8",
@@ -800,8 +975,8 @@ function registerRuntimeIpc(): void {
         mainWindow?.setFullScreen(fullscreen === true);
     });
     ipcMain.on("runtime:log", (_event, data: { level?: string; message?: string }) => {
-        const level = data?.level === "error" ? "error" : data?.level === "warning" ? "warn" : "log";
-        console[level](`[GameRuntime] ${String(data?.message ?? "")}`);
+        const level = data?.level === "error" ? "error" : data?.level === "warning" ? "warning" : "info";
+        logRuntime(level, String(data?.message ?? ""));
     });
     // The renderer's uncaught errors and the engine reaching an ending. Validated rather than
     // trusted (toGameTestEvent stamps the scope and refuses anything else), and dropped on the
@@ -831,13 +1006,117 @@ function registerRuntimeIpc(): void {
     // so a request to a third-party API would be refused by CORS; and the timeout, size cap and
     // scheme check are only enforceable somewhere the page cannot reach around.
     //
-    // Which is also why `allowHttp` is re-read here from the pack. This process sits OUTSIDE the CSP
-    // and `webRequest` cage that `installRuntimeNetworkPolicy` puts the renderer in, so that cage
-    // cannot be what enforces the project's setting on this path - without the check below, routing
-    // through main would hand a game that shipped with the network off a working network.
+    // Which is also why the project's settings are re-read here from the pack. This process sits
+    // OUTSIDE the CSP and `webRequest` cage that `installRuntimeNetworkPolicy` puts the renderer in,
+    // so that cage cannot be what enforces them on this path - without the checks below, routing
+    // through main would hand a game that shipped with the network off a working network, and one
+    // shipped with an allowlist the whole internet.
+    //
+    // `redirects: "check"` because this process can: it follows the chain itself and decides every
+    // hop, so the allowlist governs where the bytes came from rather than only what was typed.
     ipcMain.handle("runtime:network:fetch", async (_event, request: BlueprintNetworkFetchRequest) => {
         const pack = await readPack();
-        return executeBlueprintNetworkFetch(request, { allowHttp: pack.network?.allowHttp === true });
+        return executeBlueprintNetworkFetch(request, {
+            allowHttp: pack.network?.allowHttp === true,
+            allowlist: packNetworkAllowlist(pack),
+            redirects: "check",
+        });
+    });
+
+    // The Open Link node's request.
+    //
+    // Decided here because this is where it is performed - `shell.openExternal` runs in this
+    // process, and a renderer that asked nicely is not a boundary. What is decided is the scheme
+    // and nothing else: the address is the author's, written into their own graph.
+    //
+    // Deliberately not gated on the network settings: no request is made and no bytes come back, so
+    // a game shipped with the network off still opens its own store page.
+    ipcMain.handle("runtime:external:open", async (_event, request: BlueprintOpenExternalRequest) => {
+        const decision = resolveCoreExternalLink(request);
+        if (!decision.allowed) {
+            logRuntime("warning", `Open Link refused: ${decision.result.error}`);
+            return decision.result;
+        }
+        try {
+            await shell.openExternal(decision.url);
+            return { outcome: "opened", error: null } satisfies BlueprintOpenExternalResult;
+        } catch (error) {
+            return {
+                outcome: "failed",
+                error: error instanceof Error ? error.message : String(error),
+            } satisfies BlueprintOpenExternalResult;
+        }
+    });
+
+    // A plugin's request to open an address, decided against that plugin's own declaration.
+    //
+    // Here for the same reason the channel above is: this is the process that calls the platform
+    // opener, so this is where the question has to be answered. The declaration is re-read from the
+    // pack per request, and it is the manifest that shipped inside it - `pack.plugins[].manifest.
+    // contributes.externalLinks` - rather than a second copy written somewhere for this check to
+    // read. There is only one list, and it is the one the author approved at install.
+    //
+    // Same security posture as the sidecar channels below, stated once more because it is the thing
+    // most likely to be misread: `pluginId` is what the renderer said it was and this process
+    // cannot verify it, since runtime plugins share one realm and nothing in that realm can prove
+    // which plugin a call came from. That is why the id is used to *select* a declaration and never
+    // to grant one. The set of addresses reachable from this handler is exactly the union of what
+    // the plugins in this pack declared, whatever id is passed - and every one of them is a
+    // declaration the author read and approved.
+    ipcMain.handle(
+        "runtime:external:openForPlugin",
+        async (_event, pluginId: string, request: BlueprintOpenExternalRequest) => {
+            const pack = await readPack();
+            const decision = resolvePluginExternalLinkAmong(pack.plugins, pluginId, request);
+            if (!decision.allowed) {
+                logRuntime("warning", `Plugin Open Link refused: ${decision.result.error}`);
+                return decision.result;
+            }
+            try {
+                await shell.openExternal(decision.url);
+                return { outcome: "opened", error: null } satisfies BlueprintOpenExternalResult;
+            } catch (error) {
+                return {
+                    outcome: "failed",
+                    error: error instanceof Error ? error.message : String(error),
+                } satisfies BlueprintOpenExternalResult;
+            }
+        },
+    );
+
+    // The Export/Import Progress nodes, performed here because here is the process with a
+    // filesystem.
+    //
+    // The renderer says what the playthrough holds and never which file. `pack.progressKey` is
+    // re-read per request, exactly as the declared addresses above are, and it is the only thing
+    // that decides where the bytes land - a key taken from the caller would make these channels a
+    // way to write into another title's document.
+    //
+    // The directory is deliberately NOT `userDataDir`. That one is named after this build's app id,
+    // and the whole point of this feature is that a demo and a full game have different app ids and
+    // therefore cannot read each other's saves. The progress document sits beside both of them.
+    //
+    // A pack with no key (one built before the field existed) fails with a reason rather than
+    // guessing one: a guessed key names a file the real build would never look at.
+    ipcMain.handle("runtime:progress:write", async (_event, request: GameProgressExportRequest) => {
+        const pack = await readPack();
+        const result = await writeGameProgressFile(
+            progressEnvironment(),
+            String(pack.progressKey ?? ""),
+            request,
+        );
+        if (result.outcome === "failed") {
+            logRuntime("warning", `Export Progress failed: ${result.error}`);
+        }
+        return result;
+    });
+    ipcMain.handle("runtime:progress:read", async () => {
+        const pack = await readPack();
+        const result = await readGameProgressFile(progressEnvironment(), String(pack.progressKey ?? ""));
+        if (result.outcome === "failed") {
+            logRuntime("warning", `Import Progress failed: ${result.error}`);
+        }
+        return result;
     });
 
     // Sidecar control.

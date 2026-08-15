@@ -3,6 +3,7 @@ import { utilityProcess, type UtilityProcess } from "electron";
 import type { App } from "@/app/app";
 import type {
     CompileWorkerOutboundMessage,
+    ShippedContentAuditReport,
 } from "@/buildWorker/compileWorkerProtocol";
 import type {
     GameRuntimeArtifactCompileInput,
@@ -24,6 +25,14 @@ export type CompileWorkerHooks = {
      * (mirrors the packaging worker in GameBuildManager).
      */
     cancelled?: () => boolean;
+    /**
+     * Receives the shipped-content audit when the worker ran one, which it does only for an edition
+     * that removes content.
+     *
+     * A hook rather than a second return value because only the build cares: the audit is a build
+     * gate, and a preview or a test run has nothing to refuse.
+     */
+    onAudit?: (report: ShippedContentAuditReport) => void;
 };
 
 /**
@@ -76,6 +85,9 @@ export function compileGameRuntimeArtifactInWorker(
         worker.on("message", (message: CompileWorkerOutboundMessage) => {
             if (message.type === "done") {
                 worker.kill();
+                if (message.audit) {
+                    hooks?.onAudit?.(message.audit);
+                }
                 settle(() => resolve(message.result));
                 return;
             }

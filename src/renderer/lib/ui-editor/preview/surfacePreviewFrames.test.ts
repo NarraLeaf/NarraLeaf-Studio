@@ -7,6 +7,7 @@ import {
     computeSafeAreaFrameForGeometry,
     computeScreenRatioFrame,
     computeScreenRatioFrameById,
+    computeScreenRatioStrips,
     computeUnsafeBands,
     getSafeAreaPreset,
     getSurfacePreviewAspectPreset,
@@ -275,20 +276,46 @@ describe("safe-area preset table", () => {
     });
 
     it("models Android as the display cutout, NOT the hidden navigation bar", () => {
-        const android = safeArea("android-punch-hole");
+        const android = safeArea("android-cutout");
         expect(android.family).toBe("android");
         // The old table had this exactly backwards: bottom 24dp and no cutout at all.
         expect(android.portrait.insets).toEqual({ left: 0, right: 0, top: 48, bottom: 0 });
         expect(android.landscape.insets).toEqual({ left: 48, right: 48, top: 0, bottom: 0 });
     });
 
+    it("carries the AOSP cutout shapes, each with the overlay's own numbers", () => {
+        // DisplayCutoutEmulationDoubleOverlay: 32dp top AND bottom, so rotating puts one per side.
+        const double = safeArea("android-cutout-double");
+        expect(double.portrait.insets).toEqual({ left: 0, right: 0, top: 32, bottom: 32 });
+        expect(double.landscape.insets).toEqual({ left: 32, right: 32, top: 0, bottom: 0 });
+
+        // DisplayCutoutEmulationWaterfallOverlay: no cutout path, 20dp curved side edges. The only
+        // entry whose insets land on the top and bottom in landscape.
+        const waterfall = safeArea("android-waterfall");
+        expect(waterfall.portrait.insets).toEqual({ left: 20, right: 20, top: 0, bottom: 0 });
+        expect(waterfall.landscape.insets).toEqual({ left: 0, right: 0, top: 20, bottom: 20 });
+
+        // No Android shape has a bottom inset in portrait except the double cutout: the shell hides
+        // the navigation bar, so the gesture strip is not safe-area here.
+        for (const preset of SAFE_AREA_PRESETS.filter(p => p.family === "android" && p.id !== "android-cutout-double")) {
+            expect(preset.portrait.insets.bottom).toBe(0);
+        }
+
+        // Every Android entry must differ from the others in what this model can actually draw,
+        // or the menu grows rows that cannot move the frame.
+        const shapes = SAFE_AREA_PRESETS.filter(p => p.family === "android")
+            .map(p => JSON.stringify([p.portrait.insets, p.landscape.insets]));
+        expect(new Set(shapes).size).toBe(shapes.length);
+    });
+
     it("still resolves the preset ids that shipped before the table was rebuilt", () => {
         // Persisted in Studio settings and carried on a Dev Mode launch entry — dropping them would
         // silently turn the overlay off for anyone who had one selected.
-        expect(getSafeAreaPreset("iphone-15-pro")?.id).toBe("iphone-15-pro");
-        expect(getSafeAreaPreset("iphone-14")?.id).toBe("iphone-14");
-        expect(getSafeAreaPreset("android-punch-hole")?.id).toBe("android-punch-hole");
-        expect(isSafeAreaPresetId("iphone-14")).toBe(true);
+        expect(getSafeAreaPreset("ios-dynamic-island")?.id).toBe("iphone-15-pro");
+        expect(getSafeAreaPreset("ios-notch")?.id).toBe("iphone-14");
+        expect(getSafeAreaPreset("android-gesture")?.id).toBe("android-cutout");
+        expect(getSafeAreaPreset("android-punch-hole")?.id).toBe("android-cutout");
+        expect(isSafeAreaPresetId("ios-notch")).toBe(true);
     });
 
     it("takes the orientation from the project setting, not from the design size", () => {
@@ -396,7 +423,7 @@ describe("computeSafeAreaFrame — worked examples", () => {
         const ox = (915 - 1920 * fit) / 2;
         const frame = computeSafeAreaFrame({
             designSize: DESIGN_1920x1080,
-            preset: safeArea("android-punch-hole"),
+            preset: safeArea("android-cutout"),
         })!;
         expect(frame.orientation).toBe("landscape");
         expect(ox).toBeGreaterThan(48);
@@ -410,7 +437,7 @@ describe("computeSafeAreaFrame — worked examples", () => {
         // Wider design => a thinner pillarbox => the cutout reaches past it into the content.
         const design = { width: 2520, height: 1080 };
         const fit = Math.min(915 / 2520, 412 / 1080);
-        const frame = computeSafeAreaFrame({ designSize: design, preset: safeArea("android-punch-hole") })!;
+        const frame = computeSafeAreaFrame({ designSize: design, preset: safeArea("android-cutout") })!;
         const ox = (915 - 2520 * fit) / 2;
         expect(ox).toBeLessThan(48);
         expect(frame.insets.left).toBeCloseTo((48 - ox) / fit, 9);
@@ -534,6 +561,69 @@ describe("computeSafeAreaFrame — math", () => {
     });
 });
 
+describe("stage fit: cover", () => {
+    it("inscribes the screen rect in the design rect instead of wrapping it", () => {
+        // 21:9 screen, 16:9 design. Contain grows the screen sideways; cover shrinks it to fit
+        // inside, and the difference is design the player never sees.
+        const contain = computeScreenRatioFrame({ designSize: DESIGN_1920x1080, preset: aspect("21:9") })!;
+        const cover = computeScreenRatioFrame({
+            designSize: DESIGN_1920x1080,
+            preset: aspect("21:9"),
+            stageFit: "cover",
+        })!;
+        expect(contain.cropped).toBe(false);
+        expect(contain.screenRect).toEqual({ x: -300, y: 0, width: 2520, height: 1080 });
+
+        expect(cover.cropped).toBe(true);
+        // screenH = min(1080, 1920 * 9/21) = 822.857…, screenW stays 1920.
+        expect(cover.screenRect.width).toBe(1920);
+        expect(cover.screenRect.x).toBe(0);
+        expect(cover.screenRect.height).toBeCloseTo((1920 * 9) / 21, 9);
+        expect(cover.letterbox).toBeCloseTo((1080 - (1920 * 9) / 21) / 2, 9);
+        expect(cover.screenRect.y).toBeCloseTo(cover.letterbox, 9);
+        expect(cover.pillarbox).toBe(0);
+        // Thicknesses are absolute under either fit — only the rect's position says which side.
+        expect(cover.letterbox).toBeGreaterThan(0);
+    });
+
+    it("puts the strips inside the design under cover and outside it under contain", () => {
+        for (const stageFit of ["contain", "cover"] as const) {
+            const frame = computeScreenRatioFrame({
+                designSize: DESIGN_1920x1080,
+                preset: aspect("21:9"),
+                stageFit,
+            })!;
+            const strips = computeScreenRatioStrips(DESIGN_1920x1080, frame);
+            expect(strips).toHaveLength(2);
+            const inside = strips.every(s => s.x >= 0 && s.y >= 0 && s.x + s.width <= 1920 && s.y + s.height <= 1080);
+            expect(inside).toBe(stageFit === "cover");
+        }
+        expect(computeScreenRatioStrips(DESIGN_1920x1080, null)).toEqual([]);
+    });
+
+    it("an exact-ratio screen has no strips under either fit", () => {
+        for (const stageFit of ["contain", "cover"] as const) {
+            const frame = computeScreenRatioFrame({ designSize: DESIGN_1920x1080, preset: aspect("16:9"), stageFit })!;
+            expect(frame.screenRect).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
+            expect(computeScreenRatioStrips(DESIGN_1920x1080, frame)).toEqual([]);
+        }
+    });
+
+    it("costs MORE safe area than contain — there is no bar left to absorb the inset", () => {
+        // iPhone 15 Pro landscape against 16:9. Under contain the 76.67pt pillarbox swallows the
+        // 59pt housing whole; under cover the content fills the screen, so the housing lands on it
+        // and the design that overflows the screen is lost on top of that.
+        const preset = safeArea("iphone-15-pro");
+        const contain = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset })!;
+        const cover = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset, stageFit: "cover" })!;
+        expect(contain.insets.left).toBe(0);
+        expect(cover.insets.left).toBeGreaterThan(contain.insets.left);
+        expect(cover.fullySafe).toBe(false);
+        // The bottom is worse too: the same home indicator over a smaller design-per-point scale.
+        expect(cover.insets.bottom).toBeGreaterThan(contain.insets.bottom);
+    });
+});
+
 describe("computeUnsafeBands", () => {
     it("covers only the home-indicator strip for a 16:9 design on a notched iPhone", () => {
         // The pillarbox is thicker than the housing on every 16:9-on-iPhone combination, so the only
@@ -555,7 +645,7 @@ describe("computeUnsafeBands", () => {
         // An iPad's letterbox is deeper than its home indicator, an SE has no insets at all, and the
         // Android pillarbox swallows the punch hole. All three are real "no risk here" answers, and
         // all three draw an empty canvas — which is why the readout says it in words.
-        for (const id of ["ipad-10", "ipad-pro-11", "iphone-se-3", "android-punch-hole"]) {
+        for (const id of ["ipad-10", "ipad-pro-11", "iphone-se-3", "android-cutout"]) {
             const frame = computeSafeAreaFrame({ designSize: DESIGN_1920x1080, preset: safeArea(id) })!;
             expect(frame.fullySafe).toBe(true);
             expect(computeUnsafeBands(DESIGN_1920x1080, frame)).toEqual([]);
@@ -588,7 +678,7 @@ describe("computeUnsafeBands", () => {
         // "nothing is covered" - and the canvas then looks identical to the layer being off, which
         // is the entire reason `SurfacePreviewFramesReadout` says it in words.
         const portrait = { width: 1080, height: 1920 };
-        const frame = computeSafeAreaFrame({ designSize: portrait, preset: safeArea("android-punch-hole") })!;
+        const frame = computeSafeAreaFrame({ designSize: portrait, preset: safeArea("android-cutout") })!;
         expect(frame.orientation).toBe("portrait");
         expect(frame.fullySafe).toBe(true);
         expect(computeUnsafeBands(portrait, frame)).toEqual([]);

@@ -37,6 +37,41 @@ export type BlueprintImageAsset = {
     assetId: string;
 };
 
+/**
+ * The kinds of library asset a blueprint pin can carry.
+ *
+ * Split by kind because the two are stored differently and read differently: an image travels as the
+ * tagged {@link BlueprintImageAsset} record, a font as the bare id string. The reverse-lookup index
+ * needs to know which of the two it is holding before it can turn a pin value into an asset id.
+ */
+export type BlueprintAssetPinKind = "image" | "font";
+
+/**
+ * Declares that a pin carries a library asset id, so the reverse-lookup index can find the
+ * reference from the node catalogue instead of from a list of param names it has to keep in step by
+ * hand. A pin with no declaration carries no asset, and a reference through it is invisible.
+ *
+ * `paramKey` covers the one shape where the stored key is not the pin id: the Image Asset literal
+ * node publishes on a pin called `value` and stores the picked asset under `asset`.
+ */
+export type BlueprintAssetPinRef = {
+    kind: BlueprintAssetPinKind;
+    paramKey?: string;
+    /**
+     * Where the pin's value comes from.
+     *
+     * `"stored"` (the default) means the document holds it: the id sits under `paramKey`, and it is
+     * a reference the reverse-lookup index reads and reports.
+     *
+     * `"published"` means the host resolves it while the game runs, and **the pin provably cannot
+     * carry a library asset id**. Nothing is stored to read, and an edge out of such a pin is not a
+     * reference the index is failing to see - so it must not be reported as one. Marking a pin this
+     * way is a claim about what can flow through it: it needs an argument at the declaration, not a
+     * guess, because a wrong one hides a real reference.
+     */
+    origin?: "stored" | "published";
+};
+
 export type BlueprintTimerToken = {
     kind: "timer";
     id: string;

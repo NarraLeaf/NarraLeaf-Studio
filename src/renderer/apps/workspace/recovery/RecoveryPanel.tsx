@@ -4,7 +4,7 @@ import { Badge, Button, FieldLabel } from "@/lib/components";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
-import { copyTextToClipboard } from "@/lib/app/diagnostics/copyText";
+import { copyTextToClipboard } from "@shared/utils/copyText";
 import { buildDiagnosticsFileName, buildDiagnosticsReport } from "@/lib/app/diagnostics/diagnosticsReport";
 import { Services } from "@/lib/workspace/services/services";
 import type { RecoveryService, RecoveryProbeState } from "@/lib/workspace/services/core/RecoveryService";
@@ -224,7 +224,7 @@ function AnomalyRow({ anomaly }: { anomaly: WorkspaceAnomaly }) {
                 onClick={() => void copy()}
                 className="absolute right-1 top-1 rounded-md p-1 text-fg-subtle opacity-0 transition-colors duration-150 hover:bg-fill hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 group-hover:opacity-100"
                 aria-label={t("workspace.recovery.problems.copy")}
-                title={copied ? t("workspace.recovery.problems.copied") : t("workspace.recovery.problems.copy")}
+                data-tip={copied ? t("workspace.recovery.problems.copied") : t("workspace.recovery.problems.copy")}
             >
                 {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
             </button>

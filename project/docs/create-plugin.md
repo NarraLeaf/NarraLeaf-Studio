@@ -84,17 +84,31 @@ Manifest 字段：
 | `contributes` | 见下 | 插件声明的一切。**这是插件能力的唯一真相源**——安装权限从它派生，运行时 API 按它门控。 |
 | `permissions` | `PluginInstallPermission[]` | 可选，默认 `[]`。**只能手写 `filesystem` 与 `api` 两种**（studio 入口的特权控制）；`runtime` / `sidecar` / `buildDependency` 三种由 `contributes` 派生，手写会被判为清单错误。 |
 
-`contributes` 的七个键：
+`contributes` 的九个键：
 
 | 键 | 类型 | 说明 |
 |---|---|---|
 | `blueprintNodes` | `string[]` | 蓝图节点 type（必须以插件 ID 为前缀）。注册未声明的类型会抛错。 |
 | `widgets` | `string[]` | widget type，同上。 |
 | `runtimeData` | `string[]` | 随游戏发布的插件存储命名空间，runtime 侧 `app.game.data.readJson` 只能读这里列出的。 |
+| `tests` | `string[]` | 插件向 `app.services.tests` 注册的测试 id（必须以插件 ID 为前缀）。注册未声明的 id 会抛错。**不派生安装权限**：测试只在作者从 Run ▸ Test 里挑中并启动时才跑。 |
 | `locales` | `PluginLocaleContribution[]` | Studio 界面语言包。 |
 | `runtimeCapabilities` | `PluginRuntimeCapability[]` | runtime 入口要用的能力域，九选若干：`store` / `events` / `state.read` / `state.write` / `saves.read` / `saves.write` / `ui.overlay` / `assets` / `locale`。**未声明的域在 `app.game` 上不存在**（不是抛错的桩）。 |
 | `sidecars` | `PluginSidecarContribution[]` | 随作者的游戏附带并运行的原生子进程。声明它本身就是权限请求，无需再声明能力。 |
 | `buildDependencies` | `PluginBuildDependencyContribution[]` | 构建时下载/校验/缓存的外部二进制。 |
+| `buildConfig` | `PluginBuildConfigFieldContribution[]` | 构建前需要作者填写的值（如 Steam App ID）。**只能在 manifest 里静态声明，没有运行时注册 API**——构建过程中不执行任何插件代码。**不派生安装权限**：声明一个字段只是多一个待填的空格，插件不会因此获得任何能力。 |
+
+`buildConfig` 每个字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `key` | `string` | 插件内唯一。**不需要**以插件 ID 为前缀（存储本身已按插件分区）。只作存储键，永不显示。 |
+| `label` | `string` | 作者看到的字段名，不能为空。 |
+| `description` | `string` | 可选。一句话说明这个值是干什么的。 |
+| `type` | `"text" \| "secret"` | `text` 存进工程（随版本控制走）；`secret` 不存——工程里存的是一个 handle，值本身封存在填写它的那台机器上。 |
+| `scope` | `"global" \| "variant" \| "platform" \| "variant-platform"` | 哪些构建共用同一个值。`global` / `platform` 只存在工程一级，App Tag 变体不能各说各的。 |
+| `platforms` | `GameBuildPlatform[]` | 可选，缺省表示所有平台。空数组会被判为清单错误。 |
+| `required` | `boolean` | 可选。缺这个值的构建会被拒绝。 |
 
 entry 不能是绝对路径，不能包含 `..`、`.`、空字节、`?` 或 `#`。声明的入口文件必须实际存在。
 

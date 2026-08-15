@@ -131,6 +131,20 @@ export type StoryCommandSpec<P extends StoryCommandParamsShape = StoryCommandPar
      */
     quickParams?: readonly (keyof P & string)[];
     /**
+     * Whether this command has anything to offer in THIS project - the gate the browse surfaces run
+     * before listing it. Absent means always, which is what all but one command answer.
+     *
+     * Declared here rather than filtered inside the palette because `SPEC_PALETTE` is a module
+     * constant built once at import time, with no project in sight. The consumers hold the context
+     * already, so the rule lives on the spec and the surfaces apply it.
+     *
+     * It gates the MENUS, not the parser: a command hidden here still resolves when it is typed.
+     * That is deliberate rather than a gap - a command whose only reason to be hidden is an empty
+     * list has a `core` param reading that same list, so the typed line cannot resolve its argument
+     * and the row stays a draft, saying so in place.
+     */
+    available?: (context: StoryCommandContext) => boolean;
+    /**
      * Working lines for the manual, written exactly as an author would type them.
      *
      * Written in the canonical English spellings, and left that way in every locale. A locale may add
@@ -208,6 +222,16 @@ export function asAudioTrackId(value: StoryCommandValue | undefined): string | u
     return value?.kind === "audioTrack" ? value.trackId : undefined;
 }
 
+/**
+ * A resolved build variant's id, or undefined while the slot is unfilled.
+ *
+ * The id and never the name: a payload holding the name would stop resolving the moment the author
+ * renamed the variant, which is the one thing renaming must not do.
+ */
+export function asAppTagId(value: StoryCommandValue | undefined): string | undefined {
+    return value?.kind === "appTag" ? value.appTagId : undefined;
+}
+
 /** The resolved target of a generic verb (`/show poster`), or undefined while unresolved. */
 export function asTarget(value: StoryCommandValue | undefined): Extract<StoryCommandValue, { kind: "target" }>["target"] | undefined {
     return value?.kind === "target" ? value.target : undefined;
@@ -254,6 +278,21 @@ export function puppetNameParam(channel: StoryPuppetChannel, dependsOn: string, 
  */
 export function audioTrackParam(): StoryCommandParamSpec {
     return { hint: "track", type: { kind: "audioTrack" } };
+}
+
+/**
+ * A build variant the project can be shipped as (`Demo`, `Bonus`).
+ *
+ * Positional and `core`: a line that names a variant is about that variant, and one with the slot
+ * empty says nothing a build could act on. One spelling for every command that takes a variant, so
+ * the key, the offer list and the stored id cannot differ between two of them.
+ *
+ * The offer list is the AUTHORED variants; the release one is not among them
+ * (`storyCommandCandidates.ts`). Resolution still accepts its name, and a row naming it is a defined
+ * state rather than an error - it is what a deleted variant's id resolves to, and it cuts nothing.
+ */
+export function appTagParam(hint = "appTag"): StoryCommandParamSpec {
+    return { hint, type: { kind: "appTag" }, positional: true, core: true };
 }
 
 /** `at=` - a placement. */
