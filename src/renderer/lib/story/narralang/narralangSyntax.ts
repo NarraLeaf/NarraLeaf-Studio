@@ -90,7 +90,10 @@ export function escapeNarralangProse(
         out = replaceAll(out, separator, `${mark}${separator}`);
     }
 
-    if (context === "narration") {
+    // An option's text is a line of its own, so it can be misread exactly as narration can - and the
+    // rule was missing here, which made an option beginning with a keyword print unescaped and read
+    // back as that statement. A note needs none of this: its own prefix already says what the line is.
+    if (context === "narration" || context === "option") {
         // A line that would otherwise open a statement, a note, or a disabled row.
         const firstToken = out.split(" ", 1)[0] ?? "";
         if (
@@ -156,6 +159,28 @@ export function narralangName(name: string, dialect: NarralangDialect): string {
 export function narralangString(value: string, dialect: NarralangDialect): string {
     const [open, close] = dialect.quote.string;
     return `${open}${quoted(value, close, dialect)}${close}`;
+}
+
+/**
+ * A rich-text tag's argument: bare when it is a single plain token, quoted otherwise.
+ *
+ * The same rule {@link narralangName} follows, and for the same reason - a tag's parts are separated
+ * by spaces, so an argument holding one tears the tag open. `{color rgb(56, 189, 248)}` is a real
+ * stored value and it was being printed verbatim, which produced a tag nothing could read back.
+ *
+ * Quoted only when it has to be, rather than always: `{color #ff8080}` and `{ruby かのじょ}` are what
+ * an author reads all day, and one rule ("quote it when it would not survive being read back") is
+ * what they already know from names.
+ */
+export function narralangTagArgument(value: string, dialect: NarralangDialect): string {
+    const [open] = dialect.quote.string;
+    const plain = value !== ""
+        && !/\s/.test(value)
+        && !value.startsWith(open)
+        && !value.includes(dialect.escape)
+        && !value.includes(dialect.text.open)
+        && !value.includes(dialect.text.close);
+    return plain ? value : narralangString(value, dialect);
 }
 
 function quoted(value: string, close: string, dialect: NarralangDialect): string {

@@ -19,6 +19,7 @@ import {
     escapeNarralangProse,
     narralangNumber,
     narralangSeconds,
+    narralangTagArgument,
     protectNarralangLineEdges,
 } from "./narralangSyntax";
 
@@ -39,7 +40,12 @@ function wrapMarks(inner: string, marks: StoryTextMarks | undefined, dialect: Na
         if (value === undefined || value === false || value === "") {
             continue;
         }
-        const argument = spec.arg === "number" ? narralangNumber(Number(value)) : spec.arg === "raw" ? String(value) : null;
+        // A raw argument is author data - a colour function, a ruby reading - and can hold the space
+        // that separates a tag's parts, so it goes out under the same quote-when-needed rule a name
+        // does. A number never can.
+        const argument = spec.arg === "number"
+            ? narralangNumber(Number(value))
+            : spec.arg === "raw" ? narralangTagArgument(String(value), dialect) : null;
         const open = argument === null ? tag(dialect, spec.tag) : tag(dialect, `${spec.tag} ${argument}`);
         out = `${open}${out}${tag(dialect, `${dialect.text.closeSigil}${spec.tag}`)}`;
     }
