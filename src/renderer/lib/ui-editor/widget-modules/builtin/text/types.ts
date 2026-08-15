@@ -6,23 +6,12 @@ export type TextVerticalAlign = "start" | "center" | "end";
 /** How lines break inside the text box (maps to white-space / word-break). */
 export type TextWrapMode = "word" | "character" | "nowrap";
 
-/**
- * Block flow of the text box.
- *
- * `vertical-rl` is the classic Japanese novel setting a VN wants: columns of glyphs read top to
- * bottom, the next column to the left. `vertical-lr` is the same rotation with columns advancing
- * rightwards, which Mongolian and some modern layouts use.
- */
-export type TextWritingMode = "horizontal-tb" | "vertical-rl" | "vertical-lr";
+import type {
+    TextOrientation,
+    TextWritingMode,
+} from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 
-/**
- * How glyphs sit inside a vertical column. Ignored while the box is horizontal.
- *
- * `mixed` is the convention: CJK stays upright and a Latin run is laid on its side, read by tilting
- * the head clockwise. `upright` stands every glyph up, which stacks Latin letter over letter.
- * `sideways` rotates the whole column, CJK included.
- */
-export type TextOrientation = "mixed" | "upright" | "sideways";
+export type { TextOrientation, TextWritingMode };
 
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
