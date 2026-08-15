@@ -2,6 +2,7 @@ export type ListDirection = "horizontal" | "vertical";
 
 import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
+import type { TextWritingMode } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import type {
     UIListItemsBinding,
     UIListScrollbarPartStyle,
@@ -23,6 +24,15 @@ export type ListWidgetProps = {
     itemGap: number;
     /** Stack preview copies vertically or horizontally. */
     repeatDirection: ListDirection;
+    /**
+     * Block flow of the list.
+     *
+     * A vertical mode turns the whole list, not only the glyphs inside it: `repeatDirection` is read
+     * against the writing mode, so a full-screen dialogue whose lines are set vertically stacks them
+     * right to left the way the writing runs, and scrolls along that axis. Inherited by everything
+     * inside the items, which is what makes the text in them vertical without being set twice.
+     */
+    writingMode: TextWritingMode;
     contentPaddingTop: number;
     contentPaddingRight: number;
     contentPaddingBottom: number;
@@ -80,6 +90,7 @@ export const defaultListWidgetProps: ListWidgetProps = {
     selectedIndex: -1,
     itemGap: 8,
     repeatDirection: "vertical",
+    writingMode: "horizontal-tb",
     contentPaddingTop: 0,
     contentPaddingRight: 0,
     contentPaddingBottom: 0,
