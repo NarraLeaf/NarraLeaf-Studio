@@ -67,6 +67,37 @@ export class AppTerminateHandler extends IPCHandler<IPCEventType.appTerminate> {
     }
 }
 
+/**
+ * Put a renderer failure somewhere that outlives the window that saw it.
+ *
+ * The renderer's own record of what it printed is a ring buffer in the page, so a crash followed by
+ * a reload - which is now the ordinary answer to a crash - takes the evidence with it. `main.log` is
+ * the only sink that survives both the reload and the process, and it is the file the support
+ * bundle reads.
+ *
+ * Reporting only: nothing here decides what the window does next. Errors that *should* end the
+ * process still come through {@link AppTerminateHandler}.
+ */
+export class AppReportRendererErrorHandler extends IPCHandler<IPCEventType.appReportRendererError> {
+    readonly name = IPCEventType.appReportRendererError;
+    readonly type = IPCMessageType.message;
+
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appReportRendererError]["data"]) {
+        const where = data.label ? `${data.source}: ${data.label}` : data.source;
+        const lines = [
+            `[Renderer] ${window.getWindowType()} error (${where}): ${data.message}`,
+        ];
+        if (data.stack) {
+            lines.push(data.stack);
+        }
+        if (data.componentStack) {
+            lines.push(`Component stack:${data.componentStack}`);
+        }
+        window.app.logger.error(lines.join("\n"));
+        return this.success(void 0 as never);
+    }
+}
+
 export class AppWindowControlHandler extends IPCHandler<IPCEventType.appWindowControl> {
     readonly name = IPCEventType.appWindowControl;
     readonly type = IPCMessageType.request;

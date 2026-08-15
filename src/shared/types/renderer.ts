@@ -1,7 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
-import { BlueprintPersistenceProjectRef, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
+import { BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type {
@@ -120,6 +120,13 @@ export interface RendererPreloadedInterface {
     getAppInfo(): Promise<RequestStatus<AppInfo>>;
     getWindowProps<T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>>;
     terminate(err?: string): Promise<void>;
+    /**
+     * Record a renderer failure in the main-process log, which outlives this window.
+     *
+     * Reporting only. Nothing about what the window does next is decided here - that is the
+     * caller's business, and most callers keep running.
+     */
+    reportError(report: RendererErrorReport): void;
 
     // Window
     window: {
