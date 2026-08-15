@@ -10,6 +10,8 @@ import type {
 import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 import { DEFAULT_ELEMENT_EFFECT_VALUES, normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
 import type { UIElement } from "@shared/types/ui-editor/document";
+import type { GradientFill } from "@shared/types/ui-editor/gradientFill";
+import { normalizeGradientFill } from "@shared/types/ui-editor/gradientFill";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
@@ -39,6 +41,7 @@ export type ButtonResolvedVisualProps = Pick<
     | "fillOpacity"
     | "fillVisible"
     | "imageFill"
+    | "gradientFill"
     | "backgroundImage"
     | "backgroundFit"
     | "borderRadius"
@@ -179,6 +182,47 @@ function coerceImageFill(v: unknown): ImageFill | null | undefined {
     return undefined;
 }
 
+/**
+ * A row value that is a usable gradient, an explicit clear, or nothing at all.
+ *
+ * Same three answers as {@link coerceImageFill}, and the difference between the last two is a real
+ * instruction rather than a formality: `null` is a row saying "this variant has no gradient", which
+ * must overwrite an inherited one, while `undefined` is a row that says nothing and leaves the
+ * baseline standing. An unreadable row is not an error either - `normalizeGradientFill` is the
+ * read-from-disk path and repairs what it can, so a gradient that comes back `undefined` is one
+ * with no honest reading at all, and it declines to override rather than clearing the fill.
+ */
+function coerceGradientFill(v: unknown): GradientFill | null | undefined {
+    if (v === null) {
+        return null;
+    }
+    if (v === undefined) {
+        return undefined;
+    }
+    return normalizeGradientFill(v);
+}
+
+const FILL_TYPE_VALUES: readonly RectangleLikeProps["fillType"][] = ["color", "image", "gradient"];
+
+/**
+ * A row value that names a fill kind this build can paint.
+ *
+ * Unlike the other coercions this one is a whitelist rather than a shape test, because the value is
+ * a bare string: an unknown one would type-check and then reach a renderer with no branch for it.
+ * A row this rejects leaves the flat prop in place, which is the one reading that always paints.
+ * Anything added to `RectangleLikeProps["fillType"]` must be added here too, or a variant pinning
+ * it is dropped in silence - which is exactly how `"gradient"` was missed before it existed.
+ */
+function coerceFillType(v: unknown): RectangleLikeProps["fillType"] | undefined {
+    const s = coerceString(v);
+    if (s === undefined) {
+        return undefined;
+    }
+    return FILL_TYPE_VALUES.includes(s as RectangleLikeProps["fillType"])
+        ? (s as RectangleLikeProps["fillType"])
+        : undefined;
+}
+
 function applyContainerKey(target: RectangleLikeProps, key: ContainerAppearancePropertyKey, raw: unknown): void {
     switch (key) {
         case "backgroundColor": {
@@ -272,9 +316,16 @@ function applyContainerKey(target: RectangleLikeProps, key: ContainerAppearanceP
             }
             break;
         }
+        case "gradientFill": {
+            const g = coerceGradientFill(raw);
+            if (g !== undefined) {
+                target.gradientFill = g;
+            }
+            break;
+        }
         case "fillType": {
-            const s = coerceString(raw);
-            if (s === "color" || s === "image") {
+            const s = coerceFillType(raw);
+            if (s !== undefined) {
                 target.fillType = s;
             }
             break;
@@ -454,9 +505,16 @@ function applyButtonKey(target: ButtonResolvedVisualProps, key: ButtonAppearance
             }
             break;
         }
+        case "gradientFill": {
+            const g = coerceGradientFill(raw);
+            if (g !== undefined) {
+                target.gradientFill = g;
+            }
+            break;
+        }
         case "fillType": {
-            const s = coerceString(raw);
-            if (s === "color" || s === "image") {
+            const s = coerceFillType(raw);
+            if (s !== undefined) {
                 target.fillType = s;
             }
             break;
@@ -938,8 +996,11 @@ export function resolveImageRectangleLike(
         }
         applyContainerKey(next, key, raw);
     }
-    // Image-fill opacity doubles as Displayable opacity for image backgrounds; color backgrounds still need it as fill alpha.
-    if (next.fillType === "color") {
+    // Image-fill opacity doubles as Displayable opacity for image backgrounds; every other fill kind
+    // still needs it as a fill alpha. The test is "not image" rather than "is colour" because a
+    // gradient's fill opacity is a fill alpha in exactly the way a colour's is - reading it as the
+    // Displayable's opacity would move the widget's whole opacity when the author dimmed its fill.
+    if (next.fillType !== "image") {
         const fillOpacityGroup = variant.propertyGroups.find(group => group.key === "fillOpacity");
         const raw = fillOpacityGroup ? pickLastMatchingRowValue(fillOpacityGroup.rows, ctx.signals) : undefined;
         if (raw !== undefined) {
@@ -956,10 +1017,18 @@ export function resolveImageAppearanceTransitions(
     resolvedRectangleLike?: Pick<RectangleLikeProps, "fillType">,
 ): Partial<Record<ContainerAppearancePropertyKey, AppearanceFieldTransition>> {
     const transitions = resolveContainerAppearanceTransitions(appearance, ctx);
-    if (resolvedRectangleLike?.fillType !== "color") {
+    // Mirrors the gate in `resolveImageRectangleLike`: an image fill's opacity is animated as the
+    // Displayable's own, so a `fillOpacity` transition here would run twice. Every other fill kind,
+    // gradients included, owns its fill alpha and keeps the transition. A caller that does not hand
+    // over the resolved chrome cannot be told apart from an image, so it keeps the old answer.
+    if (!resolvedRectangleLike || resolvedRectangleLike.fillType === "image") {
         delete transitions.fillOpacity;
     }
+    // Neither fill is a value motion can interpolate - two gradients may differ in kind and in stop
+    // count, with no defined path between them - so a transition on either is dropped rather than
+    // handed to Motion. The crossfade in the chrome renderer is what actually animates a fill change.
     delete transitions.imageFill;
+    delete transitions.gradientFill;
     return transitions;
 }
 
@@ -979,6 +1048,7 @@ export function resolveButtonVisualProps(
         fillOpacity: flat.fillOpacity,
         fillVisible: flat.fillVisible,
         imageFill: flat.imageFill,
+        gradientFill: flat.gradientFill,
         backgroundImage: flat.backgroundImage,
         backgroundFit: flat.backgroundFit,
         borderRadius: flat.borderRadius,
@@ -1087,6 +1157,7 @@ export function buttonResolvedVisualToRectangleLike(v: ButtonResolvedVisualProps
         backgroundImage: v.backgroundImage,
         backgroundFit: v.backgroundFit,
         imageFill: v.imageFill,
+        gradientFill: v.gradientFill,
         fillType: v.fillType,
         fillVisible: v.fillVisible,
         fillOpacity: v.fillOpacity,

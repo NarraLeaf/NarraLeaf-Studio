@@ -1,7 +1,29 @@
+import { normalizeGradientFill } from "@shared/types/ui-editor/gradientFill";
 import type { ImageFill, ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { DEFAULT_RECTANGLE_CROP_PLACEMENT, mapLegacyFitToMode } from "@shared/types/ui-editor/rectangleLike";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
+
+const FILL_TYPES: readonly RectangleLikeProps["fillType"][] = ["color", "image", "gradient"];
+
+/**
+ * Read a stored `fillType`, falling back to `"color"` for anything else.
+ *
+ * The narrowing is not ceremony. `element.props` is whatever the document on disk holds - a
+ * hand-edit, a bad merge, or a widget authored by a later Studio can all put a string here this
+ * build has no branch for, and every fill consumer downstream reads this field to decide what to
+ * paint. `"color"` is the reading that always paints something, so it is the fallback.
+ *
+ * This was a blind `as` cast until gradients arrived, which meant an unknown value flowed straight
+ * through it and only failed further downstream. Widen this list when a fourth fill kind lands;
+ * do not remove it.
+ */
+function coerceFillType(raw: unknown): RectangleLikeProps["fillType"] {
+    const value = String(raw ?? "color");
+    return FILL_TYPES.includes(value as RectangleLikeProps["fillType"])
+        ? (value as RectangleLikeProps["fillType"])
+        : "color";
+}
 
 export function getRectangleLikeProps(element: { props?: Record<string, unknown> }): RectangleLikeProps {
     const p = element.props ?? {};
@@ -19,9 +41,10 @@ export function getRectangleLikeProps(element: { props?: Record<string, unknown>
         backgroundImage: String(p.backgroundImage ?? ""),
         backgroundFit: String(p.backgroundFit ?? "cover"),
         imageFill: (p.imageFill as ImageFill | undefined) ?? undefined,
+        gradientFill: normalizeGradientFill(p.gradientFill),
         imageFlipX: p.imageFlipX === true,
         imageFlipY: p.imageFlipY === true,
-        fillType: String(p.fillType ?? "color") as RectangleLikeProps["fillType"],
+        fillType: coerceFillType(p.fillType),
         fillVisible: p.fillVisible !== false,
         fillOpacity: Number(p.fillOpacity ?? 1),
         strokeVisible: p.strokeVisible !== false,

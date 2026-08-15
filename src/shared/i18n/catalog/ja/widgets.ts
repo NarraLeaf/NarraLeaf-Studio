@@ -323,6 +323,7 @@ export const widgets = {
         fill: "塗り",
         fillType: "塗りの種類",
         imageFill: "画像の塗り",
+        gradientFill: "グラデーションの塗り",
         toggleFillVisibility: "塗りの表示を切り替え",
         border: "枠線",
         borderStyle: "枠線のスタイル",

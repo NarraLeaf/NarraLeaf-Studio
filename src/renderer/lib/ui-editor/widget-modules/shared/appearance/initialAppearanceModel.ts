@@ -45,6 +45,7 @@ export const CONTAINER_KEY_ORDER: ContainerAppearancePropertyKey[] = [
     "backgroundImage",
     "backgroundFit",
     "imageFill",
+    "gradientFill",
     "fillType",
     "fillVisible",
     "fillOpacity",
@@ -75,6 +76,7 @@ export const BUTTON_KEY_ORDER: ButtonAppearancePropertyKey[] = [
     "fillOpacity",
     "fillVisible",
     "imageFill",
+    "gradientFill",
     "backgroundImage",
     "backgroundFit",
     "borderRadius",
@@ -156,6 +158,8 @@ export function containerAppearanceRowFromRectangleLike(
                 return rl.backgroundFit;
             case "imageFill":
                 return rl.imageFill ?? null;
+            case "gradientFill":
+                return rl.gradientFill ?? null;
             case "fillType":
                 return rl.fillType;
             case "fillVisible":
@@ -234,6 +238,8 @@ function containerRowValue(props: ContainerWidgetProps, key: ContainerAppearance
                 return props.backgroundFit;
             case "imageFill":
                 return props.imageFill ?? null;
+            case "gradientFill":
+                return props.gradientFill ?? null;
             case "fillType":
                 return props.fillType;
             case "fillVisible":
@@ -296,6 +302,8 @@ function buttonRowValue(props: ButtonWidgetProps, key: ButtonAppearancePropertyK
                 return props.fillVisible;
             case "imageFill":
                 return props.imageFill ?? null;
+            case "gradientFill":
+                return props.gradientFill ?? null;
             case "backgroundImage":
                 return props.backgroundImage;
             case "backgroundFit":

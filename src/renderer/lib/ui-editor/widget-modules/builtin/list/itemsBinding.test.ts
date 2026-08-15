@@ -150,3 +150,45 @@ describe("blueprint list properties fallback", () => {
         expect(pageProps.chapters[0].id).toBe("one");
     });
 });
+
+/**
+ * The scrollbar's part styles are a free-form bag on disk, and their fill kind used to be read by
+ * an explicit `image ? image : color ? color : fallback` chain - a correct safety net that silently
+ * became a downgrade the moment a third kind existed. These pin that the list stays complete.
+ */
+describe("scrollbar part style fill kind", () => {
+    function trackStyle(style: Record<string, unknown>) {
+        return getListProps({
+            id: "list",
+            type: "nl.list",
+            name: "List",
+            parentId: null,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 200, height: 200 },
+            props: { scrollbar: { trackStyle: style } },
+        } as never).scrollbar.trackStyle;
+    }
+
+    it("reads each fill kind the scrollbar can paint", () => {
+        for (const fillType of ["color", "image", "gradient"]) {
+            expect(trackStyle({ fillType }).fillType, fillType).toBe(fillType);
+        }
+    });
+
+    it("keeps the fallback for a kind this build cannot paint", () => {
+        expect(trackStyle({ fillType: "mesh" }).fillType).toBe(trackStyle({}).fillType);
+    });
+
+    it("carries a stored gradient through, repaired", () => {
+        const style = trackStyle({
+            fillType: "gradient",
+            gradientFill: {
+                kind: "linear",
+                stops: [{ offset: 0.5, color: "nlbrand:primary" }],
+            },
+        });
+
+        // One colour is a solid, and a solid is the pair repeated.
+        expect(style.gradientFill?.stops).toHaveLength(2);
+    });
+});
