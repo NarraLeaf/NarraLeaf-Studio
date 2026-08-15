@@ -7,6 +7,10 @@ import type {
 } from "@shared/types/ui-editor/list";
 import { isUIListItemsBindingKind } from "@shared/types/ui-editor/list";
 import {
+    normalizeVerticalTypography,
+    type TextWritingMode,
+} from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
+import {
     defaultListScrollbarPartStyle,
     defaultListScrollbarProps,
     defaultListWidgetProps,
@@ -155,6 +159,7 @@ export function getListProps(element: UIElement): ListWidgetProps {
             raw.repeatDirection === "horizontal" || raw.repeatDirection === "vertical"
                 ? raw.repeatDirection
                 : defaultListWidgetProps.repeatDirection,
+        writingMode: normalizeVerticalTypography(raw as { writingMode?: TextWritingMode }).writingMode,
         contentPaddingTop: clampNumber(raw.contentPaddingTop, defaultListWidgetProps.contentPaddingTop, 0, 512),
         contentPaddingRight: clampNumber(raw.contentPaddingRight, defaultListWidgetProps.contentPaddingRight, 0, 512),
         contentPaddingBottom: clampNumber(raw.contentPaddingBottom, defaultListWidgetProps.contentPaddingBottom, 0, 512),
