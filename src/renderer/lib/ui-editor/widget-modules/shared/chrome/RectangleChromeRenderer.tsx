@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type HTMLAttributes } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
 import { motion } from "motion/react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -75,7 +75,29 @@ type FillCrossfadeState = {
     plan: FillCrossfadePlan;
     /** Bumped per crossfade; keys the incoming layer so it mounts fresh and can animate in. */
     epoch: number;
+    /** When to drop the outgoing layer if the incoming one's completion never arrives. */
+    endsAfterMs: number;
 };
+
+/**
+ * How long to wait before ending a crossfade that has not reported itself finished.
+ *
+ * The incoming layer's `onAnimationComplete` is the normal signal and needs no duration, which is
+ * what lets a spring work at all. This is only the net underneath it: an incoming layer that
+ * remounted part-way through has nothing left to animate and so may never report anything, and an
+ * outgoing layer that never leaves would pin the old fill on screen for good.
+ */
+function crossfadeTimeoutMs(transition: AppearanceFieldTransition | null): number {
+    if (!transition) {
+        return 0;
+    }
+    const delay = Math.max(0, transition.delayMs ?? 0);
+    if (transition.type === "tween") {
+        return delay + Math.max(0, transition.durationMs) + 50;
+    }
+    // A spring has no duration to read, so this is a cap rather than a schedule.
+    return delay + 5000;
+}
 
 function assignMotionTransition(
     target: Record<string, unknown>,
@@ -198,7 +220,36 @@ export function RectangleChromeRenderer({
     }));
     const [fillEpoch, setFillEpoch] = useState(0);
     const [crossfade, setCrossfade] = useState<FillCrossfadeState | null>(null);
-    const endCrossfade = useCallback(() => setCrossfade(null), []);
+    const endCrossfade = useCallback(
+        (epoch: number) => setCrossfade(current => (current && current.epoch === epoch ? null : current)),
+        []
+    );
+
+    /**
+     * The last crossfade whose incoming layer has been on screen at least once.
+     *
+     * It is what stops the incoming layer being painted from zero twice. `initial` is read at mount
+     * and only at mount, so a mounted layer cannot go back to zero - but a *remount* can put it
+     * there, and the layer does remount: {@link FillLayer} answers with a plain `div` when no
+     * transition is configured and a `motion.div` when one is, so a change in the resolved
+     * transitions swaps the element type under React and the node is rebuilt. Once the incoming layer
+     * has been committed, it therefore mounts at its target instead, which truncates the fade in the
+     * rare case rather than flashing the outgoing fill back at full strength.
+     *
+     * Written from an effect, never during render, so that the two passes of a double render agree.
+     */
+    const startedEpochRef = useRef(-1);
+
+    useEffect(() => {
+        if (!crossfade) {
+            return;
+        }
+        startedEpochRef.current = crossfade.epoch;
+        // The completion callback is the normal end; this only catches a crossfade whose incoming
+        // layer has nothing left to animate and so will never report one.
+        const timer = setTimeout(() => endCrossfade(crossfade.epoch), crossfade.endsAfterMs);
+        return () => clearTimeout(timer);
+    }, [crossfade, endCrossfade]);
 
     if ((lastFill.paint?.signature ?? "") !== (layerPaint?.signature ?? "")) {
         /**
@@ -228,6 +279,9 @@ export function RectangleChromeRenderer({
                 fromOpacity: lastFill.opacity,
                 plan: planFillCrossfade(incomingOpaque, lastFill.opacity),
                 epoch: fillEpoch + 1,
+                endsAfterMs: crossfadeTimeoutMs(
+                    firstTransition(appearanceTransitions, ["fillOpacity", "fillVisible"])
+                ),
             });
         } else if (crossfade) {
             setCrossfade(null);
@@ -738,13 +792,21 @@ export function RectangleChromeRenderer({
                         role="current"
                         paint={layerPaint}
                         opacity={layerOpacity}
-                        initialOpacity={crossfade ? crossfade.plan.incomingFrom : null}
+                        // Zero only for the commit that starts the crossfade. A remount after that
+                        // one - see `startedEpochRef` - mounts the layer where it was going instead,
+                        // because a layer that reappeared at zero would show the outgoing fill at
+                        // full strength for a frame, which is the old fill coming back after the new
+                        // one had arrived.
+                        initialOpacity={
+                            crossfade && startedEpochRef.current !== crossfade.epoch
+                                ? crossfade.plan.incomingFrom
+                                : null
+                        }
                         radii={cornerRadii}
                         transition={fillTransition}
-                        // The incoming layer always has a real animation to run - it starts at 0 -
-                        // so its completion is a duration-free signal that the crossfade is over,
-                        // which a timer would have to guess at for a spring.
-                        onAnimationComplete={crossfade ? endCrossfade : undefined}
+                        // A duration-free signal that the crossfade is over, which is what lets a
+                        // spring work; `endsAfterMs` catches the case where it never arrives.
+                        onAnimationComplete={crossfade ? () => endCrossfade(crossfade.epoch) : undefined}
                     />
                 ) : null}
             </>

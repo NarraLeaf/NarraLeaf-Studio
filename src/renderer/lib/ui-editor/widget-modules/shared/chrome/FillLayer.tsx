@@ -175,6 +175,27 @@ export type FillLayerProps = {
     onAnimationComplete?: () => void;
 };
 
+/**
+ * Present only to keep the layer's opacity out of the compositor. It is not a hack looking for a
+ * home - it is the one lever motion offers, and it is documented as such.
+ *
+ * `opacity` is one of the values motion hands to the Web Animations API (`acceleratedValues`), and an
+ * accelerated animation never writes the value into the inline style: it paints above it and the
+ * MotionValue stays at the keyframe it started from. At the end, `AcceleratedAnimation`'s `onfinish`
+ * runs `motionValue.set(final)` - which only *schedules* a DOM write on motion's next render frame -
+ * then calls `onComplete`, then `cancel()`, which removes the compositor animation at once. For one
+ * frame the element therefore paints its inline style, which is still the value it mounted with. For
+ * the incoming layer of a crossfade that value is 0, so the outgoing fill reappears at full strength
+ * for exactly one frame after the new fill had completely arrived.
+ *
+ * `AcceleratedAnimation.supports` refuses the compositor when the element has an `onUpdate` prop -
+ * there is no way to read a WAAPI value every frame - so this puts the animation back on the main
+ * thread, where every frame is written to the inline style and there is nothing stale to revert to.
+ * The price is one callback per frame per fading layer, which is only paid while a fill transition
+ * is actually running.
+ */
+const keepOpacityOnTheMainThread = () => undefined;
+
 export function FillLayer({
     paint,
     opacity,
@@ -225,6 +246,7 @@ export function FillLayer({
             initial={initialOpacity === null ? false : { opacity: initialOpacity, ...radii }}
             animate={animate}
             transition={transition}
+            onUpdate={keepOpacityOnTheMainThread}
             onAnimationComplete={onAnimationComplete}
         />
     );
