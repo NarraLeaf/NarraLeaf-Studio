@@ -92,6 +92,32 @@ export class WorkspaceOpenRecentHandler extends IPCHandler<IPCEventType.workspac
 }
 
 /**
+ * Whether a project already has a window of its own.
+ *
+ * Asked by the title-bar switcher before it offers a choice of window. Opening an already-open
+ * project focuses the window that has it whichever way it was asked for ({@link App.openProject}),
+ * so the question has one outcome and putting it to the author is a step with nothing behind it.
+ *
+ * The answer is read here rather than in the renderer because the window list and the path identity
+ * used to match against it are both the main process's - a renderer comparing paths itself would be
+ * a second opinion on "same project", and one of the two would eventually be wrong.
+ *
+ * A window asking about its own project is told yes: opening it is a no-op that focuses this window,
+ * which is not a choice either.
+ */
+export class WorkspaceIsProjectOpenHandler extends IPCHandler<IPCEventType.workspaceIsProjectOpen> {
+    readonly name = IPCEventType.workspaceIsProjectOpen;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.workspaceIsProjectOpen]["data"],
+    ): RequestStatus<IPCEvents[IPCEventType.workspaceIsProjectOpen]["response"]> {
+        return this.success({ open: Boolean(window.getApp().findWorkspaceForProject(projectPath)) });
+    }
+}
+
+/**
  * Handler for selecting a folder to open as workspace
  */
 export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.workspaceSelectFolder> {

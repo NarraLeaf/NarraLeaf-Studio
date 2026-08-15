@@ -187,6 +187,7 @@ export enum IPCEventType {
     
     workspaceLaunch = "workspace.launch",
     workspaceOpenRecent = "workspace.openRecent",
+    workspaceIsProjectOpen = "workspace.isProjectOpen",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
     psdOpen = "psd.open",
@@ -1670,6 +1671,24 @@ export type IPCWorkspaceEvents = {
             replaceCurrentWindow?: boolean;
         };
         response: void;
+    };
+    /**
+     * Whether a project already has a window of its own.
+     *
+     * Asked by a surface that would otherwise offer a choice of window: a project that is already
+     * open is focused whichever answer it gets (`App.openProject`), so the choice would have one
+     * outcome. Answered in main because the window list and the path identity that matches against
+     * it both live there.
+     */
+    [IPCEventType.workspaceIsProjectOpen]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            open: boolean;
+        };
     };
     [IPCEventType.psdOpen]: {
         type: IPCMessageType.request;

@@ -237,6 +237,12 @@ export interface RendererPreloadedInterface {
          * "switch in this window" rather than opening alongside.
          */
         openRecent(projectPath: string, replaceCurrentWindow?: boolean): Promise<RequestStatus<void>>;
+        /**
+         * Whether this project already has a window. Opening it would focus that window rather than
+         * open anything, so a surface that asks the author which window to use asks this first and
+         * skips the question when the answer is yes.
+         */
+        isProjectOpen(projectPath: string): Promise<RequestStatus<{ open: boolean }>>;
         close(): Promise<RequestStatus<void>>;
         getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
         exportProjectPackage(projectPath: string): Promise<RequestStatus<{
