@@ -95,6 +95,7 @@ export const pluginPermission = {
             uiOverlay: "Draw on top of the game",
             assets: "Resolve packaged asset URLs",
             locale: "Read and follow the game language",
+            storyCompile: "Take part in compiling your stories, and add actions to lines it did not write",
         },
     },
     button: {

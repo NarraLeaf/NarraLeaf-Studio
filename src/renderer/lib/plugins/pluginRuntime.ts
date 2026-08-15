@@ -779,11 +779,11 @@ export function createPluginApp(
                 actions: {
                     register: registration => {
                         assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
-                        return trackReturn(story.registerPluginAction(registration));
+                        return trackReturn(story.registerPluginAction(registration, descriptor.plugin.id));
                     },
                     registerMany: registrations => combine(registrations.map(registration => {
                         assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
-                        return trackReturn(story.registerPluginAction(registration));
+                        return trackReturn(story.registerPluginAction(registration, descriptor.plugin.id));
                     })),
                 },
             },
