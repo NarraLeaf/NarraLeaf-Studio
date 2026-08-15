@@ -1,5 +1,18 @@
 appId: com.narraleaf.studio
 productName: NarraLeaf Studio
+# Every artifact name must survive three renamings unchanged, which is what forces the spaces out
+# of it. electron-builder writes the installer to disk under this name and records the same name in
+# `latest.yml` after replacing spaces with hyphens; GitHub then stores the uploaded asset under the
+# name with spaces replaced by dots. Left to the defaults the three disagree - v0.5.0 shipped
+# `NarraLeaf Studio Setup 0.5.0.exe` on disk, `NarraLeaf-Studio-Setup-0.5.0.exe` in the feed and
+# `NarraLeaf.Studio.Setup.0.5.0.exe` on the release - so every installed copy resolved the feed's
+# name against a URL that 404s, and said so only in its log. A name with no spaces in it is the
+# same name in all three places.
+#
+# Written out rather than built from `${productName}`, which contains the space this is avoiding.
+# Keep the `.exe` and `-arm64.dmg` endings: narraleaf.com claims the download for each platform by
+# matching them (src/components/studio-downloads.tsx).
+artifactName: NarraLeaf-Studio-${version}-${arch}.${ext}
 directories:
   output: build
   # Must be set explicitly. It defaults to `build`, which is also `output` above and is
@@ -302,6 +315,9 @@ dmg:
 # above; it is worth re-reading builder-debug.yml's firstOrDefaultFilePatterns after any change
 # here, because that failure is silent.
 nsis:
+  # Overrides the global name above only to keep the word the Windows convention expects; the
+  # no-spaces rule is the same and the reason for it is written there.
+  artifactName: NarraLeaf-Studio-Setup-${version}-${arch}.${ext}
   # The wizard. `allowToChangeInstallationDirectory` has no effect without it.
   oneClick: false
   allowToChangeInstallationDirectory: true
