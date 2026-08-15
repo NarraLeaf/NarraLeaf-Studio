@@ -453,10 +453,12 @@ export function SettingsExplorer<T>({
                 );
             }
             case SettingValueType.Source: {
-                // Wider than a dropdown gets: what this control shows once an address has been
-                // typed is the address, and a URL cut to an ellipsis names nothing.
+                // A little wider than a dropdown gets, because what this control shows once an
+                // address has been typed is the address. Not wide enough to spell one out, though:
+                // no width this row can spare fits a URL, and what an offered source shows is a
+                // two-word name, so the extra room only made an empty bar beside a short label.
                 return (
-                    <div className="w-64 max-w-full">
+                    <div className="w-48 max-w-full">
                         <SettingSourcePicker
                             value={displayValue}
                             presets={descriptor.options ?? []}

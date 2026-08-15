@@ -21,7 +21,12 @@ import { matchedSourcePreset } from "@/lib/settings/sourceSelection";
  * official one stores `""` (see `OFFICIAL_SOURCE_VALUE`), and a typed address stores itself.
  */
 
-const PANEL_MIN_WIDTH_PX = 240;
+/**
+ * Floor for the panel, and so also the width below which it stops matching its trigger. It tracks
+ * the trigger's own width (`w-48` on the settings row): a floor above that would put the panel
+ * wider than the control it belongs to and the two would stop lining up.
+ */
+const PANEL_MIN_WIDTH_PX = 192;
 const PANEL_GAP_PX = 4;
 const VIEWPORT_MARGIN_PX = 8;
 
