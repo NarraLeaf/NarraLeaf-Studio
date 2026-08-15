@@ -1,3 +1,4 @@
+import type { GradientFill } from "./gradientFill";
 import type { ImageFill } from "./imageFill";
 import { isWidgetTypeOf, listWidgetTypesOf } from "./widgetInheritance";
 
@@ -53,8 +54,10 @@ export type UIListScrollbarSide = "right" | "left" | "bottom" | "top";
 
 export type UIListScrollbarPartStyle = {
     backgroundColor: string;
-    fillType: "color" | "image";
+    fillType: "color" | "image" | "gradient";
     imageFill?: ImageFill | null;
+    /** Sibling of `imageFill`, selected by `fillType: "gradient"`. */
+    gradientFill?: GradientFill | null;
     backgroundImage: string;
     backgroundFit: string;
     fillOpacity: number;

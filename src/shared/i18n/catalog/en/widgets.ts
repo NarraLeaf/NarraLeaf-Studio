@@ -321,6 +321,7 @@ export const widgets = {
         fill: "Fill",
         fillType: "Fill Type",
         imageFill: "Image Fill",
+        gradientFill: "Gradient fill",
         toggleFillVisibility: "Toggle fill visibility",
         border: "Border",
         borderStyle: "Border Style",
