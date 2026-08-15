@@ -18,6 +18,7 @@ import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorT
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
 import { useStoryScriptIo } from "../script/useStoryScriptIo";
+import { useNarralangExport } from "../narralang/useNarralangExport";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
 
 interface StoryPanelState {
@@ -54,6 +55,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     // project can still be read.
     const freeze = useFreezeGuard();
     const { beginExport: beginScriptExport, beginImport: beginScriptImport, dialogs: scriptDialogs } = useStoryScriptIo();
+    const { beginExport: beginNarralangExport, dialogs: narralangDialogs } = useNarralangExport();
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
     const [defaultStoryId, setDefaultStoryId] = useState<StoryId | undefined>();
     const [selectedStoryId, setSelectedStoryId] = useState<StoryId | null>(null);
@@ -334,6 +336,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 onClick: () => beginScriptExport({ storyId: entry.id, sceneIds: null }),
             },
             {
+                // Beside the `.txt` export rather than in a submenu of its own: they are one feature
+                // in two formats, and the format is the only choice between them.
+                id: "export-story-narralang",
+                label: t("story.narralang.exportStory"),
+                onClick: () => beginNarralangExport({ storyId: entry.id, sceneId: null }),
+            },
+            {
                 id: "import-story-script",
                 label: t("story.script.import"),
                 ...freeze.menuRow(),
@@ -349,7 +358,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [beginScriptExport, beginScriptImport, defaultStoryId, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
+    }, [beginNarralangExport, beginScriptExport, beginScriptImport, defaultStoryId, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
 
     /**
      * The developer section, wired the same way for all three of this panel's menus: what the row
@@ -504,6 +513,15 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
             {
+                id: "export-scene-narralang",
+                label: t("story.narralang.exportScene"),
+                onClick: () => {
+                    if (selectedStoryId) {
+                        beginNarralangExport({ storyId: selectedStoryId, sceneId: scene.id });
+                    }
+                },
+            },
+            {
                 // Story-scoped despite sitting on a scene row: the file decides which scenes it
                 // carries, and the confirm dialog names every one of them before anything is written.
                 id: "import-scene-script",
@@ -533,7 +551,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, selectedStoryId, t]);
+    }, [beginNarralangExport, beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, selectedStoryId, t]);
 
     const buildChapterContextMenu = useCallback((chapter: StoryChapter): ContextMenuDef => [
         {
@@ -802,6 +820,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 onClose={hideMenu}
             />
             {scriptDialogs}
+            {narralangDialogs}
         </div>
     );
 }

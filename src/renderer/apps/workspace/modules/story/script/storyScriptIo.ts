@@ -188,8 +188,18 @@ export function planHasWarnings(plan: StoryScriptImportPlan): boolean {
         || plan.scenes.some(scene => scene.stale || scene.missing || scene.diagnostics.length > 0);
 }
 
-/** A file name a native save dialog will accept on every platform we ship to. */
-export function storyScriptFileName(name: string): string {
+/**
+ * A file name a native save dialog will accept on every platform we ship to.
+ *
+ * Shared with the NarraLang export rather than copied, because the two exports differ only in their
+ * extension and a scene called `第一章 / 序` must not produce a path one of them accepts and the
+ * other splits into a directory.
+ */
+export function exportFileName(name: string, extension: string): string {
     const cleaned = name.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim();
-    return `${cleaned || "script"}.txt`;
+    return `${cleaned || "script"}.${extension}`;
+}
+
+export function storyScriptFileName(name: string): string {
+    return exportFileName(name, "txt");
 }
