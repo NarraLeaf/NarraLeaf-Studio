@@ -10,6 +10,7 @@ import type {
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { clampSliderValue, normalizeSliderProps } from "@shared/types/ui-editor/slider";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
+import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { evaluateBlueprintValue } from "./BlueprintValueEvaluator";
@@ -463,7 +464,9 @@ export function mergeElementWithBlueprintValues(
     if (!valueRuntime) {
         return element;
     }
-    const target = SUPPORTED_VALUE_TARGETS.find(item => item.elementType === element.type);
+    // Matched through the inheritance chain: the specialisations inherit the text inspector, so a
+    // Dialog Sentence offers the same bind-to-blueprint control and has to resolve it too.
+    const target = SUPPORTED_VALUE_TARGETS.find(item => isWidgetTypeOf(element.type, item.elementType));
     if (!target) {
         return element;
     }

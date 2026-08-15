@@ -10,6 +10,11 @@ import {
     lineWrapCss,
     textVerticalAlignToJustifyContent,
 } from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
+import {
+    isVerticalWritingMode,
+    textBodyInlineSizeCss,
+    verticalTypographyCss,
+} from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 
 export type NlrHexColor = `#${string}`;
@@ -54,10 +59,11 @@ export function useLiveTextStyles({
     const opacity = Number.isFinite(p.transformOpacity) ? Math.max(0, Math.min(1, p.transformOpacity)) : 1;
     const useEffectShell = Boolean(effectTextStyle.filter) || Boolean(effectTextStyle.mixBlendMode);
     const baseTextStyle: CSSProperties = {
-        width: "100%",
+        ...textBodyInlineSizeCss(p.writingMode),
         margin: 0,
         padding: 4,
         boxSizing: "border-box",
+        ...verticalTypographyCss(p),
         fontStyle: p.fontStyle,
         textAlign: p.textAlign,
         lineHeight: p.lineHeight,
@@ -80,6 +86,7 @@ export function useLiveTextStyles({
             flexDirection: "column",
             justifyContent: textVerticalAlignToJustifyContent(p.textVerticalAlign),
             alignItems: "stretch",
+            ...verticalTypographyCss(p),
             transform: `translate(${tx}px, ${ty}px) scale(${ts}) rotate(${tr}deg)`,
             opacity,
             ...(useEffectShell && effectTextStyle.filter ? { filter: effectTextStyle.filter } : {}),
