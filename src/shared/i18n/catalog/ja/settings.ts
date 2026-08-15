@@ -178,7 +178,7 @@ export const settings = {
         spellcheckLanguage: {
             label: "スペルチェックの言語",
             description: "ストーリー本文のつづりの誤りに印を付ける。訳文は対象外",
-            noDictionary: "このプロジェクトの言語のスペル辞書が入っていないため、本文に印は付かない。プロジェクト辞書はこのプロジェクトの用語を保持し続ける",
+            noDictionary: "このプロジェクトの言語のスペル辞書がインストールされていません。",
             options: {
                 followProject: "プロジェクトの言語に従う",
                 off: "スペルチェックを行わない",
@@ -304,19 +304,18 @@ export const settings = {
     },
     // データのパネル自身の文言。
     dictionaries: {
-        loading: "キャッシュを読んでいる…",
-        remove: "取り除く",
-        browse: "辞書を見る",
-        refresh: "取り直す",
-        browsing: "一覧を取得している…",
+        loading: "読み込んでいます…",
+        remove: "削除",
+        browse: "利用可能な辞書を表示",
+        refresh: "再取得",
+        browsing: "読み込んでいます…",
         download: "ダウンロード",
-        downloading: "ダウンロード中…",
-        failed: "辞書の一覧を読めなかった。設定のネットワーク方針を確かめてからもう一度",
-        noDictionaryLanguages: "中国語と日本語にはスペル辞書がなく、今後も出ない：どちらも語を分けて書かないので、単語リストと照らし合わせるものがない。この二つで書かれたプロジェクトに印は付かない",
+        downloading: "ダウンロードしています…",
+        failed: "辞書の一覧を取得できませんでした。設定のネットワークポリシーを確認してください。",
         installed: {
-            title: "この機体にあるもの",
-            emptyTitle: "辞書はまだない",
-            emptyDescription: "一つダウンロードするまで、どのプロジェクトにも印は付かない",
+            title: "インストール済み",
+            emptyTitle: "辞書がインストールされていません",
+            emptyDescription: "辞書をダウンロードすると本文のスペルチェックが行えます。",
         },
         available: {
             title: "ダウンロードできるもの",
