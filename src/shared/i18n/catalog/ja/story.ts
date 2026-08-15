@@ -904,6 +904,7 @@ export const story = {
         vfx: "環境演出",
         nvl: "NVL",
         blueprint: "ブループリント",
+        plugin: "プラグイン",
         effect: "エフェクト",
         camera: "カメラ",
         control: "制御",
@@ -960,6 +961,7 @@ export const story = {
         vfx: "環境演出 {name} を{operation}",
         nvl: "NVL ブロック",
         blueprint: "ブループリント",
+        pluginAction: "プラグインアクション",
         effect: "{effect} の画面演出",
         cameraOp: {
             pan: "パン",
