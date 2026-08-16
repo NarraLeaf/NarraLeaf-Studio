@@ -1,6 +1,20 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronUp, Plus, Trash2, X } from "lucide-react";
+import {
+    DndContext,
+    PointerSensor,
+    closestCenter,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+    SortableContext,
+    arrayMove,
+    useSortable,
+    verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { GripVertical, Plus, Trash2, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
@@ -117,25 +131,143 @@ function withAddedStop(fill: GradientFill): GradientFill {
 }
 
 /**
- * Move a stop past its neighbour by trading offsets, not array slots.
+ * Move a stop to another place in the list by trading offsets, not array slots.
  *
  * Reordering the array alone would not survive a round trip through disk - `normalizeGradientFill`
- * sorts by offset on read, so the two rows would spring back. Trading the two offsets is the same
- * gesture expressed in the number that actually decides the order, and it leaves the array sorted,
- * so the rows on screen keep matching the stops CSS paints.
+ * sorts by offset on read, so the rows would spring back. The offsets are the positions on the ramp
+ * and they stay put; what moves is which stop sits on each of them. For a move past one neighbour
+ * that is exactly a trade of the two offsets, and for a longer drag it is the same idea applied to
+ * every stop the dragged one passed. Either way the array comes back sorted, so the rows on screen
+ * keep matching the stops CSS paints.
  */
-function withMovedStop(fill: GradientFill, from: number, to: number): GradientFill {
-    const stops = sortStops(fill.stops).map((stop) => ({ ...stop }));
-    if (from < 0 || to < 0 || from >= stops.length || to >= stops.length) {
+function withReorderedStop(fill: GradientFill, from: number, to: number): GradientFill {
+    const stops = sortStops(fill.stops);
+    if (from < 0 || to < 0 || from >= stops.length || to >= stops.length || from === to) {
         return fill;
     }
-    const fromOffset = stops[from].offset;
-    stops[from].offset = stops[to].offset;
-    stops[to].offset = fromOffset;
-    const moved = stops[from];
-    stops[from] = stops[to];
-    stops[to] = moved;
-    return { ...fill, stops };
+    const offsets = stops.map((stop) => stop.offset);
+    return {
+        ...fill,
+        stops: arrayMove(stops, from, to).map((stop, index) => ({ ...stop, offset: offsets[index] })),
+    };
+}
+
+/**
+ * The sortable id of a stop row.
+ *
+ * Positional rather than an id carried by the stop, because a stop has none: the model stores an
+ * offset and a colour, and the list is re-sorted on every read. That is sound here only because the
+ * list cannot change shape mid-drag - the same panel owns the add and remove buttons.
+ */
+function stopDragId(index: number): string {
+    return `gradient-stop-${index}`;
+}
+
+type GradientStopRowProps = {
+    stop: GradientStop;
+    index: number;
+    count: number;
+    draftResetKey: string;
+    onColorChange: (next: ColorValue) => void;
+    onOffsetChange: (nextPercent: number) => void;
+    /** Put this stop at `to`, an index in the sorted list. */
+    onReorder: (to: number) => void;
+    onRemove: () => void;
+};
+
+/**
+ * One stop: its colour, its position, the handle that reorders it, and the bin.
+ *
+ * **The handle is a handle, not a spinner.** A caret pair used to sit here, immediately right of a
+ * percentage field, where on every other numeric control in Studio a caret means "add one" - authors
+ * read it as a stepper for the number next to it. The grip says "move this row" and nothing else,
+ * and it is the same affordance the layer outline already uses.
+ *
+ * **Dragging goes through dnd-kit, which is pointer-based**, so the `.nl-drag-source` opt-in does not
+ * enter into it: that class only revives the native HTML5 `draggable` attribute, which the global
+ * `-webkit-user-drag: none` otherwise kills.
+ */
+function GradientStopRow({
+    stop,
+    index,
+    count,
+    draftResetKey,
+    onColorChange,
+    onOffsetChange,
+    onReorder,
+    onRemove,
+}: GradientStopRowProps) {
+    const { t } = useTranslation();
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+        id: stopDragId(index),
+    });
+    const ordinal = index + 1;
+
+    // Vertical only - the panel is one column wide, so lateral drift would just carry the row out
+    // from under the cursor (the same reason the sidebar rail drops dnd-kit's x and its scale).
+    const style: CSSProperties = {
+        transform: transform ? `translate3d(0, ${transform.y}px, 0)` : undefined,
+        transition,
+        zIndex: isDragging ? 1 : undefined,
+        opacity: isDragging ? 0.6 : undefined,
+    };
+
+    return (
+        <div ref={setNodeRef} style={style} className="flex items-center gap-1">
+            <ColorPickerTrigger
+                value={parseColorValue(stop.color, STOP_COLOR_FALLBACK)}
+                displayMode="icon"
+                brandPalette
+                ariaLabel={t("widgetAppearance.gradient.stopColorAria", { index: ordinal })}
+                onChange={onColorChange}
+            />
+            <NumericDraftEnhancedInput
+                committedDisplay={toPercentDisplay(stop.offset)}
+                draftResetKey={`${draftResetKey}-gradient-stop-${index}`}
+                onFiniteNumber={onOffsetChange}
+                aria-label={t("widgetAppearance.gradient.stopOffsetAria", { index: ordinal })}
+                popoverWhenNarrow={false}
+                inputMode="decimal"
+                unit="%"
+                min={0}
+                max={100}
+                className="w-full min-w-0"
+            />
+            <ToolbarButton
+                size="xs"
+                className="cursor-grab touch-none active:cursor-grabbing"
+                {...attributes}
+                {...listeners}
+                aria-label={t("widgetAppearance.gradient.stopReorderAria", { index: ordinal })}
+                data-tip={t("widgetAppearance.gradient.stopReorderHint")}
+                // The carets this replaced were buttons, so the keyboard could reorder; a handle that
+                // only answered the pointer would have quietly taken that away. The arrow keys move
+                // the stop one place, and the spread above is deliberately first so this wins.
+                onKeyDown={(event) => {
+                    const delta = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+                    const to = index + delta;
+                    if (delta === 0 || to < 0 || to >= count) {
+                        return;
+                    }
+                    event.preventDefault();
+                    onReorder(to);
+                }}
+            >
+                <GripVertical className="h-3.5 w-3.5" />
+            </ToolbarButton>
+            <ToolbarButton
+                size="xs"
+                // Two stops is the floor the model and CSS agree on, so the last removal is refused
+                // in the control rather than repaired behind the author's back.
+                disabled={count <= 2}
+                onClick={onRemove}
+                aria-label={t("widgetAppearance.gradient.stopRemoveAria", { index: ordinal })}
+                data-tip={count <= 2 ? t("widgetAppearance.gradient.stopRemoveFloor") : undefined}
+            >
+                <Trash2 className="h-3.5 w-3.5" />
+            </ToolbarButton>
+        </div>
+    );
 }
 
 export type GradientFillEditorProps = {
@@ -220,6 +352,22 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
     }, [handlePosition, open]);
 
     const patch = useCallback((next: GradientFill) => onChange(next), [onChange]);
+
+    // 4px before a drag starts, the same threshold the layer outline uses, so a click that lands on
+    // the handle and wobbles is still a click.
+    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+    const stopDragIds = useMemo(() => stops.map((_, index) => stopDragId(index)), [stops]);
+    const handleStopDragEnd = useCallback(
+        (event: DragEndEvent) => {
+            const from = stopDragIds.indexOf(String(event.active.id));
+            const to = event.over ? stopDragIds.indexOf(String(event.over.id)) : -1;
+            if (from === -1 || to === -1 || from === to) {
+                return;
+            }
+            patch(withReorderedStop(fill, from, to));
+        },
+        [fill, patch, stopDragIds],
+    );
 
     const angle = fill.angle ?? DEFAULT_GRADIENT_ANGLE;
     const center = fill.center ?? DEFAULT_GRADIENT_CENTER;
@@ -370,84 +518,59 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
                               <Plus className="h-3.5 w-3.5" />
                           </ToolbarButton>
                       </div>
-                      <div className="space-y-1">
-                          {stops.map((stop, index) => {
-                              const ordinal = index + 1;
-                              return (
-                                  <div key={`${index}-${stop.offset}`} className="flex items-center gap-1">
-                                      <ColorPickerTrigger
-                                          value={parseColorValue(stop.color, STOP_COLOR_FALLBACK)}
-                                          displayMode="icon"
-                                          brandPalette
-                                          ariaLabel={t("widgetAppearance.gradient.stopColorAria", { index: ordinal })}
-                                          onChange={(next: ColorValue) => {
-                                              const nextStops = stops.map((existing, i) =>
-                                                  i === index
-                                                      ? { ...existing, color: serializeColorValue(next) }
-                                                      : existing,
-                                              );
-                                              patch({ ...fill, stops: nextStops });
-                                          }}
-                                      />
-                                      <NumericDraftEnhancedInput
-                                          committedDisplay={toPercentDisplay(stop.offset)}
-                                          draftResetKey={`${draftResetKey}-gradient-stop-${index}`}
-                                          onFiniteNumber={(next) => {
-                                              const nextStops = stops.map((existing, i) =>
-                                                  i === index ? { ...existing, offset: fromPercent(next) } : existing,
-                                              );
-                                              patch({ ...fill, stops: sortStops(nextStops) });
-                                          }}
-                                          aria-label={t("widgetAppearance.gradient.stopOffsetAria", { index: ordinal })}
-                                          popoverWhenNarrow={false}
-                                          inputMode="decimal"
-                                          unit="%"
-                                          min={0}
-                                          max={100}
-                                          className="w-full min-w-0"
-                                      />
-                                      <ToolbarButton
-                                          size="xs"
-                                          disabled={index === 0}
-                                          onClick={() => patch(withMovedStop(fill, index, index - 1))}
-                                          aria-label={t("widgetAppearance.gradient.stopMoveEarlierAria", {
-                                              index: ordinal,
-                                          })}
-                                      >
-                                          <ChevronUp className="h-3.5 w-3.5" />
-                                      </ToolbarButton>
-                                      <ToolbarButton
-                                          size="xs"
-                                          disabled={index === stops.length - 1}
-                                          onClick={() => patch(withMovedStop(fill, index, index + 1))}
-                                          aria-label={t("widgetAppearance.gradient.stopMoveLaterAria", {
-                                              index: ordinal,
-                                          })}
-                                      >
-                                          <ChevronDown className="h-3.5 w-3.5" />
-                                      </ToolbarButton>
-                                      <ToolbarButton
-                                          size="xs"
-                                          // Two stops is the floor the model and CSS agree on, so the
-                                          // last removal is refused in the control rather than
-                                          // repaired behind the author's back.
-                                          disabled={stops.length <= 2}
-                                          onClick={() =>
+                      <DndContext
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={handleStopDragEnd}
+                          // The default instructions describe dnd-kit's own space-bar lift, which
+                          // this list does not have: only a pointer sensor is registered, and the
+                          // keyboard path is the handle's own arrow keys.
+                          accessibility={{
+                              screenReaderInstructions: {
+                                  draggable: t("widgetAppearance.gradient.stopReorderHint"),
+                              },
+                          }}
+                      >
+                          <SortableContext items={stopDragIds} strategy={verticalListSortingStrategy}>
+                              <div className="space-y-1">
+                                  {stops.map((stop, index) => (
+                                      <GradientStopRow
+                                          key={stopDragId(index)}
+                                          stop={stop}
+                                          index={index}
+                                          count={stops.length}
+                                          draftResetKey={draftResetKey}
+                                          onColorChange={(next) =>
+                                              patch({
+                                                  ...fill,
+                                                  stops: stops.map((existing, i) =>
+                                                      i === index
+                                                          ? { ...existing, color: serializeColorValue(next) }
+                                                          : existing,
+                                                  ),
+                                              })
+                                          }
+                                          onOffsetChange={(next) =>
+                                              patch({
+                                                  ...fill,
+                                                  stops: sortStops(
+                                                      stops.map((existing, i) =>
+                                                          i === index
+                                                              ? { ...existing, offset: fromPercent(next) }
+                                                              : existing,
+                                                      ),
+                                                  ),
+                                              })
+                                          }
+                                          onReorder={(to) => patch(withReorderedStop(fill, index, to))}
+                                          onRemove={() =>
                                               patch({ ...fill, stops: stops.filter((_, i) => i !== index) })
                                           }
-                                          aria-label={t("widgetAppearance.gradient.stopRemoveAria", { index: ordinal })}
-                                          data-tip={
-                                              stops.length <= 2
-                                                  ? t("widgetAppearance.gradient.stopRemoveFloor")
-                                                  : undefined
-                                          }
-                                      >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                      </ToolbarButton>
-                                  </div>
-                              );
-                          })}
-                      </div>
+                                      />
+                                  ))}
+                              </div>
+                          </SortableContext>
+                      </DndContext>
                   </div>
               </div>,
               overlayHost,

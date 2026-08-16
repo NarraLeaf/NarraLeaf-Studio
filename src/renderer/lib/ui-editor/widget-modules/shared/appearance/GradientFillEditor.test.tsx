@@ -137,7 +137,9 @@ describe("GradientFillEditor", () => {
             ],
         });
         fireEvent.click(trigger());
-        fireEvent.click(screen.getByLabelText("widgetAppearance.gradient.stopMoveEarlierAria(2)"));
+        fireEvent.keyDown(screen.getByLabelText("widgetAppearance.gradient.stopReorderAria(2)"), {
+            key: "ArrowUp",
+        });
 
         // Sorted by offset either way - which is the point: nothing here relies on array order
         // surviving `normalizeGradientFill`.
@@ -145,6 +147,47 @@ describe("GradientFillEditor", () => {
             { offset: 0.2, color: "#ffffff" },
             { offset: 0.7, color: "#000000" },
         ]);
+    });
+
+    /**
+     * The handle carries the reorder the two carets used to, and they were keyboard-reachable.
+     * A drag-only handle would have been a quiet regression for anyone not holding a mouse, so the
+     * arrow keys are asserted here rather than trusted: the drag itself is a pointer gesture that a
+     * synthetic event cannot honestly stand in for.
+     */
+    it("reorders from the keyboard, and refuses to move off either end", () => {
+        const { onChange } = mount({
+            ...LINEAR,
+            stops: [
+                { offset: 0.2, color: "#000000" },
+                { offset: 0.5, color: "#888888" },
+                { offset: 0.7, color: "#ffffff" },
+            ],
+        });
+        fireEvent.click(trigger());
+        const handle = (index: number) =>
+            screen.getByLabelText(`widgetAppearance.gradient.stopReorderAria(${index})`);
+
+        fireEvent.keyDown(handle(1), { key: "ArrowDown" });
+        expect(onChange.mock.calls[0][0].stops).toEqual([
+            { offset: 0.2, color: "#888888" },
+            { offset: 0.5, color: "#000000" },
+            { offset: 0.7, color: "#ffffff" },
+        ]);
+
+        // The ends are refused in the handler rather than written and sorted back, so a held key
+        // at the top of the list does not spend an undo step per press.
+        fireEvent.keyDown(handle(1), { key: "ArrowUp" });
+        fireEvent.keyDown(handle(3), { key: "ArrowDown" });
+        expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("names the handle as a reorder, never as a step on the percentage beside it", () => {
+        mount();
+        fireEvent.click(trigger());
+        // The carets that used to sit here read as a spinner for the position field next to them.
+        expect(screen.queryByLabelText("widgetAppearance.gradient.stopMoveEarlierAria(1)")).toBeNull();
+        expect(screen.getByLabelText("widgetAppearance.gradient.stopReorderAria(1)")).toBeTruthy();
     });
 
     it("offers only the geometry each kind can paint", () => {
