@@ -259,6 +259,8 @@ export enum IPCEventType {
     signingKeystoreAliases = "signing.keystoreAliases",
     signingMacIdentities = "signing.macIdentities",
 
+    distributionCreateKey = "distribution.createKey",
+
     pluginBuildSecretSet = "pluginBuildSecret.set",
     pluginBuildSecretAvailable = "pluginBuildSecret.available",
 
@@ -2390,6 +2392,22 @@ export type IPCSigningEvents = {
         response: {
             /** False when the id was already gone. */
             removed: boolean;
+        };
+    };
+    /**
+     * Mint a distribution key for a project that has none, or replace the one it
+     * has. Minting happens here rather than in the renderer because the value is
+     * produced by the protection component, which only the host process loads.
+     *
+     * The result is written straight into the project manifest by the caller and
+     * is never shown: what the author sees is the date it was last replaced.
+     */
+    [IPCEventType.distributionCreateKey]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            key: string;
         };
     };
     /**

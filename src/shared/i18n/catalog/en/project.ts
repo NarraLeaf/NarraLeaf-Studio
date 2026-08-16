@@ -20,7 +20,7 @@ export const project = {
         },
         project: {
             title: "Project",
-            description: "Project check rules and what stops a build",
+            description: "The distribution key, project check rules, and what stops a build",
         },
         runtimes: {
             title: "Runtimes",
@@ -47,11 +47,22 @@ export const project = {
         // whose ids they name.
         brandColors: "Colors",
         brandControls: "Controls",
+        distribution: "Distribution key",
+        linting: "Project check",
         security: "Security",
         signing: "Signing",
         optimization: "Optimization",
         crash: "Crashes",
         mobile: "Mobile",
+    },
+    distribution: {
+        description: "Kept with the project, so everyone who builds it builds under the same key. A build accepts only patches made under the key it was built with.",
+        absent: "No key yet.",
+        rotatedAt: "Last replaced {date}.",
+        createAction: "Create",
+        replaceAction: "Replace",
+        replaceConfirm: "Replace the distribution key?",
+        replaceConfirmDetail: "Builds already released under the current key will not accept patches made after this.",
     },
     home: {
         untitledProject: "Untitled project",

@@ -239,6 +239,20 @@ export type GameRuntimePackV1 = {
      */
     endingSurfaceId?: string;
     /**
+     * What this build needs in order to accept a patch.
+     *
+     * `verificationKey` is the public half of the project's distribution key. It
+     * verifies and cannot produce, so it ships in the clear; a patch that carries
+     * a proof is read only when that proof checks out against it.
+     *
+     * Absent on every build made without a distribution key, and on packs produced
+     * before this field existed. Both mean the same thing: this build reads no
+     * patch that claims to come from anywhere, because it has no way to tell.
+     */
+    addOns?: {
+        verificationKey: string;
+    };
+    /**
      * The one string every edition of this title shares, naming the file progress is carried in.
      *
      * Resolved from the identity the RELEASE tag carries whatever variant this pack is - see

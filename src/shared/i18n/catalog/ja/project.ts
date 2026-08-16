@@ -21,7 +21,7 @@ export const project = {
         },
         project: {
             title: "プロジェクト",
-            description: "検査のルールと、ビルドを止める条件",
+            description: "配布キー、プロジェクトチェックの規則、ビルドを止めるもの",
         },
         runtimes: {
             title: "ランタイム",
@@ -47,11 +47,22 @@ export const project = {
         // このページの残りの言葉は、id の元になるモデルの隣、`brand` 名前空間にある。
         brandColors: "色",
         brandControls: "コントロール",
+        distribution: "配布キー",
+        linting: "プロジェクトチェック",
         security: "セキュリティ",
         signing: "署名",
         optimization: "最適化",
         crash: "クラッシュ",
         mobile: "モバイル",
+    },
+    distribution: {
+        description: "プロジェクトと共に保存されるため、ビルドする全員が同じキーを使う。ビルドは、それ自身のキーで作られたパッチだけを受け入れる。",
+        absent: "キーはまだない",
+        rotatedAt: "最終更新: {date}",
+        createAction: "作成",
+        replaceAction: "差し替え",
+        replaceConfirm: "配布キーを差し替えますか？",
+        replaceConfirmDetail: "現在のキーで既に公開したビルドは、これ以降に作られたパッチを受け入れない。",
     },
     home: {
         untitledProject: "無題のプロジェクト",

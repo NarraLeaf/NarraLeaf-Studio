@@ -856,6 +856,22 @@ export interface RendererPreloadedInterface {
      * No call returns a password. `import` is the one direction a secret
      * travels - up, once, straight into the OS keyring.
      */
+    /**
+     * The project's distribution key: the one value that ties a shipped build to
+     * the project that made it, so an add-on produced later can be read by that
+     * build and recognised as coming from the same place.
+     *
+     * Minting is the only operation. Nothing reads it back — it lives in the
+     * project manifest, travels with the project, and is never shown.
+     */
+    distribution: {
+        /**
+         * Mint a key. Replacing an existing one is the caller's decision and its
+         * consequence: builds already shipped under the old key stop accepting
+         * add-ons made after the replacement.
+         */
+        createKey(): Promise<RequestStatus<{ key: string }>>;
+    };
     signing: {
         /** Redacted credentials: metadata only. */
         list(): Promise<RequestStatus<{ credentials: SigningCredential[] }>>;

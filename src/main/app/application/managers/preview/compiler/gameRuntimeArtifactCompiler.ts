@@ -40,7 +40,9 @@ import {
     type NetworkPluginAllowlistEntry,
 } from "@shared/types/networkAllowlist";
 import {
+    bindRuntimeBinary,
     createSealedBundle,
+    projectVerificationKey,
     runtimeSupportPath,
     RUNTIME_BUNDLE_FILENAME,
     RUNTIME_SUPPORT_FILENAME,
@@ -250,6 +252,24 @@ export type GameRuntimeArtifactCompileInput = {
      */
     productName?: string;
     identifier?: string;
+    /**
+     * The project's distribution key and the identity this build ships under.
+     *
+     * Passing it makes the build's protection material a function of the project
+     * rather than of this run, which is the whole of what lets a patch produced
+     * later be read by the build - and lets the build tell a patch from this
+     * project apart from one anybody could have made. Absent for preview and Dev
+     * Mode: neither is distributed, so neither is ever patched, and leaving them
+     * on per-run material keeps the project's key out of throwaway output.
+     *
+     * `titleId` is the resolved app id, variant folded in, so two editions never
+     * derive the same material. It is the caller's single resolution of identity,
+     * not a second derivation - see how appId/productName/identifier travel.
+     */
+    distribution?: {
+        key: string;
+        titleId: string;
+    };
 };
 
 export type GameRuntimeArtifactCompileResult = {
@@ -324,10 +344,17 @@ export async function compileGameRuntimeArtifact(
         await fs.mkdir(userDataDir, { recursive: true });
     }
     await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, input.sidecarPlatformKey);
-    if (input.encryptionKey) {
-        // Protection on: ship the support binary. createSealedBundle binds this
-        // pack's protection material into it when it opens the store (below), so
-        // no key material is handled here or written into any JS.
+    // The support binary ships for protection, and also for a build that carries a
+    // distribution key without it: a patch is read through that binary, so making
+    // it conditional on protection alone would silently make patches a privilege
+    // of protected builds. Two different questions, and they do not share a switch.
+    const needsSupportBinary = Boolean(input.encryptionKey)
+        || Boolean(input.distribution && shell !== "web");
+    if (needsSupportBinary) {
+        // createSealedBundle binds this pack's protection material into the copy
+        // when it opens the store (below), so no key material is handled here or
+        // written into any JS. An unprotected build has no store to open, so it
+        // binds the copy on its own further down.
         await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
     }
 
@@ -381,6 +408,16 @@ export async function compileGameRuntimeArtifact(
         notices.push(`${shipped.removedAssetCount} assets are unreachable in this edition and do not ship`);
     }
 
+    // Bound before anything is written into it. A build with a distribution key
+    // but no store never opens one, so this is the only place its binary is bound
+    // - and an unbound binary reads no patch at all.
+    if (input.distribution && needsSupportBinary && !input.encryptionKey) {
+        await bindRuntimeBinary(path.join(appDir, RUNTIME_SUPPORT_FILENAME), {
+            projectMaterial: input.distribution.key,
+            titleId: input.distribution.titleId,
+        });
+    }
+
     // Everything below either writes loose files or streams into the store; on
     // any failure the store handle is released so a failed compile leaks nothing.
     const target: PackTarget = input.encryptionKey
@@ -389,6 +426,9 @@ export async function compileGameRuntimeArtifact(
             writer: await createSealedBundle(
                 path.join(appDir, RUNTIME_BUNDLE_FILENAME),
                 path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+                input.distribution
+                    ? { projectMaterial: input.distribution.key, titleId: input.distribution.titleId }
+                    : undefined,
             ),
         }
         : { kind: "loose" };
@@ -498,6 +538,19 @@ export async function compileGameRuntimeArtifact(
             // the same tag that decides the build's name. Omitted when blank, which is the state
             // every build was in before this field and the one the runtime treats as "show nothing".
             ...(endingSurfaceId ? { endingSurfaceId } : {}),
+            // The public half only, and only when this build was given a key: a
+            // build that carries no way to check a proof must say so by having no
+            // field, rather than by carrying an empty one that reads as "checked".
+            ...(input.distribution
+                ? {
+                    addOns: {
+                        verificationKey: projectVerificationKey(
+                            input.distribution.key,
+                            input.distribution.titleId,
+                        ),
+                    },
+                }
+                : {}),
             // Unconditional and deliberately NOT resolved for `input.appTag`, unlike the two above:
             // this is the one field whose whole job is to be the same in every variant, so that a
             // demo and the full game - which have different app ids, different user-data

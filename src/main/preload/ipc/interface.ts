@@ -585,6 +585,16 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
 
     /**
+     * The project's distribution key. Minting is the only operation - nothing
+     * reads it back, because the project manifest already holds it and no screen
+     * ever shows it.
+     */
+    distribution: {
+        createKey: () =>
+            ipcClient.invoke(IPCEventType.distributionCreateKey, {}) as Promise<RequestStatus<{ key: string }>>,
+    },
+
+    /**
      * The machine's code-signing credential vault. Nothing here returns a
      * password: `import` sends the plain secrets up once and everything else
      * deals in the redacted credential.
