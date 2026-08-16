@@ -138,7 +138,10 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
     BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_REDO,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_UNDO,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
@@ -1514,6 +1517,12 @@ function resolveGameNodeOutput(
     if (portId === "count") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getChoiceCount() ?? 0;
     }
+    if (portId === "canUndo") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.canUndoHistory() === true;
+    }
+    if (portId === "canRedo") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.canRedoHistory() === true;
+    }
     if (portId === "isNvlMode") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isNvlMode() === true;
     }
@@ -2847,6 +2856,7 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE ||
             selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN ||
             // Sound transport: Play Sound publishes `handle`, Is Sound Playing
             // publishes `isPlaying`.
@@ -3087,6 +3097,8 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_UNDO ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_REDO ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ ||
         GAME_PREFERENCE_OUTPUT_KEYS[selfNode.type]
     ) {

@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { TextGlyphOrientation, TextWritingMode as NlrTextWritingMode } from "narraleaf-react";
 
 /**
  * Block flow of a box.
@@ -9,8 +10,12 @@ import type { CSSProperties } from "react";
  *
  * Declared here rather than on the text widget because it is not only text that turns: a list
  * whose entries are lines of a full-screen dialogue has to stack them the way the writing runs.
+ *
+ * The union itself is the engine's, not a copy of it. These values leave Studio as props on the
+ * engine's `<Texts>` (see `useLiveTextStyles`), so a value the engine does not know is not a
+ * disagreement to be discovered at runtime - it is not a value.
  */
-export type TextWritingMode = "horizontal-tb" | "vertical-rl" | "vertical-lr";
+export type TextWritingMode = NlrTextWritingMode;
 
 /**
  * How glyphs sit inside a vertical column. Ignored while the box is horizontal.
@@ -18,8 +23,11 @@ export type TextWritingMode = "horizontal-tb" | "vertical-rl" | "vertical-lr";
  * `mixed` is the convention: CJK stays upright and a Latin run is laid on its side, read by tilting
  * the head clockwise. `upright` stands every glyph up, which stacks Latin letter over letter.
  * `sideways` rotates the whole column, CJK included.
+ *
+ * The engine calls this `TextGlyphOrientation`; the shorter name is what every widget here already
+ * says, and the type is the engine's.
  */
-export type TextOrientation = "mixed" | "upright" | "sideways";
+export type TextOrientation = TextGlyphOrientation;
 
 /** The vertical settings a text-like widget carries; every text widget's props are a superset. */
 export type VerticalTypographySettings = {
@@ -29,8 +37,25 @@ export type VerticalTypographySettings = {
     tateChuYokoMaxLength: number;
 };
 
-export const TEXT_WRITING_MODES: readonly TextWritingMode[] = ["horizontal-tb", "vertical-rl", "vertical-lr"];
-export const TEXT_ORIENTATIONS: readonly TextOrientation[] = ["mixed", "upright", "sideways"];
+/**
+ * Written out as a key per member rather than as an array, so that a mode added to the engine's
+ * union fails to compile here. An array would still typecheck while missing the new value, and the
+ * only symptom would be `normalizeVerticalTypography` quietly resolving it to horizontal - a stored
+ * document reading as something the author never chose.
+ */
+const WRITING_MODE_MEMBERS: Record<TextWritingMode, true> = {
+    "horizontal-tb": true,
+    "vertical-rl": true,
+    "vertical-lr": true,
+};
+const ORIENTATION_MEMBERS: Record<TextOrientation, true> = {
+    mixed: true,
+    upright: true,
+    sideways: true,
+};
+
+export const TEXT_WRITING_MODES = Object.keys(WRITING_MODE_MEMBERS) as readonly TextWritingMode[];
+export const TEXT_ORIENTATIONS = Object.keys(ORIENTATION_MEMBERS) as readonly TextOrientation[];
 
 /** Widest run tate-chu-yoko may combine. Past four the combined glyphs are unreadably narrow. */
 export const TATE_CHU_YOKO_MAX_LENGTH_LIMIT = 4;

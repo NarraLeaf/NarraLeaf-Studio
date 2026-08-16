@@ -956,6 +956,17 @@ export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST = "blueprint.game.autoSav
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET = "blueprint.game.history.get" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE = "blueprint.game.history.restore" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST = "blueprint.game.history.undoLast" as const;
+/**
+ * The other half of the backlog: the lines the player has stepped back past.
+ *
+ * The backlog is a timeline with a play head on it. `history.get` returns everything up to the
+ * head, and these return what is ahead of it and move the head forward - so a backlog screen can
+ * offer stepping forward, not only back.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE = "blueprint.game.history.getFuture" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_REDO_NEXT = "blueprint.game.history.redoNext" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_UNDO = "blueprint.game.history.canUndo" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_REDO = "blueprint.game.history.canRedo" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" as const;
 /** The speaking character's dialog avatar for the differential they are currently wearing. */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR = "blueprint.game.getSpeakerAvatar" as const;
