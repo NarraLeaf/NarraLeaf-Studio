@@ -259,7 +259,13 @@ void app.whenReady().then(async () => {
     if (startupBlocked) {
         return;
     }
-    resources = await createRuntimeResources(appDir);
+    resources = await createRuntimeResources(appDir, {
+        // Both patch directories: the one the installer wrote and the one the
+        // player can add to. `logRuntime` because what applied, and what did not,
+        // is the only trace a patch leaves.
+        userDataDir,
+        log: logRuntime,
+    });
     const pack = await readPack();
     if (pack.mode === "production" && hasDebuggingSwitch()) {
         // Refuse to run a production game under an attached debugger/CDP.
