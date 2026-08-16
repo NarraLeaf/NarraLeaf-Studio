@@ -85,10 +85,33 @@ async function bindWindows(): Promise<CursorBinding> {
     };
 }
 
+/**
+ * Register a koffi struct type at most once per process.
+ *
+ * koffi's type registry is process-global and refuses a name it already holds: a second
+ * registration throws `Duplicate type name`, and the caller sees a cursor that cannot be moved with
+ * an error that says nothing about cursors. Binding happens once per process in normal use, which
+ * is why this stayed invisible until a second bind was attempted on a real Mac. The Lore loader
+ * keeps its own types behind the same memo for the same reason.
+ */
+const registeredStructNames = new Set<string>();
+
+export function registerKoffiStructOnce(
+    koffi: Pick<typeof import("koffi"), "struct">,
+    name: string,
+    fields: Record<string, string>,
+): void {
+    if (registeredStructNames.has(name)) {
+        return;
+    }
+    koffi.struct(name, fields);
+    registeredStructNames.add(name);
+}
+
 async function bindMacOS(): Promise<CursorBinding> {
     const koffi = await loadKoffi();
     const lib = koffi.load("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices");
-    const CGPoint = koffi.struct("NLCGPoint", { x: "double", y: "double" });
+    registerKoffiStructOnce(koffi, "NLCGPoint", { x: "double", y: "double" });
     const warp = lib.func("int CGWarpMouseCursorPosition(NLCGPoint newCursorPosition)");
     const associate = lib.func("int CGAssociateMouseAndMouseCursorPosition(bool connected)");
     return {
@@ -162,7 +185,13 @@ export async function isSystemCursorAvailable(): Promise<boolean> {
     return (await cached).kind === "ready";
 }
 
-/** Reset the cached binding. Tests only; a real host's answer does not change while it runs. */
+/**
+ * Reset the cached binding. Tests only; a real host's answer does not change while it runs.
+ *
+ * The struct registry above is deliberately not reset with it: koffi holds that registration for
+ * the life of the process and cannot be told to forget it, so clearing the memo would make the next
+ * bind ask for a name that is already taken.
+ */
 export function resetSystemCursorBindingForTests(): void {
     cached = null;
 }
