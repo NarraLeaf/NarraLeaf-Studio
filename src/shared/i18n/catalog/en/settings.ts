@@ -178,8 +178,7 @@ export const settings = {
             description: "Marks misspellings in the story script. Translations are never checked.",
             /**
              * Shown in place of the description while no dictionary covers the project's own
-             * language. A statement of what is true, not an error - and for Chinese and Japanese a
-             * permanent one, since neither has spelling in the word-list sense.
+             * language. A statement of what is true, not an error.
              */
             noDictionary: "No spelling dictionary is installed for this project's language.",
             options: {
