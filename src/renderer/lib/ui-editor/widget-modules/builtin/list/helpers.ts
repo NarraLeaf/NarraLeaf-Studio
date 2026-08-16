@@ -6,6 +6,7 @@ import type {
     UIListScrollbarProps,
 } from "@shared/types/ui-editor/list";
 import { isUIListItemsBindingKind } from "@shared/types/ui-editor/list";
+import { normalizeGradientFill } from "@shared/types/ui-editor/gradientFill";
 import {
     normalizeVerticalTypography,
     type TextWritingMode,
@@ -98,6 +99,25 @@ export function resolveListItemsBindingArray(
     return Array.isArray(value) ? value : null;
 }
 
+const SCROLLBAR_FILL_TYPES: readonly UIListScrollbarPartStyle["fillType"][] = ["color", "image", "gradient"];
+
+/**
+ * A stored fill kind this build understands, or the caller's fallback.
+ *
+ * Scrollbar part styles are a free-form bag on disk, so an unreadable value has to land somewhere;
+ * keeping the fallback rather than forcing `"color"` means a track that was authored as an image
+ * does not silently become a flat colour because one neighbouring field was unreadable. Extend the
+ * list when a fill kind is added - an omission here is a silent downgrade, not a type error.
+ */
+function coerceScrollbarFillType(
+    raw: unknown,
+    fallback: UIListScrollbarPartStyle["fillType"],
+): UIListScrollbarPartStyle["fillType"] {
+    return typeof raw === "string" && SCROLLBAR_FILL_TYPES.includes(raw as UIListScrollbarPartStyle["fillType"])
+        ? (raw as UIListScrollbarPartStyle["fillType"])
+        : fallback;
+}
+
 function normalizePartStyle(value: unknown, fallback: UIListScrollbarPartStyle): UIListScrollbarPartStyle {
     const raw = value && typeof value === "object" ? value as Partial<UIListScrollbarPartStyle> : {};
     return {
@@ -106,7 +126,7 @@ function normalizePartStyle(value: unknown, fallback: UIListScrollbarPartStyle):
         ...raw,
         backgroundColor:
             typeof raw.backgroundColor === "string" ? raw.backgroundColor : fallback.backgroundColor,
-        fillType: raw.fillType === "image" ? "image" : raw.fillType === "color" ? "color" : fallback.fillType,
+        fillType: coerceScrollbarFillType(raw.fillType, fallback.fillType),
         backgroundImage:
             typeof raw.backgroundImage === "string" ? raw.backgroundImage : fallback.backgroundImage,
         backgroundFit:
@@ -117,6 +137,8 @@ function normalizePartStyle(value: unknown, fallback: UIListScrollbarPartStyle):
         borderWidth: clampNumber(raw.borderWidth, fallback.borderWidth, 0, 64),
         borderStyle: typeof raw.borderStyle === "string" ? raw.borderStyle : fallback.borderStyle,
         imageFill: raw.imageFill === undefined ? fallback.imageFill : raw.imageFill,
+        gradientFill:
+            raw.gradientFill === undefined ? fallback.gradientFill : normalizeGradientFill(raw.gradientFill),
     };
 }
 

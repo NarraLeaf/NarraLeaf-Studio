@@ -1,10 +1,22 @@
-import { useEffect, useState, type CSSProperties, type HTMLAttributes } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
 import { motion } from "motion/react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { ensureCropPlacement, getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
+import {
+    FILL_LAYER_ROOT_STYLE,
+    FillLayer,
+    fillPaintNeedsLayer,
+    planFillCrossfade,
+    resolveColorFillPaint,
+    resolveGradientFillPaint,
+    type FillCrossfadePlan,
+    type FillLayerRadii,
+    type FillPaint,
+} from "./FillLayer";
+import { DEFAULT_GRADIENT_FILL, normalizeGradientFill } from "@shared/types/ui-editor/gradientFill";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { strokeSideApplies, type StrokeEdge } from "./strokeSideSpec";
 import type { AppearanceFieldTransition, AppearancePropertyKey } from "@shared/types/ui-editor/appearance";
@@ -53,6 +65,38 @@ function firstTransition(
         }
     }
     return null;
+}
+
+/** The fill that is leaving, kept mounted for as long as the incoming one takes to arrive. */
+type FillCrossfadeState = {
+    from: FillPaint;
+    /** The opacity the outgoing layer was painting at, so it can be held there or faded from it. */
+    fromOpacity: number;
+    plan: FillCrossfadePlan;
+    /** Bumped per crossfade; keys the incoming layer so it mounts fresh and can animate in. */
+    epoch: number;
+    /** When to drop the outgoing layer if the incoming one's completion never arrives. */
+    endsAfterMs: number;
+};
+
+/**
+ * How long to wait before ending a crossfade that has not reported itself finished.
+ *
+ * The incoming layer's `onAnimationComplete` is the normal signal and needs no duration, which is
+ * what lets a spring work at all. This is only the net underneath it: an incoming layer that
+ * remounted part-way through has nothing left to animate and so may never report anything, and an
+ * outgoing layer that never leaves would pin the old fill on screen for good.
+ */
+function crossfadeTimeoutMs(transition: AppearanceFieldTransition | null): number {
+    if (!transition) {
+        return 0;
+    }
+    const delay = Math.max(0, transition.delayMs ?? 0);
+    if (transition.type === "tween") {
+        return delay + Math.max(0, transition.durationMs) + 50;
+    }
+    // A spring has no duration to read, so this is a cap rather than a schedule.
+    return delay + 5000;
 }
 
 function assignMotionTransition(
@@ -108,6 +152,145 @@ export function RectangleChromeRenderer({
               })
             : "transparent";
 
+    const cornerRadii: FillLayerRadii = {
+        borderTopLeftRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusTL,
+        borderTopRightRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusTR,
+        borderBottomRightRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusBR,
+        borderBottomLeftRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusBL,
+    };
+
+    // The layer animates `fillOpacity` / `fillVisible` and the corner radii - the same keys the image
+    // fill already animates, so a gradient's opacity transition needs no appearance key of its own.
+    const fillTransition: Record<string, unknown> = {};
+    assignMotionTransition(
+        fillTransition,
+        "opacity",
+        firstTransition(appearanceTransitions, ["fillOpacity", "fillVisible"])
+    );
+    assignMotionTransition(
+        fillTransition,
+        "borderTopLeftRadius",
+        firstTransition(appearanceTransitions, ["borderRadiusTL", "borderRadius"])
+    );
+    assignMotionTransition(
+        fillTransition,
+        "borderTopRightRadius",
+        firstTransition(appearanceTransitions, ["borderRadiusTR", "borderRadius"])
+    );
+    assignMotionTransition(
+        fillTransition,
+        "borderBottomRightRadius",
+        firstTransition(appearanceTransitions, ["borderRadiusBR", "borderRadius"])
+    );
+    assignMotionTransition(
+        fillTransition,
+        "borderBottomLeftRadius",
+        firstTransition(appearanceTransitions, ["borderRadiusBL", "borderRadius"])
+    );
+    // Only an opacity transition can pace a crossfade. A widget whose corners transition but whose
+    // fill does not has asked for no fill animation, and motion's default timing is not an answer to
+    // a question the author never put.
+    const fillOpacityAnimated = Object.prototype.hasOwnProperty.call(fillTransition, "opacity");
+
+    /**
+     * The fill as a layer would paint it, or `null` when the layer has no business in it - an image
+     * fill, which the `<img>` path owns, or a fill type this build has never heard of.
+     *
+     * A `gradient` fill whose payload is missing or unreadable falls back to the gradient the author
+     * would have been given when they first chose one, rather than painting nothing: `fillType` is
+     * the field that says a gradient is wanted, and a widget that silently disappears is the worse
+     * reading of a document that has lost a field.
+     */
+    const layerPaint: FillPaint | null =
+        props.fillType === "gradient"
+            ? resolveGradientFillPaint(normalizeGradientFill(props.gradientFill) ?? DEFAULT_GRADIENT_FILL)
+            : props.fillType === "color"
+              ? // `parsedBg` again, not the stored string: one parse per render, and a brand link is
+                // a palette lookup. It cannot share `colorFill`, which folds `fillOpacity` into the
+                // colour - the layer carries that as its own opacity instead, so that an opacity
+                // change animates the layer rather than reading as a change of fill.
+                resolveColorFillPaint(parsedBg)
+              : null;
+    const layerOpacity = props.fillVisible ? normalizedFillOpacity : 0;
+    const incomingOpaque = Boolean(layerPaint?.opaque) && props.fillVisible && normalizedFillOpacity >= 1;
+
+    const [lastFill, setLastFill] = useState<{ paint: FillPaint | null; opacity: number }>(() => ({
+        paint: layerPaint,
+        opacity: layerOpacity,
+    }));
+    const [fillEpoch, setFillEpoch] = useState(0);
+    const [crossfade, setCrossfade] = useState<FillCrossfadeState | null>(null);
+    const endCrossfade = useCallback(
+        (epoch: number) => setCrossfade(current => (current && current.epoch === epoch ? null : current)),
+        []
+    );
+
+    /**
+     * The last crossfade whose incoming layer has been on screen at least once.
+     *
+     * It is what stops the incoming layer being painted from zero twice. `initial` is read at mount
+     * and only at mount, so a mounted layer cannot go back to zero - but a *remount* can put it
+     * there, and the layer does remount: {@link FillLayer} answers with a plain `div` when no
+     * transition is configured and a `motion.div` when one is, so a change in the resolved
+     * transitions swaps the element type under React and the node is rebuilt. Once the incoming layer
+     * has been committed, it therefore mounts at its target instead, which truncates the fade in the
+     * rare case rather than flashing the outgoing fill back at full strength.
+     *
+     * Written from an effect, never during render, so that the two passes of a double render agree.
+     */
+    const startedEpochRef = useRef(-1);
+
+    useEffect(() => {
+        if (!crossfade) {
+            return;
+        }
+        startedEpochRef.current = crossfade.epoch;
+        // The completion callback is the normal end; this only catches a crossfade whose incoming
+        // layer has nothing left to animate and so will never report one.
+        const timer = setTimeout(() => endCrossfade(crossfade.epoch), crossfade.endsAfterMs);
+        return () => clearTimeout(timer);
+    }, [crossfade, endCrossfade]);
+
+    if ((lastFill.paint?.signature ?? "") !== (layerPaint?.signature ?? "")) {
+        /**
+         * State adjusted during render rather than in an effect, because an effect runs one paint too
+         * late: the new fill would land at full opacity for a frame and only then start fading in
+         * from underneath itself, which is the flash the crossfade exists to remove.
+         *
+         * A colour replacing a colour is not crossfaded - motion interpolating one `background-color`
+         * on the root is both cheaper and smoother than two layers, and it is the path the common
+         * case has always taken. Only a gradient on one side of the change needs layers, because
+         * there is no interpolation between a gradient and anything.
+         *
+         * Interrupting a crossfade restarts it from the outgoing layer's authored opacity rather than
+         * from wherever motion had got to; the live value belongs to a DOM node that is about to be
+         * replaced, and reading it back would cost a layout for a frame nobody sees.
+         */
+        const crossfades =
+            fillOpacityAnimated &&
+            lastFill.paint !== null &&
+            layerPaint !== null &&
+            (fillPaintNeedsLayer(lastFill.paint) || fillPaintNeedsLayer(layerPaint));
+        setLastFill({ paint: layerPaint, opacity: layerOpacity });
+        if (crossfades && lastFill.paint) {
+            setFillEpoch(fillEpoch + 1);
+            setCrossfade({
+                from: lastFill.paint,
+                fromOpacity: lastFill.opacity,
+                plan: planFillCrossfade(incomingOpaque, lastFill.opacity),
+                epoch: fillEpoch + 1,
+                endsAfterMs: crossfadeTimeoutMs(
+                    firstTransition(appearanceTransitions, ["fillOpacity", "fillVisible"])
+                ),
+            });
+        } else if (crossfade) {
+            setCrossfade(null);
+        }
+    }
+
+    /** Ruling 4.1: mounted for a gradient, or while a crossfade runs, and at no other time. */
+    const fillLayerActive = fillPaintNeedsLayer(layerPaint) || crossfade !== null;
+
     const normalizedStrokeOpacity = Math.max(0, Math.min(1, props.strokeOpacity));
     const parsedStroke = parseColorValue(String(props.borderColor ?? ""), { hex: "#FFFFFF", alpha: 1 });
     const strokeColor = colorValueToCss({
@@ -131,7 +314,12 @@ export function RectangleChromeRenderer({
     const transformCss = `translate(${tx}px, ${ty}px) scale(${ts}) rotate(${tr}deg)`;
 
     // Ensure first paint matches resolved chrome: motion `animate` alone can miss the initial frame.
-    if (props.fillVisible && props.fillType === "color") {
+    if (fillLayerActive) {
+        // The layers own the fill. Writing `transparent` here rather than leaving the property out
+        // clears, in the same commit the layer mounts, any colour motion had been animating onto this
+        // node - which would otherwise sit under a translucent gradient and tint it.
+        style.backgroundColor = "transparent";
+    } else if (props.fillVisible && props.fillType === "color") {
         style.backgroundColor = colorFill;
     }
 
@@ -143,7 +331,9 @@ export function RectangleChromeRenderer({
         props.strokeAlign !== "none";
 
     const rootAnimate: Record<string, string | number> = {
-        backgroundColor: colorFill,
+        // Left out entirely while the layers own the fill, so motion neither interpolates towards a
+        // colour that is not being painted here nor turns a static gradient into an animated node.
+        ...(fillLayerActive ? {} : { backgroundColor: colorFill }),
         borderTopLeftRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusTL,
         borderTopRightRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusTR,
         borderBottomRightRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusBR,
@@ -155,11 +345,13 @@ export function RectangleChromeRenderer({
         opacity: combinedRootOpacity,
     };
     const rootTransition: Record<string, unknown> = {};
-    assignMotionTransition(
-        rootTransition,
-        "backgroundColor",
-        firstTransition(appearanceTransitions, ["backgroundColor", "fillOpacity", "fillVisible"])
-    );
+    if (!fillLayerActive) {
+        assignMotionTransition(
+            rootTransition,
+            "backgroundColor",
+            firstTransition(appearanceTransitions, ["backgroundColor", "fillOpacity", "fillVisible"])
+        );
+    }
     assignMotionTransition(
         rootTransition,
         "borderTopLeftRadius",
@@ -272,6 +464,33 @@ export function RectangleChromeRenderer({
         interactionOverride?.kind === "imageCrop" &&
         interactionOverride.elementId === element.id;
 
+    /**
+     * Whether anything inside this chrome paints at a negative z-index - the fill layer, or an image
+     * fill (see `imageFillZIndex`). Both use one to sit between the root's own background and the
+     * widget's in-flow content, which is the only step of the painting order a fill belongs in.
+     *
+     * A negative z-index escapes every ancestor that is not a stacking context, and would then paint
+     * behind the whole surface rather than behind this widget's content, so the root has to be one.
+     * The root's `transform` cannot be relied on to form it: Motion writes `transform: none` as soon
+     * as every transform value sits at its default, so the stacking context would come and go with
+     * the widget's offset. `isolation` says it outright, and costs no compositing layer.
+     *
+     * **Stated only while something is actually down there.** Making the root a stacking context
+     * unconditionally would confine a descendant's `mix-blend-mode` to this widget's own contents for
+     * every rectangle in the editor, including the many that paint a flat colour and have nothing at
+     * a negative z-index at all. Crop editing is excluded for the same reason it keeps `z-index:
+     * auto` on the image: there, the image is above the content on purpose.
+     *
+     * It is assigned here rather than in the `style` literal because `isCropEditing` is not known
+     * that early, and after `extraRootStyle` so that no caller can opt out of it.
+     */
+    const paintsBelowContent =
+        fillLayerActive ||
+        (shouldRenderImage && Boolean(displayUrl) && Boolean(activeMode) && activeMode !== "tile" && !isCropEditing);
+    if (paintsBelowContent) {
+        Object.assign(style, FILL_LAYER_ROOT_STYLE);
+    }
+
     // `overflow: hidden` on the same node clips `box-shadow` and can trim `filter` / `backdrop-filter` output.
     const hasChromeVisualOverflowEffects =
         Boolean(composedEffects.rootBoxShadow && composedEffects.rootBoxShadow !== "none") ||
@@ -362,6 +581,20 @@ export function RectangleChromeRenderer({
             return null;
         }
         const imagePointerEvents = activeMode === "crop" || isCropEditing ? "auto" : "none";
+        /*
+         * A fill belongs between the chrome's own background and the widget's content. CSS paints a
+         * positioned descendant above in-flow, non-positioned content whatever the DOM order, so an
+         * `<img>` at `z-index: auto` covers a button's label or a text widget's text; only a negative
+         * z-index paints in the step right after the root's own background, which is where a fill
+         * goes. The root is `isolation: isolate` so this cannot escape the widget.
+         *
+         * Crop editing is the deliberate exception: the author drags this very image, so it stays in
+         * the ordinary positioned order. That keeps it hit-testable above the content it is being
+         * dragged over, and keeps `ui-image-crop-mask` - its next sibling, also `z-index: auto` -
+         * painting above it, which is the only reason the area outside the box looks dimmed. Any
+         * explicit z-index here, even `0`, would lift the image over that mask.
+         */
+        const imageFillZIndex = isCropEditing ? undefined : -1;
         if (activeMode === "crop") {
             const placement = ensureCropPlacement(activeFill);
             const cropMotionAnimate = {
@@ -379,6 +612,7 @@ export function RectangleChromeRenderer({
                 transform: imageFillTransform,
                 transformOrigin: "center center",
                 pointerEvents: imagePointerEvents,
+                zIndex: imageFillZIndex,
                 left: cropMotionAnimate.left,
                 top: cropMotionAnimate.top,
                 width: cropMotionAnimate.width,
@@ -409,6 +643,7 @@ export function RectangleChromeRenderer({
                             transform: imageFillTransform,
                             transformOrigin: "center center",
                             pointerEvents: imagePointerEvents,
+                            zIndex: imageFillZIndex,
                         }}
                     />
                 );
@@ -436,6 +671,7 @@ export function RectangleChromeRenderer({
             transform: imageFillTransform,
             transformOrigin: "center center",
             pointerEvents: imagePointerEvents,
+            zIndex: imageFillZIndex,
             opacity: imageAnimate.opacity,
             borderTopLeftRadius: imageAnimate.borderTopLeftRadius,
             borderTopRightRadius: imageAnimate.borderTopRightRadius,
@@ -463,6 +699,7 @@ export function RectangleChromeRenderer({
                         transform: imageFillTransform,
                         transformOrigin: "center center",
                         pointerEvents: imagePointerEvents,
+                        zIndex: imageFillZIndex,
                     }}
                 />
             );
@@ -567,8 +804,61 @@ export function RectangleChromeRenderer({
         ...(composedEffects.rootBoxShadow ? { boxShadow: composedEffects.rootBoxShadow } : {}),
     };
 
+    /**
+     * The fill, when the root cannot paint it alone.
+     *
+     * Both layers sit below the image, the stroke and the crop overlay - all three are positioned and
+     * so paint above a negative z-index - and below the children, which is the whole point of that
+     * z-index. The outgoing layer is listed first so the incoming one is above it in DOM order too,
+     * which costs nothing and keeps the markup readable.
+     */
+    const renderFillLayers = () => {
+        if (!fillLayerActive) {
+            return null;
+        }
+        return (
+            <>
+                {crossfade ? (
+                    <FillLayer
+                        key={`fill-out-${crossfade.epoch}`}
+                        role="outgoing"
+                        paint={crossfade.from}
+                        opacity={crossfade.plan.outgoingTo}
+                        initialOpacity={crossfade.fromOpacity}
+                        radii={cornerRadii}
+                        transition={fillTransition}
+                    />
+                ) : null}
+                {layerPaint ? (
+                    <FillLayer
+                        key={`fill-${fillEpoch}`}
+                        role="current"
+                        paint={layerPaint}
+                        opacity={layerOpacity}
+                        // Zero only for the commit that starts the crossfade. A remount after that
+                        // one - see `startedEpochRef` - mounts the layer where it was going instead,
+                        // because a layer that reappeared at zero would show the outgoing fill at
+                        // full strength for a frame, which is the old fill coming back after the new
+                        // one had arrived.
+                        initialOpacity={
+                            crossfade && startedEpochRef.current !== crossfade.epoch
+                                ? crossfade.plan.incomingFrom
+                                : null
+                        }
+                        radii={cornerRadii}
+                        transition={fillTransition}
+                        // A duration-free signal that the crossfade is over, which is what lets a
+                        // spring work; `endsAfterMs` catches the case where it never arrives.
+                        onAnimationComplete={crossfade ? () => endCrossfade(crossfade.epoch) : undefined}
+                    />
+                ) : null}
+            </>
+        );
+    };
+
     const chromeInner = (
         <>
+            {renderFillLayers()}
             {renderImage()}
             {isCropEditing && <div className="ui-image-crop-mask" aria-hidden="true" />}
             {strokeStyle ? (
