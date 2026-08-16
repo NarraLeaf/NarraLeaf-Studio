@@ -32,6 +32,7 @@ import {
     type GameBuildRequest,
     type GameBuildStateSnapshot,
     type GameBuildTarget,
+    type GamePatchExportRequest,
 } from "@shared/types/gameBuild";
 import {
     normalizeWebOptimizationConfiguration,
@@ -93,7 +94,11 @@ import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProto
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
+import { createSealedLayer, LAYER_DESCRIPTOR_ENTRY } from "@narraleaf/encryption";
+import { formatBytes } from "@shared/utils/formatBytes";
+import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
 import { readDistributionKey } from "@shared/utils/distributionKey";
+import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { getMainLocale, getMainTranslator } from "../../i18n";
 import { readProjectAppTagDocumentFromDir, readProjectAppTagsFromDir } from "../../utils/appTagsFile";
@@ -823,6 +828,244 @@ export class GameBuildManager {
         this.failSession(session, "Build cancelled");
         this.emit(session, { level: "warning", source: "Build", message: "build cancelled" });
         return session.snapshot;
+    }
+
+
+    /**
+     * Produce a patch for a build of this project.
+     *
+     * Shares the build's session, console and cancel deliberately: it compiles the
+     * same project into the same staging directory, so two of them at once would
+     * be two writers of one directory - and an author watching either is watching
+     * the same console. It is not a build, though, and produces none of a build's
+     * output: no installer, no signature, no platform.
+     */
+    public exportPatch(
+        projectPath: string,
+        entry: GameRuntimeLaunchEntry,
+        request: GamePatchExportRequest,
+    ): GameBuildStateSnapshot {
+        const normalizedProjectPath = path.resolve(projectPath);
+        const key = this.projectKey(normalizedProjectPath);
+        const existing = this.sessions.get(key);
+        if (existing && isActiveStatus(existing.snapshot.status)) {
+            return existing.snapshot;
+        }
+        const session: BuildSession = {
+            id: crypto.randomUUID(),
+            projectPath: normalizedProjectPath,
+            snapshot: { status: "preparing", startedAt: Date.now(), platforms: [] },
+            worker: null,
+            cancelled: false,
+        };
+        this.sessions.set(key, session);
+        const frozen = getWorkspaceFreeze(normalizedProjectPath);
+        if (frozen) {
+            const message = workspaceFrozenMessage(frozen, "patch export");
+            session.snapshot = {
+                status: "error",
+                startedAt: session.snapshot.startedAt,
+                finishedAt: Date.now(),
+                platforms: [],
+                error: message,
+            };
+            this.emit(session, { level: "error", source: "Build", message });
+            return session.snapshot;
+        }
+        void this.runPatchExport(session, entry, request).catch(error => {
+            this.failSession(session, error instanceof Error ? error.message : String(error));
+        });
+        return session.snapshot;
+    }
+
+    private async runPatchExport(
+        session: BuildSession,
+        entry: GameRuntimeLaunchEntry,
+        request: GamePatchExportRequest,
+    ): Promise<void> {
+        const projectPath = session.projectPath;
+        this.emit(session, { level: "info", source: "Build", message: "patch export started" });
+
+        const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        const declaredScenes = resolveAppTagReachableScenes(
+            appTag,
+            (await readProjectAppTagDocumentFromDir(projectPath).catch(() => null))?.reachableScenes,
+        );
+        const identity = this.resolveIdentity(session, projectConfig, projectPath, appTag);
+
+        // Without a key there is nothing to seal a patch with, and nothing in any
+        // shipped build that could read one. Said as the thing the author does
+        // next, because it is one action in a place they have not been yet.
+        const distributionKey = readDistributionKey(projectConfig?.app);
+        if (!distributionKey) {
+            throw new Error(
+                "This project has no distribution key, so a patch cannot be made for it. "
+                + "Create one in Project > Project, then build again - only builds made after that can accept patches.",
+            );
+        }
+        const distribution = { key: distributionKey, titleId: identity.appId };
+
+        const pluginSelection = await this.selectRuntimePlugins(projectPath, projectConfig);
+        if (pluginSelection.errors.length > 0) {
+            throw new Error(`Plugin validation failed:\n${pluginSelection.errors.join("\n")}`);
+        }
+        // The same protection setting the build used, because that is what decides
+        // how an asset is named inside the payload. A patch whose entries were
+        // named the other way would carry every asset under a name nothing asks
+        // for, and would apply cleanly while changing nothing.
+        const encryptionKey = await this.resolveEncryptionKey(projectPath, projectConfig);
+        this.ensureNotCancelled(session);
+
+        session.snapshot = { ...session.snapshot, status: "compiling" };
+        let contentAudit: ShippedContentAuditReport | null = null;
+        const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
+            projectPath,
+            entry,
+            runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
+            runtimeVersion: this.readRuntimeVersion(),
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "patch"),
+            runtimePlugins: pluginSelection.selected,
+            mode: "production",
+            appTag: { id: appTag.id, name: appTag.name },
+            declaredScenes,
+            // The payload a player receives, so it plans a scene drop and refuses a
+            // graph it cannot fold - exactly as the build it patches did.
+            packaging: true,
+            locale: getMainLocale(this.app),
+            ...(encryptionKey ? { encryptionKey } : {}),
+            appId: identity.appId,
+            productName: identity.productName,
+            ...(identity.identifier ? { identifier: identity.identifier } : {}),
+            distribution,
+            // The platforms this project builds for, so a plugin's platform-scoped
+            // configuration resolves to the same answer it did in the build. A
+            // patch has no targets of its own to read it from.
+            ...(patchPlatforms(projectConfig).length > 0 ? { platforms: patchPlatforms(projectConfig) } : {}),
+            hostUserDataDir: this.app.getUserDataDir(),
+            downloadRewrites: currentDownloadRewrites(),
+        }, {
+            onStart: worker => { session.worker = worker; },
+            cancelled: () => session.cancelled,
+            onAudit: report => { contentAudit = report; },
+        });
+        session.worker = null;
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: `game compiled (${artifact.copiedAssetCount} asset(s))`,
+        });
+        this.reportShippedContentAudit(session, contentAudit);
+        this.ensureNotCancelled(session);
+
+        session.snapshot = { ...session.snapshot, status: "packaging" };
+        const summary = await this.sealPatch(session, artifact.appDir, request, distribution);
+        this.ensureNotCancelled(session);
+
+        const outputDir = path.dirname(request.outputFile);
+        session.snapshot = {
+            status: "done",
+            startedAt: session.snapshot.startedAt,
+            finishedAt: Date.now(),
+            platforms: [],
+            artifacts: [request.outputFile],
+            outputDir,
+        };
+        this.emit(session, {
+            level: "success",
+            source: "Build",
+            message: `patch written: ${path.basename(request.outputFile)} (${summary})`,
+        });
+        if (request.openWhenDone !== false) {
+            this.revealOutput(outputDir);
+        }
+    }
+
+    /**
+     * Seal the freshly compiled payload into one patch file, carrying only what
+     * the baseline does not already have.
+     *
+     * The pack descriptor always goes in. It is what a new scene arrives in, it is
+     * small next to any asset, and it is rewritten on every compile anyway - so
+     * comparing it would only ever answer "changed" while costing a reader the
+     * doubt about whether it might not have.
+     */
+    private async sealPatch(
+        session: BuildSession,
+        appDir: string,
+        request: GamePatchExportRequest,
+        distribution: { key: string; titleId: string },
+    ): Promise<string> {
+        const payload = await openPayload(appDir);
+        let baseline: Map<string, string> | null = null;
+        if (request.baselineAppDir) {
+            const previous = await openPayload(request.baselineAppDir).catch((error: unknown) => {
+                throw new Error(
+                    `Could not read the build this patch is for at ${request.baselineAppDir}: `
+                    + `${error instanceof Error ? error.message : String(error)}`,
+                );
+            });
+            try {
+                baseline = await digestPayload(previous);
+            } finally {
+                await previous.close().catch(() => undefined);
+            }
+        }
+
+        try {
+            await fs.mkdir(path.dirname(request.outputFile), { recursive: true });
+            const writer = await createSealedLayer(request.outputFile, {
+                projectMaterial: distribution.key,
+                titleId: distribution.titleId,
+            });
+            const descriptor = {
+                ...(request.name?.trim() ? { name: request.name.trim() } : {}),
+                ...(request.order ? { order: request.order } : {}),
+            };
+            await writer.add(LAYER_DESCRIPTOR_ENTRY, Buffer.from(JSON.stringify(descriptor), "utf-8"));
+
+            let carried = 0;
+            let skipped = 0;
+            let bytes = 0;
+            for (const name of payload.names) {
+                if (name === LAYER_DESCRIPTOR_ENTRY) {
+                    // A payload cannot carry this name, but a future one that did
+                    // would collide with the descriptor written above rather than
+                    // being noticed, so it is dropped here instead.
+                    continue;
+                }
+                const data = await payload.read(name);
+                const digest = crypto.createHash("sha256").update(data).digest("base64");
+                if (!patchCarriesEntry(name, digest, baseline)) {
+                    skipped++;
+                    continue;
+                }
+                await writer.add(name, data);
+                carried++;
+                bytes += data.byteLength;
+            }
+            await writer.finalize();
+
+            // Entries the baseline had and this compile does not are left where
+            // they are: a patch adds and shadows, it never removes. Harmless -
+            // the new descriptor names none of them - but worth a line, because
+            // an author who expected the install to shrink should hear why it
+            // did not.
+            if (baseline) {
+                const dropped = [...baseline.keys()].filter(name => !payload.names.includes(name)).length;
+                if (dropped > 0) {
+                    this.emit(session, {
+                        level: "info",
+                        source: "Build",
+                        message: `${dropped} entr${dropped === 1 ? "y" : "ies"} the build no longer uses stay in the installed copy; a patch adds, it does not remove`,
+                    });
+                }
+                return `${carried} changed, ${skipped} unchanged, ${formatBytes(bytes)}`;
+            }
+            return `${carried} entr${carried === 1 ? "y" : "ies"}, ${formatBytes(bytes)}`;
+        } finally {
+            await payload.close().catch(() => undefined);
+        }
     }
 
     /**
@@ -2057,7 +2300,9 @@ export class GameBuildManager {
     private async resolveBuildVariant(
         session: BuildSession,
         projectPath: string,
-        request: GameBuildRequest,
+        // Only the field it reads, so a patch export - which is not a build and
+        // carries no targets - resolves its variant through this same one place.
+        request: { appTagId?: string },
     ): Promise<ProjectAppTag> {
         const appTags = await readProjectAppTagsFromDir(projectPath);
         const requested = request.appTagId?.trim();
@@ -2497,4 +2742,24 @@ function buildAsarUnpackPatterns(sealed: boolean): string[] {
         patterns.push(RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME);
     }
     return patterns;
+}
+
+/**
+ * The desktop platforms this project builds for, from the selection the build
+ * dialog stored.
+ *
+ * A patch has no targets of its own, but the payload it carries includes each
+ * plugin's platform-scoped configuration, which resolves against the set of
+ * platforms one artifact serves. Reading the project's own last answer keeps a
+ * patch's descriptor saying what the build's said; with no stored selection the
+ * set is empty, which is the same as any caller that passes none.
+ */
+function patchPlatforms(projectConfig: ProjectConfigData | null): GameBuildPlatform[] {
+    const stored = (projectConfig?.app as { build?: { platforms?: unknown } } | undefined)?.build?.platforms;
+    if (!Array.isArray(stored)) {
+        return [];
+    }
+    const platforms = stored.filter((platform): platform is GameBuildPlatform =>
+        typeof platform === "string" && isDesktopBuildPlatform(platform as GameBuildDesktopPlatform));
+    return [...new Set(platforms)];
 }

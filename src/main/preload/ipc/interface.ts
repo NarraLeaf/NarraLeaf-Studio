@@ -18,7 +18,7 @@ import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, W
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "@shared/types/gameBuild";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 import type {
     MacSigningIdentity,
@@ -582,6 +582,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameBuildSelectOutputDir, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
         preflight: (projectPath: string, request: GameBuildRequest) =>
             ipcClient.invoke(IPCEventType.gameBuildPreflight, { projectPath, request }) as Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>,
+        exportPatch: (projectPath: string, entry: GameRuntimeLaunchEntry, request: GamePatchExportRequest) =>
+            ipcClient.invoke(IPCEventType.gameBuildExportPatch, { projectPath, entry, request }) as Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>,
+        selectPatchFile: (defaultPath?: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildSelectPatchFile, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
     },
 
     /**

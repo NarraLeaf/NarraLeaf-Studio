@@ -1,3 +1,4 @@
+import { LAYER_FILE_EXTENSION } from "@narraleaf/encryption";
 import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
@@ -76,6 +77,53 @@ export class GameBuildSelectOutputDirHandler extends IPCHandler<IPCEventType.gam
                 return { path: null };
             }
             return { path: result.filePaths[0] };
+        });
+    }
+}
+
+/**
+ * Produce a patch for a build of this project.
+ *
+ * Answers with the same snapshot a build answers with, from the same session, so
+ * the dialog that started it watches it the way it watches a build - and the two
+ * cannot be started at once, which is right: they compile the same project into
+ * the same place.
+ */
+export class GameBuildExportPatchHandler extends IPCHandler<IPCEventType.gameBuildExportPatch> {
+    readonly name = IPCEventType.gameBuildExportPatch;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, entry, request }: IPCEvents[IPCEventType.gameBuildExportPatch]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildExportPatch]["response"]>> {
+        return this.tryUse(async () => ({
+            state: window.app.getGameBuildManager().exportPatch(projectPath, entry, request),
+        }));
+    }
+}
+
+export class GameBuildSelectPatchFileHandler extends IPCHandler<IPCEventType.gameBuildSelectPatchFile> {
+    readonly name = IPCEventType.gameBuildSelectPatchFile;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { defaultPath }: IPCEvents[IPCEventType.gameBuildSelectPatchFile]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildSelectPatchFile]["response"]>> {
+        return this.tryUse(async () => {
+            const result = await dialog.showSaveDialog(window.win, {
+                title: "Save patch",
+                buttonLabel: "Save patch",
+                // The suffix is two extensions deep on purpose, so the filter has
+                // to match the whole tail rather than the generic one.
+                filters: [{ name: "Patch", extensions: [LAYER_FILE_EXTENSION.replace(/^\./, "")] }],
+                ...(defaultPath ? { defaultPath } : {}),
+            });
+            if (result.canceled || !result.filePath) {
+                return { path: null };
+            }
+            return { path: result.filePath };
         });
     }
 }

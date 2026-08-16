@@ -9,7 +9,7 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type {
@@ -251,6 +251,8 @@ export enum IPCEventType {
     gameBuildGetStatus = "gameBuild.getStatus",
     gameBuildSelectOutputDir = "gameBuild.selectOutputDir",
     gameBuildPreflight = "gameBuild.preflight",
+    gameBuildExportPatch = "gameBuild.exportPatch",
+    gameBuildSelectPatchFile = "gameBuild.selectPatchFile",
 
     signingList = "signing.list",
     signingImport = "signing.import",
@@ -2327,6 +2329,35 @@ export type IPCGameBuildEvents = {
         };
     };
     [IPCEventType.gameBuildSelectOutputDir]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            defaultPath?: string;
+        };
+        response: {
+            path: string | null;
+        };
+    };
+    /**
+     * Produce a patch for a build of this project. Shares the build's session and
+     * console: it compiles the same project into the same staging directory, so
+     * the two cannot run at once and an author watching either watches the same
+     * lines.
+     */
+    [IPCEventType.gameBuildExportPatch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            entry: GameRuntimeLaunchEntry;
+            request: GamePatchExportRequest;
+        };
+        response: {
+            state: GameBuildStateSnapshot;
+        };
+    };
+    /** Where to write a patch. Answers null when the author closes the dialog. */
+    [IPCEventType.gameBuildSelectPatchFile]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {

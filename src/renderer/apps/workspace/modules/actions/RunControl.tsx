@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
@@ -19,6 +19,7 @@ import { readProjectMobileOrientation, readProjectViewportConfig } from "@/apps/
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
+import { openPatchDialog } from "./PatchDialog";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 import {
     getTestRunService,
@@ -679,6 +680,37 @@ export function RunControl() {
                                 {building ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-4 w-4" />}
                             </span>
                             <span className="flex-1 text-left">{t("actions.run.productionBuild")}</span>
+                            <span className="w-3" />
+                        </button>
+
+                        {/* Export patch. Directly under Production Build because it is the same
+                            kind of thing - it produces a file rather than launching anything - and
+                            because it is only ever reached after a build: a patch is made for one.
+                            Gated by the same freeze, and for the same reason: it compiles the
+                            project. */}
+                        <button
+                            type="button"
+                            role="menuitem"
+                            aria-disabled={buildBlocked || undefined}
+                            disabled={buildBlocked}
+                            data-tip={buildBlocked ? frozenTitle : undefined}
+                            onClick={() => {
+                                setMenuOpen(false);
+                                if (workspace) {
+                                    void openPatchDialog(workspace);
+                                }
+                            }}
+                            className={cn(
+                                "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                buildBlocked
+                                    ? "cursor-not-allowed text-fg-subtle"
+                                    : "text-fg-muted hover:bg-fill hover:text-fg",
+                            )}
+                        >
+                            <span className="flex h-4 w-4 items-center justify-center">
+                                <FileDiff className="h-4 w-4" />
+                            </span>
+                            <span className="flex-1 text-left">{t("actions.run.exportPatch")}</span>
                             <span className="w-3" />
                         </button>
 

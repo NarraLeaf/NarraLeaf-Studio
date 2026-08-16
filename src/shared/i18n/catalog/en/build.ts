@@ -132,6 +132,21 @@ export const build = {
         clear: "Clear",
         secretFailed: "The value could not be stored on this machine.",
     },
+        patch: {
+            title: "Export patch",
+            variantLabel: "Variant",
+            variantHint: "A patch opens only in builds of the variant it was made for.",
+            baselineLabel: "Build this patch is for",
+            baselinePlaceholder: "Leave empty to carry the whole game",
+            baselineHint: "That build's app folder. Only what differs from it is carried.",
+            outputLabel: "Save as",
+            nameLabel: "Name",
+            namePlaceholder: "Shown in the game's log",
+            browse: "Browse...",
+            exportAction: "Export",
+            busy: "A build is already running.",
+            noKey: "This project has no distribution key. Create one on the Project page, then build again - only builds made after that accept patches.",
+        },
     signing: {
         empty: "Select a target that can be signed.",
         // Filed under "linux" in the project config, but it is not about Linux:

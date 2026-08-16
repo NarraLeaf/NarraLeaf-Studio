@@ -129,6 +129,21 @@ export const build = {
         clear: "消去",
         secretFailed: "この端末にその値を保存できなかった",
     },
+        patch: {
+            title: "パッチを書き出す",
+            variantLabel: "バリアント",
+            variantHint: "パッチは、それが作られたバリアントのビルドでしか開かない",
+            baselineLabel: "このパッチの対象ビルド",
+            baselinePlaceholder: "空のままならゲーム全体を入れる",
+            baselineHint: "そのビルドの app フォルダー。そこと異なる分だけが入る",
+            outputLabel: "保存先",
+            nameLabel: "名前",
+            namePlaceholder: "ゲームのログに表示される",
+            browse: "参照...",
+            exportAction: "書き出す",
+            busy: "すでにビルドが実行中",
+            noKey: "このプロジェクトには配布キーがない。「プロジェクト」ページで作成し、ビルドし直すこと。パッチを受け入れるのは、その後に作られたビルドだけ。",
+        },
     signing: {
         empty: "署名できる対象を選ぶ",
         // プロジェクト設定では "linux" の下にあるが、Linux の話ではない。

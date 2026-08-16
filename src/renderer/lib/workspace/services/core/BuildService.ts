@@ -14,6 +14,7 @@ import type {
     GameBuildRequest,
     GameBuildStateSnapshot,
     GameBuildStatus,
+    GamePatchExportRequest,
 } from "@shared/types/gameBuild";
 import { isDesktopBuildPlatform } from "@shared/types/gameBuild";
 // Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
@@ -257,6 +258,47 @@ export class BuildService extends Service<BuildService> {
         // the platforms for them - and a build that died in preflight is exactly the one an author
         // comes back to in the dashboard's history wanting to know what it was building.
         const platforms = [...new Set(request.targets.map(target => target.platform))];
+        const refusal = await this.runPreBuildGates(startedAt, platforms, request.appTagId);
+        if (refusal) {
+            return refusal;
+        }
+        // Committed: the selection is now persisted as BuildConfiguration, so
+        // the draft has served its purpose and must not shadow it next time.
+        this.clearDraft();
+        this.updateState({ status: "preparing", startedAt, platforms });
+        const result = await getInterface().gameBuild.start(this.projectPath(), {
+            kind: "surface",
+            surfaceId: MAIN_APP_SURFACE_ID,
+        }, request);
+        if (result.success) {
+            this.updateState(result.data.state);
+        } else {
+            // `startedAt` matters as much as the message: the dashboard archives this as a finished
+            // build, and without it the record's duration is measured from the epoch.
+            this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: result.error });
+        }
+        return this.state;
+    }
+
+    /**
+     * Everything that has to be true before the project's payload is compiled,
+     * whatever is going to be done with it.
+     *
+     * Extracted so a patch export runs the identical sequence. A patch carries
+     * the same payload a build does - the same story, the same variant fold, the
+     * same assets - so every one of these refusals applies to it word for word.
+     * A second copy of the list would drift, and the way it would drift is that a
+     * patch quietly ships what the build refused.
+     *
+     * Returns the error snapshot when something refuses, null when the compile
+     * may go ahead. Each gate has already recorded its own state and console
+     * lines by then; this hands back what they left.
+     */
+    private async runPreBuildGates(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+        appTagId: string | undefined,
+    ): Promise<GameBuildStateSnapshot | null> {
         try {
             await this.prepareProjectForBuild();
         } catch (error) {
@@ -316,7 +358,7 @@ export class BuildService extends Service<BuildService> {
         //
         // Every build refuses it, the release variant included. This is not a leak-only concern: the
         // release build has no more of a value for `AppTag` than a demo does.
-        const unfoldable = await this.collectUnfoldableAppTagUses(request.appTagId);
+        const unfoldable = await this.collectUnfoldableAppTagUses(appTagId);
         if (unfoldable.length > 0) {
             const consoleService = this.tryGetConsole();
             for (const use of unfoldable) {
@@ -371,7 +413,7 @@ export class BuildService extends Service<BuildService> {
         // per-row story detail: it names the scene a jump leads to and the blueprint a node sits in,
         // and the preflight has neither document. It reads the story documents those two sweeps have
         // just put in the service's cache, so it is free in the same sense they are.
-        const contentRefusal = await this.runReleaseContentGate(startedAt, platforms, request.appTagId);
+        const contentRefusal = await this.runReleaseContentGate(startedAt, platforms, appTagId);
         if (contentRefusal) {
             return contentRefusal;
         }
@@ -379,7 +421,7 @@ export class BuildService extends Service<BuildService> {
         // graph that names the variant without deciding a branch with it cannot be compiled under any
         // variant, release included. Free like the two before it - it walks the blueprint document
         // already in memory.
-        const appTagGraphRefusal = await this.runAppTagGraphGate(startedAt, platforms, request.appTagId);
+        const appTagGraphRefusal = await this.runAppTagGraphGate(startedAt, platforms, appTagId);
         if (appTagGraphRefusal) {
             return appTagGraphRefusal;
         }
@@ -426,22 +468,48 @@ export class BuildService extends Service<BuildService> {
         if (lintRefusal) {
             return lintRefusal;
         }
-        // Committed: the selection is now persisted as BuildConfiguration, so
-        // the draft has served its purpose and must not shadow it next time.
-        this.clearDraft();
+        return null;
+    }
+
+    /**
+     * Produce a patch for a build of this project.
+     *
+     * Runs the same gates a build runs, then hands off. The platforms it reports
+     * them under are the project's own last desktop selection: a patch targets no
+     * platform of its own, but two of those gates say different things for
+     * different ones, and the honest answer to "which" is the set this project
+     * builds for.
+     */
+    public async exportPatch(request: GamePatchExportRequest): Promise<GameBuildStateSnapshot> {
+        const startedAt = Date.now();
+        const platforms = this.storedDesktopPlatforms();
+        const refusal = await this.runPreBuildGates(startedAt, platforms, request.appTagId);
+        if (refusal) {
+            return refusal;
+        }
         this.updateState({ status: "preparing", startedAt, platforms });
-        const result = await getInterface().gameBuild.start(this.projectPath(), {
+        const result = await getInterface().gameBuild.exportPatch(this.projectPath(), {
             kind: "surface",
             surfaceId: MAIN_APP_SURFACE_ID,
         }, request);
         if (result.success) {
             this.updateState(result.data.state);
         } else {
-            // `startedAt` matters as much as the message: the dashboard archives this as a finished
-            // build, and without it the record's duration is measured from the epoch.
             this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: result.error });
         }
         return this.state;
+    }
+
+    /** The desktop platforms the project's stored build selection names. */
+    private storedDesktopPlatforms(): GameBuildPlatform[] {
+        try {
+            const stored = this.getContext().services
+                .get<ProjectService>(Services.Project)
+                .getBuildConfiguration();
+            return [...new Set((stored?.platforms ?? []).filter(platform => platform !== "web"))];
+        } catch {
+            return [];
+        }
     }
 
     public async cancel(): Promise<GameBuildStateSnapshot> {
