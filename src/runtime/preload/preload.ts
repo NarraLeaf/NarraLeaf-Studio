@@ -226,6 +226,11 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
         openForPlugin: (pluginId, request) =>
             ipcRenderer.invoke("runtime:external:openForPlugin", pluginId, request),
     },
+    // Forwarded because only the main process knows where the window is on the desktop and what the
+    // display's scale factor is. This side sends a point in the page and nothing else.
+    pointer: {
+        move: request => ipcRenderer.invoke("runtime:pointer:move", request),
+    },
     // Forwarded for the reason the addresses above are: the process that owns the filesystem is the
     // one that decides which file this is, from the pack's own key. Nothing on this side names it.
     progress: {

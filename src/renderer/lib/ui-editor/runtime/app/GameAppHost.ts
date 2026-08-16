@@ -9,6 +9,7 @@ import type {
     GameProgressImportResult,
 } from "@shared/types/gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -186,6 +187,19 @@ export type GameAppHost = {
      * no running game to play through.
      */
     networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    /**
+     * Put the player's real cursor at a point in this window, for the Move Mouse family.
+     *
+     * The point is in CSS pixels from the top-left of the web contents, which is as far as the
+     * renderer can usefully speak: where that lands on the desktop depends on where the window is
+     * and how the display is scaled, and neither is knowable from a page. Every desktop shell hands
+     * it to its main process for that reason, and the web export declines - a page cannot position
+     * the pointer, and drawing a stand-in would be a different feature wearing this one's name.
+     *
+     * Omitted by hosts with nowhere to send it (the workspace story preview). The node then reports
+     * `unsupported`, the same degradation {@link networkFetch} takes.
+     */
+    movePointer?: (request: BlueprintPointerMoveRequest) => Promise<BlueprintPointerMoveResult>;
     /**
      * Open one web address in the player's browser, for the Open Link node.
      *

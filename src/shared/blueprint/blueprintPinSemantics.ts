@@ -31,6 +31,8 @@
 
 import {
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO,
+    BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
@@ -105,6 +107,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.compare.lessThanOrEqual", "blueprint.compare.notEqual", "blueprint.component.getParam",
     "blueprint.container.getClipContent", "blueprint.container.getEnabled",
     "blueprint.container.getVariant", "blueprint.container.getVisible", "blueprint.data.booleanLiteral",
+    "blueprint.data.breakRect", "blueprint.data.breakVector2d",
     "blueprint.data.colorLiteral", "blueprint.data.floatLiteral", "blueprint.data.integerLiteral",
     "blueprint.data.isArray", "blueprint.data.isBoolean", "blueprint.data.isEmptyValue",
     "blueprint.data.isNull", "blueprint.data.isNumber", "blueprint.data.isObject",
@@ -112,20 +115,24 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.data.jsonGet", "blueprint.data.jsonHas", "blueprint.data.jsonLiteral",
     "blueprint.data.jsonMakeArray", "blueprint.data.jsonMakeObject", "blueprint.data.jsonMergeObject",
     "blueprint.data.jsonRemove", "blueprint.data.jsonSet", "blueprint.data.literal",
+    "blueprint.data.makeRect", "blueprint.data.makeVector2d",
     "blueprint.data.notNull", "blueprint.data.nullLiteral", "blueprint.data.numberLiteral",
     "blueprint.data.parseFloat", "blueprint.data.parseInt", "blueprint.data.parseJson",
-    "blueprint.data.rectLiteral", "blueprint.data.stringifyJson", "blueprint.data.stringLiteral",
+    "blueprint.data.rectCenter", "blueprint.data.rectLiteral", "blueprint.data.stringifyJson",
+    "blueprint.data.stringLiteral",
     "blueprint.data.toBoolean", "blueprint.data.toFloat", "blueprint.data.toInteger",
     "blueprint.data.toJson", "blueprint.data.vector2dLiteral", "blueprint.displayable.getBounds",
     "blueprint.displayable.getDisplay", "blueprint.displayable.getOpacity",
     "blueprint.displayable.getPosition", "blueprint.displayable.getProperty",
     "blueprint.displayable.getRotation", "blueprint.displayable.getSize",
+    "blueprint.displayable.getCenter", "blueprint.displayable.getMeasuredRect",
     "blueprint.displayable.getVariant", "blueprint.displayable.getVisible",
     "blueprint.element.button.getEnabled", "blueprint.element.button.getLabel",
     "blueprint.element.button.getVariant", "blueprint.element.button.getVisible",
     "blueprint.element.container.getClipContent", "blueprint.element.container.getEnabled",
     "blueprint.element.container.getVariant", "blueprint.element.container.getVisible",
-    "blueprint.element.displayable.getBounds", "blueprint.element.displayable.getDisplay",
+    "blueprint.element.displayable.getBounds", "blueprint.element.displayable.getCenter",
+    "blueprint.element.displayable.getDisplay", "blueprint.element.displayable.getMeasuredRect",
     "blueprint.element.displayable.getOpacity", "blueprint.element.displayable.getPosition",
     "blueprint.element.displayable.getProperty", "blueprint.element.displayable.getRotation",
     "blueprint.element.displayable.getSize", "blueprint.element.displayable.getVariant",
@@ -367,6 +374,11 @@ const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // `Open Link` leaves by `failed` when the address is not one this build declared, or when the
     // player's machine has nothing to open it with - the two the node lets an author branch on.
     [BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL]: { in: ["in"], out: ["next", "failed"] },
+    // The Move Mouse pair is `Open Link`'s shape for the same reason: the cursor went there or it
+    // did not, and whether the host has no cursor support or the system refused the move is on a
+    // data pin rather than in a third branch nobody could act on differently.
+    [BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO]: { in: ["in"], out: ["next", "failed"] },
+    [BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT]: { in: ["in"], out: ["next", "failed"] },
     // `Export Progress` is `Open Link`'s shape for the same reason: the write happened or it did
     // not, and the reason is on a data pin rather than in a third branch.
     [BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS]: { in: ["in"], out: ["next", "failed"] },

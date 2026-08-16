@@ -415,6 +415,7 @@ export const build = {
      * and forgot the setting, or they no longer want the request.
      */
     networkNodeDisallowed: "{blueprint} makes a network request, which this project does not allow.",
+    pointerNodeUnsupported: "{blueprint} moves the mouse cursor, which does not work on {platforms}.",
     networkSummary: {
         one: "Build stopped: {count} network node cannot run. Change the network policy in project settings, or remove the node.",
         other: "Build stopped: {count} network nodes cannot run. Change the network policy in project settings, or remove the nodes.",

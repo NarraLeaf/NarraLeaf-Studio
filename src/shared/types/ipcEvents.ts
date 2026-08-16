@@ -18,6 +18,7 @@ import type {
     GameProgressImportResult,
 } from "./gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
@@ -266,6 +267,7 @@ export enum IPCEventType {
     blueprintPersistenceSetValue = "blueprintPersistence.setValue",
     blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
     blueprintNetworkFetch = "blueprintNetwork.fetch",
+    blueprintPointerMove = "blueprintPointer.move",
     blueprintExternalLinkOpen = "blueprintExternalLink.open",
     blueprintExternalLinkOpenForPlugin = "blueprintExternalLink.openForPlugin",
     blueprintProgressWrite = "blueprintProgress.write",
@@ -2547,6 +2549,27 @@ export type IPCBlueprintPersistenceEvents = {
         },
         response: {
             result: BlueprintNetworkFetchResult;
+        };
+    };
+    /**
+     * One Move Mouse node request, performed by the main process on the Dev Mode window's behalf.
+     *
+     * Here rather than in the renderer because the renderer cannot do it: positioning the system
+     * cursor is a platform call, and the conversion from a point in the page to a point on the
+     * desktop needs the window's own bounds and the display's scale factor. The renderer sends the
+     * point in the page and nothing else.
+     *
+     * Always a success envelope, like the Fetch channel above: a host that cannot move the cursor
+     * is a result the node branches on, not a Studio malfunction to raise a toast about.
+     */
+    [IPCEventType.blueprintPointerMove]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            request: BlueprintPointerMoveRequest;
+        };
+        response: {
+            result: BlueprintPointerMoveResult;
         };
     };
     /**
