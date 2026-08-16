@@ -2736,8 +2736,10 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
  */
 function buildAsarUnpackPatterns(sealed: boolean): string[] {
     // koffi's addon has to be a real file on disk to be loaded, so it cannot stay inside the
-    // archive - the same reason native.js is here.
-    const patterns = ["native.js", "icons/**", "sidecars/**", "node_modules/koffi/**"];
+    // archive - the same reason native.js is here. It ships as a plain `koffi/` directory rather
+    // than under `node_modules`, which electron-builder reserves for the dependency tree it builds
+    // itself and drops everything else from.
+    const patterns = ["native.js", "icons/**", "sidecars/**", "koffi/**"];
     if (sealed) {
         patterns.push(RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME);
     }
