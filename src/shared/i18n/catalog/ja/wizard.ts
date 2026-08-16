@@ -131,7 +131,7 @@ export const wizard = {
         onServerRefused: "このサーバーは保存済みのトークンを受け付けませんでした。新しいトークンで追加し直してください。",
         onServerUnreachable: "このサーバーは応答しませんでした。",
         onServerUnknown: "このサーバーの応答を Studio は読み取れませんでした。",
-        onServerMadeBy: "{{name}} が作成",
+        onServerMadeBy: "{name} が作成",
         parsedName: "サーバー上のプロジェクト",
         // 選ぶ前に言う。空かどうかの確認はメインプロセスで走るので、そこで断られると
         // 作者がフォルダを決めた後になる。

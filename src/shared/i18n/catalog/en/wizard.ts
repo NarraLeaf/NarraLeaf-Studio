@@ -135,7 +135,7 @@ export const wizard = {
         onServerRefused: "This server would not accept the stored token. Add it again with a new one.",
         onServerUnreachable: "This server did not answer.",
         onServerUnknown: "This server answered with something Studio could not read.",
-        onServerMadeBy: "made by {{name}}",
+        onServerMadeBy: "made by {name}",
         parsedName: "Project on the server",
         // Said before they choose, not after: the emptiness check runs in the main process and a
         // refusal there is a refusal after the author has already committed to the folder.
