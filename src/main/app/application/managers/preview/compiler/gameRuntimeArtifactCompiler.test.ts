@@ -4,9 +4,17 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { derivePackEncryptionKey, runtimeSupportPath } from "@narraleaf/encryption";
+import {
+    createProjectMaterial,
+    createSealedLayer,
+    derivePackEncryptionKey,
+    projectVerificationKey,
+    runtimeSupportPath,
+    LAYER_FILE_EXTENSION,
+} from "@narraleaf/encryption";
 import {
     openSealedBundle,
+    openSealedLayer,
     RUNTIME_BUNDLE_FILENAME,
     RUNTIME_SUPPORT_FILENAME,
 } from "@narraleaf/encryption/runtime";
@@ -918,6 +926,130 @@ describe("game runtime artifact compiler", () => {
         await expect(compileGameRuntimeArtifact({ ...base, preview: undefined }))
             .rejects.toThrow(/requires a preview control channel/);
     });
+
+    /**
+     * The distribution key is a project file that must never reach a player, and
+     * the two mechanisms that decide what ships both default to carrying a new
+     * project file: the asset walk is unconditional, and the variant trimmer keeps
+     * whatever it finds named in the shipped bytes. So this asserts absence over
+     * the produced bytes rather than over the code path that produced them - a
+     * check written against the path would keep passing when a third mechanism
+     * starts copying project files.
+     */
+    it("never writes the distribution key into the artifact", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const projectMaterial = createProjectMaterial();
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47340),
+            mode: "production",
+            preview: undefined,
+            appId: "com.example.patchable",
+            distribution: { key: projectMaterial, titleId: "com.example.patchable" },
+        });
+
+        for (const file of await listFilesRecursively(result.appDir)) {
+            const bytes = await fs.readFile(file);
+            expect(bytes.includes(projectMaterial), `${path.relative(result.appDir, file)} carries the key`).toBe(false);
+        }
+    });
+
+    /**
+     * What a build has to carry to accept a patch: the public half of the key, and
+     * a bound binary to read one through. The binary matters most on an
+     * unprotected build - nothing else there would ever bind it, and an unbound
+     * one reads no patch while looking entirely healthy.
+     */
+    it("publishes the verification key and binds the binary on an unprotected build", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const projectMaterial = createProjectMaterial();
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47341),
+            mode: "production",
+            preview: undefined,
+            appId: "com.example.patchable",
+            distribution: { key: projectMaterial, titleId: "com.example.patchable" },
+        });
+
+        expect(result.pack.addOns?.verificationKey)
+            .toBe(projectVerificationKey(projectMaterial, "com.example.patchable"));
+        // Loose payload, and still a binary beside it.
+        await expect(fs.access(path.join(result.appDir, "pack.json"))).resolves.toBeUndefined();
+        const binaryPath = path.join(result.appDir, RUNTIME_SUPPORT_FILENAME);
+        await expect(fs.access(binaryPath)).resolves.toBeUndefined();
+
+        // Bound to this title: a patch for it opens, and the same patch does not
+        // open against the pristine binary the package ships.
+        const patchPath = path.join(tempDir, `patch${LAYER_FILE_EXTENSION}`);
+        const writer = await createSealedLayer(patchPath, {
+            projectMaterial,
+            titleId: "com.example.patchable",
+        });
+        await writer.add("assets/probe", Buffer.from("patched bytes"));
+        await writer.finalize();
+
+        const reader = await openSealedLayer(binaryPath, patchPath, {
+            verificationKey: result.pack.addOns?.verificationKey,
+        });
+        try {
+            expect(reader.proven).toBe(true);
+            expect((await reader.read("assets/probe")).toString("utf-8")).toBe("patched bytes");
+        } finally {
+            await reader.close();
+        }
+        await expect(openSealedLayer(runtimeSupportPath(), patchPath, {
+            verificationKey: result.pack.addOns?.verificationKey,
+        })).rejects.toThrow();
+    });
+
+    /**
+     * Two builds of one project under two editions must not be able to read each
+     * other's patches: an edition is a separate title, and a demo accepting the
+     * full game's content would undo the whole reason a demo is built.
+     */
+    it("keeps editions of one project on separate keys", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const projectMaterial = createProjectMaterial();
+        const release = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47342),
+            mode: "production",
+            preview: undefined,
+            outputRoot: path.join(tempDir, "out-release"),
+            appId: "com.example.full",
+            distribution: { key: projectMaterial, titleId: "com.example.full" },
+        });
+
+        const demoPatch = path.join(tempDir, `demo${LAYER_FILE_EXTENSION}`);
+        const writer = await createSealedLayer(demoPatch, {
+            projectMaterial,
+            titleId: "com.example.full-demo",
+        });
+        await writer.add("assets/probe", Buffer.from("demo bytes"));
+        await writer.finalize();
+
+        await expect(openSealedLayer(
+            path.join(release.appDir, RUNTIME_SUPPORT_FILENAME),
+            demoPatch,
+            { verificationKey: projectVerificationKey(projectMaterial, "com.example.full-demo") },
+        )).rejects.toThrow();
+    });
 });
 
 function sha256OfText(content: string): string {
@@ -1197,4 +1329,18 @@ async function writeProjectIcon(projectPath: string, content: string): Promise<v
     const dir = path.join(projectPath, "resources", "icons");
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, `app-icon-${CURRENT_ICON_PLATFORM}.png`), content, "utf-8");
+}
+
+/** Every file under `root`, so an assertion can be made about the artifact rather than about one file in it. */
+async function listFilesRecursively(root: string): Promise<string[]> {
+    const found: string[] = [];
+    for (const entry of await fs.readdir(root, { withFileTypes: true })) {
+        const full = path.join(root, entry.name);
+        if (entry.isDirectory()) {
+            found.push(...await listFilesRecursively(full));
+        } else if (entry.isFile()) {
+            found.push(full);
+        }
+    }
+    return found;
 }
