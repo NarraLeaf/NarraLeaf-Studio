@@ -317,6 +317,7 @@ export const widgets = {
         fill: "填充",
         fillType: "填充类型",
         imageFill: "图片填充",
+        gradientFill: "渐变填充",
         toggleFillVisibility: "切换填充可见性",
         border: "边框",
         borderStyle: "边框样式",
