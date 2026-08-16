@@ -109,6 +109,8 @@ export const story = {
             variable: "变量",
             variant: "构建变体",
             camera: "镜头位置",
+            displayable: "舞台对象",
+            layer: "图层",
         },
         reason: {
             blueprintAction: "该行由蓝图执行，蓝图没有对应的脚本写法",
@@ -122,13 +124,32 @@ export const story = {
             unresolvedRef: "该行指向的对象已不存在",
             unknownPayload: "脚本尚未覆盖此类行",
         },
+        parse: {
+            unknownStatement: "该行以关键词开头，但不符合该语句的写法",
+            unknownName: "该行提到的名字在工程中不存在",
+            unknownNameNamed: "该行提到的{what}在工程中不存在",
+            ambiguousName: "有多个对象叫这个名字，无法判断指的是哪一个",
+            ambiguousNameNamed: "有多个{what}叫这个名字，无法判断指的是哪一个",
+            ambiguousStatement: "有多条语句都符合该行，无从区分",
+            badWord: "该语句在这个位置不接受这个词",
+            missingValue: "该语句缺少必需的内容",
+            conflictingValues: "该行用两种写法设定了同一件事",
+            badIndent: "该行的缩进不是整数级，或跳过了一级",
+            danglingBranch: "该分支上方没有可归属的条件",
+            badTag: "该行含有未知的排版标记，或标记没有闭合",
+            badExpression: "该表达式无法求值",
+        },
         view: {
             open: "以脚本形式阅读",
             close: "回到行视图",
-            readOnly: "脚本视图只读，不写回场景",
+            readOnly: "此场景含有脚本无法表达的行，不能在这里写回",
             gate: {
                 other: "有 {count} 行没有对应的脚本写法，此场景今后也无法在这里编辑",
             },
+            unread: {
+                other: "有 {count} 行无法解析，场景未改动",
+            },
+            renameElsewhere: "场景名未改动，重命名请在大纲里进行",
         },
     },
     paste: {
