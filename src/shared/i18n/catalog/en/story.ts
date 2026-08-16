@@ -124,6 +124,10 @@ export const story = {
             variable: "a variable",
             variant: "a build variant",
             camera: "a camera position",
+            // Read back as well as printed: a script that names a stage object nothing created is a
+            // parse failure, and these are the two nouns that failure comes back with.
+            displayable: "something on stage",
+            layer: "a layer",
         },
         reason: {
             blueprintAction: "A blueprint runs this row, and a blueprint has no script form.",
@@ -137,17 +141,48 @@ export const story = {
             unresolvedRef: "This row points at something that no longer exists.",
             unknownPayload: "This row is of a kind the script does not cover.",
         },
-        // The scene read as a script inside the editor. Read-only this round for every scene, and
-        // read-only for good for one with rows the script cannot say - which is the whole job of
-        // `gate`: an author who is told "not yet" plans differently from one told "not ever".
+        // Why a line of a script could not be read back into the scene. Keyed by the parser's own
+        // codes and fenced by `narralangIo.test.ts` the same way `reason` is, so a new code fails a
+        // test rather than reaching an author as a raw identifier. Separate from `reason` because
+        // they answer different questions - that one is "why can this row not be written down", this
+        // one is "why can this line not be read".
+        parse: {
+            unknownStatement: "This line starts with a keyword and does not read as that statement.",
+            unknownName: "This line names something the project does not have.",
+            unknownNameNamed: "This line names {what} the project does not have.",
+            ambiguousName: "Several things answer to this name, so it cannot be told which was meant.",
+            ambiguousNameNamed: "Several things answer to this name, so it cannot be told which {what} was meant.",
+            ambiguousStatement: "Several statements fit this line and nothing tells them apart.",
+            badWord: "This word is not one this statement accepts here.",
+            missingValue: "This statement is missing something it cannot do without.",
+            conflictingValues: "This line sets the same thing twice, two different ways.",
+            badIndent: "This line is indented by part of a level, or skips one.",
+            danglingBranch: "This branch has no condition above it to belong to.",
+            badTag: "This line carries a formatting tag that is unknown, or left open.",
+            badExpression: "This expression does not resolve.",
+        },
+        // The scene read and written as a script inside the editor. Editable for a scene the script
+        // can say in full; read-only for good for one it cannot - which is the whole job of `gate`:
+        // an author who is told "not yet" plans differently from one told "not ever".
         view: {
             open: "Read as a script",
             close: "Back to rows",
-            readOnly: "The script view reads the scene. It does not write it.",
+            readOnly: "This scene has rows the script cannot say, so it cannot be written here.",
             gate: {
                 one: "{count} row has no script form, so this scene will not become editable here.",
                 other: "{count} rows have no script form, so this scene will not become editable here.",
             },
+            // The one thing the marked lines cannot say for themselves: that nothing has been
+            // written. Stated, not instructed - the marks already say which lines and why.
+            unread: {
+                one: "{count} line cannot be read. The scene is unchanged.",
+                other: "{count} lines cannot be read. The scene is unchanged.",
+            },
+            // The header was read and not obeyed. A script cannot rename a scene: the name is what
+            // the outline and every jump address it by, and a rename arriving as a side effect of
+            // typing would have no undo the author could find. Saying nothing would be worse - they
+            // would believe it had worked.
+            renameElsewhere: "The scene name was not changed. Rename the scene in the outline.",
         },
     },
     // Pasting a wall of prose into a scene. The wizard asks one question — who is speaking — and

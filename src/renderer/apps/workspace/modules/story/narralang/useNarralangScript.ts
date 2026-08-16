@@ -30,9 +30,17 @@ export type NarralangScript = {
     rows: readonly NarralangIssueRow[];
     /** False until the first print of this scene has landed. */
     ready: boolean;
+    /**
+     * Whether the script may be written back - the design doc's gate, in one field.
+     *
+     * A scene with a row that has no script form is read-only for good, and it is read-only as a
+     * whole: partial editability was rejected, because a locked region inside a live buffer is a way
+     * to lose work and makes the file's editability change under the author as Studio versions move.
+     */
+    editable: boolean;
 };
 
-const EMPTY: NarralangScript = { text: "", rows: [], ready: false };
+const EMPTY: NarralangScript = { text: "", rows: [], ready: false, editable: false };
 
 /**
  * The open scene, printed as NarraLang, kept in step with the document.
@@ -69,6 +77,7 @@ export function useNarralangScript(
             // scene, which is what keeps the list from repeating the name of the tab it is in.
             rows: narralangIssueRows(result.issues, [scene], lookups),
             ready: true,
+            editable: result.issues.length === 0,
         });
     };
 

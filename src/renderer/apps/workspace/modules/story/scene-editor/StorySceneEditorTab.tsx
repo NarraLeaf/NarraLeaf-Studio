@@ -73,6 +73,7 @@ import {
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
 import { NarralangScriptView } from "../narralang/NarralangScriptView";
 import { useNarralangScript } from "../narralang/useNarralangScript";
+import { useNarralangCommit } from "../narralang/useNarralangCommit";
 import { subscribeStoryRowHighlight } from "./storyRowHighlightBus";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
@@ -1404,6 +1405,24 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const editorBodyRef = useRef<HTMLDivElement | null>(null);
 
     const script = useNarralangScript(editor.scene ?? null, editor.document ?? null, scriptOpen);
+    /**
+     * Whether the script may be written back, and what to say when it may not.
+     *
+     * Two independent refusals with one surface: a scene the script cannot say is read-only for good
+     * (the gate), and a frozen workspace refuses every write of project data. The freeze reason is
+     * the shared one `useFreezeGuard` hands every other control, so the author learns what frozen
+     * looks like once instead of reading a different excuse per panel.
+     */
+    const scriptEditable = script.editable && !freeze.frozen;
+    const scriptReadOnlyReason = freeze.frozen ? freeze.reason : t("story.narralang.view.readOnly");
+    const scriptCommit = useNarralangCommit(
+        editor.scene ?? null,
+        editor.document ?? null,
+        // The very tables the `/` line beside it resolves names through, so the two surfaces cannot
+        // disagree about what the project contains.
+        editor.commandContext,
+        scriptOpen && scriptEditable,
+    );
 
     const togglePreview = useCallback(() => {
         setPreviewPane(current => {
@@ -2344,7 +2363,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             {/* Mounted only while it is on: a Monaco instance and the print behind it are not things
                 a scene tab should be carrying around for an author who never asked for the script. */}
             {scriptOpen ? (
-                <NarralangScriptView text={script.text} rows={script.rows} ready={script.ready} />
+                <NarralangScriptView
+                    text={script.text}
+                    rows={script.rows}
+                    ready={script.ready}
+                    editable={scriptEditable}
+                    readOnlyReason={scriptReadOnlyReason}
+                    commit={scriptCommit.commit}
+                    breakMerge={scriptCommit.breakMerge}
+                />
             ) : null}
             {previewOpen && previewMode === "dock" ? (
                 <>
