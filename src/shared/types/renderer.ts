@@ -23,7 +23,7 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
 import type {
     MacSigningIdentity,
     SigningCredential,
@@ -845,6 +845,18 @@ export interface RendererPreloadedInterface {
         selectOutputDir(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
         /** Run the build's checks without building; advisory, `start` re-checks. */
         preflight(projectPath: string, request: GameBuildRequest): Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>;
+        /**
+         * Produce a patch for a build of this project. Reports through the same
+         * snapshot `getStatus` polls and the same console `start` writes to,
+         * because it is the same session - the two cannot run at once.
+         */
+        exportPatch(
+            projectPath: string,
+            entry: GameRuntimeLaunchEntry,
+            request: GamePatchExportRequest,
+        ): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
+        /** Where to write a patch; null when the author closes the dialog. */
+        selectPatchFile(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
     };
 
     /**
