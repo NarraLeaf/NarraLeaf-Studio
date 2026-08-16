@@ -2767,7 +2767,7 @@ function compileCameraAction(
         case "darken":
             return [recordStatement(ctx, camera.darken(Math.min(1, Math.max(0, finiteOr(payload.darkness, 0))), duration, easing), block)];
         case "reset":
-            return [recordStatement(ctx, camera.reset(duration, easing), block)];
+            return [recordStatement(ctx, camera.resetCamera(duration, easing), block)];
         case "motion": {
             // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
             // takes the same `Transform` a sprite does, built by the same function `/transform` uses -
@@ -4967,6 +4967,12 @@ function setStableSceneElementIds(scene: Scene, sceneId: string): void {
     setStableElementId(scene.backgroundLayer, `nl:scene:${sceneId}:layer:background`);
     setStableElementId(scene.displayableLayer, `nl:scene:${sceneId}:layer:displayable`);
     setStableElementId(scene.background, `nl:scene:${sceneId}:background`);
+    // The narrator is the engine's own `Character(null)`, shared by every narration line in every
+    // scene, and nothing here constructs it - so like the three above it would keep a positional
+    // name. It began carrying state in engine 0.26.0, when `Character` started serialising its
+    // name, and a positional name is only harmless while an element reaches no save. Naming a
+    // singleton repeatedly is the same write each time.
+    setStableElementId(Narrator, "nl:character:narrator");
 }
 
 function setStableActionId(action: NlrAction, staticId: string): void {

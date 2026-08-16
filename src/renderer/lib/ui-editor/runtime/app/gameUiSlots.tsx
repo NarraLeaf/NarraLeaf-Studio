@@ -286,12 +286,17 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             const token = String(id ?? "").trim();
             const liveGame = requireLiveGame("Restore From History");
             // Snapshot-based restore works both during live play and after loading a save (where the
-            // closure-based undo stack is empty). Prefer it when a specific backlog line is targeted
-            // and the engine exposes it; fall back to undo otherwise (and for "go back one line").
+            // closure-based undo stack is empty). Prefer it when a specific backlog line is targeted;
+            // "go back one line" falls through to undo.
             if (restoreLiveGameToHistory(liveGame, token)) {
                 return;
             }
-            liveGame.undo(token ? token : undefined);
+            // `undo` steps back one line and takes no argument from engine 0.26.0 on - a named line is
+            // reached only through `restoreToHistory`. So a targeted line the engine refused has
+            // nothing to step to: going back one line instead would land somewhere else.
+            if (!token) {
+                liveGame.undo();
+            }
         },
 
         getChoiceCountInGame: (): number => {
