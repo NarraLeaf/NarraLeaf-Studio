@@ -93,6 +93,7 @@ import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProto
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
+import { readDistributionKey } from "@shared/utils/distributionKey";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { getMainLocale, getMainTranslator } from "../../i18n";
 import { readProjectAppTagDocumentFromDir, readProjectAppTagsFromDir } from "../../utils/appTagsFile";
@@ -934,6 +935,19 @@ export class GameBuildManager {
         if (encryptionKey && mobileTargets.length > 0) {
             this.emit(session, { level: "info", source: "Build", message: "asset protection enabled; protecting the mobile payload" });
         }
+        // The project's own key, folded against the identity this build ships under
+        // so two editions never resolve to the same material. Independent of
+        // protection: a build carries it to be patchable later, whether or not its
+        // payload is sealed. Absent until the author mints one, and then this build
+        // is simply one that can never be patched - which is what every build was
+        // before the key existed.
+        const distributionKey = readDistributionKey(projectConfig?.app);
+        const distribution = distributionKey
+            ? { key: distributionKey, titleId: identity.appId }
+            : undefined;
+        if (distribution && desktopTargets.length > 0) {
+            this.emit(session, { level: "info", source: "Build", message: "distribution key applied; this build can accept patches" });
+        }
         if (webTarget && this.encryptAssetsEnabled(projectConfig)) {
             this.emit(session, {
                 level: "info",
@@ -995,6 +1009,7 @@ export class GameBuildManager {
                 appId: identity.appId,
                 productName: identity.productName,
                 ...(identity.identifier ? { identifier: identity.identifier } : {}),
+                ...(distribution ? { distribution } : {}),
                 ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
                 // Every desktop target this one pack serves. A plugin's platform-scoped build config
                 // resolves against it: one platform selected is one answer, several are an answer

@@ -97,6 +97,7 @@ import {
     SigningMacIdentitiesHandler,
     SigningRemoveHandler,
 } from "./handlers/signingAction";
+import { DistributionCreateKeyHandler } from "./handlers/distributionAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
 import { ServerTrustPromptHandler } from "./handlers/serverTrustAction";
 import {
@@ -276,6 +277,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new SigningListHandler(),
         new SigningImportHandler(),
         new SigningRemoveHandler(),
+        new DistributionCreateKeyHandler(),
         new SigningInspectHandler(),
         new SigningKeystoreAliasesHandler(),
         new SigningMacIdentitiesHandler(),

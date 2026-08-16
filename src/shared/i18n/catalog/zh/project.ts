@@ -20,7 +20,7 @@ export const project = {
         },
         project: {
             title: "工程",
-            description: "工程检查的规则，以及什么会拦下构建",
+            description: "分发密钥、工程检查的规则，以及什么会拦下构建",
         },
         runtimes: {
             title: "运行时",
@@ -45,11 +45,22 @@ export const project = {
         // 命名空间里，与它们命名的那份模型放在一起。
         brandColors: "颜色",
         brandControls: "控件",
+        distribution: "分发密钥",
+        linting: "工程检查",
         security: "安全",
         signing: "签名",
         optimization: "优化",
         crash: "崩溃",
         mobile: "移动端",
+    },
+    distribution: {
+        description: "随工程保存，因此参与构建的每个人用的是同一把密钥。一个构建只接受用它自己那把密钥做出来的补丁。",
+        absent: "尚未创建密钥",
+        rotatedAt: "上次更换于 {date}",
+        createAction: "创建",
+        replaceAction: "更换",
+        replaceConfirm: "要更换分发密钥吗？",
+        replaceConfirmDetail: "已经用当前密钥发布出去的构建，不会接受此后做出的补丁",
     },
     home: {
         untitledProject: "未命名项目",

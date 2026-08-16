@@ -30,12 +30,15 @@ import {
     normalizeSigningConfiguration,
     normalizeVoiceConfiguration,
     normalizeWebOptimizationConfiguration,
+    normalizeDistributionConfiguration,
+    type DistributionConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectService, Services, WorkspaceContext } from "../services";
 import { FileSystemService } from "./FileSystem";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
+import { getInterface } from "@/lib/app/bridge";
 
 /**
  * What the author may hand Studio as an icon. One list for every slot, not one
@@ -350,6 +353,44 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 app,
             };
         });
+    }
+
+    /**
+     * Mint a distribution key for this project, replacing any it already has.
+     *
+     * The value is produced by the host process and written here verbatim; this
+     * method is the only path by which it enters the manifest, and nothing ever
+     * reads it back out for display. `rotatedAt` is stamped alongside because a
+     * date is the only part of the answer an author can act on - it tells them
+     * which of their shipped builds still match.
+     *
+     * Replacing is destructive in a way that is invisible at the moment it
+     * happens: builds shipped under the previous key will not accept an add-on
+     * produced after this call. The confirmation for that lives with the button,
+     * where the author is, rather than here.
+     */
+    public async rotateDistributionKey(): Promise<ProjectConfig> {
+        const result = await getInterface().distribution.createKey();
+        if (!result.success) {
+            throw new RendererError(result.error ?? "Could not create a distribution key");
+        }
+        const distribution: DistributionConfiguration = {
+            key: result.data.key,
+            rotatedAt: new Date().toISOString(),
+        };
+        return this.updateProjectConfig(config => {
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                distribution,
+            };
+            return { ...config, app };
+        });
+    }
+
+    /** The project's distribution key, or null when it has never been minted. */
+    public getDistributionConfiguration(): DistributionConfiguration | null {
+        return normalizeDistributionConfiguration(this.getProjectConfig().app?.distribution);
     }
 
     /**
