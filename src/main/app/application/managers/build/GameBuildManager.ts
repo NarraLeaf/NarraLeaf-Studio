@@ -97,6 +97,7 @@ import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { createSealedLayer, LAYER_DESCRIPTOR_ENTRY } from "@narraleaf/encryption";
 import { formatBytes } from "@shared/utils/formatBytes";
 import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
+import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { readDistributionKey } from "@shared/utils/distributionKey";
 import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
@@ -990,6 +991,77 @@ export class GameBuildManager {
      * comparing it would only ever answer "changed" while costing a reader the
      * doubt about whether it might not have.
      */
+    /**
+     * Say what this patch does to saves players already have.
+     *
+     * Two counts, never one. They are different events for a player: an action anchor that is gone
+     * stops the save opening and says so, while an element anchor that is gone is not detected at
+     * all - the state that pointed at it is dropped and the game plays on with a stage that is
+     * quietly wrong. A single number would let an author read the second as the first.
+     *
+     * Best effort by construction: the comparison runs the story compiler, and a project that fails
+     * to compile here has already failed the build's own gates. A problem reading it costs the
+     * warning, not the patch.
+     */
+    private async reportSaveAnchorDamage(
+        session: BuildSession,
+        before: GameRuntimePackV1,
+        after: GameRuntimePackV1,
+    ): Promise<void> {
+        let diff: SaveAnchorDiff;
+        try {
+            diff = await loadSaveAnchorComparer()(before, after);
+        } catch (error) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `could not check what this patch does to existing saves: ${error instanceof Error ? error.message : String(error)}`,
+            });
+            return;
+        }
+
+        const describe = (losses: { anchor: string; where: string }[]): string => {
+            // Places, not ids: an author can open a scene. The id is in the anchor and helps nobody
+            // reading a console line.
+            const places = [...new Set(losses.map(loss => loss.where))];
+            const shown = places.slice(0, SAVE_ANCHOR_PLACES_SHOWN).join(", ");
+            return places.length > SAVE_ANCHOR_PLACES_SHOWN
+                ? `${shown} and ${places.length - SAVE_ANCHOR_PLACES_SHOWN} more`
+                : shown;
+        };
+
+        if (diff.refusesToLoad.length > 0) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `${diff.refusesToLoad.length} place(s) a save can stop at no longer exist: `
+                    + `saves that stopped there will refuse to load once this patch is installed (${describe(diff.refusesToLoad)})`,
+            });
+        }
+        if (diff.loadsWithHazard.length > 0) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `${diff.loadsWithHazard.length} element(s) a save can hold state for no longer exist: `
+                    + `those saves will load, and what they remembered about these is dropped without a word (${describe(diff.loadsWithHazard)})`,
+            });
+        }
+        if (diff.incomplete) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "a story could not be compiled while checking saves, so the two counts above are partial",
+            });
+        }
+        if (diff.refusesToLoad.length === 0 && diff.loadsWithHazard.length === 0 && !diff.incomplete) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: "saves made against the previous build still resolve",
+            });
+        }
+    }
+
     private async sealPatch(
         session: BuildSession,
         appDir: string,
@@ -1007,9 +1079,20 @@ export class GameBuildManager {
             });
             try {
                 baseline = await digestPayload(previous);
+                // Before anything is written: what this patch does to saves is the author's to know
+                // while they can still decide not to ship it. A warning, never a refusal - a patch
+                // that breaks saves is sometimes exactly the patch an author means to make, and a
+                // gate here would teach them to turn the whole check off.
+                await this.reportSaveAnchorDamage(session, previous.pack, payload.pack);
             } finally {
                 await previous.close().catch(() => undefined);
             }
+        } else {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "no previous build to compare against, so nothing was checked about existing saves",
+            });
         }
 
         try {
@@ -2764,4 +2847,30 @@ function patchPlatforms(projectConfig: ProjectConfigData | null): GameBuildPlatf
     const platforms = stored.filter((platform): platform is GameBuildPlatform =>
         typeof platform === "string" && isDesktopBuildPlatform(platform as GameBuildDesktopPlatform));
     return [...new Set(platforms)];
+}
+
+/** How many places a save-damage line names before it starts counting instead. */
+const SAVE_ANCHOR_PLACES_SHOWN = 4;
+
+/** What the comparison answers. Declared here because its own module is in the other alias map. */
+type SaveAnchorDiff = {
+    refusesToLoad: { anchor: string; where: string }[];
+    loadsWithHazard: { anchor: string; where: string }[];
+    incomplete: boolean;
+};
+
+/**
+ * Reach the save-anchor comparison, which lives in the audit bundle beside this one.
+ *
+ * Loaded through a computed path for the same reason the compile worker loads that bundle that way:
+ * it is built with the renderer's aliases, and a static import would pull it into this bundle where
+ * `@/` means the main tree instead. A missing bundle is a Studio defect and throws - the caller
+ * turns that into a warning, because a patch is still a patch when this check cannot run.
+ */
+function loadSaveAnchorComparer(): (before: GameRuntimePackV1, after: GameRuntimePackV1) => Promise<SaveAnchorDiff> {
+    const modulePath = path.join(__dirname, "contentAudit.js");
+    const audit = require(modulePath) as {
+        compareSaveAnchors(before: GameRuntimePackV1, after: GameRuntimePackV1): Promise<SaveAnchorDiff>;
+    };
+    return audit.compareSaveAnchors;
 }

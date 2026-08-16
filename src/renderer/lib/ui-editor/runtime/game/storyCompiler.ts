@@ -456,8 +456,13 @@ type DevToolsWithStaticId = typeof DevTools & {
  * Feature-detected for the same reason the action-id twin is: an engine without it still produces a
  * playable game, and refusing to compile against one would make the two repositories lock-step.
  */
-function setStableElementId(element: unknown, staticId: string): void {
+function setStableElementId(sink: string[], element: unknown, staticId: string): void {
     (DevTools as DevToolsWithStaticId).setElementStaticId?.(element as NlrElement, staticId);
+    // Recorded at the one place that stamps, so nothing can name an element without the record
+    // seeing it. A second list built from the document would be a second copy of this naming rule,
+    // and the failure it would hide - an element the compiler names and the record does not - is
+    // silent by nature.
+    sink.push(staticId);
 }
 
 /** Whether the engine in use keeps the names above. */
@@ -497,6 +502,16 @@ export type CompiledNlrStory = {
     storyId: string;
     sceneId: string;
     actionIdBindings: NlrActionIdBinding[];
+    /**
+     * Every stable element id this compile stamped.
+     *
+     * Alongside the action ids because a save anchors on both, and the two fail in opposite ways: a
+     * missing action id is refused at load, while a missing element id is not noticed at all - the
+     * pre-resolution only asks whether an id exists, so the state that pointed at it is quietly
+     * applied to nothing. Anything comparing two builds has to see both or it reports half the
+     * damage.
+     */
+    elementIdBindings: string[];
     /**
      * Swap the dub language of this compile, in place, while the game is running. Returns false for a
      * language this compile has no take table for (and for a story compiled without voice).
@@ -689,6 +704,7 @@ type SceneCompileContext = {
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
     actionIdBindings: NlrActionIdBinding[];
+    elementIdBindings: string[];
     nextActionIndex: (blockId: string) => number;
     /**
      * What a plugin compile pass attached around each row, keyed by block id.
@@ -787,6 +803,7 @@ export function createEmptyCompiledNlrStory(): CompiledNlrStory {
         characters: new Map(),
         avatarAssetIdByUrl: new Map(),
         actionIdBindings: [],
+        elementIdBindings: [],
         savedNamespaceName: "",
         visitedNamespaceName: "",
         sceneLocalNamespaceNames: {},
@@ -814,6 +831,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         );
     }
     const actionIdBindings: NlrActionIdBinding[] = [];
+    const elementIdBindings: string[] = [];
     const sceneElements: Record<string, CompiledSceneElements> = {};
     const characters = new Map<string, Character>();
     const avatarAssetIdByUrl = new Map<string, string>();
@@ -845,6 +863,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
     const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string }>();
     const scenesBuild = await createNlrScenes({
+        elementIdBindings,
         document: input.document,
         resolveAssetUrl,
         assetUrlCache,
@@ -931,6 +950,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             assetUrlCache,
             diagnostics,
             actionIdBindings,
+            elementIdBindings,
             nextActionIndex,
         };
         // Let the registered plugin compile passes read this scene and say what they attach around
@@ -971,6 +991,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             nlrStory,
             allScenes,
             actionIdBindings,
+            elementIdBindings,
             diagnostics,
             characters,
             characterSummaries,
@@ -1015,6 +1036,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         storyId: input.document.id,
         sceneId: entryScene.id,
         actionIdBindings,
+        elementIdBindings,
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
         visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames,
@@ -1040,6 +1062,7 @@ async function buildLaunchEntryScene(params: {
     nlrStory: Story;
     allScenes: Record<string, Scene>;
     actionIdBindings: NlrActionIdBinding[];
+    elementIdBindings: string[];
     diagnostics: NlrStoryCompileDiagnostic[];
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
@@ -1138,6 +1161,7 @@ async function buildLaunchEntryScene(params: {
         assetUrlCache,
         diagnostics,
         actionIdBindings: params.actionIdBindings,
+        elementIdBindings: params.elementIdBindings,
         nextActionIndex: params.nextActionIndex,
     };
 
@@ -1271,6 +1295,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     const snapshot = input.snapshot;
     const diagnostics: NlrStoryCompileDiagnostic[] = snapshot.diagnostics.map(entry => ({ ...entry }));
     const actionIdBindings: NlrActionIdBinding[] = [];
+    const elementIdBindings: string[] = [];
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
     const assetUrlCache = new Map<string, string | null>();
@@ -1364,6 +1389,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         assetUrlCache,
         diagnostics,
         actionIdBindings,
+        elementIdBindings,
         nextActionIndex,
     };
 
@@ -1513,6 +1539,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         storyId: input.document.id,
         sceneId: scene.id,
         actionIdBindings,
+        elementIdBindings,
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
         visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames: { [scene.id]: DevTools.getNamespaceName(previewScene.local) },
@@ -1619,6 +1646,8 @@ async function createNlrScenes(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /** Where the ids stamped on each scene's own elements are recorded. */
+    elementIdBindings: string[];
     /** Every voice language's unit id → clip URL map. Voice ids are global, so one table serves every scene. */
     voiceUrlsByLocale?: Record<string, Record<string, string>>;
     /** Which language the scenes open on. */
@@ -1758,7 +1787,7 @@ async function createNlrScenes(input: {
             runtimeName,
             Object.keys(config).length > 0 ? config : undefined,
         );
-        setStableSceneElementIds(built, scene.id);
+        setStableSceneElementIds(input.elementIdBindings, built, scene.id);
         scenes[scene.id] = built;
         // The scene's OWN table, which is a copy of the one just handed in - see the note above.
         const live = (built as unknown as { config?: { voices?: unknown } }).config?.voices;
@@ -3002,7 +3031,7 @@ async function getPuppetElement(
         ...(appearance.defaultState?.expression ? { expression: appearance.defaultState.expression } : {}),
         ...(appearance.defaultState?.skin ? { skin: appearance.defaultState.skin } : {}),
     });
-    setStableElementId(puppet, `nl:puppet:${ctx.scene.id}:${key}`);
+    setStableElementId(ctx.elementIdBindings, puppet, `nl:puppet:${ctx.scene.id}:${key}`);
     ctx.puppets.set(key, puppet);
     return puppet;
 }
@@ -3440,7 +3469,7 @@ async function getVfx(
         // since the engine does not persist a runtime `setPlaybackRate`.
         ...(payload.rate !== undefined ? { playbackRate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
     });
-    setStableElementId(vfx, `nl:vfx:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, vfx, `nl:vfx:${ctx.scene.id}:${name}`);
     ctx.vfx.set(name, vfx);
     return vfx;
 }
@@ -3708,7 +3737,7 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
             return cached;
         }
         const created = new Character(tempName);
-        setStableElementId(created, `nl:character:${key}`);
+        setStableElementId(ctx.elementIdBindings, created, `nl:character:${key}`);
         ctx.characters.set(key, created);
         return created;
     }
@@ -3725,7 +3754,7 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
     const summary = ctx.characterSummaries.get(normalizedId);
     const displayName = summary?.name?.trim() || UNKNOWN_CHARACTER_NAME;
     const character = new Character(displayName, characterNametagConfig(summary));
-    setStableElementId(character, `nl:character:${normalizedId}`);
+    setStableElementId(ctx.elementIdBindings, character, `nl:character:${normalizedId}`);
     ctx.characters.set(normalizedId, character);
     return character;
 }
@@ -3785,7 +3814,7 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
         // Initial transform-state pose baked into the constructor config (survives reset()).
         ...(options?.initialProps ?? {}),
     } as any);
-    setStableElementId(image, `nl:image:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, image, `nl:image:${ctx.scene.id}:${name}`);
     ctx.images.set(name, image);
     return image;
 }
@@ -3805,7 +3834,7 @@ function getText(ctx: SceneCompileContext, objectName: string, options: { text?:
         layer: options.layer,
         ...(options.initialProps ?? {}),
     } as any);
-    setStableElementId(text, `nl:text:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, text, `nl:text:${ctx.scene.id}:${name}`);
     ctx.texts.set(name, text);
     return text;
 }
@@ -3817,7 +3846,7 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, init
         return existing;
     }
     const layer = new Layer(name, { zIndex, ...(initialProps ?? {}) } as any);
-    setStableElementId(layer, `nl:layer:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, layer, `nl:layer:${ctx.scene.id}:${name}`);
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
     ctx.layers.set(name, layer);
     return layer;
@@ -3862,7 +3891,7 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
         return null;
     }
     const video = new Video({ src: url, muted: muted ?? false });
-    setStableElementId(video, `nl:video:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, video, `nl:video:${ctx.scene.id}:${name}`);
     ctx.videos.set(name, video);
     return video;
 }
@@ -4962,17 +4991,17 @@ function stableActionId(storyId: string, sceneId: string, blockId: string, textI
  * the engine constructs them - so left alone they would keep positional names while everything
  * around them stopped moving, and a save would still put a layer's pose onto a background.
  */
-function setStableSceneElementIds(scene: Scene, sceneId: string): void {
-    setStableElementId(scene, `nl:scene:${sceneId}`);
-    setStableElementId(scene.backgroundLayer, `nl:scene:${sceneId}:layer:background`);
-    setStableElementId(scene.displayableLayer, `nl:scene:${sceneId}:layer:displayable`);
-    setStableElementId(scene.background, `nl:scene:${sceneId}:background`);
+function setStableSceneElementIds(sink: string[], scene: Scene, sceneId: string): void {
+    setStableElementId(sink, scene, `nl:scene:${sceneId}`);
+    setStableElementId(sink, scene.backgroundLayer, `nl:scene:${sceneId}:layer:background`);
+    setStableElementId(sink, scene.displayableLayer, `nl:scene:${sceneId}:layer:displayable`);
+    setStableElementId(sink, scene.background, `nl:scene:${sceneId}:background`);
     // The narrator is the engine's own `Character(null)`, shared by every narration line in every
     // scene, and nothing here constructs it - so like the three above it would keep a positional
     // name. It began carrying state in engine 0.26.0, when `Character` started serialising its
     // name, and a positional name is only harmless while an element reaches no save. Naming a
     // singleton repeatedly is the same write each time.
-    setStableElementId(Narrator, "nl:character:narrator");
+    setStableElementId(sink, Narrator, "nl:character:narrator");
 }
 
 function setStableActionId(action: NlrAction, staticId: string): void {

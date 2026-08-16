@@ -17,6 +17,7 @@ import { openSealedBundle, RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } f
 import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { auditShippedContent, type ShippedArtifactReader, type ShippedContentAuditResult } from "./shippedContentAudit";
+import { collectSaveAnchors, diffSaveAnchors, type SaveAnchorDiff } from "./saveAnchors";
 
 async function fileHasContent(filePath: string): Promise<boolean> {
     try {
@@ -73,3 +74,19 @@ export async function runShippedContentAudit(appDir: string): Promise<ShippedCon
 }
 
 export type { ShippedContentAuditResult, ShippedContentAuditFailure } from "./shippedContentAudit";
+
+/**
+ * What a patch built from `after` does to saves made against `before`.
+ *
+ * Exposed here, on the bundle the compile worker already loads by path, because the comparison runs
+ * the story compiler and the compiler only resolves through the renderer's aliases. The caller hands
+ * over two pack descriptors it already has open; nothing here touches a file.
+ */
+export async function compareSaveAnchors(
+    before: GameRuntimePackV1,
+    after: GameRuntimePackV1,
+): Promise<SaveAnchorDiff> {
+    return diffSaveAnchors(await collectSaveAnchors(before), await collectSaveAnchors(after));
+}
+
+export type { SaveAnchorDiff, SaveAnchorLoss } from "./saveAnchors";
