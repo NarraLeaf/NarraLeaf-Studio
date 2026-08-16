@@ -133,6 +133,16 @@ export type NarralangParseOptions = {
      * file cannot know need passing.
      */
     readonly expressionScope?: Partial<StoryExpressionScope>;
+    /**
+     * The id the row on this 1-based line must take, or `null` to mint one.
+     *
+     * The one hook identity has in here, and it is a hook rather than a guess: a caller that already
+     * knows which line belongs to which row - the reconciler, which matched the text against the
+     * printer's own output - hands the answer in, and everything the parse resolves BY block id
+     * (a stage reference, a variable, a declaration's storage key) lands on the row that is really
+     * there instead of on a copy of it. Nothing here decides identity on its own; see the file header.
+     */
+    readonly blockIdForLine?: (line: number) => StoryBlockId | null;
 };
 
 // --- Lines ------------------------------------------------------------------------------------------
@@ -142,6 +152,8 @@ type LineNode = {
     readonly line: number;
     readonly column: number;
     readonly prefix: "none" | "disabled" | "raw" | "note";
+    /** The line with its indent removed and nothing else - what the printer emitted for this row. */
+    readonly source: string;
     /** The line's content, with indent and prefix removed. */
     readonly body: string;
     /** The same, with a trailing block marker taken off. Equal to {@link body} when there was none. */
@@ -177,7 +189,7 @@ function stripPrefix(body: string, marker: string): string | null {
 function readLineTree(
     text: string,
     dialect: NarralangDialect,
-    createId: () => string,
+    createId: (line: number) => string,
     report: (line: number, column: number, reason: NarralangParseReason, detail?: string) => void,
 ): LineNode[] {
     const roots: LineNode[] = [];
@@ -234,10 +246,11 @@ function readLineTree(
         const hadBlockMarker = open !== "" && body.endsWith(open);
 
         const node: LineNode = {
-            id: createId(),
+            id: createId(lineNumber),
             line: lineNumber,
             column: offset + 1,
             prefix,
+            source: rest,
             body,
             bodyInBlock: hadBlockMarker ? body.slice(0, -open.length) : body,
             hadBlockMarker,
@@ -276,8 +289,12 @@ export function parseNarralangSceneWithDialect(
     };
 
     const { name, body } = splitSceneHeader(text, dialect);
-    const roots = readLineTree(body.text, dialect, createId, (line, column, reason, detail) =>
-        report(line + body.lineOffset, column, reason, detail));
+    const roots = readLineTree(
+        body.text,
+        dialect,
+        (line) => options.blockIdForLine?.(line + body.lineOffset) ?? createId(),
+        (line, column, reason, detail) => report(line + body.lineOffset, column, reason, detail),
+    );
 
     const state: ParseState = {
         dialect,
@@ -346,6 +363,40 @@ export function applyNarralangParse(scene: StoryScene, result: NarralangParseRes
         rootBlockIds: result.rootBlockIds,
         blocks: result.blocks,
     };
+}
+
+export type NarralangScriptLine = {
+    /** 1-based, into the text handed in - the number {@link NarralangParseOptions.blockIdForLine} is asked about. */
+    readonly line: number;
+    /** Levels of indentation below the scene's own rows, so a root row is 0. */
+    readonly depth: number;
+    /** The line with its indentation removed, prefix and all. */
+    readonly source: string;
+};
+
+/**
+ * The lines a parse of this text would read, without reading them.
+ *
+ * Exists so a caller comparing a script against another script compares the same lines the parser
+ * will: which lines carry a row (a blank does not, and neither does a dialect's closing brace), where
+ * each one starts, and how it is numbered. A second implementation of that in the caller is a way for
+ * an id to land on the line below the one it was meant for.
+ */
+export function readNarralangScriptLines(
+    text: string,
+    dialect: NarralangDialect = NARRALANG_DEFAULT_DIALECT,
+): NarralangScriptLine[] {
+    const { body } = splitSceneHeader(text, dialect);
+    const roots = readLineTree(body.text, dialect, () => "", () => undefined);
+    const out: NarralangScriptLine[] = [];
+    const collect = (nodes: readonly LineNode[], depth: number): void => {
+        for (const node of nodes) {
+            out.push({ line: node.line + body.lineOffset, depth, source: node.source });
+            collect(node.children, depth + 1);
+        }
+    };
+    collect(roots, 0);
+    return out;
 }
 
 type SceneHeader = { name: string | null; body: { text: string; lineOffset: number } };

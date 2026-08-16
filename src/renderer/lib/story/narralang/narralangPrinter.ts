@@ -61,15 +61,44 @@ export type NarralangSceneResult = {
     issues: NarralangIssue[];
 };
 
+/**
+ * Which row wrote which line.
+ *
+ * Only the reconciler wants this (see {@link ./narralangReconcile}): comparing the line an author
+ * left alone against the line the printer would have written for that row is what lets the row keep
+ * its id and its payload. Export does not need it, so it stays off the plain result.
+ */
+export type NarralangPrintedLine = {
+    readonly blockId: StoryBlockId;
+    /** 1-based, into the accompanying text. */
+    readonly line: number;
+    readonly depth: number;
+    /** The line as emitted, without its indentation - the same string a reader sees after the indent. */
+    readonly text: string;
+};
+
+export type NarralangSceneLinesResult = NarralangSceneResult & {
+    /**
+     * In document order, one entry per row that printed something. A row that printed nothing has
+     * none: a `condition` container is structure the script states with its branches, and a row with
+     * no spelling at all has already been reported in {@link NarralangSceneResult.issues}.
+     */
+    readonly lines: readonly NarralangPrintedLine[];
+};
+
 // --- Walk ---------------------------------------------------------------------------------------
 
 type Ctx = NarralangExtractContext & {
     dialect: NarralangDialect;
     lines: string[];
+    trace: NarralangPrintedLine[];
 };
 
-function emit(ctx: Ctx, depth: number, line: string): void {
+function emit(ctx: Ctx, depth: number, line: string, blockId?: StoryBlockId): void {
     ctx.lines.push(line === "" ? "" : `${ctx.dialect.indent.repeat(depth)}${line}`);
+    if (blockId !== undefined) {
+        ctx.trace.push({ blockId, line: ctx.lines.length, depth, text: line });
+    }
 }
 
 function walk(ctx: Ctx, blockIds: readonly StoryBlockId[], depth: number): void {
@@ -90,7 +119,7 @@ function walk(ctx: Ctx, blockIds: readonly StoryBlockId[], depth: number): void 
 
         const line = renderNarralangShape(shape, ctx.dialect);
         if (line !== null && line !== "") {
-            emit(ctx, depth, block.disabled ? `${ctx.dialect.prefix.disabled} ${line}` : line);
+            emit(ctx, depth, block.disabled ? `${ctx.dialect.prefix.disabled} ${line}` : line, block.id);
         }
         if (block.childrenIds.length > 0) {
             walk(ctx, block.childrenIds, depth + 1);
@@ -118,12 +147,29 @@ export function printNarralangSceneWithDialect(
     lookups: NarralangLookups,
     dialect: NarralangDialect,
 ): NarralangSceneResult {
+    const { text, issues } = printNarralangSceneLines(scene, lookups, dialect);
+    return { text, issues };
+}
+
+/**
+ * {@link printNarralangSceneWithDialect}, plus which row wrote which line.
+ *
+ * The same walk: the trace falls out of the emit the printer already does, so a line and the row it
+ * came from cannot disagree. Kept as a second entry point rather than a field on the plain result so
+ * export and the coverage gate keep the shape they already publish.
+ */
+export function printNarralangSceneLines(
+    scene: StoryScene,
+    lookups: NarralangLookups,
+    dialect: NarralangDialect = NARRALANG_DEFAULT_DIALECT,
+): NarralangSceneLinesResult {
     const issues: NarralangIssue[] = [];
     const ctx: Ctx = {
         scene,
         lookups: { ...lookups, scene },
         dialect,
         lines: [],
+        trace: [],
         report: (blockId, reason, detail) => {
             issues.push(detail === undefined ? { blockId, reason } : { blockId, reason, detail });
         },
@@ -134,7 +180,7 @@ export function printNarralangSceneWithDialect(
     if (dialect.block.close !== null) {
         ctx.lines.push(dialect.block.close);
     }
-    return { text: `${ctx.lines.join("\n").replace(/\n+$/, "")}\n`, issues };
+    return { text: `${ctx.lines.join("\n").replace(/\n+$/, "")}\n`, issues, lines: ctx.trace };
 }
 
 /** One scene as a script, plus every row in it that has no spelling. */

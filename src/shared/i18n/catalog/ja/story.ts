@@ -122,6 +122,8 @@ export const story = {
             variable: "変数",
             variant: "ビルドバリアント",
             camera: "カメラ位置",
+            displayable: "舞台上のもの",
+            layer: "レイヤー",
         },
         reason: {
             blueprintAction: "この行はブループリントが実行する。ブループリントにスクリプトの書き方は無い",
@@ -135,13 +137,32 @@ export const story = {
             unresolvedRef: "この行が指しているものはもう無い",
             unknownPayload: "この種類の行はスクリプトがまだ扱わない",
         },
+        parse: {
+            unknownStatement: "この行はキーワードで始まっているが、その文の書き方になっていない",
+            unknownName: "この行が挙げている名前は、プロジェクトに無い",
+            unknownNameNamed: "この行が挙げている{what}は、プロジェクトに無い",
+            ambiguousName: "この名前を持つものが複数あり、どれを指すか決められない",
+            ambiguousNameNamed: "この名前を持つ{what}が複数あり、どれを指すか決められない",
+            ambiguousStatement: "この行に当てはまる文が複数あり、見分けがつかない",
+            badWord: "この文はここでこの語を受け取らない",
+            missingValue: "この文には欠かせないものが足りていない",
+            conflictingValues: "この行は同じことを二通りに指定している",
+            badIndent: "この行の字下げが段の途中か、一段飛ばしている",
+            danglingBranch: "この分岐が属する条件が上に無い",
+            badTag: "この行に、知らない書式タグか、閉じていないタグがある",
+            badExpression: "この式は解決できない",
+        },
         view: {
             open: "スクリプトとして読む",
             close: "行に戻る",
-            readOnly: "スクリプト表示は読むだけで、シーンには書き戻さない",
+            readOnly: "このシーンにはスクリプトで言えない行があるので、ここからは書き戻せない",
             gate: {
                 other: "{count} 行にスクリプトの書き方が無いので、このシーンは今後もここでは編集できない",
             },
+            unread: {
+                other: "{count} 行を読めていない。シーンは変わっていない",
+            },
+            renameElsewhere: "シーン名は変えていない。名前の変更はアウトラインから",
         },
     },
     // 文のかたまりをシーンに貼り付ける。ウィザードが尋ねるのは誰が話しているかの 1 点だけで、
