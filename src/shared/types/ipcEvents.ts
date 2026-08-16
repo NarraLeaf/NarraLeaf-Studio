@@ -85,7 +85,7 @@ import type {
     VcsRestoreResult,
     VcsPushResult,
     VcsServerProbe,
-    VcsServerSession,
+    VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
@@ -347,6 +347,8 @@ export enum IPCEventType {
     vcsListServers = "vcs.listServers",
     vcsAddServer = "vcs.addServer",
     vcsForgetServer = "vcs.forgetServer",
+    vcsListServerProjects = "vcs.listServerProjects",
+    vcsCreateServerProject = "vcs.createServerProject",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
@@ -1313,6 +1315,32 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: Record<string, never>,
         response: { servers: VcsServerSession[] };
+    };
+    /**
+     * What one server holds, asked of that server.
+     *
+     * **Goes to the network**, and answers with the list or with a coded reason it
+     * has none. The token it is asked with never crosses this boundary in either
+     * direction: the main process sealed it when the server was added.
+     */
+    [IPCEventType.vcsListServerProjects]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: VcsServerProjectsOutcome;
+    };
+    /**
+     * Ask a server to make a project, and get back the one it made.
+     *
+     * The server records it and creates the repository together. Studio never asks
+     * `loreserver` for a repository itself — one made that way is one the server has
+     * no row for, and nobody can open it.
+     */
+    [IPCEventType.vcsCreateServerProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; name: string; description?: string },
+        response: VcsServerProjectOutcome;
     };
     /**
      * Sign in to a server named by the token rather than by a project.

@@ -310,6 +310,19 @@ export interface GlobalStateType extends Record<string, any> {
      * than trusted on its own. See `VcsManager.getServerSession`.
      */
     "versionControl.serverSessions": VcsServerSession[];
+    /**
+     * The token this installation signs in to each server with, sealed.
+     *
+     * Keyed by the same `remoteOrigin` the sessions are, and holding
+     * `safeStorage` ciphertext rather than the token: Studio needs the token
+     * for the questions it asks a server directly - which projects are on it,
+     * and making another - and those happen long after the author pasted it.
+     * See `vcs/serverTokens.ts` for why it is kept at all, and what a machine
+     * that cannot seal does instead.
+     *
+     * **Never leaves the main process.** Nothing over IPC reads it.
+     */
+    "versionControl.serverTokens": Record<string, string>;
 }
 
 export type GlobalStateKeys = string;
@@ -366,6 +379,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "versionControl.authorName": "",
     "versionControl.authorEmail": "",
     "versionControl.serverSessions": [],
+    "versionControl.serverTokens": {},
 };
 
 /**
