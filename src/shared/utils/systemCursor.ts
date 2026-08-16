@@ -37,6 +37,11 @@
  * Comments in English per project convention.
  */
 
+import fs from "fs";
+import { createRequire } from "module";
+import path from "path";
+import { unpackAsarPath } from "./asarPath";
+
 export type SystemCursorMoveOutcome =
     /** The cursor is now at the requested point, as far as the platform reported. */
     | "moved"
@@ -61,11 +66,43 @@ type CursorBinding =
  */
 let cached: Promise<CursorBinding> | null = null;
 
+/**
+ * Where the packaged game keeps its copy of koffi.
+ *
+ * A plain directory beside `main.js`, not `node_modules/koffi`. electron-builder builds the app's
+ * `node_modules` from the staged `package.json`'s dependencies and ships nothing else under that
+ * name: a literal `node_modules` directory in the app source is dropped, asar and unpacked alike,
+ * with one line in the packager log and no error. The first attempt shipped exactly that and every
+ * packaged game reported the cursor as unmovable. `native.js` and `sidecars/` are beside `main.js`
+ * for the same reason, and this follows them.
+ */
+const SHIPPED_KOFFI_DIRECTORY = "koffi";
+
+function shippedKoffiEntry(): string | null {
+    if (typeof __dirname !== "string" || !__dirname) {
+        return null;
+    }
+    return unpackAsarPath(path.join(__dirname, SHIPPED_KOFFI_DIRECTORY, "index.js"));
+}
+
 async function loadKoffi(): Promise<typeof import("koffi")> {
-    const loaded = await import("koffi");
-    // Both main bundles keep koffi external - it resolves its own addon by path, and bundling it
-    // breaks that - so what comes back may be the CommonJS namespace rather than the module itself.
-    return ((loaded as unknown as { default?: typeof import("koffi") }).default ?? loaded);
+    try {
+        const loaded = await import("koffi");
+        // Both main bundles keep koffi external - it resolves its own addon by path, and bundling it
+        // breaks that - so what comes back may be the CommonJS namespace rather than the module
+        // itself.
+        return ((loaded as unknown as { default?: typeof import("koffi") }).default ?? loaded);
+    } catch (bareSpecifierError) {
+        // Studio's own process resolves the bare specifier, because koffi is one of its
+        // dependencies. A packaged game has no dependency tree, so it reaches the copy the build
+        // put beside its main bundle. The path is computed, which also keeps this off the static
+        // import graph the version-control pluggability guard walks.
+        const entry = shippedKoffiEntry();
+        if (!entry || !fs.existsSync(entry)) {
+            throw bareSpecifierError;
+        }
+        return createRequire(__filename)(entry) as typeof import("koffi");
+    }
 }
 
 async function bindWindows(): Promise<CursorBinding> {

@@ -729,8 +729,14 @@ async function copyRuntimeFiles(
  *
  * The packaged game's main process needs an FFI to position the system cursor, and koffi is the one
  * this application already depends on and already signs. It cannot be bundled - it resolves its own
- * `.node` by path at run time - so it ships as a package directory beside the game's `main.js`,
- * the way `native.js`/`gate.js` ship for the encryption addon.
+ * `.node` by path at run time - so it ships as a directory beside the game's `main.js`, the way
+ * `native.js`/`gate.js` ship for the encryption addon.
+ *
+ * The directory is `koffi/`, deliberately not `node_modules/koffi/`. electron-builder derives the
+ * app's `node_modules` from the staged `package.json`'s dependencies and ships nothing else under
+ * that name - a literal `node_modules` directory in the app source is dropped from the asar and
+ * from the unpacked tree both, with one line in the packager log and no error. `systemCursor.ts`
+ * knows to look here when the bare specifier does not resolve.
  *
  * Only the prebuild for the target is copied. The package carries eighteen of them and weighs 24 MB;
  * a game needs exactly one, and shipping the rest would put an ARM Linux binary inside every Windows
@@ -738,41 +744,101 @@ async function copyRuntimeFiles(
  * move the cursor", which is honest and is what the build console already warned about.
  */
 const KOFFI_PACKAGE_FILES = ["package.json", "index.js", "indirect.js"] as const;
+/** Kept in step with `SHIPPED_KOFFI_DIRECTORY` in `@shared/utils/systemCursor`. */
+const SHIPPED_KOFFI_DIR_NAME = "koffi";
 
-function koffiTripletFor(platformKey: string | undefined): string | null {
-    // `<platform>-<arch>` (the sidecar key) to koffi's `<platform>_<arch>` directory name. They
-    // agree on every target this application builds for, which is why this is a substitution rather
-    // than a table that would have to be kept in step with a list nobody would remember to check.
-    const key = (platformKey ?? `${process.platform}-${process.arch}`).trim();
-    return /^[a-z0-9]+-[a-z0-9]+$/.test(key) ? key.replace("-", "_") : null;
+/**
+ * Which koffi prebuild directories a build target needs.
+ *
+ * Two vocabularies meet here and they only look alike. A build target is
+ * `<GameBuildDesktopPlatform>-<GameBuildArch>` - `windows-x64`, `macos-arm64` - while koffi names
+ * its directories after Node's `process.platform`: `win32_x64`, `darwin_arm64`. Substituting the
+ * separator produced `windows_x64`, which is not a directory koffi ships, so the copy found nothing
+ * and returned quietly: every packaged game shipped without the addon and reported the cursor as
+ * unmovable, on all three platforms, with nothing anywhere saying why. Hence a table and a test
+ * rather than string surgery.
+ *
+ * A macOS universal build needs both slices, which is why this answers a list.
+ */
+const KOFFI_PLATFORM_DIRECTORIES: Readonly<Record<string, string>> = {
+    windows: "win32",
+    macos: "darwin",
+    linux: "linux",
+};
+
+export function koffiPrebuildDirectories(platformKey: string | undefined): string[] {
+    if (!platformKey) {
+        // No build target named: a Dev Mode compile aimed at this host, where koffi's vocabulary is
+        // the one `process` already speaks.
+        return [`${process.platform}_${process.arch}`];
+    }
+    const separator = platformKey.lastIndexOf("-");
+    if (separator <= 0) {
+        return [];
+    }
+    const directory = KOFFI_PLATFORM_DIRECTORIES[platformKey.slice(0, separator)];
+    const arch = platformKey.slice(separator + 1);
+    if (!directory || !arch) {
+        return [];
+    }
+    return arch === "universal"
+        ? [`${directory}_x64`, `${directory}_arm64`]
+        : [`${directory}_${arch}`];
 }
 
+/**
+ * koffi, for the Move Mouse family.
+ *
+ * The packaged game's main process needs an FFI to position the system cursor, and koffi is the one
+ * this application already depends on and already signs. It cannot be bundled - it resolves its own
+ * `.node` by path at run time - so it ships as a package directory beside the game's `main.js`,
+ * the way `native.js`/`gate.js` ship for the encryption addon.
+ *
+ * Only the prebuilds for the target are copied. The package carries eighteen of them and weighs
+ * 24 MB; a game needs one (two for a universal macOS build), and shipping the rest would put an ARM
+ * Linux binary inside every Windows installer.
+ *
+ * A target koffi has no prebuild for is not an error - the game degrades to "this host cannot move
+ * the cursor", which the build console already warned about for non-desktop targets. It does say so
+ * on the compile log, because the previous version of this said nothing and that is how it shipped
+ * broken.
+ */
 async function copyKoffiPackage(appDir: string, platformKey: string | undefined): Promise<void> {
-    const triplet = koffiTripletFor(platformKey);
-    if (!triplet) {
+    const directories = koffiPrebuildDirectories(platformKey);
+    if (directories.length === 0) {
+        console.warn(`[Compile] no koffi prebuild is known for "${platformKey}"; the game cannot move the cursor`);
         return;
     }
     let packageRoot: string;
     try {
         packageRoot = path.dirname(unpackAsarPath(createRequire(__filename).resolve("koffi/package.json")));
-    } catch {
-        // Studio's own install is missing it. Nothing to copy and nothing to say here: the game
-        // simply reports the cursor as unmovable, and Studio's own version control would have
-        // failed long before a build got this far.
+    } catch (error) {
+        // Studio's own install is missing it. The game simply reports the cursor as unmovable.
+        console.warn("[Compile] koffi is not resolvable from this installation", error);
         return;
     }
-    const prebuild = path.join(packageRoot, "build", "koffi", triplet, "koffi.node");
-    try {
-        await fs.access(prebuild);
-    } catch {
+    const targetRoot = path.join(appDir, SHIPPED_KOFFI_DIR_NAME);
+    const copied: string[] = [];
+    for (const directory of directories) {
+        const prebuild = path.join(packageRoot, "build", "koffi", directory, "koffi.node");
+        try {
+            await fs.access(prebuild);
+        } catch {
+            continue;
+        }
+        await fs.mkdir(path.join(targetRoot, "build", "koffi", directory), { recursive: true });
+        await fs.copyFile(prebuild, path.join(targetRoot, "build", "koffi", directory, "koffi.node"));
+        copied.push(directory);
+    }
+    if (copied.length === 0) {
+        console.warn(
+            `[Compile] koffi ships no prebuild for ${directories.join(", ")}; the game cannot move the cursor`,
+        );
         return;
     }
-    const targetRoot = path.join(appDir, "node_modules", "koffi");
-    await fs.mkdir(path.join(targetRoot, "build", "koffi", triplet), { recursive: true });
     for (const fileName of KOFFI_PACKAGE_FILES) {
         await copyOptionalFile(path.join(packageRoot, fileName), path.join(targetRoot, fileName));
     }
-    await fs.copyFile(prebuild, path.join(targetRoot, "build", "koffi", triplet, "koffi.node"));
 }
 
 async function copyOptionalFile(sourcePath: string, targetPath: string): Promise<void> {
