@@ -1462,7 +1462,7 @@ function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotif
 /**
  * One dialogue/menu backlog entry mirrored from NarraLeaf's `LiveGame.getHistory()`.
  * Flattened so a backlog List widget can bind each field directly, and `id` can be fed
- * back into the Restore From History node (NLR `LiveGame.undo(id)`).
+ * back into the Restore From History node (NLR `LiveGame.restoreToHistory(token)`).
  */
 export type BlueprintGameHistoryEntry = {
     /** History token; pass to Restore From History to jump the game back to this point. */

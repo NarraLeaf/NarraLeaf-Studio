@@ -3,7 +3,8 @@
  *
  * These are UI-blueprint nodes (event / macro graphs on a Page or Widget), NOT story-action
  * blueprints: a backlog screen reads the running game's dialogue history and can rewind the game
- * to any past line. They map onto NarraLeaf-React `LiveGame.getHistory()` / `LiveGame.undo(id)`.
+ * to any past line. They map onto NarraLeaf-React `LiveGame.getHistory()` /
+ * `LiveGame.restoreToHistory(token)`.
  * Comments in English per project convention.
  */
 
