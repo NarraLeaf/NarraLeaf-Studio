@@ -110,7 +110,7 @@ export const wizard = {
         onServerRefused: "这台服务器拒绝了已保存的令牌。请用新令牌重新添加。",
         onServerUnreachable: "这台服务器没有响应。",
         onServerUnknown: "这台服务器的回应 Studio 读不懂。",
-        onServerMadeBy: "由 {{name}} 创建",
+        onServerMadeBy: "由 {name} 创建",
         parsedName: "服务器上的项目名",
         destinationHint: "必须是新建或空的文件夹",
     },
