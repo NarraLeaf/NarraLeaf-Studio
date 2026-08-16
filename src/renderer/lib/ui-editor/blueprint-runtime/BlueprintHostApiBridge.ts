@@ -401,9 +401,22 @@ export type BlueprintHostApiRuntime = {
         writeAutoSave: () => Promise<void>;
         /** The reserved autosave ring, newest first. Never overlaps `listSaveIds`. */
         listAutoSaves: () => Promise<AutoSaveEntry[]>;
+        /**
+         * The backlog behind the play head, oldest first.
+         *
+         * From engine 0.26.0 this stops at the head: after the player steps back, the lines they
+         * stepped past are no longer in here, they are in {@link getFuture}. Before anyone steps
+         * back - which is every ordinary playthrough - the two are the whole backlog and nothing.
+         */
         getHistory: () => Promise<BlueprintGameHistoryEntry[]>;
+        /** The lines ahead of the play head, nearest first. Empty until the player steps back. */
+        getFuture: () => Promise<BlueprintGameHistoryEntry[]>;
         /** Jump back to a history entry by id; omit the id to undo the last entry. */
         restoreHistory: (id?: string) => Promise<void>;
+        /** Step the play head forward one line, back over a line the player has already read. */
+        redoHistory: () => Promise<void>;
+        canUndoHistory: () => boolean;
+        canRedoHistory: () => boolean;
         getNametag: () => string | null;
         /**
          * The speaking character's dialog avatar, or null. Already keyed on the differential the
@@ -633,7 +646,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onWriteAutoSave?: () => Promise<void> | void;
     onListAutoSaves?: () => Promise<AutoSaveEntry[]> | AutoSaveEntry[];
     onGetHistory?: () => Promise<BlueprintGameHistoryEntry[]> | BlueprintGameHistoryEntry[];
+    onGetFuture?: () => Promise<BlueprintGameHistoryEntry[]> | BlueprintGameHistoryEntry[];
     onRestoreHistory?: (id?: string) => Promise<void> | void;
+    onRedoHistory?: () => Promise<void> | void;
+    onCanUndoHistory?: () => boolean;
+    onCanRedoHistory?: () => boolean;
     onGetNametag?: () => string | null;
     onGetSpeakerAvatar?: () => BlueprintImageAsset | null;
     /** Optional override; without it the speaker colour comes from the mirrored dialog state key. */
@@ -1460,9 +1477,13 @@ function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotif
 }
 
 /**
- * One dialogue/menu backlog entry mirrored from NarraLeaf's `LiveGame.getHistory()`.
- * Flattened so a backlog List widget can bind each field directly, and `id` can be fed
- * back into the Restore From History node (NLR `LiveGame.restoreToHistory(token)`).
+ * One dialogue/menu backlog entry, mirrored from NarraLeaf's `LiveGame.getHistory()` or
+ * `getFuture()` - an entry is the same entry on either side of the play head, so one item template
+ * binds both lists.
+ *
+ * Flattened so a backlog List widget can bind each field directly, and `id` can be fed back into
+ * the Restore From History node (NLR `LiveGame.restoreToHistory(token)`), which moves the head to
+ * that line in either direction.
  */
 export type BlueprintGameHistoryEntry = {
     /** History token; pass to Restore From History to jump the game back to this point. */
@@ -1892,7 +1913,11 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onWriteAutoSave,
         onListAutoSaves,
         onGetHistory,
+        onGetFuture,
         onRestoreHistory,
+        onRedoHistory,
+        onCanUndoHistory,
+        onCanRedoHistory,
         onGetNametag,
         onGetSpeakerAvatar,
         onGetSpeakerColor,
@@ -3354,6 +3379,18 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            getFuture: async () => {
+                const cap = "game.getFuture";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onGetFuture) {
+                        throw new Error("getFuture: game runtime is not available");
+                    }
+                    return normalizeBlueprintGameHistory(await onGetFuture());
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             restoreHistory: async (id?: string) => {
                 const cap = "game.restoreHistory";
                 emitHostCall(emit, cap, "call");
@@ -3363,6 +3400,36 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     }
                     const safeId = String(id ?? "").trim();
                     await onRestoreHistory(safeId ? safeId : undefined);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            redoHistory: async () => {
+                const cap = "game.redoHistory";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onRedoHistory) {
+                        throw new Error("redoHistory: game runtime is not available");
+                    }
+                    await onRedoHistory();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            canUndoHistory: () => {
+                const cap = "game.canUndoHistory";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onCanUndoHistory ? onCanUndoHistory() === true : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            canRedoHistory: () => {
+                const cap = "game.canRedoHistory";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onCanRedoHistory ? onCanRedoHistory() === true : false;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

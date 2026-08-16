@@ -2,14 +2,26 @@
  * Dialogue history (backlog) blueprint nodes, grouped under the "Game" category.
  *
  * These are UI-blueprint nodes (event / macro graphs on a Page or Widget), NOT story-action
- * blueprints: a backlog screen reads the running game's dialogue history and can rewind the game
- * to any past line. They map onto NarraLeaf-React `LiveGame.getHistory()` /
- * `LiveGame.restoreToHistory(token)`.
+ * blueprints: a backlog screen reads the running game's dialogue history and can move the game to
+ * any line of it.
+ *
+ * The backlog is a timeline with a play head on it, and these nodes are that timeline's two sides.
+ * `Get History` is everything up to the head - the lines read, in order. Stepping back moves the
+ * head, and the lines it moved past become the future, which `Get Future History` returns and
+ * `Redo Next History Entry` steps back into. `Can Undo History` / `Can Redo History` are what a
+ * pair of backlog buttons disable themselves on. They map onto NarraLeaf-React
+ * `LiveGame.getHistory()` / `getFuture()` / `restoreToHistory(token)` / `undo()` / `redo()` /
+ * `canUndo()` / `canRedo()`.
+ *
  * Comments in English per project convention.
  */
 
 import {
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_REDO,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_UNDO,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_REDO_NEXT,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST,
 } from "@shared/types/blueprint/graph";
@@ -88,6 +100,26 @@ export const backlogBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE,
+        displayName: "Get Future History",
+        category: "Game",
+        keywords: ["history", "backlog", "future", "ahead", "forward", "redo", "entries", "game", "nlr"],
+        graphKinds: [...BACKLOG_GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext, entriesOut, countOut],
+        async execute(ctx) {
+            const entries = await requireHostApi(ctx).game.getFuture();
+            return {
+                nextPort: "next",
+                outputValues: {
+                    entries,
+                    count: entries.length,
+                },
+            };
+        },
+    },
+    {
         type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
         displayName: "Restore From History",
         category: "Game",
@@ -113,6 +145,70 @@ export const backlogBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             await requireHostApi(ctx).game.restoreHistory();
             return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_REDO_NEXT,
+        displayName: "Redo Next History Entry",
+        category: "Game",
+        keywords: ["history", "backlog", "redo", "forward", "ahead", "next", "again", "dialog", "dialogue", "game", "nlr"],
+        graphKinds: [...BACKLOG_GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.redoHistory();
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_UNDO,
+        displayName: "Can Undo History",
+        category: "Game",
+        keywords: ["history", "backlog", "undo", "back", "can", "enabled", "game", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "canUndo",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Can Undo",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    canUndo: requireHostApi(ctx).game.canUndoHistory(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_REDO,
+        displayName: "Can Redo History",
+        category: "Game",
+        keywords: ["history", "backlog", "redo", "forward", "can", "enabled", "game", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "canRedo",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Can Redo",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    canRedo: requireHostApi(ctx).game.canRedoHistory(),
+                },
+            };
         },
     },
 ];

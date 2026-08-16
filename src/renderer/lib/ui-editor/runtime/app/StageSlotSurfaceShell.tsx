@@ -73,7 +73,13 @@ export type GameUiSlotHostOptions = {
     writeAutoSaveInGame: () => Promise<void>;
     listAutoSaves: () => Promise<AutoSaveEntry[]>;
     getHistoryInGame: () => BlueprintGameHistoryEntry[];
+    /** The lines the player has stepped back past, nearest first. Empty unless they have. */
+    getFutureInGame: () => BlueprintGameHistoryEntry[];
     restoreHistoryInGame: (id?: string) => Promise<void>;
+    /** Step the play head forward one line, back over a line already read. */
+    redoHistoryInGame: () => Promise<void>;
+    canUndoHistoryInGame: () => boolean;
+    canRedoHistoryInGame: () => boolean;
     /**
      * Carrying a playthrough between two editions of one title, for the Export/Import Progress
      * nodes. Optional on the same terms as {@link soundTransport}: a host with no shell behind it
@@ -220,7 +226,11 @@ export function useStageSlotSurfaceRuntime(input: {
             onWriteAutoSave: options.writeAutoSaveInGame,
             onListAutoSaves: options.listAutoSaves,
             onGetHistory: options.getHistoryInGame,
+            onGetFuture: options.getFutureInGame,
             onRestoreHistory: options.restoreHistoryInGame,
+            onRedoHistory: options.redoHistoryInGame,
+            onCanUndoHistory: options.canUndoHistoryInGame,
+            onCanRedoHistory: options.canRedoHistoryInGame,
             onExportProgress: options.exportProgressInGame,
             onImportProgress: options.importProgressInGame,
             onGetNametag: options.getCurrentNametag,

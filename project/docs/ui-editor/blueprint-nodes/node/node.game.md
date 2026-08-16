@@ -2,7 +2,7 @@
 
 Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog 推进，以及访问当前 Studio 项目隔离的本地存档。除非额外声明，所有参数均为传入引脚值；标注（传出引脚）的参数为传出值。
 
-本页节点均通过 Blueprint Host API 执行。`Get Nametag`、`Get Notifications`、`Get Choice Count`、`Is NVL Mode`、`Is In Game`、`Is Game Overlay` 与 Preference Getter 是纯读取节点，可用于 Blueprint Value；Preference Setter、Dialog 控制、推进、`Select Choice`、存档写入/删除等执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
+本页节点均通过 Blueprint Host API 执行。`Get Nametag`、`Get Notifications`、`Get Choice Count`、`Is NVL Mode`、`Is In Game`、`Is Game Overlay`、`Can Undo History`、`Can Redo History` 与 Preference Getter 是纯读取节点，可用于 Blueprint Value；Preference Setter、Dialog 控制、推进、`Select Choice`、存档写入/删除等执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
 
 Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(...)` / `setPreference(...)` 访问当前活动 `LiveGame`。它们需要 NarraLeaf React 游戏环境已经准备就绪；在新游戏启动时初始化偏好，请使用全局蓝图的 `On Game Ready`，不要依赖可能早于 `LiveGame` 创建的 `App Boot`。
 
@@ -373,3 +373,80 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 - `next` - 读取完成后的执行出口
 
 自动保存的开关、间隔与保留数量在「项目 → 游戏」中配置，随项目一起出货。
+
+## 对话历史（backlog）
+
+backlog 是一条**带播放头的时间轴**，不是一个只增不减的列表。玩家读过的每一行都在轴上；播放头停在当前这一行。
+
+- **`Get History`** 给的是播放头**之后**的部分，也就是「已经读到这里」的那一段，按顺序排列。
+- 玩家回退时播放头往前移动，被它越过的行成为**前方**，由 **`Get Future History`** 给出。
+- **`Restore From History`** 按条目 id 把播放头移到指定那一行，两个方向都可以。
+- **`Undo Last History Entry`** / **`Redo Next History Entry`** 各把播放头移动一行。
+- **`Can Undo History`** / **`Can Redo History`** 是纯节点，用来让两个按钮自己决定要不要禁用。
+
+⚠ **`Get History` 不再包含前方的行。** 从引擎 0.26.0 起它在播放头处截断，因此玩家回退之后，
+只连 `Get History` 的 backlog 界面会**看起来少了几行**——那几行在 `Get Future History` 里。
+在没有人回退过的普通一周目里，前方恒为空，两者之和就是全部读过的行。
+
+回退有两条执行路径，作者不需要关心是哪一条：本次会话真跑过的行就地回退（音乐不停、转场不动），
+引擎的执行栈够不到的行（读档之后、或超出栈上限）用该行的快照恢复。两条都落到同一个状态。
+
+### Get History
+
+`blueprint.game.history.get` - Get History
+
+- `in` - 执行入口
+- `entries` - `Array<Object>`（传出引脚），蓝图引脚类型为 `array`
+- `count` - `integer`（传出引脚）
+- `next` - 读取完成后的执行出口
+
+每个条目的字段：
+
+- `id` - 条目 token，喂给 `Restore From History`。**读档与回退之后仍然有效**（引擎 0.26.0 起 token 写进存档并在读回时保留；更早写的存档没有 token，读回时会重新分配）
+- `type` - `"say"` 或 `"menu"`
+- `text` - 该行正文；`menu` 条目是提示语
+- `character` - 说话人名字，旁白与 `menu` 条目为 `null`
+- `voice` - 已解析的语音 URL，没有时为 `null`
+- `voiceId` - 该行登记的语音 id，用来做 backlog 重播按钮；旧存档的条目没有它
+- `selected` - `menu` 条目里玩家选中的那一项，`say` 条目为 `null`
+- `isPending` - 该行是否还在打字中
+
+### Get Future History
+
+`blueprint.game.history.getFuture` - Get Future History
+
+引脚与条目字段和 `Get History` 完全一致，因此 backlog 列表的 item 模板两边共用一套。
+**排序是由近及远**：第一条是再往前走一行会到达的那一行。玩家没有回退过时返回空数组。
+
+### Restore From History
+
+`blueprint.game.history.restore` - Restore From History
+
+- `in` - 执行入口
+- `id` - 条目 id，`string` 输入，支持 inline literal 或接线覆盖；**留空会报错**
+- `next` - 执行出口
+
+id 取自 `Get History` 或 `Get Future History` 的条目，两个方向都能到。
+
+### Undo Last History Entry / Redo Next History Entry
+
+`blueprint.game.history.undoLast` - Undo Last History Entry
+`blueprint.game.history.redoNext` - Redo Next History Entry
+
+- `in` - 执行入口
+- `next` - 执行出口
+
+各把播放头移动一行，都不取 id。走到尽头时**什么都不做，不报错**——这正是 `Can Undo History` /
+`Can Redo History` 存在的原因：让按钮在走到尽头之前就已经是禁用的。
+
+⚠ 回退之后再往前读**会保留前方**：走三行回去再读回来，是重走那三行，后面读过的仍在前方。
+只有当故事走去了别处（选了另一个分支）才会丢弃前方，因为那段前方已经不再接在当前位置之后。
+
+### Can Undo History / Can Redo History
+
+`blueprint.game.history.canUndo` - Can Undo History
+`blueprint.game.history.canRedo` - Can Redo History
+
+- `canUndo` / `canRedo` - `boolean`（传出引脚）
+
+两者都是 pure 节点，可放入 Blueprint Value 或普通事件图。没有运行中的游戏时都返回 `false`。
