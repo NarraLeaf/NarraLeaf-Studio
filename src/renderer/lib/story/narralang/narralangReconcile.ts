@@ -39,6 +39,17 @@
  * declaration - onto the rows that are really there. Without that, an untouched `show bird` would come
  * back pointing at a copy of `image create bird` rather than at the row above it.
  *
+ * ## An edited line is still the same row
+ *
+ * Lines that match are only half the picture. What is left over inside a hunk - one line where one line
+ * used to be - is a rewrite, not a deletion beside an insertion, and it keeps the row: same id, and the
+ * same `textId` on its text.
+ *
+ * That second one is the point. A `textId` is the unit every translation of the line is filed under, so
+ * minting a fresh one because the author fixed a typo would silently unlink every translation of that
+ * row. Editing the source makes a translation STALE, which the localisation system already knows how to
+ * say; unlinking it is a loss nothing can undo, because nothing else records what the line was.
+ *
  * ## All or nothing
  *
  * One diagnostic fails the whole reconcile. Half a scene written into the document is worse than
@@ -74,11 +85,24 @@ export type NarralangReconcileResult =
          * The rows the author really changed or created.
          *
          * A row is here when it is new, or when its content (kind, payload, disabled) is not the
-         * content it had. Moving a row or re-hanging it under another parent changes neither, so a
-         * pure re-order comes back with nothing touched and a different tree - a caller asking "did
-         * anything happen?" has to compare {@link rootBlockIds} and the rows' `childrenIds` as well.
+         * content it had. Moving a row, re-ordering two of them or re-hanging one under another parent
+         * changes none of that, so a pure re-arrangement comes back with this EMPTY and a different
+         * tree.
+         *
+         * Which means it is not the answer to "did anything happen?". A caller that commits only when
+         * this is non-empty will never commit a re-order, and the author will watch their edit vanish
+         * on reload. Compare {@link rootBlockIds} and the rows' `childrenIds` as well.
          */
         touchedBlockIds: StoryBlockId[];
+        /**
+         * The name off the script's own header, or `null` when the text carried none.
+         *
+         * Reported rather than applied: renaming a scene is a document-wide operation (every `jump`
+         * that names it, the scene list, the version history's idea of what moved) and this module
+         * decides nothing outside the rows. A caller that wants the rename does it through the scene
+         * service; one that does not, ignores this.
+         */
+        sceneName: string | null;
     }
     | { ok: false; diagnostics: NarralangParseDiagnostic[] };
 
@@ -121,13 +145,17 @@ export function reconcileNarralangScene(input: NarralangReconcileInput): Narrala
 
     const before = printed.lines;
     const after = readNarralangScriptLines(nextText, dialect);
-    const pairs = matchScriptLines(before.map((entry) => entry.text), after.map((entry) => entry.source));
+    const { matched, edited } = matchScriptLines(before.map((entry) => entry.text), after.map((entry) => entry.source));
 
     const idForLine = new Map<number, StoryBlockId>();
-    const matchedOldIds = new Set<StoryBlockId>();
-    for (const [newIndex, oldIndex] of pairs) {
+    const unchangedIds = new Set<StoryBlockId>();
+    const survivingIds = new Set<StoryBlockId>();
+    for (const [newIndex, oldIndex] of [...matched, ...edited]) {
         idForLine.set(after[newIndex].line, before[oldIndex].blockId);
-        matchedOldIds.add(before[oldIndex].blockId);
+        survivingIds.add(before[oldIndex].blockId);
+    }
+    for (const [, oldIndex] of matched) {
+        unchangedIds.add(before[oldIndex].blockId);
     }
 
     const parsed = parseNarralangSceneWithDialect(nextText, parseLookups, dialect, {
@@ -140,10 +168,12 @@ export function reconcileNarralangScene(input: NarralangReconcileInput): Narrala
 
     const blocks: Record<StoryBlockId, StoryBlock> = { ...parsed.blocks };
     const rootBlockIds = [...parsed.rootBlockIds];
-    reclaimContainers(scene, blocks, rootBlockIds, matchedOldIds);
+    // A reclaimed container is an unchanged row like any other: it wrote no line, so no line of it
+    // could have been edited.
+    for (const id of reclaimContainers(scene, blocks, rootBlockIds, survivingIds)) {
+        unchangedIds.add(id);
+    }
 
-    const present = new Set(Object.keys(blocks));
-    const oldIds = new Set(Object.keys(scene.blocks));
     // The tree as the parser left it, kept aside: the loop below overwrites payloads, and every
     // question asked about the new tree has to get the same answer whether it is asked first or last.
     const parsedTree = { ...blocks };
@@ -151,16 +181,64 @@ export function reconcileNarralangScene(input: NarralangReconcileInput): Narrala
     for (const id of documentOrder(rootBlockIds, blocks)) {
         const previous = scene.blocks[id];
         const fresh = blocks[id];
-        if (previous === undefined || !reusable(previous, fresh, scene, parsedTree, oldIds, present)) {
+        if (previous === undefined) {
             touchedBlockIds.push(id);
             continue;
         }
-        // The row as it was, hung where the new text hangs it. Not a merge of the two: a field-by-field
-        // copy is how a normalisation the printer papers over gets written back into the document.
-        blocks[id] = { ...previous, parentId: fresh.parentId, childrenIds: fresh.childrenIds };
+        if (unchangedIds.has(id) && reusable(previous, fresh, scene, parsedTree)) {
+            // The row as it was, hung where the new text hangs it. Not a merge of the two: a
+            // field-by-field copy is how a normalisation the printer papers over gets written back
+            // into the document.
+            blocks[id] = { ...previous, parentId: fresh.parentId, childrenIds: fresh.childrenIds };
+            continue;
+        }
+        // The same row, rewritten. The parse says what it says now; what it keeps from before is the
+        // identity of its text - see {@link inheritTextIds}.
+        blocks[id] = { ...fresh, payload: inheritTextIds(previous.payload, fresh.payload) } as StoryBlock;
+        touchedBlockIds.push(id);
     }
 
-    return { ok: true, rootBlockIds, blocks, touchedBlockIds };
+    return { ok: true, rootBlockIds, blocks, touchedBlockIds, sceneName: parsed.name };
+}
+
+/**
+ * Carry the old row's text ids into its rewritten payload.
+ *
+ * A `textId` is not decoration: it is the **translation unit** every localisation of that line is filed
+ * under (`shared/types/localization.ts`). Minting a fresh one because the author fixed a typo would
+ * silently orphan every translation of the row - a real loss of work, and a worse one than the
+ * normalisation this module was built to stop, because that at least meant the same thing.
+ *
+ * Inheriting is the right answer and not a compromise. An edited source line makes its translations
+ * STALE, and stale is a state the localisation system already has and can show; unlinked is a state
+ * nothing can recover from, because nothing records what the line used to be.
+ *
+ * Matched by position in the payload rather than by role, so a row that changed shape - narration that
+ * became one of a menu's options, which is the same words under a new parent - keeps its unit too.
+ */
+function inheritTextIds(previous: unknown, fresh: unknown): unknown {
+    if (Array.isArray(fresh)) {
+        return Array.isArray(previous) ? fresh.map((entry, index) => inheritTextIds(previous[index], entry)) : fresh;
+    }
+    if (!isRecord(fresh) || !isRecord(previous)) {
+        return fresh;
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(fresh)) {
+        out[key] = inheritTextIds(previous[key], value);
+    }
+    if (isTextSegment(fresh) && isTextSegment(previous)) {
+        out.textId = previous.textId;
+    }
+    return out;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isTextSegment(value: Record<string, unknown>): boolean {
+    return typeof value.textId === "string" && typeof value.value === "string";
 }
 
 // --- Reuse --------------------------------------------------------------------------------------
@@ -173,24 +251,24 @@ export function reconcileNarralangScene(input: NarralangReconcileInput): Narrala
  *
  * - **Its context changed.** Under a `menu` every child is one of its options, so a line moved into or
  *   out of one says something else than it did, whatever it still reads like.
- * - **Something it points at is gone.** A row referring to the row that created a stage object, or to
- *   the row a variable is declared on, holds that row's id. If the author edited that other row it has
- *   a new id, and the old payload now points at nothing - so this row takes the parse's payload, which
- *   resolved the same name against the text that is really there. Its own id is kept either way, which
- *   is what stops one edit from cascading into every row that mentions the same name.
+ * - **What it points at is no longer what it was.** A row referring to the row that created a stage
+ *   object, or to the row a variable is declared on, holds that row's id. If that row is gone, or if it
+ *   is still there but now names something else - the author rewrote `image create bird` into
+ *   `image create cat`, and the id came along with the line - then the stored reference is a lie. This
+ *   row takes the parse's payload instead, which resolved the same name against the text that is really
+ *   there. Its own id is kept either way, which is what stops one edit from cascading into every row
+ *   that mentions the same name.
  */
 function reusable(
     previous: StoryBlock,
     fresh: StoryBlock,
     scene: StoryScene,
     blocks: Record<StoryBlockId, StoryBlock>,
-    oldIds: ReadonlySet<string>,
-    present: ReadonlySet<string>,
 ): boolean {
     if (underChoice(previous, scene.blocks) !== underChoice(fresh, blocks)) {
         return false;
     }
-    return !referencesMissingRow(previous.payload, oldIds, present);
+    return !referencesSomethingElse(previous.payload, scene.blocks, blocks);
 }
 
 function underChoice(block: StoryBlock, blocks: Record<StoryBlockId, StoryBlock>): boolean {
@@ -198,17 +276,65 @@ function underChoice(block: StoryBlock, blocks: Record<StoryBlockId, StoryBlock>
     return parent !== undefined && (parent.payload as { action?: string }).action === "choice";
 }
 
-function referencesMissingRow(value: unknown, oldIds: ReadonlySet<string>, present: ReadonlySet<string>): boolean {
+function referencesSomethingElse(
+    value: unknown,
+    previous: Record<StoryBlockId, StoryBlock>,
+    blocks: Record<StoryBlockId, StoryBlock>,
+): boolean {
     if (typeof value === "string") {
-        return oldIds.has(value) && !present.has(value);
+        const referenced = previous[value];
+        if (referenced === undefined) {
+            return false;
+        }
+        const now = blocks[value];
+        return now === undefined || bindingOf(now) !== bindingOf(referenced);
     }
     if (Array.isArray(value)) {
-        return value.some((entry) => referencesMissingRow(entry, oldIds, present));
+        return value.some((entry) => referencesSomethingElse(entry, previous, blocks));
     }
-    if (value !== null && typeof value === "object") {
-        return Object.values(value).some((entry) => referencesMissingRow(entry, oldIds, present));
+    if (isRecord(value)) {
+        return Object.values(value).some((entry) => referencesSomethingElse(entry, previous, blocks));
     }
     return false;
+}
+
+/**
+ * What a row can be referred to as, or `null` when nothing refers to it by name.
+ *
+ * The question a stored reference really asks of the row it points at is "do you still answer to the
+ * name I was written for?" - not "are you unchanged". Changing a variable's default, or the asset a
+ * stage object is created from, leaves every reference to it perfectly good, and treating that as a
+ * broken link would re-parse (and so re-normalise) rows the author never went near. So only the naming
+ * half of the payload is compared.
+ */
+function bindingOf(block: StoryBlock | undefined): string | null {
+    if (block === undefined) {
+        return null;
+    }
+    const payload = block.payload as {
+        action?: string;
+        operation?: string;
+        name?: string;
+        scope?: string;
+        objectName?: string;
+        characterId?: string;
+        text?: { value?: string };
+    };
+    if (block.kind === "declaration") {
+        return `var:${payload.scope ?? "scene"}:${payload.name ?? ""}`;
+    }
+    if (payload.operation === "create" && payload.objectName !== undefined) {
+        return `object:${payload.action}:${payload.objectName}`;
+    }
+    if (payload.action === "choiceOption") {
+        // What `picked(…)` resolves against, and an option is named by what it says.
+        return `option:${payload.text?.value ?? ""}`;
+    }
+    if (payload.characterId !== undefined) {
+        // A character has no creator row: the first row naming one is what later references bind to.
+        return `character:${payload.characterId}`;
+    }
+    return null;
 }
 
 /**
@@ -231,7 +357,7 @@ function reclaimContainers(
     blocks: Record<StoryBlockId, StoryBlock>,
     rootBlockIds: StoryBlockId[],
     matchedOldIds: ReadonlySet<StoryBlockId>,
-): void {
+): ReadonlySet<StoryBlockId> {
     const claimed = new Set<StoryBlockId>();
     // Outermost first, so a chain nested inside another one asks about a tree the outer pass has
     // already settled.
@@ -249,6 +375,7 @@ function reclaimContainers(
         claimed.add(previous);
         renameBlock(blocks, rootBlockIds, id, previous);
     }
+    return claimed;
 }
 
 /** How many containers lie between a row and one of its ancestors, that ancestor included. */
@@ -359,18 +486,28 @@ function documentOrder(rootBlockIds: readonly StoryBlockId[], blocks: Record<Sto
  */
 const LCS_CELL_LIMIT = 4_000_000;
 
+type NarralangLineMatch = {
+    /** Lines that read exactly as they were printed: `[newIndex, oldIndex]`. */
+    readonly matched: [number, number][];
+    /** Lines the author rewrote, against the line they were rewritten FROM. Same shape. */
+    readonly edited: [number, number][];
+};
+
 /**
- * Which old line each new line came from, as `[newIndex, oldIndex]`.
+ * Which old line each new line came from.
  *
- * Three passes, in falling order of confidence. The common prefix and suffix are the lines an edit did
+ * Four passes, in falling order of confidence. The common prefix and suffix are the lines an edit did
  * not reach, and they cost nothing to find. A longest common subsequence pairs the rest in order, which
  * is what keeps a row's identity when the row above it was deleted. What survives both is matched by
  * content alone, in order: that is the pass that recovers a MOVE, because a passage dragged elsewhere
  * appears as a deletion here and an insertion there, and the two halves say the same words.
  *
+ * The three above find lines that did not change. The fourth, {@link pairEditedLines}, pairs what is
+ * left - and that is a different claim, so it comes back separately.
+ *
  * Every pass claims each old line at most once - two new lines cannot both be the same row.
  */
-function matchScriptLines(before: readonly string[], after: readonly string[]): [number, number][] {
+function matchScriptLines(before: readonly string[], after: readonly string[]): NarralangLineMatch {
     const pairs: [number, number][] = [];
     let head = 0;
     while (head < before.length && head < after.length && before[head] === after[head]) {
@@ -421,6 +558,48 @@ function matchScriptLines(before: readonly string[], after: readonly string[]): 
         if (oldIndex !== undefined) {
             pairs.push([index, oldIndex]);
         }
+    }
+    return { matched: pairs, edited: pairEditedLines(pairs, before.length, after.length) };
+}
+
+/**
+ * What is left, paired by position inside each hunk: the i-th unmatched old line is the i-th unmatched
+ * new one, rewritten.
+ *
+ * The difference between "this line was edited" and "one line was deleted and another added" is not in
+ * the text - the two are the same characters - and getting it wrong is expensive in one direction only.
+ * A row that comes back with a new id has lost its `textId`, and with it every translation of the line,
+ * because that id IS the translation unit. Reading a rewrite as delete-plus-add throws that away over a
+ * typo; reading a delete-plus-add as a rewrite hands an id to a row that took the old one's place,
+ * which is what a diff has always called it and what the version history will show either way.
+ *
+ * A hunk runs between two lines that did match. Where the anchors do not agree on direction - a passage
+ * that moved crosses them over - the old side has no well-defined run and nothing is paired, which is
+ * the safe way for the heuristic to give up. The remainder, when the two sides are of different
+ * lengths, is a plain insertion or deletion and stays one.
+ */
+function pairEditedLines(matched: readonly [number, number][], oldCount: number, newCount: number): [number, number][] {
+    const anchors = [...matched].sort((left, right) => left[0] - right[0]);
+    const claimedOld = new Set(matched.map(([, oldIndex]) => oldIndex));
+    const pairs: [number, number][] = [];
+    let previousNew = -1;
+    let previousOld = -1;
+    for (const [newIndex, oldIndex] of [...anchors, [newCount, oldCount] as [number, number]]) {
+        const newGap: number[] = [];
+        for (let index = previousNew + 1; index < newIndex; index += 1) {
+            newGap.push(index);
+        }
+        const oldGap: number[] = [];
+        for (let index = previousOld + 1; index < oldIndex; index += 1) {
+            if (!claimedOld.has(index)) {
+                oldGap.push(index);
+            }
+        }
+        for (let offset = 0; offset < Math.min(newGap.length, oldGap.length); offset += 1) {
+            pairs.push([newGap[offset], oldGap[offset]]);
+        }
+        previousNew = newIndex;
+        previousOld = oldIndex;
     }
     return pairs;
 }

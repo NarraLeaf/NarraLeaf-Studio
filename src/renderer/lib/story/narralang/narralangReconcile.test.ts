@@ -254,11 +254,8 @@ describe("reconcileNarralangScene", () => {
         const result = reconciled(hostile, next);
 
         // The edit landed.
-        expect(result.touchedBlockIds).toHaveLength(1);
-        const edited = result.blocks[result.touchedBlockIds[0]];
-        expect(edited.payload).toMatchObject({ action: "dialogue", characterId: "char-alice" });
-        expect((edited.payload as { text: StoryTextSegment }).text.value).toBe("你今天也留到这么晚啊。");
-        expect(isValidStoryEntityId(edited.id)).toBe(true);
+        expect(result.touchedBlockIds).toEqual(["n3"]);
+        expect((result.blocks.n3.payload as { text: StoryTextSegment }).text.value).toBe("你今天也留到这么晚啊。");
 
         // And nowhere else. Not "equivalent to": the same object, id and all.
         for (const [id, block] of Object.entries(hostile.blocks)) {
@@ -268,7 +265,33 @@ describe("reconcileNarralangScene", () => {
             expect(result.blocks[id]).toEqual(block);
         }
         expect(Object.keys(result.blocks)).toHaveLength(Object.keys(hostile.blocks).length);
-        expect(result.touchedBlockIds).not.toContain("n3");
+    });
+
+    it("an edited line keeps its row and its translation unit", () => {
+        // The other half of the property above. A `textId` is what every translation of the line is
+        // filed under, so a row that comes back with a fresh one has quietly lost all of them - over a
+        // typo. Only the payload may move.
+        const previous = hostile.blocks.n3;
+        const result = reconciled(hostile, editLine(script(hostile), DIALOGUE, "  爱丽丝: 你今天也留到这么晚啊。"));
+
+        const edited = result.blocks.n3;
+        expect(edited.id).toBe("n3");
+        expect(edited.kind).toBe(previous.kind);
+        expect(edited.parentId).toBe(previous.parentId);
+        expect((edited.payload as { text: StoryTextSegment }).text.textId)
+            .toBe((previous.payload as { text: StoryTextSegment }).text.textId);
+        expect((edited.payload as { text: StoryTextSegment }).text.value).not
+            .toBe((previous.payload as { text: StoryTextSegment }).text.value);
+        expect(result.touchedBlockIds).toEqual(["n3"]);
+    });
+
+    it("reports the name off the header without acting on it", () => {
+        const next = script(hostile).replace("scene '走廊 · 傍晚':", "scene '走廊 · 深夜':");
+        const result = reconciled(hostile, next);
+
+        expect(result.sceneName).toBe("走廊 · 深夜");
+        expect(result.touchedBlockIds).toEqual([]);
+        expect(result.blocks).toEqual(hostile.blocks);
     });
 
     it("re-parsing the same text instead would have rewritten the rows nobody touched", () => {
@@ -363,20 +386,37 @@ describe("reconcileNarralangScene", () => {
         expect(result.rootBlockIds).not.toContain("n3");
     });
 
-    it("keeps the condition container when the branch line itself is edited", () => {
-        // The container writes no line, so nothing about it can be matched directly. Editing the only
-        // line that hangs off it is the case where recovering it by its branches would fail.
+    it("keeps the branch, and the container it hangs off, when the branch line is edited", () => {
         const result = reconciled(hostile, editLine(script(hostile), "if trust:", "if trust > 0:"));
 
-        expect(result.touchedBlockIds).toHaveLength(1);
-        expect(result.blocks.n7).toBeDefined();
-        expect(result.blocks.n7.childrenIds).toEqual(result.touchedBlockIds);
-        expect(result.blocks.n9.parentId).toBe(result.touchedBlockIds[0]);
-        // The chain nested inside it is a different container and keeps its own id - hung, like the
-        // narration beside it, off the branch the author just rewrote.
-        expect(result.blocks.n17).toEqual({ ...hostile.blocks.n17, parentId: result.touchedBlockIds[0] });
+        expect(result.touchedBlockIds).toEqual(["n8"]);
+        expect(result.blocks.n7).toEqual(hostile.blocks.n7);
+        expect(result.blocks.n8.payload).toMatchObject({ control: "conditionBranch", branch: "if" });
+        expect(result.blocks.n17).toEqual(hostile.blocks.n17);
+        expect(result.blocks.n19).toEqual(hostile.blocks.n19);
+        expect(danglingReferences(result.blocks)).toEqual([]);
+    });
+
+    it("leaves an inner chain's container where it was when the chain around it is unwrapped", () => {
+        // The container writes no line, so it is recovered by counting how many stand above a row that
+        // survived. Deleting the outer `if` and pulling its body out a level is what tells the two
+        // containers apart: the nearest container above these rows is the INNER one, not the one that
+        // is gone.
+        const lines = script(hostile).split("\n");
+        lines.splice(lineIndex(lines, "if trust:"), 1);
+        for (const needle of ["那……一起走？", "if trust > 1:", "她笑了。"]) {
+            const at = lineIndex(lines, needle);
+            lines[at] = lines[at].slice(2);
+        }
+        const result = reconciled(hostile, lines.join("\n"));
+
+        expect(result.blocks.n7).toBeUndefined();
+        expect(result.blocks.n8).toBeUndefined();
+        expect(result.blocks.n17).toEqual({ ...hostile.blocks.n17, parentId: null });
         expect(result.blocks.n18).toEqual(hostile.blocks.n18);
         expect(result.blocks.n19).toEqual(hostile.blocks.n19);
+        expect(result.blocks.n9).toEqual({ ...hostile.blocks.n9, parentId: null });
+        expect(result.touchedBlockIds).toEqual([]);
         expect(danglingReferences(result.blocks)).toEqual([]);
     });
 
@@ -401,8 +441,9 @@ describe("reconcileNarralangScene", () => {
         if (!result.ok) {
             return;
         }
-        expect(result.touchedBlockIds).toHaveLength(1);
-        expect(result.blocks.w1).toBeUndefined();
+        expect(result.touchedBlockIds).toEqual(["w1"]);
+        expect((result.blocks.w1.payload as { text: StoryTextSegment }).text)
+            .toMatchObject({ textId: "t-1", value: "换了一句话。" });
         expect(result.blocks.w2).toEqual(twins.blocks.w2);
         expect(result.blocks.w3).toEqual(twins.blocks.w3);
     });
@@ -424,29 +465,43 @@ describe("reconcileNarralangScene", () => {
 
     // --- Where identity moves anyway ------------------------------------------------------------------------
 
-    it("repairs a row pointing at a row the author edited, without changing its id", () => {
-        // `show bird` holds the id of the row that created `bird`. Editing that row mints a new one, so
-        // the stored payload now points at nothing - and the reference, not the row, is what moves.
-        const next = editLine(script(hostile), CREATE, "image create bird opening");
-        const result = reconciled(hostile, next);
+    it("leaves the rows pointing at an edited row alone while it still answers to the same name", () => {
+        // `show bird` holds the id of the row that created `bird`. That row changed, but not in the
+        // half a reference asks about, so re-reading the rows that point at it would only re-normalise
+        // work nobody touched.
+        const result = reconciled(hostile, editLine(script(hostile), CREATE, "image create bird opening"));
 
-        expect(result.blocks.n4).toBeUndefined();
+        expect(result.touchedBlockIds).toEqual(["n4"]);
+        expect(result.blocks.n4.payload).toMatchObject({ objectName: "bird", assetId: "asset-op" });
+        expect(result.blocks.n5).toEqual(hostile.blocks.n5);
+    });
 
-        // The row that pointed at it keeps its id and takes the parse's payload, which resolved the
-        // same name against the text that is really there.
+    it("leaves a variable's readers alone when only its default moved", () => {
+        const result = reconciled(hostile, editLine(script(hostile), "var trust: number = 0", "var trust: number = 1"));
+
+        expect(result.touchedBlockIds).toEqual(["n-var"]);
+        expect(result.blocks["n-var"].payload).toMatchObject({ name: "trust", defaultValue: 1 });
+        // The two rows that read it keep the shapes a re-parse would have flattened.
+        expect(result.blocks.n8).toEqual(hostile.blocks.n8);
+        expect(result.blocks.n12).toEqual(hostile.blocks.n12);
+    });
+
+    it("re-reads a row whose reference now names something else", () => {
+        // The row `show bird` points at is still there and still has its id - but it creates `cat` now,
+        // and a second row took the name. The stored reference is a lie, so the row is read again.
+        const lines = script(hostile).split("\n");
+        lines.splice(lineIndex(lines, CREATE), 1, "  image create cat bird", "  image create bird opening");
+        const result = reconciled(hostile, lines.join("\n"));
+
+        expect(result.blocks.n4.payload).toMatchObject({ objectName: "cat" });
         expect(result.blocks.n5).toBeDefined();
         expect(result.blocks.n5.payload).toMatchObject({ operation: "show", objectName: "bird" });
+        expect(JSON.stringify(result.blocks.n5.payload)).not.toContain("\"n4\"");
         expect(result.touchedBlockIds).toContain("n5");
         expect(danglingReferences(result.blocks)).toEqual([]);
 
-        // And the cascade stops there: one edit, two rows, everything else untouched.
-        expect(result.touchedBlockIds).toHaveLength(2);
-        for (const [id, block] of Object.entries(hostile.blocks)) {
-            if (id === "n4" || id === "n5") {
-                continue;
-            }
-            expect(result.blocks[id]).toEqual(block);
-        }
+        // And the re-reading stops there: two edited rows, one new one, nothing else.
+        expect(result.touchedBlockIds).toHaveLength(3);
     });
 
     it("re-reads a line whose meaning changed with its parent, keeping the row", () => {
