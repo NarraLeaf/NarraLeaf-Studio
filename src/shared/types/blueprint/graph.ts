@@ -547,6 +547,20 @@ export const BLUEPRINT_NODE_TYPE_LITERAL_COLOR = "blueprint.data.colorLiteral" a
 export const BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D = "blueprint.data.vector2dLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_RECT = "blueprint.data.rectLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_JSON = "blueprint.data.jsonLiteral" as const;
+/**
+ * The four make/break nodes for the two structured geometry types.
+ *
+ * Until these existed a `Vector2D` or `Rect` output could only be carried around whole: nothing in
+ * the catalogue took one apart, so `Get Position` was unreadable and `Get Bounds` had to be widened
+ * into `json` and picked at with Get JSON Field. Breaking them is the ordinary thing an author does
+ * with a position, which is why it is a node rather than a documented trick.
+ */
+export const BLUEPRINT_NODE_TYPE_DATA_MAKE_VECTOR2D = "blueprint.data.makeVector2d" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_BREAK_VECTOR2D = "blueprint.data.breakVector2d" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_MAKE_RECT = "blueprint.data.makeRect" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_BREAK_RECT = "blueprint.data.breakRect" as const;
+/** The point equidistant from a rect's four edges - the thing "move to this button" needs. */
+export const BLUEPRINT_NODE_TYPE_DATA_RECT_CENTER = "blueprint.data.rectCenter" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_REF = "blueprint.element.ref" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE = "blueprint.element.continueEventBubble" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE = "blueprint.element.stopEventBubble" as const;
@@ -933,6 +947,12 @@ export const BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN = "blueprint.app.setFullscre
  * is the boundary, so a computed address is as safe as a picked one, and one that is not declared
  * leaves by `Failed` wherever it came from.
  */
+/**
+ * Moving the player's real mouse cursor. Desktop only; a web export reports it unsupported and the
+ * build warns when one is exported holding these.
+ */
+export const BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO = "blueprint.app.movePointerTo" as const;
+export const BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT = "blueprint.app.movePointerToElement" as const;
 export const BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL = "blueprint.app.openExternal" as const;
 
 /** Inspector param holding the picked address; read only when the `url` pin is unwired. */
@@ -1201,6 +1221,8 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_ALL_PROPERTIES = "blueprint.el
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION = "blueprint.element.displayable.getPosition" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE = "blueprint.element.displayable.getSize" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS = "blueprint.element.displayable.getBounds" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_MEASURED_RECT = "blueprint.element.displayable.getMeasuredRect" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_CENTER = "blueprint.element.displayable.getCenter" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION = "blueprint.element.displayable.getRotation" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY = "blueprint.element.displayable.getOpacity" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE = "blueprint.element.displayable.getVisible" as const;
@@ -1216,6 +1238,16 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION = "blueprint
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION = "blueprint.displayable.getPosition" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE = "blueprint.displayable.getSize" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS = "blueprint.displayable.getBounds" as const;
+/**
+ * The measured pair. `getBounds` reads the document and reports where the author put the widget;
+ * these two measure what is painted, so they account for a motion in flight, a variant that moved
+ * the widget, a text box grown to fit its words, and which row of a list an instance landed on.
+ * Both answer in the coordinates of the surface, never in device pixels - the author never sees
+ * the window, and a number that changed when the player resized it would be a second coordinate
+ * system nobody asked for.
+ */
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_MEASURED_RECT = "blueprint.displayable.getMeasuredRect" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_CENTER = "blueprint.displayable.getCenter" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION = "blueprint.displayable.getRotation" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY = "blueprint.displayable.getOpacity" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE = "blueprint.displayable.getVisible" as const;

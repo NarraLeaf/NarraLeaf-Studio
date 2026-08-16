@@ -15,11 +15,12 @@ import type {
     GameBuildStateSnapshot,
     GameBuildStatus,
 } from "@shared/types/gameBuild";
+import { isDesktopBuildPlatform } from "@shared/types/gameBuild";
 // Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
 import type { BuildDialogPage } from "@/apps/workspace/modules/actions/buildDialogState";
 import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
 import type { Blueprint, BlueprintDocument, SharedBlueprintAsset } from "@shared/types/blueprint/document";
-import { collectBlueprintNetworkNodes } from "@/lib/lint/rules";
+import { collectBlueprintNetworkNodes, collectBlueprintPointerNodes } from "@/lib/lint/rules";
 // One spelling of "where is this finding", shared with the report tab - see locationText.ts.
 import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
 export { nonRedundantLintLocation };
@@ -385,6 +386,10 @@ export class BuildService extends Service<BuildService> {
         // Third of the unconditional correctness gates, and placed here for the same reason the
         // invalid-command gate is first: it is free. It walks the blueprint document already in
         // memory, so a build that will be refused anyway does not first pay for a media probe.
+        // Not a gate: it refuses nothing and returns nothing. A project holding Move Mouse nodes is
+        // perfectly buildable for the web - the nodes simply report that they cannot act - so the
+        // build says so once and carries on.
+        this.warnAboutPointerNodes(platforms);
         const networkRefusal = this.runNetworkGate(startedAt, platforms);
         if (networkRefusal) {
             return networkRefusal;
@@ -886,6 +891,45 @@ export class BuildService extends Service<BuildService> {
      *
      * Synchronous, unlike the two gates around it: the blueprint document is already in memory.
      */
+    /**
+     * Tell the author that the cursor will not move on the targets they are building for.
+     *
+     * A warning rather than a refusal, because nothing here is wrong. Moving the system cursor is a
+     * desktop act; a web or mobile build of the same project is a legitimate thing to ship and the
+     * nodes degrade to reporting `unsupported`, which the author's own `Failed` branch can answer.
+     * Refusing would make a project unbuildable for the web over a menu affordance.
+     *
+     * One line per blueprint holding them rather than per node: the author's next action is to open
+     * that blueprint, and a project with a dozen of these would otherwise bury the rest of the log.
+     */
+    private warnAboutPointerNodes(platforms: GameBuildPlatform[]): void {
+        const nonDesktop = platforms.filter(platform => !isDesktopBuildPlatform(platform));
+        if (nonDesktop.length === 0) {
+            return;
+        }
+        let document: BlueprintDocument | null;
+        try {
+            document = this.getContext().services.get<UIGraphService>(Services.UIGraph).getDocument().blueprintDocument;
+        } catch {
+            // A document that will not load is the packer's problem to report, not this warning's to
+            // guess at - and a warning is the last thing that should stop a build.
+            return;
+        }
+        const blueprints = new Set(collectBlueprintPointerNodes(document).map(site => site.blueprintName));
+        if (blueprints.size === 0) {
+            return;
+        }
+        const consoleService = this.tryGetConsole();
+        for (const blueprint of blueprints) {
+            consoleService?.log(
+                BUILD_CONSOLE_CHANNEL,
+                "warning",
+                translate("build.pointerNodeUnsupported", { blueprint, platforms: nonDesktop.join(", ") }),
+                { source: BUILD_CONSOLE_SOURCE },
+            );
+        }
+    }
+
     private runNetworkGate(
         startedAt: number,
         platforms: GameBuildPlatform[],

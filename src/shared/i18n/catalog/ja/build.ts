@@ -392,6 +392,7 @@ export const build = {
      * その要求がもう要らない場合がある。
      */
     networkNodeDisallowed: "{blueprint} はネットワーク要求を行うが、このプロジェクトはそれを許可していない",
+    pointerNodeUnsupported: "{blueprint} はマウスカーソルを移動するが、{platforms} では動作しない",
     networkSummary: {
         other: "ビルドを中止：動かせないネットワークノードが {count} 件ある。プロジェクト設定で HTTP の許可を有効にするか、そのノードを取り除く",
     },

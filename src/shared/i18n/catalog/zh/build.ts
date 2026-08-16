@@ -338,6 +338,7 @@ export const build = {
         other: "构建已中止：有 {count} 个素材无法播放，详见控制台",
     },
     networkNodeDisallowed: "{blueprint} 发起了网络请求，本工程不允许",
+    pointerNodeUnsupported: "{blueprint} 会移动鼠标光标，这在 {platforms} 上不起作用",
     networkSummary: {
         one: "构建已中止：{count} 个网络节点无法运行；请在工程设置中修改网络策略，或删除该节点",
         other: "构建已中止：{count} 个网络节点无法运行；请在工程设置中修改网络策略，或删除这些节点",

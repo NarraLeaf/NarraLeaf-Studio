@@ -333,6 +333,12 @@ const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
     fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
 };
 
+/** No host in these tests owns a window, so no cursor can be moved from one. */
+const NO_POINTER_HOST: BlueprintHostApiRuntime["pointer"] = {
+    moveTo: async () => ({ outcome: "unsupported", error: "no window" }),
+    moveToElementCenter: async () => ({ outcome: "unsupported", error: "no window" }),
+};
+
 /** No host in these tests owns a filesystem, so neither progress node can do anything here. */
 const NO_PROGRESS_HOST: BlueprintHostApiRuntime["progress"] = {
     export: async () => ({ outcome: "failed", error: "no progress store" }),
@@ -441,6 +447,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
@@ -594,6 +601,7 @@ function createPageNavigationHostAdapter(
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
@@ -772,6 +780,7 @@ function createGameSaveHostAdapter(options: {
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,

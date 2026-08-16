@@ -203,6 +203,21 @@ const bridge: GameRuntimePreloadBridge = {
      * That is reported as a failure rather than a refusal: the address is declared, the browser
      * simply did not open it.
      */
+    /**
+     * Moving the player's cursor, which a page cannot do.
+     *
+     * Declining rather than approximating. A browser has no way to position the system pointer, and
+     * the nearest thing a page could do - draw its own cursor and hide the real one - is a different
+     * feature that would silently replace the one the author asked for. The build console warns
+     * about this when a project holding these nodes is exported for the web, so it is known before
+     * a player finds it.
+     */
+    pointer: {
+        move: async () => ({
+            outcome: "unsupported",
+            error: "A web build cannot move the system cursor.",
+        }),
+    },
     externalLink: {
         open: async request => {
             const decision = resolveCoreExternalLink(request);

@@ -5,6 +5,7 @@ import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu"
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
 import type {
     GameProgressExportRequest,
@@ -638,6 +639,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         fetch: (projectPath: string, request: BlueprintNetworkFetchRequest) =>
             ipcClient.invoke(IPCEventType.blueprintNetworkFetch, { projectPath, request }) as Promise<
                 RequestStatus<{ result: BlueprintNetworkFetchResult }>
+            >,
+    },
+
+    blueprintPointer: {
+        move: (request: BlueprintPointerMoveRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintPointerMove, { request }) as Promise<
+                RequestStatus<{ result: BlueprintPointerMoveResult }>
             >,
     },
 

@@ -133,6 +133,7 @@ import {
     BlueprintPersistenceSetValueHandler,
 } from "./handlers/blueprintPersistenceAction";
 import { BlueprintNetworkFetchHandler } from "./handlers/blueprintNetworkAction";
+import { BlueprintPointerMoveHandler } from "./handlers/blueprintPointerAction";
 import {
     BlueprintExternalLinkOpenForPluginHandler,
     BlueprintExternalLinkOpenHandler,
@@ -291,6 +292,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // Blueprint network handler (the Fetch node)
         new BlueprintNetworkFetchHandler(),
+        new BlueprintPointerMoveHandler(),
 
         // Blueprint external link handler (the Open Link node)
         new BlueprintExternalLinkOpenHandler(),

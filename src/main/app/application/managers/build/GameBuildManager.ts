@@ -2475,7 +2475,9 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
  * in step with the compiler.
  */
 function buildAsarUnpackPatterns(sealed: boolean): string[] {
-    const patterns = ["native.js", "icons/**", "sidecars/**"];
+    // koffi's addon has to be a real file on disk to be loaded, so it cannot stay inside the
+    // archive - the same reason native.js is here.
+    const patterns = ["native.js", "icons/**", "sidecars/**", "node_modules/koffi/**"];
     if (sealed) {
         patterns.push(RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME);
     }

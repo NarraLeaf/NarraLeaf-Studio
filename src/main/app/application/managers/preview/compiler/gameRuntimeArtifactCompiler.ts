@@ -1,7 +1,9 @@
 import crypto from "crypto";
 import type { LocaleCode } from "@shared/i18n";
 import fs from "fs/promises";
+import { createRequire } from "module";
 import path from "path";
+import { unpackAsarPath } from "../../../../../utils/asarPath";
 import { assembleDevModeBundleFromProjectPath } from "../../devMode/pipeline/bundleAssembler";
 import { compileAllBlueprintScriptsForProject } from "../../devMode/compiler/blueprint/compileProjectBlueprintScripts";
 import {
@@ -321,7 +323,7 @@ export async function compileGameRuntimeArtifact(
     if (userDataDir) {
         await fs.mkdir(userDataDir, { recursive: true });
     }
-    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell);
+    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, input.sidecarPlatformKey);
     if (input.encryptionKey) {
         // Protection on: ship the support binary. createSealedBundle binds this
         // pack's protection material into it when it opens the store (below), so
@@ -649,6 +651,7 @@ async function copyRuntimeFiles(
     appDir: string,
     mode: "preview" | "production",
     shell: "electron" | "web",
+    sidecarPlatformKey?: string,
 ): Promise<void> {
     await fs.mkdir(appDir, { recursive: true });
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
@@ -663,6 +666,60 @@ async function copyRuntimeFiles(
         }
         await copyOptionalFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
+    if (shell !== "web") {
+        await copyKoffiPackage(appDir, sidecarPlatformKey);
+    }
+}
+
+/**
+ * koffi, for the Move Mouse family.
+ *
+ * The packaged game's main process needs an FFI to position the system cursor, and koffi is the one
+ * this application already depends on and already signs. It cannot be bundled - it resolves its own
+ * `.node` by path at run time - so it ships as a package directory beside the game's `main.js`,
+ * the way `native.js`/`gate.js` ship for the encryption addon.
+ *
+ * Only the prebuild for the target is copied. The package carries eighteen of them and weighs 24 MB;
+ * a game needs exactly one, and shipping the rest would put an ARM Linux binary inside every Windows
+ * installer. A target with no prebuild copies nothing and the game degrades to "this host cannot
+ * move the cursor", which is honest and is what the build console already warned about.
+ */
+const KOFFI_PACKAGE_FILES = ["package.json", "index.js", "indirect.js"] as const;
+
+function koffiTripletFor(platformKey: string | undefined): string | null {
+    // `<platform>-<arch>` (the sidecar key) to koffi's `<platform>_<arch>` directory name. They
+    // agree on every target this application builds for, which is why this is a substitution rather
+    // than a table that would have to be kept in step with a list nobody would remember to check.
+    const key = (platformKey ?? `${process.platform}-${process.arch}`).trim();
+    return /^[a-z0-9]+-[a-z0-9]+$/.test(key) ? key.replace("-", "_") : null;
+}
+
+async function copyKoffiPackage(appDir: string, platformKey: string | undefined): Promise<void> {
+    const triplet = koffiTripletFor(platformKey);
+    if (!triplet) {
+        return;
+    }
+    let packageRoot: string;
+    try {
+        packageRoot = path.dirname(unpackAsarPath(createRequire(__filename).resolve("koffi/package.json")));
+    } catch {
+        // Studio's own install is missing it. Nothing to copy and nothing to say here: the game
+        // simply reports the cursor as unmovable, and Studio's own version control would have
+        // failed long before a build got this far.
+        return;
+    }
+    const prebuild = path.join(packageRoot, "build", "koffi", triplet, "koffi.node");
+    try {
+        await fs.access(prebuild);
+    } catch {
+        return;
+    }
+    const targetRoot = path.join(appDir, "node_modules", "koffi");
+    await fs.mkdir(path.join(targetRoot, "build", "koffi", triplet), { recursive: true });
+    for (const fileName of KOFFI_PACKAGE_FILES) {
+        await copyOptionalFile(path.join(packageRoot, fileName), path.join(targetRoot, fileName));
+    }
+    await fs.copyFile(prebuild, path.join(targetRoot, "build", "koffi", triplet, "koffi.node"));
 }
 
 async function copyOptionalFile(sourcePath: string, targetPath: string): Promise<void> {

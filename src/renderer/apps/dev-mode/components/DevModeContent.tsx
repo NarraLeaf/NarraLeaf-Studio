@@ -979,6 +979,21 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [projectPath]);
 
     /**
+     * The Move Mouse family's request, handed to the main process.
+     *
+     * No project path: unlike Fetch and Open Link there is nothing on disk to check it against. The
+     * act is bounded by the window instead - the handler converts the point against the window that
+     * sent it and clamps it to that window's own content box, so this cannot reach past the preview.
+     */
+    const movePointer = useCallback<NonNullable<GameAppHost["movePointer"]>>(async request => {
+        const result = await getInterface().blueprintPointer.move(request);
+        if (!result.success) {
+            return { outcome: "failed", error: result.error ?? "Move Mouse failed" };
+        }
+        return result.data.result;
+    }, []);
+
+    /**
      * The Open Link node's request, handed to the main process.
      *
      * The project path travels with it because the handler reads the project's own declared
@@ -1292,6 +1307,7 @@ export function DevModeContent(props: DevModeContentProps) {
             subscribeFullscreenChanged,
             subscribeCloseRequested,
             networkFetch,
+            movePointer,
             openExternal,
             exportProgress,
             importProgress,
@@ -1302,6 +1318,7 @@ export function DevModeContent(props: DevModeContentProps) {
         getFullscreen,
         log,
         networkFetch,
+        movePointer,
         openExternal,
         exportProgress,
         importProgress,

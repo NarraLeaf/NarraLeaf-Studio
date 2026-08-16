@@ -1,4 +1,5 @@
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
 import type { NetworkAccessPolicy, NetworkPluginAllowlistEntry } from "./networkAllowlist";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
@@ -472,6 +473,18 @@ export type GameRuntimeNetworkBridge = {
     fetch(request: BlueprintNetworkFetchRequest): Promise<BlueprintNetworkFetchResult>;
 };
 
+/**
+ * Moving the player's real cursor, for the Move Mouse family.
+ *
+ * Desktop only, and honestly so: the web export answers `unsupported` rather than emulating the
+ * act, because a page cannot move the pointer and a drawn stand-in would be a different feature
+ * wearing this one's name. Non-desktop builds are warned about at build time, so an author learns
+ * it from the console rather than from a player.
+ */
+export type GameRuntimePointerBridge = {
+    move(request: BlueprintPointerMoveRequest): Promise<BlueprintPointerMoveResult>;
+};
+
 export type GameRuntimeExternalLinkBridge = {
     open(request: BlueprintOpenExternalRequest): Promise<BlueprintOpenExternalResult>;
     /**
@@ -580,6 +593,8 @@ export type GameRuntimePreloadBridge = {
      * only an address the pack declares is opened, and the check is made where the act happens.
      */
     externalLink: GameRuntimeExternalLinkBridge;
+    /** The Move Mouse family's request. Present on every shell; the web one always declines. */
+    pointer: GameRuntimePointerBridge;
     /**
      * One Export/Import Progress node request.
      *

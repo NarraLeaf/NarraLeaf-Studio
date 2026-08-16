@@ -5,7 +5,7 @@ import path from "path";
 import { Readable } from "stream";
 import { nativeImage } from "electron";
 import { shell } from "electron";
-import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session } from "electron/main";
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, session } from "electron/main";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { GameTestEvent } from "@shared/types/gameTest";
 import {
@@ -38,6 +38,8 @@ import {
     type BlueprintOpenExternalResult,
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
+import type { BlueprintPointerMoveRequest } from "@shared/types/blueprint/pointer";
+import { executeBlueprintPointerMove } from "@shared/utils/blueprintPointerMove";
 import { packNetworkAllowlist, type NetworkAllowlist } from "@shared/types/networkAllowlist";
 import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
@@ -1021,6 +1023,16 @@ function registerRuntimeIpc(): void {
             allowlist: packNetworkAllowlist(pack),
             redirects: "check",
         });
+    });
+
+    // The Move Mouse family's request.
+    //
+    // Here because this is the process that can answer it: the renderer knows where the point is in
+    // the page, and only this side knows where the page is on the desktop. The conversion and the
+    // platform call are shared with Dev Mode so the author tests what ships.
+    ipcMain.handle("runtime:pointer:move", (event, request: BlueprintPointerMoveRequest) => {
+        const window = BrowserWindow.fromWebContents(event.sender);
+        return executeBlueprintPointerMove(request, window, { screen });
     });
 
     // The Open Link node's request.

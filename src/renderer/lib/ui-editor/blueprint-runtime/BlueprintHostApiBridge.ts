@@ -7,11 +7,26 @@ import type {
     BlueprintNetworkFetchRequest,
     BlueprintNetworkFetchResult,
 } from "@shared/types/blueprint/network";
+import type {
+    BlueprintPointerMoveEasing,
+    BlueprintPointerMoveRequest,
+    BlueprintPointerMoveResult,
+} from "@shared/types/blueprint/pointer";
+
+/** How a Move Mouse request travels; shared by both pointer entry points. */
+export type BlueprintPointerMoveOptions = {
+    durationSeconds?: number;
+    easing?: BlueprintPointerMoveEasing;
+};
 import {
     normalizeBlueprintImageAssetValue,
     normalizeBlueprintRGBAColor,
+    blueprintRectCenter,
+    normalizeRectExtent,
     toBlueprintImageAsset,
     type BlueprintElementRef,
+    type BlueprintRect,
+    type BlueprintVector2D,
     type BlueprintImageAsset,
     type BlueprintRGBAColor,
     type BlueprintSoundHandle,
@@ -58,6 +73,7 @@ import type { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
 import { finalDisplayableMotionValue } from "@/lib/ui-editor/runtime/displayableMotion";
 import { getElementSurfaceTopLeftEx } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
+import { measureElementSurfaceRect, surfacePointToClientPoint } from "@/lib/ui-editor/runtime/surfaceMeasurement";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 import { getSliderProps } from "@/lib/ui-editor/widget-modules/builtin/slider/helpers";
 import { getListProps, resolveListItemsBindingArray } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
@@ -166,8 +182,14 @@ export type BlueprintListProperties = {
 export type BlueprintDisplayableProperties = {
     position: { x: number; y: number };
     offset: { x: number; y: number };
+    /**
+     * The extent the widget covers, never negative. The authored layout may hold a negative width
+     * or height - that is how a widget dragged past its own origin is stored - and `position`
+     * already reports the true top-left, so reporting the raw sign here would have described a
+     * rectangle whose right edge sits left of its left edge.
+     */
     size: { width: number; height: number };
-    bounds: { x: number; y: number; width: number; height: number };
+    bounds: BlueprintRect;
     rotation: number;
     opacity: number;
     display: boolean;
@@ -334,6 +356,17 @@ export type BlueprintHostApiRuntime = {
         scrollListToTop: (elementId: string) => Promise<void>;
         scrollListToBottom: (elementId: string) => Promise<void>;
         getDisplayableProperties: (elementId: string) => BlueprintDisplayableProperties;
+        /**
+         * What the widget currently covers on screen, in the coordinates of the surface it is on,
+         * or `null` when nothing is painted for it.
+         *
+         * Separate from {@link getDisplayableProperties} because the two answer different
+         * questions. That one reads the document - where the author put the widget - and is the
+         * right answer for layout arithmetic. This one measures the DOM, so it accounts for a
+         * motion in flight, an appearance variant that shifted the widget, a text box sized to its
+         * own words, and which row of a list an instance ended up on.
+         */
+        getMeasuredRect: (elementId: string) => BlueprintRect | null;
         setDisplayableProperties: (elementId: string, patch: BlueprintDisplayablePropertiesPatch) => Promise<void>;
         animateDisplayable: (elementId: string, request: BlueprintDisplayableMotionRequest) => Promise<UIDisplayableMotionOverride>;
         stopDisplayableAnimation: (animationId: string) => Promise<void>;
@@ -522,6 +555,38 @@ export type BlueprintHostApiRuntime = {
      */
     network: {
         fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    };
+    /**
+     * Moving the player's real cursor, for the Move Mouse family.
+     *
+     * The author names a point in a surface's own coordinates, which is the only frame they have
+     * reason to think in. Turning that into a point in the window happens here, off the same
+     * surface shell every mouse event's payload is divided by, so "the centre of this button"
+     * measured by `widget.getMeasuredRect` and the point the cursor lands on are the same place.
+     *
+     * `surfaceId` is the surface the point belongs to; `null` means the active one. A point on a
+     * surface that is not currently laid out has nowhere to be, and reports `failed` rather than
+     * being guessed at against a different surface's scale.
+     */
+    pointer: {
+        moveTo: (
+            surfaceId: string | null,
+            point: BlueprintVector2D,
+            options?: BlueprintPointerMoveOptions,
+        ) => Promise<BlueprintPointerMoveResult>;
+        /**
+         * The same act aimed at a widget's centre, measured rather than computed from the document.
+         *
+         * A method of its own rather than something a caller assembles out of `getMeasuredRect` and
+         * `moveTo`, because the two halves have to agree about which surface the widget turned out
+         * to be painted on. A component instance renders its contents wherever it was placed, so
+         * the answer is not always the surface the element was authored under, and a caller
+         * stitching the halves together would have to know that to get it right.
+         */
+        moveToElementCenter: (
+            elementId: string,
+            options?: BlueprintPointerMoveOptions,
+        ) => Promise<BlueprintPointerMoveResult>;
     };
     /**
      * Carrying a playthrough between two editions of one title, for the Export/Import Progress
@@ -767,6 +832,7 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * there is no main process to reach and no project network policy to enforce.
      */
     onNetworkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    onMovePointer?: (request: BlueprintPointerMoveRequest) => Promise<BlueprintPointerMoveResult>;
     /**
      * Opens one web address in the player's browser, in a process that can check it.
      *
@@ -1177,11 +1243,15 @@ function readDisplayableProperties(
     const layout = readPatchedElementLayout(document, runtimePatches, elementId);
     const patch = runtimePatches?.get(elementId);
     const position = readDisplayableSurfaceTopLeft(document, runtimePatches, elementId);
+    // `position` is already the folded top-left (getElementSurfaceTopLeftEx subtracts a negative
+    // extent as it walks the chain), so only the extent still needs its sign taken off. Folding it
+    // again here would move the origin twice.
+    const bounds = normalizeRectExtent(position.x, position.y, Math.abs(layout.width), Math.abs(layout.height));
     return {
         position,
         offset: { x: 0, y: 0 },
-        size: { width: layout.width, height: layout.height },
-        bounds: { x: position.x, y: position.y, width: layout.width, height: layout.height },
+        size: { width: bounds.width, height: bounds.height },
+        bounds,
         rotation: layout.rotation ?? 0,
         opacity: layout.opacity ?? 1,
         display: patch?.display ?? true,
@@ -1950,6 +2020,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetTrackVolume,
         onSetTrackVolume,
         onNetworkFetch,
+        onMovePointer,
         onOpenExternal,
         onExportProgress,
         onImportProgress,
@@ -2115,6 +2186,35 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             layoutPatch.opacity = opacity;
         }
         return layoutPatch;
+    };
+
+    const movePointerTo = async (
+        surfaceId: string,
+        point: BlueprintVector2D,
+        options?: BlueprintPointerMoveOptions,
+    ): Promise<BlueprintPointerMoveResult> => {
+        if (!onMovePointer) {
+            // No backend = nowhere to send it (editor preview, story preview). Reported rather than
+            // thrown, the same degradation `network.fetch` takes.
+            return {
+                outcome: "unsupported",
+                error: "The cursor cannot be moved here. Run the project in Dev Mode to try it.",
+            };
+        }
+        const client = surfacePointToClientPoint(
+            surfaceId,
+            point,
+            id => document.surfaces.find(surface => surface.id === id)?.designSize ?? null,
+        );
+        if (!client) {
+            return { outcome: "failed", error: "That surface is not on screen, so the point has nowhere to be." };
+        }
+        return onMovePointer({
+            clientX: client.x,
+            clientY: client.y,
+            durationSeconds: options?.durationSeconds,
+            easing: options?.easing,
+        });
     };
 
     return {
@@ -2784,6 +2884,22 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
                         { kind: "bottom" },
                     );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getMeasuredRect: (elementId: string) => {
+                const cap = "widget.getMeasuredRect";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Existence is still checked against the document: a measurement for an id no
+                    // surface holds would be a silent null indistinguishable from "not painted yet",
+                    // and the two want different things from the author.
+                    requireDocumentElement(document, elementId, "measuredRect");
+                    return measureElementSurfaceRect(
+                        elementId,
+                        surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
+                    )?.rect ?? null;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3836,6 +3952,43 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                     }
                     return await onNetworkFetch(request);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        // Shared by both pointer entry points so the surface-to-window conversion, and the answer
+        // given when there is no backend, exist once.
+        pointer: {
+            moveToElementCenter: async (elementId: string, options?: BlueprintPointerMoveOptions) => {
+                const cap = "pointer.moveToElementCenter";
+                emitHostCall(emit, cap, "call");
+                try {
+                    requireDocumentElement(document, elementId, "movePointerToElement");
+                    const measured = measureElementSurfaceRect(
+                        elementId,
+                        surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
+                    );
+                    if (!measured) {
+                        return {
+                            outcome: "failed" as const,
+                            error: "That widget is not on screen, so it has no centre to move to.",
+                        };
+                    }
+                    return await movePointerTo(measured.surfaceId, blueprintRectCenter(measured.rect), options);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            moveTo: async (
+                surfaceId: string | null,
+                point: BlueprintVector2D,
+                options?: BlueprintPointerMoveOptions,
+            ) => {
+                const cap = "pointer.moveTo";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return await movePointerTo(surfaceId ?? activeSurfaceId, point, options);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

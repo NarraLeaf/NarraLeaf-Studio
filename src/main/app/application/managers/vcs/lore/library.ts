@@ -117,16 +117,11 @@ export function resolveLoreLibraryPath(): string {
     }
 }
 
-/**
- * Point at the unpacked copy when the resolved path is inside an asar archive.
- *
- * A native library cannot be dlopen'd from inside asar. electron-builder.yml already
- * sets `asarUnpack: node_modules/**\/*`, so the file is on disk under
- * `app.asar.unpacked` - but `require.resolve` still reports the archive path.
- */
-export function unpackAsarPath(libraryPath: string): string {
-    return libraryPath.replace(/([/\\])app\.asar([/\\])/, "$1app.asar.unpacked$2");
-}
+// Re-exported so this module's existing importers keep their spelling. The rule itself now
+// lives outside the Lore tree because the artifact compiler needs it too, and reaching into a
+// version-control module for a fact about asar layout was the wrong shape.
+export { unpackAsarPath } from "../../../../../utils/asarPath";
+import { unpackAsarPath } from "../../../../../utils/asarPath";
 
 /**
  * koffi's type registry is process-global and rejects duplicate names, so types are

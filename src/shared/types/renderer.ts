@@ -3,6 +3,7 @@ import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type {
     GameProgressExportRequest,
@@ -920,6 +921,17 @@ export interface RendererPreloadedInterface {
             projectPath: string,
             request: BlueprintNetworkFetchRequest,
         ): Promise<RequestStatus<{ result: BlueprintNetworkFetchResult }>>;
+    };
+
+    blueprintPointer: {
+        /**
+         * One Move Mouse node request, performed by the main process for a Dev Mode preview.
+         *
+         * The point is in CSS pixels from the top-left of the web contents. The window it belongs
+         * to is the one that sent it - the renderer never names a window, and could not usefully:
+         * the only position it can speak about is a position inside itself.
+         */
+        move(request: BlueprintPointerMoveRequest): Promise<RequestStatus<{ result: BlueprintPointerMoveResult }>>;
     };
 
     blueprintExternalLink: {
