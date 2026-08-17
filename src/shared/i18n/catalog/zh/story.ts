@@ -45,7 +45,7 @@ export const story = {
             roundtrip: "可回导",
             roundtripDetail: "附带场景数据，文件可以再导入回来",
             review: "纯审阅",
-            reviewDetail: "只有正文，便于阅读与比对，但无法导入",
+            reviewDetail: "只有正文，无法导入",
         },
         exported: "已导出到 {path}",
         importTitle: "导入脚本",
@@ -87,7 +87,7 @@ export const story = {
             shapeMismatchText: "某个正文行被改写成了动作行；正文被保留，改写被丢弃",
             duplicateAnchor: "某一行被复制过；副本已获得新的身份",
             unknownRun: "某个格式标记指向此脚本中不存在的格式",
-            unplaceableLine: "新增的这一行在此处无处安放",
+            unplaceableLine: "此处无法放置新的一行",
             speakerUnresolved: "这一行没有绑定角色，说话人名字保持原样，正文的修改仍然生效",
         },
     },
@@ -130,7 +130,7 @@ export const story = {
             unknownNameNamed: "该行提到的{what}在工程中不存在",
             ambiguousName: "有多个对象叫这个名字，无法判断指的是哪一个",
             ambiguousNameNamed: "有多个{what}叫这个名字，无法判断指的是哪一个",
-            ambiguousStatement: "有多条语句都符合该行，无从区分",
+            ambiguousStatement: "有多条语句都符合该行，无法区分",
             badWord: "该语句在这个位置不接受这个词",
             missingValue: "该语句缺少必需的内容",
             conflictingValues: "该行用两种写法设定了同一件事",
@@ -142,7 +142,7 @@ export const story = {
         view: {
             open: "以脚本形式阅读",
             close: "回到行视图",
-            readOnly: "此场景含有脚本无法表达的行，不能在这里写回",
+            readOnly: "此场景含有没有脚本形式的行，不能在这里写回",
             gate: {
                 other: "有 {count} 行没有对应的脚本写法，此场景今后也无法在这里编辑",
             },
@@ -302,7 +302,7 @@ export const story = {
     },
     targetField: {
         label: "目标",
-        notOnStageTitle: "未在此场景中提前创建，请选择一个已有的可显示对象",
+        notOnStageTitle: "未在此场景中提前创建。请选择一个已有的可显示对象",
         placeholder: "选择可显示对象…",
         search: "搜索舞台可显示对象",
         noMatch: "无匹配项",
@@ -316,7 +316,7 @@ export const story = {
     layerField: {
         label: "图层",
         defaultName: "可显示图层",
-        notOnStageTitle: "未在此场景中提前声明同名图层，请选择一个已有图层",
+        notOnStageTitle: "未在此场景中提前声明同名图层。请选择一个已有图层",
         hint: "图层",
         createNew: "新建图层",
     },
@@ -600,10 +600,10 @@ export const story = {
             characterOrName: "角色，或任意名字",
             characterForm: "该角色的某个表情",
             puppet: {
-                motion: "该角色运行时里的动作名（留空则静止）",
-                expression: "该角色运行时里的表情名（留空则清除）",
-                skin: "该角色运行时里的皮肤名（留空则恢复默认）",
-                param: "该角色模型里的数值参数 id",
+                motion: "运行时提供的动作名（留空则恢复静止）",
+                expression: "运行时提供的表情名（留空则清除）",
+                skin: "运行时提供的皮肤名（留空则恢复默认）",
+                param: "模型中的数值参数 id",
             },
             scene: "场景",
             audioTrack: "音轨",
@@ -819,7 +819,7 @@ export const story = {
     pluginActionFallbackDetail: "插件故事动作",
     command: {
         background: { label: "背景", detail: "设置场景背景图片或颜色" },
-        jump: { label: "跳转", detail: "前往另一个场景，会卸载并重新开始该场景，与 /goto 不同" },
+        jump: { label: "跳转", detail: "前往另一个场景，当前场景会被卸载" },
         wait: { label: "等待", detail: "等待数秒，或等待点击" },
         nvl: { label: "NVL", detail: "切换堆叠对白面板" },
         show: { label: "显示", detail: "显示角色或舞台对象" },
@@ -859,7 +859,7 @@ export const story = {
         // 「菜单」而不是「选项」：选项是它的子行的名字（containerHeader.option），两者同名时
         // 「@选项 要回头吗？」下面挂着一串「选项 …」，读起来像同一种东西套了两层。英文本来就是
         // Menu/Option 两个词，这里只是把中文名对回去。
-        menu: { label: "菜单", detail: "让玩家做出选择" },
+        menu: { label: "菜单", detail: "向玩家给出一组选项" },
         repeat: { label: "重复", detail: "按设定次数重复执行所含动作；按条件循环请用 /until" },
         until: { label: "直到", detail: "重复执行所含动作，直到条件成立；条件在每轮开始前检查" },
         break: { label: "跳出", detail: "跳出本行所在的重复组" },

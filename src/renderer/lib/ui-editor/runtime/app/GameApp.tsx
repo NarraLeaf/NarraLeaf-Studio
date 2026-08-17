@@ -9,6 +9,10 @@ import {
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
 import {
+    readWrappedStorableNamespace,
+    readWrappedStorableValue,
+} from "@shared/utils/storableValue";
+import {
     buildSaveCompatibilityStamp,
     normalizeSaveCompatibilityConfiguration,
     planSaveResume,
@@ -1208,14 +1212,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         const savedValues = savedNamespaceName ? store[savedNamespaceName] : undefined;
         if (savedNamespaceName && savedValues && typeof savedValues === "object" && storable.hasNamespace(savedNamespaceName)) {
             const namespace = storable.getNamespace(savedNamespaceName);
-            for (const [key, value] of Object.entries(savedValues as Record<string, unknown>)) {
+            // Unwrapped first. A save holds `{type, data, dates?, undefineds?}` per value, and
+            // `set` takes the value - handing it the wrapper stores an object where the author
+            // declared a boolean, which reads back as truthy-but-not-true and quietly sends every
+            // condition down its other branch. See `readWrappedStorableValue`.
+            for (const [key, value] of Object.entries(readWrappedStorableNamespace(savedValues))) {
                 namespace.set(key, value as never);
             }
         }
         const visitedNamespaceName = compiled.visitedNamespaceName;
         const visitedValues = visitedNamespaceName ? store[visitedNamespaceName] : undefined;
         const visited = visitedValues && typeof visitedValues === "object"
-            ? (visitedValues as Record<string, unknown>)[STORY_VISITED_SCENES_KEY]
+            ? readWrappedStorableValue((visitedValues as Record<string, unknown>)[STORY_VISITED_SCENES_KEY])
             : undefined;
         if (visitedNamespaceName && Array.isArray(visited) && storable.hasNamespace(visitedNamespaceName)) {
             const merged = mergeVisitedSceneIds(

@@ -64,7 +64,7 @@ export const help = {
                 + "- The editor area can be split in two, and a tab can be dragged into either half.",
         },
         runModes: {
-            title: "Running your game",
+            title: "Running the game",
             body:
                 "Dev Mode opens the game in a Studio window with the debug panels: jump to a story row, "
                 + "inspect variables, reload without leaving the editor.\n"
@@ -89,7 +89,7 @@ export const help = {
                 + "- A changed shortcut is updated in the sheet, the menus and the command palette.",
         },
         search: {
-            title: "Finding things",
+            title: "Search",
             body:
                 "Search covers story text, scene and character names, assets, blueprint nodes and UI widgets. "
                 + "Every result states where it lives, and selecting one opens that place.\n"
@@ -108,19 +108,19 @@ export const help = {
                 + "- The target folder must be empty. A folder that does not exist yet is created.\n"
                 + "- A project copied from a server stays connected to it, and the local copy is editable.\n"
                 + "- The bundled template is a short story that already runs: three scenes, one choice, and the "
-                + "title, save, load, config and backlog screens already wired.",
+                + "title, save, load, config and backlog screens.",
         },
         undo: {
-            title: "Undoing",
+            title: "Undo and redo",
             body:
-                "Undo takes back the last change, in the editor that made it. The editor with focus handles it; "
+                "Undo reverses the last change, in the editor that made it. The editor with focus handles it; "
                 + "with focus outside every editor, the workspace handles it.\n"
                 + "\n"
                 + "- Each editor keeps its own steps, so switching tabs does not merge them.\n"
                 + "- Undo and redo are also in the Edit menu.\n"
                 + "- Undo covers changes inside the project. Files written to disk, build output and submitted "
                 + "versions are outside its range.\n"
-                + "- A tab closed by accident can be reopened.",
+                + "- A closed tab can be reopened.",
         },
         studioSettings: {
             title: "Studio settings",
@@ -167,7 +167,7 @@ export const help = {
                 + "\n"
                 + "A scene variable is declared in the scene it belongs to, as a row like any other. Save and "
                 + "persistent variables outlive the scene they were written in, so they are declared once for "
-                + "the whole project, in the variables panel - any scene and any blueprint can then use them.",
+                + "the whole project, in the variables panel. Any scene and any blueprint can then use them.",
         },
         storyFlow: {
             title: "Branches and routes",
@@ -182,7 +182,7 @@ export const help = {
             title: "Expressions",
             body:
                 "Wherever a command takes a value, it also takes an expression: a comparison, an arithmetic "
-                + "operation, a call. The row marks what is wrong while you type, and a row whose expression "
+                + "operation, a call. The row marks what is wrong as it is typed, and a row whose expression "
                 + "does not parse cannot be committed.\n"
                 + "\n"
                 + "- A bare name is a variable in scope. Prefix it with scene, saved or persis to choose the "
@@ -243,7 +243,7 @@ export const help = {
                 + "convert it and states what the conversion costs.\n"
                 + "\n"
                 + "- Converting writes a new file into the project. The source file is not modified.\n"
-                + "- Some files come back with picture and sound identical to the original.\n"
+                + "- Some files convert with picture and sound identical to the original.\n"
                 + "- Others must be re-encoded, which takes longer and loses some quality.\n"
                 + "- A file with no playable content is skipped and listed with the reason.\n"
                 + "\n"
@@ -262,7 +262,7 @@ export const help = {
                 + "- A character can speak without being on stage.",
         },
         appearances: {
-            title: "How a character is drawn",
+            title: "Character appearances",
             body:
                 "A character is drawn one of three ways, chosen in the character editor.\n"
                 + "\n"
@@ -280,10 +280,10 @@ export const help = {
                 "A model is drawn by a runtime, and Studio ships none. Each project installs the runtimes it "
                 + "needs, once each.\n"
                 + "\n"
-                + "- Studio does not download a runtime for you. A runtime comes from its vendor, and its terms "
+                + "- Studio does not download runtimes. A runtime comes from its vendor, and its terms "
                 + "are accepted there.\n"
                 + "- Live2D and Spine are licensed by their own companies. Their terms are shown before the "
-                + "install starts, and they apply to the game you ship.\n"
+                + "install starts, and they apply to the shipped game.\n"
                 + "- After a runtime is removed, a character keeps the runtime's name and draws an empty box "
                 + "until it is installed again.",
         },
@@ -313,10 +313,9 @@ export const help = {
                 + "much of the story each covers, and opening one shows its table of lines.\n"
                 + "\n"
                 + "- Studio imports clips that already exist. It does not record.\n"
-                + "- A whole folder can be matched at once when the file names follow a pattern you set.\n"
+                + "- A whole folder can be matched at once when the file names follow a pattern.\n"
                 + "- The lines to record can be exported as a spreadsheet file for whoever records them.\n"
-                + "- A line whose text changed after its clip was assigned is marked out of date, which is how "
-                + "re-recording work is located.",
+                + "- A line whose text changed after its clip was assigned is marked out of date.",
         },
         localization: {
             title: "Languages",
@@ -390,7 +389,7 @@ export const help = {
                 + "blueprint.",
         },
         networkNodes: {
-            title: "Reading data from the internet",
+            title: "Network requests",
             body:
                 "The Fetch node makes an HTTP request while the game runs, for an online notice board or a "
                 + "leaderboard. It leaves by one of four paths: the request succeeded, the server answered with an "
@@ -417,7 +416,7 @@ export const help = {
             title: "Tests",
             body:
                 "A test runs the game and reports whether a condition held: that an ending can be reached, that "
-                + "nothing failed on the way.\n"
+                + "nothing failed during the run.\n"
                 + "\n"
                 + "- The list contains Studio's own tests and the tests added by plugins. A windowed test opens "
                 + "a game window, a headless test runs without one.\n"
@@ -432,8 +431,7 @@ export const help = {
             title: "Recovery mode",
             body:
                 "When part of a project cannot be read, Studio offers to open the window read-only and without "
-                + "plugins. Nothing is written in this mode, so the parts that loaded cannot overwrite the parts "
-                + "that did not.\n"
+                + "plugins. Nothing is written in this mode.\n"
                 + "\n"
                 + "- The panel lists every failure, each with the error it reported.\n"
                 + "- The load checks read the project one part at a time and report the result. Whatever loads "
@@ -458,10 +456,10 @@ export const help = {
             title: "Version control",
             body:
                 "A version is a point that can be returned to. History is kept inside the project folder, and no "
-                + "version is created unless you submit one, apart from the checkpoint taken before a restore.\n"
+                + "version is created except by submitting one, apart from the checkpoint taken before a restore.\n"
                 + "\n"
                 + "- Submitting a version appends to the list. It never replaces or removes an existing version.\n"
-                + "- The list does not detect changes on its own. Run a check when one is needed.",
+                + "- Changes are not detected automatically. Run a check when one is needed.",
         },
         versionChanges: {
             title: "Changes since the last version",
@@ -474,7 +472,7 @@ export const help = {
                 + "- Viewing differences writes nothing. The project is left as it is.",
         },
         versionConflicts: {
-            title: "Choosing between two versions",
+            title: "Merge conflicts",
             body:
                 "When the same part of a file changed locally and on the server, the merge stops and asks which "
                 + "side to keep. The project stays frozen until every conflict has an answer.\n"
@@ -491,13 +489,13 @@ export const help = {
                 "A project can be connected to a version control server so that several people can work on it. "
                 + "Nothing is sent or fetched except by an explicit action.\n"
                 + "\n"
-                + "- Send uploads the versions you submitted to the server.\n"
+                + "- Send uploads submitted versions to the server.\n"
                 + "- Get downloads the versions on the server and merges them into the local project.\n"
                 + "- When both sides have new versions, get first and send afterwards.\n"
-                + "- Checking the current state contacts the server, so it takes a moment.",
+                + "- Checking the current state contacts the server.",
         },
         versionViewing: {
-            title: "Looking at an old version",
+            title: "Viewing an old version",
             body:
                 "Opening a version from the list shows the editors as they were at that point. The files in the "
                 + "project are not modified, and nothing is saved while a version is open.\n"
@@ -556,7 +554,7 @@ export const help = {
         // expression compares it as a string inside the shipped game, where no catalog is reached.
         // Written out here rather than interpolated because a topic body is one static string.
         buildVariant: {
-            title: "Which variant a build produces",
+            title: "Variant selection",
             body:
                 "A build produces one variant of the project. The variant named main carries the "
                 + "project's own application name, identifier and version; another variant carries "
@@ -572,8 +570,7 @@ export const help = {
             body:
                 "A variant is one edition of the project, such as a demo. Every project has the variant "
                 + "named main, and each variant added beside it starts out identical to main. The name "
-                + "main is the same in every language, so an expression comparing against it means the "
-                + "same thing in the built game.\n"
+                + "main is the same in every language.\n"
                 + "\n"
                 + "- A variant stores only what it says differently. A field left empty shows the main "
                 + "value and follows it.\n"
@@ -585,7 +582,7 @@ export const help = {
                 + "from then on, and the count beside Delete says how many there are.",
         },
         variantContent: {
-            title: "What a variant build contains",
+            title: "Variant build contents",
             body:
                 "A cut point row ends one variant's story at that row. A build of that variant carries "
                 + "nothing written after it, and a scene left unreachable is dropped from the package. "
@@ -621,8 +618,8 @@ export const help = {
                 + "project.\n"
                 + "- Before the build starts, the dialog states whether the chosen credential can be used here "
                 + "and what is missing if it cannot.\n"
-                + "- Android with no key chosen is signed with a local debug identity, which is only good for "
-                + "installing by hand.",
+                + "- Android with no key chosen is signed with a local debug identity, which stores do not "
+                + "accept.",
         },
         networkAllowlist: {
             title: "Network request allowlist",
@@ -637,12 +634,12 @@ export const help = {
                 + "- A program a plugin ships runs outside the game process. The allowlist does not cover it.",
         },
         assetProtection: {
-            title: "Protecting what you ship",
+            title: "Asset protection",
             body:
                 "With asset protection on, the images, audio, story text and plugin code inside a packaged game "
                 + "are encrypted, and so are the player's saves. Dev Mode is unaffected.\n"
                 + "\n"
-                + "- Web builds always ship without it, because the browser has to read the files directly.\n"
+                + "- Web builds always ship without it.\n"
                 + "- It prevents the files from being opened with ordinary tools. Reading them from the running "
                 + "game is still possible.\n"
                 + "- The other switch on this page decides whether the game may use the network.",
@@ -653,10 +650,9 @@ export const help = {
                 "The exported site can be reduced two ways. Android and iOS builds serve the same site, so both "
                 + "are reduced too.\n"
                 + "\n"
-                + "- Converting images loses no pixels: each conversion is compared against the original and "
-                + "discarded unless it is identical.\n"
-                + "- Recompressing images is lossy. It is much smaller, and the detail it drops cannot be "
-                + "recovered.\n"
+                + "- Converting images loses no detail.\n"
+                + "- Recompressing images is lossy. It produces much smaller files, and the detail it drops "
+                + "cannot be recovered.\n"
                 + "- Precompressed text files are used only by a server configured to serve them. Every other "
                 + "host serves the originals.",
         },
@@ -666,8 +662,7 @@ export const help = {
                 "A plugin adds capabilities to Studio: story commands, blueprint nodes, widgets, tests, and "
                 + "whole panels.\n"
                 + "\n"
-                + "- A plugin declares what it needs before any of its code runs, and that list is approved at "
-                + "install time.\n"
+                + "- A plugin declares what it needs, and that list is approved at install time.\n"
                 + "- What a plugin contributes appears in the same places as the built-in equivalents, marked "
                 + "with the plugin it came from.\n"
                 + "- A project records the plugins it depends on. Opened on a machine that is missing one, it "

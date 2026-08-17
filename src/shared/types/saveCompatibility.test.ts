@@ -58,11 +58,13 @@ describe("readSaveCompatibilityStamp", () => {
 });
 
 describe("normalizeSaveCompatibilityConfiguration", () => {
-    it("falls back per field, and the fallbacks are what a build did before the policy existed", () => {
+    it("falls back per field, and the two halves do not take the same fallback", () => {
         expect(normalizeSaveCompatibilityConfiguration(undefined)).toEqual(DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION);
-        expect(DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION).toEqual({ compatible: "resume", incompatible: "force" });
+        // Same story is not a risk, so it resumes. A different story is, so the player is put back
+        // where the save stopped rather than dropped into a position that may have moved.
+        expect(DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION).toEqual({ compatible: "resume", incompatible: "resumeScene" });
         expect(normalizeSaveCompatibilityConfiguration({ compatible: "discard", incompatible: "nonsense" }))
-            .toEqual({ compatible: "discard", incompatible: "force" });
+            .toEqual({ compatible: "discard", incompatible: "resumeScene" });
     });
 });
 

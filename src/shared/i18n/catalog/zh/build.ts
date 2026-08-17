@@ -262,14 +262,14 @@ export const build = {
             + "自行下载并另存为 {path} 即可离线构建",
         "sidecar-target-missing": "{plugin} 没有为 {platform} 提供 {sidecar} 程序，它所支撑的功能在这份产物里不会生效",
         "sidecar-crossbuild-exec-bit":
-            "{plugin} 的 {sidecar} 程序进入 {platform} 产物后将无法运行：Windows 无法给文件加上可执行位；"
+            "{plugin} 的 {sidecar} 程序进入 {platform} 产物后将无法运行；"
             + "请在 {targetPlatform} 机器上构建该目标",
         "encryption-key-unavailable": "资源保护已开启，但无法取得密钥",
         "web-unprotected": "资源保护对 Web 导出不生效，其文件以明文发布",
         "progress-carry-unsupported":
-            "{blueprints} 会在版本之间继承进度，而 {platform} 构建做不到：网页没有可写的共享文件，"
+            "{blueprints} 会在版本之间继承进度，而 {platform} 构建不支持；"
             + "两个节点都会走失败分支",
-        "web-lossy-images": "有损图像重压缩已开启，导出的图像将以质量 {quality} 重新编码，细节不可恢复",
+        "web-lossy-images": "导出的图像将以质量 {quality} 重新编码，细节不可恢复",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
         "mobile-payload-too-large": "项目素材体积（{size}）超出移动端安装包能容纳的上限",
         "version-uncodable": "项目版本 {version} 无法编码为 Android 版本号（主版本号最大 2099，次版本号与修订号最大 999）",
@@ -278,19 +278,19 @@ export const build = {
         // 不再点名 Gatekeeper / SmartScreen：那是厂商的词，不是作者的，而且两边的预期一样。
         // 更长的说法在 `build` 帮助主题里。
         unsigned: "未做代码签名；玩家首次打开时可能看到安全提示",
-        "unsigned-android": "使用本地调试签名，仅供旁加载安装，这样签出的 AAB 也不能用作 Google Play 的上传密钥；选择你自己的 release keystore 即可用你的身份签名",
+        "unsigned-android": "使用本地调试签名，可用于旁加载安装；这样签出的 AAB 不能用作 Google Play 的上传密钥。选择 release keystore 以发行身份签名",
         "unsigned-ios": "这份 .ipa 未签名，而 iOS 不允许安装任何未签名应用；请选择一份 Apple 签名凭据；从钥匙串导出 .p12 时要连同签发链一起导出，否则签名会失败",
-        "signing-credential-missing": "本机没有本工程为 {platform} 指定的签名凭据，密钥材料不会随工程流转；请在此导入，或清除该选择以未签名方式构建 {platform}",
+        "signing-credential-missing": "本机没有本工程为 {platform} 指定的签名凭据；请在此导入，或清除该选择以未签名方式构建 {platform}",
         "signing-credential-expired": "{platform} 签名证书不在有效期内（{notBefore} 至 {notAfter}），签名会失败；请向签发方续期并导入新证书",
         "signing-credential-expiring": "{platform} 签名证书将于 {notAfter} 到期；在此之前签出的产物仍然有效，之后的构建需要续期后的证书",
         "signing-secret-unavailable": "本机无法读取 {platform} 签名凭据的密码；重新导入一次即可重新保存密码",
         "signing-tool-missing": "为 {platform} 签名需要 {tool}，本机没有安装；请安装并确保它在 PATH 中，然后重新打开本对话框",
-        "signing-host-unsupported": "本机是 {host}，无法用所选凭据为 {platform} 签名：它的私钥由只存在于对应平台的系统服务保管；请在 {platform} 机器上构建这个目标",
+        "signing-host-unsupported": "本机是 {host}，无法用所选凭据为 {platform} 签名；请在 {platform} 机器上构建这个目标",
         "signing-needs-network": "为 {platform} 签名需要联网；构建的其余环节都可离线完成",
         "signing-macos-identity-missing": "本机钥匙串里没有名为 {identity} 的证书；请在「钥匙串访问」中安装它，或在此改选其他证书",
         "signing-macos-identity-unusable": "证书 {identity} 无法用于签名：它已过期、私钥不在、或签发链不完整；请在「钥匙串访问」中打开它确认原因",
-        "signing-macos-not-developer-id": "{identity} 不是「Developer ID Application」证书；产物能在本机运行，但在别人的 Mac 上会被 Gatekeeper 拒绝，Apple 也不会为它公证",
-        "signing-android-not-play": "签名后的 APK 适用于旁加载安装，以及 itch.io 等接受 APK 的平台；Google Play 只接受 AAB 包，在 Android 目标下打开 AAB 格式即可产出",
+        "signing-macos-not-developer-id": "{identity} 不是「Developer ID Application」证书；产物能在本机运行，在其他 Mac 上会被拒绝，也无法公证",
+        "signing-android-not-play": "签名后的 APK 适用于旁加载安装，以及 itch.io 等接受 APK 的平台。Google Play 只接受 AAB 包，在 Android 目标下打开 AAB 格式即可产出",
         "signing-ios-profile-mismatch": "应用 ID {bundleId} 不在描述文件的覆盖范围内，该描述文件签发给的是 {profileAppId}；请修改工程标识符，或导入与之匹配的描述文件",
         "cross-build-download": "跨平台构建 {platforms} 需要下载 Electron（首次下载，之后会缓存）",
         "output-not-writable": "无法写入 {outputDir}",
