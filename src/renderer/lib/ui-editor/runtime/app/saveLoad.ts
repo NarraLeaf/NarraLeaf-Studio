@@ -155,16 +155,36 @@ export type SaveLoadGameSeam = {
      * compiler, the bundle and the surface stack - none of which this module has or should have.
      * Omitted by a host that cannot start a story, which turns the policy into a refusal rather
      * than into a silent nothing.
+     *
+     * It reports where the player actually landed, because that is another thing only the host can
+     * know - and one it must not be left to infer from a throw. A launch handed a row the story no
+     * longer has does NOT fail: the playback walk treats a dangling row as "play the scene from the
+     * top" and says nothing, so a caller watching for an exception would report a row-precise
+     * return that never happened.
      */
-    relaunch?: (target: SaveRelaunchTarget) => Promise<void>;
+    relaunch?: (target: SaveRelaunchTarget) => Promise<SaveRelaunchLanding>;
 };
+
+/**
+ * Where a relaunch put the player.
+ *
+ * The three answers are the whole of `Return to where it stopped`: the row if the story still has
+ * it, the top of its scene if only the scene survived, and nothing at all if the scene is gone too.
+ */
+export type SaveRelaunchLanding =
+    /** On the row the save stopped on. */
+    | "row"
+    /** At the top of the scene the save was in; the row itself is no longer in the story. */
+    | "scene"
+    /** Nowhere - this build has no such scene. Nothing was started and nothing was touched. */
+    | "nowhere";
 
 /** Where a relaunch should put the player, and what to carry there. */
 export type SaveRelaunchTarget = {
     /** Blank when the save's position named no story; the host resolves one from the scene. */
     storyId: string;
     sceneId: string;
-    /** The row to enter at, or null for the top of the scene. */
+    /** The row the save stopped on, or null when its position named only a scene. */
     blockId: string | null;
     /** The save being honoured, so the host can carry its saved-scope values across. */
     savedGame: SavedGame;
@@ -681,27 +701,33 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
         if (!position || !game.relaunch) {
             return refuse("unanchored", translate("game.saveLoad.detail.unanchored"), { origin });
         }
+        // The row is always asked for. Whether it is still there is the host's to answer, and it
+        // answers by saying where it landed rather than by throwing - see `relaunch`.
+        let landing: SaveRelaunchLanding;
         try {
-            await game.relaunch({
+            landing = await game.relaunch({
                 storyId: position.storyId,
                 sceneId: position.sceneId,
-                // The row is only honoured where the rows are still the same rows. Asked for
-                // against a story that has changed, the block id would name a row this build never
-                // compiled, and the launch would fail rather than degrade.
-                blockId: resume.plan.precision === "row" ? position.blockId : null,
+                blockId: position.blockId,
                 savedGame,
             });
         } catch (error) {
-            // A relaunch that threw has already recompiled and remounted the session, so whatever
-            // is on stage is neither the save nor what was running. Said plainly rather than
-            // reported as an untouched game.
+            // A relaunch that threw got far enough to recompile and remount, so whatever is on
+            // stage is neither the save nor what was running. Said plainly rather than reported as
+            // an untouched game. "Nowhere to go" is not this: it comes back as a landing.
             return refuse("relaunch", translate("game.saveLoad.detail.relaunch", { error: errorText(error) }), {
                 origin,
                 game: "lost",
             });
         }
-        report("warning", translate("game.saveLoad.relaunched", { id }));
-        return { status: "loaded", applied: resume.plan.precision, origin, compatibility };
+        if (landing === "nowhere") {
+            return refuse("unanchored", translate("game.saveLoad.detail.sceneGone"), { origin });
+        }
+        report("warning", translate(
+            landing === "row" ? "game.saveLoad.relaunchedRow" : "game.saveLoad.relaunchedScene",
+            { id },
+        ));
+        return { status: "loaded", applied: landing, origin, compatibility };
     }
 
     // The whole pre-check, resolution included, sits inside one guard. It is an optimisation over

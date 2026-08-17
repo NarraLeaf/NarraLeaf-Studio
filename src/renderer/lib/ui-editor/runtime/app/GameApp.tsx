@@ -1710,23 +1710,31 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [host.saveStore, pluginHost, reportSaveCaptureFailure, requireActiveLiveGame, saveStamp]);
 
     /**
-     * Which story document in this build holds a scene.
+     * The scene a save's position names, as this build ships it.
      *
-     * Only reached when a save's position named a scene and no story - the shapes that carry a
-     * story id are preferred, and this is the last of the three. Ambiguity is not possible in
-     * practice (a scene id belongs to one document) and is resolved by document order if it ever is.
+     * The story id the position carries is only a hint: it comes out of an anchor written by
+     * another build, which may have split or renamed its documents. It is tried first and the
+     * library is searched when it does not hold the scene, so a save survives a story being moved
+     * between documents. Null when no document in this build has that scene at all.
      */
-    const storyIdOfScene = useCallback((sceneId: string): string => {
+    const resolveSavedScene = useCallback((storyId: string, sceneId: string): {
+        storyId: string;
+        scene: { blocks?: Record<string, unknown> };
+    } | null => {
         const documents = bundle.storyLibrary?.documents;
         if (!documents || !sceneId) {
-            return "";
+            return null;
         }
-        for (const [storyId, document] of Object.entries(documents)) {
+        const named = storyId ? documents[storyId] : undefined;
+        if (named?.scenes?.[sceneId]) {
+            return { storyId, scene: named.scenes[sceneId] };
+        }
+        for (const [candidateId, document] of Object.entries(documents)) {
             if (document?.scenes?.[sceneId]) {
-                return storyId;
+                return { storyId: candidateId, scene: document.scenes[sceneId] };
             }
         }
-        return "";
+        return null;
     }, [bundle.storyLibrary]);
 
     /**
@@ -1798,23 +1806,31 @@ export function GameApp(props: GameAppProps): ReactNode {
                     if (!start) {
                         throw new Error("the story cannot be started here");
                     }
-                    const storyId = target.storyId || storyIdOfScene(target.sceneId);
-                    if (!storyId) {
-                        throw new Error(`no story in this build holds the scene "${target.sceneId}"`);
+                    const found = resolveSavedScene(target.storyId, target.sceneId);
+                    // Reported rather than thrown: nothing has been touched yet, and a throw here
+                    // would be read as a run that was spent halfway.
+                    if (!found) {
+                        return "nowhere";
                     }
+                    // Asked before launching, never inferred from a failure: a launch handed a row
+                    // that is gone plays the scene from the top and says nothing (see
+                    // `collectStoryPlaybackPlan`), so waiting for a throw would report every
+                    // degraded landing as a row-precise one.
+                    const hasRow = Boolean(target.blockId && found.scene.blocks?.[target.blockId]);
                     // Queued rather than written: the launch calls `newGame()`, which clears every
                     // namespace, so values written now would be the ones it wipes.
                     pendingCarriedSaveRef.current = target.savedGame;
                     try {
                         await start({
-                            storyId,
+                            storyId: found.storyId,
                             sceneId: target.sceneId,
-                            ...(target.blockId ? { startBlockId: target.blockId } : {}),
+                            ...(hasRow && target.blockId ? { startBlockId: target.blockId } : {}),
                         }, { forceReinit: true });
                     } catch (error) {
                         pendingCarriedSaveRef.current = null;
                         throw error;
                     }
+                    return hasRow ? "row" : "scene";
                 },
             },
             // The engine's notification channel, which draws through the project's Notifications
@@ -1851,9 +1867,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.reportIssue,
         host.saveStore,
         requireActiveLiveGame,
+        resolveSavedScene,
         saveCompatibilityConfig,
         saveStamp,
-        storyIdOfScene,
     ]);
 
     /**

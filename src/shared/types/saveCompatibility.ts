@@ -193,24 +193,22 @@ export function classifySaveCompatibility(
 /**
  * What to do with a save the player asked for, or that a save screen is about to list.
  *
- * `relaunch` carries how precisely it can put the player back, and that is decided here rather
- * than by the caller because it is decided by the same comparison: a story that hashes the same
- * still holds the row the save stopped on, so the player returns to the line rather than to the
- * top of the scene. A story that does not may still have the scene, and the top of it is the
- * nearest honest place to be put.
+ * `relaunch` says nothing about how precisely the player can be put back, because nothing here can
+ * know: that is a question about whether the row the save names is still in the story, and only
+ * whoever holds the story documents can answer it. It is asked at the moment of the relaunch and
+ * answered there - see `SaveRelaunchLanding` in `saveLoad.ts`.
  */
 export type SaveResumePlan =
     /** Load the save. */
     | { action: "resume" }
     /** Start the story where the save was, without the state the save holds. */
-    | { action: "relaunch"; precision: "row" | "scene" }
+    | { action: "relaunch" }
     /** Do not offer it and do not load it. */
     | { action: "discard"; reason: "protocol" | "policy" };
 
 export function resolveSaveResumePlan(
     compatibility: SaveCompatibility,
     config: SaveCompatibilityConfiguration,
-    precision: "row" | "scene",
 ): SaveResumePlan {
     switch (compatibility) {
         case "unsupported":
@@ -224,7 +222,7 @@ export function resolveSaveResumePlan(
                 return { action: "discard", reason: "policy" };
             }
             return config.incompatible === "resumeScene"
-                ? { action: "relaunch", precision }
+                ? { action: "relaunch" }
                 : { action: "resume" };
         default:
             return { action: "resume" };
@@ -243,13 +241,5 @@ export function planSaveResume(
     config: SaveCompatibilityConfiguration,
 ): { compatibility: SaveCompatibility; plan: SaveResumePlan } {
     const compatibility = classifySaveCompatibility(savedStamp, currentStamp);
-    // Same story means the row anchors the save holds are the row anchors this build compiled, so a
-    // relaunch can land on the line. That is only reachable when a policy routes a same-story save
-    // here, which no built-in classification does today - it is stated rather than assumed so the
-    // option stays well defined however it is reached.
-    const precision = savedStamp && currentStamp && savedStamp.storyHash
-        && savedStamp.storyHash === currentStamp.storyHash
-        ? "row"
-        : "scene";
-    return { compatibility, plan: resolveSaveResumePlan(compatibility, config, precision) };
+    return { compatibility, plan: resolveSaveResumePlan(compatibility, config) };
 }
