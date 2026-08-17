@@ -30,6 +30,26 @@ export interface PayloadReader {
     close(): Promise<void>;
 }
 
+/**
+ * Whether this location holds a game payload, asked by looking for something the
+ * payload always has.
+ *
+ * Never by probing the location itself. Inside Electron an archive is mounted as
+ * a directory, and asking about the archive path with nothing after it does not
+ * resolve to a file or to an entry - so a check on the archive answers no for the
+ * one archive it was written to find. Asking for a file inside it is a question
+ * both a real directory and a mounted archive can answer, and it is the better
+ * question anyway: it separates this game's payload from any other package.
+ */
+async function looksLikePayload(location: string): Promise<boolean> {
+    for (const marker of ["pack.json", RUNTIME_BUNDLE_FILENAME]) {
+        if (await fileHasContent(path.join(location, marker))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 async function fileHasContent(filePath: string): Promise<boolean> {
     try {
         const stats = await fs.stat(filePath);
@@ -83,9 +103,6 @@ async function listEntryNames(appDir: string, root: string): Promise<string[]> {
  * what was looked for rather than failing as a missing file.
  */
 export async function resolvePayloadLocation(target: string): Promise<string> {
-    if (target.toLowerCase().endsWith(".asar")) {
-        return target;
-    }
     const candidates = [
         // A desktop output folder, and equally an application bundle's Contents.
         path.join(target, "resources", "app.asar"),
@@ -93,16 +110,11 @@ export async function resolvePayloadLocation(target: string): Promise<string> {
         path.join(target, "Contents", "resources", "app.asar"),
         path.join(target, "Contents", "Resources", "app.asar"),
     ];
-    for (const candidate of candidates) {
-        if (await fileHasContent(candidate)) {
+    // The target itself first: a compiled app directory is what an unprotected
+    // build stages, and it is what the payload reader speaks natively.
+    for (const candidate of [target, ...candidates]) {
+        if (await looksLikePayload(candidate)) {
             return candidate;
-        }
-    }
-    // A compiled app directory, which is what an unprotected build stages and
-    // what the payload reader speaks natively.
-    for (const marker of ["pack.json", RUNTIME_BUNDLE_FILENAME]) {
-        if (await fileHasContent(path.join(target, marker))) {
-            return target;
         }
     }
     // A macOS output folder holds the bundle rather than the payload, and its
@@ -114,7 +126,7 @@ export async function resolvePayloadLocation(target: string): Promise<string> {
             }
             for (const inside of ["resources", "Resources"]) {
                 const candidate = path.join(target, entry, "Contents", inside, "app.asar");
-                if (await fileHasContent(candidate)) {
+                if (await looksLikePayload(candidate)) {
                     return candidate;
                 }
             }
