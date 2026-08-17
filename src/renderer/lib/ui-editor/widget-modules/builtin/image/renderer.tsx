@@ -8,15 +8,16 @@ import {
 import {
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
-import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 
 export function ImageRenderer(props: WidgetRendererProps) {
     const { element, useAppearanceInspectorPreview } = props;
-    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const appearance = (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
     const runtimeState = useWidgetRuntimeElementState(element.id);
     const resolveCtx = {
-        variantOverrideId: runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: variantOverrideIdFor(enteredState, runtimeState.variantOverrideId),
         signals: runtimeState.signals,
     };
     const rectangleLike = resolveImageRectangleLike(element, appearance ?? undefined, resolveCtx);

@@ -34,7 +34,8 @@ import {
     verticalTypographyCss,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { renderVerticalTextContent } from "@/lib/ui-editor/widget-modules/shared/text/VerticalText";
-import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import {
     resolveTextAppearanceTransitions,
     resolveTextVisualProps,
@@ -199,14 +200,14 @@ export function TextRenderer({
     }, [element, isEditing]);
 
     const flatProps = getTextProps(element);
-    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const runtimeState = useWidgetRuntimeElementState(element.id);
     const listScopedVariantId =
         typeof (element.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
             ? (element.extra as UIListElementExtra).runtimeVariantOverrideId
             : null;
     const resolveCtx = {
-        variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: variantOverrideIdFor(enteredState, listScopedVariantId, runtimeState.variantOverrideId),
         signals: runtimeState.signals,
     };
     const p = resolveTextVisualProps(element, flatProps.appearance ?? undefined, resolveCtx);

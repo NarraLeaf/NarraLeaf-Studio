@@ -38,8 +38,8 @@ vi.mock("@/lib/workspace/hooks/useEditorFontFamily", () => ({
     useEditorFontFamily: () => ({ cssFamily: null, loading: false, error: null }),
 }));
 
-vi.mock("@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant", () => ({
-    useEditorAppearanceInspectorVariant: () => null,
+vi.mock("@/lib/ui-editor/hooks/useEnteredElementState", () => ({
+    useEnteredElementState: () => null,
 }));
 
 import { beginInlineTextEdit } from "@/lib/ui-editor/interaction/inlineTextEdit";

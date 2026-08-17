@@ -9,7 +9,8 @@ import {
 import {
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
-import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { getContainerProps } from "./helpers";
 import {
     resolveContainerScrollViewportOverflow,
@@ -291,7 +292,7 @@ function ScrollInner({ element, children }: WidgetRendererProps) {
 
 export function ContainerRenderer(props: WidgetRendererProps) {
     const { element, children, useAppearanceInspectorPreview } = props;
-    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const p = getContainerProps(element);
     const runtimeState = useWidgetRuntimeElementState(element.id);
     const listScopedVariantId =
@@ -300,7 +301,7 @@ export function ContainerRenderer(props: WidgetRendererProps) {
             : null;
     const clip = p.clipContent;
     const resolveCtx = {
-        variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: variantOverrideIdFor(enteredState, listScopedVariantId, runtimeState.variantOverrideId),
         signals: runtimeState.signals,
     };
     const rectangleLike = resolveContainerRectangleLike(element, p.appearance ?? undefined, resolveCtx);

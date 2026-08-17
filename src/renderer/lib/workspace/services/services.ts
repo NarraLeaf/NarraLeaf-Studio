@@ -889,13 +889,23 @@ export type InteractionOverrideChange = {
     next: InteractionOverride | null;
 };
 
+/**
+ * The one element showing a state other than the one it rests in, and which state that is.
+ *
+ * Editor-only and never persisted: it says what the author is looking at this minute, and a stale
+ * one restored at startup would be a canvas that quietly disagrees with the document. `variantId`
+ * is null for the resting state, which is also what descendants carrying no variant of that id
+ * resolve to - so one value describes the whole subtree.
+ */
+export type UIEditorEnteredState = { elementId: string; variantId: string | null };
+
 interface UIEditorStateEvents {
     toolChanged: UITool;
     viewportChanged: ViewportTransform;
     selectionChanged: SelectionState;
     interactionOverrideChanged: InteractionOverrideChange;
-    /** Editor-only: appearance variant picker in the inspector (per element); drives canvas preview. */
-    appearanceInspectorVariantChanged: { elementId: string };
+    /** Editor-only: which element is showing one of its states, and which; drives canvas preview. */
+    enteredStateChanged: UIEditorEnteredState | null;
     /** Outline panel expand/collapse memory (persisted); payload unused. */
     outlineExpansionChanged: null;
     /** Outline panel chrome collapsed state (persisted). */
@@ -960,9 +970,9 @@ interface IUIEditorStateService extends IService {
     setUIElementSelection(selection: UIElementSelection): void;
     getDocument(): UIDocument;
     getSurface(surfaceId: string): UISurface | undefined;
-    /** Cached appearance variant id for inspector authoring (editing-area cache, not saved in UIDocument). */
-    getAppearanceInspectorVariant(elementId: string): string | null;
-    setAppearanceInspectorVariant(elementId: string, variantId: string): void;
+    /** The state being shown on the canvas right now, or null while every element rests. */
+    getEnteredState(): UIEditorEnteredState | null;
+    setEnteredState(next: UIEditorEnteredState | null): void;
     /** Whether compact Border panel "sides" row is expanded (per element, persisted with project settings). */
     getAppearanceBorderSidesExpanded(elementId: string): boolean;
     setAppearanceBorderSidesExpanded(elementId: string, expanded: boolean): void;

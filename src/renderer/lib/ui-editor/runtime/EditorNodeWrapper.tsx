@@ -21,7 +21,8 @@ import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
-import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import {
     type AppearanceResolveContext,
     resolveButtonCursor,
@@ -152,14 +153,14 @@ export function EditorNodeWrapper({
     const animationControls = useAnimationControls();
     const [resetMotionId, setResetMotionId] = useState<string | null>(null);
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
-    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const appearance = (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
     const listScopedVariantId =
         typeof (element.extra as { runtimeVariantOverrideId?: unknown } | undefined)?.runtimeVariantOverrideId === "string"
             ? String((element.extra as { runtimeVariantOverrideId?: unknown }).runtimeVariantOverrideId)
             : null;
     const appearanceResolveCtx = {
-        variantOverrideId: listScopedVariantId ?? runtimeElementState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: variantOverrideIdFor(enteredState, listScopedVariantId, runtimeElementState.variantOverrideId),
         signals: runtimeElementState.signals,
     };
     const appearanceOpacity = resolveAppearanceDisplayableOpacity(
@@ -636,6 +637,7 @@ export function EditorNodeWrapper({
     }, [displayableMotion, isResetPhase, runtimeElementKey, widgetRuntimeStore]);
 
     return (
+        <EnteredStateProvider value={enteredState}>
         <motion.div
             ref={containerRef}
             data-ui-element-id={interactive ? element.id : undefined}
@@ -661,5 +663,6 @@ export function EditorNodeWrapper({
         >
             {children}
         </motion.div>
+        </EnteredStateProvider>
     );
 }
