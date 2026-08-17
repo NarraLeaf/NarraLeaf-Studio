@@ -63,11 +63,19 @@ export type PreviewStatus =
  */
 export type GameRuntimeAssetSource = "local" | "remote";
 
+/**
+ * What the pack records about one asset.
+ *
+ * Every field except `relativePath` describes the asset rather than locating it, and a shipped game
+ * is compiled without them: see {@link GameRuntimePackV1.assets}. Code that reads one must therefore
+ * treat it as a hint that may be absent, never as the answer to "what is this file" - the runtime
+ * learns that from the bytes it just read.
+ */
 export type GameRuntimeAssetManifestEntry = {
     id: string;
-    type: string;
-    name: string;
-    source: GameRuntimeAssetSource;
+    type?: string;
+    name?: string;
+    source?: GameRuntimeAssetSource;
     relativePath: string;
     originalRelativePath?: string;
     hash?: string;
@@ -202,8 +210,34 @@ export type GameRuntimePackV1 = {
     };
     entry: GameRuntimeLaunchEntry;
     bundle: DevModeBundle;
+    /**
+     * What the pack says about its assets - which is as close to nothing as each build can manage.
+     *
+     * A protected build ships `items` **empty**. Its store names every asset entry after the asset
+     * id alone, so the bytes are reachable by derivation from an id the caller already holds, and
+     * there is no list to read: an attacker who has replaced the main process still cannot ask the
+     * pack what the game contains. An unprotected build keeps `items`, because nothing is being
+     * protected there and its loose files carry their own names anyway - but even then a
+     * distribution build carries only what locating the bytes needs, never `name`,
+     * `originalRelativePath` or `hash`.
+     *
+     * Preview and test packs keep the manifest whole so the dev-mode surfaces can name what they
+     * report. The runtime never resolves bytes through it either way - a protected store always
+     * derives - so the two cannot drift into "works in preview, broken when shipped".
+     */
     assets: {
         items: Record<string, GameRuntimeAssetManifestEntry>;
+        /**
+         * Model bundles only: asset id to the bundle-relative path of its entry file.
+         *
+         * This survives the strip above because it is not a description of the asset, it is part of
+         * the URL the engine has to be handed. `PuppetMountContext.resolveSibling(rel)` resolves a
+         * model manifest's relative references against whatever URL the model was mounted from, and
+         * the renderer's `resolveModelBundleUrl` seam is synchronous, so the entry path has to be in
+         * renderer memory before the engine asks. Only ids of model bundles appear here; no other
+         * asset kind is named.
+         */
+        bundleEntries?: Record<string, string>;
     };
     /** Runtime entries of the plugins packaged with this game. */
     plugins: GameRuntimePackPluginEntry[];

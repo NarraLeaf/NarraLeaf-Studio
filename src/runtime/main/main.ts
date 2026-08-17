@@ -42,6 +42,7 @@ import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetc
 import type { BlueprintPointerMoveRequest } from "@shared/types/blueprint/pointer";
 import { executeBlueprintPointerMove } from "@shared/utils/blueprintPointerMove";
 import { packNetworkAllowlist, type NetworkAllowlist } from "@shared/types/networkAllowlist";
+import { sniffMediaType } from "./mediaSniff";
 import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
@@ -835,10 +836,12 @@ const ASSET_STREAM_THRESHOLD_BYTES = 8 * 1024 * 1024;
 
 async function serveAsset(request: Request, assetId: string): Promise<Response> {
     const pack = await readPack();
-    const contentType = pack.assets.items[assetId]?.mimeType ?? getMimeType(assetId);
+    const declaredType = pack.assets.items[assetId]?.mimeType;
     const rangeHeader = request.headers.get("range");
     const filePath = runtimeResources().getAssetFilePath(pack, assetId);
     if (filePath) {
+        // A loose pack keeps its manifest and its file extensions, so nothing here has to guess.
+        const contentType = declaredType ?? getMimeType(filePath);
         const { size } = await fs.stat(filePath);
         const range = resolveSingleByteRange(rangeHeader, size);
         if (range.kind === "unsatisfiable") {
@@ -853,6 +856,14 @@ async function serveAsset(request: Request, assetId: string): Promise<Response> 
         return assetResponse(await fs.readFile(filePath), contentType);
     }
     const data = await runtimeResources().readAsset(pack, assetId);
+    /*
+     * Sniffed first, and from the bytes we already hold, because a shipped protected pack has no
+     * manifest to declare anything: entries are stored under the asset id alone, with no extension
+     * and no recorded media type. The manifest is consulted only as a fallback, which is also what
+     * keeps preview honest - a preview pack still carries one, and letting it win would mean the
+     * sniffer never ran until a player's copy did.
+     */
+    const contentType = sniffMediaType(data) ?? declaredType ?? getMimeType(assetId);
     const range = resolveSingleByteRange(rangeHeader, data.byteLength);
     if (range.kind === "unsatisfiable") {
         return rangeNotSatisfiable(data.byteLength);

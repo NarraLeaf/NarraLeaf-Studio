@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
     bindRuntimeBinary,
     createProjectMaterial,
+    createSealedBundle,
     createSealedLayer,
     projectVerificationKey,
     runtimeSupportPath,
+    RUNTIME_BUNDLE_FILENAME,
     RUNTIME_SUPPORT_FILENAME,
 } from "@narraleaf/encryption";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
@@ -57,6 +59,65 @@ describe("BoundedBufferCache", () => {
  * not. So these open genuine patches produced by the real writer, including the
  * ones a hostile file would be.
  */
+describe("protected runtime resources", () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await fs.mkdtemp(path.join(os.tmpdir(), "nls-sealed-"));
+    });
+
+    afterEach(async () => {
+        await fs.rm(root, { recursive: true, force: true }).catch(() => undefined);
+    });
+
+    /** A protected app dir holding one asset, shipped the way a production build ships: no manifest. */
+    async function makeSealedApp(assetId: string, assetBytes: string): Promise<string> {
+        const appDir = path.join(root, "game", "app");
+        await fs.mkdir(appDir, { recursive: true });
+        await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
+        const writer = await createSealedBundle(
+            path.join(appDir, RUNTIME_BUNDLE_FILENAME),
+            path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+        );
+        await writer.add("pack", Buffer.from(JSON.stringify({ assets: { items: {} } })));
+        await writer.add(`assets/${assetId}`, Buffer.from(assetBytes));
+        await writer.finalize();
+        return appDir;
+    }
+
+    /*
+     * The runtime half of the opaque-read design. The pack handed in here is deliberately empty of
+     * assets: if resolution ever went back to consulting it, this is the test that fails, and it
+     * fails for the shipped shape rather than for the preview one.
+     */
+    it("reads an asset from a store that lists nothing, by deriving the entry from the id", async () => {
+        const assetId = "b3f1c0de-0000-4000-8000-000000000001";
+        const appDir = await makeSealedApp(assetId, "sealed image bytes");
+        const emptyPack = { assets: { items: {} } } as unknown as GameRuntimePackV1;
+        const resources = await createRuntimeResources(appDir, { gameRootDir: path.join(root, "game") });
+        try {
+            expect((await resources.readAsset(emptyPack, assetId)).toString()).toBe("sealed image bytes");
+            expect(resources.resolveEntryName(emptyPack, assetId)).toBe(`assets/${assetId}`);
+            // Never a loose file: a protected asset has no path a caller could stream from.
+            expect(resources.getAssetFilePath(emptyPack, assetId)).toBeNull();
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    it("refuses an id it was never given, rather than answering something", async () => {
+        const appDir = await makeSealedApp("b3f1c0de-0000-4000-8000-000000000001", "sealed image bytes");
+        const emptyPack = { assets: { items: {} } } as unknown as GameRuntimePackV1;
+        const resources = await createRuntimeResources(appDir, { gameRootDir: path.join(root, "game") });
+        try {
+            await expect(resources.readAsset(emptyPack, "not-an-asset")).rejects.toThrow();
+            await expect(resources.readAsset(emptyPack, "  ")).rejects.toThrow(/Asset id is required/);
+        } finally {
+            await resources.dispose();
+        }
+    });
+});
+
 describe("patched runtime resources", () => {
     const TITLE = "com.example.patched";
     let root: string;
