@@ -532,6 +532,44 @@ export const help = {
                 + "- Icons come from the project's icon page. A platform whose icon has not been generated builds "
                 + "with the NarraLeaf icon.",
         },
+        // The three states a save can be in against the build in front of it, and which of the two
+        // settings answers for each. A parent topic rather than a preamble repeated on both rows.
+        olderSaves: {
+            title: "Older saves",
+            body:
+                "A player's save falls into one of three cases. The settings on this page decide two of "
+                + "them.\n"
+                + "\n"
+                + "- Written by this build: restored in full. Neither setting applies.\n"
+                + "- Same story, another project version: decided by the first setting.\n"
+                + "- Written before the story changed: decided by the second setting.\n"
+                + "\n"
+                + "A save that is not restored is absent from the save list. The player is never offered a "
+                + "slot that cannot be read.",
+        },
+        saveSameStory: {
+            title: "Saves from another project version",
+            body:
+                "The story is unchanged, and the line the save records is still in it.\n"
+                + "\n"
+                + "- Restore progress: play continues from that line.\n"
+                + "- Do not restore progress: the slot is absent from the save list, and a load request "
+                + "fails.",
+        },
+        saveStoryChanged: {
+            title: "Saves from before a story change",
+            body:
+                "The story was edited after the save was written. The line the save records may no longer "
+                + "be present.\n"
+                + "\n"
+                + "- Restore progress anyway: play continues from that line, and fails when the story "
+                + "lacks what the save requires.\n"
+                + "- Return to where it stopped: play starts again on that line, at the start of its scene "
+                + "when the line is absent, and fails when the scene is absent as well. Variables and "
+                + "visited scenes are kept. The stage and the backlog are not.\n"
+                + "- Do not restore progress: the slot is absent from the save list, and a load request "
+                + "fails.",
+        },
         patches: {
             title: "Patches",
             body:

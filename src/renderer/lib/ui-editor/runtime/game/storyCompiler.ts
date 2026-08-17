@@ -4,6 +4,7 @@ import {
     Condition,
     Control,
     Darkness,
+    Exposure,
     DevTools,
     Dissolve,
     FadeIn,
@@ -4270,6 +4271,21 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
                 color: stringProp(props, "color", "#000"),
                 hold: numberProp(props, "hold", 30) / 100,
                 ...throughColorPattern(props),
+            });
+        case "exposure":
+            // Stops, not a multiplier: the gain is `2 ** ev`, so a linear-looking slider stays
+            // perceptually even. Capped at 12 EV (a gain of 4096) because past the point where
+            // every channel has clipped the extra stops buy nothing but a longer white hold.
+            //
+            // `lift` is clamped for the same reason `darkness` is: it lands inside a CSS
+            // `brightness()`, and one out-of-range value makes the browser drop the whole filter
+            // declaration - the transition would go silently inert rather than saturate.
+            return new Exposure({
+                duration,
+                easing,
+                ev: Math.min(12, Math.max(0, numberProp(props, "ev", 4.6))),
+                lift: Math.min(1, Math.max(0, numberProp(props, "lift", 0.04))),
+                hold: Math.min(1, Math.max(0, numberProp(props, "hold", 0) / 100)),
             });
         case "darkness":
             // The incoming image is swapped in at `from` darkness and lifted to `to` - so the default
