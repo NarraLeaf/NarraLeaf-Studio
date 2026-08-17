@@ -82,6 +82,19 @@ describe("save playtime forwarding", () => {
         ).toBe(2);
     });
 
+    it("writes the title total through the store, not into the bridge's memory", async () => {
+        const source = await fs.readFile(APP_FILE, "utf-8");
+        // The bridge has two setters a character apart, and only one reaches the store. Wiring the
+        // clock to the other reads back perfectly until the window closes - a defect no in-session
+        // assertion can see, which is why this one reads the wiring instead.
+        const wiring = source.slice(source.indexOf("usePlaytime({"), source.indexOf("usePlaytime({") + 900);
+        expect(wiring, "GameApp does not wire usePlaytime at all").toContain("persistenceGetAsync");
+        expect(
+            wiring.includes("persistenceSetAsync"),
+            "the playtime total must be written with persistenceSetAsync; persistenceSet never reaches the store",
+        ).toBe(true);
+    });
+
     it("has every shell accepting the reading and passing it on", async () => {
         const missing: string[] = [];
         for (const [shell, file] of Object.entries(SAVE_SHELLS)) {

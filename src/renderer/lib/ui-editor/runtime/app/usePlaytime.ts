@@ -28,6 +28,15 @@ export type UsePlaytimeOptions = {
     isPlaying: () => boolean;
     /** Project persistence (scope bridge); values are JSON-safe. */
     persistenceGetAsync: (key: string) => Promise<unknown>;
+    /**
+     * Write a value into project persistence, durably.
+     *
+     * Durably is the whole requirement, and the scope bridge offers two setters that differ only in
+     * that: `persistenceSet` updates an in-memory map and notifies subscribers, `persistenceSetAsync`
+     * also hands the value to the store. A total written through the first reads back correctly for
+     * the life of the window and is gone the moment it closes, which is indistinguishable from
+     * working right up until the player relaunches. It shipped that way once.
+     */
     persistenceSet: (key: string, value: unknown) => void;
     /** Tick spacing; tests shorten it. */
     tickIntervalMs?: number;
@@ -123,7 +132,11 @@ export function usePlaytime(options: UsePlaytimeOptions): PlaytimeRuntime {
         return () => window.removeEventListener("beforeunload", onBeforeUnload);
     }, [clock]);
 
-    useEffect(() => () => clock.dispose(), [clock]);
+    // Flushes rather than tears down. This cleanup runs on `React.StrictMode`'s throwaway mount
+    // too, and anything irreversible taken here would be taken while the clock still has its whole
+    // life ahead of it - see the note on `PlaytimeClock.flush`. The interval is stopped by its own
+    // effect's `clearInterval`, which is all stopping actually requires.
+    useEffect(() => () => clock.flush(), [clock]);
 
     const getRunSeconds = useCallback(() => clock.getRunSeconds(), [clock]);
     const getTotalSeconds = useCallback(() => clock.getTotalSeconds(), [clock]);

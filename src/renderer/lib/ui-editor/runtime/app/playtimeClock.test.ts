@@ -148,25 +148,28 @@ describe("PlaytimeClock", () => {
         expect(persisted).toEqual([10]);
     });
 
-    it("flushes on pause and on dispose, and does not write when nothing is owed", () => {
+    it("flushes on demand, and does not write when nothing is owed", () => {
         const { clock, persisted, advance } = harness({ flushThresholdSeconds: 60 });
         clock.pause();
         expect(persisted).toEqual([]);
 
         advance(PLAYTIME_TICK_INTERVAL_MS, 4);
-        clock.dispose();
+        clock.flush();
         expect(persisted).toEqual([3]);
 
-        clock.dispose();
+        clock.flush();
         expect(persisted).toEqual([3]);
     });
 
-    it("stops accruing once disposed", () => {
+    // The clock has no off switch on purpose: an effect cleanup running on StrictMode's throwaway
+    // mount would have thrown it, and every save afterwards recorded 0. See usePlaytime.test.
+    it("keeps accruing after a flush, however the flush was reached", () => {
         const { clock, advance } = harness();
         advance(PLAYTIME_TICK_INTERVAL_MS, 3);
-        clock.dispose();
+        clock.flush();
+        clock.pause();
         advance(PLAYTIME_TICK_INTERVAL_MS, 5);
-        expect(clock.getRunSeconds()).toBe(2);
+        expect(clock.getRunSeconds()).toBe(6);
     });
 
     it("ignores a stale total read back while the game was already counting", () => {

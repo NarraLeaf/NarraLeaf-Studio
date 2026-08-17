@@ -74,7 +74,6 @@ export class PlaytimeClock {
      * resume re-anchors: the first tick after it contributes nothing rather than billing the gap.
      */
     private lastTickAt: number | null = null;
-    private disposed = false;
 
     private readonly now: () => number;
     private readonly tickIntervalMs: number;
@@ -128,9 +127,6 @@ export class PlaytimeClock {
      * screen, and re-anchors whenever it is not, so the paused stretch cannot be billed later.
      */
     public tick(): void {
-        if (this.disposed) {
-            return;
-        }
         if (!this.deps.isPlaying() || this.deps.isHidden()) {
             // Flushes on the way down so a player who stops playing does not leave the last stretch
             // sitting unwritten until they happen to play again.
@@ -168,20 +164,22 @@ export class PlaytimeClock {
         this.flush();
     }
 
-    /** Write the title total if anything is owed. Cheap and idempotent when nothing is. */
+    /**
+     * Write the title total if anything is owed. Cheap and idempotent when nothing is.
+     *
+     * There is deliberately no `dispose`. A stopwatch that can be switched off permanently is one
+     * an effect cleanup will eventually switch off by accident: `React.StrictMode` - on in every
+     * unpackaged build - mounts, tears down and remounts, and an irreversible teardown taken on the
+     * throwaway pass leaves the surviving mount ticking a dead object. That is not hypothetical; it
+     * is what the first version of this did, and the symptom was every save recording `0`. Stopping
+     * the interval is the owner's job and `clearInterval` already does it, so nothing here needs a
+     * one-way switch. Every operation on this class is repeatable.
+     */
     public flush(): void {
         if (this.unflushedSeconds <= 0) {
             return;
         }
         this.unflushedSeconds = 0;
         this.deps.persistTotal(this.totalSeconds);
-    }
-
-    public dispose(): void {
-        if (this.disposed) {
-            return;
-        }
-        this.flush();
-        this.disposed = true;
     }
 }
