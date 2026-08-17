@@ -44,7 +44,7 @@ import type {
 
 const TRANSITION_WORDS = [
     "fade", "slide", "slide-left", "slide-right", "slide-up", "slide-down", "circle", "wipe", "iris",
-    "blur", "blinds", "barn-door", "clock", "fan", "dots", "black", "darkness", "zoom", "scale",
+    "blur", "blinds", "barn-door", "clock", "fan", "dots", "black", "darkness", "exposure", "zoom", "scale",
     "rotate", "opacity", "darken", "none",
 ] as const satisfies readonly StoryTransitionWord[];
 

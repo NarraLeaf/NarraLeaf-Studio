@@ -519,6 +519,7 @@ export const story = {
         dots: "ドット",
         black: "暗転",
         darkness: "暗さ",
+        exposure: "露出",
         none: "なし",
         // 表示と非表示で `t=` が届く、トランジションの語では名指しできない変形のプリセット。
         scale: "拡大縮小",

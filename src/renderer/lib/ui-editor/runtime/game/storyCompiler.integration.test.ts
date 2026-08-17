@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BlurDissolve, Control, Darkness, DevTools, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
+import { BlurDissolve, Control, Darkness, DevTools, Exposure, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
@@ -1488,7 +1488,7 @@ describe("compileStudioStoryToNlr", () => {
     it("maps the custom transition kinds onto real NLR transitions without diagnostics", async () => {
         // Each new kind must be handled by createTransition; an unmapped kind
         // falls through to a "not supported" diagnostic, which this guards against.
-        const kinds: StoryTransitionRef["kind"][] = ["softWipe", "blinds", "slide", "softIris", "blurDissolve", "throughColor", "darkness"];
+        const kinds: StoryTransitionRef["kind"][] = ["softWipe", "blinds", "slide", "softIris", "blurDissolve", "throughColor", "darkness", "exposure"];
         for (const kind of kinds) {
             const compiled = await compileBackgroundTransition(kind);
             expect(compiled.diagnostics, `kind=${kind}`).toEqual([]);
@@ -1507,6 +1507,7 @@ describe("compileStudioStoryToNlr", () => {
             blinds: Reveal,
             blurDissolve: BlurDissolve,
             throughColor: ThroughColor,
+            exposure: Exposure,
         };
         for (const [kind, ctor] of Object.entries(expected)) {
             const compiled = await compileBackgroundTransition(kind as StoryTransitionRef["kind"]);
@@ -1578,6 +1579,45 @@ describe("compileStudioStoryToNlr", () => {
         expect(darkness).toBeInstanceOf(Darkness);
         expect(darkness.from).toBe(1);
         expect(darkness.to).toBe(0);
+    });
+
+    it("passes exposure through in stops, with hold read as a percentage", async () => {
+        // `ev` is stops, not a multiplier — the engine raises 2 to it — and `hold` is stored as the
+        // percentage the inspector shows while the engine wants a fraction, the same split
+        // `throughColor` already uses. Getting either conversion wrong is invisible in the type.
+        const compiled = await compileBackgroundTransition("exposure", { ev: 3, lift: 0.06, hold: 40 });
+        const exposure = findTransition(compiled) as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(exposure).toBeInstanceOf(Exposure);
+        expect(exposure.ev).toBe(3);
+        expect(exposure.lift).toBe(0.06);
+        expect(exposure.hold).toBe(0.4);
+    });
+
+    it("clamps exposure's lift into the 0-1 its filter can express", async () => {
+        // Same failure as `darkness`: the lift lands inside a CSS `brightness()`, and one
+        // out-of-range value makes the browser drop the whole filter declaration — the transition
+        // goes silently inert rather than saturating. The stops are capped for a milder reason:
+        // past the point where every channel has clipped, more stops only lengthen the white.
+        const compiled = await compileBackgroundTransition("exposure", { ev: 40, lift: -1 });
+        const exposure = findTransition(compiled) as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(exposure.ev).toBe(12);
+        expect(exposure.lift).toBe(0);
+    });
+
+    it("defaults exposure to a burn that reaches the shadows", async () => {
+        // The defaults are the whole difference from a white plate, so they are pinned here rather
+        // than left to whatever the engine happens to default to: without a lift the shadows never
+        // whiten, and this is the surface that decides an author who set nothing still gets one.
+        const compiled = await compileBackgroundTransition("exposure", { ev: undefined, lift: undefined, hold: undefined });
+        const exposure = findTransition(compiled) as any;
+
+        expect(exposure.ev).toBe(4.6);
+        expect(exposure.lift).toBe(0.04);
+        expect(exposure.hold).toBe(0);
     });
 
     /** Compile a one-row scene whose `/bg` carries `kind`, with every custom transition's props set. */
