@@ -13,10 +13,17 @@ export const game = {
         putBack: "Load Save: \"{id}\" was not applied, and the running game was put back. {detail}",
         notRestored: "Load Save: \"{id}\" was not applied, and the running game could not be put back. {detail}",
         otherStory: "Load Save: \"{id}\" was written from a different version of the story.",
+        // The Older saves policy taking effect rather than a failure, so it is stated as what
+        // happened: the slot was honoured, in the only way the policy allows it to be.
+        relaunched: "Load Save: \"{id}\" was written by another build, so the story was started again where it stopped.",
         detail: {
             unreadable: "The save could not be read. {error}",
             missing: "No save is stored under that id.",
             malformed: "What is stored is not in the saved game format.",
+            unsupported: "This save was written in a format this build cannot read.",
+            policy: "Older saves from another build are not restored in this project.",
+            unanchored: "This save does not say where it stopped, so the story cannot be started again there.",
+            relaunch: "The story could not be started again where the save stopped. {error}",
             unresolvedScene: "The scene this save was in is not in the running story.",
             unresolvedElement: "The running story does not have everything this save puts on stage.",
             unresolvedAction: "The rows this save was stopped on are not in the running story.",

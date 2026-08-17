@@ -22,6 +22,7 @@ import {
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
+import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
 import type { SigningPlatform } from "@shared/types/signing";
 import type { VoiceConfiguration } from "@shared/types/voice";
 import type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
@@ -63,6 +64,15 @@ export {
     normalizeAutoSaveConfiguration,
 } from "@shared/types/saves";
 export type { AutoSaveConfiguration } from "@shared/types/saves";
+export {
+    DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION,
+    normalizeSaveCompatibilityConfiguration,
+} from "@shared/types/saveCompatibility";
+export type {
+    SaveCompatibilityConfiguration,
+    SaveCompatiblePolicy,
+    SaveIncompatiblePolicy,
+} from "@shared/types/saveCompatibility";
 export {
     DEFAULT_PLAYER_PREFERENCES,
     PLAYER_PREFERENCE_GROUPS,
@@ -355,6 +365,11 @@ export type ProjectAppConfiguration = {
     mobile?: MobileConfiguration;
     /** Automatic saving in the shipped game; absent until configured (see the defaults). */
     autoSave?: AutoSaveConfiguration;
+    /**
+     * What a save written by another build of this game may do; absent until configured (see the
+     * defaults, which are what every build did before the policy existed).
+     */
+    saveCompatibility?: SaveCompatibilityConfiguration;
     /**
      * What the player's settings start at (see @shared/types/preference); absent until configured.
      *

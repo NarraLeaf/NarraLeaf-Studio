@@ -27,7 +27,8 @@ import type {
     SigningInspectResult,
 } from "@shared/types/signing";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
-import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
+import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
+import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { ServerTrustPromptProps } from "@shared/types/serverTrust";
@@ -385,6 +386,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
                 savedGame: unknown,
                 capture?: string,
                 metadata?: unknown,
+                compatibility?: SaveCompatibilityStamp,
             ) =>
                 ipcClient.invoke(IPCEventType.devModeSaveWrite, {
                     projectRef,
@@ -392,11 +394,14 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
                     savedGame,
                     capture,
                     metadata,
+                    compatibility,
                 }) as Promise<RequestStatus<void>>,
             read: (projectRef: DevModeSaveProjectRef, id: string) =>
                 ipcClient.invoke(IPCEventType.devModeSaveRead, { projectRef, id }) as Promise<RequestStatus<{ record: DevModeSaveRecord | null }>>,
             listIds: (projectRef: DevModeSaveProjectRef) =>
                 ipcClient.invoke(IPCEventType.devModeSaveListIds, { projectRef }) as Promise<RequestStatus<{ ids: string[] }>>,
+            listHeaders: (projectRef: DevModeSaveProjectRef) =>
+                ipcClient.invoke(IPCEventType.devModeSaveListHeaders, { projectRef }) as Promise<RequestStatus<{ headers: DevModeSaveHeader[] }>>,
             readPreview: (projectRef: DevModeSaveProjectRef, id: string) =>
                 ipcClient.invoke(IPCEventType.devModeSaveReadPreview, { projectRef, id }) as Promise<RequestStatus<{ capture: string | null }>>,
             delete: (projectRef: DevModeSaveProjectRef, id: string) =>

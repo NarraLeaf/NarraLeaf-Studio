@@ -1,4 +1,5 @@
-import type { DevModeSaveRecord } from "@shared/types/devModeSave";
+import { devModeSaveHeaderOf, type DevModeSaveHeader, type DevModeSaveRecord } from "@shared/types/devModeSave";
+import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import {
     buildRuntimeSaveRecord,
     normalizeRuntimeJsonValue,
@@ -24,7 +25,13 @@ export class WebGameStorage {
 
     constructor(private readonly dbName: string) {}
 
-    public async writeSave(id: string, savedGame: unknown, capture?: string, metadata?: unknown): Promise<void> {
+    public async writeSave(
+        id: string,
+        savedGame: unknown,
+        capture?: string,
+        metadata?: unknown,
+        compatibility?: SaveCompatibilityStamp,
+    ): Promise<void> {
         const normalizedId = normalizeRuntimeSaveId(id);
         const previous = await this.readSave(normalizedId);
         const record = buildRuntimeSaveRecord({
@@ -32,6 +39,7 @@ export class WebGameStorage {
             savedGame,
             capture,
             metadata,
+            compatibility,
             previous,
             now: new Date().toISOString(),
         });
@@ -47,6 +55,23 @@ export class WebGameStorage {
     public async listSaveIds(): Promise<string[]> {
         const keys = await this.run(SAVES_STORE, "readonly", store => store.getAllKeys());
         return keys.map(key => String(key));
+    }
+
+    /**
+     * Every slot's header. One `getAll` rather than a read per key: the store's own transaction
+     * already hands back every value, and the captures are dropped here rather than fetched
+     * separately.
+     */
+    public async listSaveHeaders(): Promise<DevModeSaveHeader[]> {
+        const values = await this.run(SAVES_STORE, "readonly", store => store.getAll());
+        const headers: DevModeSaveHeader[] = [];
+        for (const value of values) {
+            const record = parseRuntimeSaveRecord(value);
+            if (record) {
+                headers.push(devModeSaveHeaderOf(record));
+            }
+        }
+        return headers;
     }
 
     public async readSavePreview(id: string): Promise<string | null> {

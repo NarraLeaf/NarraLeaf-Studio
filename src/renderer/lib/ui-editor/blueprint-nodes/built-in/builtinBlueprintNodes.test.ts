@@ -407,7 +407,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     isGameOverlay: () => false,
                     quit: async () => undefined,
                     writeSave: async () => undefined,
-                    loadSave: async () => undefined,
+                    loadSave: async () => true,
                     deleteSave: async () => undefined,
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
@@ -561,7 +561,7 @@ function createPageNavigationHostAdapter(
                     isGameOverlay: () => false,
                     quit: async () => undefined,
                     writeSave: async () => undefined,
-                    loadSave: async () => undefined,
+                    loadSave: async () => true,
                     deleteSave: async () => undefined,
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
@@ -616,6 +616,8 @@ function createGameSaveHostAdapter(options: {
     writtenMetadata?: unknown[];
     writtenScreenshots?: boolean[];
     loadedIds?: string[];
+    /** False makes every load a refusal, which is what `Load Save` routes to its `Failed` pin. */
+    loadSucceeds?: boolean;
     deletedIds?: string[];
     listedIds?: string[];
     metadata?: unknown;
@@ -712,6 +714,7 @@ function createGameSaveHostAdapter(options: {
                     },
                     loadSave: async (id: string) => {
                         options.loadedIds?.push(id);
+                        return options.loadSucceeds !== false;
                     },
                     deleteSave: async (id: string) => {
                         options.deletedIds?.push(id);
@@ -3062,9 +3065,12 @@ describe("built-in blueprint nodes", () => {
                 valueType: item.valueType,
             });
         }
+        // `Failed` and no `Next`: a load that lands has replaced the running game, so there is
+        // nothing left for a `next` to run, while a refusal leaves the save screen standing.
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)?.pins.map(pin => pin.id)).toEqual([
             "in",
             "id",
+            "failed",
         ]);
         const saveGameNode = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE);
         expect(saveGameNode?.displayName).toBe("Save Game");
