@@ -135,7 +135,7 @@ export const build = {
             variantHint: "パッチは、それが作られたバリアントのビルドでしか開かない",
             baselineLabel: "このパッチの対象ビルド",
             baselinePlaceholder: "空のままならゲーム全体を入れる",
-            baselineHint: "そのビルドの app.asar（resources フォルダー内）。そこと異なる分だけが入る",
+            baselineHint: "パッケージャーが書き出したデスクトップビルドのフォルダー。そこと異なる分だけが入る",
             outputLabel: "保存先",
             nameLabel: "名前",
             namePlaceholder: "ゲームのログに表示される",
