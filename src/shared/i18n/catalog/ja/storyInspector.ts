@@ -133,6 +133,9 @@ export const storyInspector = {
         slide: "プッシュ",
         throughColor: "色を挟む",
         darkness: "暗さ",
+        exposure: "露出",
+        exposureEv: "露出量（EV）",
+        exposureLift: "暗部の持ち上げ 0-1",
         startX: "開始 X",
         startY: "開始 Y",
         blurPx: "ぼかし px",
@@ -157,6 +160,7 @@ export const storyInspector = {
         slide: "古い画像が出ていき、新しい画像が片側から入ってくる",
         darkness: "開始の暗さで画像を入れ替え、終了の暗さまで動かす。1 → 0 は暗転から明け、0 → 1 は暗転へ落とす",
         throughColor: "画面をいったん色で覆い、保持してから、新しい画像の上で外す。暗転や白転、アイリス、フラッシュ（保持 0）に使う",
+        exposure: "画面を白飛びさせ、ハイライトから先に、暗部を最後に飛ばしてから新しい画面へ戻る。暗部の持ち上げが 0 だと黒は白くならない",
     },
 
     wipeDirection: {

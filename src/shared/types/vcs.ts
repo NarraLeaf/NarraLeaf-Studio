@@ -511,6 +511,27 @@ export function isVcsSignInAddress(url: string): boolean {
  * answer rather than something typed into a preference - which is the whole point of
  * signing in at all.
  */
+/**
+ * One project a server holds, as that server lists it.
+ *
+ * The whole of what an author needs in order to choose one: a name to read, a
+ * line about it, who made it, and the remote to clone. **`remote` is the field
+ * that matters and the field nobody types** - it is the address that used to
+ * have to be passed along by hand, and Studio stores it and shows it to nobody.
+ */
+export interface VcsServerProject {
+    /** The repository id, as the server and `loreserver` both hold it. */
+    id: string;
+    name: string;
+    description: string;
+    /** The account that made it, by username; absent for one since deleted. */
+    createdBy?: string;
+    /** Epoch ms; zero from a server too old to say. */
+    createdAt: number;
+    /** Where the repository is, e.g. `lore://studio.example.lan:41337`. */
+    remote: string;
+}
+
 export interface VcsServerAccount {
     /**
      * The account id the server keys its stored session by.
@@ -821,6 +842,36 @@ export type VcsSignInOutcome =
 export type VcsAddServerOutcome =
     | { ok: true; session: VcsServerSession; servers: VcsServerSession[] }
     | { ok: false; problem: VcsSignInProblem };
+
+/**
+ * Why a server could not say what it holds.
+ *
+ * Coded rather than worded, as every refusal that crosses this boundary is: the
+ * sentence an author reads is written in the renderer, in their language.
+ *
+ * `no-token` is the one worth knowing about. It is not "you are signed out" - the
+ * session is still there and the repositories still open. It means this
+ * installation cannot produce the token for the questions Studio asks the server
+ * directly, which happens on a machine whose keyring is unavailable and on one
+ * that added the server before Studio kept tokens at all. The way out is to add
+ * the server again with the token.
+ */
+export type VcsServerProjectsProblem =
+    | { kind: "no-token" }
+    | { kind: "refused" }
+    | { kind: "rejected"; detail: string }
+    | { kind: "unreachable" }
+    | { kind: "unknown" };
+
+/** What a server answered when asked for its projects. */
+export type VcsServerProjectsOutcome =
+    | { ok: true; projects: VcsServerProject[] }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/** What a server answered when asked to make one. */
+export type VcsServerProjectOutcome =
+    | { ok: true; project: VcsServerProject }
+    | { ok: false; problem: VcsServerProjectsProblem };
 
 /**
  * The server a project synchronises with, as the author configured it.

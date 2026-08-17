@@ -290,6 +290,7 @@ const transitionOptions = (t: TFunc): SelectOption[] => [
     { value: "slide", label: t("storyInspector.transition.slide") },
     { value: "throughColor", label: t("storyInspector.transition.throughColor") },
     { value: "darkness", label: t("storyInspector.transition.darkness") },
+    { value: "exposure", label: t("storyInspector.transition.exposure") },
 ];
 
 const wipeDirectionOptions = (t: TFunc): SelectOption[] => [
@@ -337,6 +338,7 @@ const transitionHints = (t: TFunc): Record<string, string> => ({
     slide: t("storyInspector.transitionHint.slide"),
     throughColor: t("storyInspector.transitionHint.throughColor"),
     darkness: t("storyInspector.transitionHint.darkness"),
+    exposure: t("storyInspector.transitionHint.exposure"),
 });
 
 const imageOperationOptions = (t: TFunc): SelectOption[] => [
@@ -2411,6 +2413,15 @@ function TransitionEditor(props: {
                     <>
                         <NumberField label={t("storyInspector.transition.darknessFrom")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
                         <NumberField label={t("storyInspector.transition.darknessTo")} value={paramNumber(value.props, "to")} onChange={to => setParam({ to })} />
+                    </>
+                ) : null}
+                {kind === "exposure" ? (
+                    // Left empty the compiler applies 4.6 EV / 0.04 lift / no hold. Lift is the
+                    // one to reach for on a night scene: gain alone leaves the shadows black.
+                    <>
+                        <NumberField label={t("storyInspector.transition.exposureEv")} value={paramNumber(value.props, "ev")} onChange={ev => setParam({ ev })} />
+                        <NumberField label={t("storyInspector.transition.exposureLift")} value={paramNumber(value.props, "lift")} onChange={lift => setParam({ lift })} />
+                        <NumberField label={t("storyInspector.transition.holdPct")} value={paramNumber(value.props, "hold")} onChange={hold => setParam({ hold })} />
                     </>
                 ) : null}
             </FieldGrid>

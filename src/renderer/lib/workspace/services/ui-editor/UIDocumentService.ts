@@ -111,6 +111,7 @@ import {
     MAIN_APP_SURFACE_ID,
 } from "@shared/constants/ui-editor";
 import { isListLikeWidgetType, type UIListElementExtra } from "@shared/types/ui-editor/list";
+import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
 import {
     UI_SWITCH_ELEMENT_TYPE,
@@ -446,11 +447,7 @@ function ensureElementSerializedAppearance(element: UIElement): boolean {
         element.props = props;
         return true;
     }
-    const isTextLike =
-        element.type === "nl.text" ||
-        element.type === DIALOG_SENTENCE_WIDGET_TYPE ||
-        element.type === NVL_TEXTS_WIDGET_TYPE;
-    if (isTextLike) {
+    if (isWidgetTypeOf(element.type, "nl.text")) {
         const props: TextWidgetProps = {
             ...cloneJson(defaultTextWidgetProps),
             ...(element.props ?? {}),

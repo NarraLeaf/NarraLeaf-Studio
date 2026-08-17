@@ -1,6 +1,7 @@
 import { ReactNode, ComponentType } from "react";
 import type { TranslationKey } from "@shared/i18n";
 import type { WorkspaceContext } from "../services";
+import type { HelpTopicId } from "@/lib/help";
 
 /**
  * Notification types
@@ -203,6 +204,16 @@ export interface Dialog {
     width?: string | number;
     height?: string | number;
     onClose?: () => void;
+    /**
+     * Tags the dialog for `F1` and puts a `?` beside its close button, the same way
+     * {@link Modal} does for the dialogs that are components rather than service calls.
+     *
+     * Opt-in per dialog and left off by default: a dialog whose own words answer the one
+     * question it asks needs no topic, and a `?` on every one of them is a glyph the author
+     * learns to skip. Set it where the dialog decides something that cannot be read off its
+     * controls.
+     */
+    helpTopic?: HelpTopicId;
 }
 
 /**

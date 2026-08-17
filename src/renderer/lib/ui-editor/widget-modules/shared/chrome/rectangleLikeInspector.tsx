@@ -16,7 +16,9 @@ import type { ColorValue, InlineRowItemContext } from "@/apps/workspace/modules/
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIInspectorData, InspectorContext, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import type { RectangleLikeProps, StrokeJoin } from "@shared/types/ui-editor/rectangleLike";
+import { DEFAULT_GRADIENT_FILL } from "@shared/types/ui-editor/gradientFill";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
+import { GradientFillEditor } from "@/lib/ui-editor/widget-modules/shared/appearance/GradientFillEditor";
 import { getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
 import { strokeSideSelectedIds, strokeSideSpecFromSelectedIds } from "./strokeSideSpec";
 import {
@@ -532,6 +534,102 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                   {
                     id: "props.fillImageVisible",
                     className: "flex-1 min-w-[7.5rem] max-w-[9rem]",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const visible = resolveProps(data.element).fillVisible;
+                      const toggle = () => {
+                        onSaving(true);
+                        try {
+                          patchProps({
+                            fillVisible: !visible,
+                          });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={toggle}
+                          aria-pressed={visible}
+                          aria-label={translate("widgets.rectangleInspector.toggleFillVisibility")}
+                          className={controlButtonClass(visible)}
+                        >
+                          {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </button>
+                      );
+                    },
+                  },
+                ],
+              }),
+              defineField<D, any>({
+                id: "props.gradientFillRow",
+                type: "inlineRow",
+                gap: 8,
+                wrap: true,
+                label: translate("widgets.rectangleInspector.gradientFill"),
+                // The three fill rows are mutually exclusive on one field, so this predicate is the
+                // twin of the `!== "color"` and `!== "image"` ones above: a gradient hides both of
+                // them, and neither of them shows for a gradient.
+                hidden: (data: D) => resolveProps(data.element).fillType !== "gradient",
+                items: [
+                  {
+                    id: "props.gradientFillEditor",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const current = resolveProps(data.element);
+                      return (
+                        <GradientFillEditor
+                          value={current.gradientFill ?? DEFAULT_GRADIENT_FILL}
+                          draftResetKey={element.id}
+                          onChange={(next) => {
+                            onSaving(true);
+                            try {
+                              // `fillType` goes with it, exactly as picking an image does: the row
+                              // is only reachable while the fill is a gradient, but writing both
+                              // keeps the pair consistent if it is ever reached another way.
+                              patchProps({ fillType: "gradient", gradientFill: next });
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "props.fillGradientOpacity",
+                    className: "flex-1",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const percent = formatPercentDisplay(resolveProps(data.element).fillOpacity);
+
+                      return (
+                        <NumericDraftEnhancedInput
+                          committedDisplay={percent}
+                          draftResetKey={element.id}
+                          onFiniteNumber={(value) => {
+                            const clamped = Math.min(100, Math.max(0, value));
+                            onSaving(true);
+                            try {
+                              patchProps({
+                                fillOpacity: clamped / 100,
+                              });
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
+                          inputMode="decimal"
+                          unit="%"
+                          min={0}
+                          max={100}
+                          precision={null}
+                          leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "props.fillGradientVisible",
+                    className: "flex-shrink-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const visible = resolveProps(data.element).fillVisible;
                       const toggle = () => {

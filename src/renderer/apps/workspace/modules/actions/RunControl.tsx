@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
@@ -19,6 +19,7 @@ import { readProjectMobileOrientation, readProjectViewportConfig } from "@/apps/
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
+import { openPatchDialog } from "./PatchDialog";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 import {
     getTestRunService,
@@ -34,6 +35,8 @@ import type { TestRunRecord } from "@/lib/testing/types";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { GameBuildStatus } from "@shared/types/gameBuild";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
+import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
+import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { WorkspaceRunCommand } from "@shared/types/menu";
 import type { TranslationKey } from "@shared/i18n";
 
@@ -282,13 +285,43 @@ export function RunControl() {
     const buildBlocked = frozen;
 
     /** Start one mode. Shared with the palette's run commands so the flush-then-launch order is not copied. */
+    /**
+     * Refresh the plugin dependency table before a run.
+     *
+     * Which plugin runtime entries go into the pack is decided from that table (see
+     * `selectRuntimePluginsForPack`), and until now only a build, an export, or a visit to the
+     * Project panel ever refreshed it. So the first run after an author added the row that USES a
+     * plugin - a plugin blueprint node, a plugin story action - ran a game the plugin was not in,
+     * and the feature simply did not happen with nothing on screen to say why.
+     *
+     * Best-effort and awaited: a scan failure must not stop the author running their game, but a
+     * run that starts before the scan lands would pack the stale answer, which is the bug.
+     * Skipped on a frozen workspace, for the reason the export path documents - nobody asked for
+     * this write, and it is bookkeeping rather than the thing being run.
+     */
+    const refreshDependenciesForRun = async () => {
+        if (!context || getProjectWriteFreeze() !== null) {
+            return;
+        }
+        try {
+            await context.services
+                .get<ProjectDependencyService>(Services.ProjectDependency)
+                .rescanAndPersist();
+        } catch (error) {
+            console.warn("[run] plugin dependency rescan failed", error);
+        }
+    };
+
     const launchMode = (target: RunMode) => {
         if (!workspace || !context) {
             return;
         }
         if (target === "preview") {
-            void context.services.get<PreviewService>(Services.Preview)
-                .launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
+            void (async () => {
+                await refreshDependenciesForRun();
+                await context.services.get<PreviewService>(Services.Preview)
+                    .launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
+            })();
             return;
         }
         const dev = context.services.get<DevModeService>(Services.DevMode);
@@ -298,6 +331,7 @@ export function RunControl() {
             } catch (e) {
                 console.error("[DevMode] flush before launch failed", e);
             }
+            await refreshDependenciesForRun();
                 // No safeAreaId on purpose: the top bar runs the game the way a player gets it. The
             // orientation is project context rather than a design aid, and the Dev Mode window's
             // own safe-area picker needs it to resolve a device onto the right edge.
@@ -646,6 +680,37 @@ export function RunControl() {
                                 {building ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-4 w-4" />}
                             </span>
                             <span className="flex-1 text-left">{t("actions.run.productionBuild")}</span>
+                            <span className="w-3" />
+                        </button>
+
+                        {/* Export patch. Directly under Production Build because it is the same
+                            kind of thing - it produces a file rather than launching anything - and
+                            because it is only ever reached after a build: a patch is made for one.
+                            Gated by the same freeze, and for the same reason: it compiles the
+                            project. */}
+                        <button
+                            type="button"
+                            role="menuitem"
+                            aria-disabled={buildBlocked || undefined}
+                            disabled={buildBlocked}
+                            data-tip={buildBlocked ? frozenTitle : undefined}
+                            onClick={() => {
+                                setMenuOpen(false);
+                                if (workspace) {
+                                    void openPatchDialog(workspace);
+                                }
+                            }}
+                            className={cn(
+                                "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                buildBlocked
+                                    ? "cursor-not-allowed text-fg-subtle"
+                                    : "text-fg-muted hover:bg-fill hover:text-fg",
+                            )}
+                        >
+                            <span className="flex h-4 w-4 items-center justify-center">
+                                <FileDiff className="h-4 w-4" />
+                            </span>
+                            <span className="flex-1 text-left">{t("actions.run.exportPatch")}</span>
                             <span className="w-3" />
                         </button>
 

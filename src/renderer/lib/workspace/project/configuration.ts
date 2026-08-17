@@ -1,3 +1,4 @@
+import { readDistributionRecord, type DistributionRecord } from "@shared/utils/distributionKey";
 import {
     GAME_RUNTIME_CROP_ANCHORS_X,
     GAME_RUNTIME_CROP_ANCHORS_Y,
@@ -21,6 +22,7 @@ import {
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
+import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
 import type { SigningPlatform } from "@shared/types/signing";
 import type { VoiceConfiguration } from "@shared/types/voice";
 import type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
@@ -62,6 +64,15 @@ export {
     normalizeAutoSaveConfiguration,
 } from "@shared/types/saves";
 export type { AutoSaveConfiguration } from "@shared/types/saves";
+export {
+    DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION,
+    normalizeSaveCompatibilityConfiguration,
+} from "@shared/types/saveCompatibility";
+export type {
+    SaveCompatibilityConfiguration,
+    SaveCompatiblePolicy,
+    SaveIncompatiblePolicy,
+} from "@shared/types/saveCompatibility";
 export {
     DEFAULT_PLAYER_PREFERENCES,
     PLAYER_PREFERENCE_GROUPS,
@@ -305,6 +316,39 @@ export function normalizeSigningConfiguration(value: unknown): SigningConfigurat
     return normalized;
 }
 
+/**
+ * The project's distribution key, and when it was last replaced.
+ *
+ * One value, kept for the life of the project and carried with it, so that every
+ * member of a team can produce a build - and, later, an add-on that a build
+ * already in players' hands will read and recognise. Deriving it per build
+ * instead would tie add-ons to whoever kept that build's output.
+ *
+ * `key` is opaque: it is produced by the protection component, written here, and
+ * handed back verbatim. Nothing in Studio reads it and no screen shows it - what
+ * an author sees is `rotatedAt`, which is the only part of it that answers a
+ * question a person can act on.
+ *
+ * Absent until the author asks for one. A project without a key builds exactly as
+ * before and simply cannot be given an add-on later.
+ */
+export type DistributionConfiguration = DistributionRecord;
+
+/**
+ * Coerce an unknown persisted value into a distribution configuration, or null
+ * when the project has none.
+ *
+ * A half-written entry normalizes to null rather than to a blank key: a key that
+ * is present but empty would let a build proceed and produce a title nothing can
+ * ever be added to, which is the one outcome that cannot be noticed later.
+ */
+export function normalizeDistributionConfiguration(value: unknown): DistributionConfiguration | null {
+    // Through the shared reader, not a second copy of the same rules: the build
+    // decides what counts as "this project has a key", and a panel that disagreed
+    // would show a state the build does not act on.
+    return readDistributionRecord({ distribution: value });
+}
+
 export type ProjectAppConfiguration = {
     network: NetworkConfiguration;
     /** Game localization setup (see @shared/types/localization); absent until configured. */
@@ -322,6 +366,12 @@ export type ProjectAppConfiguration = {
     /** Automatic saving in the shipped game; absent until configured (see the defaults). */
     autoSave?: AutoSaveConfiguration;
     /**
+     * What a save written by another build of this game may do; absent until configured (see the
+     * defaults, which differ per half - a same-story save resumes, a different-story one puts the
+     * player back where it stopped).
+     */
+    saveCompatibility?: SaveCompatibilityConfiguration;
+    /**
      * What the player's settings start at (see @shared/types/preference); absent until configured.
      *
      * The starting point only. Everything here is writable at runtime by the player and by the
@@ -329,6 +379,11 @@ export type ProjectAppConfiguration = {
      * is what a *new* player gets, not a cap on what the game may do.
      */
     preferences?: PlayerPreferences;
+    /**
+     * The key that ties this project to the builds it produces; absent until the
+     * author mints one. Travels with the project on purpose - see the type.
+     */
+    distribution?: DistributionConfiguration;
     /** Which signing credential each platform uses - ids only; absent until configured. */
     signing?: SigningConfiguration;
     /** Last production-build dialog selection; absent until the first build. */

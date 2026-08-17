@@ -204,6 +204,14 @@ export interface UIWidgetModule {
     /** Unique type identifier (e.g. "nl.container") */
     readonly type: string;
 
+    /**
+     * Widget type this module specialises, set by `extendWidgetModule`.
+     *
+     * Mirrors the entry in `WIDGET_TYPE_PARENTS`, which is the shared table the capability lookups
+     * (effect kinds, logic API, appearance backfill) read - `shared` cannot see a renderer module.
+     */
+    readonly extends?: string;
+
     /** Shared logic capability schema for editor, runtime, and blueprint tooling. */
     readonly logicApi?: WidgetLogicApi;
 

@@ -52,7 +52,7 @@ export const story = {
             roundtrip: "往復用",
             roundtripDetail: "シーンのデータを持つので、読み込み直せる",
             review: "確認用",
-            reviewDetail: "文だけ。読みやすく、差分も取りやすい。読み込み直せない",
+            reviewDetail: "文だけ。読み込み直せない",
         },
         exported: "{path} に書き出した",
         importTitle: "スクリプトを読み込む",
@@ -96,8 +96,73 @@ export const story = {
             shapeMismatchText: "文の行がアクションの行に書き換えられていた。文を残し、その編集は捨てた",
             duplicateAnchor: "行が複製されていた。複製には新しい識別子を与えた",
             unknownRun: "書式の印が、このスクリプトに無い書式を指している",
-            unplaceableLine: "新しい行の置き場所がここには無い",
+            unplaceableLine: "ここには新しい行を置けない",
             speakerUnresolved: "この行はキャラクターと結びついていないので、元の話者名を残した。文のほうは変わっている",
+        },
+    },
+    // NarraLang の書き出し。ストーリーをスクリプトとして読み、差分を取るためのもの。一方向なので、
+    // スクリプトで言えない行は拒まずに報告し、ファイルはどちらにせよ書く。`reason` は印刷側の
+    // コードをキーにしているので、新しいコードは、生の識別子として作者に届く前に突き合わせの
+    // テストで落ちる。
+    narralang: {
+        exportScene: "NarraLang として書き出す…",
+        exportStory: "ストーリーを NarraLang として書き出す…",
+        sceneMissing: "このシーンはもうストーリーに無い",
+        reportTitle: "スクリプトの書き方が無い行",
+        reportSummary: {
+            other: "{count} 行にスクリプトの書き方が無い。ファイルはその内容をすべては持っていない",
+        },
+        unresolvedRefNamed: "この行が指している{what}はもう無い",
+        detail: {
+            asset: "アセット",
+            character: "キャラクター",
+            appearance: "外見",
+            motion: "ストーリーモーション",
+            scene: "シーン",
+            variable: "変数",
+            variant: "ビルドバリアント",
+            camera: "カメラ位置",
+            displayable: "舞台上のもの",
+            layer: "レイヤー",
+        },
+        reason: {
+            blueprintAction: "この行はブループリントが実行する。ブループリントにスクリプトの書き方は無い",
+            blueprintCondition: "この条件はブループリントが決める",
+            blueprintInterpolation: "文の中の値をブループリントが計算する",
+            inlineEvent: "文が、表示していく途中で発生するイベントを持っている",
+            invalidRow: "この行のコマンドを読めなかったので、そのまま書き出した",
+            customTransform: "この動きはコマ単位で作られているか、スクリプトが名前を持たないプロパティを含む",
+            customTransition: "この切り替えは、スクリプトが名前を持たないプロパティを含む",
+            effectProps: "この効果は、スクリプトが名前を持たないプロパティを含む",
+            unresolvedRef: "この行が指しているものはもう無い",
+            unknownPayload: "この種類の行はスクリプトがまだ扱わない",
+        },
+        parse: {
+            unknownStatement: "この行はキーワードで始まっているが、その文の書き方になっていない",
+            unknownName: "この行が挙げている名前は、プロジェクトに無い",
+            unknownNameNamed: "この行が挙げている{what}は、プロジェクトに無い",
+            ambiguousName: "この名前を持つものが複数あり、どれを指すか決められない",
+            ambiguousNameNamed: "この名前を持つ{what}が複数あり、どれを指すか決められない",
+            ambiguousStatement: "この行に当てはまる文が複数あり、区別できない",
+            badWord: "この文はここでこの語を受け付けない",
+            missingValue: "この文には必要な値が足りていない",
+            conflictingValues: "この行は同じことを二通りに指定している",
+            badIndent: "この行の字下げが段の途中か、一段飛ばしている",
+            danglingBranch: "この分岐が属する条件が上に無い",
+            badTag: "この行に、知らない書式タグか、閉じていないタグがある",
+            badExpression: "この式は解決できない",
+        },
+        view: {
+            open: "スクリプトとして読む",
+            close: "行に戻る",
+            readOnly: "このシーンにはスクリプトの形を持たない行があるので、ここからは書き戻せない",
+            gate: {
+                other: "{count} 行にスクリプトの書き方が無いので、このシーンは今後もここでは編集できない",
+            },
+            unread: {
+                other: "{count} 行を読めていない。シーンは変わっていない",
+            },
+            renameElsewhere: "シーン名は変えていない。名前の変更はアウトラインから",
         },
     },
     // 文のかたまりをシーンに貼り付ける。ウィザードが尋ねるのは誰が話しているかの 1 点だけで、
@@ -454,6 +519,7 @@ export const story = {
         dots: "ドット",
         black: "暗転",
         darkness: "暗さ",
+        exposure: "露出",
         none: "なし",
         // 表示と非表示で `t=` が届く、トランジションの語では名指しできない変形のプリセット。
         scale: "拡大縮小",
@@ -467,7 +533,7 @@ export const story = {
         zoom: "ズーム",
         rotate: "回転",
         darken: "暗く",
-        motion: "運びカメラ",
+        motion: "モーション",
         reset: "リセット",
         // 変数の型
         boolean: "真偽値",
@@ -569,10 +635,10 @@ export const story = {
             characterOrName: "キャラクター、または任意の名前",
             characterForm: "そのキャラクターの表情のいずれか",
             puppet: {
-                motion: "そのランタイムが知っているモーション。空にすると止める",
-                expression: "そのランタイムが知っている表情。空にすると消す",
-                skin: "そのランタイムが知っているスキン。空にすると既定に戻す",
-                param: "そのモデルの数値パラメータを id で指定",
+                motion: "ランタイムが提供するモーション。空にすると静止に戻す",
+                expression: "ランタイムが提供する表情。空にすると消す",
+                skin: "ランタイムが提供するスキン。空にすると既定に戻す",
+                param: "モデルの数値パラメータを id で指定",
             },
             scene: "シーン",
             audioTrack: "オーディオトラック",
@@ -807,7 +873,7 @@ export const story = {
      */
     command: {
         background: { label: "背景", detail: "シーンの背景画像か背景色を決める" },
-        jump: { label: "ジャンプ", detail: "別のシーンへ移る。いまのシーンは降ろされる。/goto とは違う" },
+        jump: { label: "ジャンプ", detail: "別のシーンへ移る。いまのシーンは解放される" },
         wait: { label: "待機", detail: "指定した秒数、またはクリックまで待つ" },
         nvl: { label: "NVL", detail: "積み上げ式のダイアログパネルを切り替える" },
         show: { label: "表示", detail: "キャラクターや舞台のオブジェクトを出す" },
@@ -844,7 +910,7 @@ export const story = {
         reset: { label: "リセット", detail: "変数を初期値に戻す" },
         declareLocal: { label: "シーン変数", detail: "このシーンだけで有効な変数を宣言する" },
         if: { label: "条件", detail: "条件で分岐する" },
-        menu: { label: "メニュー", detail: "プレイヤーに選ばせる" },
+        menu: { label: "メニュー", detail: "プレイヤーに選択肢を提示する" },
         repeat: { label: "繰り返し", detail: "中のアクションを決めた回数だけ実行する。条件で回すなら /until を使う" },
         // 詳細だけが、語そのものでは言えない 1 点を言う。`until` は *止まる* ときを言うので、
         // 群は条件が偽の間だけ動く。
@@ -904,6 +970,7 @@ export const story = {
         vfx: "環境演出",
         nvl: "NVL",
         blueprint: "ブループリント",
+        plugin: "プラグイン",
         effect: "エフェクト",
         camera: "カメラ",
         control: "制御",
@@ -960,6 +1027,7 @@ export const story = {
         vfx: "環境演出 {name} を{operation}",
         nvl: "NVL ブロック",
         blueprint: "ブループリント",
+        pluginAction: "プラグインアクション",
         effect: "{effect} の画面演出",
         cameraOp: {
             pan: "パン",

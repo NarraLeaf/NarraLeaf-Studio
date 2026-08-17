@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
 import { SearchInput } from "@/lib/components/elements";
@@ -39,18 +39,34 @@ export interface HelpBrowserResource {
 }
 
 export interface HelpBrowserProps {
-    /** Topic to show on mount; the first one otherwise. */
+    /** Topic to show on mount, and to move to whenever the host asks again; the first one otherwise. */
     initialTopic?: HelpTopicId;
+    /**
+     * Changes on every request for `initialTopic`. Asking for the topic already showing is still a
+     * request to go back to it, and the id alone cannot say that.
+     */
+    topicRequest?: number;
     resources?: readonly HelpBrowserResource[];
     /** Chord resolver handed to {@link HelpContent}. */
     resolveShortcut?: (catalogId: string) => string | undefined;
     className?: string;
 }
 
-export function HelpBrowser({ initialTopic, resources = [], resolveShortcut, className }: HelpBrowserProps) {
+export function HelpBrowser({
+    initialTopic,
+    topicRequest,
+    resources = [],
+    resolveShortcut,
+    className,
+}: HelpBrowserProps) {
     const { t } = useTranslation();
     const [query, setQuery] = useState("");
     const [selectedId, setSelectedId] = useState<HelpTopicId>(initialTopic ?? HELP_TOPICS[0].id);
+    const listRef = useRef<HTMLDivElement | null>(null);
+    // Counted rather than derived from the selection: the list is only scrolled for a request from
+    // outside. A row the author clicked is one they can already see, and moving the list under the
+    // pointer would take the next row away from them.
+    const [pendingReveal, setPendingReveal] = useState(0);
 
     // The host can retarget an already-open reader (the workspace reuses one tab, so "open help at
     // Versions" while help is open has to move the selection rather than do nothing). Keyed on the
@@ -58,8 +74,22 @@ export function HelpBrowser({ initialTopic, resources = [], resolveShortcut, cla
     useEffect(() => {
         if (initialTopic) {
             setSelectedId(initialTopic);
+            // A filter typed earlier hides the row the request just landed on, and the reader would
+            // then be showing a topic that is nowhere in its list.
+            setQuery("");
+            setPendingReveal(count => count + 1);
         }
-    }, [initialTopic]);
+    }, [initialTopic, topicRequest]);
+
+    // Runs after the same commit that applied the selection and cleared the filter, so the row is in
+    // the list by now. `nearest` leaves a row that is already visible where it is.
+    useEffect(() => {
+        if (pendingReveal === 0) {
+            return;
+        }
+        const row = listRef.current?.querySelector(`[data-help-row="${selectedId}"]`);
+        row?.scrollIntoView?.({ block: "nearest" });
+    }, [pendingReveal]);
 
     const matches = useMemo(() => filterHelpTopics(HELP_TOPICS, query, t), [query, t]);
     const matchedIds = useMemo(() => new Set(matches.map(topic => topic.id)), [matches]);
@@ -93,7 +123,7 @@ export function HelpBrowser({ initialTopic, resources = [], resolveShortcut, cla
                         aria-label={t("help.ui.searchPlaceholder")}
                     />
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+                <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-2">
                     {groups.length === 0 && (
                         <p className="px-3 py-2 text-2xs text-fg-subtle">{t("help.ui.noResults")}</p>
                     )}
@@ -106,6 +136,9 @@ export function HelpBrowser({ initialTopic, resources = [], resolveShortcut, cla
                                 <button
                                     key={topic.id}
                                     type="button"
+                                    // Not `data-help-topic`: that attribute is what `F1` reads, and
+                                    // this row is a way to a topic, not a surface described by one.
+                                    data-help-row={topic.id}
                                     onClick={() => setSelectedId(topic.id)}
                                     className={cn(
                                         "flex h-7 w-full cursor-default items-center truncate px-3 text-left text-xs transition-colors",

@@ -11,6 +11,7 @@ import {
     hasSigningIdentityForPlatform,
     isDesktopTarget,
     isMobileTarget,
+    packShipsNodeSidecar,
     resolveElectronDistDirForApp,
     signingSecretsResolved,
     toWorkerAndroidSigning,
@@ -225,6 +226,45 @@ describe("gameFusesForPlatform", () => {
         expect(gameFusesForPlatform("macos", false).resetAdHocDarwinSignature).toBe(true);
         expect(gameFusesForPlatform("windows", false).resetAdHocDarwinSignature).toBe(false);
         expect(gameFusesForPlatform("linux", false).resetAdHocDarwinSignature).toBe(false);
+    });
+
+    /*
+     * A `kind: "node"` sidecar starts by running the game's own binary as a Node interpreter, which
+     * the runAsNode fuse can refuse. Without this the feature is dead in every packaged build while
+     * working perfectly in preview, so the failure never appears until after shipping.
+     */
+    it("allows runAsNode only for a build that ships a node sidecar", () => {
+        for (const platform of ["windows", "macos", "linux"] as const) {
+            expect(gameFusesForPlatform(platform, false, true).runAsNode).toBe(true);
+            expect(gameFusesForPlatform(platform, false, false).runAsNode).toBe(false);
+            // Relaxing that one fuse must not quietly relax its neighbours.
+            const relaxed = gameFusesForPlatform(platform, false, true);
+            expect(relaxed.enableNodeOptionsEnvironmentVariable).toBe(false);
+            expect(relaxed.enableNodeCliInspectArguments).toBe(false);
+            expect(relaxed.onlyLoadAppFromAsar).toBe(true);
+        }
+    });
+});
+
+describe("packShipsNodeSidecar", () => {
+    const pack = (plugins: unknown[]) => ({ plugins } as unknown as Parameters<typeof packShipsNodeSidecar>[0]);
+
+    it("answers no for the shapes that mean this build has none", () => {
+        expect(packShipsNodeSidecar(null)).toBe(false);
+        expect(packShipsNodeSidecar(pack([]))).toBe(false);
+        // A plugin whose sidecars did not survive the platform filter, and one that declares none.
+        expect(packShipsNodeSidecar(pack([{ id: "a" }, { id: "b", sidecars: [] }]))).toBe(false);
+    });
+
+    it("answers no for executable sidecars, which do not need the fuse", () => {
+        expect(packShipsNodeSidecar(pack([{ id: "a", sidecars: [{ id: "s", kind: "executable" }] }]))).toBe(false);
+    });
+
+    it("answers yes when any plugin ships one", () => {
+        expect(packShipsNodeSidecar(pack([
+            { id: "a", sidecars: [{ id: "s", kind: "executable" }] },
+            { id: "b", sidecars: [{ id: "t", kind: "node" }] },
+        ]))).toBe(true);
     });
 });
 

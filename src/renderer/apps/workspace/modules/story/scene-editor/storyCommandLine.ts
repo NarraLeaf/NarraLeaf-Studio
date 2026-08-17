@@ -1075,6 +1075,14 @@ function actionSentence(
             // `/blueprint` takes no arguments, so the line would say strictly less than the row's own
             // sentence (which names the bound blueprint). The prose stands.
             return null;
+        case "plugin":
+            // Unreachable in practice - `storyVerbCommandId` has already returned null above, because
+            // a plugin's action is not in the command registry and cannot be: the registry is a closed
+            // union the parser, the manual and four derived tables all read, and a command that comes
+            // and goes with an install would put a hole in every one of them. The arm exists so this
+            // switch stays exhaustive, which is what makes the next payload added here a compile
+            // error rather than a row that silently renders as nothing.
+            return null;
     }
 }
 

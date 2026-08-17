@@ -218,6 +218,124 @@ describe("SpellcheckManager", () => {
     });
 });
 
+/**
+ * The same manager, against a language that does not separate its words.
+ *
+ * Nothing about the delivery changes here - the same index, the same gzipped list, the same cache -
+ * so what these tests are about is the one thing that does: the list is what finds the word, not
+ * only what judges it.
+ */
+describe("SpellcheckManager in Chinese and Japanese", () => {
+    const ZH_WORDS = ["今天", "天气", "很好", "喜欢", "学校", "天", "好", "很"].join("\n") + "\n";
+    const JA_WORDS = ["今日", "天気", "学校", "食べる", "食べ", "私"].join("\n") + "\n";
+    const ZH_PACKED = gzipSync(Buffer.from(ZH_WORDS, "utf-8"));
+    const JA_PACKED = gzipSync(Buffer.from(JA_WORDS, "utf-8"));
+    const ZH_DOWNLOAD = "https://cdn.example.com/zh.txt.gz";
+    const JA_DOWNLOAD = "https://cdn.example.com/ja.txt.gz";
+
+    let userDataDir: string;
+    const window = {};
+
+    function manager(): SpellcheckManager {
+        return new SpellcheckManager({
+            userDataDir: () => userDataDir,
+            readSetting: () => undefined,
+            readRegistryUrl: () => INDEX_URL,
+        });
+    }
+
+    beforeEach(async () => {
+        userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-spellcheck-cjk-"));
+        const body = indexJson([
+            entry({
+                code: "zh",
+                name: "Chinese",
+                bytes: ZH_PACKED.byteLength,
+                sha256: createHash("sha256").update(ZH_PACKED).digest("hex"),
+                download: ZH_DOWNLOAD,
+            }),
+            entry({
+                code: "ja",
+                name: "Japanese",
+                bytes: JA_PACKED.byteLength,
+                sha256: createHash("sha256").update(JA_PACKED).digest("hex"),
+                download: JA_DOWNLOAD,
+            }),
+        ]);
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+            if (url === ZH_DOWNLOAD) {
+                return new Response(new Uint8Array(ZH_PACKED), { status: 200 });
+            }
+            if (url === JA_DOWNLOAD) {
+                return new Response(new Uint8Array(JA_PACKED), { status: 200 });
+            }
+            return new Response(body, { status: 200 });
+        }));
+    });
+
+    afterEach(async () => {
+        vi.unstubAllGlobals();
+        await fs.rm(userDataDir, { recursive: true, force: true });
+    });
+
+    it("marks nothing in a sentence made of words", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("zh");
+
+        expect((await spellcheck.check(window, "今天天气很好", "zh")).ranges).toEqual([]);
+    });
+
+    it("marks the stretch a mistype leaves behind", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("zh");
+
+        // 汽 for 气. Neither character is unknown; the finding is that they stand together with
+        // nothing joining them, which is not how the line would have been written.
+        expect((await spellcheck.check(window, "今天天汽很好", "zh")).ranges).toEqual([
+            { start: 2, end: 4, word: "天汽" },
+        ]);
+    });
+
+    it("marks a name once, then stops when the project has been taught it", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("zh");
+
+        const text = "艾莉西亚喜欢学校";
+        expect((await spellcheck.check(window, text, "zh")).ranges).toEqual([
+            { start: 0, end: 4, word: "艾莉西亚" },
+        ]);
+
+        // The project's own words are part of the vocabulary the line is cut against, not a filter
+        // applied afterwards: the name has to be cut out whole, or what remains is marked instead.
+        await spellcheck.configure(window, { sourceLocale: "zh", words: ["艾莉西亚"] });
+        expect((await spellcheck.check(window, text, "zh")).ranges).toEqual([]);
+    });
+
+    it("leaves a conjugated verb alone, and marks the kanji run that is not a word", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("ja");
+
+        expect((await spellcheck.check(window, "今日は学校で食べる", "ja")).ranges).toEqual([]);
+        // The list holds the stem; the inflection that follows the kanji is not a spelling it can
+        // rule on and is not marked.
+        expect((await spellcheck.check(window, "今日は食べます", "ja")).ranges).toEqual([]);
+        // 汽 for 気, between two particles.
+        expect((await spellcheck.check(window, "今日は天汽です", "ja")).ranges).toEqual([
+            { start: 3, end: 5, word: "天汽" },
+        ]);
+    });
+
+    it("offers no replacements for a run in a script without spaces", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("zh");
+
+        // What the author wants back for a mistyped character is a homophone or a lookalike, and a
+        // word list holds neither relation. An empty answer beats an arbitrary one.
+        expect((await spellcheck.suggest("汽", "zh")).suggestions).toEqual([]);
+        expect((await spellcheck.suggest("艾莉西亚", "zh")).suggestions).toEqual([]);
+    });
+});
+
 describe("DictionaryCache", () => {
     let userDataDir: string;
 

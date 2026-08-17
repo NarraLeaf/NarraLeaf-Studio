@@ -93,6 +93,48 @@ export type GameBuildRequest = {
 };
 
 /**
+ * What to put in a patch, and where to write it.
+ *
+ * A patch is an export of payload, not a build: it produces no installer, signs
+ * nothing, and targets no platform. It carries the parts of a fresh compile that
+ * differ from the build it is for - the pack descriptor, which is what a new
+ * scene arrives in, and the asset bytes that changed - sealed into one file the
+ * shipped game reads beside itself.
+ *
+ * Desktop only. The web export serves its files over HTTP and has no support
+ * binary to read a patch through, so there is nothing for a patch to attach to
+ * there; the mobile shells repack that same web payload.
+ */
+export type GamePatchExportRequest = {
+    /**
+     * Which variant this patch is for. Absent, or the release id, means the
+     * project's own values.
+     *
+     * Load-bearing rather than cosmetic: a variant is a separate title with its
+     * own material, so a patch built under the wrong one cannot be opened by the
+     * build the author meant it for - and says nothing at the time it is made.
+     */
+    appTagId?: string;
+    /**
+     * The app directory of the build this patch is for, so the export can carry
+     * only what changed. Absent means carry the whole payload: always correct,
+     * and the answer when the author no longer has that build to point at.
+     */
+    baselineAppDir?: string;
+    /** Absolute path of the file to write, chosen through the save dialog. */
+    outputFile: string;
+    /** The author's name for it, carried inside and shown in the game's log. */
+    name?: string;
+    /**
+     * Where this patch sits among others on the same build; higher applies later.
+     * Defaults to 0, which leaves the order to how the files were found.
+     */
+    order?: number;
+    /** Reveal the file when the export finishes. Defaults to true. */
+    openWhenDone?: boolean;
+};
+
+/**
  * Which build-dialog section a preflight finding belongs to.
  *
  * `plugins` is the one section whose page is not always on screen: it exists only where an installed

@@ -74,19 +74,23 @@ export function findPackPuppetBackendSource(
  * `.../asset/{id}/{entry}` makes them resolve to `{id}/{rel}`, which is exactly the key the packer wrote
  * for each file.
  *
- * Null when the asset is not in the pack — a model that was removed after the widget referenced it.
+ * The URL is the bundle's own directory — `.../asset/{id}/`, with the trailing slash — not the entry
+ * file inside it. Both forms make `resolveSibling` land on `{id}/{rel}`; the difference is that this
+ * one does not have to know what the entry is called, so a shipped game no longer states the file
+ * name of every character's model. The shell answers the mount request by reading the path from the
+ * payload, keyed by the id the caller already had.
+ *
+ * Null when the id names no model bundle: either it is an ordinary asset, or it is a model that was
+ * removed after the widget referenced it. Both callers answer null by falling back to the plain
+ * asset URL, so the two cases stay indistinguishable here on purpose.
  */
 export function resolvePackModelBundleUrl(
     bridge: GameRuntimePreloadBridge | null,
     pack: GameRuntimePackV1 | null,
     assetId: string,
 ): string | null {
-    if (!bridge) {
+    if (!bridge || !assetId) {
         return null;
     }
-    const item = pack?.assets.items[assetId];
-    if (!item) {
-        return null;
-    }
-    return bridge.assetUrl(item.bundleEntry ? `${assetId}/${item.bundleEntry}` : assetId);
+    return pack?.assets.modelBundles?.includes(assetId) ? bridge.assetUrl(`${assetId}/`) : null;
 }

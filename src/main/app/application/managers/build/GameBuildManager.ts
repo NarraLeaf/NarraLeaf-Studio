@@ -32,6 +32,7 @@ import {
     type GameBuildRequest,
     type GameBuildStateSnapshot,
     type GameBuildTarget,
+    type GamePatchExportRequest,
 } from "@shared/types/gameBuild";
 import {
     normalizeWebOptimizationConfiguration,
@@ -93,6 +94,13 @@ import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProto
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
+import { createSealedLayer, LAYER_DESCRIPTOR_ENTRY } from "@narraleaf/encryption";
+import { formatBytes } from "@shared/utils/formatBytes";
+import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
+import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import { readDistributionKey } from "@shared/utils/distributionKey";
+import { PATCH_DIRECTORY_NAME, resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
+import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { getMainLocale, getMainTranslator } from "../../i18n";
 import { readProjectAppTagDocumentFromDir, readProjectAppTagsFromDir } from "../../utils/appTagsFile";
@@ -181,21 +189,57 @@ export function resolveElectronDistDirForApp(
 export { deriveGameAppId };
 
 /**
- * Fixed hardening fuse set for shipped games; not user-configurable.
+ * Whether this build ships a sidecar that runs as JavaScript rather than as its own executable.
  *
- * `hasSigningIdentity` gates asar integrity validation. That fuse hard-quits
- * the app on any post-package mutation of app.asar - real tamper-evidence when
- * a trusted signature seals the embedded hash, but on an ad-hoc/unsigned build
- * it is downside-only: an attacker just recomputes the hash and re-signs
- * ad-hoc, while ordinary players get a silent hard-crash if antivirus, disk
- * corruption or an updater ever touches the archive. It also does not cover
- * the asset payload, which ships outside the asar with its own protection. So
- * it stays off until real code signing is configured, at which point it earns
- * its keep. (Linux has no asar-integrity support regardless.)
+ * Such a sidecar is started by running the game's own Electron binary as a Node interpreter, which
+ * is a thing `ELECTRON_RUN_AS_NODE` asks for and the `runAsNode` fuse can refuse - so the fuse and
+ * the feature cannot both be absolute. Asked of the compiled pack rather than of the project,
+ * because the pack is what actually shipped: a plugin declaring a sidecar for another platform
+ * contributes nothing to this artifact and must not cost it a fuse.
  */
-export function gameFusesForPlatform(platform: GameBuildDesktopPlatform, hasSigningIdentity: boolean): GameBuildWorkerFuses {
+export function packShipsNodeSidecar(pack: GameRuntimePackV1 | null | undefined): boolean {
+    return (pack?.plugins ?? []).some(plugin =>
+        (plugin.sidecars ?? []).some(sidecar => sidecar.kind === "node"));
+}
+
+/**
+ * Hardening fuse set for shipped games; not user-configurable. Two of the fuses answer to what the
+ * build actually is rather than being fixed, and both parameters exist for that reason.
+ *
+ * `hasSigningIdentity` gates asar integrity validation. That fuse hard-quits the app on any
+ * post-package mutation of app.asar - real tamper-evidence when a trusted signature seals the
+ * embedded hash, but on an ad-hoc/unsigned build it is downside-only: an attacker just recomputes
+ * the hash and re-signs ad-hoc, while ordinary players get a silent hard-crash if antivirus, disk
+ * corruption or an updater ever touches the archive. It also does not cover the asset payload,
+ * which ships outside the asar with its own protection. So it stays off until real code signing is
+ * configured, at which point it earns its keep. (Linux has no asar-integrity support regardless.)
+ *
+ * `shipsNodeSidecar` gates `runAsNode`; see the comment on that field.
+ */
+export function gameFusesForPlatform(
+    platform: GameBuildDesktopPlatform,
+    hasSigningIdentity: boolean,
+    shipsNodeSidecar = false,
+): GameBuildWorkerFuses {
     return {
-        runAsNode: false,
+        /*
+         * Off unless something in this build needs it on.
+         *
+         * `ELECTRON_RUN_AS_NODE` is how a `kind: "node"` plugin sidecar starts: the runtime spawns
+         * the game's own binary with that variable set and the sidecar's .js as its argument. With
+         * the fuse off, the variable is ignored and that spawn silently launches a second copy of
+         * the game instead of a Node process - and only in a packaged build, since preview is not
+         * fused, so the failure appears after shipping and nowhere before it.
+         *
+         * The alternative, Electron's `utilityProcess`, is not one here: the sidecar wire protocol
+         * is NDJSON over stdin/stdout with EOF as the shutdown signal, a utility process has no
+         * stdin, and executable sidecars speak the same protocol and cannot move with it.
+         *
+         * So the fuse follows the build. A game that ships no node sidecar - nearly all of them -
+         * is unchanged and keeps the variable refused. One that does has already had its author
+         * accept that plugin's sidecar permission, and relaxes exactly this one fuse to honour it.
+         */
+        runAsNode: shipsNodeSidecar,
         // Left off deliberately: a game stores no Chromium cookies (saves and
         // persistence are its own JSON stores), and enabling OS cookie
         // encryption makes the first launch prompt for keychain/secret-store
@@ -824,6 +868,336 @@ export class GameBuildManager {
         return session.snapshot;
     }
 
+
+    /**
+     * Produce a patch for a build of this project.
+     *
+     * Shares the build's session, console and cancel deliberately: it compiles the
+     * same project into the same staging directory, so two of them at once would
+     * be two writers of one directory - and an author watching either is watching
+     * the same console. It is not a build, though, and produces none of a build's
+     * output: no installer, no signature, no platform.
+     */
+    public exportPatch(
+        projectPath: string,
+        entry: GameRuntimeLaunchEntry,
+        request: GamePatchExportRequest,
+    ): GameBuildStateSnapshot {
+        const normalizedProjectPath = path.resolve(projectPath);
+        const key = this.projectKey(normalizedProjectPath);
+        const existing = this.sessions.get(key);
+        if (existing && isActiveStatus(existing.snapshot.status)) {
+            return existing.snapshot;
+        }
+        const session: BuildSession = {
+            id: crypto.randomUUID(),
+            projectPath: normalizedProjectPath,
+            snapshot: { status: "preparing", startedAt: Date.now(), platforms: [] },
+            worker: null,
+            cancelled: false,
+        };
+        this.sessions.set(key, session);
+        const frozen = getWorkspaceFreeze(normalizedProjectPath);
+        if (frozen) {
+            const message = workspaceFrozenMessage(frozen, "patch export");
+            session.snapshot = {
+                status: "error",
+                startedAt: session.snapshot.startedAt,
+                finishedAt: Date.now(),
+                platforms: [],
+                error: message,
+            };
+            this.emit(session, { level: "error", source: "Build", message });
+            return session.snapshot;
+        }
+        void this.runPatchExport(session, entry, request).catch(error => {
+            this.failSession(session, error instanceof Error ? error.message : String(error));
+        });
+        return session.snapshot;
+    }
+
+    private async runPatchExport(
+        session: BuildSession,
+        entry: GameRuntimeLaunchEntry,
+        request: GamePatchExportRequest,
+    ): Promise<void> {
+        const projectPath = session.projectPath;
+        this.emit(session, { level: "info", source: "Build", message: "patch export started" });
+
+        const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        const declaredScenes = resolveAppTagReachableScenes(
+            appTag,
+            (await readProjectAppTagDocumentFromDir(projectPath).catch(() => null))?.reachableScenes,
+        );
+        const identity = this.resolveIdentity(session, projectConfig, projectPath, appTag);
+
+        // Without a key there is nothing to seal a patch with, and nothing in any
+        // shipped build that could read one. Said as the thing the author does
+        // next, because it is one action in a place they have not been yet.
+        const distributionKey = readDistributionKey(projectConfig?.app);
+        if (!distributionKey) {
+            throw new Error(
+                "This project has no distribution key, so a patch cannot be made for it. "
+                + "Create one in Project > Project, then build again - only builds made after that can accept patches.",
+            );
+        }
+        const distribution = { key: distributionKey, titleId: identity.appId };
+
+        const pluginSelection = await this.selectRuntimePlugins(projectPath, projectConfig);
+        if (pluginSelection.errors.length > 0) {
+            throw new Error(`Plugin validation failed:\n${pluginSelection.errors.join("\n")}`);
+        }
+        // The same protection setting the build used, because that is what decides
+        // how an asset is named inside the payload. A patch whose entries were
+        // named the other way would carry every asset under a name nothing asks
+        // for, and would apply cleanly while changing nothing.
+        const encryptionKey = await this.resolveEncryptionKey(projectPath, projectConfig);
+        this.ensureNotCancelled(session);
+
+        session.snapshot = { ...session.snapshot, status: "compiling" };
+        let contentAudit: ShippedContentAuditReport | null = null;
+        const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
+            projectPath,
+            entry,
+            runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
+            runtimeVersion: this.readRuntimeVersion(),
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "patch"),
+            runtimePlugins: pluginSelection.selected,
+            mode: "production",
+            appTag: { id: appTag.id, name: appTag.name },
+            declaredScenes,
+            // The payload a player receives, so it plans a scene drop and refuses a
+            // graph it cannot fold - exactly as the build it patches did.
+            packaging: true,
+            locale: getMainLocale(this.app),
+            ...(encryptionKey ? { encryptionKey } : {}),
+            appId: identity.appId,
+            productName: identity.productName,
+            ...(identity.identifier ? { identifier: identity.identifier } : {}),
+            distribution,
+            // The platforms this project builds for, so a plugin's platform-scoped
+            // configuration resolves to the same answer it did in the build. A
+            // patch has no targets of its own to read it from.
+            ...(patchPlatforms(projectConfig).length > 0 ? { platforms: patchPlatforms(projectConfig) } : {}),
+            hostUserDataDir: this.app.getUserDataDir(),
+            downloadRewrites: currentDownloadRewrites(),
+        }, {
+            onStart: worker => { session.worker = worker; },
+            cancelled: () => session.cancelled,
+            onAudit: report => { contentAudit = report; },
+        });
+        session.worker = null;
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: `game compiled (${artifact.copiedAssetCount} asset(s))`,
+        });
+        this.reportShippedContentAudit(session, contentAudit);
+        this.ensureNotCancelled(session);
+
+        session.snapshot = { ...session.snapshot, status: "packaging" };
+        // Always inside a `patch` folder: that folder is what the author zips and
+        // what the player extracts, so a patch written loose beside it would be a
+        // patch nobody can deliver.
+        const outputFile = resolvePatchDeliveryPath(request.outputFile, path.join, path.dirname, path.basename);
+        const summary = await this.sealPatch(session, artifact.appDir, request, outputFile, distribution);
+        this.ensureNotCancelled(session);
+
+        const outputDir = path.dirname(outputFile);
+        session.snapshot = {
+            status: "done",
+            startedAt: session.snapshot.startedAt,
+            finishedAt: Date.now(),
+            platforms: [],
+            artifacts: [outputFile],
+            outputDir,
+        };
+        this.emit(session, {
+            level: "success",
+            source: "Build",
+            message: `patch written: ${PATCH_DIRECTORY_NAME}/${path.basename(outputFile)} (${summary})`,
+        });
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: `deliver it by zipping the ${PATCH_DIRECTORY_NAME} folder; a player extracts it into the game's own folder`,
+        });
+        if (request.openWhenDone !== false) {
+            this.revealOutput(outputDir);
+        }
+    }
+
+    /**
+     * Seal the freshly compiled payload into one patch file, carrying only what
+     * the baseline does not already have.
+     *
+     * The pack descriptor always goes in. It is what a new scene arrives in, it is
+     * small next to any asset, and it is rewritten on every compile anyway - so
+     * comparing it would only ever answer "changed" while costing a reader the
+     * doubt about whether it might not have.
+     */
+    /**
+     * Say what this patch does to saves players already have.
+     *
+     * Two counts, never one. They are different events for a player: an action anchor that is gone
+     * stops the save opening and says so, while an element anchor that is gone is not detected at
+     * all - the state that pointed at it is dropped and the game plays on with a stage that is
+     * quietly wrong. A single number would let an author read the second as the first.
+     *
+     * Best effort by construction: the comparison runs the story compiler, and a project that fails
+     * to compile here has already failed the build's own gates. A problem reading it costs the
+     * warning, not the patch.
+     */
+    private async reportSaveAnchorDamage(
+        session: BuildSession,
+        before: GameRuntimePackV1,
+        after: GameRuntimePackV1,
+    ): Promise<void> {
+        let diff: SaveAnchorDiff;
+        try {
+            diff = await loadSaveAnchorComparer()(before, after);
+        } catch (error) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `could not check what this patch does to existing saves: ${error instanceof Error ? error.message : String(error)}`,
+            });
+            return;
+        }
+
+        const describe = (losses: { anchor: string; where: string }[]): string => {
+            // Places, not ids: an author can open a scene. The id is in the anchor and helps nobody
+            // reading a console line.
+            const places = [...new Set(losses.map(loss => loss.where))];
+            const shown = places.slice(0, SAVE_ANCHOR_PLACES_SHOWN).join(", ");
+            return places.length > SAVE_ANCHOR_PLACES_SHOWN
+                ? `${shown} and ${places.length - SAVE_ANCHOR_PLACES_SHOWN} more`
+                : shown;
+        };
+
+        if (diff.refusesToLoad.length > 0) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `${diff.refusesToLoad.length} place(s) a save can stop at no longer exist: `
+                    + `saves that stopped there will refuse to load once this patch is installed (${describe(diff.refusesToLoad)})`,
+            });
+        }
+        if (diff.loadsWithHazard.length > 0) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `${diff.loadsWithHazard.length} element(s) a save can hold state for no longer exist: `
+                    + `those saves will load, and what they remembered about these is dropped without a word (${describe(diff.loadsWithHazard)})`,
+            });
+        }
+        if (diff.incomplete) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "a story could not be compiled while checking saves, so the two counts above are partial",
+            });
+        }
+        if (diff.refusesToLoad.length === 0 && diff.loadsWithHazard.length === 0 && !diff.incomplete) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: "saves made against the previous build still resolve",
+            });
+        }
+    }
+
+    private async sealPatch(
+        session: BuildSession,
+        appDir: string,
+        request: GamePatchExportRequest,
+        outputFile: string,
+        distribution: { key: string; titleId: string },
+    ): Promise<string> {
+        const payload = await openPayload(appDir);
+        let baseline: Map<string, string> | null = null;
+        if (request.baselineAppDir) {
+            const previous = await openPayload(request.baselineAppDir).catch((error: unknown) => {
+                throw new Error(
+                    `Could not read the build this patch is for at ${request.baselineAppDir}: `
+                    + `${error instanceof Error ? error.message : String(error)}`,
+                );
+            });
+            try {
+                baseline = await digestPayload(previous);
+                // Before anything is written: what this patch does to saves is the author's to know
+                // while they can still decide not to ship it. A warning, never a refusal - a patch
+                // that breaks saves is sometimes exactly the patch an author means to make, and a
+                // gate here would teach them to turn the whole check off.
+                await this.reportSaveAnchorDamage(session, previous.pack, payload.pack);
+            } finally {
+                await previous.close().catch(() => undefined);
+            }
+        } else {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "no previous build to compare against, so nothing was checked about existing saves",
+            });
+        }
+
+        try {
+            await fs.mkdir(path.dirname(outputFile), { recursive: true });
+            const writer = await createSealedLayer(outputFile, {
+                projectMaterial: distribution.key,
+                titleId: distribution.titleId,
+            });
+            const descriptor = {
+                ...(request.name?.trim() ? { name: request.name.trim() } : {}),
+                ...(request.order ? { order: request.order } : {}),
+            };
+            await writer.add(LAYER_DESCRIPTOR_ENTRY, Buffer.from(JSON.stringify(descriptor), "utf-8"));
+
+            let carried = 0;
+            let skipped = 0;
+            let bytes = 0;
+            for (const name of payload.names) {
+                if (name === LAYER_DESCRIPTOR_ENTRY) {
+                    // A payload cannot carry this name, but a future one that did
+                    // would collide with the descriptor written above rather than
+                    // being noticed, so it is dropped here instead.
+                    continue;
+                }
+                const data = await payload.read(name);
+                const digest = crypto.createHash("sha256").update(data).digest("base64");
+                if (!patchCarriesEntry(name, digest, baseline)) {
+                    skipped++;
+                    continue;
+                }
+                await writer.add(name, data);
+                carried++;
+                bytes += data.byteLength;
+            }
+            await writer.finalize();
+
+            // Entries the baseline had and this compile does not are left where
+            // they are: a patch adds and shadows, it never removes. Harmless -
+            // the new descriptor names none of them - but worth a line, because
+            // an author who expected the install to shrink should hear why it
+            // did not.
+            if (baseline) {
+                const dropped = [...baseline.keys()].filter(name => !payload.names.includes(name)).length;
+                if (dropped > 0) {
+                    this.emit(session, {
+                        level: "info",
+                        source: "Build",
+                        message: `${dropped} entr${dropped === 1 ? "y" : "ies"} the build no longer uses stay in the installed copy; a patch adds, it does not remove`,
+                    });
+                }
+                return `${carried} changed, ${skipped} unchanged, ${formatBytes(bytes)}`;
+            }
+            return `${carried} entr${carried === 1 ? "y" : "ies"}, ${formatBytes(bytes)}`;
+        } finally {
+            await payload.close().catch(() => undefined);
+        }
+    }
+
     /**
      * Record a checkpoint before the build touches anything.
      *
@@ -934,6 +1308,19 @@ export class GameBuildManager {
         if (encryptionKey && mobileTargets.length > 0) {
             this.emit(session, { level: "info", source: "Build", message: "asset protection enabled; protecting the mobile payload" });
         }
+        // The project's own key, folded against the identity this build ships under
+        // so two editions never resolve to the same material. Independent of
+        // protection: a build carries it to be patchable later, whether or not its
+        // payload is sealed. Absent until the author mints one, and then this build
+        // is simply one that can never be patched - which is what every build was
+        // before the key existed.
+        const distributionKey = readDistributionKey(projectConfig?.app);
+        const distribution = distributionKey
+            ? { key: distributionKey, titleId: identity.appId }
+            : undefined;
+        if (distribution && desktopTargets.length > 0) {
+            this.emit(session, { level: "info", source: "Build", message: "distribution key applied; this build can accept patches" });
+        }
         if (webTarget && this.encryptAssetsEnabled(projectConfig)) {
             this.emit(session, {
                 level: "info",
@@ -995,6 +1382,7 @@ export class GameBuildManager {
                 appId: identity.appId,
                 productName: identity.productName,
                 ...(identity.identifier ? { identifier: identity.identifier } : {}),
+                ...(distribution ? { distribution } : {}),
                 ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
                 // Every desktop target this one pack serves. A plugin's platform-scoped build config
                 // resolves against it: one platform selected is one answer, several are an answer
@@ -1122,7 +1510,11 @@ export class GameBuildManager {
                 platform: target.platform,
                 formats: target.formats,
                 arch: normalizeGameBuildArch(target.platform, target.arch),
-                fuses: gameFusesForPlatform(target.platform, hasSigningIdentityForPlatform(target.platform, signing)),
+                fuses: gameFusesForPlatform(
+                    target.platform,
+                    hasSigningIdentityForPlatform(target.platform, signing),
+                    packShipsNodeSidecar(desktopArtifact?.pack),
+                ),
                 ...(target.platform === hostPlatform
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
                     : {}),
@@ -2042,7 +2434,9 @@ export class GameBuildManager {
     private async resolveBuildVariant(
         session: BuildSession,
         projectPath: string,
-        request: GameBuildRequest,
+        // Only the field it reads, so a patch export - which is not a build and
+        // carries no targets - resolves its variant through this same one place.
+        request: { appTagId?: string },
     ): Promise<ProjectAppTag> {
         const appTags = await readProjectAppTagsFromDir(projectPath);
         const requested = request.appTagId?.trim();
@@ -2475,9 +2869,59 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
  * in step with the compiler.
  */
 function buildAsarUnpackPatterns(sealed: boolean): string[] {
-    const patterns = ["native.js", "icons/**", "sidecars/**"];
+    // koffi's addon has to be a real file on disk to be loaded, so it cannot stay inside the
+    // archive - the same reason native.js is here. It ships as a plain `koffi/` directory rather
+    // than under `node_modules`, which electron-builder reserves for the dependency tree it builds
+    // itself and drops everything else from.
+    const patterns = ["native.js", "icons/**", "sidecars/**", "koffi/**"];
     if (sealed) {
         patterns.push(RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME);
     }
     return patterns;
+}
+
+/**
+ * The desktop platforms this project builds for, from the selection the build
+ * dialog stored.
+ *
+ * A patch has no targets of its own, but the payload it carries includes each
+ * plugin's platform-scoped configuration, which resolves against the set of
+ * platforms one artifact serves. Reading the project's own last answer keeps a
+ * patch's descriptor saying what the build's said; with no stored selection the
+ * set is empty, which is the same as any caller that passes none.
+ */
+function patchPlatforms(projectConfig: ProjectConfigData | null): GameBuildPlatform[] {
+    const stored = (projectConfig?.app as { build?: { platforms?: unknown } } | undefined)?.build?.platforms;
+    if (!Array.isArray(stored)) {
+        return [];
+    }
+    const platforms = stored.filter((platform): platform is GameBuildPlatform =>
+        typeof platform === "string" && isDesktopBuildPlatform(platform as GameBuildDesktopPlatform));
+    return [...new Set(platforms)];
+}
+
+/** How many places a save-damage line names before it starts counting instead. */
+const SAVE_ANCHOR_PLACES_SHOWN = 4;
+
+/** What the comparison answers. Declared here because its own module is in the other alias map. */
+type SaveAnchorDiff = {
+    refusesToLoad: { anchor: string; where: string }[];
+    loadsWithHazard: { anchor: string; where: string }[];
+    incomplete: boolean;
+};
+
+/**
+ * Reach the save-anchor comparison, which lives in the audit bundle beside this one.
+ *
+ * Loaded through a computed path for the same reason the compile worker loads that bundle that way:
+ * it is built with the renderer's aliases, and a static import would pull it into this bundle where
+ * `@/` means the main tree instead. A missing bundle is a Studio defect and throws - the caller
+ * turns that into a warning, because a patch is still a patch when this check cannot run.
+ */
+function loadSaveAnchorComparer(): (before: GameRuntimePackV1, after: GameRuntimePackV1) => Promise<SaveAnchorDiff> {
+    const modulePath = path.join(__dirname, "contentAudit.js");
+    const audit = require(modulePath) as {
+        compareSaveAnchors(before: GameRuntimePackV1, after: GameRuntimePackV1): Promise<SaveAnchorDiff>;
+    };
+    return audit.compareSaveAnchors;
 }

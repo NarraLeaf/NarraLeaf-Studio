@@ -84,7 +84,7 @@ export const lint = {
         },
         storyLabelDuplicate: {
             title: "Duplicate label",
-            description: "Two declarations of one label; the first wins",
+            description: "Two declarations of one label; only the first is reached",
             message: "{label} is already declared above, so this one is never reached",
         },
         storyLabelUnused: {
@@ -105,7 +105,7 @@ export const lint = {
         },
         storyDeadEnd: {
             title: "Dead end",
-            description: "A scene that leaves on some paths and runs off the end on another",
+            description: "A scene that leaves on some paths and reaches its end on another",
             message: "Play runs off the end of the scene here",
         },
         storyUnreachableScene: {
@@ -249,7 +249,7 @@ export const lint = {
             // project, so the locator column beside it prints nothing, and {where} is the only thing
             // that tells one of these findings from the next.
             message: "{where} uses {color}, which the palette does not have",
-            messageChain: "{where} uses {color}, which links on to {missing} - a color the palette does not have",
+            messageChain: "{where} uses {color}, which links on to {missing}, a color the palette does not have",
             messageCycle: "{where} uses {color}, whose links lead back to themselves",
         },
     },
@@ -315,7 +315,7 @@ export const lint = {
         // Spelled out panel → page → row, because the gate is on by default: an author who never
         // opened this panel has no reason to know the setting exists, and "in the lint settings"
         // would leave them looking for it.
-        blockedHint: "Change this in Project → Linting → Check before building",
+        blockedHint: "Change this in Project ▸ Project ▸ Check before building",
         skipped: "Project check skipped",
     },
     settings: {

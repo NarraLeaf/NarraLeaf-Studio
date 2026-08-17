@@ -979,6 +979,21 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [projectPath]);
 
     /**
+     * The Move Mouse family's request, handed to the main process.
+     *
+     * No project path: unlike Fetch and Open Link there is nothing on disk to check it against. The
+     * act is bounded by the window instead - the handler converts the point against the window that
+     * sent it and clamps it to that window's own content box, so this cannot reach past the preview.
+     */
+    const movePointer = useCallback<NonNullable<GameAppHost["movePointer"]>>(async request => {
+        const result = await getInterface().blueprintPointer.move(request);
+        if (!result.success) {
+            return { outcome: "failed", error: result.error ?? "Move Mouse failed" };
+        }
+        return result.data.result;
+    }, []);
+
+    /**
      * The Open Link node's request, handed to the main process.
      *
      * The project path travels with it because the handler reads the project's own declared
@@ -1030,9 +1045,17 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [projectPath]);
 
     const saveStore = useMemo<GameAppSaveStore>(() => ({
-        write: async (id, savedGame, capture, metadata) => {
+        write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) => {
             const ref = requireProjectRef("Save Game");
-            const result = await getInterface().devMode.save.write(ref, id, savedGame, capture, metadata);
+            const result = await getInterface().devMode.save.write(
+                ref,
+                id,
+                savedGame,
+                capture,
+                metadata,
+                compatibility,
+                playtimeSeconds,
+            );
             if (!result.success) {
                 throw new Error(result.error ?? `Save Game failed: ${id}`);
             }
@@ -1067,6 +1090,14 @@ export function DevModeContent(props: DevModeContentProps) {
                 throw new Error(result.error ?? "List Saves failed");
             }
             return result.data.ids;
+        },
+        listHeaders: async () => {
+            const ref = requireProjectRef("List Saves");
+            const result = await getInterface().devMode.save.listHeaders(ref);
+            if (!result.success) {
+                throw new Error(result.error ?? "List Saves failed");
+            }
+            return result.data.headers;
         },
     }), [requireProjectRef]);
 
@@ -1292,6 +1323,7 @@ export function DevModeContent(props: DevModeContentProps) {
             subscribeFullscreenChanged,
             subscribeCloseRequested,
             networkFetch,
+            movePointer,
             openExternal,
             exportProgress,
             importProgress,
@@ -1302,6 +1334,7 @@ export function DevModeContent(props: DevModeContentProps) {
         getFullscreen,
         log,
         networkFetch,
+        movePointer,
         openExternal,
         exportProgress,
         importProgress,

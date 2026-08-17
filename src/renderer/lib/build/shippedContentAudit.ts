@@ -57,6 +57,16 @@ export type ShippedContentAuditResult = {
 export type ShippedArtifactReader = {
     /** True when the entry is present with content. Throws only on an unexpected read failure. */
     entryExists(relativePath: string): Promise<boolean>;
+    /**
+     * Where this package keeps an asset's bytes, or null when it has no way to say.
+     *
+     * The two kinds of package answer differently, and the audit must ask rather than assume: a
+     * sealed store derives the name from the asset id (it ships no manifest to look in), while a
+     * loose one reads the path out of the manifest. Asking mirrors what the runtime does, which is
+     * the point of the audit - resolving by any other route would prove something the game does not
+     * do.
+     */
+    resolveEntryName(assetId: string): string | null;
 };
 
 /**
@@ -219,18 +229,18 @@ export async function auditShippedContent(input: {
             continue;
         }
         checked.add(demand.assetId);
-        const entry = pack.assets.items[demand.assetId];
-        if (!entry) {
+        const entryName = reader.resolveEntryName(demand.assetId);
+        if (!entryName) {
             failures.push({ assetId: demand.assetId, origin: demand.origin, reason: "missing" });
             continue;
         }
         try {
-            if (!await reader.entryExists(entry.relativePath)) {
+            if (!await reader.entryExists(entryName)) {
                 failures.push({
                     assetId: demand.assetId,
                     origin: demand.origin,
                     reason: "unreadable",
-                    detail: entry.relativePath,
+                    detail: entryName,
                 });
             }
         } catch (error) {

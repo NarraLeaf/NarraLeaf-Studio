@@ -7,7 +7,17 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { Sound, type LiveGame, type Scene } from "narraleaf-react";
+import { Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
+import {
+    readWrappedStorableNamespace,
+    readWrappedStorableValue,
+} from "@shared/utils/storableValue";
+import {
+    buildSaveCompatibilityStamp,
+    normalizeSaveCompatibilityConfiguration,
+    planSaveResume,
+    readSaveCompatibilityStamp,
+} from "@shared/types/saveCompatibility";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
@@ -22,6 +32,7 @@ import {
     parseAutoSaveSlotIndex,
     type AutoSaveEntry,
     type SaveRecordLine,
+    type SaveRecordPlaytime,
     type SaveRecordTimes,
 } from "@shared/types/saves";
 import {
@@ -165,6 +176,8 @@ import type {
     GameAppStoryRuntimeBridge,
 } from "./GameAppHost";
 import { useAutoSave } from "./useAutoSave";
+import { usePlaytime } from "./usePlaytime";
+import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 
 // Outer safety net: if the environment never comes up at all, start the surface system anyway
 // rather than sit on the loading step forever. Generous on purpose — it has to sit *outside*
@@ -484,6 +497,41 @@ export function GameApp(props: GameAppProps): ReactNode {
         liveGame: nlrLiveGameRef,
         stageVisible: gameStageVisibleRef,
     }), []);
+    /**
+     * A playthrough is running and can be serialized.
+     *
+     * One definition, asked by both the autosave scheduler and the playtime clock. They are the two
+     * things in this file that run off a timer and must agree on when a game is being played; a
+     * second copy of these four conditions would be a second answer to drift from the first.
+     *
+     * Refs rather than state, so the answer is the one true at the moment a tick asks it.
+     */
+    const isPlaythroughRunning = useCallback(() => Boolean(
+        gameEnteredRef.current
+        && nlrSession?.id
+        && nlrLiveGameSessionIdRef.current === nlrSession.id
+        && nlrLiveGameRef.current,
+    ), [nlrSession?.id]);
+    /**
+     * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
+     * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
+     * below reads it, and a save has to record the time at the moment it is written.
+     */
+    const playtime = usePlaytime({
+        isPlaying: isPlaythroughRunning,
+        // Optional-chained because the runtime core is null until the bundle mounts. A read that
+        // lands before it resolves to nothing, and the total simply starts this session from zero;
+        // a write that early has nothing to write, because nothing has been played yet.
+        persistenceGetAsync: async key => core?.scopeBridge.persistenceGetAsync(key),
+        // `persistenceSetAsync`, never `persistenceSet`: the latter updates the bridge's in-memory
+        // map and notifies subscribers without ever reaching the store, so a total written through
+        // it survives exactly as long as the window does. Awaiting it here would make the caller
+        // async for no gain - the clock has already counted the seconds, and a failed write only
+        // means the next flush carries them.
+        persistenceSet: (key, value) => {
+            void core?.scopeBridge.persistenceSetAsync(key, value);
+        },
+    });
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
@@ -526,6 +574,14 @@ export function GameApp(props: GameAppProps): ReactNode {
      * after `newGame()`. Persistent values do not wait: they live outside the engine and survive.
      */
     const pendingImportedProgressRef = useRef<GameProgressDocumentV1 | null>(null);
+    /**
+     * A save whose saved-scope values are being carried into a story that is being started again.
+     *
+     * The `Return to where it stopped` policy relaunches instead of loading, and a relaunch is a
+     * `Start Game`: it calls `newGame()`, which clears every namespace. The values wait here for
+     * the same reason an imported progress document does, and are applied at the same moment.
+     */
+    const pendingCarriedSaveRef = useRef<SavedGame | null>(null);
     /**
      * The story row the engine was last executing, or undefined when nothing was.
      *
@@ -1171,6 +1227,52 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
     }, [progressVariableDefs]);
 
+    /**
+     * Put a save's saved-scope values into the story that has just been started again.
+     *
+     * The whole namespace rather than the project's declared variables: a story's own `/save` rows
+     * declare saved variables too, and a player relaunched into their chapter with half their flags
+     * would be in a state no playthrough could have produced. Read straight off the serialized
+     * store, which is where a load would have read it from as well.
+     */
+    const applyCarriedSaveState = useCallback((savedGame: SavedGame): void => {
+        const liveGame = nlrLiveGameRef.current;
+        const compiled = nlrCompiledRef.current;
+        if (!liveGame || !compiled) {
+            return;
+        }
+        const store = (savedGame as unknown as { game?: { store?: Record<string, unknown> } }).game?.store;
+        if (!store || typeof store !== "object") {
+            return;
+        }
+        const storable = liveGame.getStorable();
+        const savedNamespaceName = compiled.savedNamespaceName;
+        const savedValues = savedNamespaceName ? store[savedNamespaceName] : undefined;
+        if (savedNamespaceName && savedValues && typeof savedValues === "object" && storable.hasNamespace(savedNamespaceName)) {
+            const namespace = storable.getNamespace(savedNamespaceName);
+            // Unwrapped first. A save holds `{type, data, dates?, undefineds?}` per value, and
+            // `set` takes the value - handing it the wrapper stores an object where the author
+            // declared a boolean, which reads back as truthy-but-not-true and quietly sends every
+            // condition down its other branch. See `readWrappedStorableValue`.
+            for (const [key, value] of Object.entries(readWrappedStorableNamespace(savedValues))) {
+                namespace.set(key, value as never);
+            }
+        }
+        const visitedNamespaceName = compiled.visitedNamespaceName;
+        const visitedValues = visitedNamespaceName ? store[visitedNamespaceName] : undefined;
+        const visited = visitedValues && typeof visitedValues === "object"
+            ? readWrappedStorableValue((visitedValues as Record<string, unknown>)[STORY_VISITED_SCENES_KEY])
+            : undefined;
+        if (visitedNamespaceName && Array.isArray(visited) && storable.hasNamespace(visitedNamespaceName)) {
+            const merged = mergeVisitedSceneIds(
+                readStoryVisitedIds(storable, visitedNamespaceName, STORY_VISITED_SCENES_KEY),
+                visited.filter((id): id is string => typeof id === "string"),
+            );
+            // A new array, never a push - see `applyImportedSavedProgress`.
+            storable.getNamespace(visitedNamespaceName).set(STORY_VISITED_SCENES_KEY, merged);
+        }
+    }, []);
+
     const exportProgressInGame = useCallback(async (): Promise<{ outcome: "written" | "failed"; error: string }> => {
         if (!host.exportProgress) {
             return {
@@ -1320,7 +1422,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const {
         getCurrentNametag,
         getNotificationsInGame,
+        getFutureInGame,
         getHistoryInGame,
+        canRedoHistoryInGame,
+        canUndoHistoryInGame,
+        redoHistoryInGame,
         restoreHistoryInGame,
         getChoiceCountInGame,
         isNvlModeInGame,
@@ -1602,6 +1708,24 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [endingSurfaceId, host, quitGame]);
 
+    /**
+     * What this build stamps into the saves it writes, and compares the saves it is asked to load
+     * against. One value for both halves: a stamp written by one rule and read by another would
+     * make a build disagree with its own saves.
+     *
+     * Null when the bundle carries no story hash - a bundle assembled before hashes existed - which
+     * turns every comparison into "cannot be compared" and leaves loading exactly as it was.
+     */
+    const saveStamp = useMemo(
+        () => (bundle.storyHash
+            ? buildSaveCompatibilityStamp({ storyHash: bundle.storyHash, gameVersion: bundle.gameVersion })
+            : null),
+        [bundle.gameVersion, bundle.storyHash],
+    );
+    const saveCompatibilityConfig = useMemo(
+        () => normalizeSaveCompatibilityConfiguration(bundle.saveCompatibility),
+        [bundle.saveCompatibility],
+    );
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
         let capture: string | undefined;
@@ -1617,11 +1741,53 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
             }
         }
-        await host.saveStore.write(id, liveGame.serialize(), capture, metadata);
+        await host.saveStore.write(
+            id,
+            liveGame.serialize(),
+            capture,
+            metadata,
+            saveStamp ?? undefined,
+            playtime.getRunSeconds(),
+        );
         // Host-side, after the write landed: every shell reports it the same way,
         // and a failed write never announces a save that does not exist.
         pluginHost?.emitSaveWritten(id);
-    }, [host.saveStore, pluginHost, reportSaveCaptureFailure, requireActiveLiveGame]);
+    }, [
+        host.saveStore,
+        playtime,
+        pluginHost,
+        reportSaveCaptureFailure,
+        requireActiveLiveGame,
+        saveStamp,
+    ]);
+
+    /**
+     * The scene a save's position names, as this build ships it.
+     *
+     * The story id the position carries is only a hint: it comes out of an anchor written by
+     * another build, which may have split or renamed its documents. It is tried first and the
+     * library is searched when it does not hold the scene, so a save survives a story being moved
+     * between documents. Null when no document in this build has that scene at all.
+     */
+    const resolveSavedScene = useCallback((storyId: string, sceneId: string): {
+        storyId: string;
+        scene: { blocks?: Record<string, unknown> };
+    } | null => {
+        const documents = bundle.storyLibrary?.documents;
+        if (!documents || !sceneId) {
+            return null;
+        }
+        const named = storyId ? documents[storyId] : undefined;
+        if (named?.scenes?.[sceneId]) {
+            return { storyId, scene: named.scenes[sceneId] };
+        }
+        for (const [candidateId, document] of Object.entries(documents)) {
+            if (document?.scenes?.[sceneId]) {
+                return { storyId: candidateId, scene: document.scenes[sceneId] };
+            }
+        }
+        return null;
+    }, [bundle.storyLibrary]);
 
     /**
      * Load a save, or leave the run that is going exactly where it is.
@@ -1634,9 +1800,19 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const loadSave = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
         const liveGame = requireActiveLiveGame("Load Save");
+        // Captured on the way past rather than re-read afterwards: a save record carries a whole
+        // serialized playthrough, and reading one twice to look at one number would double the
+        // cost of every load.
+        let storedPlaytimeSeconds: number | undefined;
         const outcome = await loadSaveIntoGame({
             id,
-            readRecord: () => host.saveStore.read(id),
+            readRecord: async () => {
+                const record = await host.saveStore.read(id);
+                storedPlaytimeSeconds = readSavePlaytimeSeconds(record?.metadata.playtimeSeconds);
+                return record;
+            },
+            currentStamp: saveStamp,
+            compatibilityConfig: saveCompatibilityConfig,
             game: {
                 // `constructMaps` is the engine's own lookup table for a load and caches on the
                 // live game, so checking against it is checking against exactly what `deserialize`
@@ -1677,6 +1853,45 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // count, which is why one balanced load afterwards cannot clear it and every later
                 // load in the session would sit there locked.
                 releaseLoadLock: () => liveGame.getGameState()?.rollLock.unlock(),
+                /**
+                 * The `Return to where it stopped` policy: a story launch, not a load.
+                 *
+                 * `forceReinit` is passed because the fast path in `startStoryInGame` skips the
+                 * recompile when the mounted story already matches the request - which is exactly
+                 * the case here, and exactly the case where reusing the mounted session would drop
+                 * the row the player is being put back on.
+                 */
+                relaunch: async target => {
+                    const start = startStoryInGameRef.current;
+                    if (!start) {
+                        throw new Error("the story cannot be started here");
+                    }
+                    const found = resolveSavedScene(target.storyId, target.sceneId);
+                    // Reported rather than thrown: nothing has been touched yet, and a throw here
+                    // would be read as a run that was spent halfway.
+                    if (!found) {
+                        return "nowhere";
+                    }
+                    // Asked before launching, never inferred from a failure: a launch handed a row
+                    // that is gone plays the scene from the top and says nothing (see
+                    // `collectStoryPlaybackPlan`), so waiting for a throw would report every
+                    // degraded landing as a row-precise one.
+                    const hasRow = Boolean(target.blockId && found.scene.blocks?.[target.blockId]);
+                    // Queued rather than written: the launch calls `newGame()`, which clears every
+                    // namespace, so values written now would be the ones it wipes.
+                    pendingCarriedSaveRef.current = target.savedGame;
+                    try {
+                        await start({
+                            storyId: found.storyId,
+                            sceneId: target.sceneId,
+                            ...(hasRow && target.blockId ? { startBlockId: target.blockId } : {}),
+                        }, { forceReinit: true });
+                    } catch (error) {
+                        pendingCarriedSaveRef.current = null;
+                        throw error;
+                    }
+                    return hasRow ? "row" : "scene";
+                },
             },
             // The engine's notification channel, which draws through the project's Notifications
             // surface when it has one and the engine's own component when it does not.
@@ -1695,12 +1910,32 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (outcome.status !== "loaded") {
             return outcome;
         }
+        // A relaunch has already entered and revealed its own session (that is what `Start Game`
+        // does); the live game this closure captured is the one it replaced. Waiting on it here
+        // would wait on a session nobody is driving any more.
+        if (outcome.applied !== "save") {
+            return outcome;
+        }
+        // Only here: a load that was refused or rolled back leaves the player on the run they were
+        // already having, and that run's stopwatch has to keep its own reading. A record with no
+        // reading (written before playtime was tracked) starts the inherited run from zero, which
+        // is the only honest answer when nobody was counting.
+        playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
         await liveGame.waitForRouterExit().promise;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
         return outcome;
-    }, [hideCurrentStudioPagesForGame, host.log, host.reportIssue, host.saveStore, requireActiveLiveGame]);
+    }, [
+        hideCurrentStudioPagesForGame,
+        host.log,
+        host.reportIssue,
+        host.saveStore,
+        requireActiveLiveGame,
+        resolveSavedScene,
+        saveCompatibilityConfig,
+        saveStamp,
+    ]);
 
     /**
      * The same load for the surfaces declared as `Promise<void>`: the blueprint host API and the
@@ -1716,6 +1951,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (outcome.status === "refused") {
             throw new Error(`Load Save: "${id}" was not applied. ${outcome.detail}`);
         }
+    }, [loadSave]);
+
+    /**
+     * The same load for a graph, which hears a refusal as a branch rather than as an error.
+     *
+     * `Load Save` carries a `Failed` pin, and a refusal is the ordinary end of asking for an old
+     * save: the player has been told, the author has been told, and the run is where it was. A
+     * throw here would put a red error in front of an author whose title screen is already handling
+     * the case. Anything that is a caller mistake - no game runtime - still throws, from `loadSave`.
+     */
+    const loadSaveForGraph = useCallback(async (id: string): Promise<boolean> => {
+        return (await loadSave(id)).status === "loaded";
     }, [loadSave]);
 
     const deleteSave = useCallback(async (id: string) => {
@@ -1742,9 +1989,18 @@ export function GameApp(props: GameAppProps): ReactNode {
     // (The plugin `saves.listIds` surface is deliberately left raw - it is
     // documented as direct store access, not the authoring view.)
     const listSaveIds = useCallback(async (): Promise<string[]> => {
-        const ids = await host.saveStore.listIds();
-        return ids.filter(id => !isAutoSaveId(id));
-    }, [host.saveStore]);
+        const headers = await host.saveStore.listHeaders();
+        return headers
+            .filter(header => !isAutoSaveId(header.id))
+            // The same decision the load itself makes, from the same header bytes: a slot this
+            // project would refuse is a slot a save screen must not draw a Load button on.
+            .filter(header => planSaveResume(
+                readSaveCompatibilityStamp(header.compatibility),
+                saveStamp,
+                saveCompatibilityConfig,
+            ).plan.action !== "discard")
+            .map(header => header.id);
+    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
 
     /**
      * The save slots, published for host debug overlays.
@@ -1779,6 +2035,17 @@ export function GameApp(props: GameAppProps): ReactNode {
             if (!record) {
                 return null;
             }
+            // The same policy `List Saves` applies, for the same reason: a "continue" button on an
+            // autosave this project would refuse is a button that cannot work. Autosaves carry the
+            // same stamp - they are ordinary records under reserved ids.
+            const resume = planSaveResume(
+                readSaveCompatibilityStamp(record.metadata.compatibility),
+                saveStamp,
+                saveCompatibilityConfig,
+            );
+            if (resume.plan.action === "discard") {
+                return null;
+            }
             const updatedAt = Date.parse(record.metadata.updatedAt ?? "");
             const createdAt = Date.parse(record.metadata.createdAt ?? "");
             return {
@@ -1791,18 +2058,13 @@ export function GameApp(props: GameAppProps): ReactNode {
         }));
         return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
             .sort((a, b) => b.timestamp - a.timestamp);
-    }, [host.saveStore]);
+    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
 
     const autoSave = useAutoSave({
         config: autoSaveConfig,
         // The same gate `writeSave` itself enforces, so a true here always means
         // the write can actually serialize something.
-        isPlaying: () => Boolean(
-            gameEnteredRef.current
-            && nlrSession?.id
-            && nlrLiveGameSessionIdRef.current === nlrSession.id
-            && nlrLiveGameRef.current,
-        ),
+        isPlaying: isPlaythroughRunning,
         // Screenshots on: the point of an autosave ring is a screen that lists
         // it, and a list of thumbnail-less rows is a worse feature. The cost is
         // bounded by the scheduler's play-head gate - an idle game captures
@@ -1859,6 +2121,24 @@ export function GameApp(props: GameAppProps): ReactNode {
      * an object at all, still answers as a slot that exists with nothing to quote; refusing to
      * report the slot would take a row off the player's save screen over a missing caption.
      */
+    /**
+     * How long the playthrough behind one slot was played.
+     *
+     * Its own read, like `Get Save Time` and `Get Save Line` before it. A record written before
+     * playtime was tracked answers `recorded: false` rather than zero seconds: a save screen has to
+     * be able to leave that row blank instead of stating the player finished in no time at all.
+     */
+    const getSavePlaytime = useCallback(async (id: string): Promise<SaveRecordPlaytime | null> => {
+        const record = await host.saveStore.read(id);
+        if (!record) {
+            return null;
+        }
+        const seconds = readSavePlaytimeSeconds(record.metadata.playtimeSeconds);
+        return seconds === undefined
+            ? { seconds: 0, recorded: false }
+            : { seconds, recorded: true };
+    }, [host.saveStore]);
+
     const getSaveLine = useCallback(async (id: string): Promise<SaveRecordLine | null> => {
         const record = await host.saveStore.read(id);
         if (!record) {
@@ -2061,17 +2341,24 @@ export function GameApp(props: GameAppProps): ReactNode {
                 startStoryInGameRef.current?.(request) ??
                 Promise.reject(new Error("Start Game: runtime is not ready")),
             writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
-            loadSaveInGame: loadSaveAction,
+            loadSaveInGame: loadSaveForGraph,
             deleteSaveInGame: id => deleteSave(id),
             listSaveIds,
             getSaveMetadata,
             getSaveTimes,
             getSaveLine,
+            getSavePlaytime,
             getSavePreview,
+            getPlaytime: playtime.getRunSeconds,
+            getTotalPlaytime: playtime.getTotalSeconds,
             writeAutoSaveInGame: autoSave.writeNow,
             listAutoSaves,
             getHistoryInGame,
+            getFutureInGame,
             restoreHistoryInGame,
+            redoHistoryInGame,
+            canUndoHistoryInGame,
+            canRedoHistoryInGame,
             exportProgressInGame,
             importProgressInGame,
             getCurrentNametag,
@@ -2226,11 +2513,13 @@ export function GameApp(props: GameAppProps): ReactNode {
         getCurrentNametag,
         resolveAvatarAssetId,
         getGamePreferenceInGame,
+        getFutureInGame,
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
         getSaveTimes,
         getSaveLine,
+        getSavePlaytime,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -2253,6 +2542,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         quitGame,
         rejectPendingGameStarts,
         rendererRegistry,
+        canRedoHistoryInGame,
+        canUndoHistoryInGame,
+        redoHistoryInGame,
         restoreHistoryInGame,
         selectChoiceInGame,
         setChoiceRuntime,
@@ -2284,6 +2576,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             pendingGameStartsRef.current.set(sessionId, { resolve, reject });
         });
         liveGame.newGame();
+        // A fresh playthrough starts the stopwatch from nothing. A load overwrites this moments
+        // later with the reading it inherited; nothing else in the file resets it.
+        playtime.seedRun(0);
         gameEnteredRef.current = true;
         // A document imported before this point has been waiting for exactly this moment:
         // `newGame()` clears every namespace and rebuilds it from its defaults, so anything written
@@ -2293,12 +2588,17 @@ export function GameApp(props: GameAppProps): ReactNode {
             pendingImportedProgressRef.current = null;
             applyImportedSavedProgress(importedProgress);
         }
+        const carriedSave = pendingCarriedSaveRef.current;
+        if (carriedSave) {
+            pendingCarriedSaveRef.current = null;
+            applyCarriedSaveState(carriedSave);
+        }
         // `onFirstSceneReady` already ends on a painted frame (see waitForStageVisualReadyWithTimeout),
         // so there is nothing left to wait for here: an extra frame only delays the UI's exit.
         await sceneReady;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
-    }, [applyImportedSavedProgress, hideCurrentStudioPagesForGame]);
+    }, [applyCarriedSaveState, applyImportedSavedProgress, hideCurrentStudioPagesForGame]);
 
     const startStoryInGame = useCallback(async (
         request: DevModeStartStoryRequest,
@@ -2380,17 +2680,24 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
             onQuitGame: quitGame,
             onWriteSave: writeSave,
-            onLoadSave: loadSaveAction,
+            onLoadSave: loadSaveForGraph,
             onDeleteSave: deleteSave,
             onListSaveIds: listSaveIds,
             onGetSaveMetadata: getSaveMetadata,
             onGetSaveTimes: getSaveTimes,
             onGetSaveLine: getSaveLine,
+            onGetSavePlaytime: getSavePlaytime,
+            onGetPlaytime: playtime.getRunSeconds,
+            onGetTotalPlaytime: playtime.getTotalSeconds,
             onGetSavePreview: getSavePreview,
             onWriteAutoSave: autoSave.writeNow,
             onListAutoSaves: listAutoSaves,
             onGetHistory: getHistoryInGame,
+            onGetFuture: getFutureInGame,
             onRestoreHistory: restoreHistoryInGame,
+            onRedoHistory: redoHistoryInGame,
+            onCanUndoHistory: canUndoHistoryInGame,
+            onCanRedoHistory: canRedoHistoryInGame,
             onGetNametag: getCurrentNametag,
             onGetNotifications: getNotificationsInGame,
             onGetChoiceCount: getChoiceCountInGame,
@@ -2420,6 +2727,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetTrackVolume: soundTransport.getTrackVolume,
             onSetTrackVolume: soundTransport.setTrackVolume,
             onNetworkFetch: host.networkFetch,
+            onMovePointer: host.movePointer,
             onOpenExternal: host.openExternal,
             onExportProgress: exportProgressInGame,
             onImportProgress: importProgressInGame,
@@ -2480,11 +2788,13 @@ export function GameApp(props: GameAppProps): ReactNode {
         getChoiceCountInGame,
         getCurrentNametag,
         getGamePreferenceInGame,
+        getFutureInGame,
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
         getSaveTimes,
         getSaveLine,
+        getSavePlaytime,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -2507,6 +2817,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         nextInGame,
         openSurface,
         quitGame,
+        canRedoHistoryInGame,
+        canUndoHistoryInGame,
+        redoHistoryInGame,
         restoreHistoryInGame,
         selectChoiceInGame,
         setSentenceSpeedInGame,
@@ -2724,17 +3037,24 @@ export function GameApp(props: GameAppProps): ReactNode {
                         input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
                     onQuitGame: quitGame,
                     onWriteSave: writeSave,
-                    onLoadSave: loadSaveAction,
+                    onLoadSave: loadSaveForGraph,
                     onDeleteSave: deleteSave,
                     onListSaveIds: listSaveIds,
                     onGetSaveMetadata: getSaveMetadata,
                     onGetSaveTimes: getSaveTimes,
                     onGetSaveLine: getSaveLine,
+                    onGetSavePlaytime: getSavePlaytime,
+                    onGetPlaytime: playtime.getRunSeconds,
+                    onGetTotalPlaytime: playtime.getTotalSeconds,
                     onGetSavePreview: getSavePreview,
                     onWriteAutoSave: autoSave.writeNow,
                     onListAutoSaves: listAutoSaves,
                     onGetHistory: getHistoryInGame,
+                    onGetFuture: getFutureInGame,
                     onRestoreHistory: restoreHistoryInGame,
+                    onRedoHistory: redoHistoryInGame,
+                    onCanUndoHistory: canUndoHistoryInGame,
+                    onCanRedoHistory: canRedoHistoryInGame,
                     onGetNametag: getCurrentNametag,
                     onGetNotifications: getNotificationsInGame,
                     onGetChoiceCount: getChoiceCountInGame,
@@ -2764,6 +3084,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetTrackVolume: soundTransport.getTrackVolume,
                     onSetTrackVolume: soundTransport.setTrackVolume,
                     onNetworkFetch: host.networkFetch,
+                    onMovePointer: host.movePointer,
                     onOpenExternal: host.openExternal,
                     onExportProgress: exportProgressInGame,
                     onImportProgress: importProgressInGame,
@@ -2855,11 +3176,13 @@ export function GameApp(props: GameAppProps): ReactNode {
         getChoiceCountInGame,
         getCurrentNametag,
         getGamePreferenceInGame,
+        getFutureInGame,
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
         getSaveTimes,
         getSaveLine,
+        getSavePlaytime,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -2882,6 +3205,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         nextInGame,
         openSurface,
         quitGame,
+        canRedoHistoryInGame,
+        canUndoHistoryInGame,
+        redoHistoryInGame,
         restoreHistoryInGame,
         selectChoiceInGame,
         setSentenceSpeedInGame,

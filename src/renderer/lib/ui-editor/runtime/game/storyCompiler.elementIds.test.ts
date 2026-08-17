@@ -55,7 +55,19 @@ function document(): StoryDocument {
     } as unknown as StoryDocument;
 }
 
-/** `elementId -> the state a save would carry for it`, as the engine would serialize it. */
+/**
+ * `elementId -> the state that element holds`, over the same walk of the action tree that names
+ * the cast and that a save is written from.
+ *
+ * This reads the walk rather than `getAllElementStates()`. From engine 0.26.0 a save lists only the
+ * elements whose state differs from what the script wrote, so a freshly constructed story serializes
+ * to nothing at all - which says everything about the save and nothing about the naming this file is
+ * here to pin down. Reading the save back would make every assertion below pass vacuously.
+ *
+ * Elements whose `toData()` is `null` are left out: a `Sentence` is an element the walk reaches and
+ * names, but it serializes to nothing by construction, so no name it is given can ever put one
+ * element's state on another. The name only has to be stable for what a save carries.
+ */
 async function elementStates(doc: StoryDocument): Promise<Map<string, string>> {
     const compiled = await compileStudioStoryToNlr({
         document: doc,
@@ -64,10 +76,17 @@ async function elementStates(doc: StoryDocument): Promise<Map<string, string>> {
     } as Parameters<typeof compileStudioStoryToNlr>[0]);
     const story = compiled.story as unknown as {
         constructStory(): unknown;
-        getAllElementStates(): { id: string; data?: unknown }[];
+        entryScene: { getSceneRoot(): unknown } | null;
+        getAllChildrenElements(story: unknown, action: unknown): { getId(): string; toData(): unknown }[];
     };
     story.constructStory();
-    return new Map(story.getAllElementStates().map(state => [state.id, JSON.stringify(state.data ?? null)]));
+    const elements = story.getAllChildrenElements(story, story.entryScene?.getSceneRoot() ?? []);
+    return new Map(
+        elements
+            .map(element => [element.getId(), element.toData()] as const)
+            .filter((entry): entry is readonly [string, object] => entry[1] != null)
+            .map(([id, data]) => [id, JSON.stringify(data)]),
+    );
 }
 
 describe("element ids", () => {

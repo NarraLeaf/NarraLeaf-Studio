@@ -21,7 +21,7 @@ export const project = {
         },
         project: {
             title: "プロジェクト",
-            description: "検査のルールと、ビルドを止める条件",
+            description: "配布キー、プロジェクトチェックの規則、ビルドを止めるもの",
         },
         runtimes: {
             title: "ランタイム",
@@ -41,17 +41,29 @@ export const project = {
         icons: "アイコン",
         dependencies: "依存関係",
         saving: "セーブ",
+        olderSaves: "以前のセーブ",
         playerDefaults: "プレイヤーの初期値",
         audioTracks: "オーディオトラック",
         // ブランドのサブページの 2 つの部分。作者が決める色と、それに従うスロット。
         // このページの残りの言葉は、id の元になるモデルの隣、`brand` 名前空間にある。
         brandColors: "色",
         brandControls: "コントロール",
+        distribution: "配布キー",
+        linting: "プロジェクトチェック",
         security: "セキュリティ",
         signing: "署名",
         optimization: "最適化",
         crash: "クラッシュ",
         mobile: "モバイル",
+    },
+    distribution: {
+        description: "プロジェクトと共に保存され、ビルドする全員が同じキーを使う。ビルドは、それ自身のキーで作られたパッチだけを受け入れる。",
+        absent: "キーはまだない",
+        rotatedAt: "最終更新: {date}",
+        createAction: "作成",
+        replaceAction: "差し替え",
+        replaceConfirm: "配布キーを差し替えますか？",
+        replaceConfirmDetail: "現在のキーで既に公開したビルドは、これ以降に作られたパッチを受け入れない。",
     },
     home: {
         untitledProject: "無題のプロジェクト",
@@ -82,8 +94,8 @@ export const project = {
         required: "必須",
     },
     userData: {
-        description: "配布したゲームがプレイヤーのセーブと進行を置く場所。フォルダの名前は識別子から決まるので、"
-            + "アプリケーション名を変えても場所は動かない",
+        description: "配布したゲームがプレイヤーのセーブと進行を置く場所。"
+            + "アプリケーション名を変更しても場所は移動しない",
         copy: "場所をコピー",
         copied: "場所をコピーした",
         copyFailed: "場所をコピーできなかった",
@@ -170,10 +182,18 @@ export const project = {
         autoSaveTitle: "自動セーブ",
         autoSaveDescription: "一定の間隔でプレイを保存する。クラッシュで失うのは最大でも 1 間隔分",
         autoSaveIntervalTitle: "保存の間隔",
-        autoSaveIntervalDescription: "確認する間隔。ストーリーが進んでいなければ何も書かない",
+        autoSaveIntervalDescription: "プレイを保存する間隔。ストーリーが進んでいなければ何も書かない",
         autoSaveIntervalUnit: "秒",
         autoSaveSlotsTitle: "残す自動セーブの数",
         autoSaveSlotsDescription: "自動セーブはこの数のスロットを古いものから順に使い回す。プレイヤー自身のセーブスロットとは別",
+        saveCompatibleTitle: "他のプロジェクトバージョンのセーブ",
+        saveCompatibleDescription: "ストーリーは変更されておらず、プロジェクトバージョンのみが異なる",
+        saveIncompatibleTitle: "ストーリー変更前のセーブ",
+        saveIncompatibleDescription: "セーブの書き込み後にストーリーが変更されている",
+        saveResume: "進行状況を復元する",
+        saveDiscard: "復元しない",
+        saveResumeScene: "止まった場面まで復元する",
+        saveForce: "それでも復元する",
     },
     // 「プレイヤーの初期値」の群。各設定がどの値から始まるか。どれもプレイ中にプレイヤーが
     // 変えられ、変えた内容は保たれる。だから文言は「初期値」に徹し、設定画面が守らない約束はしない。
@@ -203,15 +223,15 @@ export const project = {
         },
         autoForward: {
             title: "自動送り",
-            description: "行の表示が終わると自分で次へ進む",
+            description: "行の表示が終わると次へ進む",
         },
         showDialog: {
             title: "ダイアログボックスを表示",
-            description: "オフにすると、プレイヤーが UI を隠したときと同じ状態でゲームが始まる",
+            description: "オフにすると、ダイアログボックスを隠した状態でゲームが始まる",
         },
         skip: {
             title: "スキップを許可",
-            description: "オフにするとスキップキーそのものが効かなくなる",
+            description: "オフにするとスキップキーは効かない",
         },
         skipReadText: {
             title: "既読のみスキップ",
@@ -227,7 +247,7 @@ export const project = {
         },
         globalVolume: {
             title: "全体の音量",
-            description: "ゲームが鳴らすすべての音",
+            description: "すべての音声に適用される",
         },
         bgmVolume: {
             title: "音楽の音量",
@@ -243,11 +263,11 @@ export const project = {
         },
         voiceEndMode: {
             title: "ボイス付きの行が終わったとき",
-            description: "行が終わったときクリップをどうするか。どれを選んでも、2 つのボイスが同時に鳴ることはない",
+            description: "どれを選んでも、2 つのボイスが同時に鳴ることはない",
             option: {
                 stop: "クリップを止める",
                 fade: "クリップをフェードアウトする",
-                none: "そのまま鳴らし続ける",
+                none: "再生を続ける",
             },
         },
         voiceFadeDuration: {
@@ -307,7 +327,7 @@ export const project = {
         crashPolicyDescription: "いずれの場合もエラーはゲームのログに記録される",
         crashPolicy: {
             details: "エラーを表示する",
-            log: "停止したことだけを伝える",
+            log: "停止したことだけを報告する",
             restart: "ゲームを再起動する",
         },
         networkPolicyTitle: "ネットワークポリシー",
@@ -317,11 +337,11 @@ export const project = {
             any: "任意のアドレス",
         },
         networkPolicyDetail: {
-            off: "ゲームはアプリのプロトコルの中に閉じ、HTTP と HTTPS の要求はすべて拒否される",
+            off: "HTTP と HTTPS の要求はすべて拒否される",
             allowlist: "下の許可一覧にあるアドレスだけを要求できる。ほかの要求は拒否される",
             any: "ゲームは HTTP または HTTPS で任意のアドレスを要求できる",
         },
-        networkPolicyWebHint: "Web 書き出しは HTTP で配信されるため「ネットワークを使わない」は適用できない。許可一覧はページのポリシーで適用される",
+        networkPolicyWebHint: "Web 書き出しは HTTP で配信されるため「ネットワークを使わない」は適用できない。許可一覧は適用される",
         networkAllowlist: {
             title: "ネットワーク要求の許可一覧",
             description: "1 行に 1 つ、アドレスかホストのパターンを書く",
@@ -335,19 +355,19 @@ export const project = {
         },
         encryptAssetsTitle: "アセットを暗号化",
         encryptAssetsDescription: "パッケージとプレビューのビルドで、アセット、プラグインのコード、ストーリーのバンドルを暗号化する。開発モードには影響しない",
-        encryptAssetsWebHint: "Web 書き出しには当てはまらない。Web ビルドは常にアセットの保護なしで配布される",
+        encryptAssetsWebHint: "Web ビルドは常にアセットの保護なしで配布される",
         // 署名の群をまとめた 1 行。署名できるプラットフォームには、この端末でビルドできるかに
         // 関わらず行が並ぶ。証明書はそれを使うビルドの何日も前に用意するもので、その準備こそが
         // これがビルドのダイアログではなくパネルにある理由。
         signingDescription: "どの資格情報でどのプラットフォームに署名するか。証明書とパスワードはこの端末に留まり、プロジェクトはどれを使うかだけを持つ",
         webLosslessImagesTitle: "画像を WebP に変換",
         webLosslessImagesDescription: "書き出す画像を、そのほうが小さくなる場合に可逆 WebP へ再エンコードする",
-        webLosslessImagesHint: "変換のたびに元の画像とピクセル単位で比べ、まったく同じにデコードされない限り捨てる。Android と iOS のビルドは同じ書き出しを配信するので、そちらにも効く",
+        webLosslessImagesHint: "変換後の画像は元の画像と完全に同じにデコードされる。Android と iOS のビルドは同じ書き出しを配信するので、そちらにも適用される",
         webPrecompressTitle: "テキストを事前圧縮",
         webPrecompressDescription: "サイトのスクリプト、スタイル、ストーリーのデータについて Brotli と Gzip の版も書き出す",
-        webPrecompressHint: "使うのは、事前圧縮したファイルを配信するよう設定したサーバーだけ。それ以外のホストは元のファイルを配信し、これらを無視する",
+        webPrecompressHint: "使うのは、事前圧縮したファイルを配信するよう設定したサーバーだけ。それ以外のホストは元のファイルを配信する",
         webLossyImagesTitle: "画像を再圧縮",
-        webLossyImagesDescription: "書き出す画像を非可逆 WebP へ再エンコードする。かなり小さくなるが、失われた情報は戻らない",
+        webLossyImagesDescription: "書き出す画像を非可逆 WebP へ再エンコードする。ファイルは大幅に小さくなり、失われた情報は戻らない",
         webLossyQualityTitle: "画像の品質",
         webLossyQualityDescription: "再圧縮に使う WebP の品質。1 から 100 まで",
         webSharedWithMobileHint: "Android と iOS のビルドは同じ書き出しを配信するので、そちらにも効く",
@@ -389,10 +409,10 @@ export const project = {
     dependencies: {
         rescan: "調べ直す",
         scanning: "プロジェクトを調べている…",
-        empty: "プラグインへの依存はない。このプロジェクトは Studio の組み込み機能だけを使っている",
+        empty: "プラグインへの依存はない",
         banner: {
-            blocked: "ここで無効になっているプラグインがある。入っているバージョンが合わない。更新するか入れ直す",
-            warnings: "確認が要る依存がある。プラグインが古いか、任意の依存が見つからない",
+            blocked: "無効になっているプラグインがある。インストールされているバージョンが適合しない。更新するか入れ直す",
+            warnings: "プラグインが古いか、任意の依存が利用できない",
         },
         status: {
             ready: "利用可能",

@@ -10,6 +10,7 @@ import {
     type EffectShadowLayerData,
 } from "./shadowLayerCodec";
 import { parseSimpleFilter, serializeSimpleFilter, type FilterPresetId } from "./effectFilterCodec";
+import { resolveByWidgetType } from "./widgetInheritance";
 
 export type VisualEffectKind =
     | "blur"
@@ -209,15 +210,16 @@ export const EFFECT_APPEARANCE_KEY_BY_KIND: Record<VisualEffectKind, keyof Eleme
     filter: "effectFilter",
 };
 
-/** Which effect kinds each widget type supports (static path: no backgroundBlur on text). */
+/**
+ * Which effect kinds each widget type supports (static path: no backgroundBlur on text).
+ *
+ * Read it through {@link getSupportedEffectKindsForWidgetType}, which resolves a specialisation
+ * (Dialog Sentence, Notification list…) to the entry of the type it extends. Only list a
+ * specialisation here when its answer actually differs from its parent's.
+ */
 export const WIDGET_EFFECT_KINDS_BY_TYPE: Record<string, readonly VisualEffectKind[]> = {
     "nl.text": ["blur", "textShadow", "blend", "filter"],
-    "nl.dialog.sentence": ["blur", "textShadow", "blend", "filter"],
-    "nl.nvl.texts": ["blur", "textShadow", "blend", "filter"],
     "nl.list": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
-    "nl.notification.list": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
-    "nl.choice.list": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
-    "nl.nvl.list": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
     "nl.container": [
         "blur",
         "backgroundBlur",
@@ -234,7 +236,7 @@ export const WIDGET_EFFECT_KINDS_BY_TYPE: Record<string, readonly VisualEffectKi
 };
 
 export function getSupportedEffectKindsForWidgetType(type: string): readonly VisualEffectKind[] {
-    return WIDGET_EFFECT_KINDS_BY_TYPE[type] ?? WIDGET_EFFECT_KINDS_BY_TYPE["nl.container"]!;
+    return resolveByWidgetType(WIDGET_EFFECT_KINDS_BY_TYPE, type) ?? WIDGET_EFFECT_KINDS_BY_TYPE["nl.container"]!;
 }
 
 export function isVisualEffectKind(value: string): value is VisualEffectKind {

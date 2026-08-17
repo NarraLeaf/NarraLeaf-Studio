@@ -225,7 +225,7 @@ export const characters = {
         voiceTrack: "语音总线",
         voiceTrackMissing: "总线已不存在",
         // 仅当语音总线下还没有任何可选项时出现，也就是选择框帮不上忙、必须先去建一条总线的那一刻
-        voiceTrackEmpty: "在「工程 → 音频」的语音下新建一条总线，即可为该角色单独控制音量",
+        voiceTrackEmpty: "在「项目 ▸ 游戏」的语音下新建一条总线，即可为该角色单独控制音量",
         select: "选择",
         thumbnailAlt: "缩略图",
         color: "颜色",

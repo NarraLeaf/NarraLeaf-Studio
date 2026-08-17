@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { CircleQuestionMark, LibraryBig } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
-import { HelpOverlay, HELP_TOPICS, helpTitleKey, openHelpTopic, requestContextHelp } from "@/lib/help";
+import { HelpOverlay, HELP_TOPICS, helpTitleKey, openHelpTopic, requestContextHelp, type HelpTopicId } from "@/lib/help";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
@@ -22,9 +22,11 @@ import { openHelpTab } from "../../modules/help/openHelpTab";
 export function WorkspaceHelp() {
     const { context } = useWorkspace();
 
-    const openBrowser = useCallback(() => {
+    // With a topic when the popover hands one over, without one when `F1` found nothing to answer
+    // for: there is no question to carry then, so the browser opens on its list.
+    const openBrowser = useCallback((topicId?: HelpTopicId) => {
         if (context) {
-            openHelpTab(context);
+            openHelpTab(context, topicId);
         }
     }, [context]);
 

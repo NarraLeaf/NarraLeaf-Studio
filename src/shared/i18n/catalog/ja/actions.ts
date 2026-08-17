@@ -18,6 +18,8 @@ export const actions = {
         switchMode: "実行モードを切り替え",
         menu: "実行とビルド",
         productionBuild: "製品ビルド…",
+        // 「製品ビルド」の隣。どちらも何かを起動するのではなくファイルを作る、同じ種類のもの。
+        exportPatch: "パッチを書き出す…",
         runAs: "実行するバリアント",
     },
     file: {

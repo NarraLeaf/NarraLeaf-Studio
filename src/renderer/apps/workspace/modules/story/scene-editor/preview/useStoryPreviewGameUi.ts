@@ -263,7 +263,12 @@ export function useStoryPreviewGameUi(input: {
             getSaveMetadata: async () => null,
             getSaveTimes: async () => null,
             getSaveLine: async () => null,
+            getSavePlaytime: async () => null,
             getSavePreview: async () => null,
+            // The editor preview keeps no stopwatch: what it runs is an author checking a scene,
+            // not a playthrough, and counting it would put working time into a player's total.
+            getPlaytime: () => 0,
+            getTotalPlaytime: () => 0,
             writeAutoSaveInGame: notAvailable("Auto Save"),
             listAutoSaves: async () => [],
             isInGame: () => true,

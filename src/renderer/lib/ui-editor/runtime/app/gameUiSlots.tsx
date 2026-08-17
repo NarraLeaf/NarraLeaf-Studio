@@ -161,7 +161,11 @@ export type LiveGameUiCallbacks = Pick<GameUiSlotHostOptions,
     | "getCurrentNametag"
     | "getNotificationsInGame"
     | "getHistoryInGame"
+    | "getFutureInGame"
     | "restoreHistoryInGame"
+    | "redoHistoryInGame"
+    | "canUndoHistoryInGame"
+    | "canRedoHistoryInGame"
     | "getChoiceCountInGame"
     | "isNvlModeInGame"
     | "selectChoiceInGame"
@@ -190,6 +194,61 @@ export function restoreLiveGameToHistory(liveGame: LiveGame, token: string): boo
         return false;
     }
     return restoreToHistory.call(liveGame, token) === true;
+}
+
+/**
+ * The other side of the play head: `getFuture`, `redo`, `canUndo`, `canRedo`.
+ *
+ * All four arrived in engine 0.26.0 and are feature-detected on the same terms as
+ * `restoreToHistory` above - an older dist answers "there is nothing ahead" and "you cannot step
+ * forward", which is what a backlog screen would show anyway, rather than throwing at the author.
+ */
+function liveGameHistoryControls(liveGame: LiveGame): {
+    getFuture?: () => unknown;
+    redo?: () => boolean;
+    canUndo?: () => boolean;
+    canRedo?: () => boolean;
+} {
+    return liveGame as {
+        getFuture?: () => unknown;
+        redo?: () => boolean;
+        canUndo?: () => boolean;
+        canRedo?: () => boolean;
+    };
+}
+
+/**
+ * Flatten the engine's backlog entries into the shape a List widget can bind field by field.
+ *
+ * Shared by the two halves of the timeline - `getHistory()` behind the play head and `getFuture()`
+ * ahead of it - because an entry is the same entry whichever side of the head it sits on, and a
+ * backlog screen binds both lists to one item template.
+ */
+function toBlueprintHistoryEntries(raw: unknown): BlueprintGameHistoryEntry[] {
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    return raw.flatMap(entry => {
+        if (!entry || typeof entry !== "object") {
+            return [];
+        }
+        const record = entry as Record<string, unknown>;
+        const element = (record.element ?? {}) as Record<string, unknown>;
+        const isMenu = element.type === "menu";
+        const text = element.text == null ? "" : String(element.text);
+        return [{
+            id: String(record.token ?? ""),
+            type: isMenu ? "menu" : "say",
+            text,
+            character: !isMenu && element.character != null ? String(element.character) : null,
+            voice: !isMenu && element.voice != null ? String(element.voice) : null,
+            // The replayable handle. Present from engine 0.24.0 on; an entry from an older
+            // save simply has none, and a backlog replay button hides itself for that line.
+            voiceId: !isMenu && element.voiceId != null ? String(element.voiceId) : null,
+            selected: isMenu && element.selected != null ? String(element.selected) : null,
+            isPending: record.isPending === true,
+        }];
+    });
 }
 
 /**
@@ -255,43 +314,45 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         getHistoryInGame: (): BlueprintGameHistoryEntry[] => {
-            const raw = getLiveGame()?.getHistory?.();
-            if (!Array.isArray(raw)) {
-                return [];
-            }
-            return raw.flatMap(entry => {
-                if (!entry || typeof entry !== "object") {
-                    return [];
-                }
-                const record = entry as Record<string, unknown>;
-                const element = (record.element ?? {}) as Record<string, unknown>;
-                const isMenu = element.type === "menu";
-                const text = element.text == null ? "" : String(element.text);
-                return [{
-                    id: String(record.token ?? ""),
-                    type: isMenu ? "menu" : "say",
-                    text,
-                    character: !isMenu && element.character != null ? String(element.character) : null,
-                    voice: !isMenu && element.voice != null ? String(element.voice) : null,
-                    // The replayable handle. Present from engine 0.24.0 on; an entry from an older
-                    // save simply has none, and a backlog replay button hides itself for that line.
-                    voiceId: !isMenu && element.voiceId != null ? String(element.voiceId) : null,
-                    selected: isMenu && element.selected != null ? String(element.selected) : null,
-                    isPending: record.isPending === true,
-                }];
-            });
+            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.());
+        },
+
+        getFutureInGame: (): BlueprintGameHistoryEntry[] => {
+            const liveGame = getLiveGame();
+            const getFuture = liveGame ? liveGameHistoryControls(liveGame).getFuture : undefined;
+            return toBlueprintHistoryEntries(getFuture ? getFuture.call(liveGame) : undefined);
         },
 
         restoreHistoryInGame: async (id?: string): Promise<void> => {
             const token = String(id ?? "").trim();
             const liveGame = requireLiveGame("Restore From History");
             // Snapshot-based restore works both during live play and after loading a save (where the
-            // closure-based undo stack is empty). Prefer it when a specific backlog line is targeted
-            // and the engine exposes it; fall back to undo otherwise (and for "go back one line").
+            // closure-based undo stack is empty). Prefer it when a specific backlog line is targeted;
+            // "go back one line" falls through to undo.
             if (restoreLiveGameToHistory(liveGame, token)) {
                 return;
             }
-            liveGame.undo(token ? token : undefined);
+            // `undo` steps back one line and takes no argument from engine 0.26.0 on - a named line is
+            // reached only through `restoreToHistory`. So a targeted line the engine refused has
+            // nothing to step to: going back one line instead would land somewhere else.
+            if (!token) {
+                liveGame.undo();
+            }
+        },
+
+        redoHistoryInGame: async (): Promise<void> => {
+            const liveGame = requireLiveGame("Redo Next History Entry");
+            liveGameHistoryControls(liveGame).redo?.call(liveGame);
+        },
+
+        canUndoHistoryInGame: (): boolean => {
+            const liveGame = getLiveGame();
+            return liveGame ? liveGameHistoryControls(liveGame).canUndo?.call(liveGame) === true : false;
+        },
+
+        canRedoHistoryInGame: (): boolean => {
+            const liveGame = getLiveGame();
+            return liveGame ? liveGameHistoryControls(liveGame).canRedo?.call(liveGame) === true : false;
         },
 
         getChoiceCountInGame: (): number => {

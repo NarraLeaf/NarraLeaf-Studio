@@ -75,7 +75,10 @@ describe("auditShippedContent", () => {
         [FONT]: { relativePath: "assets/b.woff2" },
         [DETACHED]: { relativePath: "assets/c.png" },
     };
-    const readsEverything = { entryExists: async () => true };
+    /** How a loose package answers: the manifest is the only thing that knows where bytes are. */
+    const looseResolver = (items: Record<string, { relativePath: string }>) =>
+        (assetId: string) => items[assetId]?.relativePath ?? null;
+    const readsEverything = { entryExists: async () => true, resolveEntryName: looseResolver(present) };
 
     it("passes when the package answers every demand", async () => {
         const result = await auditShippedContent({ pack: pack(present), reader: readsEverything });
@@ -85,14 +88,42 @@ describe("auditShippedContent", () => {
 
     it("fails an asset the manifest does not list", async () => {
         const { [FONT]: _dropped, ...withoutFont } = present;
-        const result = await auditShippedContent({ pack: pack(withoutFont), reader: readsEverything });
+        const result = await auditShippedContent({
+            pack: pack(withoutFont),
+            reader: { entryExists: async () => true, resolveEntryName: looseResolver(withoutFont) },
+        });
         expect(result.failures).toEqual([{ assetId: FONT, origin: "Title", reason: "missing" }]);
+    });
+
+    /*
+     * A protected package ships an empty manifest and derives every entry name from the asset id, so
+     * the audit has to be able to prove such a package without a manifest to read. Without this the
+     * suite would only ever exercise the loose route and a shipped game could fail its own gate.
+     */
+    it("audits a package that names its entries by derivation and lists nothing", async () => {
+        const seen: string[] = [];
+        const result = await auditShippedContent({
+            pack: pack({}),
+            reader: {
+                entryExists: async name => {
+                    seen.push(name);
+                    return true;
+                },
+                resolveEntryName: assetId => `assets/${assetId}`,
+            },
+        });
+        expect(result.failures).toEqual([]);
+        expect(result.checkedAssetCount).toBe(3);
+        expect(seen).toContain(`assets/${IMAGE}`);
     });
 
     it("fails an asset the manifest lists and the store does not hold", async () => {
         const result = await auditShippedContent({
             pack: pack(present),
-            reader: { entryExists: async relativePath => relativePath !== "assets/b.woff2" },
+            reader: {
+                entryExists: async relativePath => relativePath !== "assets/b.woff2",
+                resolveEntryName: looseResolver(present),
+            },
         });
         expect(result.failures).toEqual([{
             assetId: FONT,
@@ -105,7 +136,10 @@ describe("auditShippedContent", () => {
     it("treats a store that throws as a failure rather than letting the build through", async () => {
         const result = await auditShippedContent({
             pack: pack(present),
-            reader: { entryExists: async () => { throw new Error("sealed store refused"); } },
+            reader: {
+                entryExists: async () => { throw new Error("sealed store refused"); },
+                resolveEntryName: looseResolver(present),
+            },
         });
         expect(result.failures).toHaveLength(3);
         expect(result.failures.every(failure => failure.reason === "unreadable")).toBe(true);

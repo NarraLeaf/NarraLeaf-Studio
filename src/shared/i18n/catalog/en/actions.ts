@@ -22,6 +22,9 @@ export const actions = {
         menu: "Run and build",
         // Production Build, folded into the dropdown to make room for the version control widget.
         productionBuild: "Production Build…",
+        // Beside Production Build because it is the same kind of thing: it produces a file
+        // rather than launching anything.
+        exportPatch: "Export Patch…",
         // Which build variant Dev Mode, Preview and Test assemble as. The row is only there when
         // the project has a variant to pick, so most projects never see it.
         runAs: "Run as",

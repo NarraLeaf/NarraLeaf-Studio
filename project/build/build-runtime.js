@@ -159,7 +159,10 @@ function runtimeAliasPlugin() {
         platform: 'node',
         format: 'cjs',
         bundle: true,
-        external: ['electron'],
+        // koffi is external for the reason it is everywhere else in this repo: it resolves its own
+        // .node addon by path at run time, and bundling it breaks that resolution. The packaged game
+        // gets the package copied beside its main.js (see gameRuntimeArtifactCompiler).
+        external: ['electron', 'koffi'],
         sourcemap: dev,
         minify: true,
         define: productionDefine,
