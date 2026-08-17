@@ -52,7 +52,7 @@ export const story = {
             roundtrip: "往復用",
             roundtripDetail: "シーンのデータを持つので、読み込み直せる",
             review: "確認用",
-            reviewDetail: "文だけ。読みやすく、差分も取りやすい。読み込み直せない",
+            reviewDetail: "文だけ。読み込み直せない",
         },
         exported: "{path} に書き出した",
         importTitle: "スクリプトを読み込む",
@@ -96,7 +96,7 @@ export const story = {
             shapeMismatchText: "文の行がアクションの行に書き換えられていた。文を残し、その編集は捨てた",
             duplicateAnchor: "行が複製されていた。複製には新しい識別子を与えた",
             unknownRun: "書式の印が、このスクリプトに無い書式を指している",
-            unplaceableLine: "新しい行の置き場所がここには無い",
+            unplaceableLine: "ここには新しい行を置けない",
             speakerUnresolved: "この行はキャラクターと結びついていないので、元の話者名を残した。文のほうは変わっている",
         },
     },
@@ -143,9 +143,9 @@ export const story = {
             unknownNameNamed: "この行が挙げている{what}は、プロジェクトに無い",
             ambiguousName: "この名前を持つものが複数あり、どれを指すか決められない",
             ambiguousNameNamed: "この名前を持つ{what}が複数あり、どれを指すか決められない",
-            ambiguousStatement: "この行に当てはまる文が複数あり、見分けがつかない",
-            badWord: "この文はここでこの語を受け取らない",
-            missingValue: "この文には欠かせないものが足りていない",
+            ambiguousStatement: "この行に当てはまる文が複数あり、区別できない",
+            badWord: "この文はここでこの語を受け付けない",
+            missingValue: "この文には必要な値が足りていない",
             conflictingValues: "この行は同じことを二通りに指定している",
             badIndent: "この行の字下げが段の途中か、一段飛ばしている",
             danglingBranch: "この分岐が属する条件が上に無い",
@@ -155,7 +155,7 @@ export const story = {
         view: {
             open: "スクリプトとして読む",
             close: "行に戻る",
-            readOnly: "このシーンにはスクリプトで言えない行があるので、ここからは書き戻せない",
+            readOnly: "このシーンにはスクリプトの形を持たない行があるので、ここからは書き戻せない",
             gate: {
                 other: "{count} 行にスクリプトの書き方が無いので、このシーンは今後もここでは編集できない",
             },
@@ -532,7 +532,7 @@ export const story = {
         zoom: "ズーム",
         rotate: "回転",
         darken: "暗く",
-        motion: "運びカメラ",
+        motion: "モーション",
         reset: "リセット",
         // 変数の型
         boolean: "真偽値",
@@ -634,10 +634,10 @@ export const story = {
             characterOrName: "キャラクター、または任意の名前",
             characterForm: "そのキャラクターの表情のいずれか",
             puppet: {
-                motion: "そのランタイムが知っているモーション。空にすると止める",
-                expression: "そのランタイムが知っている表情。空にすると消す",
-                skin: "そのランタイムが知っているスキン。空にすると既定に戻す",
-                param: "そのモデルの数値パラメータを id で指定",
+                motion: "ランタイムが提供するモーション。空にすると静止に戻す",
+                expression: "ランタイムが提供する表情。空にすると消す",
+                skin: "ランタイムが提供するスキン。空にすると既定に戻す",
+                param: "モデルの数値パラメータを id で指定",
             },
             scene: "シーン",
             audioTrack: "オーディオトラック",
@@ -872,7 +872,7 @@ export const story = {
      */
     command: {
         background: { label: "背景", detail: "シーンの背景画像か背景色を決める" },
-        jump: { label: "ジャンプ", detail: "別のシーンへ移る。いまのシーンは降ろされる。/goto とは違う" },
+        jump: { label: "ジャンプ", detail: "別のシーンへ移る。いまのシーンは解放される" },
         wait: { label: "待機", detail: "指定した秒数、またはクリックまで待つ" },
         nvl: { label: "NVL", detail: "積み上げ式のダイアログパネルを切り替える" },
         show: { label: "表示", detail: "キャラクターや舞台のオブジェクトを出す" },
@@ -909,7 +909,7 @@ export const story = {
         reset: { label: "リセット", detail: "変数を初期値に戻す" },
         declareLocal: { label: "シーン変数", detail: "このシーンだけで有効な変数を宣言する" },
         if: { label: "条件", detail: "条件で分岐する" },
-        menu: { label: "メニュー", detail: "プレイヤーに選ばせる" },
+        menu: { label: "メニュー", detail: "プレイヤーに選択肢を提示する" },
         repeat: { label: "繰り返し", detail: "中のアクションを決めた回数だけ実行する。条件で回すなら /until を使う" },
         // 詳細だけが、語そのものでは言えない 1 点を言う。`until` は *止まる* ときを言うので、
         // 群は条件が偽の間だけ動く。

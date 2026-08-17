@@ -51,7 +51,7 @@ export const story = {
             roundtrip: "Round-trip",
             roundtripDetail: "Carries the scene's data, so the file can be imported back.",
             review: "Review",
-            reviewDetail: "Prose only, clean to read and to diff. Cannot be imported.",
+            reviewDetail: "Prose only. Cannot be imported.",
         },
         exported: "Exported to {path}",
         importTitle: "Import Script",
@@ -97,7 +97,7 @@ export const story = {
             shapeMismatchText: "A text line was rewritten as an action line; the text was kept and the edit dropped.",
             duplicateAnchor: "A line was copied; the copies were given new identities.",
             unknownRun: "A formatting marker names formatting this script does not carry.",
-            unplaceableLine: "A new line has nowhere to go here.",
+            unplaceableLine: "A new line cannot be placed here.",
             speakerUnresolved: "This line binds no character, so the original speaker name was kept. Its text still changed.",
         },
     },
@@ -150,14 +150,14 @@ export const story = {
             unknownStatement: "This line starts with a keyword and does not read as that statement.",
             unknownName: "This line names something the project does not have.",
             unknownNameNamed: "This line names {what} the project does not have.",
-            ambiguousName: "Several things answer to this name, so it cannot be told which was meant.",
-            ambiguousNameNamed: "Several things answer to this name, so it cannot be told which {what} was meant.",
-            ambiguousStatement: "Several statements fit this line and nothing tells them apart.",
-            badWord: "This word is not one this statement accepts here.",
-            missingValue: "This statement is missing something it cannot do without.",
-            conflictingValues: "This line sets the same thing twice, two different ways.",
+            ambiguousName: "Several things have this name, so it cannot be told which was meant.",
+            ambiguousNameNamed: "Several things have this name, so it cannot be told which {what} was meant.",
+            ambiguousStatement: "Several statements fit this line and cannot be told apart.",
+            badWord: "This statement does not accept this word here.",
+            missingValue: "This statement is missing a required value.",
+            conflictingValues: "This line sets the same thing twice, in two different ways.",
             badIndent: "This line is indented by part of a level, or skips one.",
-            danglingBranch: "This branch has no condition above it to belong to.",
+            danglingBranch: "This branch has no condition above it.",
             badTag: "This line carries a formatting tag that is unknown, or left open.",
             badExpression: "This expression does not resolve.",
         },
@@ -167,7 +167,7 @@ export const story = {
         view: {
             open: "Read as a script",
             close: "Back to rows",
-            readOnly: "This scene has rows the script cannot say, so it cannot be written here.",
+            readOnly: "This scene has rows with no script form, so it cannot be written here.",
             gate: {
                 one: "{count} row has no script form, so this scene will not become editable here.",
                 other: "{count} rows have no script form, so this scene will not become editable here.",
@@ -291,7 +291,7 @@ export const story = {
             noDecisions: "No decisions",
             // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
             stopsHere: "stops here",
-            stopsHereTitle: "A path stops here but this is not an ending: it looped back to a visited scene, or an option has nothing written after it",
+            stopsHereTitle: "A path stops here without being an ending. It returned to a visited scene, or an option has nothing written after it",
             diagnostics: {
                 unreachableEndings: {
                     one: "{count} ending no route reaches",
@@ -370,7 +370,7 @@ export const story = {
     },
     targetField: {
         label: "Target",
-        notOnStageTitle: "Not created earlier in this scene, pick an existing displayable",
+        notOnStageTitle: "Not created earlier in this scene. Pick an existing displayable",
         placeholder: "Select displayable…",
         search: "Search stage displayables",
         noMatch: "No match.",
@@ -384,7 +384,7 @@ export const story = {
     layerField: {
         label: "Layer",
         defaultName: "Displayable layer",
-        notOnStageTitle: "No layer with this name is declared earlier in this scene, pick an existing layer",
+        notOnStageTitle: "No layer with this name is declared earlier in this scene. Pick an existing layer",
         hint: "Layer",
         createNew: "Create new layer",
     },
@@ -680,10 +680,10 @@ export const story = {
             characterOrName: "Character, or any name",
             characterForm: "One of that character's expressions",
             puppet: {
-                motion: "A motion its runtime knows (blank rests it)",
-                expression: "An expression its runtime knows (blank clears it)",
-                skin: "A skin its runtime knows (blank restores the default)",
-                param: "A numeric parameter of its model, by id",
+                motion: "A motion provided by the runtime (blank returns it to rest)",
+                expression: "An expression provided by the runtime (blank clears it)",
+                skin: "A skin provided by the runtime (blank restores the default)",
+                param: "A numeric parameter of the model, by id",
             },
             scene: "Scene",
             audioTrack: "Audio track",
@@ -923,7 +923,7 @@ export const story = {
      */
     command: {
         background: { label: "Background", detail: "Set the scene background image or color" },
-        jump: { label: "Jump", detail: "Go to another scene, unloading this one. Unlike /goto" },
+        jump: { label: "Jump", detail: "Go to another scene, unloading this one" },
         wait: { label: "Wait", detail: "Pause for seconds, or for a click" },
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
         show: { label: "Show", detail: "Show a character or a stage object" },
@@ -960,7 +960,7 @@ export const story = {
         reset: { label: "Reset", detail: "Restore a variable to its default" },
         declareLocal: { label: "Local variable", detail: "Declare a scene variable" },
         if: { label: "If", detail: "Branch on a condition" },
-        menu: { label: "Menu", detail: "Let the player choose" },
+        menu: { label: "Menu", detail: "Present a set of options to the player" },
         repeat: { label: "Repeat", detail: "Run the enclosed actions a set number of times. For a condition instead, use /until" },
         // The detail carries the one thing the token cannot: `until` says when to STOP, so the group
         // runs while the condition is false. Named as a stop condition because that is what it is.

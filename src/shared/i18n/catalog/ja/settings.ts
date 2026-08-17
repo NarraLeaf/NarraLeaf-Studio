@@ -43,7 +43,7 @@ export const settings = {
         },
         workspace: {
             label: "ワークスペース",
-            description: "起動時の動き、ワークスペースの履歴、自動保存の補助",
+            description: "起動時の動作、ワークスペースの履歴、自動保存",
         },
         shortcuts: {
             label: "ショートカット",
