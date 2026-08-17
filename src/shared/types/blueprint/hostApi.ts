@@ -73,6 +73,15 @@ export const BLUEPRINT_GAME_TEXT_READ_STATE_KEY = "game.dialog.textRead" as cons
  */
 export const BLUEPRINT_TEXT_READ_PERSISTENCE_KEY = "nlr.textRead" as const;
 
+/**
+ * Project-persistence key holding the title's total playtime in seconds (number).
+ *
+ * Title-level rather than per-save, so it is deliberately outside every save file: loading an old
+ * save does not un-play the hours that led to it. The per-save reading lives on the save record
+ * instead (`playtimeSeconds`), where a save list can read it without deserializing a game.
+ */
+export const BLUEPRINT_PLAYTIME_TOTAL_PERSISTENCE_KEY = "nlr.playtimeTotal" as const;
+
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
 /**
@@ -446,6 +455,43 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: false,
             input: {},
             output: false,
+        },
+        /**
+         * The running playthrough's playtime, in seconds.
+         *
+         * Synchronous and binding-callable because it reads a counter this process already holds -
+         * the same reason `isInGame` is. Note that a binding re-evaluates when something re-renders,
+         * never on a clock: a save screen reading this when it opens is right, and a HUD that has to
+         * tick needs `On Playtime Tick` to drive the re-render.
+         */
+        getPlaytime: {
+            capabilityId: "game.getPlaytime",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: 0,
+        },
+        /** Seconds ever spent in this project, across every playthrough. */
+        getTotalPlaytime: {
+            capabilityId: "game.getTotalPlaytime",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: 0,
+        },
+        /**
+         * The playtime recorded on a stored save. Reads the save store, so unlike the two above it
+         * is asynchronous and not callable from a binding.
+         */
+        getSavePlaytime: {
+            capabilityId: "game.getSavePlaytime",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: null,
         },
         quit: {
             capabilityId: "game.quit",

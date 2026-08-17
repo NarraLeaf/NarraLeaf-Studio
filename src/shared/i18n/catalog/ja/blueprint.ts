@@ -533,6 +533,7 @@ export const blueprint = {
         entryId: "項目 Id",
         event: "イベント",
         exists: "存在する",
+        recorded: "記録済み",
         false: "False",
         field: "フィールド",
         float: "小数",
@@ -1212,5 +1213,8 @@ export const blueprint = {
         getTimeZone: "タイムゾーンを取得",
         getSaveTime: "セーブ時刻を取得",
         getSaveLine: "セーブのセリフを取得",
+        getSavePlaytime: "セーブのプレイ時間を取得",
+        getPlaytime: "プレイ時間を取得",
+        getTotalPlaytime: "累計プレイ時間を取得",
     },
 } satisfies LocaleNamespace<"blueprint">;

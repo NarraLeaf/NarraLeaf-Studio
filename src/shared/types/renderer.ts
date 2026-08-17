@@ -503,6 +503,7 @@ export interface RendererPreloadedInterface {
                 capture?: string,
                 metadata?: unknown,
                 compatibility?: SaveCompatibilityStamp,
+                playtimeSeconds?: number,
             ): Promise<RequestStatus<void>>;
             read(
                 projectRef: DevModeSaveProjectRef,

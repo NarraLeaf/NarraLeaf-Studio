@@ -499,6 +499,9 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get Time Zone": "blueprint.node.getTimeZone",
     "Get Save Time": "blueprint.node.getSaveTime",
     "Get Save Line": "blueprint.node.getSaveLine",
+    "Get Save Playtime": "blueprint.node.getSavePlaytime",
+    "Get Playtime": "blueprint.node.getPlaytime",
+    "Get Total Playtime": "blueprint.node.getTotalPlaytime",
 };
 
 /** Palette category name -> translation key, keyed by the original English category. */
@@ -657,6 +660,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Entry Id": "blueprint.port.entryId",
     "Event": "blueprint.port.event",
     "Exists": "blueprint.port.exists",
+    "Recorded": "blueprint.port.recorded",
     "False": "blueprint.port.false",
     "Field": "blueprint.port.field",
     "Float": "blueprint.port.float",

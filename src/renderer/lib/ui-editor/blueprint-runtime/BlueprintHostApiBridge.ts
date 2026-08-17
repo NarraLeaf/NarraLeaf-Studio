@@ -97,7 +97,7 @@ import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/u
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
-import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import {
     isButtonCursorValue,
@@ -430,6 +430,12 @@ export type BlueprintHostApiRuntime = {
         getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
         /** Where a slot stopped, or null when there is no such slot. */
         getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
+        /** How long a slot was played, or null when there is no such slot. */
+        getSavePlaytime: (id: string) => Promise<SaveRecordPlaytime | null>;
+        /** The running playthrough's playtime, in seconds. */
+        getPlaytime: () => number;
+        /** Seconds ever spent in this project, across every playthrough. */
+        getTotalPlaytime: () => number;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
         /** Write an autosave into the reserved ring now, regardless of the timer. */
         writeAutoSave: () => Promise<void>;
@@ -709,6 +715,9 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSaveTimes?: (id: string) => Promise<SaveRecordTimes | null> | SaveRecordTimes | null;
     onGetSaveLine?: (id: string) => Promise<SaveRecordLine | null> | SaveRecordLine | null;
+    onGetSavePlaytime?: (id: string) => Promise<SaveRecordPlaytime | null> | SaveRecordPlaytime | null;
+    onGetPlaytime?: () => number;
+    onGetTotalPlaytime?: () => number;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onWriteAutoSave?: () => Promise<void> | void;
     onListAutoSaves?: () => Promise<AutoSaveEntry[]> | AutoSaveEntry[];
@@ -1662,6 +1671,26 @@ function normalizeSaveRecordTimes(value: unknown): SaveRecordTimes | null {
 }
 
 /**
+ * A host's answer for how long one slot was played, or null when it says there is no such slot.
+ *
+ * Same split as {@link normalizeSaveRecordTimes} for "no slot". Within a slot the two failures are
+ * kept apart: an unusable reading (absent, negative, NaN) becomes `recorded: false` rather than a
+ * confident zero, because zero is a claim about the player and false is a claim about the record.
+ */
+function normalizeSaveRecordPlaytime(value: unknown): SaveRecordPlaytime | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const seconds = Number(record.seconds);
+    const usable = record.recorded === true && Number.isFinite(seconds) && seconds >= 0;
+    return {
+        seconds: usable ? seconds : 0,
+        recorded: usable,
+    };
+}
+
+/**
  * A host's answer for where one slot stopped, or null when it says there is no such slot.
  *
  * Same split as {@link normalizeSaveRecordTimes}: a non-object is "no slot", while a present record
@@ -1981,6 +2010,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetSaveMetadata,
         onGetSaveTimes,
         onGetSaveLine,
+        onGetSavePlaytime,
+        onGetPlaytime,
+        onGetTotalPlaytime,
         onGetSavePreview,
         onWriteAutoSave,
         onListAutoSaves,
@@ -3420,6 +3452,42 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("getSaveMetadata: game save runtime is not available");
                     }
                     return normalizeJsonValue(await onGetSaveMetadata(saveId));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getPlaytime: () => {
+                const cap = "game.getPlaytime";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Zero rather than a throw when no host is counting: a title screen asking how
+                    // long this run has gone before any run exists is a fair question with a real
+                    // answer, and the story preview has no stopwatch at all.
+                    const value = onGetPlaytime ? Number(onGetPlaytime()) : 0;
+                    return Number.isFinite(value) && value > 0 ? value : 0;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getTotalPlaytime: () => {
+                const cap = "game.getTotalPlaytime";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetTotalPlaytime ? Number(onGetTotalPlaytime()) : 0;
+                    return Number.isFinite(value) && value > 0 ? value : 0;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSavePlaytime: async (id: string) => {
+                const cap = "game.getSavePlaytime";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("getSavePlaytime", id);
+                    if (!onGetSavePlaytime) {
+                        throw new Error("getSavePlaytime: game save runtime is not available");
+                    }
+                    return normalizeSaveRecordPlaytime(await onGetSavePlaytime(saveId));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
