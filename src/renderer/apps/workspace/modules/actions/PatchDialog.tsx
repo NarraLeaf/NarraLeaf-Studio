@@ -75,72 +75,72 @@ function PatchDialogContent({
     }, [outputFile]);
 
     return (
-        <div className="grid gap-3 [&>*]:min-w-0">
-            <div className="grid gap-1">
-                <FieldLabel as="div">{t("build.patch.variantLabel")}</FieldLabel>
-                <Select
-                    options={variantOptions}
-                    value={appTagId || RELEASE_APP_TAG.id}
-                    onChange={value => setAppTagId(String(value) === RELEASE_APP_TAG.id ? "" : String(value))}
-                    size="sm"
-                    fullWidth
-                    portalMenu
-                    ariaLabel={t("build.patch.variantLabel")}
-                />
-                {/* Stated because it is the one way to get this wrong without being told: a patch
-                    made under the other variant cannot be opened by the build it was meant for, and
-                    nothing says so until a player tries it. */}
-                <span className="text-2xs text-fg-subtle">{t("build.patch.variantHint")}</span>
-            </div>
-
-            <div className="grid gap-1">
-                <FieldLabel as="div">{t("build.patch.baselineLabel")}</FieldLabel>
-                <div className="flex min-w-0 items-center gap-2">
-                    <Input
-                        value={baselineAppDir}
-                        onChange={event => setBaselineAppDir(event.target.value)}
-                        placeholder={t("build.patch.baselinePlaceholder")}
-                        size="sm"
-                        className="min-w-0 flex-1"
+        // Negative margins undo DialogContainer's content padding so the footer meets the dialog
+        // edges and reads as the same band the test picker and the build dialog end with, rather
+        // than a rule drawn inside the form. The fields keep that padding back.
+        <div className="-mx-6 -my-4 flex min-w-0 flex-col">
+            <div className="grid gap-3 px-6 py-4 [&>*]:min-w-0">
+                <div className="grid gap-1">
+                    <FieldLabel as="div">{t("build.patch.variantLabel")}</FieldLabel>
+                    <Select
+                        options={variantOptions}
+                        value={appTagId || RELEASE_APP_TAG.id}
+                        onChange={value => setAppTagId(String(value) === RELEASE_APP_TAG.id ? "" : String(value))}
+                        fullWidth
+                        portalMenu
+                        ariaLabel={t("build.patch.variantLabel")}
                     />
-                    <Button size="sm" variant="secondary" onClick={() => { void pickBaseline(); }}>
-                        {t("build.patch.browse")}
-                    </Button>
+                    {/* Stated because it is the one way to get this wrong without being told: a patch
+                        made under the other variant cannot be opened by the build it was meant for, and
+                        nothing says so until a player tries it. */}
+                    <span className="text-2xs text-fg-subtle">{t("build.patch.variantHint")}</span>
                 </div>
-                <span className="text-2xs text-fg-subtle">{t("build.patch.baselineHint")}</span>
-            </div>
 
-            <div className="grid gap-1">
-                <FieldLabel as="div">{t("build.patch.outputLabel")}</FieldLabel>
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="grid gap-1">
+                    <FieldLabel as="div">{t("build.patch.baselineLabel")}</FieldLabel>
+                    <div className="flex min-w-0 items-center gap-2">
+                        <Input
+                            value={baselineAppDir}
+                            onChange={event => setBaselineAppDir(event.target.value)}
+                            placeholder={t("build.patch.baselinePlaceholder")}
+                            className="min-w-0 flex-1"
+                        />
+                        <Button variant="secondary" onClick={() => { void pickBaseline(); }}>
+                            {t("build.patch.browse")}
+                        </Button>
+                    </div>
+                    <span className="text-2xs text-fg-subtle">{t("build.patch.baselineHint")}</span>
+                </div>
+
+                <div className="grid gap-1">
+                    <FieldLabel as="div">{t("build.patch.outputLabel")}</FieldLabel>
+                    <div className="flex min-w-0 items-center gap-2">
+                        <Input
+                            value={outputFile}
+                            onChange={event => setOutputFile(event.target.value)}
+                            className="min-w-0 flex-1"
+                        />
+                        <Button variant="secondary" onClick={() => { void pickOutput(); }}>
+                            {t("build.patch.browse")}
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="grid gap-1">
+                    <FieldLabel as="div">{t("build.patch.nameLabel")}</FieldLabel>
                     <Input
-                        value={outputFile}
-                        onChange={event => setOutputFile(event.target.value)}
-                        size="sm"
-                        className="min-w-0 flex-1"
+                        value={name}
+                        onChange={event => setName(event.target.value)}
+                        placeholder={t("build.patch.namePlaceholder")}
                     />
-                    <Button size="sm" variant="secondary" onClick={() => { void pickOutput(); }}>
-                        {t("build.patch.browse")}
-                    </Button>
                 </div>
             </div>
 
-            <div className="grid gap-1">
-                <FieldLabel as="div">{t("build.patch.nameLabel")}</FieldLabel>
-                <Input
-                    value={name}
-                    onChange={event => setName(event.target.value)}
-                    placeholder={t("build.patch.namePlaceholder")}
-                    size="sm"
-                />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-edge pt-3">
-                <Button size="sm" variant="ghost" onClick={onCancel}>
+            <div className="flex items-center justify-end gap-2 border-t border-edge bg-surface-overlay px-6 py-3">
+                <Button variant="secondary" onClick={onCancel}>
                     {t("common.cancel")}
                 </Button>
                 <Button
-                    size="sm"
                     variant="primary"
                     disabled={!outputFile.trim()}
                     onClick={() => onExport({ appTagId, baselineAppDir: baselineAppDir.trim(), outputFile: outputFile.trim(), name })}
@@ -198,6 +198,9 @@ export async function openPatchDialog(workspace: Workspace): Promise<void> {
         title: translate("build.patch.title"),
         width: 520,
         closable: true,
+        // What a patch can carry, and what installing one does at the player's end, is decided
+        // here and readable from none of the four fields.
+        helpTopic: "patches",
         content: (
             <PatchDialogContent
                 info={info}
