@@ -32,6 +32,7 @@ import type { BuildService } from "@/lib/workspace/services/core/BuildService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
+import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
 
 type PatchDialogInfo = {
     appTags: ProjectAppTag[];
@@ -187,7 +188,10 @@ export async function openPatchDialog(workspace: Workspace): Promise<void> {
         .replace(/[<>:"/\\|?*\x00-\x1f]/g, "-");
     const info: PatchDialogInfo = {
         appTags: appTagService?.listTags() ?? [RELEASE_APP_TAG],
-        defaultOutputFile: join(projectPath, "dist", `${stem}.patch.dat`),
+        // Inside a `patch` folder, because that folder is what gets zipped and
+        // extracted. The export puts it there regardless; showing it here means the
+        // field says where the file will actually be.
+        defaultOutputFile: join(projectPath, "dist", PATCH_DIRECTORY_NAME, `${stem}.patch.dat`),
     };
 
     const dialogId = uiService.dialogs.show({

@@ -12,7 +12,8 @@ import {
     RUNTIME_SUPPORT_FILENAME,
 } from "@narraleaf/encryption";
 import { openSealedLayer } from "@narraleaf/encryption/runtime";
-import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
+import { resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
+import { digestPayload, openPayload, patchCarriesEntry, resolvePayloadLocation } from "./patchPayload";
 
 const TITLE = "com.example.patched";
 
@@ -183,5 +184,85 @@ describe("patch payload", () => {
         } finally {
             await reader.close();
         }
+    });
+});
+
+describe("finding a build's payload", () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await fs.mkdtemp(path.join(os.tmpdir(), "nls-locate-"));
+    });
+
+    afterEach(async () => {
+        await fs.rm(root, { recursive: true, force: true }).catch(() => undefined);
+    });
+
+    /**
+     * A payload at `relative`, as the resolver meets one.
+     *
+     * An archive is written as a directory holding the descriptor, which is what
+     * an archive looks like from inside Electron: it is mounted, and the only
+     * thing that answers about it is a path that reaches inside. A plain file
+     * named `app.asar` would be a fixture no real run ever sees.
+     */
+    async function place(relative: string): Promise<string> {
+        const full = path.join(root, relative);
+        await fs.mkdir(full, { recursive: true });
+        await fs.writeFile(path.join(full, "pack.json"), '{"schemaVersion":2}');
+        return full;
+    }
+
+    it("takes a desktop output folder", async () => {
+        const asar = await place("win-unpacked/resources/app.asar");
+        expect(await resolvePayloadLocation(path.join(root, "win-unpacked"))).toBe(asar);
+    });
+
+    /**
+     * The contract is that what comes back reaches the payload, not that it spells
+     * the path a particular way: `Contents/Resources` is capitalised on macOS and
+     * answers to either spelling on a case-insensitive disk.
+     */
+    const reaches = async (answer: string, expected: string) => {
+        expect((await fs.readFile(path.join(answer, "pack.json"))).toString())
+            .toBe((await fs.readFile(path.join(expected, "pack.json"))).toString());
+    };
+
+    it("takes a macOS output folder without being told the product's name", async () => {
+        const asar = await place("mac-arm64/Some Game.app/Contents/Resources/app.asar");
+        await reaches(await resolvePayloadLocation(path.join(root, "mac-arm64")), asar);
+    });
+
+    it("takes an application bundle, and the archive itself", async () => {
+        const asar = await place("Some Game.app/Contents/Resources/app.asar");
+        await reaches(await resolvePayloadLocation(path.join(root, "Some Game.app")), asar);
+        expect(await resolvePayloadLocation(asar)).toBe(asar);
+    });
+
+    it("takes a compiled app directory", async () => {
+        await place("staging/app");
+        expect(await resolvePayloadLocation(path.join(root, "staging", "app"))).toBe(path.join(root, "staging", "app"));
+    });
+
+    it("says what it looked for when the folder is not a build", async () => {
+        await fs.mkdir(path.join(root, "elsewhere"), { recursive: true });
+        await expect(resolvePayloadLocation(path.join(root, "elsewhere")))
+            .rejects.toThrow(/does not look like a build/);
+    });
+});
+
+describe("where a patch is written", () => {
+    const j = (...parts: string[]) => parts.join("/");
+    const dirname = (p: string) => p.split("/").slice(0, -1).join("/");
+    const basename = (p: string) => p.split("/").slice(-1)[0];
+
+    it("puts the file inside the folder that gets delivered", () => {
+        expect(resolvePatchDeliveryPath("/out/ep2.patch.dat", j, dirname, basename))
+            .toBe("/out/patch/ep2.patch.dat");
+    });
+
+    it("does not nest one inside another", () => {
+        expect(resolvePatchDeliveryPath("/out/patch/ep2.patch.dat", j, dirname, basename))
+            .toBe("/out/patch/ep2.patch.dat");
     });
 });

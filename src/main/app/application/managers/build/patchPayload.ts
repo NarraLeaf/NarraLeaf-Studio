@@ -30,6 +30,26 @@ export interface PayloadReader {
     close(): Promise<void>;
 }
 
+/**
+ * Whether this location holds a game payload, asked by looking for something the
+ * payload always has.
+ *
+ * Never by probing the location itself. Inside Electron an archive is mounted as
+ * a directory, and asking about the archive path with nothing after it does not
+ * resolve to a file or to an entry - so a check on the archive answers no for the
+ * one archive it was written to find. Asking for a file inside it is a question
+ * both a real directory and a mounted archive can answer, and it is the better
+ * question anyway: it separates this game's payload from any other package.
+ */
+async function looksLikePayload(location: string): Promise<boolean> {
+    for (const marker of ["pack.json", RUNTIME_BUNDLE_FILENAME]) {
+        if (await fileHasContent(path.join(location, marker))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 async function fileHasContent(filePath: string): Promise<boolean> {
     try {
         const stats = await fs.stat(filePath);
@@ -69,7 +89,59 @@ async function listEntryNames(appDir: string, root: string): Promise<string[]> {
  * because the manifest is what a reader addresses an asset by, and a file the
  * manifest does not name is not reachable in the shipped game either.
  */
-export async function openPayload(appDir: string): Promise<PayloadReader> {
+/**
+ * Find a build's payload from whatever the author pointed at.
+ *
+ * What an author has after a build is the output folder the packager wrote, and
+ * the payload is buried in it differently on every platform: beside the
+ * executable on Windows and Linux, three levels inside a bundle on macOS. Asking
+ * them to know that, and to browse into a package to reach a file called
+ * `app.asar`, is asking them to know how the packager works.
+ *
+ * So every shape resolves here: the output folder, the application bundle, the
+ * archive itself, or a compiled app directory. A path that is none of those says
+ * what was looked for rather than failing as a missing file.
+ */
+export async function resolvePayloadLocation(target: string): Promise<string> {
+    const candidates = [
+        // A desktop output folder, and equally an application bundle's Contents.
+        path.join(target, "resources", "app.asar"),
+        // The bundle itself, if that is what got picked.
+        path.join(target, "Contents", "resources", "app.asar"),
+        path.join(target, "Contents", "Resources", "app.asar"),
+    ];
+    // The target itself first: a compiled app directory is what an unprotected
+    // build stages, and it is what the payload reader speaks natively.
+    for (const candidate of [target, ...candidates]) {
+        if (await looksLikePayload(candidate)) {
+            return candidate;
+        }
+    }
+    // A macOS output folder holds the bundle rather than the payload, and its
+    // name is the product's, which this has no way to know.
+    try {
+        for (const entry of await fs.readdir(target)) {
+            if (!entry.toLowerCase().endsWith(".app")) {
+                continue;
+            }
+            for (const inside of ["resources", "Resources"]) {
+                const candidate = path.join(target, entry, "Contents", inside, "app.asar");
+                if (await looksLikePayload(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+    } catch {
+        // Not a directory, or unreadable. The message below covers both.
+    }
+    throw new Error(
+        `${target} does not look like a build of this game: expected an output folder holding `
+        + "resources/app.asar, an application bundle, or a compiled app directory.",
+    );
+}
+
+export async function openPayload(target: string): Promise<PayloadReader> {
+    const appDir = await resolvePayloadLocation(target);
     const bundlePath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
     if (await fileHasContent(bundlePath)) {
         const sealed = await openSealedBundle(path.join(appDir, RUNTIME_SUPPORT_FILENAME), bundlePath);
