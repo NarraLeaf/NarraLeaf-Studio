@@ -1612,9 +1612,23 @@ describe("compileStudioStoryToNlr", () => {
         // The defaults are the whole difference from a white plate, so they are pinned here rather
         // than left to whatever the engine happens to default to: without a lift the shadows never
         // whiten, and this is the surface that decides an author who set nothing still gets one.
-        const compiled = await compileBackgroundTransition("exposure", { ev: undefined, lift: undefined, hold: undefined });
+        // Built here rather than through the shared helper: that one always sets a props superset,
+        // so "the author set nothing" cannot be spelled through it.
+        const bg: StoryBlock = {
+            id: "bg",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "exposure", durationMs: 400 } },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ bg }, ["bg"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
         const exposure = findTransition(compiled) as any;
 
+        expect(compiled.diagnostics).toEqual([]);
         expect(exposure.ev).toBe(4.6);
         expect(exposure.lift).toBe(0.04);
         expect(exposure.hold).toBe(0);
