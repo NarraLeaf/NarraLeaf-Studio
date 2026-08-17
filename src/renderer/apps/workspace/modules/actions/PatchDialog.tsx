@@ -60,7 +60,7 @@ function PatchDialogContent({
     );
 
     const pickBaseline = useCallback(async () => {
-        const result = await getInterface().gameBuild.selectOutputDir(baselineAppDir || undefined);
+        const result = await getInterface().gameBuild.selectPatchBaseline(baselineAppDir || undefined);
         if (result.success && result.data.path) {
             setBaselineAppDir(result.data.path);
         }
