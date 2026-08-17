@@ -33,6 +33,7 @@ export type StoryTransitionWord =
     | "dots"
     | "black"
     | "darkness"
+    | "exposure"
     | "zoom"
     // The transform presets the inspector offers that no word reached. They are the same field a
     // `t=` writes (`StoryTransformRef.preset`), so a look an author could pick on the right had no
@@ -71,13 +72,14 @@ const WORD_ALIASES: Partial<Record<StoryTransitionWord, readonly string[]>> = {
     fan: ["windmill"],
     dots: ["polka"],
     black: ["throughcolor"],
+    exposure: ["bleach", "overexpose"],
 };
 
 const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> = {
     // The Mask-vocabulary additions (barn-door / clock / fan / dots) are whole-screen transitions:
     // offered on `/bg` `/jump` alongside the classics, but not on portrait swaps or stage objects.
-    scene: ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "none"],
-    character: ["fade", "slide", "circle", "wipe", "blur", "none"],
+    scene: ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "exposure", "none"],
+    character: ["fade", "slide", "circle", "wipe", "blur", "exposure", "none"],
     // Every preset the inspector's own dropdown offers, so the two surfaces reach the same set of
     // looks — `left` / `center` / `right` excepted: those are the SAME field written through `at=`,
     // which is the slot the vocabulary already gives a placement.
@@ -159,6 +161,7 @@ const SCENE_KINDS: Partial<Record<StoryTransitionWord, StoryTransitionRef["kind"
     dots: "dots",
     black: "throughColor",
     darkness: "darkness",
+    exposure: "exposure",
     none: "none",
 };
 

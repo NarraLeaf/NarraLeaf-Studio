@@ -1128,6 +1128,9 @@ export type StoryTransitionRef = {
         | "fan"
         | "dots"
         | "blurDissolve"
+        // 0.28.0: engine `Exposure` — the frame burns out per channel instead of
+        // being covered. Additive, like the mask additions above.
+        | "exposure"
         | "throughColor"
         | "darkness"
         | "custom";
